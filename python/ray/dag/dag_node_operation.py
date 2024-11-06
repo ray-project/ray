@@ -741,8 +741,8 @@ def _generate_overlapped_execution_schedule(
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
-                        or overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.WRITE
+                        # or overlapped_schedule[j].operation.type
+                        # == _DAGNodeOperationType.WRITE
                     ) and overlapped_schedule[j].requires_nccl:
                         # Found a NCCL read/write operation, skip the overlap
                         # optimization to keep relative order of NCCL operations

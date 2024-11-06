@@ -194,19 +194,27 @@ def find_overlap(records):
         start = record.init_timestamp
         end = record.end_timestamp
         duration = end - start
-        color = 'red' if any(record in overlap for overlap in overlaps) else 'blue'
+        color = "red" if any(record in overlap for overlap in overlaps) else "blue"
         ax.barh(i, duration, left=start, height=0.4, color=color)
-        ax.text(start + duration / 2, i, record.operation_str, va='center', ha='center', color='white')
+        ax.text(
+            start + duration / 2,
+            i,
+            record.operation_str,
+            va="center",
+            ha="center",
+            color="white",
+        )
 
     # Formatting the x-axis to show time as float
-    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f'{x:.2f}'))
+    ax.xaxis.set_major_formatter(plt.FuncFormatter(lambda x, _: f"{x:.2f}"))
 
-    plt.xlabel('Time (seconds)')
-    plt.ylabel('Records')
-    plt.title('Overlapping Intervals')
+    plt.xlabel("Time (seconds)")
+    plt.ylabel("Records")
+    plt.title("Overlapping Intervals")
 
     # Save the plot to a PNG file
     import os
+
     current_pid = os.getpid()
     plt.savefig(f"overlap_{current_pid}.png")
 

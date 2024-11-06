@@ -33,11 +33,15 @@ if sys.platform != "linux" and sys.platform != "darwin":
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 
-@ray.remote(runtime_env={ "nsight":{
-    "t": "cuda,cudnn,cublas,nvtx",
-    "cuda-memory-usage": "true",
-    "cuda-graph-trace": "graph",
-}})
+@ray.remote(
+    runtime_env={
+        "nsight": {
+            "t": "cuda,cudnn,cublas,nvtx",
+            "cuda-memory-usage": "true",
+            "cuda-graph-trace": "graph",
+        }
+    }
+)
 class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
@@ -106,6 +110,23 @@ class TorchTensorWorker:
 
     def ping(self):
         return
+
+    def vllm_execute_model(self, input):
+        """
+        Simulates vLLM model execution of a worker.
+        """
+        if isinstance(input, Tuple):
+            request, intermediate_tensor = input
+        else:
+            shape = (10000, 10000)
+            dtype = torch.float16
+            request, intermediate_tensor = input, torch.ones(
+                shape, dtype=dtype, device=self.device
+            )
+        # Simulate model execution.
+        intermediate_tensor = torch.matmul(intermediate_tensor, intermediate_tensor)
+        # Return result.
+        return request, intermediate_tensor
 
 
 @ray.remote(num_cpus=1)
@@ -954,6 +975,99 @@ def test_torch_tensor_nccl_overlap_dynamic(
     print(f"{overlap_gpu_communication=}, {duration=}")
 
     compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_vllm_simulation(ray_start_regular):
+    """
+    Test a VLLM simulation with a DAG that uses NCCL for communication.
+    """
+    # if not USE_GPU:
+    #     pytest.skip("NCCL tests require GPUs")
+
+    # assert (
+    #     sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    # ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=1, num_gpus=0)
+    pp_tp_workers: List[List[TorchTensorWorker]] = []
+    PIPELINE_PARALLELISM = 2
+    TENSOR_PARALLELISM = 2
+    LAST_PP_STAGE = PIPELINE_PARALLELISM - 1
+    for _ in range(PIPELINE_PARALLELISM):
+        pp_tp_workers.append([actor_cls.remote() for _ in range(TENSOR_PARALLELISM)])
+
+    with InputNode() as execute_model_request:
+        outputs = [execute_model_request for _ in range(TENSOR_PARALLELISM)]
+        for pp_stage, tp_group in enumerate(pp_tp_workers):
+            outputs = [
+                worker.vllm_execute_model.bind(outputs[i])
+                for i, worker in enumerate(tp_group)
+            ]
+
+        # if pp_stage < LAST_PP_STAGE:
+        #     outputs = [
+        #         output.with_type_hint(TorchTensorType(transport="nccl"))
+        #         for output in outputs
+        #     ]
+        dag = MultiOutputNode(outputs)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(10)
+    result = ray.get(ref)
+    print(result)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_vllm_simulation2(ray_start_regular):
+    """
+    Test a VLLM simulation with a DAG that uses NCCL for communication.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    pp_tp_workers: List[List[TorchTensorWorker]] = []
+    PIPELINE_PARALLELISM = 3
+    TENSOR_PARALLELISM = 1
+    LAST_PP_STAGE = PIPELINE_PARALLELISM - 1
+    for _ in range(PIPELINE_PARALLELISM):
+        pp_tp_workers.append([actor_cls.remote() for _ in range(TENSOR_PARALLELISM)])
+
+    with InputNode() as execute_model_request:
+        outputs = [execute_model_request for _ in range(TENSOR_PARALLELISM)]
+        outputs2 = [execute_model_request for _ in range(TENSOR_PARALLELISM)]
+        for pp_stage, tp_group in enumerate(pp_tp_workers):
+            outputs = [
+                worker.vllm_execute_model.bind(outputs[i])
+                for i, worker in enumerate(tp_group)
+            ]
+            outputs2 = [
+                worker.vllm_execute_model.bind(outputs2[i])
+                for i, worker in enumerate(tp_group)
+            ]
+
+            if pp_stage < LAST_PP_STAGE:
+                outputs = [
+                    output.with_type_hint(TorchTensorType(transport="nccl"))
+                    for output in outputs
+                ]
+                outputs2 = [
+                    output.with_type_hint(TorchTensorType(transport="nccl"))
+                    for output in outputs2
+                ]
+        dag = MultiOutputNode(outputs + outputs2)
+
+    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
+
+    ref = compiled_dag.execute(10)
+    result = ray.get(ref)
+    print(result)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
