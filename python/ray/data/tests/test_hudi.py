@@ -14,13 +14,15 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-PYARROW_LE_8_0_0 = tuple(int(s) for s in pa.__version__.split(".") if s.isnumeric()) < (
-    8,
+PYARROW_LE_11_0_0 = tuple(
+    int(s) for s in pa.__version__.split(".") if s.isnumeric()
+) < (
+    11,
     0,
     0,
 )
 pytestmark = pytest.mark.skipif(
-    PYARROW_LE_8_0_0, reason="hudi only supported if pyarrow >= 8.0.0"
+    PYARROW_LE_11_0_0, reason="hudi only supported if pyarrow >= 11.0.0"
 )
 
 
