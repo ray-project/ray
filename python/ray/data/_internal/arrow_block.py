@@ -20,9 +20,8 @@ import numpy as np
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
-    ArrowConversionError,
-    convert_to_pyarrow_array,
-    pyarrow_table_from_pydict,
+    _convert_to_pyarrow_native_array,
+    pyarrow_table_from_pydict, convert_to_pyarrow_array,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
@@ -55,19 +54,6 @@ if TYPE_CHECKING:
 
 T = TypeVar("T")
 logger = logging.getLogger(__name__)
-
-ARROW_OBJECT_FIXABLE_ERRORS = (
-    pyarrow.lib.ArrowTypeError,
-    pyarrow.lib.ArrowNotImplementedError,
-    pyarrow.lib.ArrowInvalid,
-    pyarrow.lib.ArrowCapacityError,
-    OverflowError,
-)
-
-
-def is_object_fixable_error(e: ArrowConversionError) -> bool:
-    """Returns whether this error can be fixed by using an ArrowPythonObjectArray"""
-    return isinstance(e.__cause__, ARROW_OBJECT_FIXABLE_ERRORS)
 
 
 # We offload some transformations to polars for performance.
@@ -153,35 +139,7 @@ class ArrowBlockBuilder(TableBlockBuilder):
         for col_name, col_vals in columns.items():
             np_col_vals = convert_to_numpy(col_vals)
 
-            try:
-                if col_name == TENSOR_COLUMN_NAME or np_col_vals.ndim > 1:
-                    from ray.data.extensions.tensor_extension import ArrowTensorArray
-
-                    pa_cols[col_name] = ArrowTensorArray.from_numpy(
-                        np_col_vals, col_name
-                    )
-                else:
-                    pa_cols[col_name] = convert_to_pyarrow_array(np_col_vals, col_name)
-
-            except ArrowConversionError as e:
-                logger.warning(
-                    f"Failed to convert column '{col_name}' into pyarrow "
-                    f"array due to: {e}; falling back to serialize as pickled "
-                    f"python objects",
-                    exc_info=e,
-                )
-
-                from ray.data.extensions.object_extension import (
-                    ArrowPythonObjectArray,
-                    _object_extension_type_allowed,
-                )
-
-                if _object_extension_type_allowed() and is_object_fixable_error(e):
-                    pa_cols[col_name] = ArrowPythonObjectArray.from_objects(
-                        np_col_vals
-                    )
-                else:
-                    raise
+            pa_cols[col_name] = convert_to_pyarrow_array(np_col_vals, col_name)
 
         return pyarrow_table_from_pydict(pa_cols)
 

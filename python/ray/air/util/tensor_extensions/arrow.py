@@ -10,6 +10,7 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
@@ -88,6 +89,61 @@ def pyarrow_table_from_pydict(
 
 @DeveloperAPI(stability="alpha")
 def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.Array:
+    """Converts provided NumPy `ndarray` into PyArrow's `array` while utilizing
+    both Arrow's natively supported types as well as custom extension types:
+
+        - ArrowTensorArray (for tensors)
+        - ArrowPythonObjectArray (for user-defined python class objects, as well as
+        any python object that aren't represented by a corresponding Arrow's native
+        scalar type)
+    """
+
+    try:
+        if column_name == TENSOR_COLUMN_NAME or column_values.ndim > 1:
+            from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+            return ArrowTensorArray.from_numpy(
+                column_values, column_name
+            )
+        else:
+            return _convert_to_pyarrow_native_array(column_values, column_name)
+
+    except ArrowConversionError as ace:
+        from ray.data.extensions.object_extension import (
+            ArrowPythonObjectArray,
+            _object_extension_type_allowed,
+        )
+
+        should_serialize_as_object_ext_type = _object_extension_type_allowed()
+
+        if should_serialize_as_object_ext_type:
+            object_ext_type_detail = "falling back to serialize as pickled python objects"
+        else:
+            object_ext_type_detail = (
+                "skipping fallback to serialize as pickled python"
+                f" objects (due to unsupported Arrow version {PYARROW_VERSION})"
+            )
+
+        logger.warning(
+            f"Failed to convert column '{column_name}' into pyarrow "
+            f"array due to: {ace}; {object_ext_type_detail}",
+            exc_info=ace,
+        )
+
+        # If `ArrowPythonObjectType` is not supported raise original exception
+        if not should_serialize_as_object_ext_type:
+            raise ace
+
+        # Otherwise, attempt to fall back to serialize as python objects
+        return ArrowPythonObjectArray.from_objects(
+            column_values
+        )
+
+
+def _convert_to_pyarrow_native_array(column_values: np.ndarray, column_name: str) -> pa.Array:
+    """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
+    Arrow's natively supported types (ie no custom extension types)"""
+
     try:
         # NOTE: We explicitly infer PyArrow `DataType` so that
         #       we can perform upcasting to be able to accommodate
