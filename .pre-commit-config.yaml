@@ -136,6 +136,14 @@ repos:
 
   - repo: local
     hooks:
+      - id: clang-format
+        name: Check for coding style with clang format
+        entry: ./ci/lint/check-git-clang-format-output.sh
+        language: system
+        types: [bash]
+
+  - repo: local
+    hooks:
       - id: check-import-order
         name: Check for Ray import order violations
         entry: python ci/lint/check_import_order.py
