@@ -1304,7 +1304,7 @@ class ProxyActor:
 
     def _dump_ingress_replicas_for_testing(self, route: str) -> Set[ReplicaID]:
         _, handle, _ = self.http_proxy.proxy_router.match_route(route)
-        return handle._router._replica_scheduler._replica_id_set
+        return handle._router._asyncio_router._replica_scheduler._replica_id_set
 
     def should_start_grpc_service(self) -> bool:
         """Determine whether gRPC service should be started.

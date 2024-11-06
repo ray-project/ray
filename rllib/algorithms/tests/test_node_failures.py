@@ -53,10 +53,6 @@ class TestNodeFailures(unittest.TestCase):
         # with fewer EnvRunners.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
@@ -74,10 +70,6 @@ class TestNodeFailures(unittest.TestCase):
         # We recreate failed EnvRunners and continue training.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
@@ -95,10 +87,6 @@ class TestNodeFailures(unittest.TestCase):
         # We do not ignore EnvRunner failures and expect to crash upon failure.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=6,
