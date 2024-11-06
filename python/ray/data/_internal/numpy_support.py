@@ -123,11 +123,19 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 elif not np.isscalar(e):
                     has_object = True
 
+            # When column values are
+            #   - Arrays of heterogeneous shapes
+            #   - Byte-strings (viewed as arrays of heterogeneous shapes)
+            #   - Non-scalar objects (tuples, lists, arbitrary object types)
+            #
+            # Custom "ragged ndarray" is created, represented as an array of
+            # references (ie ndarray with dtype=object)
             if has_object or len(shapes) > 1:
                 # This util works around some limitations of np.array(dtype=object).
                 return create_ragged_ndarray(column_values)
             else:
                 return np.array(column_values)
+
         except Exception as e:
             logger.error(
                 f"Failed to convert column values to numpy array: "
@@ -155,5 +163,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 f"({_truncated_repr(column_values)}): {e}."
             )
     else:
+        print(">>> [DBG] convert_to_numpy else ")
+
         # TODO assert unreachable
         return column_values
