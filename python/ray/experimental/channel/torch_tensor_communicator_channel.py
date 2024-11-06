@@ -249,6 +249,7 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
+        tensors = self._communicator_data_channel.read()
 
         This method:
         1) Receives torch.Tensors via the tensor data channel (e.g., NCCL).
