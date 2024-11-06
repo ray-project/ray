@@ -38,6 +38,16 @@ class _TorchTensorMetadata:
     dtype: "torch.dtype"
 
 
+def _extract_on_device_tensors(value: Any, device: Optional["torch.device"]):
+    import torch
+
+    return _TorchTensorMetadata((10,), torch.uint8), [value]
+
+
+def _bind_tensor_placeholders(schema: Any, device_tensors: List["torch.Tensor"]):
+    return device_tensors[0]
+
+
 @DeveloperAPI
 class TorchTensorNcclChannel(ChannelInterface):
     def __init__(
@@ -74,13 +84,12 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
         self._typ = typ
+        # The deserialized static tensor schema, with placeholders instead of torch.Tensors.
+        self._cached_tensor_schema: Optional[Any] = None
 
         self._gpu_data_channel: _TorchTensorNcclChannel = gpu_data_channel
-        if self._typ.direct_return:
-            self._cpu_data_channel = None
-        else:
-            assert cpu_data_channel is not None
-            self._cpu_data_channel: Optional["Channel"] = cpu_data_channel
+        assert cpu_data_channel is not None
+        self._tensor_schema_channel: Optional["Channel"] = cpu_data_channel
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
@@ -98,23 +107,23 @@ class TorchTensorNcclChannel(ChannelInterface):
                 None,
                 self._typ,
                 self._gpu_data_channel,
-                self._cpu_data_channel,
+                self._tensor_schema_channel,
             ),
         )
 
     def ensure_registered_as_writer(self):
         self._gpu_data_channel.ensure_registered_as_writer()
-        if self._cpu_data_channel is not None:
-            self._cpu_data_channel.ensure_registered_as_writer()
+        self._tensor_schema_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
         self._gpu_data_channel.ensure_registered_as_reader()
-        if self._cpu_data_channel is not None:
-            self._cpu_data_channel.ensure_registered_as_reader()
+        self._tensor_schema_channel.ensure_registered_as_reader()
 
     def _send_cpu_and_gpu_data(self, value: Any, timeout: Optional[float]):
         self.serialization_ctx.reset_out_of_band_tensors([])
         # All tensors found in `value` will be transferred via NCCL.
+        # TODO(swang): Instead, register and deregister custom
+        # serializer.
         self.serialization_ctx.set_use_external_transport(True)
 
         try:
@@ -142,7 +151,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._gpu_data_channel.write(gpu_tensors)
         # Next send the non-tensor data through a CPU-specific channel. The
         # data contains placeholders for the extracted tensors.
-        self._cpu_data_channel.write(cpu_data)
+        self._tensor_schema_channel.write(cpu_data)
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -164,38 +173,60 @@ class TorchTensorNcclChannel(ChannelInterface):
         data for subsequent messages.
         """
         if isinstance(value, ray.exceptions.RayTaskError):
-            if self._typ.static_shape or self._typ.direct_return:
+            if self._typ.static_shape or self._typ.static_tensor_schema:
                 # Raise a fatal error to teardown the DAG.
                 # TODO(swang): Write exceptions to the tensor metadata or
                 # non-tensor data channel if it is available.
+                # TODO(swang): It would also be okay to throw this error if
+                # this is still the first DAG execution, because we haven't yet
+                # inferred sizes and tensor schemas.
                 raise value
 
-        if self._cpu_data_channel is None:
-            # Handle the case where _direct_return=True. In this case, we check
-            # that the task returned a CUDA torch.Tensor and just send it
-            # directly without trying to serialize it first.
-            import torch
+        # TODO: Catch error if schema type is not traversible.
+        ctx = ChannelContext.get_current()
+        schema, device_tensors = _extract_on_device_tensors(value, ctx.torch_device)
 
-            if not isinstance(value, torch.Tensor):
-                # TODO(swang): These errors are currently fatal for the DAG
-                # because there is no way for the receiver to receive the
-                # exception. This could be improved by sending the exception
-                # through the gpu_data_channel's CPU-based metadata channel,
-                # if one exists.
-                raise ValueError(
-                    "Task annotated with _direct_return=True must "
-                    "return a CUDA torch.Tensor, instead found value "
-                    f"`{value}`. DAG will shut down."
-                )
-            elif not value.is_cuda:
-                raise ValueError(
-                    "Task annotated with _direct_return=True must "
-                    "return a CUDA torch.Tensor, instead found CPU tensor. "
-                    "DAG will shut down."
-                )
-            self._gpu_data_channel.write([value], timeout=timeout)
+        # First send the extracted tensors through a GPU-specific channel.
+        # These writes can happen in any order, but we do this first to avoid
+        # blocking the GPU on the following write.
+        self._gpu_data_channel.write(device_tensors)
+        # Next send the non-tensor data through a CPU-specific channel. The
+        # data contains placeholders for the extracted tensors.
+        if self._cached_tensor_schema is None:
+            self._tensor_schema_channel.write(schema)
+            if self._typ.static_tensor_schema:
+                self._cached_tensor_schema = schema
         else:
-            self._send_cpu_and_gpu_data(value, timeout)
+            # TODO: Check that the extracted schema is equal to the past tensor
+            # schema.
+            pass
+
+        # if self._cpu_data_channel is None:
+        #    # Handle the case where _static_tensor_schema=True. In this case, we check
+        #    # that the task returned a CUDA torch.Tensor and just send it
+        #    # directly without trying to serialize it first.
+        #    import torch
+
+        #    if not isinstance(value, torch.Tensor):
+        #        # TODO(swang): These errors are currently fatal for the DAG
+        #        # because there is no way for the receiver to receive the
+        #        # exception. This could be improved by sending the exception
+        #        # through the gpu_data_channel's CPU-based metadata channel,
+        #        # if one exists.
+        #        raise ValueError(
+        #            "Task annotated with _static_tensor_schema=True must "
+        #            "return a CUDA torch.Tensor, instead found value "
+        #            f"`{value}`. DAG will shut down."
+        #        )
+        #    elif not value.is_cuda:
+        #        raise ValueError(
+        #            "Task annotated with _static_tensor_schema=True must "
+        #            "return a CUDA torch.Tensor, instead found CPU tensor. "
+        #            "DAG will shut down."
+        #        )
+        #    self._gpu_data_channel.write([value], timeout=timeout)
+        # else:
+        #    self._send_cpu_and_gpu_data(value, timeout)
 
     def _recv_cpu_and_gpu_data(
         self, tensors: List["torch.Tensor"], timeout: Optional[float] = None
@@ -236,26 +267,37 @@ class TorchTensorNcclChannel(ChannelInterface):
         3) Deserializes the non-tensor data. During deserialization, replaces
         all found placeholders with the received torch.Tensors.
 
-        If _direct_return=True was specified, then we skip step (2) and (3) and
+        If _static_tensor_schema=True was specified, then we skip step (2) and (3) and
         directly return the data received in (1).
         """
         # First, read the tensor data.
-        tensors = self._gpu_data_channel.read(timeout)
+        device_tensors = self._gpu_data_channel.read(timeout)
 
-        if self._cpu_data_channel is None:
-            # Handle _direct_return=True. In this case, we expect to receive
-            # only one tensor, and we return it directly.
-            assert len(tensors) == 1
-            data = tensors[0]
-        else:
-            data = self._recv_cpu_and_gpu_data(tensors, timeout)
+        schema = self._cached_tensor_schema
+        if schema is None:
+            schema = self._tensor_schema_channel.read(timeout)
 
-        return data
+        # Replace placeholders with actual tensors.
+        value = _bind_tensor_placeholders(schema, device_tensors)
+
+        if self._typ.static_tensor_schema:
+            self._cached_tensor_schema = schema
+
+        return value
+
+        # if self._cpu_data_channel is None:
+        #    # Handle _static_tensor_schema=True. In this case, we expect to receive
+        #    # only one tensor, and we return it directly.
+        #    assert len(tensors) == 1
+        #    data = tensors[0]
+        # else:
+        #    data = self._recv_cpu_and_gpu_data(tensors, timeout)
+
+        # return data
 
     def close(self) -> None:
         self._gpu_data_channel.close()
-        if self._cpu_data_channel is not None:
-            self._cpu_data_channel.close()
+        self._tensor_schema_channel.close()
 
 
 def _torch_zeros_allocator(

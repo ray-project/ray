@@ -22,7 +22,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         transport: Optional[Union[str, GPUCommunicator]] = AUTO,
         _static_shape: bool = False,
-        _direct_return: Optional[bool] = False,
+        _static_tensor_schema: Optional[bool] = False,
     ):
         """
         A type hint that can be used to annotate DAG nodes that return a
@@ -42,10 +42,7 @@ class TorchTensorType(ChannelOutputType):
             _static_shape: A hint indicating whether the shape(s) and dtype(s)
                 of tensor(s) contained in this value always remain the same
                 across different executions of the DAG.
-            _direct_return: Whether the tensor is sent directly or inside of
-                other data. If a non-default `transport` is used, this allows
-                the sender and receiver to eliminate performance overhead from
-                an additional data transfer.
+            _static_tensor_schema: TODO
 
         NOTE: Setting static_shape=True and _direct_return=True can improve
         performance if a non-default transport is used. However, if either flag
@@ -56,13 +53,12 @@ class TorchTensorType(ChannelOutputType):
         continue execution, a new DAG must be created:
         1. If _static_shape=True, and the found tensors don't match the
            previous shape or dtype(s).
-        2. If _direct_return=True, and the returned value is not a
-           torch.Tensor.
+        2. If _static_tensor_schema=True, TODO
         """
         super().__init__()
 
         self._static_shape = _static_shape
-        self._direct_return = _direct_return
+        self._static_tensor_schema = _static_tensor_schema
 
         self._custom_nccl_group: Optional[GPUCommunicator] = None
         if isinstance(transport, GPUCommunicator):
@@ -82,9 +78,9 @@ class TorchTensorType(ChannelOutputType):
                 "TorchTensorType(_static_shape=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
-        if self._direct_return and self.transport == self.AUTO:
+        if self._static_tensor_schema and self.transport == self.AUTO:
             logger.info(
-                "TorchTensorType(_direct_return=True) has no effect when "
+                "TorchTensorType(_static_tensor_schema=True) has no effect when "
                 "`transport` is TorchTensorType.AUTO (default)."
             )
 
@@ -93,8 +89,8 @@ class TorchTensorType(ChannelOutputType):
         return self._static_shape
 
     @property
-    def direct_return(self):
-        return self._direct_return
+    def static_tensor_schema(self):
+        return self._static_tensor_schema
 
     def register_custom_serializer(self) -> None:
         super().register_custom_serializer()
@@ -139,13 +135,12 @@ class TorchTensorType(ChannelOutputType):
                 _meta_channel=_tensor_metadata_channel,
             )
 
-            if _cpu_data_channel is None and not self._direct_return:
-                # Create a CPU channel to send non-tensor data.
-                _cpu_data_channel = SharedMemoryType().create_channel(
-                    writer,
-                    reader_and_node_list,
-                    read_by_adag_driver,
-                )
+            # Create a CPU channel to send non-tensor data.
+            _cpu_data_channel = SharedMemoryType().create_channel(
+                writer,
+                reader_and_node_list,
+                read_by_adag_driver,
+            )
 
             return TorchTensorNcclChannel(
                 writer,
@@ -186,7 +181,7 @@ class TorchTensorType(ChannelOutputType):
         copy = TorchTensorType(
             transport=self.transport,
             _static_shape=self._static_shape,
-            _direct_return=self._direct_return,
+            _static_tensor_schema=self._static_tensor_schema,
         )
         copy._custom_nccl_group = self._custom_nccl_group
         copy._nccl_group_id = self._nccl_group_id

@@ -226,9 +226,9 @@ def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
     ],
     indirect=True,
 )
-def test_p2p_direct_return(ray_start_cluster):
+def test_p2p_static_tensor_schema(ray_start_cluster):
     """
-    Test simple sender -> receiver pattern with _direct_return=True
+    Test simple sender -> receiver pattern with _static_tensor_schema=True
     """
     # Barrier name should be barrier-{lower rank}-{higher rank}.
     barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
@@ -241,7 +241,9 @@ def test_p2p_direct_return(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_type_hint(
+            TorchTensorType(transport="nccl", _static_tensor_schema=True)
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
