@@ -55,7 +55,7 @@ gcloud container node-pools create gpu-node-pool \
   --machine-type g2-standard-4
 ```
 
-This command creates a node pool which initially has zero nodes.
+This command creates a node pool, which initially has zero nodes.
 The `--enable-queued-provisioning` flag enables "queued provisioning" in the Kubernetes node autoscaler using the ProvisioningRequest API. More details are below.
 You need to use the `--reservation-affinity=none` flag because GKE doesn't support Node Reservations with ProvisioningRequest.
 
