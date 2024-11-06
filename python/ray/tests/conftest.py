@@ -980,7 +980,7 @@ def cloned_virtualenv():
     # aviod import `pytest_virtualenv` in test case `Minimal install`
     from pytest_virtualenv import VirtualEnv
 
-    if virtualenv_utils._is_in_virtualenv():
+    if virtualenv_utils.is_in_virtualenv():
         raise RuntimeError("Forbid the use of this fixture in virtualenv")
 
     venv = VirtualEnv(
