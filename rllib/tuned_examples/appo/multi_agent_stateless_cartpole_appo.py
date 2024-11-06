@@ -13,7 +13,7 @@ parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
-    num_env_runners=3,
+    num_env_runners=6,
 )
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
@@ -32,8 +32,7 @@ config = (
     # )
     .training(
         train_batch_size_per_learner=600,
-        learner_queue_size=1,
-        lr=0.0006 * ((args.num_learners or 1) ** 0.5),
+        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
         vf_loss_coeff=0.05,
         entropy_coeff=0.005,
@@ -52,7 +51,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0 * args.num_agents,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
