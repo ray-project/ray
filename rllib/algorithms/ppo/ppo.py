@@ -126,7 +126,7 @@ class PPOConfig(AlgorithmConfig):
         # __sphinx_doc_begin__
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
-        self.train_batch_size_per_learner = 4000
+        self.train_batch_size = 4000
 
         # PPO specific settings:
         self.use_critic = True
@@ -146,12 +146,6 @@ class PPOConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
-
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
 
@@ -162,7 +156,6 @@ class PPOConfig(AlgorithmConfig):
         # Deprecated keys.
         self.sgd_minibatch_size = DEPRECATED_VALUE
         self.vf_share_layers = DEPRECATED_VALUE
-        self.train_batch_size = 4000
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpec:

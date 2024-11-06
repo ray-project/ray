@@ -171,10 +171,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.num_env_runners = 2
         self.lr = 0.0005
         self.min_time_s_per_iteration = 10
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
 

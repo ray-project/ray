@@ -159,7 +159,7 @@ class DQNConfig(AlgorithmConfig):
         # global_norm, no matter the value of `grad_clip_by`.
         self.grad_clip_by = "global_norm"
         self.lr = 5e-4
-        self.train_batch_size_per_learner = 32
+        self.train_batch_size = 32
 
         # `evaluation()`
         self.evaluation(evaluation_config=AlgorithmConfig.overrides(explore=False))
@@ -202,15 +202,9 @@ class DQNConfig(AlgorithmConfig):
             # Beta parameter for sampling from prioritized replay buffer.
             "beta": 0.4,
         }
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # fmt: on
         # __sphinx_doc_end__
 
-        self.train_batch_size = 32  # @OldAPIStack
         self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated

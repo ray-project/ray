@@ -126,12 +126,6 @@ class SACConfig(AlgorithmConfig):
         # .reporting()
         self.min_time_s_per_iteration = 1
         self.min_sample_timesteps_per_iteration = 100
-
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
 

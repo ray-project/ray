@@ -138,10 +138,6 @@ class APPOConfig(IMPALAConfig):
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
         self.tau = 1.0
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
 
