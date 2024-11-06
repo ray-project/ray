@@ -11,4 +11,3 @@ Ray supports the following accelerator types:
 <<<<<<< HEAD
     :language: python
     :language: python
->>>>>>> origin/accelerator-link
