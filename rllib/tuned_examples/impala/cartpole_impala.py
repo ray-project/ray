@@ -14,11 +14,6 @@ args = parser.parse_args()
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("CartPole-v1")
     .training(
         train_batch_size_per_learner=500,

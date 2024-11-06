@@ -125,7 +125,8 @@ class IMPALALearner(Learner):
         **kwargs,
     ) -> ResultDict:
         self.metrics.set_value(
-            NUM_ENV_STEPS_SAMPLED_LIFETIME, timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME]
+            (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+            timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME],
         )
 
         # TODO (sven): IMPALA does NOT call additional update anymore from its
@@ -153,7 +154,8 @@ class IMPALALearner(Learner):
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_in_queue.put((batch, env_steps))
             self.metrics.log_value(
-                QUEUE_SIZE_GPU_LOADER_QUEUE, self._gpu_loader_in_queue.qsize()
+                (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+                self._gpu_loader_in_queue.qsize(),
             )
         else:
             # Enqueue to Learner thread's in-queue.
@@ -295,7 +297,7 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                        (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     )
                 },
                 num_epochs=self._num_epochs,
@@ -307,7 +309,10 @@ class _LearnerThread(threading.Thread):
             # value added to it, which would falsify this result.
             self._out_queue.put(copy.deepcopy(results))
 
-            self.metrics.log_value(QUEUE_SIZE_RESULTS_QUEUE, self._out_queue.qsize())
+            self.metrics.log_value(
+                (ALL_MODULES, QUEUE_SIZE_RESULTS_QUEUE),
+                self._out_queue.qsize(),
+            )
 
     @staticmethod
     def enqueue(learner_queue, batch, metrics_logger):
@@ -326,3 +331,9 @@ class _LearnerThread(threading.Thread):
         # metrics_logger.log_value(
         #    LEARNER_THREAD_ENV_STEPS_DROPPED, ts_dropped, reduce="sum"
         # )
+
+        # Log current queue size.
+        metrics_logger.log_value(
+            (ALL_MODULES, QUEUE_SIZE_LEARNER_THREAD_QUEUE),
+            len(learner_queue),
+        )
