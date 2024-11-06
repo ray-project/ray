@@ -27,7 +27,7 @@ def assert_structure_equals(a, b):
     assert a.dtype == b.dtype
     assert a.shape == b.shape
     for i in range(len(a)):
-        assert np.array_equiv(a[i], b[i]), (i, a, b)
+        assert np.array_equal(a[i], b[i]), (i, a, b)
 
 
 def test_list_of_scalars(ray_start_regular_shared):
