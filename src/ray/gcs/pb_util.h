@@ -252,16 +252,8 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
                                                   resources_map.end());
   task_info->mutable_runtime_env_info()->CopyFrom(task_spec.RuntimeEnvInfo());
   const auto &pg_id = task_spec.PlacementGroupBundleId().first;
-
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
-  }
-
-  // Fill in task args
-  for (size_t i = 0; i < task_spec.NumArgs(); i++) {
-    if (task_spec.ArgByRef(i)) {
-      task_info->add_args_object_ids(task_spec.ArgRef(i).object_id());
-    }
   }
 }
 

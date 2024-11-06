@@ -392,12 +392,7 @@ class TestWorkerFailures(unittest.TestCase):
     def test_fatal_single_agent(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .env_runners(
+            PPOConfig().env_runners(
                 env_to_module_connector=lambda env: FlattenObservations(),
             )
         )
@@ -405,22 +400,14 @@ class TestWorkerFailures(unittest.TestCase):
     def test_fatal_multi_agent(self):
         # Test the case where all workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .multi_agent(policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"),
+            PPOConfig().multi_agent(
+                policies={"p0"}, policy_mapping_fn=lambda *a, **k: "p0"
+            ),
         )
 
     def test_async_samples(self):
         self._do_test_failing_ignore(
-            IMPALAConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
+            IMPALAConfig().env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
         )
 
     def test_sync_replay(self):
@@ -436,10 +423,6 @@ class TestWorkerFailures(unittest.TestCase):
     def test_multi_gpu(self):
         self._do_test_failing_ignore(
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(
                 train_batch_size=10,
@@ -451,10 +434,6 @@ class TestWorkerFailures(unittest.TestCase):
     def test_sync_samples(self):
         self._do_test_failing_ignore(
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(optimizer={})
         )
@@ -471,10 +450,6 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=True,
-                enable_rl_module_and_learner=True,
-            )
             .env_runners(num_env_runners=4)
             .fault_tolerance(
                 # Re-start failed individual sub-envs (then continue).
@@ -520,10 +495,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where one eval worker fails, but we chose to ignore.
         self._do_test_failing_ignore(
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .training(model={"fcnet_hiddens": [4]}),
             fail_eval=True,
@@ -533,10 +504,6 @@ class TestWorkerFailures(unittest.TestCase):
         # Test the case where all eval workers fail, but we chose to recover.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorker)
             .evaluation(
                 evaluation_num_env_runners=1,
@@ -556,10 +523,6 @@ class TestWorkerFailures(unittest.TestCase):
         # to recover.
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent)
             .multi_agent(
                 policies={"main", "p0", "p1"},
@@ -584,7 +547,14 @@ class TestWorkerFailures(unittest.TestCase):
     def test_eval_workers_failing_fatal(self):
         # Test the case where all eval workers fail (w/o recovery).
         self._do_test_failing_fatal(
-            (PPOConfig().training(model={"fcnet_hiddens": [4]})),
+            (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .training(model={"fcnet_hiddens": [4]})
+            ),
             fail_eval=True,
         )
 
@@ -595,10 +565,6 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
@@ -654,10 +620,6 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorkerMultiAgent,
                 num_env_runners=2,
@@ -763,10 +725,6 @@ class TestWorkerFailures(unittest.TestCase):
 
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 env_runner_cls=ForwardHealthCheckToEnvWorker,
                 num_env_runners=2,
@@ -904,7 +862,11 @@ class TestWorkerFailures(unittest.TestCase):
         # horizon -> Expect warning and no proper evaluation results.
         config = (
             PPOConfig()
-            .environment(env=RandomEnv, env_config={"p_terminated": 0.0})
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
+            .environment(RandomEnv, env_config={"p_terminated": 0.0})
             .training(train_batch_size_per_learner=200)
             .evaluation(
                 evaluation_num_env_runners=1,
