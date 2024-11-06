@@ -23,7 +23,7 @@ import "src/ray/protobuf/agent_manager.proto";
 
 message GetOrCreateRuntimeEnvRequest {
   /// Json serialized [RuntimeEnv].
-  /// For details, checkout "//python/ray/_private/runtime_env/runtime_env.py".
+  /// For details, checkout "//python/ray/runtime_env/runtime_env.py".
   string serialized_runtime_env = 1;
 
   RuntimeEnvConfig runtime_env_config = 2;
