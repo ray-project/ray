@@ -141,11 +141,10 @@ class TestGC:
 )
 def test_run_in_virtualenv(cloned_virtualenv):
     python_exe_path = cloned_virtualenv.python
-    print(python_exe_path)
 
     # make sure cloned_virtualenv.run will run in virtualenv.
     cloned_virtualenv.run(
-        f"{python_exe_path} -c 'from ray._private.runtime_env.pip import PipProcessor;"
+        f"{python_exe_path} -c 'from ray._private.runtime_env import virtualenv_utils;"
         "assert virtualenv_utils.is_in_virtualenv()'",
         capture=True,
     )
