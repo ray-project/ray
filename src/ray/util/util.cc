@@ -358,23 +358,25 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   url.erase(0, pos + delimiter.length());
   const std::string query_delimeter = "&";
 
-  auto parse_key_value_with_equal_delimter = [](std::string_view key_value) {
+  auto parse_key_value_with_equal_delimter =
+      [](std::string_view key_value) -> std::pair<std::string_view, std::string_view> {
     // Parse the query key value pair.
     const std::string key_value_delimter = "=";
     size_t key_value_pos = key_value.find(key_value_delimter);
     std::string_view key = key_value.substr(0, key_value_pos);
-    return std::make_pair(std::string{key}, key_value.substr(key.size() + 1));
+    return std::make_pair(key, key_value.substr(key.size() + 1));
   };
 
   while ((pos = url.find(query_delimeter)) != std::string::npos) {
     std::string_view token = std::string_view{url}.substr(0, pos);
     auto key_value_pair = parse_key_value_with_equal_delimter(token);
-    result->emplace(std::move(key_value_pair.first), std::move(key_value_pair.second));
+    result->emplace(std::string(key_value_pair.first),
+                    std::string(key_value_pair.second));
     url.erase(0, pos + delimiter.length());
   }
   std::string_view token = std::string_view{url}.substr(0, pos);
   auto key_value_pair = parse_key_value_with_equal_delimter(token);
-  result->emplace(std::move(key_value_pair.first), std::move(key_value_pair.second));
+  result->emplace(std::string(key_value_pair.first), std::string(key_value_pair.second));
   return result;
 }
 
