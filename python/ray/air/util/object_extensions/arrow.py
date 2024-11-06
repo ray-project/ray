@@ -112,7 +112,7 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
         arr = pa.array(all_dumped_bytes, type=type_.storage_type)
         return ArrowPythonObjectArray.from_storage(type_, arr)
 
-    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+    def to_numpy(self, zero_copy_only: bool = False, writable: bool = False) -> np.ndarray:
         arr = np.empty(len(self), dtype=object)
         arr[:] = self.to_pylist()
         return arr
