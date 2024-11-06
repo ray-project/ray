@@ -87,13 +87,16 @@ def pyarrow_table_from_pydict(
 
 
 @DeveloperAPI(stability="alpha")
-def convert_to_pyarrow_array(column_values: np.ndarray) -> pa.Array:
+def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.Array:
     try:
         # NOTE: We explicitly infer PyArrow `DataType` so that
         #       we can perform upcasting to be able to accommodate
         #       blocks that are larger than 2Gb in size (limited
         #       by int32 offsets used by Arrow internally)
         dtype = _infer_pyarrow_type(column_values)
+
+        logger.debug(f"Inferred dtype of '{dtype}' for column '{column_name}'")
+
         return pa.array(column_values, type=dtype)
     except Exception as e:
         raise ArrowConversionError(str(column_values)) from e
