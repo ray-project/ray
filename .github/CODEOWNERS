@@ -12,5 +12,5 @@ anyscale/docker @aslonnie @can-anyscale @khluu
 anyscale/go @aslonnie @lanbochen-anyscale @hckuo
 
 # Data team
-/python/ray/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin
-/release/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin
+/python/ray/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin @srinathk10
+/release/anyscale/data @bveeramani @scottjlee @raulchen @omatthew98 @alexeykudinkin @srinathk10
