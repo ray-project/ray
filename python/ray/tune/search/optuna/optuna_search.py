@@ -371,16 +371,15 @@ class OptunaSearch(Searcher):
         self._seed = seed
 
         if storage:
-            assert (
-                study_name
-            ), "You must pass a study name if you are passing a storage."
             assert isinstance(storage, BaseStorage), (
                 "You can only pass an instance of "
                 "`optuna.samplers.BaseStorage` "
                 "as a storage to `OptunaSearcher`."
             )
+            self._storage = storage
+        else:
+            self._storage = ot.storages.InMemoryStorage()
 
-        self._storage = storage
         self._completed_trials = set()
 
         self._ot_trials = {}
@@ -399,10 +398,6 @@ class OptunaSearch(Searcher):
             self._metric = DEFAULT_METRIC
 
         pruner = ot.pruners.NopPruner()
-        if self._storage:
-            storage = self._storage
-        else:
-            storage = ot.storages.InMemoryStorage()
 
         if self._sampler:
             sampler = self._sampler
@@ -424,7 +419,7 @@ class OptunaSearch(Searcher):
             )
 
         self._ot_study = ot.study.create_study(
-            storage=storage,
+            storage=self._storage,
             sampler=sampler,
             pruner=pruner,
             study_name=self._study_name,
