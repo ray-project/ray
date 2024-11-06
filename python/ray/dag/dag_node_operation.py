@@ -580,7 +580,7 @@ def _visualize_execution_schedule(
         legend.attr(label="Legend", labelloc="t", fontsize="20", bgcolor="lightgrey")
 
         # Single node and its explanation
-        legend.node("example_node", "Worker_3c6a... [0] bwd C 10,10\n")
+        legend.node("example_node", "[0] bwd C 10,10\n")
         explanation = (
             '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'  # noqa
             '<TR><TD ALIGN="LEFT"><B>Node description format:</B></TD></TR>'
