@@ -54,7 +54,7 @@ RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 KUBERNETES_SERVICE_HOST = os.getenv(
     "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
 )
-KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT", "443")
+KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
 KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
