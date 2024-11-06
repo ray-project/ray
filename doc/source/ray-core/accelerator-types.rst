@@ -8,4 +8,8 @@ Accelerator Types
 Ray supports the following accelerator types:
 
 .. literalinclude:: ../../../python/ray/util/accelerators/accelerators.py
+<<<<<<< HEAD
     :language: python
+=======
+    :language: python
+>>>>>>> origin/accelerator-link
