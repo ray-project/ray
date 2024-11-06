@@ -418,8 +418,6 @@ def test_trainer(
     for checkpoint, _ in result.best_checkpoints:
         assert checkpoint.path.startswith(run_path)
 
-    assert not result.error
-
     _assert_storage_contents(
         local_inspect_dir,
         exp_name,

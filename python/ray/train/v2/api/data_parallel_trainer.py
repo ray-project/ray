@@ -211,7 +211,16 @@ class DataParallelTrainer:
         )
         ray.get(controller.run.remote())
 
-        return ray.get(controller.get_result.remote())
+        result = ray.get(controller.get_result.remote())
+        if result.error:
+            # NOTE: If the training run errored out, raise an error back to the
+            # user's driver script.
+            # For example, if the Train `FailurePolicy` runs out of retries,
+            # and one of the workers errors. The controller will exit, and
+            # the error will be raised here.
+            raise result.error
+
+        return result
 
     @classmethod
     def restore(cls, *args, **kwargs):

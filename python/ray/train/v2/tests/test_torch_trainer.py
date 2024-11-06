@@ -38,8 +38,7 @@ def test_torch_linear(ray_start_4_cpus, num_workers):
         train_loop_config=config,
         scaling_config=scaling_config,
     )
-    result = trainer.fit()
-    assert not result.error
+    trainer.fit()
 
 
 if __name__ == "__main__":

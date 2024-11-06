@@ -150,9 +150,10 @@ def test_error(tmp_path):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name="test", storage_path=str(tmp_path)),
     )
-    result = trainer.fit()
-    assert isinstance(result.error, TrainingFailedError)
-    assert isinstance(result.error.worker_failures[0], ValueError)
+    with pytest.raises(TrainingFailedError) as exc_info:
+        trainer.fit()
+
+        assert isinstance(exc_info.value.worker_failures[0], ValueError)
 
 
 @pytest.mark.parametrize("env_disabled", [True, False])
@@ -177,9 +178,7 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
     )
-
-    result = trainer.fit()
-    assert not result.error
+    trainer.fit()
 
 
 def test_datasets(restore_data_context):  # noqa: F811
@@ -215,8 +214,6 @@ def test_datasets(restore_data_context):  # noqa: F811
         scaling_config=ScalingConfig(num_workers=NUM_TRAIN_WORKERS),
     )
     trainer.fit()
-    result = trainer.fit()
-    assert not result.error
 
 
 if __name__ == "__main__":
