@@ -10,6 +10,8 @@ from ray.util.annotations import DeveloperAPI
 from ray.core.generated.common_pb2 import Language
 from ray._private.services import get_ray_jars_dir
 from ray._private.utils import update_envs
+from ray._private.runtime_env import physical_mode_context
+from ray._private.runtime_env import physical_mode_execution_utils
 
 logger = logging.getLogger(__name__)
 
@@ -25,12 +27,14 @@ class RuntimeEnvContext:
         py_executable: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
+        physical_exec_ctx: physical_mode_context.PhysicalModeExecutionContext = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
+        self.physical_exec_ctx = physical_exec_ctx
 
     def serialize(self) -> str:
         return json.dumps(self.__dict__)
@@ -100,6 +104,12 @@ class RuntimeEnvContext:
                     f"{os.environ[MACOS_LIBRARY_PATH_ENV_NAME]}",
                 )
             logger.debug(f"Exec'ing worker with command: {cmd}")
+
+            # Set physical execution related system config before execution, which will
+            # be cleaned up after execution completion if necessary.
+            # Intentionally ignore the return value.
+            physical_mode_execution_utils.setup_cgroup(self.physical_exec_ctx)
+
             # PyCharm will monkey patch the os.execvp at
             # .pycharm_helpers/pydev/_pydev_bundle/pydev_monkey.py
             # The monkey patched os.execvp function has a different

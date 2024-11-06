@@ -513,6 +513,7 @@ class RuntimeEnvAgent:
                 creation_time_ms,
             )
             # Reply the RPC
+            # TODO(hjiang): Fill in physical mode execution context in response.
             return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
                 status=agent_manager_pb2.AGENT_RPC_STATUS_OK
                 if successful
@@ -521,6 +522,7 @@ class RuntimeEnvAgent:
                 error_message=error_message,
             )
 
+    # TODO(hjiang): Delete cgroup is necessary.
     async def DeleteRuntimeEnvIfPossible(self, request):
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
