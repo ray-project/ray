@@ -10,6 +10,7 @@ from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
+from ray._private.runtime_env.uv import get_uri as get_uv_uri
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -148,7 +149,6 @@ OPTION_TO_VALIDATION_FN[
 ] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
-# TODO(hjiang): Expose `uv` related fields after implementation finished.
 @PublicAPI
 class RuntimeEnv(dict):
     """This class is used to define a runtime environment for a job, task,
@@ -237,6 +237,8 @@ class RuntimeEnv(dict):
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
+        uv: Either a list of pip packages, or a python dictionary that has one field:
+            1) ``packages`` (required, List[str]).
         conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
@@ -272,6 +274,7 @@ class RuntimeEnv(dict):
         "working_dir",
         "conda",
         "pip",
+        "uv",
         "container",
         "excludes",
         "env_vars",
@@ -311,6 +314,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
+        uv: Optional[List[str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -322,6 +326,8 @@ class RuntimeEnv(dict):
             runtime_env["working_dir"] = working_dir
         if pip is not None:
             runtime_env["pip"] = pip
+        if uv is not None:
+            runtime_env["uv"] = uv
         if conda is not None:
             runtime_env["conda"] = conda
         if nsight is not None:
@@ -349,16 +355,19 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        if self.get("conda") and self.get("pip"):
+        use_conda_install = int(self.get("conda") is not None)
+        use_pip_install = int(self.get("pip") is not None)
+        use_uv_install = int(self.get("uv") is not None)
+        if use_conda_install + use_pip_install + use_uv_install > 1:
             raise ValueError(
-                "The 'pip' field and 'conda' field of "
-                "runtime_env cannot both be specified.\n"
-                f"specified pip field: {self['pip']}\n"
-                f"specified conda field: {self['conda']}\n"
-                "To use pip with conda, please only set the 'conda' "
-                "field, and specify your pip dependencies "
-                "within the conda YAML config dict: see "
-                "https://conda.io/projects/conda/en/latest/"
+                "The 'pip' field, 'uv' field, and 'conda' field of "
+                "runtime_env cannot be specified at the same time.\n"
+                f"specified pip field: {self.get('pip')}\n"
+                f"specified conda field: {self.get('conda')}\n"
+                f"specified conda field: {self.get('uv')}\n"
+                "To use pip with conda or uv, please only set the 'conda' or 'uv'"
+                "field, and specify your pip dependencies within the conda YAML "
+                "config dict: see https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
@@ -472,6 +481,11 @@ class RuntimeEnv(dict):
             return get_pip_uri(self)
         return None
 
+    def uv_uri(self) -> Optional[str]:
+        if "uv" in self:
+            return get_uv_uri(self)
+        return None
+
     def plugin_uris(self) -> List[str]:
         """Not implemented yet, always return a empty list"""
         return []
@@ -518,6 +532,11 @@ class RuntimeEnv(dict):
             return True
         return False
 
+    def has_uv(self) -> bool:
+        if self.get("uv"):
+            return True
+        return False
+
     def virtualenv_name(self) -> Optional[str]:
         if not self.has_pip() or not isinstance(self["pip"], str):
             return None
@@ -529,6 +548,13 @@ class RuntimeEnv(dict):
         # Parse and validate field pip on method `__setitem__`
         self["pip"] = self["pip"]
         return self["pip"]
+
+    def uv_config(self) -> Dict:
+        if not self.has_uv() or isinstance(self["uv"], str):
+            return {}
+        # Parse and validate field pip on method `__setitem__`
+        self["uv"] = self["uv"]
+        return self["uv"]
 
     def get_extension(self, key) -> Optional[str]:
         if key not in RuntimeEnv.extensions_fields:
