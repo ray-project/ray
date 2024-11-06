@@ -287,6 +287,8 @@ class CompiledTask:
         self.output_channels: List[ChannelInterface] = []
         self.output_idxs: List[Optional[Union[int, str]]] = []
         self.arg_type_hints: List["ChannelOutputType"] = []
+        # idxs of possible ClassMethodOutputNodes if they exist, used for visualization
+        self.output_node_idxs: List[int] = []
 
     @property
     def args(self) -> Tuple[Any]:
@@ -1384,6 +1386,7 @@ class CompiledDAG:
                         output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
+                    task.output_node_idxs.append(self.dag_node_to_idx[downstream_node])
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
@@ -2343,29 +2346,35 @@ class CompiledDAG:
                 label += type(dag_node).__name__
                 shape = "diamond"
                 fillcolor = "red"
-            print("task: " + label + ", outputIdxs: " + str(task.arg_type_hints))
+            print("task: " + label + ", outputIdxs: " + str(task.output_idxs))
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
-            for out_idx, output_channel in enumerate(task.output_channels):
-                dot.node(
-                    f"{idx} + {output_channel}",
-                    type(output_channel).__name__,
-                    shape="rectangle",
-                )
-                dot.edge(str(idx), f"{idx} + {output_channel}")
-
-            for downstream_node in task.dag_node._downstream_nodes:
-                downstream_idx = self.dag_node_to_idx[downstream_node]
-                actor_handle = task.downstream_task_idxs[downstream_idx]
-                # Get the type hint for this argument
-                edge_label = (
-                    type(dag_node.type_hint).__name__
-                    if dag_node.type_hint
-                    else "UnknownType"
-                )
-                # Draw an edge from  task to downstream task
-                dot.edge(str(idx), str(downstream_idx), label=edge_label)
-
+            type_hint_type = (
+                type(dag_node.type_hint).__name__
+                if dag_node.type_hint
+                else "UnknownType"
+            ) + "\n"
+            # This logic is built on the assumption that there will only be multiple
+            # output channels if the task has multiple returns
+            # case: task with one output
+            if len(task.output_channels) == 1:
+                for downstream_node in task.dag_node._downstream_nodes:
+                    downstream_idx = self.dag_node_to_idx[downstream_node]
+                    actor_handle = task.downstream_task_idxs[downstream_idx]
+                    # Get the type hint for this argument
+                    edge_label = type_hint_type + type(task.output_channels[0]).__name__
+                    # Draw an edge from task to downstream task
+                    dot.edge(str(idx), str(downstream_idx), label=edge_label)
+            # case: multi return, output channels connect to class method output nodes
+            if len(task.output_channels) > 1:
+                assert len(task.output_idxs) == len(task.output_channels)
+                for output_channel, downstream_idx in zip(
+                    task.output_channels, task.output_node_idxs
+                ):
+                    # Get the type hint for this argument
+                    edge_label = type_hint_type + type(output_channel).__name__
+                    # Draw an edge from task to downstream task
+                    dot.edge(str(idx), str(downstream_idx), label=edge_label)
         if return_dot:
             return dot.source
         else:
