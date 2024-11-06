@@ -845,6 +845,8 @@ class CompiledDAG:
         self._max_finished_execution_index: int = -1
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
+        # channel to possible inner channel
+        self._channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
 
         def _create_proxy_actor() -> "ray.actor.ActorHandle":
             # Creates the driver actor on the same node as the driver.
@@ -1533,7 +1535,6 @@ class CompiledDAG:
             # Dict from original channel to the channel to be used in execution.
             # The value of this dict is either the original channel or a newly
             # created CachedChannel (if the original channel is read more than once).
-            channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
             for arg, consumers in arg_to_consumers.items():
                 arg_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[arg_idx]
@@ -1541,12 +1542,12 @@ class CompiledDAG:
                 arg_channel = upstream_task.output_channels[0]
                 assert arg_channel is not None
                 if len(consumers) > 1:
-                    channel_dict[arg_channel] = CachedChannel(
+                    self._channel_dict[arg_channel] = CachedChannel(
                         len(consumers),
                         arg_channel,
                     )
                 else:
-                    channel_dict[arg_channel] = arg_channel
+                    self._channel_dict[arg_channel] = arg_channel
 
             # Step 3: create executable tasks for the actor
             executable_tasks = []
@@ -1559,7 +1560,7 @@ class CompiledDAG:
                         assert len(upstream_task.output_channels) == 1
                         arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
-                        arg_channel = channel_dict[arg_channel]
+                        arg_channel = self._channel_dict[arg_channel]
                         resolved_args.append(arg_channel)
                     else:
                         # Constant arg
@@ -2243,6 +2244,7 @@ class CompiledDAG:
         format="png",
         view=False,
         return_dot=False,
+        verbose_edges=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2266,7 +2268,7 @@ class CompiledDAG:
             import graphviz
         except ImportError:
             raise ImportError(
-                "Please install graphviz to visualize the execution schedule. "
+                "Please install graphviz to visualize the compiled graph. "
                 "You can install it by running `pip install graphviz`."
             )
         from ray.dag import (
@@ -2345,7 +2347,7 @@ class CompiledDAG:
                 label += type(dag_node).__name__
                 shape = "diamond"
                 fillcolor = "red"
-            print("task: " + label + ", outputIdxs: " + str(task.output_idxs))
+
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
             type_hint_type = (
@@ -2353,6 +2355,15 @@ class CompiledDAG:
                 if dag_node.type_hint
                 else "UnknownType"
             ) + "\n"
+            get_output_channel_type = (
+                lambda output_channel: (
+                    type(self._channel_dict[task.output_channels[0]]).__name__
+                    if task.output_channels[0] in self._channel_dict
+                    else type(task.output_channels[0]).__name__
+                )
+                if verbose_edges
+                else ""
+            )
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
             # case: task with one output
@@ -2360,19 +2371,20 @@ class CompiledDAG:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
                     actor_handle = task.downstream_task_idxs[downstream_idx]
-                    # Get the type hint for this argument
-                    edge_label = type_hint_type + type(task.output_channels[0]).__name__
-                    # Draw an edge from task to downstream task
+                    # Inner channel only exists for single return right now
+                    edge_label = type_hint_type + get_output_channel_type(
+                        task.output_channels[0]
+                    )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
             # case: multi return, output channels connect to class method output nodes
-            if len(task.output_channels) > 1:
+            elif len(task.output_channels) > 1:
                 assert len(task.output_idxs) == len(task.output_channels)
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    # Get the type hint for this argument
-                    edge_label = type_hint_type + type(output_channel).__name__
-                    # Draw an edge from task to downstream task
+                    edge_label = type_hint_type + get_output_channel_type(
+                        output_channel
+                    )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
         if return_dot:
             return dot.source
