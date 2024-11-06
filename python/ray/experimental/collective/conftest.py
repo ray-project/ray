@@ -97,7 +97,7 @@ class MockNcclGroupSet:
             ranks = [custom_nccl_group.get_rank(actor) for actor in actors]
         init_tasks = [
             actor.__ray_call__.remote(
-                mock_do_init_nccl_group,
+                mock_do_init_communicator_group,
                 group_id,
                 rank,
                 actors,
@@ -180,7 +180,7 @@ class CPUTorchTensorWorker:
         return tensor.shape, tensor[0]
 
 
-def mock_do_init_nccl_group(
+def mock_do_init_communicator_group(
     self,
     group_id: str,
     rank: int,
@@ -217,11 +217,11 @@ def check_nccl_group_init(
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
-        "ray.dag.compiled_dag_node._init_nccl_group",
+        "ray.dag.compiled_dag_node._init_communicator_group",
         mock_nccl_group_set,
     )
     monkeypatch.setattr(
-        "ray.dag.collective_node._init_nccl_group",
+        "ray.dag.collective_node._init_communicator_group",
         mock_nccl_group_set,
     )
 

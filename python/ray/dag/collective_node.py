@@ -10,7 +10,7 @@ from ray.dag import (
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_communicator_channel import _init_nccl_group
+from ray.experimental.channel.torch_tensor_communicator_channel import _init_communicator_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
@@ -97,7 +97,7 @@ class _CollectiveOperation:
         if type_hint.nccl_group_id is not None:
             return type_hint.nccl_group_id
         if nccl_group_id is None:
-            nccl_group_id = _init_nccl_group(
+            nccl_group_id = _init_communicator_group(
                 self._actor_handles, type_hint.get_custom_nccl_group()
             )
         type_hint.set_nccl_group_id(nccl_group_id)
