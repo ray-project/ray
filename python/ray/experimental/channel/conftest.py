@@ -124,7 +124,9 @@ def start_nccl_mock():
     cp_patcher.start()
 
     # Mock send/recv ops to use an actor instead of NCCL.
-    ray.experimental.channel.torch_tensor_nccl_channel._NcclGroup = MockNcclGroup
+    ray.experimental.channel.torch_tensor_communicator_channel._CommunicatorGroup = (
+        MockNcclGroup
+    )
 
     # PyTorch mocks.
     stream_patcher = mock.patch(
@@ -140,7 +142,8 @@ def start_nccl_mock():
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
     tensor_patcher.start()
     tensor_allocator_patcher = mock.patch(
-        "ray.experimental.channel.torch_tensor_nccl_channel._torch_zeros_allocator",
+        "ray.experimental.channel.torch_tensor_communicator_channel \
+            ._torch_zeros_allocator",
         lambda shape, dtype: torch.zeros(shape, dtype=dtype),
     )
     tensor_allocator_patcher.start()

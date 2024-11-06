@@ -51,9 +51,9 @@ from ray.experimental.channel.shared_memory_channel import (
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
-from ray.experimental.channel.torch_tensor_nccl_channel import (
-    _init_nccl_group,
-    _destroy_nccl_group,
+from ray.experimental.channel.torch_tensor_communicator_channel import (
+    _init_communicator_group,
+    _destroy_communicator_group,
 )
 
 from ray.dag.dag_node_operation import (
@@ -239,20 +239,21 @@ def _wrap_exception(exc):
     return wrapped
 
 
-def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
+def _get_communicator_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     """
-    Get the NCCL group ID from the type hint. If the type hint does not
-    require NCCL, return None.
+    Get the Communicator group ID from the type hint. If the type hint does not
+    require Communicator, return None.
 
     Args:
         type_hint: The type hint of the channel.
 
     Returns:
-        The NCCL group ID if the type hint requires NCCL, otherwise None.
+        The Communicator group ID if the type hint requires
+        Communicator, otherwise None.
     """
-    if type_hint.requires_nccl():
+    if type_hint.requires_communicator():
         assert isinstance(type_hint, TorchTensorType)
-        return type_hint.nccl_group_id
+        return type_hint.communicator_group_id
     return None
 
 
@@ -373,7 +374,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # The NCCL collective operation.
+        # The communicator collective operation.
         self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
         if isinstance(task.dag_node, CollectiveOutputNode):
             self.collective_op = task.dag_node.collective_op
@@ -458,25 +459,29 @@ class ExecutableTask:
 
         # Set up send_stream and recv_stream when overlap_gpu_communication
         # is configured
-        if self.output_type_hint.requires_nccl():
-            nccl_group_id = _get_nccl_group_id(self.output_type_hint)
-            nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
-            assert nccl_group is not None
-            self._send_stream = nccl_group.send_stream
+        if self.output_type_hint.requires_communicator():
+            communicator_group_id = _get_communicator_group_id(self.output_type_hint)
+            communicator_group = ChannelContext.get_current().communicator_groups.get(
+                communicator_group_id
+            )
+            assert communicator_group is not None
+            self._send_stream = communicator_group.send_stream
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
-                if type_hint.requires_nccl():
-                    nccl_group_id = _get_nccl_group_id(type_hint)
-                    nccl_group = ChannelContext.get_current().nccl_groups.get(
-                        nccl_group_id
+                if type_hint.requires_communicator():
+                    communicator_group_id = _get_communicator_group_id(type_hint)
+                    communicator_group = (
+                        ChannelContext.get_current().communicator_groups.get(
+                            communicator_group_id
+                        )
                     )
-                    assert nccl_group is not None
+                    assert communicator_group is not None
                     if not isinstance(self._recv_stream, nullcontext):
-                        assert self._recv_stream == nccl_group.recv_stream, (
+                        assert self._recv_stream == communicator_group.recv_stream, (
                             "Currently all torch tensor input channels of a "
                             "Compiled Graph task should use the same recv cuda stream."
                         )
-                    self._recv_stream = nccl_group.recv_stream
+                    self._recv_stream = communicator_group.recv_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -827,14 +832,14 @@ class CompiledDAG:
         self.actor_to_node_id: Dict["ray.actor.ActorHandle", str] = {}
 
         # This is set to true when type hint of `transport="nccl"` is used.
-        self._use_default_nccl_group = False
+        self._use_default_communicator_group = False
         # This is set to the specified custom nccl group
         # if there exists a type hint of `transport=nccl_group`.
-        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
-        # The NCCL group ID for P2P send/recv operations.
-        self._nccl_group_id_p2p: Optional[str] = None
-        # All the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids: Set[str] = set()
+        self._custom_communicator_group_p2p: Optional[GPUCommunicator] = None
+        # The communicator group ID for P2P send/recv operations.
+        self._communicator_group_id_p2p: Optional[str] = None
+        # All the communicator group IDs for P2P send/recv and collective operations.
+        self._communicator_group_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -863,16 +868,16 @@ class CompiledDAG:
         self._is_teardown = False
 
     @property
-    def nccl_group_id_p2p(self) -> Optional[str]:
-        return self._nccl_group_id_p2p
+    def communicator_group_id_p2p(self) -> Optional[str]:
+        return self._communicator_group_id_p2p
 
     @property
     def is_teardown(self) -> bool:
         return self._is_teardown
 
     @property
-    def nccl_group_ids(self) -> Set[str]:
-        return self._nccl_group_ids
+    def communicator_group_ids(self) -> Set[str]:
+        return self._communicator_group_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -916,8 +921,8 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
-        nccl_collective_ops: Set[_CollectiveOperation] = set()
+        communicator_actors_p2p: Set["ray.actor.ActorHandle"] = set()
+        communicator_collective_ops: Set[_CollectiveOperation] = set()
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -990,53 +995,60 @@ class CompiledDAG:
 
                 self.actor_task_count[actor_handle._actor_id] += 1
 
-                # Collect actors for NCCL P2P methods.
-                if dag_node.type_hint.requires_nccl():
-                    nccl_actors_p2p.add(actor_handle)
-                    custom_nccl_group = dag_node.type_hint.get_custom_nccl_group()
-                    mixed_nccl_group_error_message = (
+                # Collect actors for communicator P2P methods.
+                if dag_node.type_hint.requires_communicator():
+                    communicator_actors_p2p.add(actor_handle)
+                    custom_communicator_group = (
+                        dag_node.type_hint.get_custom_communicator_group()
+                    )
+                    mixed_communicator_group_error_message = (
                         "Accelerated DAGs do not support mixed usage of "
                         "type hints of default NCCL group "
                         '(i.e., TorchTensor(transport="nccl"))'
-                        "and custom NCCL group "
+                        "and custom communicator group "
                         "(i.e., TorchTensor(transport=nccl_group)). "
                         "Please check all the TorchTensor type hints and "
-                        "make sure only one type of NCCL transport is specified."
+                        "make sure only one type of communicator  "
+                        "transport is specified."
                     )
-                    if custom_nccl_group is None:
-                        if self._custom_nccl_group_p2p is not None:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        self._use_default_nccl_group = True
+                    if custom_communicator_group is None:
+                        if self._custom_communicator_group_p2p is not None:
+                            raise ValueError(mixed_communicator_group_error_message)
+                        self._use_default_communicator_group = True
                     else:
-                        if self._use_default_nccl_group:
-                            raise ValueError(mixed_nccl_group_error_message)
-                        if self._custom_nccl_group_p2p is not None:
-                            if self._custom_nccl_group_p2p != custom_nccl_group:
+                        if self._use_default_communicator_group:
+                            raise ValueError(mixed_communicator_group_error_message)
+                        if self._custom_communicator_group_p2p is not None:
+                            if (
+                                self._custom_communicator_group_p2p
+                                != custom_communicator_group
+                            ):
                                 raise ValueError(
                                     "Accelerated DAGs currently only support "
-                                    "a single custom NCCL group, but multiple "
+                                    "a single custom communicator group, but multiple "
                                     "have been specified. Check all the "
                                     "TorchTensor(transport=nccl_group) type hints "
-                                    "to make sure only one NCCL group is used."
+                                    "to make sure only one communicator group is used."
                                 )
-                        self._custom_nccl_group_p2p = custom_nccl_group
+                        self._custom_communicator_group_p2p = custom_communicator_group
 
-                # Collect NCCL collective operations.
+                # Collect communicator collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    nccl_collective_ops.add(dag_node.collective_op)
+                    communicator_collective_ops.add(dag_node.collective_op)
                     assert not self._overlap_gpu_communication, (
                         "Currently, the overlap_gpu_communication option is not "
-                        "supported for NCCL collective operations. Please set "
+                        "supported for communicator collective operations. Please set "
                         "overlap_gpu_communication=False."
                     )
             elif isinstance(dag_node, InputNode):
-                if dag_node.type_hint.requires_nccl():
+                if dag_node.type_hint.requires_communicator():
                     raise ValueError(
-                        "DAG inputs cannot be transferred via NCCL because "
-                        "the driver cannot participate in the NCCL group"
+                        "DAG inputs cannot be transferred via communicator "
+                        "because the driver cannot participate in the "
+                        "communicator group"
                     )
 
-            if type(dag_node.type_hint) == ChannelOutputType:
+            if type(dag_node.type_hint) is ChannelOutputType:
                 # No type hint specified by the user. Replace
                 # with the default type hint for this DAG.
                 dag_node.with_type_hint(self._default_type_hint)
@@ -1098,9 +1110,9 @@ class CompiledDAG:
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
                 task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
-                if upstream_task.dag_node.type_hint.requires_nccl():
-                    # Add all readers to the NCCL actors of P2P.
-                    nccl_actors_p2p.add(downstream_actor_handle)
+                if upstream_task.dag_node.type_hint.requires_communicator():
+                    # Add all readers to the communicator actors of P2P.
+                    communicator_actors_p2p.add(downstream_actor_handle)
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
@@ -1123,81 +1135,93 @@ class CompiledDAG:
                 f"the MultiOutputNode."
             )
 
-        nccl_actors_p2p = list(nccl_actors_p2p)
-        if None in nccl_actors_p2p:
-            raise ValueError("Driver cannot participate in the NCCL group.")
+        communicator_actors_p2p = list(communicator_actors_p2p)
+        if None in communicator_actors_p2p:
+            raise ValueError("Driver cannot participate in the communicator group.")
 
-        # Initialize and cache a NCCL group for each custom NCCL group. All the
-        # custom NCCL groups are initialized before the default NCCL groups.
-        custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
-        # Initialize and cache a NCCL group for each set of actors. A set of actors
-        # can perform P2P send/recv and collective operations. If there are multiple
-        # custom NCCL groups for a set of actors, only one is cached.
-        actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+        # Initialize and cache a communicator group for each custom communicator group.
+        # All the custom communicator groups are initialized before the default
+        # communicator groups.
+        custom_communicator_group_to_id: Dict[GPUCommunicator, str] = {}
+        # Initialize and cache a communicator group for each set of actors.
+        # A set of actors can perform P2P send/recv and collective operations.
+        # If there are multiplecustom communicator groups for a set of actors,
+        # only one is cached.
+        actors_to_communicator_group_id: Dict[
+            FrozenSet["ray.actor.ActorHandle"], str
+        ] = {}
 
-        # If a custom NCCL group is specified for P2P actors, initialize and cache
-        # the NCCL group ID.
-        if nccl_actors_p2p and self._custom_nccl_group_p2p:
-            if not set(nccl_actors_p2p).issubset(
-                set(self._custom_nccl_group_p2p.get_actor_handles())
+        # If a custom communicator group is specified for P2P actors, initialize
+        # and cache the communicator group ID.
+        if communicator_actors_p2p and self._custom_communicator_group_p2p:
+            if not set(communicator_actors_p2p).issubset(
+                set(self._custom_communicator_group_p2p.get_actor_handles())
             ):
                 raise ValueError(
-                    "Expected P2P actor handles to be a subset of the custom NCCL group"
+                    "Expected P2P actor handles to be a subset "
+                    "of the custom communicator group"
                 )
-            self._nccl_group_id_p2p = _init_nccl_group(
-                nccl_actors_p2p,
-                self._custom_nccl_group_p2p,
+            self._communicator_group_id_p2p = _init_communicator_group(
+                communicator_actors_p2p,
+                self._custom_communicator_group_p2p,
                 self._overlap_gpu_communication,
             )
-            custom_nccl_group_to_id[
-                self._custom_nccl_group_p2p
-            ] = self._nccl_group_id_p2p
-            actors = frozenset(nccl_actors_p2p)
-            actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+            custom_communicator_group_to_id[
+                self._custom_communicator_group_p2p
+            ] = self._communicator_group_id_p2p
+            actors = frozenset(communicator_actors_p2p)
+            actors_to_communicator_group_id[actors] = self._communicator_group_id_p2p
 
-        # If a custom NCCL group is specified for collective actors, initialize and
-        # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
+        # If a custom communicator group is specified for collective actors,
+        # initialize and cache the communicator group ID.
+        for collective_op in communicator_collective_ops:
             type_hint = collective_op.type_hint
-            custom_nccl_group = type_hint.get_custom_nccl_group()
-            if custom_nccl_group:
-                nccl_group_id = collective_op.init_nccl_group(
-                    custom_nccl_group_to_id.get(custom_nccl_group, None)
+            custom_communicator_group = type_hint.get_custom_communicator_group()
+            if custom_communicator_group:
+                communicator_group_id = collective_op.init_communicator_group(
+                    custom_communicator_group_to_id.get(custom_communicator_group, None)
                 )
-                custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
+                custom_communicator_group_to_id[
+                    custom_communicator_group
+                ] = communicator_group_id
                 actors = frozenset(collective_op.actor_handles)
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_group_id:
+                    actors_to_communicator_group_id[actors] = communicator_group_id
 
-        # If a NCCL group for P2P actors is not initialized, initialize and cache
-        # the NCCL group ID.
-        if nccl_actors_p2p and self._nccl_group_id_p2p is None:
-            actors = frozenset(nccl_actors_p2p)
-            if actors in actors_to_nccl_group_id:
-                self._nccl_group_id_p2p = actors_to_nccl_group_id[actors]
+        # If a communicator group for P2P actors is not initialized, initialize
+        # and cache the communicator group ID.
+        if communicator_actors_p2p and self._communicator_group_id_p2p is None:
+            actors = frozenset(communicator_actors_p2p)
+            if actors in actors_to_communicator_group_id:
+                self._communicator_group_id_p2p = actors_to_communicator_group_id[
+                    actors
+                ]
             else:
-                self._nccl_group_id_p2p = _init_nccl_group(
-                    nccl_actors_p2p,
-                    self._custom_nccl_group_p2p,
+                self._communicator_group_id_p2p = _init_communicator_group(
+                    communicator_actors_p2p,
+                    self._custom_communicator_group_p2p,
                     self._overlap_gpu_communication,
                 )
-                actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
+                actors_to_communicator_group_id[
+                    actors
+                ] = self._communicator_group_id_p2p
 
-        # If a NCCL group for collective actors is not initialized, initialize and
-        # cache the NCCL group ID.
-        for collective_op in nccl_collective_ops:
-            if collective_op.type_hint.nccl_group_id is None:
+        # If a communicator group for collective actors is not initialized,
+        # initialize and cache the communicator group ID.
+        for collective_op in communicator_collective_ops:
+            if collective_op.type_hint.communicator_group_id is None:
                 actors = frozenset(collective_op.actor_handles)
-                nccl_group_id = collective_op.init_nccl_group(
-                    actors_to_nccl_group_id.get(actors, None)
+                communicator_group_id = collective_op.init_communicator_group(
+                    actors_to_communicator_group_id.get(actors, None)
                 )
-                if actors not in actors_to_nccl_group_id:
-                    actors_to_nccl_group_id[actors] = nccl_group_id
+                if actors not in actors_to_communicator_group_id:
+                    actors_to_communicator_group_id[actors] = communicator_group_id
 
-        # Store all the NCCL group IDs for P2P send/recv and collective operations.
-        self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
-            set(custom_nccl_group_to_id.values())
-        )
+        # Store all the communicator group IDs for P2P
+        # send/recv and collective operations.
+        self._communicator_group_ids = set(
+            actors_to_communicator_group_id.values()
+        ).union(set(custom_communicator_group_to_id.values()))
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1271,8 +1295,8 @@ class CompiledDAG:
 
             task = self.idx_to_task[cur_idx]
             type_hint = task.dag_node.type_hint
-            if type_hint.requires_nccl():
-                type_hint.set_nccl_group_id(self._nccl_group_id_p2p)
+            if type_hint.requires_communicator():
+                type_hint.set_communicator_group_id(self._communicator_group_id_p2p)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1487,7 +1511,7 @@ class CompiledDAG:
 
         if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
-                "This DAG cannot be compiled because it will deadlock on NCCL "
+                "This DAG cannot be compiled because it will deadlock on communicator "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
                 "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
@@ -1681,11 +1705,11 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl = dag_node.type_hint.requires_nccl()
-                upstream_requires_nccl = False
+                requires_communicator = dag_node.type_hint.requires_communicator()
+                upstream_requires_communicator = False
                 for upstream_node in dag_node._upstream_nodes:
-                    if upstream_node.type_hint.requires_nccl():
-                        upstream_requires_nccl = True
+                    if upstream_node.type_hint.requires_communicator():
+                        upstream_requires_communicator = True
                         break
 
                 read_node = _DAGOperationGraphNode(
@@ -1694,7 +1718,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    upstream_requires_nccl,
+                    upstream_requires_communicator,
                 )
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(
@@ -1710,7 +1734,7 @@ class CompiledDAG:
                     ),
                     task_idx,
                     actor_handle,
-                    requires_nccl,
+                    requires_communicator,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(
@@ -1722,7 +1746,7 @@ class CompiledDAG:
                         (task_idx, _DAGNodeOperationType.COMPUTE)
                     )
 
-        # Set collective nodes for all the NCCL collective operation nodes.
+        # Set collective nodes for all the communicator collective operation nodes.
         for collective_op, nodes in collective_op_to_nodes.items():
             idxs = collective_op_to_idxs[collective_op]
             for node in nodes:
@@ -1786,7 +1810,7 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Check whether the DAG will deadlock on NCCL calls.
+        Check whether the DAG will deadlock on communicator calls.
         There are no false positives in this deadlock detection,
         but there may be false negatives for now. For example,
 
@@ -1837,7 +1861,7 @@ class CompiledDAG:
 
         for idx, task in self.idx_to_task.items():
             for downstream_idx in task.downstream_task_idxs:
-                if task.dag_node.type_hint.requires_nccl():
+                if task.dag_node.type_hint.requires_communicator():
                     if _is_same_actor(idx, downstream_idx):
                         actor_handle = self.idx_to_task[
                             idx
@@ -1847,7 +1871,8 @@ class CompiledDAG:
                             downstream_idx
                         ].dag_node.get_method_name()
                         logger.error(
-                            "Detected a deadlock caused by using NCCL channels to "
+                            "Detected a deadlock caused by using communicator "
+                            "channels to "
                             f"transfer data between the task `{method}` and "
                             f"its downstream method `{downstream_method}` on the same "
                             f"actor {actor_handle}. Please remove "
@@ -1948,8 +1973,8 @@ class CompiledDAG:
                         logger.exception("Error cancelling worker task")
                         pass
 
-                for nccl_group_id in outer._nccl_group_ids:
-                    _destroy_nccl_group(nccl_group_id)
+                for communicator_group_id in outer._communicator_group_ids:
+                    _destroy_communicator_group(communicator_group_id)
 
                 logger.info("Waiting for worker tasks to exit")
                 self.wait_teardown()

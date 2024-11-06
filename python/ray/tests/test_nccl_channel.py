@@ -15,8 +15,8 @@ from ray.experimental.channel.conftest import (
     TracedChannel,
 )
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.torch_tensor_nccl_channel import (
-    _init_nccl_group,
+from ray.experimental.channel.torch_tensor_communicator_channel import (
+    _init_communicator_group,
 )
 from ray._private.test_utils import get_actor_node_id
 
@@ -126,12 +126,12 @@ def test_p2p(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator_group([sender, receiver])
 
     chan_typ = TorchTensorType(
         transport="nccl",
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, [(receiver, receiver_node)])
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -187,12 +187,12 @@ def test_multiple_receivers(ray_start_cluster):
 
     ray.get([worker.start_mock.remote() for worker in workers])
 
-    nccl_id = _init_nccl_group(workers)
+    nccl_id = _init_communicator_group(workers)
 
     chan_typ = TorchTensorType(
         transport="nccl",
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     chan_ref = sender.create_nccl_channel.remote(chan_typ, receiver_to_node)
     receiver_ready = [
         receiver.set_nccl_channel.remote(chan_typ, chan_ref)
@@ -243,7 +243,7 @@ def test_static_shape(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator_group([sender, receiver])
 
     chan_typ = TorchTensorType(
         transport="nccl",
@@ -332,7 +332,7 @@ def test_direct_return(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator_group([sender, receiver])
 
     chan_typ = TorchTensorType(
         transport="nccl",
@@ -419,7 +419,7 @@ def test_static_shape_and_direct_return(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator_group([sender, receiver])
 
     chan_typ = TorchTensorType(
         transport="nccl",

@@ -17,6 +17,8 @@ logger = logging.getLogger(__name__)
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    HCCL = "hccl"  # Add HCCL support for NPU
+    COMMUNICATOR_TYPES = [NCCL, HCCL]  # List of supported communicators
 
     def __init__(
         self,
@@ -64,18 +66,22 @@ class TorchTensorType(ChannelOutputType):
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
+        self._custom_communicator_group: Optional[GPUCommunicator] = None
         if isinstance(transport, GPUCommunicator):
-            self._custom_nccl_group = transport
-            transport = self.NCCL
+            self._custom_communicator_group = transport
+            for xccl in self.COMMUNICATOR_TYPES:
+                if xccl in str(type(transport)).lower():
+                    transport = xccl
+                    break
 
-        if transport not in [self.AUTO, self.NCCL]:
+        if transport not in [self.AUTO] + self.COMMUNICATOR_TYPES:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                f"`transport` must be TorchTensorType.AUTO, \
+                  or one of {self.COMMUNICATOR_TYPES}"
             )
         self.transport = transport
 
-        self._nccl_group_id: Optional[str] = None
+        self._communicator_group_id: Optional[str] = None
 
         if self._static_shape and self.transport == self.AUTO:
             logger.info(
@@ -126,13 +132,13 @@ class TorchTensorType(ChannelOutputType):
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
-        if self.requires_nccl():
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
-                TorchTensorNcclChannel,
-                _TorchTensorNcclChannel,
+        if self.requires_communicator():
+            from ray.experimental.channel.torch_tensor_communicator_channel import (
+                TorchTensorCommunicatorChannel,
+                _TorchTensorCommunicatorChannel,
             )
 
-            gpu_data_channel = _TorchTensorNcclChannel(
+            gpu_data_channel = _TorchTensorCommunicatorChannel(
                 writer,
                 reader_and_node_list,
                 self,
@@ -147,7 +153,7 @@ class TorchTensorType(ChannelOutputType):
                     read_by_adag_driver,
                 )
 
-            return TorchTensorNcclChannel(
+            return TorchTensorCommunicatorChannel(
                 writer,
                 reader_and_node_list,
                 self,
@@ -161,26 +167,26 @@ class TorchTensorType(ChannelOutputType):
         typ = SharedMemoryType()
         return typ.create_channel(writer, reader_and_node_list, read_by_adag_driver)
 
-    def requires_nccl(self) -> bool:
-        return self.transport == self.NCCL
+    def requires_communicator(self) -> bool:
+        return self.transport in self.COMMUNICATOR_TYPES
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator_group(self) -> Optional[GPUCommunicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the custom communicator group if one is specified.
         """
-        return self._custom_nccl_group
+        return self._custom_communicator_group
 
-    def set_nccl_group_id(self, group_id: str) -> None:
-        self._nccl_group_id = group_id
+    def set_communicator_group_id(self, group_id: str) -> None:
+        self._communicator_group_id = group_id
 
     @property
-    def nccl_group_id(self) -> Optional[str]:
-        return self._nccl_group_id
+    def communicator_group_id(self) -> Optional[str]:
+        return self._communicator_group_id
 
     def __deepcopy__(self, memo):
         """
-        Deep copy all the fields except for the custom NCCL group. The custom
-        NCCL group should not be deep copied because it can be shared across
+        Deep copy all the fields except for the custom communicator group. The custom
+        communicator group should not be deep copied because it can be shared across
         `TorchTensorType` instances.
         """
         copy = TorchTensorType(
@@ -188,6 +194,6 @@ class TorchTensorType(ChannelOutputType):
             _static_shape=self._static_shape,
             _direct_return=self._direct_return,
         )
-        copy._custom_nccl_group = self._custom_nccl_group
-        copy._nccl_group_id = self._nccl_group_id
+        copy._custom_communicator_group = self._custom_communicator_group
+        copy._communicator_group_id = self._communicator_group_id
         return copy

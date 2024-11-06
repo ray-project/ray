@@ -88,7 +88,7 @@ class _DAGOperationGraphNode:
         operation: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        requires_nccl: bool,
+        requires_communicator: bool,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -101,12 +101,12 @@ class _DAGOperationGraphNode:
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
-            requires_nccl: Whether this operation requires NCCL.
+            requires_communicator: Whether this operation requires communicator.
         """
         self.operation = operation
         self.task_idx = task_idx
         self.actor_handle = actor_handle
-        self.requires_nccl = requires_nccl
+        self.requires_communicator = requires_communicator
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -131,7 +131,7 @@ class _DAGOperationGraphNode:
             f"operation: {self.operation}, "
             f"task_idx: {self.task_idx}, "
             f"actor_handle: {self.actor_handle}, "
-            f"requires_nccl: {self.requires_nccl})"
+            f"requires_communicator: {self.requires_communicator})"
         )
 
     def __lt__(self, other: "_DAGOperationGraphNode"):
@@ -154,13 +154,13 @@ class _DAGOperationGraphNode:
         if self.actor_handle == other.actor_handle:
             # When both nodes belong to the same actor, use the default comparison.
             return compare(self, other)
-        elif self.is_nccl_op != other.is_nccl_op:
-            # When one node is a NCCL operation and the other is not, prioritize
-            # the non-NCCL operation.
-            return not self.is_nccl_op
+        elif self.is_communicator_op != other.is_communicator_op:
+            # When one node is a communicator operation and the other is not, prioritize
+            # the non-communicator operation.
+            return not self.is_communicator_op
         else:
-            # When either both nodes are NCCL operations or both nodes are not
-            # NCCL operations, use the default comparison.
+            # When either both nodes are communicator operations or both nodes are not
+            # communicator operations, use the default comparison.
             return compare(self, other)
 
     def __eq__(self, other: "_DAGOperationGraphNode"):
@@ -187,8 +187,8 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If a node is not a NCCL collective, it is ready when it has a zero
-        in-degree. If it is a NCCL collective, it is ready when all the nodes
+        If a node is not a communicator collective, it is ready when it has a zero
+        in-degree. If it is a communicator collective, it is ready when all the nodes
         in its collective operation have zero in-degrees.
         """
         return self.in_degree == 0 and (
@@ -200,24 +200,29 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
-    def is_nccl_collective(self) -> bool:
+    def is_communicator_collective(self) -> bool:
         """
-        A node is a NCCL collective if it is a compute node and requires NCCL.
+        A node is a communicator collective if it
+        is a compute node and requires communicator.
         """
         return (
-            self.operation.type == _DAGNodeOperationType.COMPUTE and self.requires_nccl
+            self.operation.type == _DAGNodeOperationType.COMPUTE
+            and self.requires_communicator
         )
 
     @property
-    def is_nccl_write(self) -> bool:
+    def is_communicator_write(self) -> bool:
         """
-        A node is a NCCL write if it is a write node and requires NCCL.
+        A node is a communicator write if it is a write node and requires communicator.
         """
-        return self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+        return (
+            self.operation.type == _DAGNodeOperationType.WRITE
+            and self.requires_communicator
+        )
 
     @property
-    def is_nccl_op(self) -> bool:
-        return self.is_nccl_collective or self.is_nccl_write
+    def is_communicator_op(self) -> bool:
+        return self.is_communicator_collective or self.is_communicator_write
 
     def viz_str(self):
         """
@@ -272,7 +277,7 @@ def _push_candidate_node_if_ready(
 ) -> None:
     # Collective operations are ready when all the collective nodes have zero
     # in-degrees. Only one node per collective will be added as ready.
-    if node.is_nccl_collective:
+    if node.is_communicator_collective:
         for collective_node_metadata in node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
@@ -338,26 +343,29 @@ def _select_next_nodes(
         heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     ]
 
-    if not top_priority_node.is_nccl_op:
-        # A non-NCCL operation node is picked.
+    if not top_priority_node.is_communicator_op:
+        # A non-communicator operation node is picked.
         assert len(next_nodes) == 1
-    elif top_priority_node.is_nccl_write:
-        # a NCCL write node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL read nodes to avoid a deadlock.
+    elif top_priority_node.is_communicator_write:
+        # a communicator write node is picked. communicator is a blocking operation,
+        # so we need to pick all the corresponding communicator read nodes to
+        # avoid a deadlock.
         for downstream_node_metadata in top_priority_node.out_edges:
             task_idx, op_type = downstream_node_metadata
             downstream_node = graph[task_idx][op_type]
             assert downstream_node.is_read
             next_nodes.append(downstream_node)
         assert len(next_nodes) == 1 + len(top_priority_node.out_edges)
-    elif top_priority_node.is_nccl_collective:
-        # a NCCL collective node is picked. NCCL is a blocking operation, so we need
-        # to pick all the corresponding NCCL collective nodes in its collective
-        # operation to avoid a deadlock.
+    elif top_priority_node.is_communicator_collective:
+        # a communicator collective node is picked. communicator is a blocking
+        # operation, so we need to pick all the corresponding communicator
+        # collective nodes in its collective operation to avoid a deadlock.
         for collective_node_metadata in top_priority_node.collective_idxs:
             task_idx, op_type = collective_node_metadata
             collective_node = graph[task_idx][op_type]
-            assert collective_node.is_nccl_collective and collective_node.is_ready
+            assert (
+                collective_node.is_communicator_collective and collective_node.is_ready
+            )
             if collective_node != top_priority_node:
                 next_nodes.append(collective_node)
         assert len(next_nodes) == len(top_priority_node.collective_idxs)
@@ -461,9 +469,13 @@ def _build_dag_node_operation_graph(
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
                 graph[downstream_task_idx][_DAGNodeOperationType.READ],
-                "nccl"
-                if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
-                else "shm",
+                (
+                    "communicator"
+                    if graph[task_idx][
+                        _DAGNodeOperationType.WRITE
+                    ].requires_communicator
+                    else "shm"
+                ),
             )
 
     return graph
@@ -512,7 +524,7 @@ def _visualize_execution_schedule(
         Edges:
             black color (without label): data dependency
             black color (annotated with "shm"): shared memory channel
-            blue color (annotated with "nccl): NCCL channel
+            blue color (annotated with "communicator): communicator channel
             dashed edge: control dependency between compute operations
 
     Args:

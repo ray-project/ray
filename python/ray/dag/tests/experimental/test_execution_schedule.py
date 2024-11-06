@@ -37,18 +37,22 @@ def mock_init(self):
 
 
 def generate_dag_graph_nodes(
-    exec_task_idx, task_idx, actor_handle, requires_nccl, requires_collective=False
+    exec_task_idx,
+    task_idx,
+    actor_handle,
+    requires_communicator,
+    requires_collective=False,
 ):
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
-        op_requires_nccl = (
-            op_type == _DAGNodeOperationType.WRITE and requires_nccl
+        op_requires_communicator = (
+            op_type == _DAGNodeOperationType.WRITE and requires_communicator
         ) or (op_type == _DAGNodeOperationType.COMPUTE and requires_collective)
         graph_nodes[op_type] = _DAGOperationGraphNode(
             _DAGNodeOperation(exec_task_idx, op_type),
             task_idx,
             actor_handle,
-            op_requires_nccl,
+            op_requires_communicator,
         )
     return graph_nodes
 
