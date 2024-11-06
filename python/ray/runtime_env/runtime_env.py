@@ -148,6 +148,7 @@ OPTION_TO_VALIDATION_FN[
 ] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
+# TODO(hjiang): Expose `uv` related fields after implementation finished.
 @PublicAPI
 class RuntimeEnv(dict):
     """This class is used to define a runtime environment for a job, task,

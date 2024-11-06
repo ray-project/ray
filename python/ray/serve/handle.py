@@ -412,7 +412,12 @@ class DeploymentResponse(_DeploymentResponseBase):
             "only pass `DeploymentResponse` objects as top level arguments."
         )
 
-    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -422,11 +427,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         a `TimeoutError` is raised.
         """
 
-        if is_running_in_asyncio_loop():
+        if not _skip_asyncio_check and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response` instead."
             )
 
         start_time_s = time.time()
@@ -452,7 +456,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return await replica_result.resolve_gen_to_ref_if_necessary_async()
+        return await replica_result.to_object_ref_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -478,8 +482,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         # First, fetch the result of the future
@@ -492,7 +495,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return replica_result.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
+        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -553,7 +556,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def __await__(self):
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
-            "or `_to_object_ref_gen` instead."
+            "or `await response.__anext__() instead`."
         )
 
     def __aiter__(self) -> AsyncIterator[Any]:
@@ -570,8 +573,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `async for` or `await response.__anext__()` instead."
             )
 
         replica_result = self._fetch_future_result_sync()
@@ -589,7 +591,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -612,12 +614,11 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         replica_result = self._fetch_future_result_sync(_timeout_s)
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
 
 @PublicAPI(stability="beta")

@@ -124,7 +124,6 @@ class PPOConfig(AlgorithmConfig):
 
         # fmt: off
         # __sphinx_doc_begin__
-        self.lr_schedule = None
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
@@ -141,14 +140,12 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
-        self.entropy_coeff_schedule = None
         self.clip_param = 0.3
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
-        self.model["vf_share_layers"] = False
 
         # `.api_stack()`
         self.api_stack(
@@ -157,6 +154,10 @@ class PPOConfig(AlgorithmConfig):
         )
         # __sphinx_doc_end__
         # fmt: on
+
+        self.model["vf_share_layers"] = False  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated keys.
         self.sgd_minibatch_size = DEPRECATED_VALUE
