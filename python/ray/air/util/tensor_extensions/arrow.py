@@ -199,11 +199,11 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
         return False
 
-    if inferred_pa_dtype.equals(pa.binary()) and any(
+    if pa.types.is_binary(inferred_pa_dtype) and any(
         [_lt_2gb(v) for v in column_values]
     ):
         return pa.large_binary()
-    elif inferred_pa_dtype.equals(pa.string()) and any(
+    elif pa.types.is_string(inferred_pa_dtype) and any(
         [_lt_2gb(v) for v in column_values]
     ):
         return pa.large_string()
