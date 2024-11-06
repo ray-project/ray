@@ -100,12 +100,9 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         # NOTE: we don't cast generic iterables, since types like
         # `str` are also Iterable.
         try:
-            # Try to cast the inner scalars to numpy as well, to avoid unnecessarily
-            # creating an inefficient array of array of object dtype.
-            # But don't convert if the list is nested. Because if sub-lists have
-            # heterogeneous shapes, we need to create a ragged ndarray.
-            if not is_nested_list(column_values) and all(
-                is_valid_udf_return(e) for e in column_values
+            # Convert array-like objects (like torch.Tensor) to `np.ndarray`s
+            if all(
+                is_array_like(e) for e in column_values
             ):
                 # Use np.asarray() instead of np.array() to avoid copying if possible.
                 column_values = [np.asarray(e) for e in column_values]
