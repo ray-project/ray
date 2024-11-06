@@ -3,6 +3,7 @@ import datetime
 import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
@@ -204,6 +205,16 @@ class MockDeploymentHandle:
         self._app_name = app_name
         self._protocol = RequestProtocol.UNDEFINED
         self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
 
     def options(self, *args, **kwargs):
         return self
@@ -504,13 +515,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:
