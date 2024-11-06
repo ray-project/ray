@@ -360,19 +360,21 @@ const MainNavBar = () => {
         </Tooltip>
       </Box>
       <Box sx={{ marginRight: 2 }}>
-        <Select<string>
-          value={timezone}
-          onChange={handleTimezoneChange}
-          displayEmpty
-          inputProps={{ "aria-label": "Timezone select" }}
-          size="small"
-        >
-          {timezones.map((tz) => (
-            <MenuItem key={tz.value} value={tz.value}>
-              {tz.label}
-            </MenuItem>
-          ))}
-        </Select>
+        <Tooltip title="The timezone of logs may not match this selection.">
+          <Select<string>
+            value={timezone}
+            onChange={handleTimezoneChange}
+            displayEmpty
+            inputProps={{ "aria-label": "Timezone select" }}
+            size="small"
+          >
+            {timezones.map((tz) => (
+              <MenuItem key={tz.value} value={tz.value}>
+                {tz.label}
+              </MenuItem>
+            ))}
+          </Select>
+        </Tooltip>
       </Box>
     </Box>
   );
