@@ -69,7 +69,7 @@ def _create_possibly_ragged_ndarray(
 
 
 @PublicAPI(stability="alpha")
-def create_ragged_ndarray(values: Sequence[np.ndarray]) -> np.ndarray:
+def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
     """Create an array that contains arrays of different length
 
     If you're working with variable-length arrays like images, use this function to
