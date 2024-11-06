@@ -127,8 +127,18 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _lt_2gb(o: Union[bytes, str, None]) -> bool:
-        return o is not None and len(o) > 2 * GiB
+    def _lt_2gb(obj: Any) -> bool:
+        # NOTE: This utility could be seeing objects other than strings or bytes in cases
+        #       when column contains non-scalar non-homogeneous object types as column
+        #       values, therefore making Arrow unable to infer corresponding column type
+        #       appropriately, therefore falling back to assume the type of the first
+        #       element in the list.
+        #
+        #       Check out test cases for this method for an additional context.
+        if isinstance(obj, (str, bytes)):
+            return len(obj) > 2 * GiB
+
+        return False
 
     if inferred_pa_dtype.equals(pa.binary()) and any(
         [_lt_2gb(v) for v in column_values]
