@@ -114,15 +114,24 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             _object_extension_type_allowed,
         )
 
-        should_serialize_as_object_ext_type = _object_extension_type_allowed()
-
-        if should_serialize_as_object_ext_type:
-            object_ext_type_detail = "falling back to serialize as pickled python objects"
-        else:
+        if not _object_extension_type_allowed():
+            should_serialize_as_object_ext_type = False
             object_ext_type_detail = (
                 "skipping fallback to serialize as pickled python"
                 f" objects (due to unsupported Arrow version {PYARROW_VERSION})"
             )
+        else:
+            from ray.data import DataContext
+
+            if not DataContext.get_current().enable_fallback_to_arrow_object_ext_type:
+                should_serialize_as_object_ext_type = False
+                object_ext_type_detail = (
+                    "skipping fallback to serialize as pickled python"
+                    f" objects (due to DataContext.enable_fallback_to_arrow_object_ext_type = False)"
+                )
+            else:
+                should_serialize_as_object_ext_type = True
+                object_ext_type_detail = "falling back to serialize as pickled python objects"
 
         logger.warning(
             f"Failed to convert column '{column_name}' into pyarrow "
