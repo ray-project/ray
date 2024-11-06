@@ -147,6 +147,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(column_values)}): {e}."
             )
+
     elif is_array_like(column_values):
         # Converts other array-like objects such as torch.Tensor.
         try:
@@ -163,8 +164,6 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(column_values)}): {e}."
             )
-    else:
-        print(">>> [DBG] convert_to_numpy else ")
 
-        # TODO assert unreachable
+    else:
         return column_values
