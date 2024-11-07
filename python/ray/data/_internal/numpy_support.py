@@ -101,9 +101,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
         # `str` are also Iterable.
         try:
             # Convert array-like objects (like torch.Tensor) to `np.ndarray`s
-            if all(
-                is_array_like(e) for e in column_values
-            ):
+            if all(is_array_like(e) for e in column_values):
                 # Use np.asarray() instead of np.array() to avoid copying if possible.
                 column_values = [np.asarray(e) for e in column_values]
 

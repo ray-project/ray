@@ -95,7 +95,9 @@ DATETIME64_MICROSEC_PRECISION = np.datetime64("2024-01-01T00:00:00.000001")
         ),
     ],
 )
-def test_list_of_datetimes(data, expected_output, ray_start_regular_shared, restore_data_context):
+def test_list_of_datetimes(
+    data, expected_output, ray_start_regular_shared, restore_data_context
+):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
@@ -154,7 +156,12 @@ def test_scalar_nested_arrays(ray_start_regular_shared, restore_data_context):
     data = [[[1]], [[2]]]
     output = do_map_batches(data)
 
-    assert_structure_equals(output, create_ragged_ndarray([np.array([1], dtype=np.object_), np.array([2], dtype=np.object_)]))
+    assert_structure_equals(
+        output,
+        create_ragged_ndarray(
+            [np.array([1], dtype=np.object_), np.array([2], dtype=np.object_)]
+        ),
+    )
 
 
 def test_scalar_lists_not_converted(ray_start_regular_shared, restore_data_context):
@@ -163,11 +170,15 @@ def test_scalar_lists_not_converted(ray_start_regular_shared, restore_data_conte
 
     data = [[1, 2], [1, 2]]
     output = do_map_batches(data)
-    assert_structure_equals(output, create_ragged_ndarray([np.array([1, 2]), np.array([1, 2])]))
+    assert_structure_equals(
+        output, create_ragged_ndarray([np.array([1, 2]), np.array([1, 2])])
+    )
 
     data = [[1, 2, 3], [1, 2]]
     output = do_map_batches(data)
-    assert_structure_equals(output, create_ragged_ndarray([np.array([1, 2, 3]), np.array([1, 2])]))
+    assert_structure_equals(
+        output, create_ragged_ndarray([np.array([1, 2, 3]), np.array([1, 2])])
+    )
 
 
 def test_scalar_numpy(ray_start_regular_shared, restore_data_context):
@@ -276,10 +287,17 @@ def test_complex_ragged_arrays(ray_start_regular_shared, restore_data_context):
 
     # Assert resulting objects are coerced to appropriate shape, following
     # table's schema
-    assert_structure_equals(output, create_ragged_ndarray([
-        np.array([{"a": 1, "b": None}, {"a": 2, "b": None}, {"a": 3, "b": None}]),
-        np.array([{"a": None, "b": 1}]),
-    ]))
+    assert_structure_equals(
+        output,
+        create_ragged_ndarray(
+            [
+                np.array(
+                    [{"a": 1, "b": None}, {"a": 2, "b": None}, {"a": 3, "b": None}]
+                ),
+                np.array([{"a": None, "b": 1}]),
+            ]
+        ),
+    )
 
     data = ["hi", 1, None, [[[[]]]], {"a": [[{"b": 2, "c": UserObj()}]]}, UserObj()]
     output = do_map_batches(data)

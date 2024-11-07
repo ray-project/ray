@@ -301,7 +301,9 @@ class DataContext:
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
     use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
-    enable_fallback_to_arrow_object_ext_type = DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE
+    enable_fallback_to_arrow_object_ext_type = (
+        DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE
+    )
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS

@@ -20,7 +20,9 @@ def _is_ndarray_tensor(arr: np.ndarray) -> bool:
         return True
 
     # Case of ragged tensor (as produced by `create_ragged_ndarray` utility)
-    elif arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray):
+    elif (
+        arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray)
+    ):
         return True
 
     return False

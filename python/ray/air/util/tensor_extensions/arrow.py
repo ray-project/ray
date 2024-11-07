@@ -12,8 +12,9 @@ from packaging.version import parse as parse_version
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
+    _is_ndarray_tensor,
     _is_ndarray_variable_shaped_tensor,
-    create_ragged_ndarray, _is_ndarray_tensor,
+    create_ragged_ndarray,
 )
 from ray.data._internal.util import GiB
 from ray.util.annotations import DeveloperAPI, PublicAPI
@@ -105,9 +106,7 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
         if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
             from ray.data.extensions.tensor_extension import ArrowTensorArray
 
-            return ArrowTensorArray.from_numpy(
-                column_values, column_name
-            )
+            return ArrowTensorArray.from_numpy(column_values, column_name)
         else:
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
@@ -129,12 +128,15 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             if not DataContext.get_current().enable_fallback_to_arrow_object_ext_type:
                 should_serialize_as_object_ext_type = False
                 object_ext_type_detail = (
-                    "skipping fallback to serialize as pickled python"
-                    f" objects (due to DataContext.enable_fallback_to_arrow_object_ext_type = False)"
+                    "skipping fallback to serialize as pickled python objects "
+                    "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
+                    "= False)"
                 )
             else:
                 should_serialize_as_object_ext_type = True
-                object_ext_type_detail = "falling back to serialize as pickled python objects"
+                object_ext_type_detail = (
+                    "falling back to serialize as pickled python objects"
+                )
 
         logger.warning(
             f"Failed to convert column '{column_name}' into pyarrow "
@@ -147,12 +149,12 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             raise ace
 
         # Otherwise, attempt to fall back to serialize as python objects
-        return ArrowPythonObjectArray.from_objects(
-            column_values
-        )
+        return ArrowPythonObjectArray.from_objects(column_values)
 
 
-def _convert_to_pyarrow_native_array(column_values: np.ndarray, column_name: str) -> pa.Array:
+def _convert_to_pyarrow_native_array(
+    column_values: np.ndarray, column_name: str
+) -> pa.Array:
     """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
     Arrow's natively supported types (ie no custom extension types)"""
 
@@ -199,11 +201,11 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
     inferred_pa_dtype = pa.infer_type(column_values)
 
     def _lt_2gb(obj: Any) -> bool:
-        # NOTE: This utility could be seeing objects other than strings or bytes in cases
-        #       when column contains non-scalar non-homogeneous object types as column
-        #       values, therefore making Arrow unable to infer corresponding column type
-        #       appropriately, therefore falling back to assume the type of the first
-        #       element in the list.
+        # NOTE: This utility could be seeing objects other than strings or bytes in
+        #       cases when column contains non-scalar non-homogeneous object types as
+        #       column values, therefore making Arrow unable to infer corresponding
+        #       column type appropriately, therefore falling back to assume the type
+        #       of the first element in the list.
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):

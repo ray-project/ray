@@ -20,8 +20,8 @@ import numpy as np
 from ray._private.utils import _get_pyarrow_version
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.arrow import (
-    _convert_to_pyarrow_native_array,
-    pyarrow_table_from_pydict, convert_to_pyarrow_array,
+    convert_to_pyarrow_array,
+    pyarrow_table_from_pydict,
 )
 from ray.data._internal.arrow_ops import transform_polars, transform_pyarrow
 from ray.data._internal.numpy_support import convert_to_numpy
