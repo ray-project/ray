@@ -696,7 +696,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     ) -> StateDict:
         # Basic state dict.
         state = {
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
@@ -712,6 +711,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
+
         # Env-to-module connector.
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components

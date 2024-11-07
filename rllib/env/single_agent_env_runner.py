@@ -478,7 +478,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         **kwargs,
     ) -> StateDict:
         state = {
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
@@ -492,6 +491,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
@@ -510,12 +510,12 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         if COMPONENT_MODULE_TO_ENV_CONNECTOR in state:
             self._module_to_env.set_state(state[COMPONENT_MODULE_TO_ENV_CONNECTOR])
 
-        # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
-        # update.
-        weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
-
         # Update the RLModule state.
         if COMPONENT_RL_MODULE in state:
+
+            # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
+            # update.
+            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
             # Only update the weigths, if this is the first synchronization or
             # if the weights of this `EnvRunner` lacks behind the actual ones.
@@ -528,9 +528,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
                 self.module.set_state(rl_module_state)
 
-        # Update our weights_seq_no, if the new one is > 0.
-        if weights_seq_no > 0:
-            self._weights_seq_no = weights_seq_no
+            # Update our weights_seq_no, if the new one is > 0.
+            if weights_seq_no > 0:
+                self._weights_seq_no = weights_seq_no
 
         # Update our lifetime counters.
         if NUM_ENV_STEPS_SAMPLED_LIFETIME in state:

@@ -83,10 +83,10 @@ class IMPALAConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithms.impala import ImpalaConfig
-        config = ImpalaConfig()
-        config = config.training(lr=0.0003, train_batch_size=512)
-        config = config.resources(num_gpus=0)
+        from ray.rllib.algorithms.impala import IMPALAConfig
+        config = IMPALAConfig()
+        config = config.training(lr=0.0003, train_batch_size_per_learner=512)
+        config = config.learners(num_learners=1)
         config = config.env_runners(num_env_runners=1)
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build(env="CartPole-v1")
@@ -95,16 +95,16 @@ class IMPALAConfig(AlgorithmConfig):
 
     .. testcode::
 
-        from ray.rllib.algorithms.impala import ImpalaConfig
+        from ray.rllib.algorithms.impala import IMPALAConfig
         from ray import air
         from ray import tune
-        config = ImpalaConfig()
+        config = IMPALAConfig()
 
         # Update the config object.
         config = config.training(
             lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
         )
-        config = config.resources(num_gpus=0)
+        config = config.learners(num_learners=1)
         config = config.env_runners(num_env_runners=1)
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
@@ -122,60 +122,9 @@ class IMPALAConfig(AlgorithmConfig):
     """
 
     def __init__(self, algo_class=None):
-        """Initializes a ImpalaConfig instance."""
-        super().__init__(algo_class=algo_class or Impala)
+        """Initializes a IMPALAConfig instance."""
+        super().__init__(algo_class=algo_class or IMPALA)
 
-        # fmt: off
-        # __sphinx_doc_begin__
-
-        # IMPALA specific settings:
-        self.vtrace = True
-        self.vtrace_clip_rho_threshold = 1.0
-        self.vtrace_clip_pg_rho_threshold = 1.0
-        self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
-        self.minibatch_buffer_size = 1  # @OldAPIstack
-        self.replay_proportion = 0.0  # @OldAPIstack
-        self.replay_buffer_num_slots = 0  # @OldAPIstack
-        self.learner_queue_size = 3
-        self.learner_queue_timeout = 300  # @OldAPIstack
-        self.max_requests_in_flight_per_env_runner = 1
-        self.max_requests_in_flight_per_aggregator_worker = 2
-        self.timeout_s_sampler_manager = 0.0
-        self.timeout_s_aggregator_manager = 0.0
-        self.broadcast_interval = 1
-        self.num_aggregation_workers = 0
-        self.num_gpu_loader_threads = 8
-        # Impala takes care of its own EnvRunner (weights, connector, counters)
-        # synching.
-        self._dont_auto_sync_env_runner_states = True
-
-        self.grad_clip = 40.0
-        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
-        # be configured by the user. On the old API stack, RLlib will always clip by
-        # global_norm, no matter the value of `grad_clip_by`.
-        self.grad_clip_by = "global_norm"
-
-        self.opt_type = "adam"  # @OldAPIstack
-        self.lr_schedule = None
-        self.decay = 0.99  # @OldAPIstack
-        self.momentum = 0.0  # @OldAPIstack
-        self.epsilon = 0.1  # @OldAPIstack
-        self.vf_loss_coeff = 0.5
-        self.entropy_coeff = 0.01
-        self.entropy_coeff_schedule = None
-        self._separate_vf_optimizer = False  # @OldAPIstack
-        self._lr_vf = 0.0005  # @OldAPIstack
-
-        # Override some of AlgorithmConfig's default values with IMPALA-specific values.
-        self.num_learners = 1
-        self.rollout_fragment_length = 50
-        self.train_batch_size = 500  # @OldAPIstack
-        self.train_batch_size_per_learner = 500
-        self.num_env_runners = 2
-        self.num_gpus = 1  # @OldAPIstack
-        self.lr = 0.0005
-        self.min_time_s_per_iteration = 10
-        self._tf_policy_handles_more_than_one_loss = True  # @OldAPIstack
         self.exploration_config = {  # @OldAPIstack
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -185,8 +134,65 @@ class IMPALAConfig(AlgorithmConfig):
             "type": "StochasticSampling",
             # Add constructor kwargs here (if any).
         }
+
+        # fmt: off
+        # __sphinx_doc_begin__
+
+        # IMPALA specific settings:
+        self.vtrace = True
+        self.vtrace_clip_rho_threshold = 1.0
+        self.vtrace_clip_pg_rho_threshold = 1.0
+        self.learner_queue_size = 3
+        self.max_requests_in_flight_per_env_runner = 1
+        self.max_requests_in_flight_per_aggregator_worker = 2
+        self.timeout_s_sampler_manager = 0.0
+        self.timeout_s_aggregator_manager = 0.0
+        self.broadcast_interval = 1
+        self.num_aggregation_workers = 0
+        self.num_gpu_loader_threads = 8
+        # IMPALA takes care of its own EnvRunner (weights, connector, counters)
+        # synching.
+        self._dont_auto_sync_env_runner_states = True
+
+        self.grad_clip = 40.0
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
+        self.vf_loss_coeff = 0.5
+        self.entropy_coeff = 0.01
+
+        # Override some of AlgorithmConfig's default values with IMPALA-specific values.
+        self.num_learners = 1
+        self.rollout_fragment_length = 50
+        self.train_batch_size = 500  # @OldAPIstack
+        self.num_env_runners = 2
+        self.lr = 0.0005
+        self.min_time_s_per_iteration = 10
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # __sphinx_doc_end__
         # fmt: on
+
+        self.lr_schedule = None  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
+        self.minibatch_buffer_size = 1  # @OldAPIstack
+        self.replay_proportion = 0.0  # @OldAPIstack
+        self.replay_buffer_num_slots = 0  # @OldAPIstack
+        self.learner_queue_timeout = 300  # @OldAPIstack
+        self.opt_type = "adam"  # @OldAPIstack
+        self.decay = 0.99  # @OldAPIstack
+        self.momentum = 0.0  # @OldAPIstack
+        self.epsilon = 0.1  # @OldAPIstack
+        self._separate_vf_optimizer = False  # @OldAPIstack
+        self._lr_vf = 0.0005  # @OldAPIstack
+        self.train_batch_size = 500  # @OldAPIstack
+        self.num_gpus = 1  # @OldAPIstack
+        self._tf_policy_handles_more_than_one_loss = True  # @OldAPIstack
 
     @override(AlgorithmConfig)
     def training(
@@ -222,7 +228,7 @@ class IMPALAConfig(AlgorithmConfig):
         # Deprecated args.
         after_train_step=DEPRECATED_VALUE,
         **kwargs,
-    ) -> "ImpalaConfig":
+    ) -> "IMPALAConfig":
         """Sets the training related configuration.
 
         Args:
@@ -506,7 +512,7 @@ class IMPALA(Algorithm):
     @classmethod
     @override(Algorithm)
     def get_default_config(cls) -> AlgorithmConfig:
-        return ImpalaConfig()
+        return IMPALAConfig()
 
     @classmethod
     @override(Algorithm)
@@ -916,9 +922,9 @@ class IMPALA(Algorithm):
         config: Union[AlgorithmConfig, PartialAlgorithmConfigDict],
     ):
         if isinstance(config, AlgorithmConfig):
-            cf: ImpalaConfig = config
+            cf: IMPALAConfig = config
         else:
-            cf: ImpalaConfig = cls.get_default_config().update_from_dict(config)
+            cf: IMPALAConfig = cls.get_default_config().update_from_dict(config)
 
         eval_config = cf.get_evaluation_config_object()
 
@@ -1219,7 +1225,6 @@ class IMPALA(Algorithm):
             #  AgentCollectors, RolloutWorkers, Policies, TrajectoryView API, etc..):
             if (
                 self.config.batch_mode == "truncate_episodes"
-                and self.config.enable_connectors
                 and self.config.restart_failed_env_runners
             ):
                 if any(
