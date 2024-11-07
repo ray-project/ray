@@ -81,6 +81,10 @@ Note that rerunning `serve run` redeploys all deployments. To prevent redeployin
 
 ### Local Testing Mode
 
+:::{note}
+This is an experimental feature.
+:::
+
 Ray Serve supports a local testing mode that allows you to run your deployments locally in a single process. This mode is useful for unit testing and debugging your application logic without the overhead of a full Ray cluster. To enable this mode, use the `_local_testing_mode` flag in the `serve.run` function:
 
 ```{literalinclude} ../doc_code/local_dev.py
