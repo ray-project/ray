@@ -1,7 +1,6 @@
 import asyncio
 from collections import defaultdict
 from typing import Optional, Tuple, List, Dict
-from unittest import mock
 
 import torch
 
@@ -151,13 +150,16 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
         self.num_ops[comm_key] += 1
         return buf
 
-    def allreduce(self, send_buf: torch.Tensor, recv_buf: torch.Tensor, op: ReduceOp = ReduceOp.SUM):
-        # todo(tfsingh) — I think the comm_key used here should be interpretable
-        # comm_key = f"communicator_{id(self)}"
+    def allreduce(
+        self,
+        send_buf: torch.Tensor,
+        recv_buf: torch.Tensor,
+        op: ReduceOp = ReduceOp.SUM
+    ):
         # TODO(wyao) Temporarily using sorted rank of all participants in the group because user
         # can't know id(self) without creating a CPUNcclGroup as a custom group
         all_ranks = [self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()]
-        comm_key = f"communicator-"+"-".join(map(str, sorted(all_ranks)))
+        comm_key = "communicator-"+"-".join(map(str, sorted(all_ranks)))
         self._ensure_communicator_exists(comm_key)
         comm = ray.get_actor(name=comm_key)
         self.communicators.add(comm)

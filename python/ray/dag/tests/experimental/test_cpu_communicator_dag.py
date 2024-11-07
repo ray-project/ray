@@ -5,20 +5,16 @@ import torch
 
 import pytest
 
-
 import ray
 import ray.cluster_utils
+import ray.experimental.collective
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import start_nccl_mock
-from ray.experimental.channel.cpu_nccl_group import (
-    CPUCommunicator,
-    CPUNcclGroup
-)
+from ray.experimental.channel.cpu_nccl_group import CPUCommunicator
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import wait_for_condition
-from ray.dag import InputNode
-
+from ray.dag import InputNode, MultiOutputNode
 
 def error_logged(capsys, msg):
     out, err = capsys.readouterr()
@@ -424,7 +420,7 @@ def test_allreduce(ray_start_cluster):
     # CPUCommunicator name should be communicator-{id()}.
     world_size = 2
     comm_key = "communicator-"+"-".join(map(str, list(range(world_size))))
-    communicator = CPUCommunicator.options(name=comm_key).remote()  # noqa
+    communicator = CPUCommunicator.options(name=comm_key).remote() # noqa
 
     actors = [MockedWorker.remote() for _ in range(world_size)]
 
