@@ -407,8 +407,9 @@ class _StatsActor:
 
     def clear_iteration_metrics(self, dataset_tag: str):
         tags = self._create_tags(dataset_tag)
-        self.iter_total_blocked_s.set(0, tags)
-        self.iter_user_s.set(0, tags)
+        # NOTE(rickyx): We should not be clearing the iter_total_blocked_s and
+        # iter_user_s metrics because they are technically counters we tracked, and
+        # should not be reset by each iteration.
         self.iter_initialize_s.set(0, tags)
 
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
