@@ -2275,7 +2275,7 @@ class CompiledDAG:
             or fan-in (nodes with many parents), edge lines may intersect or overlap
             in the ASCII visualization, potentially obscuring some connections.
         - Multi-output Tasks: Multi-output tasks can be visualized, but positioning
-            may causeline breaks or overlap when a task has multiple outputs that
+            may cause line breaks or overlap when a task has multiple outputs that
             feed into nodes at varying depths.
 
         Example:
