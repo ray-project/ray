@@ -58,12 +58,13 @@ class Operator:
 
             changed |= new_op != op
 
-        # Make a copy if changed
         if changed:
-            return self._copy(input_ops=new_input_ops)
+            # Make a copy if any of the inputs changed
+            self_ = self._copy(input_ops=new_input_ops)
+        else:
+            self_ = self
 
-        # Otherwise (no changes), return
-        return self
+        return fn(self_)
 
     @abc.abstractmethod
     def _copy(self, input_ops: List["Operator"]):
