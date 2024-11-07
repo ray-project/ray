@@ -11,7 +11,7 @@ from ray.dag import (
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_communicator_channel import (
-    init_communicator_group
+    _init_communicator_group,
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
@@ -90,30 +90,35 @@ class _CollectiveOperation:
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
 
-    def init_nccl_group(self, nccl_group_id: Optional[str] = None) -> str:
+    def init_communicator_group(
+        self, communicator_group_id: Optional[str] = None
+    ) -> str:
         """
-        Initialize the NCCL group if it has not been initialized yet. If `nccl_group_id`
-        is provided, it means the NCCL group has already been initialized.
+        Initialize the NCCL group if it has not been initialized yet. 
+        If `communicator_group_id` is provided, 
+        it means the NCCL group has already been initialized.
         """
         type_hint = self._type_hint
-        if type_hint.nccl_group_id is not None:
-            return type_hint.nccl_group_id
-        if nccl_group_id is None:
-            nccl_group_id = _init_communicator_group(
-                self._actor_handles, type_hint.get_custom_nccl_group()
+        if type_hint.communicator_group_id is not None:
+            return type_hint.communicator_group_id
+        if communicator_group_id is None:
+            communicator_group_id = _init_communicator_group(
+                self._actor_handles, type_hint.get_custom_communicator_group()
             )
-        type_hint.set_nccl_group_id(nccl_group_id)
-        return nccl_group_id
+        type_hint.set_communicator_group_id(communicator_group_id)
+        return communicator_group_id
 
-    def get_nccl_group(self) -> GPUCommunicator:
-        if self._type_hint.nccl_group_id is not None:
+    def get_communicator_group(self) -> GPUCommunicator:
+        if self._type_hint.communicator_group_id is not None:
             ctx = ChannelContext.get_current()
-            nccl_group = ctx.nccl_groups[self._type_hint.nccl_group_id]
-        elif self._type_hint.get_custom_nccl_group() is not None:
-            nccl_group = self._type_hint.get_custom_nccl_group()
+            communicator_group = ctx.communicator_groups[
+                self._type_hint.communicator_group_id
+            ]
+        elif self._type_hint.get_custom_communicator_group() is not None:
+            communicator_group = self._type_hint.get_custom_communicator_group()
         else:
             raise ValueError("Expected a NCCL group")
-        return nccl_group
+        return communicator_group
 
     def execute(self, send_buf: "torch.Tensor") -> "torch.Tensor":
         """
@@ -124,9 +129,9 @@ class _CollectiveOperation:
 
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
-        nccl_group = self.get_nccl_group()
+        communicator_group = self.get_communicator_group()
         recv_buf = torch.empty_like(send_buf)
-        nccl_group.allreduce(send_buf, recv_buf, self._op)
+        communicator_group.allreduce(send_buf, recv_buf, self._op)
         return recv_buf
 
 
@@ -137,9 +142,7 @@ class CollectiveOutputNode(ClassMethodNode):
     def __init__(
         self,
         method_name: str,
-        method_args: Tuple[
-            DAGNode,
-        ],
+        method_args: Tuple[DAGNode,],
         method_kwargs: Dict[str, Any],
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
