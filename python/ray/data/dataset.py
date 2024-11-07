@@ -63,6 +63,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
@@ -859,7 +860,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to select. If a name isn't in the
-                dataset schema, an exception is raised.
+                dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -868,17 +869,41 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def select_columns(batch):
-            return BlockAccessor.for_block(batch).select(columns=cols)
+        if not isinstance(cols, list):
+            raise ValueError(
+                "select_columns expected List[str], "
+                f"got {type(cols)} for input '{cols}'"
+            )
 
-        return self.map_batches(
-            select_columns,
-            batch_format="pandas",
-            zero_copy_batch=True,
+        bad_input = [col for col in cols if not isinstance(col, str)]
+
+        if bad_input:
+            raise ValueError(
+                "select_columns expected List[str], "
+                f"got input type: {type(bad_input[0])} "
+                f"for input {cols}"
+            )
+
+        if len(cols) != len(set(cols)):
+            raise ValueError(
+                "select_columns expected unique column names, "
+                f"got duplicate column names: {cols}"
+            )
+
+        # Don't feel like we really need this
+        from ray.data._internal.compute import TaskPoolStrategy
+
+        compute = TaskPoolStrategy(size=concurrency)
+
+        plan = self._plan.copy()
+        select_op = Project(
+            self._logical_plan.dag,
+            cols=cols,
             compute=compute,
-            concurrency=concurrency,
-            **ray_remote_args,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(select_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
