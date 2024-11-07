@@ -94,8 +94,8 @@ class _CollectiveOperation:
         self, communicator_group_id: Optional[str] = None
     ) -> str:
         """
-        Initialize the NCCL group if it has not been initialized yet. 
-        If `communicator_group_id` is provided, 
+        Initialize the NCCL group if it has not been initialized yet.
+        If `communicator_group_id` is provided,
         it means the NCCL group has already been initialized.
         """
         type_hint = self._type_hint
