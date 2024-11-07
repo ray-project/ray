@@ -76,7 +76,7 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // guarantee that the local node is not selected for scheduling.
 //  ASSERT_FALSE(
 //      cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
-  // @TODO+:Eugo
+  // @TODO+:Eugo (Bazel build brings the GTest into runtime code so we'll need to keep it here)
   assert(cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining() == false);
   WaitForTaskArgsRequests(work);
   ScheduleAndDispatchTasks();
