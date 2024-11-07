@@ -16,7 +16,7 @@ def test_uv_install_in_virtualenv(start_cluster):
         virtualenv_utils.is_in_virtualenv() is False
         and "IN_VIRTUALENV" not in os.environ
     ) or (virtualenv_utils.is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
-    cluster, address = start_cluster
+    _, address = start_cluster
     runtime_env = {"pip": ["pip-install-test==0.5"]}
 
     ray.init(address, runtime_env=runtime_env)
@@ -32,7 +32,7 @@ def test_uv_install_in_virtualenv(start_cluster):
 
 
 # Package installation succeeds.
-def test_package_install_with_uv():
+def test_package_install_with_uv(shutdown_only):
     @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
     def f():
         import requests
@@ -43,7 +43,7 @@ def test_package_install_with_uv():
 
 
 # Package installation fails due to conflict versions.
-def test_package_install_has_conflict_with_uv():
+def test_package_install_has_conflict_with_uv(shutdown_only):
     # moto require requests>=2.5
     conflict_packages = ["moto==3.0.5", "requests==2.4.0"]
 
@@ -53,7 +53,7 @@ def test_package_install_has_conflict_with_uv():
 
         return pip.__version__
 
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as _:
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(f.remote())
 
 
