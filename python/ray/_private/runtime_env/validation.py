@@ -120,7 +120,7 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     The value of the input 'uv' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
            Example usage: ["tensorflow", "requests"]
-        2) A python dictionary that has three fields:
+        2) A python dictionary that has one field:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
 
     The returned parsed value will be a list of packages. If a Ray library
@@ -337,13 +337,14 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
 
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
+#
+# TODO(hjiang): Expose `uv` related validation after implementation finished.
 OPTION_TO_VALIDATION_FN = {
     "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
-    "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }
