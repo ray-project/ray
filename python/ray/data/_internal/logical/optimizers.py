@@ -45,6 +45,7 @@ def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
 def get_logical_rules() -> List[Type[Rule]]:
     return list(_LOGICAL_RULES)
 
+
 @DeveloperAPI
 def disable_logical_rule(cls: Type[Rule]):
     if cls in _LOGICAL_RULES:
