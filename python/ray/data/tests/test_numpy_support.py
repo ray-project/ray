@@ -49,7 +49,10 @@ def test_list_of_numpy_scalars(ray_start_regular_shared, restore_data_context):
     assert_structure_equals(output, np.array([1, 2, 3], dtype=np.int64))
 
 
-def test_list_of_objects(ray_start_regular_shared):
+def test_list_of_objects(ray_start_regular_shared, restore_data_context):
+    # NOTE: Fallback is enabled by default, this is purely for notational purposes
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = True
+
     data = [1, 2, 3, UserObj()]
     output = do_map_batches(data)
     assert_structure_equals(output, np.array([1, 2, 3, UserObj()]))
