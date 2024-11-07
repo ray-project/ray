@@ -96,15 +96,19 @@ const METRICS_CONFIG: MetricsSectionConfig[] = [
         pathParams: "orgId=1&theme=light&panelId=26",
       },
       {
-        title: "Active Tasks by Name",
+        title: "Requested Live Tasks by Name",
         pathParams: "orgId=1&theme=light&panelId=35",
+      },
+      {
+        title: "Running Tasks by Name",
+        pathParams: "orgId=1&theme=light&panelId=38",
       },
       {
         title: "Scheduler Actor State",
         pathParams: "orgId=1&theme=light&panelId=33",
       },
       {
-        title: "Active Actors by Name",
+        title: "Requested Live Actors by Name",
         pathParams: "orgId=1&theme=light&panelId=36",
       },
       {
