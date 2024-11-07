@@ -1,8 +1,11 @@
 import sys
 import ray
 import pydot
+import os
 from ray.dag import InputNode, MultiOutputNode
 from ray.tests.conftest import *  # noqa
+
+import pytest
 
 
 def test_visualize_basic(ray_start_regular):
@@ -47,6 +50,7 @@ def test_visualize_basic(ray_start_regular):
     ), f"Expected edges {expected_edges} not found."
 
     compiled_dag.teardown()
+
 
 def test_visualize_multi_return(ray_start_regular):
     """
@@ -95,6 +99,7 @@ def test_visualize_multi_return(ray_start_regular):
     ), f"Expected edges {expected_edges} not found."
 
     compiled_dag.teardown()
+
 
 def test_visualize_multi_return2(ray_start_regular):
     """
