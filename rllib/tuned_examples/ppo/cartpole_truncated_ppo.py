@@ -14,7 +14,7 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 # For training, use a time-truncated (max. 50 timestep) version of CartPole-v1.
