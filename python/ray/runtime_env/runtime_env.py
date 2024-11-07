@@ -355,10 +355,9 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        use_conda_install = int(self.get("conda") is not None)
-        use_pip_install = int(self.get("pip") is not None)
-        use_uv_install = int(self.get("uv") is not None)
-        if use_conda_install + use_pip_install + use_uv_install > 1:
+        if (self.get("conda") is not None) + (self.get("pip") is not None) + (
+            self.get("uv") is not None
+        ) > 1:
             raise ValueError(
                 "The 'pip' field, 'uv' field, and 'conda' field of "
                 "runtime_env cannot be specified at the same time.\n"

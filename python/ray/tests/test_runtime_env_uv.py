@@ -33,13 +33,13 @@ def test_uv_install_in_virtualenv(start_cluster):
 
 # Package installation succeeds.
 def test_package_install_with_uv():
-    @ray.remote(runtime_env={"uv": {"packages": ["pip-install-test==0.5"]}})
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"]}})
     def f():
-        import pip
+        import requests
 
-        return pip.__version__
+        return requests.__version__
 
-    assert ray.get(f.remote()) == "24.1.2"
+    assert ray.get(f.remote()) == "2.3.0"
 
 
 # Package installation fails due to conflict versions.
