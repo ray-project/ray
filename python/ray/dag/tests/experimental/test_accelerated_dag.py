@@ -30,6 +30,11 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 logger = logging.getLogger(__name__)
 
+try:
+    import pydot
+except Exception:
+    logging.info("pydot is not installed, visualization tests will be skiped")
+
 pytestmark = [
     pytest.mark.skipif(
         sys.platform != "linux" and sys.platform != "darwin",
@@ -2434,7 +2439,174 @@ def test_multi_arg_exception_async(shutdown_only):
     loop.run_until_complete(main())
 
 
-class TestVisualization:
+class TestVisualizationGraphviz:
+
+    """Tests for the visualize method of compiled DAGs."""
+
+    # TODO(zhilong): "pip intsall pydot"
+    # and "sudo apt-get install graphviz " to run test.
+    @pytest.fixture(autouse=True)
+    def skip_if_pydot_graphviz_not_available(self):
+        # Skip the test if pydot or graphviz is not available
+        pytest.importorskip("pydot")
+        pytest.importorskip("graphviz")
+
+    def test_visualize_basic(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            def echo(self, x):
+                return x
+
+        actor = Actor.remote()
+
+        with InputNode() as i:
+            dag = actor.echo.bind(i)
+
+        compiled_dag = dag.experimental_compile()
+
+        # Call the visualize method
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+    def test_visualize_multi_return(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 4 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            @ray.method(num_returns=2)
+            def return_two(self, x):
+                return x, x + 1
+
+        actor = Actor.remote()
+
+        with InputNode() as i:
+            o1, o2 = actor.return_two.bind(i)
+            dag = MultiOutputNode([o1, o2])
+
+        compiled_dag = dag.experimental_compile()
+
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2", "3", "4"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {("0", "1"), ("1", "2"), ("1", "3"), ("2", "4"), ("3", "4")}
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+    def test_visualize_multi_return2(self, ray_start_regular):
+        """
+        Expect output or dot_source:
+            MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
+                0 -> 1 [label=SharedMemoryType]
+                1 -> 2 [label=SharedMemoryType]
+                1 -> 3 [label=SharedMemoryType]
+                2 -> 4 [label=SharedMemoryType]
+                3 -> 5 [label=SharedMemoryType]
+                4 -> 6 [label=SharedMemoryType]
+                5 -> 6 [label=SharedMemoryType]
+        """
+
+        @ray.remote
+        class Actor:
+            @ray.method(num_returns=2)
+            def return_two(self, x):
+                return x, x + 1
+
+            def echo(self, x):
+                return x
+
+        a = Actor.remote()
+        b = Actor.remote()
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            o3 = b.echo.bind(o1)
+            o4 = b.echo.bind(o2)
+            dag = MultiOutputNode([o3, o4])
+
+        compiled_dag = dag.experimental_compile()
+
+        # Get the DOT source
+        dot_source = compiled_dag.visualize(return_dot=True)
+
+        graphs = pydot.graph_from_dot_data(dot_source)
+        graph = graphs[0]
+
+        node_names = {node.get_name() for node in graph.get_nodes()}
+        edge_pairs = {
+            (edge.get_source(), edge.get_destination()) for edge in graph.get_edges()
+        }
+
+        expected_nodes = {"0", "1", "2", "3", "4", "5", "6"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {
+            ("0", "1"),
+            ("1", "2"),
+            ("1", "3"),
+            ("2", "4"),
+            ("3", "5"),
+            ("4", "6"),
+            ("5", "6"),
+        }
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+
+class TestVisualizationAscii:
 
     """Tests for the visualize method of compiled DAGs."""
 
@@ -2535,9 +2707,9 @@ class TestVisualization:
         compiled_dag = dag.experimental_compile()
 
         # Call the visualize method
-        ascii_visualization = compiled_dag.visualize(format="ascii")
+        ascii_visualization = compiled_dag.visualize_ascii()
 
-        node_names, edge_pairs = TestVisualization.parse_ascii_visualization(
+        node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
         )
         print(node_names, edge_pairs)
@@ -2580,9 +2752,9 @@ class TestVisualization:
             0:InputNode
             |
             1:Actor:return_two
-            |-------------------|
+            |------------------>|
             2:Output[0]         3:Output[1]
-            |-------------------|
+            |<------------------|
             4:MultiOutputNode
         """
 
@@ -2600,9 +2772,9 @@ class TestVisualization:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize(format="ascii")
+        ascii_visualization = compiled_dag.visualize_ascii()
 
-        node_names, edge_pairs = TestVisualization.parse_ascii_visualization(
+        node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
         )
 
@@ -2653,11 +2825,11 @@ class TestVisualization:
             0:InputNode
             |
             1:Actor:return_two
-            |-------------------|
+            |------------------>|
             2:Output[0]         3:Output[1]
             |                   |
             4:Actor:echo        5:Actor:echo
-            |-------------------|
+            |<------------------|
             6:MultiOutputNode
         """
 
@@ -2680,9 +2852,9 @@ class TestVisualization:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize(format="ascii")
+        ascii_visualization = compiled_dag.visualize_ascii()
 
-        node_names, edge_pairs = TestVisualization.parse_ascii_visualization(
+        node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
         )
 
@@ -2756,13 +2928,13 @@ class TestVisualization:
             0:InputNode
             |
             1:Actor:return_three
-            |-------------------|-------------------|
+            |------------------>|------------------>|
             2:Output[0]         3:Output[1]         4:Output[2]
             |                   |                   |
             5:Actor:echo        6:Actor:echo        7:Actor:return_two
-            |                   |                   |-------------------|
+            |                   |                   |------------------>|
             |                   |                   9:Output[0]         10:Output[1]
-            |-------------------|-------------------|-------------------|
+            |<------------------|-------------------|-------------------|
             8:MultiOutputNode
         """
 
@@ -2790,9 +2962,9 @@ class TestVisualization:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize(format="ascii")
+        ascii_visualization = compiled_dag.visualize_ascii()
 
-        node_names, edge_pairs = TestVisualization.parse_ascii_visualization(
+        node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
         )
 
@@ -2815,6 +2987,122 @@ class TestVisualization:
             ("10", "8"),
             ("7", "9"),
             ("7", "10"),
+        }
+        assert expected_edges.issubset(
+            edge_pairs
+        ), f"Expected edges {expected_edges} not found."
+
+        compiled_dag.teardown()
+
+    def test_visualize_cross_line(self, ray_start_regular):
+        """
+        Expect output:
+            Nodes Information:
+            0 [label="Task 0
+            InputNode"]
+            1 [label="Task 1
+            Actor: e94037...
+            Method: return_three"]
+            2 [label="Task 2
+            ClassMethodOutputNode[0]"]
+            3 [label="Task 3
+            ClassMethodOutputNode[1]"]
+            4 [label="Task 4
+            ClassMethodOutputNode[2]"]
+            5 [label="Task 5
+            Actor: f2c69f...
+            Method: echo"]
+            6 [label="Task 6
+            Actor: f2c69f...
+            Method: return_two"]
+            7 [label="Task 7
+            Actor: f2c69f...
+            Method: echo"]
+            8 [label="Task 8
+            MultiOutputNode"]
+            9 [label="Task 9
+            ClassMethodOutputNode[0]"]
+            10 [label="Task 10
+            ClassMethodOutputNode[1]"]
+
+            Edges Information:
+            0 -> 1 [label=SharedMemoryType]
+            1 -> 2 [label=SharedMemoryType]
+            1 -> 3 [label=SharedMemoryType]
+            1 -> 4 [label=SharedMemoryType]
+            2 -> 5 [label=SharedMemoryType]
+            3 -> 6 [label=SharedMemoryType]
+            4 -> 7 [label=SharedMemoryType]
+            5 -> 8 [label=SharedMemoryType]
+            7 -> 8 [label=SharedMemoryType]
+            9 -> 8 [label=ChannelOutputType]
+            10 -> 8 [label=ChannelOutputType]
+            6 -> 9 [label=SharedMemoryType]
+            6 -> 10 [label=SharedMemoryType]
+
+            Experimental Graph Built:
+            0:InputNode
+            |
+            1:Actor:return_three
+            |------------------>|------------------>|
+            2:Output[0]         3:Output[1]         4:Output[2]
+            |                   |                   |
+            5:Actor:echo        6:Actor:return_two  7:Actor:echo
+            |                   |------------------>|
+            |                   9:Output[0]         10:Output[1]
+            |<--------------------------------------|
+            8:MultiOutputNode
+        """
+
+        @ray.remote
+        class Actor:
+            @ray.method(num_returns=3)
+            def return_three(self, x):
+                return x, x + 1, x + 2
+
+            def echo(self, x):
+                return x
+
+            @ray.method(num_returns=2)
+            def return_two(self, x):
+                return x, x + 1
+
+        a = Actor.remote()
+        b = Actor.remote()
+        with InputNode() as i:
+            o1, o2, o3 = a.return_three.bind(i)
+            o4 = b.echo.bind(o1)
+            o5 = b.echo.bind(o3)
+            o6, o7 = b.return_two.bind(o2)
+            dag = MultiOutputNode([o4, o5, o6, o7])
+
+        compiled_dag = dag.experimental_compile()
+
+        ascii_visualization = compiled_dag.visualize_ascii()
+
+        node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
+            ascii_visualization
+        )
+
+        expected_nodes = {"0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "10"}
+        assert expected_nodes.issubset(
+            node_names
+        ), f"Expected nodes {expected_nodes} not found."
+
+        expected_edges = {
+            ("0", "1"),
+            ("1", "2"),
+            ("1", "3"),
+            ("1", "4"),
+            ("2", "5"),
+            ("3", "6"),
+            ("4", "7"),
+            ("5", "8"),
+            ("7", "8"),
+            ("9", "8"),
+            ("10", "8"),
+            ("6", "9"),
+            ("6", "10"),
         }
         assert expected_edges.issubset(
             edge_pairs
