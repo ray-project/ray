@@ -49,3 +49,18 @@ cc_library(
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "meta",
+    hdrs = ["meta.h"],
+)
+
+cc_library(
+    name = "scope_guard",
+    hdrs = ["scope_guard.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":meta",
+        "@com_google_absl//absl/base:core_headers",
+    ],
+)

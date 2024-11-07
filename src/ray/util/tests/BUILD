@@ -176,9 +176,20 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        # "//src/ray/util",
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "scope_guard_test",
+    srcs = ["scope_guard_test.cc"],
+    copts = COPTS,
+    tags = ["team:core"],
+    size = "small",
+    deps = [
+        "//src/ray/util:scope_guard",
+        "@com_google_googletest//:gtest_main",
     ],
 )
