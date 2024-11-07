@@ -2258,7 +2258,8 @@ class CompiledDAG:
           **after** compiling the graph with `experimental_compile()`.
 
         Returns:
-            ASCII representation of the CG.
+            ASCII representation of the CG with  Nodes Information,
+            Edges Information and Experimental Graph Built.
 
 
         Supported CG:
