@@ -1656,12 +1656,10 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
       job_id,
       serialized_runtime_env,
       runtime_env_config,
-      [job_id,
-       serialized_runtime_env = std::move(serialized_runtime_env),
-       runtime_env_config = std::move(runtime_env_config),
-       callback](bool successful,
-                 const std::string &serialized_runtime_env_context,
-                 const std::string &setup_error_message) {
+      [job_id, serialized_runtime_env, runtime_env_config, callback](
+          bool successful,
+          const std::string &serialized_runtime_env_context,
+          const std::string &setup_error_message) {
         if (successful) {
           callback(true, serialized_runtime_env_context, "");
         } else {
@@ -1669,7 +1667,9 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                            << ".";
           RAY_LOG(DEBUG) << "Runtime env for job " << job_id << ": "
                          << serialized_runtime_env;
-          callback(false, "", setup_error_message);
+          callback(/*successful=*/false,
+                   /*serialized_runtime_env_context=*/"",
+                   /*setup_error_message=*/setup_error_message);
         }
       });
 }
