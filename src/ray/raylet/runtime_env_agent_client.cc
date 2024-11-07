@@ -235,7 +235,7 @@ class SessionPool {
         this->remove_session_from_running(session);
       });
     } else {
-      pending_sessions_.push(session);
+      pending_sessions_.emplace(std::move(session));
     }
   }
 
@@ -244,10 +244,10 @@ class SessionPool {
   // enqueue one.
   void remove_session_from_running(std::shared_ptr<Session> session) {
     running_sessions_.erase(session);
-    if (pending_sessions_.size() > 0) {
-      auto pending = pending_sessions_.front();
+    if (!pending_sessions_.empty()) {
+      auto pending = std::move(pending_sessions_.front());
       pending_sessions_.pop();
-      enqueue(pending);
+      enqueue(std::move(pending));
     }
   }
 
@@ -281,7 +281,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
-  ~HttpRuntimeEnvAgentClient() = default;
+  ~HttpRuntimeEnvAgentClient() override = default;
 
   template <typename T>
   using SuccCallback = std::function<void(T)>;
@@ -359,7 +359,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
   void GetOrCreateRuntimeEnv(const JobID &job_id,
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
-                             const std::string &serialized_allocated_resource_instances,
                              GetOrCreateRuntimeEnvCallback callback) override {
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
@@ -367,7 +366,6 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           return TryGetOrCreateRuntimeEnv(job_id,
                                           serialized_runtime_env,
                                           runtime_env_config,
-                                          serialized_allocated_resource_instances,
                                           succ_callback,
                                           fail_callback);
         },
@@ -413,15 +411,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       const JobID &job_id,
       const std::string &serialized_runtime_env,
       const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
       std::function<void(rpc::GetOrCreateRuntimeEnvReply)> succ_callback,
       std::function<void(ray::Status)> fail_callback) {
     rpc::GetOrCreateRuntimeEnvRequest request;
     request.set_job_id(job_id.Hex());
     request.set_serialized_runtime_env(serialized_runtime_env);
     request.mutable_runtime_env_config()->CopyFrom(runtime_env_config);
-    request.set_serialized_allocated_resource_instances(
-        serialized_allocated_resource_instances);
     std::string payload = request.SerializeAsString();
 
     auto session = Session::Create(
@@ -441,7 +436,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session_pool_.enqueue(session);
+    session_pool_.enqueue(std::move(session));
   }
 
   // Making HTTP call.
@@ -453,7 +448,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
           return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, succ_callback, fail_callback);
+              serialized_runtime_env, std::move(succ_callback), std::move(fail_callback));
         },
         /*succ_callback=*/
         [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
@@ -508,7 +503,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session_pool_.enqueue(session);
+    session_pool_.enqueue(std::move(session));
   }
 
  private:

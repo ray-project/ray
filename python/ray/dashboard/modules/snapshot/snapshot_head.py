@@ -120,7 +120,7 @@ class KillActorViaGcsFromGrpc:
         timeout: Optional[float] = None,
     ):
         request = gcs_service_pb2.KillActorViaGcsRequest()
-        request.actor_id = bytes.fromhex(actor_id.hex())
+        request.actor_id = actor_id.binary()
         request.force_kill = force_kill
         request.no_restart = no_restart
         await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=timeout)
@@ -230,7 +230,11 @@ class APIHead(dashboard_utils.DashboardHeadModule):
         # This includes the _ray_internal_dashboard job that gets automatically
         # created with every cluster
         try:
-            reply = await self._gcs_aio_client.get_all_job_info(timeout=timeout)
+            reply = await self._gcs_aio_client.get_all_job_info(
+                skip_submission_job_info_field=True,
+                skip_is_running_tasks_field=True,
+                timeout=timeout,
+            )
 
             num_active_drivers = 0
             latest_job_end_time = 0

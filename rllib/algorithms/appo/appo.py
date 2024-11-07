@@ -45,8 +45,11 @@ class APPOConfig(IMPALAConfig):
     .. testcode::
 
         from ray.rllib.algorithms.appo import APPOConfig
-        config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
-        config = config.resources(num_gpus=0)
+        config = (
+            APPOConfig()
+            .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
+        )
+        config = config.learners(num_learners=1)
         config = config.env_runners(num_env_runners=1)
         config = config.environment("CartPole-v1")
 
@@ -66,12 +69,13 @@ class APPOConfig(IMPALAConfig):
         config = config.training(lr=tune.grid_search([0.001,]))
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
+        # Use to_dict() to get the old-style python config dict when running with tune.
         tune.Tuner(
             "APPO",
-            run_config=air.RunConfig(stop={"training_iteration": 1},
-                                     verbose=0),
+            run_config=air.RunConfig(
+                stop={"training_iteration": 1},
+                verbose=0,
+            ),
             param_space=config.to_dict(),
 
         ).fit()
@@ -86,50 +90,6 @@ class APPOConfig(IMPALAConfig):
         """Initializes a APPOConfig instance."""
         super().__init__(algo_class=algo_class or APPO)
 
-        # fmt: off
-        # __sphinx_doc_begin__
-
-        # APPO specific settings:
-        self.vtrace = True
-        self.use_critic = True
-        self.use_gae = True
-        self.lambda_ = 1.0
-        self.clip_param = 0.4
-        self.use_kl_loss = False
-        self.kl_coeff = 1.0
-        self.kl_target = 0.01
-
-        # Override some of IMPALAConfig's default values with APPO-specific values.
-        self.num_env_runners = 2
-        self.min_time_s_per_iteration = 10
-        self.num_gpus = 0
-        self.num_multi_gpu_tower_stacks = 1
-        self.minibatch_buffer_size = 1
-        self.num_sgd_iter = 1
-        self.target_network_update_freq = 1
-        self.replay_proportion = 0.0
-        self.replay_buffer_num_slots = 100
-        self.learner_queue_size = 16
-        self.learner_queue_timeout = 300
-        self.max_sample_requests_in_flight_per_worker = 2
-        self.broadcast_interval = 1
-
-        self.grad_clip = 40.0
-        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
-        # be configured by the user. On the old API stack, RLlib will always clip by
-        # global_norm, no matter the value of `grad_clip_by`.
-        self.grad_clip_by = "global_norm"
-
-        self.opt_type = "adam"
-        self.lr = 0.0005
-        self.lr_schedule = None
-        self.decay = 0.99
-        self.momentum = 0.0
-        self.epsilon = 0.1
-        self.vf_loss_coeff = 0.5
-        self.entropy_coeff = 0.01
-        self.entropy_coeff_schedule = None
-        self.tau = 1.0
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -140,9 +100,60 @@ class APPOConfig(IMPALAConfig):
             # Add constructor kwargs here (if any).
         }
 
+        # fmt: off
+        # __sphinx_doc_begin__
+        # APPO specific settings:
+        self.vtrace = True
+        self.use_critic = True
+        self.use_gae = True
+        self.lambda_ = 1.0
+        self.clip_param = 0.4
+        self.use_kl_loss = False
+        self.kl_coeff = 1.0
+        self.kl_target = 0.01
+        # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
+        #  If we switch this on right now, the shuffling would destroy the rollout
+        #  sequences (non-zero-padded!) needed in the batch for v-trace.
+        # self.shuffle_batch_per_epoch = True
+
+        # Override some of IMPALAConfig's default values with APPO-specific values.
+        self.num_env_runners = 2
+        self.min_time_s_per_iteration = 10
+        self.target_network_update_freq = 1
+        self.learner_queue_size = 16
+        self.learner_queue_timeout = 300
+        self.max_sample_requests_in_flight_per_worker = 2
+        self.broadcast_interval = 1
+        self.grad_clip = 40.0
+        # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
+        # be configured by the user. On the old API stack, RLlib will always clip by
+        # global_norm, no matter the value of `grad_clip_by`.
+        self.grad_clip_by = "global_norm"
+
+        self.opt_type = "adam"
+        self.lr = 0.0005
+        self.decay = 0.99
+        self.momentum = 0.0
+        self.epsilon = 0.1
+        self.vf_loss_coeff = 0.5
+        self.entropy_coeff = 0.01
+        self.tau = 1.0
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         # __sphinx_doc_end__
         # fmt: on
 
+        self.lr_schedule = None  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.num_gpus = 0  # @OldAPIStack
+        self.num_multi_gpu_tower_stacks = 1  # @OldAPIStack
+        self.minibatch_buffer_size = 1  # @OldAPIStack
+        self.replay_proportion = 0.0  # @OldAPIStack
+        self.replay_buffer_num_slots = 100  # @OldAPIStack
+
+        # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
 
     @override(IMPALAConfig)
@@ -185,13 +196,10 @@ class APPOConfig(IMPALAConfig):
             target_network_update_freq: The frequency to update the target policy and
                 tune the kl loss coefficients that are used during training. After
                 setting this parameter, the algorithm waits for at least
-                `target_network_update_freq * minibatch_size * num_sgd_iter` number of
-                samples to be trained on by the learner group before updating the target
-                networks and tuned the kl loss coefficients that are used during
-                training.
-                NOTE: This parameter is only applicable when using the Learner API
-                (enable_rl_module_and_learner=True).
-
+                `target_network_update_freq` number of environment samples to be trained
+                on before updating the target networks and tune the kl loss
+                coefficients. NOTE: This parameter is only applicable when using the
+                Learner API (enable_rl_module_and_learner=True).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -200,9 +208,8 @@ class APPOConfig(IMPALAConfig):
             deprecation_warning(
                 old="target_update_frequency",
                 new="target_network_update_freq",
-                error=False,
+                error=True,
             )
-            target_network_update_freq = target_update_frequency
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -238,14 +245,15 @@ class APPOConfig(IMPALAConfig):
             )
 
             return APPOTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
-
-            return APPOTfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(IMPALAConfig)
@@ -264,9 +272,9 @@ class APPOConfig(IMPALAConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
-        return RLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
+        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
 
     @property
     @override(AlgorithmConfig)
@@ -292,7 +300,7 @@ class APPO(IMPALA):
 
         # Update the target network and the KL coefficient for the APPO-loss.
         # The target network update frequency is calculated automatically by the product
-        # of `num_sgd_iter` setting (usually 1 for APPO) and `minibatch_buffer_size`.
+        # of `num_epochs` setting (usually 1 for APPO) and `minibatch_buffer_size`.
         if self.config.enable_rl_module_and_learner:
             if NUM_TARGET_UPDATES in train_results:
                 self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
@@ -309,7 +317,7 @@ class APPO(IMPALA):
                 )
             ]
             target_update_freq = (
-                self.config.num_sgd_iter * self.config.minibatch_buffer_size
+                self.config.num_epochs * self.config.minibatch_buffer_size
             )
             if cur_ts - last_update > target_update_freq:
                 self._counters[NUM_TARGET_UPDATES] += 1

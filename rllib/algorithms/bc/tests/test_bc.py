@@ -24,7 +24,8 @@ class TestBC(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        data_path = "local://" / base_path / data_path
+
         print(f"data_path={data_path}")
 
         # Define the BC config.
@@ -46,7 +47,10 @@ class TestBC(unittest.TestCase):
             )
             # Note, the `input_` argument is the major argument for the
             # new offline API.
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 lr=0.0008,
                 train_batch_size_per_learner=2000,
@@ -54,7 +58,7 @@ class TestBC(unittest.TestCase):
         )
 
         num_iterations = 350
-        min_reward = 120.0
+        min_return_to_reach = 120.0
 
         # TODO (simon): Add support for recurrent modules.
         algo = config.build()
@@ -69,14 +73,15 @@ class TestBC(unittest.TestCase):
                     EPISODE_RETURN_MEAN
                 ]
                 print(f"iter={i}, R={episode_return_mean}")
-                if episode_return_mean > min_reward:
+                if episode_return_mean > min_return_to_reach:
                     print("BC has learnt the task!")
                     learnt = True
                     break
 
         if not learnt:
             raise ValueError(
-                f"`BC` did not reach {min_reward} reward from expert offline data!"
+                f"`BC` did not reach {min_return_to_reach} reward from "
+                "expert offline data!"
             )
 
         algo.stop()

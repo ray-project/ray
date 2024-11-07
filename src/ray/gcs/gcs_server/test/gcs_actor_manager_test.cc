@@ -72,9 +72,9 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
   MockWorkerClient(instrumented_io_context &io_service) : io_service_(io_service) {}
 
-  void WaitForActorOutOfScope(
-      const rpc::WaitForActorOutOfScopeRequest &request,
-      const rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply> &callback) override {
+  void WaitForActorRefDeleted(
+      const rpc::WaitForActorRefDeletedRequest &request,
+      const rpc::ClientCallback<rpc::WaitForActorRefDeletedReply> &callback) override {
     callbacks_.push_back(callback);
   }
 
@@ -90,13 +90,13 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
     // The created_actors_ of gcs actor manager will be modified in io_service thread.
     // In order to avoid multithreading reading and writing created_actors_, we also
-    // send the `WaitForActorOutOfScope` callback operation to io_service thread.
+    // send the `WaitForActorRefDeleted` callback operation to io_service thread.
     std::promise<bool> promise;
     io_service_.post(
         [this, status, &promise]() {
           auto callback = callbacks_.front();
-          auto reply = rpc::WaitForActorOutOfScopeReply();
-          callback(status, reply);
+          auto reply = rpc::WaitForActorRefDeletedReply();
+          callback(status, std::move(reply));
           promise.set_value(false);
         },
         "test");
@@ -106,7 +106,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
     return true;
   }
 
-  std::list<rpc::ClientCallback<rpc::WaitForActorOutOfScopeReply>> callbacks_;
+  std::list<rpc::ClientCallback<rpc::WaitForActorRefDeletedReply>> callbacks_;
   std::vector<ActorID> killed_actors_;
   instrumented_io_context &io_service_;
 };
@@ -217,7 +217,8 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+              request,
+              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
                 promise.set_value(std::move(actor));
               });
           if (!status.ok()) {
@@ -645,7 +646,7 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
                                                   /*detached=*/true,
                                                   /*name=*/"");
   Status status = gcs_actor_manager_->RegisterActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
   // Make sure actor who empty name is not treated as a named actor.
@@ -657,8 +658,8 @@ TEST_F(GcsActorManagerTest, TestActorWithEmptyName) {
                                                   /*max_restarts=*/0,
                                                   /*detached=*/true,
                                                   /*name=*/"");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   // Ensure successful registration.
   ASSERT_TRUE(status.ok());
 }
@@ -673,7 +674,7 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*name=*/"actor1",
                                                   /*ray_namesapce=*/"test_named_actor");
   Status status = gcs_actor_manager_->RegisterActor(
-      request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+      request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor1", "test_named_actor").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -683,8 +684,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*detached=*/true,
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   ASSERT_TRUE(status.ok());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -699,8 +700,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*detached=*/true,
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
-  status = gcs_actor_manager_->RegisterActor(request3,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -711,8 +712,8 @@ TEST_F(GcsActorManagerTest, TestNamedActors) {
                                                   /*detached=*/true,
                                                   /*name=*/"actor2",
                                                   /*ray_namesapce=*/"test_named_actor");
-  status = gcs_actor_manager_->RegisterActor(request4,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request4, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor2", "test_named_actor").Binary(),
             request2.task_spec().actor_creation_task_spec().actor_id());
@@ -878,8 +879,8 @@ TEST_F(GcsActorManagerTest, TestNamedActorDeletionNotHappendWhenReconstructed) {
                                                   /*max_restarts=*/0,
                                                   /*detached=*/true,
                                                   /*name=*/"actor");
-  status = gcs_actor_manager_->RegisterActor(request2,
-                                             [](std::shared_ptr<gcs::GcsActor> actor) {});
+  status = gcs_actor_manager_->RegisterActor(
+      request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
   ASSERT_TRUE(status.IsNotFound());
   ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
             request1.task_spec().actor_creation_task_spec().actor_id());
@@ -904,7 +905,7 @@ TEST_F(GcsActorManagerTest, TestDestroyActorBeforeActorCreationCompletes) {
   auto actor = mock_actor_scheduler_->actors.back();
   mock_actor_scheduler_->actors.clear();
 
-  // Simulate the reply of WaitForActorOutOfScope request to trigger actor destruction.
+  // Simulate the reply of WaitForActorRefDeleted request to trigger actor destruction.
   ASSERT_TRUE(worker_client_->Reply());
 
   // Check that the actor is in state `DEAD`.
@@ -1131,7 +1132,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
                                                   /*name=*/"actor");
   {
     Status status = gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
@@ -1145,7 +1146,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
   {  // Create a second actor of the same name. Its job id belongs to a different
      // namespace though.
     Status status = gcs_actor_manager_->RegisterActor(
-        request2, [](std::shared_ptr<gcs::GcsActor> actor) {});
+        request2, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", second_namespace).Binary(),
               request2.task_spec().actor_creation_task_spec().actor_id());
@@ -1161,7 +1162,7 @@ TEST_F(GcsActorManagerTest, TestRayNamespace) {
                                                   /*ray_namespace=*/"test");
   {  // Actors from different jobs, in the same namespace should still collide.
     Status status = gcs_actor_manager_->RegisterActor(
-        request3, [](std::shared_ptr<gcs::GcsActor> actor) {});
+        request3, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
     ASSERT_TRUE(status.IsNotFound());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName("actor", "test").Binary(),
               request1.task_spec().actor_creation_task_spec().actor_id());
@@ -1179,7 +1180,8 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
       ActorID::FromBinary(request_1.task_spec().actor_creation_task_spec().actor_id());
   {
     Status status = gcs_actor_manager_->RegisterActor(
-        request_1, [](const std::shared_ptr<gcs::GcsActor> &actor) {});
+        request_1,
+        [](const std::shared_ptr<gcs::GcsActor> &actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               actor_id_1.Binary());
@@ -1201,7 +1203,8 @@ TEST_F(GcsActorManagerTest, TestReuseActorNameInNamespace) {
     auto actor_id_2 =
         ActorID::FromBinary(request_2.task_spec().actor_creation_task_spec().actor_id());
     auto status = gcs_actor_manager_->RegisterActor(
-        request_2, [](const std::shared_ptr<gcs::GcsActor> &actor) {});
+        request_2,
+        [](const std::shared_ptr<gcs::GcsActor> &actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
     ASSERT_EQ(gcs_actor_manager_->GetActorIDByName(actor_name, ray_namespace).Binary(),
               actor_id_2.Binary());
@@ -1222,7 +1225,7 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoFilters) {
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
     Status status = gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
   }
 
@@ -1299,7 +1302,7 @@ TEST_F(GcsActorManagerTest, TestGetAllActorInfoLimit) {
                                                     /*max_restarts=*/0,
                                                     /*detached=*/false);
     Status status = gcs_actor_manager_->RegisterActor(
-        request1, [](std::shared_ptr<gcs::GcsActor> actor) {});
+        request1, [](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {});
     ASSERT_TRUE(status.ok());
   }
 

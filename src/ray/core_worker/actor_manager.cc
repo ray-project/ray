@@ -37,7 +37,8 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                             actor_id,
                             actor_creation_return_id,
                             add_local_ref,
-                            is_self));
+                            is_self,
+                            /*owned*/ false));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
   reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
@@ -135,7 +136,9 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                         caller_address,
                         actor_id,
                         actor_creation_return_id,
-                        /*add_local_ref=*/false);
+                        /*add_local_ref=*/false,
+                        /*is_self*/ false,
+                        owned);
 }
 
 bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -144,7 +147,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   const ActorID &actor_id,
                                   const ObjectID &actor_creation_return_id,
                                   bool add_local_ref,
-                                  bool is_self) {
+                                  bool is_self,
+                                  bool owned) {
   if (add_local_ref) {
     reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   }
@@ -152,7 +156,8 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
       actor_id,
       actor_handle->MaxPendingCalls(),
       actor_handle->ExecuteOutOfOrder(),
-      /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0);
+      /*fail_if_actor_unreachable=*/actor_handle->MaxTaskRetries() == 0,
+      owned);
   bool inserted;
   {
     absl::MutexLock lock(&mutex_);
@@ -166,6 +171,13 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     actor_task_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
   }
 
+  if (inserted && owned) {
+    RAY_CHECK(reference_counter_->AddObjectPrimaryCopyDeleteCallback(
+        actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
+          MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
+        }));
+  }
+
   return inserted;
 }
 
@@ -173,32 +185,23 @@ void ActorManager::OnActorKilled(const ActorID &actor_id) {
   MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
 }
 
-void ActorManager::WaitForActorOutOfScope(
+void ActorManager::WaitForActorRefDeleted(
     const ActorID &actor_id,
-    std::function<void(const ActorID &)> actor_out_of_scope_callback) {
-  absl::MutexLock lock(&mutex_);
-  auto it = actor_handles_.find(actor_id);
-  if (it == actor_handles_.end()) {
-    actor_out_of_scope_callback(actor_id);
-  } else {
-    auto actor_handle = it->second;
-    // GCS actor manager will wait until the actor has been created before polling the
-    // owner. This should avoid any asynchronous problems.
-    auto callback = [this, actor_id, actor_handle, actor_out_of_scope_callback](
-                        const ObjectID &object_id) {
-      MarkActorKilledOrOutOfScope(actor_handle);
-      actor_out_of_scope_callback(actor_id);
-    };
+    std::function<void(const ActorID &)> actor_ref_deleted_callback) {
+  // GCS actor manager will wait until the actor has been created before polling the
+  // owner. This should avoid any asynchronous problems.
+  auto callback = [actor_id, actor_ref_deleted_callback](const ObjectID &object_id) {
+    actor_ref_deleted_callback(actor_id);
+  };
 
-    // Returns true if the object was present and the callback was added. It might have
-    // already been evicted by the time we get this request, in which case we should
-    // respond immediately so the gcs server can destroy the actor.
-    const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-    if (!reference_counter_->SetDeleteCallback(actor_creation_return_id, callback)) {
-      RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
-      MarkActorKilledOrOutOfScope(actor_handle);
-      actor_out_of_scope_callback(actor_id);
-    }
+  // Returns true if the object was present and the callback was added. It might have
+  // already been evicted by the time we get this request, in which case we should
+  // respond immediately so the gcs server can destroy the actor.
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+  if (!reference_counter_->SetObjectRefDeletedCallback(actor_creation_return_id,
+                                                       callback)) {
+    RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
+    callback(actor_creation_return_id);
   }
 }
 
@@ -222,13 +225,15 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
     actor_task_submitter_->DisconnectActor(actor_id,
                                            actor_data.num_restarts(),
                                            /*is_dead=*/false,
-                                           actor_data.death_cause());
+                                           actor_data.death_cause(),
+                                           /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
     actor_task_submitter_->DisconnectActor(actor_id,
                                            actor_data.num_restarts(),
                                            /*is_dead=*/true,
-                                           actor_data.death_cause());
+                                           actor_data.death_cause(),
+                                           gcs::IsActorRestartable(actor_data));
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.

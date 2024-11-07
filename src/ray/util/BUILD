@@ -22,9 +22,11 @@ cc_library(
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
     deps = [
+        ":thread_checker",
         "//:aligned_alloc",
         "//:sha256",
         "//src/ray/protobuf:event_cc_proto",
+        "//src/ray/protobuf:export_event_cc_proto",
         "@boost//:asio",
         "@com_github_spdlog//:spdlog",
         "@com_google_absl//absl/container:flat_hash_map",
@@ -36,6 +38,14 @@ cc_library(
         "@com_google_absl//absl/synchronization",
         "@com_google_absl//absl/time",
         "@com_google_googletest//:gtest_main",
+        "@com_google_protobuf//:protobuf",
         "@nlohmann_json",
     ],
+)
+
+cc_library(
+    name = "thread_checker",
+    hdrs = ["thread_checker.h"],
+    srcs = ["thread_checker.cc"],
+    visibility = ["//visibility:public"],
 )

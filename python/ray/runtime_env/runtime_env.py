@@ -148,6 +148,7 @@ OPTION_TO_VALIDATION_FN[
 ] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
+# TODO(hjiang): Expose `uv` related fields after implementation finished.
 @PublicAPI
 class RuntimeEnv(dict):
     """This class is used to define a runtime environment for a job, task,
@@ -363,7 +364,7 @@ class RuntimeEnv(dict):
             )
 
         if self.get("container"):
-            invalid_keys = set(runtime_env.keys()) - {"container", "config"}
+            invalid_keys = set(runtime_env.keys()) - {"container", "config", "env_vars"}
             if len(invalid_keys):
                 raise ValueError(
                     "The 'container' field currently cannot be used "
@@ -372,7 +373,7 @@ class RuntimeEnv(dict):
                 )
 
         if self.get("image_uri"):
-            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config"}
+            invalid_keys = set(runtime_env.keys()) - {"image_uri", "config", "env_vars"}
             if len(invalid_keys):
                 raise ValueError(
                     "The 'image_uri' field currently cannot be used "

@@ -229,20 +229,20 @@ class GcsRpcClient {
     auto executor = new Executor(
         [callback](const ray::Status &status) { callback(status, Reply()); });
     auto operation_callback = [this, request, callback, executor, timeout_ms](
-                                  const ray::Status &status, const Reply &reply) {
+                                  const ray::Status &status, Reply &&reply) {
       if (status.ok()) {
         if constexpr (handle_payload_status) {
           Status st =
               (reply.status().code() == (int)StatusCode::OK)
                   ? Status()
                   : Status(StatusCode(reply.status().code()), reply.status().message());
-          callback(st, reply);
+          callback(st, std::move(reply));
         } else {
-          callback(status, reply);
+          callback(status, std::move(reply));
         }
         delete executor;
       } else if (!IsGrpcRetryableStatus(status)) {
-        callback(status, reply);
+        callback(status, std::move(reply));
         delete executor;
       } else {
         /* In case of GCS failure, we queue the request and these requests will be */
@@ -260,7 +260,8 @@ class GcsRpcClient {
                     .gcs_client_check_connection_status_interval_milliseconds()));
           }
           if (shutdown_) {
-            callback(Status::Disconnected("GCS client has been disconnected."), reply);
+            callback(Status::Disconnected("GCS client has been disconnected."),
+                     std::move(reply));
             delete executor;
           } else {
             executor->Retry();
@@ -318,6 +319,16 @@ class GcsRpcClient {
   /// Register actor via GCS Service.
   VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
                              RegisterActor,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             ReportActorOutOfScope,
+                             actor_info_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  VOID_GCS_RPC_CLIENT_METHOD(ActorInfoGcsService,
+                             RestartActor,
                              actor_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -389,12 +400,6 @@ class GcsRpcClient {
   /// Check GCS is alive.
   VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
                              CheckAlive,
-                             node_info_grpc_client_,
-                             /*method_timeout_ms*/ -1, )
-
-  /// Get internal config of the node from the GCS Service.
-  VOID_GCS_RPC_CLIENT_METHOD(NodeInfoGcsService,
-                             GetInternalConfig,
                              node_info_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
@@ -527,6 +532,12 @@ class GcsRpcClient {
                              /*method_timeout_ms*/ -1, )
   VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
                              InternalKVKeys,
+                             internal_kv_grpc_client_,
+                             /*method_timeout_ms*/ -1, )
+
+  /// Get internal config of the node from the GCS Service.
+  VOID_GCS_RPC_CLIENT_METHOD(InternalKVGcsService,
+                             GetInternalConfig,
                              internal_kv_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 

@@ -5,13 +5,12 @@ import tempfile
 import unittest
 import pytest
 
-import tree  # pip install dm_tree
-
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
 from ray.rllib.core import (
     COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
@@ -28,6 +27,8 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
 from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor
 from ray.util.timer import _Timer
 
 
@@ -46,137 +47,6 @@ LOCAL_CONFIGS = {
     "local-cpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=0),
     "local-gpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=1),
 }
-
-
-# TODO(avnishn) Make this a ray task later. Currently thats not possible because the
-#  task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
-class RemoteTrainingHelper:
-    def local_training_helper(self, fw, scaling_mode) -> None:
-        if fw == "torch":
-            import torch
-
-            torch.manual_seed(0)
-        elif fw == "tf2":
-            import tensorflow as tf
-
-            # this is done by rllib already inside of the policy class, but we need to
-            # do it here for testing purposes
-            tf.compat.v1.enable_eager_execution()
-            tf.random.set_seed(0)
-
-        env = gym.make("CartPole-v1")
-
-        reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next().as_multi_agent()
-
-        config_overrides = LOCAL_CONFIGS[scaling_mode]
-        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-
-        learner_group = config.build_learner_group(env=env)
-        local_learner = config.build_learner(env=env)
-
-        # Make the state of the learner and the local learner_group identical.
-        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        # Update and check state again.
-        learner_update = local_learner.update_from_batch(batch=batch)
-        learner_update = tree.map_structure(lambda s: s.peek(), learner_update)
-        learner_group_update = learner_group.update_from_batch(batch=batch)
-        check(learner_update, learner_group_update)
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        new_module_id = "test_module"
-
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, learner_group
-        )
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, local_learner
-        )
-
-        # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()[COMPONENT_LEARNER])
-        check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-
-        # Do another update.
-        batch = reader.next()
-        ma_batch = MultiAgentBatch(
-            {new_module_id: batch, DEFAULT_MODULE_ID: batch}, env_steps=batch.count
-        )
-        # the optimizer state is not initialized fully until the first time that
-        # training is completed. A call to get state before that won't contain the
-        # optimizer state. So we do a dummy update here to initialize the optimizer
-        l0 = local_learner.get_state()
-        local_learner.update_from_batch(batch=ma_batch)
-        l1 = local_learner.get_state()
-        check(
-            l0["rl_module"]["default_policy"]["policy.0.bias"],
-            l1["rl_module"]["default_policy"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            l0["rl_module"]["test_module"]["policy.0.bias"],
-            l1["rl_module"]["test_module"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            l0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            l1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            false=True,
-        )
-        check(
-            l0["optimizer"]["test_module_default_optimizer"]["state"],
-            {},
-        )
-
-        lg0 = learner_group.get_state()[COMPONENT_LEARNER]
-        check(l0, lg0)
-
-        learner_group.update_from_batch(batch=ma_batch)
-        lg1 = learner_group.get_state()[COMPONENT_LEARNER]
-
-        check(
-            lg0["rl_module"]["default_policy"]["policy.0.bias"],
-            lg1["rl_module"]["default_policy"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            lg0["rl_module"]["test_module"]["policy.0.bias"],
-            lg1["rl_module"]["test_module"]["policy.0.bias"],
-            false=True,
-        )
-        check(
-            lg0["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            lg1["optimizer"]["default_policy_default_optimizer"]["state"][0]["exp_avg"],
-            false=True,
-        )
-        check(
-            lg0["optimizer"]["test_module_default_optimizer"]["state"],
-            {},
-        )
-
-        check(l1["rl_module"]["test_module"], lg1["rl_module"]["test_module"])
-        check(
-            l1["optimizer"]["test_module_default_optimizer"],
-            lg1["optimizer"]["test_module_default_optimizer"],
-        )
-        # check(l1["rl_module"]["default_policy"], lg1["rl_module"]["default_policy"])
-
-        # local_learner.update_from_batch(batch=ma_batch)
-        # learner_group.update_from_batch(batch=ma_batch)
-
-        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
-        # local_learner_results = local_learner.update_from_batch(batch=ma_batch)
-        # local_learner_results = tree.map_structure(
-        #    lambda s: s.peek(), local_learner_results
-        # )
-        # learner_group_results = learner_group.update_from_batch(batch=ma_batch)
-
-        # check(local_learner_results, learner_group_results)
-
-        # check(local_learner.get_state(), learner_group.get_state()[COMPONENT_LEARNER])
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
@@ -206,7 +76,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             .rl_module(
                 rl_module_spec=RLModuleSpec(
                     module_class=DiscreteBCTorchModule,
-                    model_config_dict={"fcnet_hiddens": [32]},
+                    model_config={"fcnet_hiddens": [32]},
                 )
             )
         )
@@ -214,24 +84,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         print(learner_group)
         learner_group.shutdown()
 
-    # def test_learner_group_local(self):
-    #    fws = ["torch", "tf2"]
-
-    #    test_iterator = itertools.product(fws, LOCAL_CONFIGS)
-
-    #    # run the logic of this test inside of a ray actor because we want tensorflow
-    #    # resources to be gracefully released. Tensorflow blocks the gpu resources
-    #    # otherwise between test cases, causing a gpu oom error.
-    #    for fw, scaling_mode in test_iterator:
-    #        print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
-    #        training_helper = RemoteTrainingHelper.remote()
-    #        ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-    #        del training_helper
-
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
         test_iterator = itertools.product(fws, scaling_modes)
 
@@ -246,8 +102,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             min_loss = float("inf")
             for iter_i in range(1000):
-                batch = reader.next()
-                results = learner_group.update_from_batch(batch=batch.as_multi_agent())
+                batch = convert_to_torch_tensor(reader.next().as_multi_agent())
+                results = learner_group.update_from_batch(batch=batch)
 
                 loss = np.mean(
                     [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
@@ -273,8 +129,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             del learner_group
 
     def test_add_module_and_remove_module(self):
-        fws = ["torch", "tf2"]
-        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+        fws = ["torch"]
+        scaling_modes = ["local-cpu", "multi-cpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
 
         for fw, scaling_mode in test_iterator:
@@ -286,7 +142,7 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
             reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = reader.next()
+            batch = convert_to_torch_tensor(reader.next())
 
             # Update once with the default policy.
             learner_group.update_from_batch(batch.as_multi_agent())
@@ -309,8 +165,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
             # check that module ids are updated to include the new module
             module_ids_after_add = {DEFAULT_MODULE_ID, new_module_id}
-            # remove the total_loss key since its not a module key
-            self.assertEqual(set(results.keys()) - {ALL_MODULES}, module_ids_after_add)
+            # Compare module IDs in results with expected ones.
+            self.assertEqual(
+                set(results[0].keys()) - {ALL_MODULES}, module_ids_after_add
+            )
 
             # Remove the test_module.
             learner_group.remove_module(module_id=new_module_id)
@@ -323,7 +181,9 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             # check that module ids are updated after remove operation to not
             # include the new module
             # remove the total_loss key since its not a module key
-            self.assertEqual(set(results.keys()) - {ALL_MODULES}, module_ids_before_add)
+            self.assertEqual(
+                set(results[0].keys()) - {ALL_MODULES}, module_ids_before_add
+            )
 
             # make sure the learner_group resources are freed up so that we don't
             # autoscale
@@ -342,7 +202,7 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
@@ -450,11 +310,12 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
         test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(FAKE_BATCH)
+        batch = SampleBatch(convert_to_torch_tensor(FAKE_BATCH)).as_multi_agent()
+
         for fw, scaling_mode in test_iterator:
             print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
@@ -472,15 +333,13 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             initial_weights = learner_group.get_weights()
 
             # Do a single update.
-            learner_group.update_from_batch(batch.as_multi_agent())
+            learner_group.update_from_batch(batch)
+            weights_after_update = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_update.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             # Weights after the update must be different from original ones.
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-                false=True,
-            )
+            check(initial_weights, weights_after_update, false=True)
 
             # Checkpoint the learner state after 1 update for later comparison.
             learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
@@ -495,35 +354,35 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
             # Do another update.
-            results_2nd_update_with_break = learner_group.update_from_batch(
-                batch=batch.as_multi_agent()
-            )
+            results_2nd_update_with_break = learner_group.update_from_batch(batch=batch)
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_2_updates_with_break.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             learner_group.shutdown()
             del learner_group
 
             # Construct a new learner group and load the initial state of the learner.
             learner_group = config.build_learner_group(env=env)
             learner_group.restore_from_path(initial_learner_checkpoint_dir)
-            check(
-                initial_weights,
-                learner_group.get_state(
-                    components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE],
-            )
+            weights_after_restore = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
-            learner_group.update_from_batch(batch.as_multi_agent())
-            results_2nd_without_break = learner_group.update_from_batch(
-                batch=batch.as_multi_agent()
-            )
+            learner_group.update_from_batch(batch)
+            results_2nd_without_break = learner_group.update_from_batch(batch=batch)
             weights_after_2_updates_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
 
             # Compare the results of the two updates.
-            check(results_2nd_update_with_break, results_2nd_without_break)
+            check(
+                MetricsLogger.peek_results(results_2nd_update_with_break),
+                MetricsLogger.peek_results(results_2nd_without_break),
+                rtol=0.05,
+            )
             check(
                 weights_after_2_updates_with_break,
                 weights_after_2_updates_without_break,
@@ -542,7 +401,7 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch", "tf2"]
+        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
@@ -566,48 +425,58 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
                 result_async = learner_group.update_from_batch(
                     batch=batch.as_multi_agent(), async_update=True
                 )
-            # ideally the the first async update will return nothing, and an easy
+            # Ideally the the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
             # than the time for a sync update call.
             self.assertLess(timer_async.mean, timer_sync.mean)
-            self.assertIsInstance(result_async, dict)
+            self.assertIsInstance(result_async, list)
             iter_i = 0
             while True:
                 batch = reader.next()
-                async_results = learner_group.update_from_batch(
+                result_async = learner_group.update_from_batch(
                     batch.as_multi_agent(), async_update=True
                 )
-                if not async_results:
+                if not result_async:
                     continue
-                loss = async_results[ALL_MODULES][Learner.TOTAL_LOSS_KEY]
+                self.assertIsInstance(result_async[0], list)
+                self.assertIsInstance(result_async[0][0], dict)
+                # Check the latest async result AND those sub-results of the first
+                # Learner in the group.
+                loss = result_async[-1][0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
                 if loss < 0.57:
                     break
                 # Compare reported "mean_weight" with actual ones.
-                # TODO (sven): Right now, we don't have any way to know, whether
-                #  an async update result came from the most recent call to
-                #  `learner_group.update_from_batch(async_update=True)` or an earlier
-                #  one. Once APPO/IMPALA are properly implemented on the new API stack,
-                #  this problem should be resolved and we can uncomment the below line.
-                # _check_multi_worker_weights(learner_group, async_results)
+                _check_multi_worker_weights(
+                    learner_group, result_async, result_async=True
+                )
                 iter_i += 1
             learner_group.shutdown()
             self.assertLess(loss, 0.57)
 
 
-def _check_multi_worker_weights(learner_group, results):
+def _check_multi_worker_weights(learner_group, results, result_async=False):
     # Check that module weights are updated across workers and synchronized.
     # for i in range(1, len(results)):
-    for module_id, mod_results in results.items():
+
+    if result_async:
+        results = results[-1]
+
+    learner_1_results = results[0]
+    for module_id, mod_result in learner_1_results.items():
         if module_id == ALL_MODULES:
             continue
+        results = MetricsLogger.peek_results(results)
+        reported_mean_weights = np.mean([r[module_id]["mean_weight"] for r in results])
+
         # Compare the reported mean weights (merged across all Learner workers,
         # which all should have the same weights after updating) with the actual
         # current mean weights.
-        reported_mean_weights = mod_results["mean_weight"]
         parameters = learner_group.get_state(
-            components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id,
+            components=(
+                COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+            ),
         )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
         actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
         check(reported_mean_weights, actual_mean_weights, rtol=0.02)

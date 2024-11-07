@@ -34,7 +34,7 @@ class Actor(FaultAwareApply):
         self.count = 0
         self.maybe_crash = maybe_crash
         self.config = {
-            "recreate_failed_env_runners": True,
+            "restart_failed_env_runners": True,
         }
 
     def _maybe_crash(self):
@@ -166,7 +166,7 @@ class TestActorManager(unittest.TestCase):
 
         results1 = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results1.extend(
                 manager.foreach_actor(lambda w: w.call(), timeout_seconds=0)
             )
@@ -231,7 +231,7 @@ class TestActorManager(unittest.TestCase):
 
         results = []
         for _ in range(10):
-            manager.probe_unhealthy_actors()
+            manager.probe_unhealthy_actors(mark_healthy=True)
             results.extend(manager.foreach_actor(lambda w: w.call()))
             # Wait for actors to recover.
             wait_for_restore()
@@ -356,7 +356,7 @@ class TestActorManager(unittest.TestCase):
         manager.set_actor_state(2, False)
 
         # These actors are actually healthy.
-        manager.probe_unhealthy_actors()
+        manager.probe_unhealthy_actors(mark_healthy=True)
         # Both actors are now healthy.
         self.assertEqual(len(manager.healthy_actor_ids()), 4)
 

@@ -46,10 +46,12 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{State}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=35,
-        title="Active Tasks by Name",
+        title="Requested Live Tasks by Name",
         description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
@@ -62,6 +64,26 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Name}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=38,
+        title="Running Tasks by Name",
+        description="Current number of (running) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='sum(ray_tasks{{IsRetry="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
+                legend="{{Name}}",
+            ),
+            Target(
+                expr='sum(ray_tasks{{IsRetry!="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
+                legend="{{Name}} (retry)",
+            ),
+        ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=33,
@@ -89,7 +111,7 @@ DEFAULT_GRAFANA_PANELS = [
     ),
     Panel(
         id=36,
-        title="Active Actors by Name",
+        title="Requested Live Actors by Name",
         description="Current number of (live) actors with a particular name.",
         unit="actors",
         targets=[
@@ -178,8 +200,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="cores",
         targets=[
             Target(
-                expr='ray_node_cpu_utilization{{instance=~"$Instance",{global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100',
+                expr='ray_node_cpu_utilization{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100',
                 legend="CPU Usage: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_cpu_utilization{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * ray_node_cpu_count{{instance=~"$Instance",{global_filters}}} / 100',
+                legend="CPU Usage: {{instance}} (head)",
             ),
             Target(
                 expr="sum(ray_node_cpu_count{{{global_filters}}})",
@@ -194,8 +220,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="GPUs",
         targets=[
             Target(
-                expr='ray_node_gpus_utilization{{instance=~"$Instance",{global_filters}}} / 100',
+                expr='ray_node_gpus_utilization{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} / 100',
                 legend="GPU Usage: {{instance}}, gpu.{{GpuIndex}}, {{GpuDeviceName}}",
+            ),
+            Target(
+                expr='ray_node_gpus_utilization{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} / 100',
+                legend="GPU Usage: {{instance}} (head), gpu.{{GpuIndex}}, {{GpuDeviceName}}",
             ),
             Target(
                 expr="sum(ray_node_gpus_available{{{global_filters}}})",
@@ -210,8 +240,12 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_disk_usage{{instance=~"$Instance",{global_filters}}}',
+                expr='ray_node_disk_usage{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}',
                 legend="Disk Used: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_disk_usage{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}',
+                legend="Disk Used: {{instance}} (head)",
             ),
             Target(
                 expr="sum(ray_node_disk_free{{{global_filters}}}) + sum(ray_node_disk_usage{{{global_filters}}})",
@@ -226,12 +260,20 @@ DEFAULT_GRAFANA_PANELS = [
         unit="Bps",
         targets=[
             Target(
-                expr='ray_node_disk_io_write_speed{{instance=~"$Instance",{global_filters}}}',
+                expr='ray_node_disk_io_write_speed{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}',
                 legend="Write: {{instance}}",
             ),
             Target(
-                expr='ray_node_disk_io_read_speed{{instance=~"$Instance",{global_filters}}}',
+                expr='ray_node_disk_io_write_speed{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}',
+                legend="Write: {{instance}} (head)",
+            ),
+            Target(
+                expr='ray_node_disk_io_read_speed{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}',
                 legend="Read: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_disk_io_read_speed{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}',
+                legend="Read: {{instance}} (head)",
             ),
         ],
     ),
@@ -242,14 +284,36 @@ DEFAULT_GRAFANA_PANELS = [
         unit="bytes",
         targets=[
             Target(
-                expr='ray_node_mem_used{{instance=~"$Instance",{global_filters}}}',
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}',
                 legend="Memory Used: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}',
+                legend="Memory Used: {{instance}} (head)",
             ),
             Target(
                 expr="sum(ray_node_mem_total{{{global_filters}}})",
                 legend="MAX",
             ),
         ],
+    ),
+    Panel(
+        id=48,
+        title="Node Memory Percentage (heap + object store)",
+        description="The percentage of physical (hardware) memory usage for each node.",
+        unit="%",
+        targets=[
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="false", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="false", {global_filters}}} * 100',
+                legend="Memory Used: {{instance}}",
+            ),
+            Target(
+                expr='ray_node_mem_used{{instance=~"$Instance", IsHeadNode="true", {global_filters}}}/ray_node_mem_total{{instance=~"$Instance", IsHeadNode="true", {global_filters}}} * 100',
+                legend="Memory Used: {{instance}} (head)",
+            ),
+        ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=44,

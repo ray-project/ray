@@ -11,7 +11,7 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -19,7 +19,6 @@ from ray.serve._private.common import (
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
@@ -49,7 +48,6 @@ from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    DEFAULT,
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
@@ -293,9 +291,9 @@ class ServeController:
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
+    def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._deployment_states[
-            deployment_name
+            deployment_id
         ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
@@ -335,8 +333,8 @@ class ServeController:
         # NOTE(zcin): Java only supports 1.x deployments, so only return
         # a dictionary of deployment name -> endpoint info
         data = {
-            endpoint_tag.name: EndpointInfoProto(route=endppint_dict["route"])
-            for endpoint_tag, endppint_dict in endpoints.items()
+            endpoint_tag.name: EndpointInfoProto(route=endpoint_dict["route"])
+            for endpoint_tag, endpoint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
@@ -740,13 +738,17 @@ class ServeController:
                     "deployment_config_proto_bytes": deployment_args.deployment_config,
                     "replica_config_proto_bytes": deployment_args.replica_config,
                     "deployer_job_id": deployment_args.deployer_job_id,
-                    "route_prefix": deployment_args.route_prefix
-                    if deployment_args.HasField("route_prefix")
-                    else None,
                     "ingress": deployment_args.ingress,
-                    "docs_path": deployment_args.docs_path
-                    if deployment_args.HasField("docs_path")
-                    else None,
+                    "route_prefix": (
+                        deployment_args.route_prefix
+                        if deployment_args.HasField("route_prefix")
+                        else None
+                    ),
+                    "docs_path": (
+                        deployment_args.docs_path
+                        if deployment_args.HasField("docs_path")
+                        else None
+                    ),
                 }
             )
         self.application_state_manager.deploy_app(name, deployment_args_deserialized)
@@ -784,14 +786,6 @@ class ServeController:
         self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
-            for deployments in app_config.deployments:
-                if deployments.route_prefix != DEFAULT.VALUE:
-                    logger.warning(
-                        "Specifying route prefix for a deployment is deprecated. "
-                        "Please specify route prefix at an application level in the "
-                        "Serve config instead."
-                    )
-
             # If the application logging config is not set, use the global logging
             # config.
             if app_config.logging_config is None and config.logging_config:
@@ -871,9 +865,7 @@ class ServeController:
         error messages, etc.
 
         Returns:
-            Dict that follows the format of the schema ServeInstanceDetails. Currently,
-            there is a value set for every field at all schema levels, except for the
-            route_prefix in the deployment_config for each deployment.
+            Dict that follows the format of the schema ServeInstanceDetails.
         """
 
         http_config = self.get_http_config()
@@ -903,16 +895,14 @@ class ServeController:
                 # serve.run, the app is in deleting state,
                 # or a checkpoint hasn't been set yet
                 deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
-        # fill in all info that should be shown to users. Currently, every field is set
-        # except for the route_prefix in the deployment_config of each deployment, since
-        # route_prefix is set instead in each application.
-        # Eventually we want to remove route_prefix from DeploymentSchema.
+        # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
@@ -921,9 +911,11 @@ class ServeController:
             proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.proxy_state_manager.get_proxy_details()
-            if self.proxy_state_manager
-            else None,
+            proxies=(
+                self.proxy_state_manager.get_proxy_details()
+                if self.proxy_state_manager
+                else None
+            ),
             applications=applications,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 

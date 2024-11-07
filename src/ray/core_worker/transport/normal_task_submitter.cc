@@ -22,6 +22,7 @@ namespace ray {
 namespace core {
 
 Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
+  RAY_CHECK(task_spec.IsNormalTask());
   RAY_LOG(DEBUG) << "Submit task " << task_spec.TaskId();
   num_tasks_submitted_++;
 
@@ -37,59 +38,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       return;
     }
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
-    if (task_spec.IsActorCreationTask()) {
-      // If gcs actor management is enabled, the actor creation task will be sent to
-      // gcs server directly after the in-memory dependent objects are resolved. For
-      // more details please see the protocol of actor management based on gcs.
-      // https://docs.google.com/document/d/1EAWide-jy05akJp6OMtDn58XOK7bUyruWMia4E-fV28/edit?usp=sharing
-      auto actor_id = task_spec.ActorCreationId();
-      auto task_id = task_spec.TaskId();
-      RAY_LOG(DEBUG) << "Creating actor via GCS actor id = : " << actor_id;
-      RAY_CHECK_OK(actor_creator_->AsyncCreateActor(
-          task_spec,
-          [this, actor_id, task_id](Status status, const rpc::CreateActorReply &reply) {
-            if (status.ok() || status.IsCreationTaskError()) {
-              rpc::PushTaskReply push_task_reply;
-              push_task_reply.mutable_borrowed_refs()->CopyFrom(reply.borrowed_refs());
-              if (status.IsCreationTaskError()) {
-                RAY_LOG(INFO) << "Actor creation failed and we will not be retrying the "
-                                 "creation task, actor id = "
-                              << actor_id << ", task id = " << task_id;
-                // Update the task execution error to be CreationTaskError.
-                push_task_reply.set_task_execution_error(status.ToString());
-              } else {
-                RAY_LOG(DEBUG) << "Created actor, actor id = " << actor_id;
-              }
-              // NOTE: When actor creation task failed we will not retry the creation
-              // task so just marking the task fails.
-              task_finisher_->CompletePendingTask(
-                  task_id,
-                  push_task_reply,
-                  reply.actor_address(),
-                  /*is_application_error=*/status.IsCreationTaskError());
-            } else {
-              // Either fails the rpc call or actor scheduling cancelled.
-              rpc::RayErrorInfo ray_error_info;
-              if (status.IsSchedulingCancelled()) {
-                RAY_LOG(DEBUG) << "Actor creation cancelled, actor id = " << actor_id;
-                task_finisher_->MarkTaskCanceled(task_id);
-                if (reply.has_death_cause()) {
-                  ray_error_info.mutable_actor_died_error()->CopyFrom(
-                      reply.death_cause());
-                }
-              } else {
-                RAY_LOG(INFO) << "Failed to create actor " << actor_id
-                              << " with status: " << status.ToString();
-              }
-              RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-                  task_id,
-                  rpc::ErrorType::ACTOR_CREATION_FAILED,
-                  &status,
-                  ray_error_info.has_actor_died_error() ? &ray_error_info : nullptr));
-            }
-          }));
-      return;
-    }
 
     bool keep_executing = true;
     {
@@ -117,7 +65,7 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
           // There are idle workers, so we don't need more
           // workers.
 
-          for (auto active_worker_addr : scheduling_key_entry.active_workers) {
+          for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
             RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
                       worker_to_lease_entry_.end());
             auto &lease_entry = worker_to_lease_entry_[active_worker_addr];

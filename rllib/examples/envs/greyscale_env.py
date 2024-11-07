@@ -101,11 +101,11 @@ config = (
         vf_loss_coeff=0.1,
         clip_param=0.1,
         vf_clip_param=10.0,
-        num_sgd_iter=10,
+        num_epochs=10,
         kl_coeff=0.5,
         lr=0.0001,
         grad_clip=100,
-        sgd_minibatch_size=500,
+        minibatch_size=500,
         train_batch_size=5000 if not args.as_test else 1000,
         model={"vf_share_layers": True},
     )

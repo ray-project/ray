@@ -43,6 +43,14 @@ To view the full list of supported file formats, see the
             petal.width   double
             variety       string
 
+        .. tip::
+
+            When reading parquet files, you can take advantage of column and row pruning
+            to efficiently filter columns and rows at the file scan level. See
+            :ref:`Parquet column pruning <parquet_column_pruning>` and
+            :ref:`Parquet row pruning <parquet_row_pruning>` for more details
+            on the projection and filter pushdown features.
+
     .. tab-item:: Images
 
         To read raw images, call :func:`~ray.data.read_images`. Ray Data represents
@@ -209,7 +217,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        Ray Data relies on PyArrow for authentication with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
         `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
@@ -247,7 +255,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Google Cloud Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Google Cloud Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `GCS Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#google-cloud-storage-file-system>`_.
 
@@ -285,7 +293,7 @@ To read formats other than Parquet, see the :ref:`Input/Output reference <input-
             petal.width   double
             variety       string
 
-        Ray Data relies on PyArrow for authenticaion with Azure Blob Storage. For more on how
+        Ray Data relies on PyArrow for authentication with Azure Blob Storage. For more on how
         to configure your credentials to be compatible with PyArrow, see their
         `fsspec-compatible filesystems docs <https://arrow.apache.org/docs/python/filesystems.html#using-fsspec-compatible-filesystems-with-arrow>`_.
 
@@ -507,7 +515,7 @@ Ray Data interoperates with distributed data processing frameworks like
         call :func:`~ray.data.from_spark`. This function creates a ``Dataset`` backed by
         the distributed Spark DataFrame partitions that underly the Spark DataFrame.
 
-        .. 
+        ..
             TODO: This code snippet might not work correctly. We should test it.
 
         .. testcode::
@@ -524,6 +532,33 @@ Ray Data interoperates with distributed data processing frameworks like
             ds = ray.data.from_spark(df)
 
             ds.show(3)
+
+        .. testoutput::
+
+            {'col1': 0, 'col2': '0'}
+            {'col1': 1, 'col2': '1'}
+            {'col1': 2, 'col2': '2'}
+
+    .. tab-item:: Iceberg
+
+        To create a :class:`~ray.data.dataset.Dataset` from an `Iceberg Table
+        <https://iceberg.apache.org>`__,
+        call :func:`~ray.data.read_iceberg`. This function creates a ``Dataset`` backed by
+        the distributed files that underlie the Iceberg table.
+
+        ..
+
+        .. testcode::
+            :skipif: True
+
+            >>> import ray
+            >>> from pyiceberg.expressions import EqualTo
+            >>> ds = ray.data.read_iceberg(
+            ...     table_identifier="db_name.table_name",
+            ...     row_filter=EqualTo("column_name", "literal_value"),
+            ...     catalog_kwargs={"name": "default", "type": "glue"}
+            ... )
+
 
         .. testoutput::
 
@@ -830,7 +865,7 @@ Call :func:`~ray.data.read_sql` to read data from a database that provides a
 
             export DATABRICKS_HOST=adb-<workspace-id>.<random-number>.azuredatabricks.net
 
-        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks 
+        Then, call :func:`ray.data.read_databricks_tables` to read from the Databricks
         SQL warehouse.
 
         .. testcode::

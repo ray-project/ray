@@ -40,7 +40,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
@@ -172,66 +172,66 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_envs_per_env_runner=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
             .training(lr_schedule=[[0, 0.1], [100000, 0.000001]])
         )
-        for fw in framework_iterator(config, frameworks=("tf2", "tf")):
-            algo = config.build()
-            policy = algo.get_policy()
-            for i in range(3):
-                result = algo.train()
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
-                    )
+        algo = config.build()
+        policy = algo.get_policy()
+        for i in range(3):
+            result = algo.train()
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
                 )
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
-                    )
+            )
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                 )
-                global_timesteps = (
-                    policy.global_timestep
-                    if fw == "tf"
-                    else policy.global_timestep.numpy()
-                )
-                print("global_timesteps={}".format(global_timesteps))
-                expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
-                lr = policy.cur_lr
-                if fw == "tf":
-                    lr = policy.get_session().run(lr)
-                check(lr, expected_lr, rtol=0.05)
-            algo.stop()
+            )
+            global_timesteps = policy.global_timestep
+            print("global_timesteps={}".format(global_timesteps))
+            expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
+            lr = policy.cur_lr
+            check(lr, expected_lr, rtol=0.05)
+        algo.stop()
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("test")
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build()
-            results = algo.env_runner_group.foreach_worker(
-                lambda w: w.total_rollout_fragment_length
-            )
-            results2 = algo.env_runner_group.foreach_worker_with_id(
-                lambda i, w: (i, w.total_rollout_fragment_length)
-            )
-            results3 = algo.env_runner_group.foreach_worker(
-                lambda w: w.foreach_env(lambda env: 1)
-            )
-            self.assertEqual(results, [10, 10, 10])
-            self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
-            self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
-            algo.stop()
+        algo = config.build()
+        results = algo.env_runner_group.foreach_worker(
+            lambda w: w.total_rollout_fragment_length
+        )
+        results2 = algo.env_runner_group.foreach_worker_with_id(
+            lambda i, w: (i, w.total_rollout_fragment_length)
+        )
+        results3 = algo.env_runner_group.foreach_worker(
+            lambda w: w.foreach_env(lambda env: 1)
+        )
+        self.assertEqual(results, [10, 10, 10])
+        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
+        self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
+        algo.stop()
 
     def test_action_clipping(self):
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
@@ -501,14 +501,8 @@ class TestRolloutWorker(unittest.TestCase):
         )
         self.assertEqual(max(sample["rewards"]), 1)
         result = collect_metrics(ws, [])
-        # Shows different behavior when connector is on/off.
-        if config.enable_connectors:
-            # episode_return_mean shows the correct clipped value.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
-        else:
-            # episode_return_mean shows the unclipped raw value
-            # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 1000)
+        # episode_return_mean shows the correct clipped value.
+        self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).
@@ -905,9 +899,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

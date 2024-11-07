@@ -16,8 +16,22 @@ class MARWILCatalog(Catalog):
     """The Catalog class used to build models for MARWIL.
 
     MARWILCatalog provides the following models:
+        - ActorCriticEncoder: The encoder used to encode the observations.
+        - Pi Head: The head used to compute the policy logits.
+        - Value Function Head: The head used to compute the value function.
 
+    The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
+    for the policy and value function. See implementations of MARWILRLModule for
+    more details.
 
+    Any custom ActorCriticEncoder can be built by overriding the
+    build_actor_critic_encoder() method. Alternatively, the ActorCriticEncoderConfig
+    at MARWILCatalog.actor_critic_encoder_config can be overridden to build a custom
+    ActorCriticEncoder during RLModule runtime.
+
+    Any custom head can be built by overriding the build_pi_head() and build_vf_head()
+    methods. Alternatively, the PiHeadConfig and VfHeadConfig can be overridden to
+    build custom heads during RLModule runtime.
     """
 
     def __init__(
@@ -40,8 +54,8 @@ class MARWILCatalog(Catalog):
             shared=self._model_config_dict["vf_share_layers"],
         )
 
-        self.pi_and_vf_hiddens = self._model_config_dict["post_fcnet_hiddens"]
-        self.pi_and_vf_activation = self._model_config_dict["post_fcnet_activation"]
+        self.pi_and_vf_hiddens = self._model_config_dict["head_fcnet_hiddens"]
+        self.pi_and_vf_activation = self._model_config_dict["head_fcnet_activation"]
 
         # At this time we do not have information about the exact (framework-specific)
         # action distribution class, yet. We postpone the configuration of the output
@@ -85,6 +99,13 @@ class MARWILCatalog(Catalog):
             _check_if_diag_gaussian(
                 action_distribution_cls=action_distribution_cls, framework=framework
             )
+            is_diag_gaussian = True
+        else:
+            is_diag_gaussian = _check_if_diag_gaussian(
+                action_distribution_cls=action_distribution_cls,
+                framework=framework,
+                no_error=True,
+            )
 
         required_output_dim = action_distribution_cls.required_input_dim(
             space=self.action_space, model_config=self._model_config_dict
@@ -102,6 +123,8 @@ class MARWILCatalog(Catalog):
             hidden_layer_activation=self.pi_and_vf_activation,
             output_layer_dim=required_output_dim,
             output_layer_activation="linear",
+            clip_log_std=is_diag_gaussian,
+            log_std_clip_param=self._model_config_dict.get("log_std_clip_param", 20),
         )
 
         return self.pi_head_config.build(framework=framework)
