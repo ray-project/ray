@@ -734,7 +734,7 @@ def _generate_overlapped_execution_schedule(
         for i in range(len(overlapped_schedule)):
             if (
                 overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and overlapped_schedule[i].requires_nccl
+                and overlapped_schedule[i].requires_communicator
             ):
                 # For each NCCL read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
