@@ -2608,7 +2608,7 @@ class TestVisualizationGraphviz:
 
 class TestVisualizationAscii:
 
-    """Tests for the visualize method of compiled DAGs."""
+    """Tests for the visualize_ascii method of compiled DAGs."""
 
     @staticmethod
     def parse_ascii_visualization(ascii_visualization):
