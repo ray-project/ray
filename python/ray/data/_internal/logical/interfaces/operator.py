@@ -1,4 +1,5 @@
-from typing import Iterator, List
+import abc
+from typing import Iterator, List, Callable
 
 
 class Operator:
@@ -44,6 +45,29 @@ class Operator:
         for op in self.input_dependencies:
             yield from op.post_order_iter()
         yield self
+
+    def transform(self, fn: Callable[["Operator"], "Operator"]) -> "Operator":
+        # TODO add py-doc
+
+        changed = False
+        new_input_ops = []
+
+        for op in self._input_dependencies:
+            new_op = fn(op)
+            new_input_ops.append(new_op)
+
+            changed |= new_op != op
+
+        # Make a copy if changed
+        if changed:
+            return self._copy(input_ops=new_input_ops)
+
+        # Otherwise (no changes), return
+        return self
+
+    @abc.abstractmethod
+    def _copy(self, input_ops: List["Operator"]):
+        pass
 
     def __repr__(self) -> str:
         if self.input_dependencies:
