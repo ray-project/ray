@@ -235,6 +235,17 @@ print("result:", get_entrypoint_name())
     assert line_exists(outputs, ".*result: \(interactive_shell\).*ipython")
 
 
+def test_removed_internal_flags(shutdown_only):
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+
+    job_submission_id = client.submit_job(entrypoint='echo "${#RAY_JOB_ID}"')
+    env_len = client.get_job_logs(job_submission_id)
+    assert env_len == "0"
+
+
 def test_entrypoint_field(shutdown_only):
     """Make sure the entrypoint field is correctly set for jobs."""
     driver = """
