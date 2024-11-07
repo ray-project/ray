@@ -2236,10 +2236,10 @@ class CompiledDAG:
 
     def visualize_ascii(self):
         """
-        Visualize the compiled Directed Acyclic Graph (DAG) in
+        Visualize the compiled graph in
         ASCII format with directional markers.
 
-        This function generates an ASCII representation of a DAG,
+        This function generates an ASCII representation of a CG,
         where each task node is labeled,
         and edges use `<` and `>` markers to show data flow direction.
 
@@ -2262,11 +2262,11 @@ class CompiledDAG:
 
 
         Supported CG:
-        - Scale: Works best for smaller DAGs (typically fewer than 20 nodes).
-            Larger DAGs may result in dense, less readable ASCII
+        - Scale: Works best for smaller CGs (typically fewer than 20 nodes).
+            Larger CGs may result in dense, less readable ASCII
             outputs due to limited space for node and edge rendering.
-        - Shape: Ideal for relatively shallow DAGs with clear dependency paths.
-            For deep, highly branched or densely connected DAGs,
+        - Shape: Ideal for relatively shallow CGs with clear dependency paths.
+            For deep, highly branched or densely connected CGs,
             readability may suffer.
 
 
