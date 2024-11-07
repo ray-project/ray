@@ -602,7 +602,7 @@ def test_cancel_with_dependency(shutdown_only, use_force):
 
     wait_forever_obj = wait_forever_task.remote()
     wait_forever_as_dep = square.remote(wait_forever_obj)
-    ray.cancel(wait_forever_as_dep)
+    ray.cancel(wait_forever_as_dep, force=use_force)
     with pytest.raises(valid_exceptions(use_force)):
         ray.get(wait_forever_as_dep)
 
