@@ -2484,7 +2484,7 @@ class CompiledDAG:
                 adjust_col_num = 0
                 if task_idx in is_multi_output:
                     adjust_col_num = layers[layer_num - 1].index(child2parent[task_idx])
-                col_x = (col_num + adjust_col_num) * 20  # Every 7th column for spacing
+                col_x = (col_num + adjust_col_num) * 20  # Every 20th column for spacing
                 # Place the task information into the grid
                 for i, char in enumerate(task_info):
                     if col_x + i < len(grid[0]):  # Ensure we don't overflow the grid
