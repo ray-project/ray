@@ -45,6 +45,11 @@ def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
 def get_logical_rules() -> List[Type[Rule]]:
     return list(_LOGICAL_RULES)
 
+@DeveloperAPI
+def disable_logical_rule(cls: Type[Rule]):
+    if cls in _LOGICAL_RULES:
+        _LOGICAL_RULES.remove(cls)
+
 
 @DeveloperAPI
 def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
@@ -55,6 +60,12 @@ def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
         _PHYSICAL_RULES.append(cls)
     else:
         _PHYSICAL_RULES.insert(insert_index, cls)
+
+
+@DeveloperAPI
+def disable_physical_rule(cls: Type[Rule]):
+    if cls in _PHYSICAL_RULES:
+        _PHYSICAL_RULES.remove(cls)
 
 
 @DeveloperAPI
