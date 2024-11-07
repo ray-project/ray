@@ -4,7 +4,7 @@
 Accelerator Support
 ===================
 
-Accelerators, for example, GPUs, are critical for many machine learning workloads.
+Accelerators like GPUs are critical for many machine learning apps.
 Ray Core natively supports many accelerators as pre-defined :ref:`resource <core-resources>` types and allows tasks and actors to specify their accelerator :ref:`resource requirements <resource-requirements>`.
 
 The accelerators natively supported by Ray Core are:
@@ -37,7 +37,7 @@ The accelerators natively supported by Ray Core are:
      - NPU
      - Experimental, supported by the community
 
-Starting Ray Nodes with Accelerators
+Starting Ray nodes with accelerators
 ------------------------------------
 
 By default, Ray sets the quantity of accelerator resources of a node to the physical quantities of accelerators auto detected by Ray.
@@ -637,4 +637,4 @@ This also lets the multi-node-type autoscaler know that there is demand for that
 
     ray.get(train.remote(1))
 
-See ``ray.util.accelerators`` for available accelerator types.
+See :ref:`ray.util.accelerators <accelerator_types>` for available accelerator types.
