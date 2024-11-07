@@ -512,7 +512,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Update the RLModule state.
         if COMPONENT_RL_MODULE in state:
-
             # A missing value for WEIGHTS_SEQ_NO or a value of 0 means: Force the
             # update.
             weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
