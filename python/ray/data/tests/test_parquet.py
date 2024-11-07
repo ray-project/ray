@@ -1316,6 +1316,15 @@ def test_count_with_filter(ray_start_regular_shared):
     assert isinstance(ds.count(), int)
 
 
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
+
+
 if __name__ == "__main__":
     import sys
 
