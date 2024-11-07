@@ -625,10 +625,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      auto new_status =
+      status =
           std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter.Increment(new_status);
-      status = new_status;
+      counter.Increment(status);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -641,7 +640,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         // for FINISHED and FAILED tasks.
         counter.Increment(new_tuple);
       }
-      status = new_tuple;
+      status = std::move(new_tuple);
     }
 
     void MarkRetry() { is_retry_ = true; }

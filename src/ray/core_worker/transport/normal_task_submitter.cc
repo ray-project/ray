@@ -711,10 +711,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
       for (auto spec = scheduling_tasks.begin(); spec != scheduling_tasks.end(); spec++) {
         if (spec->TaskId() == task_spec.TaskId()) {
           scheduling_tasks.erase(spec);
-
-          if (scheduling_tasks.empty()) {
-            CancelWorkerLeaseIfNeeded(scheduling_key);
-          }
+          CancelWorkerLeaseIfNeeded(scheduling_key);
           task_finisher_->FailPendingTask(task_spec.TaskId(),
                                           rpc::ErrorType::TASK_CANCELLED);
           return Status::OK();
@@ -729,12 +726,11 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
+      CancelWorkerLeaseIfNeeded(scheduling_key);
+      task_finisher_->FailPendingTask(task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED);
+      // we want to remove from resolver's pending task as well
+      resolver_.CancelDependencyResolution(task_spec.TaskId());
       if (scheduling_key_entry.CanDelete()) {
-        CancelWorkerLeaseIfNeeded(scheduling_key);
-        task_finisher_->FailPendingTask(task_spec.TaskId(),
-                                        rpc::ErrorType::TASK_CANCELLED);
-        // we want to remove from resolver's pending task as well
-        resolver_.CancelDependencyResolution(task_spec.TaskId());
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
         scheduling_key_entries_.erase(scheduling_key);

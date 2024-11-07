@@ -24,10 +24,10 @@ namespace ray {
 namespace core {
 
 // Start throttling task failure logs once we hit this threshold.
-const int64_t kTaskFailureThrottlingThreshold = 50;
+constexpr int64_t kTaskFailureThrottlingThreshold = 50;
 
 // Throttle task failure logs to once this interval.
-const int64_t kTaskFailureLoggingFrequencyMillis = 5000;
+constexpr int64_t kTaskFailureLoggingFrequencyMillis = 5000;
 
 absl::flat_hash_set<ObjectID> ObjectRefStream::GetItemsUnconsumed() const {
   absl::flat_hash_set<ObjectID> result;
@@ -1043,8 +1043,13 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to fail task that was not pending " << task_id;
-    RAY_CHECK(it->second.IsPending())
-        << "Tried to fail task that was not pending " << task_id;
+    // task was finished by the time it got to cancelling here
+    if (it->second.GetStatus() == rpc::TaskStatus::FINISHED) {
+      submissible_tasks_.erase(it);
+      return;
+    }
+    RAY_CHECK(it->second.GetStatus() != rpc::TaskStatus::FAILED)
+        << "Tried to fail task that was already failed " << task_id;
     spec = it->second.spec;
 
     if ((status != nullptr) && status->IsIntentionalSystemExit()) {
