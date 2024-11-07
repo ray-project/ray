@@ -247,7 +247,7 @@ Versioning requirements
 
 Generally, the client Ray version must match the server Ray version. An error will be raised if an incompatible version is used.
 
-Similarly, the minor Python (e.g., 3.6 vs 3.7) must match between the client and server. An error will be raised if this is not the case.
+Similarly, the minor (e.g., 3.6 vs 3.7) and patch (e.g. 3.7.17 vs 3.7.16) Python versions must match between the client and server. An error will be raised if this is not the case.
 
 Starting a connection on older Ray versions
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
