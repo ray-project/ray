@@ -257,7 +257,7 @@ def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
         and num_read_tasks > available_cpu_slots * 4
         and num_read_tasks >= 5000
     ):
-        logger.warn(
+        logger.warning(
             f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
             "is more than 4x the number of available CPU slots in the cluster of "
             f"{available_cpu_slots}. This can "
@@ -931,7 +931,6 @@ def make_async_gen(
             if isinstance(next_item, Exception):
                 raise next_item
             if isinstance(next_item, Sentinel):
-                logger.debug(f"Thread {next_item.thread_index} finished.")
                 num_threads_finished += 1
             else:
                 yield next_item

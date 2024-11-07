@@ -122,7 +122,8 @@ def router_populated_with_replicas(
     of replicas in set is at least `threshold`.
     """
     if handle:
-        replicas = handle._router._replica_scheduler._replica_id_set
+        router = handle._router._asyncio_router
+        replicas = router._replica_scheduler._replica_id_set
     else:
         replicas = get_replicas_func()
 
@@ -132,7 +133,8 @@ def router_populated_with_replicas(
     if not check_cache_populated:
         return True
 
-    cache = handle._router._replica_scheduler.replica_queue_len_cache
+    router = handle._router._asyncio_router
+    cache = router._replica_scheduler.replica_queue_len_cache
     for replica_id in replicas:
         assert (
             cache.get(replica_id) is not None

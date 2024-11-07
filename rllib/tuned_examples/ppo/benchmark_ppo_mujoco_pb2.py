@@ -69,11 +69,6 @@ for env, stop_criteria in benchmark_envs.items():
     config = (
         PPOConfig()
         .environment(env=env)
-        # Enable new API stack and use EnvRunner.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .env_runners(
             rollout_fragment_length=1,
             num_env_runners=num_rollout_workers,

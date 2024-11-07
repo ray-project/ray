@@ -172,6 +172,10 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_envs_per_env_runner=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
@@ -202,6 +206,10 @@ class TestRolloutWorker(unittest.TestCase):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("test")
             .env_runners(
                 num_env_runners=2,
@@ -493,14 +501,8 @@ class TestRolloutWorker(unittest.TestCase):
         )
         self.assertEqual(max(sample["rewards"]), 1)
         result = collect_metrics(ws, [])
-        # Shows different behavior when connector is on/off.
-        if config.enable_connectors:
-            # episode_return_mean shows the correct clipped value.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
-        else:
-            # episode_return_mean shows the unclipped raw value
-            # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 1000)
+        # episode_return_mean shows the correct clipped value.
+        self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).

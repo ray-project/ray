@@ -10,7 +10,6 @@ from typing import Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
 
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.repeated_values import RepeatedValues
 from ray.rllib.policy.policy import Policy, PolicyState
@@ -173,7 +172,7 @@ def _traced_eager_policy(eager_policy_cls):
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[Episode]] = None,
+            episodes=None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             """Traced version of Policy.compute_actions_from_input_dict."""
@@ -462,7 +461,7 @@ def _build_eager_tf_policy(
             input_dict: Dict[str, TensorType],
             explore: bool = None,
             timestep: Optional[int] = None,
-            episodes: Optional[List[Episode]] = None,
+            episodes=None,
             **kwargs,
         ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
             if not self.config.get("eager_tracing") and not tf1.executing_eagerly():
@@ -511,7 +510,7 @@ def _build_eager_tf_policy(
             prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
             prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
             info_batch: Optional[Dict[str, list]] = None,
-            episodes: Optional[List["Episode"]] = None,
+            episodes: Optional[List] = None,
             explore: Optional[bool] = None,
             timestep: Optional[int] = None,
             **kwargs,

@@ -206,23 +206,32 @@ def to_google_style(d):
 def message_to_dict(message, decode_keys=None, **kwargs):
     """Convert protobuf message to Python dict."""
 
+    def _decode_keys(d):
+        for k, v in d.items():
+            if isinstance(v, dict):
+                d[k] = _decode_keys(v)
+            if isinstance(v, list):
+                new_list = []
+                for i in v:
+                    if isinstance(i, dict):
+                        new_list.append(_decode_keys(i))
+                    else:
+                        new_list.append(i)
+                d[k] = new_list
+            else:
+                if k in decode_keys:
+                    d[k] = binary_to_hex(b64decode(v))
+                else:
+                    d[k] = v
+        return d
+
     d = ray._private.protobuf_compat.message_to_dict(
         message, use_integers_for_enums=False, **kwargs
     )
-
-    def _decode_rec(o, should_decode=False):
-        if isinstance(o, dict):
-            for k, v in o.items():
-                o[k] = _decode_rec(v, should_decode=k in decode_keys)
-            return o
-        elif isinstance(o, list):
-            return [_decode_rec(i, should_decode) for i in o]
-        elif should_decode:
-            return binary_to_hex(b64decode(o))
-        else:
-            return o
-
-    return _decode_rec(d) if decode_keys else d
+    if decode_keys:
+        return _decode_keys(d)
+    else:
+        return d
 
 
 class SignalManager:

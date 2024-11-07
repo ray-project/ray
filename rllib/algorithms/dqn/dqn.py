@@ -427,11 +427,12 @@ class DQNConfig(AlgorithmConfig):
         # Warn about new API stack on by default.
         if self.enable_rl_module_and_learner:
             logger.warning(
-                "You are running DQN on the new API stack! This is the new default "
-                "behavior for this algorithm. If you don't want to use the new API "
-                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
-                "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
         if (

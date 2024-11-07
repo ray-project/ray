@@ -42,6 +42,16 @@ class Worker:
     def read_input(self, input):
         return input
 
+    def send(self, shape, dtype, value: int, send_tensor=True):
+        if not send_tensor:
+            return 1
+        return torch.ones(shape, dtype=dtype, device=self.device) * value
+
+    def recv(self, tensor):
+        # Check that tensor got loaded to the correct device.
+        assert tensor.device == self.device
+        return (tensor[0].item(), tensor.shape, tensor.dtype)
+
     def no_op(self, value):
         return value
 
@@ -363,6 +373,71 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         assert len(tensors) == 3
         for tensor in tensors:
             assert torch.equal(tensor, tensor_cpu)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
+@pytest.mark.parametrize("overlap_gpu_communication", [True, False])
+def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    sender1 = Worker.remote()
+    sender2 = Worker.remote()
+    receiver = Worker.remote()
+
+    shape = (10000,)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branch1 = sender1.send.bind(shape, dtype, inp)
+
+        branch1 = branch1.with_type_hint(
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+        )
+        branch1 = receiver.recv.bind(branch1)
+
+        branch2 = sender2.send.bind(shape, dtype, inp)
+        branch2 = branch2.with_type_hint(
+            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+        )
+        branch2 = receiver.recv.bind(branch2)
+        dag = MultiOutputNode([branch1, branch2])
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    # Check receiver schedule
+    expected_no_overlap_schedule = [
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
+    ]
+    expected_overlap_schedule = [
+        (0, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
+    ]
+    if overlap_gpu_communication:
+        expected_receiver_schedule = expected_overlap_schedule
+    else:
+        expected_receiver_schedule = expected_no_overlap_schedule
+
+    receiver_schedule = compiled_dag.actor_to_execution_schedule[receiver]
+
+    assert len(receiver_schedule) == len(expected_receiver_schedule)
+    for i, operation in enumerate(receiver_schedule):
+        assert operation.exec_task_idx == expected_receiver_schedule[i][0]
+        assert operation.type == expected_receiver_schedule[i][1]
+
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

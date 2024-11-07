@@ -39,10 +39,6 @@ DEFINE_stats(worker_register_time_ms,
 
 namespace {
 
-// Add this prefix because the worker setup token is just a counter which is easy to
-// duplicate with other ids.
-const std::string kWorkerSetupTokenPrefix = "worker_startup_token:";
-
 // A helper function to get a worker from a list.
 std::shared_ptr<ray::raylet::WorkerInterface> GetWorker(
     const std::unordered_set<std::shared_ptr<ray::raylet::WorkerInterface>> &worker_pool,
@@ -118,7 +114,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
       get_time_(get_time) {
-  RAY_CHECK(maximum_startup_concurrency_ > 0);
+  RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
   // metric not existing at all).
@@ -1660,12 +1656,10 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
       job_id,
       serialized_runtime_env,
       runtime_env_config,
-      [job_id,
-       serialized_runtime_env = std::move(serialized_runtime_env),
-       runtime_env_config = std::move(runtime_env_config),
-       callback](bool successful,
-                 const std::string &serialized_runtime_env_context,
-                 const std::string &setup_error_message) {
+      [job_id, serialized_runtime_env, runtime_env_config, callback](
+          bool successful,
+          const std::string &serialized_runtime_env_context,
+          const std::string &setup_error_message) {
         if (successful) {
           callback(true, serialized_runtime_env_context, "");
         } else {
@@ -1673,7 +1667,9 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
                            << ".";
           RAY_LOG(DEBUG) << "Runtime env for job " << job_id << ": "
                          << serialized_runtime_env;
-          callback(false, "", setup_error_message);
+          callback(/*successful=*/false,
+                   /*serialized_runtime_env_context=*/"",
+                   /*setup_error_message=*/setup_error_message);
         }
       });
 }

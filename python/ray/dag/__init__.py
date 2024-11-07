@@ -11,6 +11,7 @@ from ray.dag.input_node import (
     DAGInputData,
 )
 from ray.dag.output_node import MultiOutputNode
+from ray.dag.dag_operation_future import DAGOperationFuture, GPUFuture
 from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
@@ -27,7 +28,9 @@ __all__ = [
     "ClassMethodNode",
     "CollectiveOutputNode",
     "DAGNode",
+    "DAGOperationFuture",
     "FunctionNode",
+    "GPUFuture",
     "InputNode",
     "InputAttributeNode",
     "DAGInputData",

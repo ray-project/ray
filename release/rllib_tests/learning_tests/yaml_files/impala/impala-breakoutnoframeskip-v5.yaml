@@ -1,5 +1,5 @@
 impala-breakoutnoframeskip-v5:
-    env: ALE/Breakout-v5
+    env: ale_py:ALE/Breakout-v5
     run: IMPALA
     # Minimum reward and total ts (in given time_total_s) to pass this test.
     pass_criteria:

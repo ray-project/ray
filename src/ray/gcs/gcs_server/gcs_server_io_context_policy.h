@@ -52,6 +52,8 @@ struct GcsServerIOContextPolicy {
   // name, or get leaks by creating unused threads.
   constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
       "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
+  constexpr static std::array<bool, 3> kAllDedicatedIOContextEnableLagProbe{
+      true, true, true};
 
   constexpr static size_t IndexOf(std::string_view name) {
     return ray::IndexOf(kAllDedicatedIOContextNames, name);

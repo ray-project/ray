@@ -27,8 +27,8 @@ numpy>=1.20
 
 # pyarrow 18 causes macos build failures.
 # See https://github.com/ray-project/ray/pull/48300
-pyarrow >= 6.0.1,<18; sys_platform == "darwin"
-pyarrow >= 6.0.1; sys_platform != "darwin"
+pyarrow >= 9.0.0
+pyarrow <18; sys_platform == "darwin" and platform_machine == "x86_64"
 
 # ray[all]
 smart_open
@@ -41,7 +41,7 @@ colorful
 rich
 opentelemetry-sdk
 fastapi
-gymnasium==0.28.1
+gymnasium==1.0.0
 virtualenv!=20.21.1,>=20.0.24
 opentelemetry-api
 opencensus

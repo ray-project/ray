@@ -5,7 +5,7 @@ import math
 import os
 import threading
 import time
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Type, Union
+from typing import Any, Dict, List, Optional, Set, Tuple, Type, Union
 
 import gymnasium as gym
 import numpy as np
@@ -53,9 +53,6 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode  # noqa
 
 torch, nn = try_import_torch()
 
@@ -388,7 +385,7 @@ class TorchPolicyV2(Policy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[Dict[Any, SampleBatch]] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ) -> SampleBatch:
         """Postprocesses a trajectory and returns the processed trajectory.
 
@@ -517,7 +514,7 @@ class TorchPolicyV2(Policy):
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,

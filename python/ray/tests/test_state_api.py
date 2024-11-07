@@ -23,7 +23,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID, ObjectRef
+from ray._raylet import ActorID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -1015,7 +1015,6 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     data_source_client.get_all_task_info = AsyncMock()
     id = b"1234"
     func_or_class = "f"
-    arg_ref = ObjectRef.from_random()
 
     # Generate a task event.
 
@@ -1024,10 +1023,8 @@ async def test_api_manager_list_tasks_events(state_api_manager):
         name=func_or_class,
         func_or_class_name=func_or_class,
         type=TaskType.NORMAL_TASK,
-        args_object_ids=[arg_ref.binary()],
     )
-
-    current = 0
+    current = time.time_ns()
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
@@ -1051,42 +1048,31 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     )
     data_source_client.get_all_task_info.side_effect = [generate_task_data([events])]
     result = await state_api_manager.list_tasks(option=create_api_options(detail=True))
-
-    assert {
-        "state": "FINISHED",
-        "type": "NORMAL_TASK",
-        "name": "f",
-        "error_message": None,
-        "events": [
-            {"state": "PENDING_ARGS_AVAIL", "created_ms": 0.0},
-            {"state": "SUBMITTED_TO_WORKER", "created_ms": 1000.0},
-            {"state": "RUNNING", "created_ms": 2000.0},
-            {"state": "FINISHED", "created_ms": 3000.0},
-        ],
-        "runtime_env_info": None,
-        "end_time_ms": 3000.0,
-        "job_id": "30303031",
-        "error_type": None,
-        "func_or_class_name": "f",
-        "attempt_number": 0,
-        "node_id": node_id.hex(),
-        "required_resources": {},
-        "worker_pid": None,
-        "language": "PYTHON",
-        "placement_group_id": None,
-        "creation_time_ms": 0.0,
-        "worker_id": None,
-        "task_log_info": None,
-        "profiling_data": {},
-        "actor_id": None,
-        "is_debugger_paused": None,
-        "start_time_ms": 2000.0,
-        "task_id": "31323334",
-        "parent_task_id": "",
-        "args_object_ids": [
-            arg_ref.hex(),
-        ],
-    } == result.result[0]
+    result = result.result[0]
+    assert "events" in result
+    assert result["state"] == "FINISHED"
+    expected_events = [
+        {
+            "state": "PENDING_ARGS_AVAIL",
+            "created_ms": current // 1e6,
+        },
+        {
+            "state": "SUBMITTED_TO_WORKER",
+            "created_ms": (current + second) // 1e6,
+        },
+        {
+            "state": "RUNNING",
+            "created_ms": (current + 2 * second) // 1e6,
+        },
+        {
+            "state": "FINISHED",
+            "created_ms": (current + 3 * second) // 1e6,
+        },
+    ]
+    for actual, expected in zip(result["events"], expected_events):
+        assert actual == expected
+    assert result["start_time_ms"] == (current + 2 * second) // 1e6
+    assert result["end_time_ms"] == (current + 3 * second) // 1e6
 
     """
     Test only start_time_ms is updated.

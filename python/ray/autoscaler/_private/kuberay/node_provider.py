@@ -43,6 +43,8 @@ KUBERAY_TYPE_HEAD = "head-group"
 # KubeRay CRD version
 KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
+KUBERAY_REQUEST_TIMEOUT_S = int(os.getenv("KUBERAY_REQUEST_TIMEOUT_S", 60))
+
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
 # Key for GKE label that identifies which multi-host replica a pod belongs to
@@ -268,7 +270,12 @@ class KubernetesHttpApiClient(IKubernetesHttpApiClient):
             path=path,
             kuberay_crd_version=self._kuberay_crd_version,
         )
-        result = requests.get(url, headers=self._headers, verify=self._verify)
+        result = requests.get(
+            url,
+            headers=self._headers,
+            timeout=KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
+        )
         if not result.status_code == 200:
             result.raise_for_status()
         return result.json()

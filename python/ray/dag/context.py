@@ -25,6 +25,10 @@ DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
     os.environ.get("RAY_DAG_max_inflight_executions", 10)
 )
 
+DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
+    os.environ.get("RAY_DAG_overlap_gpu_communication", 0)
+)
+
 
 @DeveloperAPI
 @dataclass
@@ -58,6 +62,12 @@ class DAGContext:
             executions is beyond the DAG capacity, the new execution would
             be blocked in the first place; therefore, this limit is only
             enforced when it is smaller than the DAG capacity.
+        max_inflight_executions: The maximum number of in-flight executions
+            that can be submitted before consuming the output.
+        overlap_gpu_communication: Whether to overlap GPU communication with
+            computation during DAG execution. If True, the communication
+            and computation can be overlapped, which can improve the
+            performance of the DAG execution.
     """
 
     execution_timeout: int = DEFAULT_EXECUTION_TIMEOUT_S
@@ -66,6 +76,7 @@ class DAGContext:
     asyncio_max_queue_size: int = DEFAULT_ASYNCIO_MAX_QUEUE_SIZE
     max_buffered_results: int = DEFAULT_MAX_BUFFERED_RESULTS
     max_inflight_executions: int = DEFAULT_MAX_INFLIGHT_EXECUTIONS
+    overlap_gpu_communication: bool = DEFAULT_OVERLAP_GPU_COMMUNICATION
 
     @staticmethod
     def get_current() -> "DAGContext":

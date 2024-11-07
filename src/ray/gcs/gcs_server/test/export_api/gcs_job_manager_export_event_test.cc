@@ -30,6 +30,8 @@
 
 // clang-format on
 
+using json = nlohmann::json;
+
 namespace ray {
 
 class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {

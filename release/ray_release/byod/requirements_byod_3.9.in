@@ -10,8 +10,8 @@ dask[complete]
 fastapi
 gcsfs==2023.5.0
 gsutil
-gym
-gym[atari]
+gymnasium
+gymnasium[atari]
 importlib-metadata
 jsonschema==4.17.3
 lightgbm

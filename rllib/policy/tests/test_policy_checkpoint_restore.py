@@ -16,6 +16,10 @@ def _do_checkpoint_twice_test(framework):
     # Checks if we can load a policy from a checkpoint (at least) twice
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
         .env_runners(num_env_runners=0)
         .evaluation(evaluation_num_env_runners=0)
     )
@@ -55,8 +59,11 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmpdir:
             config = (
                 APPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
                 .environment("CartPole-v1")
-                .env_runners(enable_connectors=True)
             )
             algo = config.build()
             algo.train()
@@ -71,7 +78,15 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             self.assertIsNotNone(policy)
 
             # Add this policy to an Algorithm.
-            algo = APPOConfig().framework(framework="torch").build("CartPole-v0")
+            algo = (
+                APPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
+                .framework(framework="torch")
+                .environment("CartPole-v0")
+            ).build()
 
             # Add the entire policy.
             self.assertIsNotNone(algo.add_policy("test_policy", policy=policy))
@@ -98,10 +113,12 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             space.original_space = gym.spaces.Discrete(2)
             space = space.original_space
 
-        # TODO(Artur): Construct a PPO policy here without the algorithm once we are
-        #  able to do that with RLModules.
         policy = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 observation_space=obs_space, action_space=gym.spaces.Discrete(2)
             )

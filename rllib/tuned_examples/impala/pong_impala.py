@@ -15,7 +15,7 @@ from ray.tune.registry import register_env
 parser = add_rllib_example_script_args()
 parser.set_defaults(
     enable_new_api_stack=True,
-    env="ALE/Pong-v5",
+    env="ale_py:ALE/Pong-v5",
 )
 parser.add_argument(
     "--use-tiny-cnn",
@@ -43,11 +43,6 @@ register_env("env", _env_creator)
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(
         "env",
         env_config={

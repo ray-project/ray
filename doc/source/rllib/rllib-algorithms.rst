@@ -197,7 +197,7 @@ Tuned examples:
 
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
-.. autoclass:: ray.rllib.algorithms.impala.impala.ImpalaConfig
+.. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
    :members: training
 
 

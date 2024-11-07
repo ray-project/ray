@@ -2,8 +2,8 @@
 
 We use the `MetricsLogger` class, which RLlib provides inside all its components (only
 when using the new API stack through
-`config.api_stack(_enable_rl_module_and_learner=True,
-_enable_env_runner_and_connector_v2=True)`),
+`config.api_stack(enable_rl_module_and_learner=True,
+enable_env_runner_and_connector_v2=True)`),
 and which offers a unified API to log individual values per iteration, per episode
 timestep, per episode (as a whole), per loss call, etc..
 `MetricsLogger` objects are available in all custom API code, for example inside your
@@ -301,7 +301,7 @@ if __name__ == "__main__":
     register_env(
         "env",
         lambda cfg: wrap_atari_for_new_api_stack(
-            gym.make("ALE/MsPacman-v5", **cfg, **{"render_mode": "rgb_array"}),
+            gym.make("ale_py:ALE/MsPacman-v5", **cfg, **{"render_mode": "rgb_array"}),
             framestack=4,
         ),
     )
