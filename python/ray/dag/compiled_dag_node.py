@@ -2244,7 +2244,7 @@ class CompiledDAG:
         format="png",
         view=False,
         return_dot=False,
-        verbose_edges=False,
+        channel_details=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2258,6 +2258,7 @@ class CompiledDAG:
             format: The format of the output file (e.g., 'png', 'pdf').
             view: Whether to open the file with the default viewer.
             return_dot: If True, returns the DOT source as a string instead of figure.
+            channel_details: If True, adds output channel type information to edges.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -2361,7 +2362,7 @@ class CompiledDAG:
                     if task.output_channels[0] in self._channel_dict
                     else type(task.output_channels[0]).__name__
                 )
-                if verbose_edges
+                if channel_details
                 else ""
             )
             # This logic is built on the assumption that there will only be multiple
