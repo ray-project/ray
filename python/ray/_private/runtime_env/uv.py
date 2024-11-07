@@ -79,6 +79,14 @@ class UvProcessor:
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
 
+        def _get_uv_exec_to_install():
+            """Get `uv` executable with version to install."""
+            uv_version = self._uv_config.get("uv_version", None)
+            if uv_version:
+                return f"uv{uv_version}"
+            # Use default version.
+            return "uv"
+
         uv_install_cmd = [
             python,
             "-m",
@@ -86,7 +94,7 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
-            "uv",
+            _get_uv_exec_to_install(),
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)

@@ -54,6 +54,12 @@ class TestVaidationUv:
         with pytest.raises(ValueError):
             result = validation.parse_and_validate_uv({"random_key": "random_value"})
 
+        # Valid case w/ uv version.
+        result = validation.parse_and_validate_uv(
+            {"packages": ["tensorflow"], "uv_version": "==0.4.30"}
+        )
+        assert result == {"packages": ["tensorflow"], "uv_version": "==0.4.30"}
+
 
 class TestValidatePip:
     def test_validate_pip_invalid_types(self):

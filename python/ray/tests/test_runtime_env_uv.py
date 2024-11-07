@@ -57,6 +57,19 @@ def test_package_install_has_conflict_with_uv():
         ray.get(f.remote())
 
 
+# Specify uv version.
+def test_uv_with_version():
+    @ray.remote(
+        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+    )
+    def f():
+        import requests
+
+        return requests.__version__
+
+    assert ray.get(f.remote()) == "2.3.0"
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
