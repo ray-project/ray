@@ -1568,6 +1568,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             ctx: The schedule context.
         """
+        count_by_node_type = ctx.get_cluster_shape()
+        node_type_configs = ctx.get_node_type_configs()
+        terminate_nodes_by_type: Dict[NodeType, int] = defaultdict(int)
+
         nodes = ctx.get_nodes()
         s_to_ms = 1000
         for node in nodes:
@@ -1600,6 +1604,18 @@ class ResourceDemandScheduler(IResourceScheduler):
                     )
                 continue
 
+            min_count = 0
+            node_type = node.node_type
+            if node_type in node_type_configs:
+                min_count = node_type_configs[node_type].min_worker_nodes
+            if (
+                count_by_node_type.get(node_type, 0)
+                - terminate_nodes_by_type[node_type]
+                <= min_count
+            ):
+                continue
+
+            terminate_nodes_by_type[node.node_type] += 1
             # The node is idle for too long, terminate it.
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(
