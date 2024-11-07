@@ -16,6 +16,7 @@ from typing import (
 import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
+from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
 from ray.data._internal.numpy_support import convert_to_numpy, validate_numpy_batch
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
@@ -116,7 +117,7 @@ class PandasBlockBuilder(TableBlockBuilder):
         for column_name, column_values in columns.items():
             np_column_values = convert_to_numpy(column_values)
 
-            if column_name == TENSOR_COLUMN_NAME or np_column_values.ndim > 1:
+            if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
                 from ray.data.extensions.tensor_extension import TensorArray
 
                 pd_columns[column_name] = TensorArray(np_column_values)
