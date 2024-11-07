@@ -2670,7 +2670,7 @@ class TestVisualizationAscii:
 
         return node_names, edge_pairs
 
-    def test_visualize_basic(self, ray_start_regular):
+    def test_visualize_ascii_basic(self, ray_start_regular):
         """
         Expect output:
             Nodes Information:
@@ -2725,7 +2725,7 @@ class TestVisualizationAscii:
 
         compiled_dag.teardown()
 
-    def test_visualize_multi_return(self, ray_start_regular):
+    def test_visualize_ascii_multi_return(self, ray_start_regular):
         """
         Expect output:
             Nodes Information:
@@ -2790,7 +2790,7 @@ class TestVisualizationAscii:
 
         compiled_dag.teardown()
 
-    def test_visualize_multi_return2(self, ray_start_regular):
+    def test_visualize_ascii_multi_return2(self, ray_start_regular):
         """
         Expect output:
             Nodes Information:
@@ -2878,7 +2878,7 @@ class TestVisualizationAscii:
 
         compiled_dag.teardown()
 
-    def test_visualize_complicate(self, ray_start_regular):
+    def test_visualize_ascii_complicate(self, ray_start_regular):
         """
         Expect output:
             Nodes Information:
@@ -2994,7 +2994,7 @@ class TestVisualizationAscii:
 
         compiled_dag.teardown()
 
-    def test_visualize_cross_line(self, ray_start_regular):
+    def test_visualize_ascii_cross_line(self, ray_start_regular):
         """
         Expect output:
             Nodes Information:
