@@ -114,15 +114,15 @@ class PandasBlockBuilder(TableBlockBuilder):
 
         pd_columns: Dict[str, Any] = dict()
 
-        for column_name, column_values in columns.items():
-            np_column_values = convert_to_numpy(column_values)
+        for col_name, col_vals in columns.items():
+            np_col_vals = convert_to_numpy(col_vals)
 
-            if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
+            if col_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(np_col_vals):
                 from ray.data.extensions.tensor_extension import TensorArray
 
-                pd_columns[column_name] = TensorArray(np_column_values)
+                pd_columns[col_name] = TensorArray(np_col_vals)
             else:
-                pd_columns[column_name] = np_column_values
+                pd_columns[col_name] = np_col_vals
 
         return pandas.DataFrame(pd_columns)
 
