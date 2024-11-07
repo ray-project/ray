@@ -46,10 +46,12 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{State}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=35,
-        title="Active Tasks by Name",
+        title="Requested Live Tasks by Name",
         description="Current number of (live) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
         unit="tasks",
         targets=[
@@ -62,6 +64,26 @@ DEFAULT_GRAFANA_PANELS = [
                 legend="{{Name}} (retry)",
             ),
         ],
+        fill=0,
+        stack=False,
+    ),
+    Panel(
+        id=38,
+        title="Running Tasks by Name",
+        description="Current number of (running) tasks with a particular name. Task resubmissions due to failures or object reconstruction are shown with (retry) in the label.",
+        unit="tasks",
+        targets=[
+            Target(
+                expr='sum(ray_tasks{{IsRetry="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
+                legend="{{Name}}",
+            ),
+            Target(
+                expr='sum(ray_tasks{{IsRetry!="0",State=~"RUNNING*",{global_filters}}}) by (Name)',
+                legend="{{Name}} (retry)",
+            ),
+        ],
+        fill=0,
+        stack=False,
     ),
     Panel(
         id=33,
@@ -89,7 +111,7 @@ DEFAULT_GRAFANA_PANELS = [
     ),
     Panel(
         id=36,
-        title="Active Actors by Name",
+        title="Requested Live Actors by Name",
         description="Current number of (live) actors with a particular name.",
         unit="actors",
         targets=[
