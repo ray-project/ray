@@ -14,6 +14,7 @@ from typing import Dict, List, Optional, Tuple
 import ray
 from ray.data._internal.execution.autoscaler import Autoscaler
 from ray.data._internal.execution.backpressure_policy import BackpressurePolicy
+from ray.data._internal.execution.bundle_queue import create_bundle_queue
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -47,9 +48,8 @@ class OpBufferQueue:
     """
 
     def __init__(self):
-        self._memory_usage = 0
         self._num_blocks = 0
-        self._queue = deque()
+        self._queue = create_bundle_queue()
         self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
         # Used to buffer output RefBundles indexed by output splits.
@@ -60,7 +60,7 @@ class OpBufferQueue:
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
         with self._lock:
-            return self._memory_usage
+            return self._queue.estimate_size_bytes()
 
     @property
     def num_blocks(self) -> int:
@@ -69,7 +69,8 @@ class OpBufferQueue:
             return self._num_blocks
 
     def __len__(self):
-        return len(self._queue)
+        with self._lock:
+            return len(self._queue)
 
     def has_next(self, output_split_idx: Optional[int] = None) -> bool:
         """Whether next RefBundle is available.
@@ -79,16 +80,16 @@ class OpBufferQueue:
                 given output split.
         """
         if output_split_idx is None:
-            return len(self._queue) > 0
+            with self._lock:
+                return len(self._queue) > 0
         else:
             with self._lock:
                 return self._num_per_split[output_split_idx] > 0
 
     def append(self, ref: RefBundle):
         """Append a RefBundle to the queue."""
-        self._queue.append(ref)
         with self._lock:
-            self._memory_usage += ref.size_bytes()
+            self._queue.add(ref)
             self._num_blocks += len(ref.blocks)
             if ref.output_split_idx is not None:
                 self._num_per_split[ref.output_split_idx] += 1
@@ -104,7 +105,8 @@ class OpBufferQueue:
         ret = None
         if output_split_idx is None:
             try:
-                ret = self._queue.popleft()
+                with self._lock:
+                    ret = self._queue.pop()
             except IndexError:
                 pass
         else:
@@ -119,7 +121,7 @@ class OpBufferQueue:
                 # preserve the order of ref bundles with different output splits.
                 with self._lock:
                     while len(self._queue) > 0:
-                        ref = self._queue.popleft()
+                        ref = self._queue.pop()
                         self._outputs_by_split[ref.output_split_idx].append(ref)
             try:
                 ret = split_queue.popleft()
@@ -128,7 +130,6 @@ class OpBufferQueue:
         if ret is None:
             return None
         with self._lock:
-            self._memory_usage -= ret.size_bytes()
             self._num_blocks -= len(ret.blocks)
             if ret.output_split_idx is not None:
                 self._num_per_split[ret.output_split_idx] -= 1
@@ -137,7 +138,6 @@ class OpBufferQueue:
     def clear(self):
         with self._lock:
             self._queue.clear()
-            self._memory_usage = 0
             self._num_blocks = 0
             self._num_per_split.clear()
 

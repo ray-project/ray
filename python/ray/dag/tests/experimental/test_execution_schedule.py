@@ -10,6 +10,7 @@ from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
     _DAGNodeOperation,
+    _extract_execution_schedule,
     _select_next_nodes,
     _build_dag_node_operation_graph,
     _add_edge,
@@ -92,6 +93,10 @@ def set_ready_collective_idxs(
     ready_collective_idxs = {(dag_idx, OpType.COMPUTE) for dag_idx in dag_idxs}
     for dag_idx in dag_idxs:
         graph[dag_idx][OpType.COMPUTE].ready_collective_idxs = ready_collective_idxs
+
+
+def _generate_and_extract_execution_schedule(graph):
+    return _extract_execution_schedule(_generate_actor_to_execution_schedule(graph))
 
 
 class TestSelectNextNodes:
@@ -601,7 +606,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_data_dependeny(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 2
         assert actor_to_execution_schedule[fake_actor] == [
@@ -647,7 +652,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_2], graph[task_idx_3])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 3
         assert actor_to_execution_schedule[fake_actor] == [
@@ -701,7 +706,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_control_dependency(graph[task_idx_2_1], graph[task_idx_2_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 2
         assert len(actor_to_execution_schedule[fake_actor_2]) == 2
@@ -759,7 +764,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_control_dependency(graph[task_idx_2_1], graph[task_idx_2_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 4
         assert len(actor_to_execution_schedule[fake_actor_2]) == 4
@@ -853,7 +858,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_2_2], graph[task_idx_2_3])
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_4])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 4
         assert len(actor_to_execution_schedule[worker_2]) == 4
@@ -941,7 +946,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_2_2], graph[task_idx_2_3])
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_4])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 8
         assert len(actor_to_execution_schedule[worker_2]) == 8

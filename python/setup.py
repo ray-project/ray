@@ -277,7 +277,13 @@ if setup_spec.type == SetupType.RAY:
             "fastapi",
             "watchfiles",
         ],
-        "tune": ["pandas", "tensorboardX>=1.9", "requests", *pyarrow_deps, "fsspec"],
+        "tune": [
+            "pandas",
+            "tensorboardX>=1.9",
+            "requests",
+            *pyarrow_deps,
+            "fsspec",
+        ],
     }
 
     # Ray Serve depends on the Ray dashboard components.
@@ -302,7 +308,7 @@ if setup_spec.type == SetupType.RAY:
 
     setup_spec.extras["rllib"] = setup_spec.extras["tune"] + [
         "dm_tree",
-        "gymnasium==0.28.1",
+        "gymnasium==1.0.0",
         "lz4",
         "scikit-image",
         "pyyaml",
