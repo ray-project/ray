@@ -2241,7 +2241,7 @@ class CompiledDAG:
 
         This function generates an ASCII representation of a DAG,
         where each task node is labeled,
-        and edges use `<` and `>` markers to show data flow direction. T
+        and edges use `<` and `>` markers to show data flow direction.
 
         High-Level Algorithm:
         - Topological Sorting: Sort nodes topologically to organize
