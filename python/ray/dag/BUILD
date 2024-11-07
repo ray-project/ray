@@ -108,6 +108,7 @@ py_test_module_list(
         "tests/experimental/test_torch_tensor_dag.py",
         "tests/experimental/test_collective_dag.py",
         "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_dag_visualization.py",
     ],
     tags = [
         "accelerated_dag",
@@ -122,20 +123,6 @@ py_test_module_list(
     size = "enormous",
     files = [
         "tests/experimental/test_accelerated_dag.py",
-    ],
-    tags = [
-        "accelerated_dag",
-        "exclusive",
-        "no_windows",
-        "team:core",
-    ],
-    deps = ["//:ray_lib"],
-)
-
-py_test_module_list(
-    size = "medium",
-    files = [
-        "tests/experimental/test_dag_visualization.py",
     ],
     tags = [
         "accelerated_dag",
