@@ -229,8 +229,8 @@ class _DAGOperationGraphNode:
             class_name
             + "_"
             + actor_id_abbv
-            + f" [{self.operation.exec_task_idx}] "
-            + f"{self.operation.method_name} {self.operation.type.viz_str()}"
+            + f" [{self.op.exec_task_idx}] "
+            + f"{self.op.method_name} {self.op.type.viz_str()}"
         )
 
     @property
@@ -682,7 +682,7 @@ def _generate_actor_to_execution_schedule(
         for node in nodes:
             for out_node_task_idx, out_node_type in node.out_edges:
                 out_node = graph[out_node_task_idx][out_node_type]
-                out_node.in_edges.remove((node.task_idx, node.op.type))
+                out_node.in_edges.pop((node.task_idx, node.op.type))
                 if out_node.in_degree == 0 and out_node not in visited_nodes:
                     # If the downstream node is already visited, it has been added
                     # to the execution schedule. They are the NCCL read nodes in
@@ -729,18 +729,12 @@ def _generate_overlapped_execution_schedule(
     ] = copy.deepcopy(actor_to_execution_schedule)
     for overlapped_schedule in actor_to_overlapped_schedule.values():
         for i in range(len(overlapped_schedule)):
-            if (
-                overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and overlapped_schedule[i].requires_nccl
-            ):
+            if overlapped_schedule[i].op.type == _DAGNodeOperationType.NCCL_READ:
                 # For each NCCL read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
-                    if (
-                        overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.COMPUTE
-                    ):
+                    if overlapped_schedule[j].op.type == _DAGNodeOperationType.COMPUTE:
                         # Found a desired compute operation, make the swap
                         nccl_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
@@ -748,11 +742,11 @@ def _generate_overlapped_execution_schedule(
                         overlapped_schedule[j] = nccl_read_op
                         break
                     if (
-                        overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.READ
-                        or overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.WRITE
-                    ) and overlapped_schedule[j].requires_nccl:
+                        overlapped_schedule[j].op.type
+                        == _DAGNodeOperationType.NCCL_READ
+                        or overlapped_schedule[j].op.type
+                        == _DAGNodeOperationType.NCCL_WRITE
+                    ):
                         # Found a NCCL read/write operation, skip the overlap
                         # optimization to keep relative order of NCCL operations
                         break
@@ -769,6 +763,6 @@ def _extract_execution_schedule(
     and discard unnecessary information.
     """
     return {
-        actor: [node.operation for node in nodes]
+        actor: [node.op for node in nodes]
         for actor, nodes in actor_to_execution_schedule.items()
     }
