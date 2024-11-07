@@ -269,7 +269,8 @@ class RayletConnection {
                                  flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
  private:
-  /// Shutdown the raylet if the local connection is disconnected.
+  /// Shutdown the raylet if the local connection is disconnected (either terminated or
+  // unreachable).
   void ShutdownIfLocalRayletDisconnected(const Status &status);
   /// The connection to raylet.
   std::shared_ptr<ServerConnection> conn_;

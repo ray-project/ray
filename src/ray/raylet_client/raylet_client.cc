@@ -85,9 +85,10 @@ Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
 }
 
 void raylet::RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
+  if ((!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) ||
+      status.IsIOError()) {
     RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
-                        "dead. Terminate the process. Status: "
+                        "dead or is unreachable. Terminate the process. Status: "
                      << status;
     QuickExit();
     RAY_LOG(FATAL) << "Unreachable.";
