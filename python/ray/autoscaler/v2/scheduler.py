@@ -1604,6 +1604,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                     )
                 continue
 
+            # Honor the min_worker_nodes setting for the node type.
             min_count = 0
             node_type = node.node_type
             if node_type in node_type_configs:
