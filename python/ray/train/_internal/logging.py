@@ -62,11 +62,16 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
 
 
 class TrainLogKey(str, Enum):
+    RUN_ID = "run_id"
     WORLD_SIZE = "world_size"
     WORLD_RANK = "world_rank"
     LOCAL_WORLD_SIZE = "local_world_size"
     LOCAL_RANK = "local_rank"
     NODE_RANK = "node_rank"
+    # This key is used to hide the log record if the value is True.
+    # By default, train workers that are not ranked zero will hide
+    # the log record.
+    HIDDEN_DEFAULT = "hide_default"
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -109,6 +114,15 @@ class TrainContextFilter(logging.Filter):
         return _get_session().world_size is not None
 
     def filter(self, record):
+        # If this process does not have a train session, it is a driver process,
+        # not a worker process. We don't need to add any extra information to the log.
+        if not _get_session():
+            return True
+        # Add the run_id info to the log for all ray train processes. Including a
+        # controller process created from Tune and the worker processes.
+        setattr(record, TrainLogKey.RUN_ID, _get_session().run_id)
+        # If the process is a train controller process created from Tune, we don't
+        # need to add the rank and size information to the log record.
         if not self._is_worker_process():
             return True
         # Otherwise, we need to check if the corresponding field of the train session
@@ -119,6 +133,8 @@ class TrainContextFilter(logging.Filter):
         setattr(record, TrainLogKey.LOCAL_WORLD_SIZE, _get_session().local_rank)
         setattr(record, TrainLogKey.LOCAL_RANK, _get_session().local_world_size)
         setattr(record, TrainLogKey.NODE_RANK, _get_session().node_rank)
+        if _get_session().world_rank != 0:
+            setattr(record, TrainLogKey.HIDDEN_DEFAULT, True)
         return True
 
 
