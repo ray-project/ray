@@ -11,15 +11,13 @@ from ray._private.runtime_env import virtualenv_utils
 import ray
 
 
-def test_uv_install_in_virtualenv(start_cluster):
+def test_uv_install_in_virtualenv(shutdown_only):
     assert (
         virtualenv_utils.is_in_virtualenv() is False
         and "IN_VIRTUALENV" not in os.environ
     ) or (virtualenv_utils.is_in_virtualenv() is True and "IN_VIRTUALENV" in os.environ)
-    _, address = start_cluster
     runtime_env = {"pip": ["pip-install-test==0.5"]}
-
-    ray.init(address, runtime_env=runtime_env)
+    ray.init(runtime_env=runtime_env)
 
     @ray.remote
     def f():
