@@ -94,7 +94,11 @@ class DAGNode(DAGNodeBase):
         upstream_nodes: List["DAGNode"] = []
 
         # Ray Compiled Graphs do not allow nested DAG nodes in arguments.
-        # Specifically, a DAGNode should not be placed inside any type of container.
+        # Specifically, a DAGNode should not be placed inside any type of
+        # container. However, we only know if this is a compiled graph
+        # when calling `experimental_compile`. Therefore, we need to check
+        # in advance if the arguments contain nested DAG nodes and raise
+        # an error after compilation.
         assert hasattr(self._bound_args, "__iter__")
         for arg in self._bound_args:
             if isinstance(arg, DAGNode):
