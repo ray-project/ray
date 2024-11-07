@@ -364,7 +364,7 @@ class RuntimeEnv(dict):
                 f"specified pip field: {self.get('pip')}\n"
                 f"specified conda field: {self.get('conda')}\n"
                 f"specified conda field: {self.get('uv')}\n"
-                "To use pip with conda or uv, please only set the 'conda' or 'uv'"
+                "To use pip with conda, please only set the 'conda'"
                 "field, and specify your pip dependencies within the conda YAML "
                 "config dict: see https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
