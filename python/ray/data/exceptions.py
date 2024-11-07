@@ -6,8 +6,7 @@ from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
-
-# from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
 
 logger = logging.getLogger(__name__)
 
