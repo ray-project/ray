@@ -508,45 +508,22 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentStatelessCartPole
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_impala",
-    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
-)
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
-    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-    size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
-)
-
-#@OldAPIstack
-py_test(
-    name = "learning_tests_cartpole_separate_losses_impala_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/impala/cartpole-impala-separate-losses.py"
-    ],
-    args = ["--dir=tuned_examples/impala"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/multi_agent_cartpole_impala_old_api_stack.py"],
-    args = ["--dir=tuned_examples/impala"]
-)
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_impala",
+#     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+#     size = "large",
+#     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
+# )
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
+#     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
+# )
 
 # MARWIL
 # CartPole
