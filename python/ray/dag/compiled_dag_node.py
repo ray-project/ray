@@ -2297,7 +2297,6 @@ class CompiledDAG:
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
-
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
@@ -2358,9 +2357,9 @@ class CompiledDAG:
             ) + "\n"
             get_output_channel_type = (
                 lambda output_channel: (
-                    type(self._channel_dict[task.output_channels[0]]).__name__
-                    if task.output_channels[0] in self._channel_dict
-                    else type(task.output_channels[0]).__name__
+                    type(self._channel_dict[output_channel]).__name__
+                    if output_channel in self._channel_dict
+                    else type(output_channel).__name__
                 )
                 if channel_details
                 else ""
@@ -2371,8 +2370,6 @@ class CompiledDAG:
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    actor_handle = task.downstream_task_idxs[downstream_idx]
-                    # Inner channel only exists for single return right now
                     edge_label = type_hint_type + get_output_channel_type(
                         task.output_channels[0]
                     )
