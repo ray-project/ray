@@ -8,14 +8,14 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
     DQNConfig()
     .environment(env="CartPole-v1")
     .training(
-        lr=0.0005 * (args.num_gpus or 1) ** 0.5,
+        lr=0.0005 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=32,
         replay_buffer_config={
             "type": "PrioritizedEpisodeReplayBuffer",
