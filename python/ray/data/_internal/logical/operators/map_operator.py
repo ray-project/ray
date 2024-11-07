@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from typing import Any, Callable, Dict, Iterable, Optional, Union, List
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -229,6 +229,18 @@ class Filter(AbstractUDFMap):
             ray_remote_args=ray_remote_args,
         )
 
+    def _copy(self, input_ops: List[LogicalOperator]) -> LogicalOperator:
+        assert len(input_ops) == 1
+
+        return Filter(
+            input_op=input_ops[0],
+            fn=self._fn,
+            compute=self._compute,
+            ray_remote_args_fn=self._ray_remote_args_fn,
+            ray_remote_args=self._ray_remote_args,
+        )
+
+
     @property
     def can_modify_num_rows(self) -> bool:
         return True
@@ -261,6 +273,22 @@ class FlatMap(AbstractUDFMap):
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
+
+    def _copy(self, input_ops: List[LogicalOperator]) -> LogicalOperator:
+        assert len(input_ops) == 1
+
+        return FlatMap(
+            input_op=input_ops[0],
+            fn=self._fn,
+            fn_args=self._fn_args,
+            fn_kwargs=self._fn_kwargs,
+            fn_constructor_args=self._fn_constructor_args,
+            fn_constructor_kwargs=self._fn_constructor_kwargs,
+            compute=self._compute,
+            ray_remote_args_fn=self._ray_remote_args_fn,
+            ray_remote_args=self._ray_remote_args,
+        )
+
 
     @property
     def can_modify_num_rows(self) -> bool:
