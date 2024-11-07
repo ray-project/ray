@@ -70,7 +70,7 @@ class DAGNode(DAGNodeBase):
         # Indicates whether this DAG node contains nested DAG nodes.
         # Nested DAG nodes are allowed in traditional DAGs but not
         # in Ray Compiled Graphs, except for MultiOutputNode.
-        self._args_contains_nested_dag_node = False
+        self._args_contain_nested_dag_node = False
 
         # The list of nodes that this DAG node uses as an argument.
         self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
@@ -93,16 +93,18 @@ class DAGNode(DAGNodeBase):
         """
         upstream_nodes: List["DAGNode"] = []
 
+        # Ray Compiled Graphs do not allow nested DAG nodes in arguments.
+        # Specifically, a DAGNode should not be placed inside any type of container.
         assert hasattr(self._bound_args, "__iter__")
         for arg in self._bound_args:
             if isinstance(arg, DAGNode):
                 upstream_nodes.append(arg)
             else:
                 scanner = _PyObjScanner()
-                dag_nodes = scanner.find_nodes([arg])
+                dag_nodes = scanner.find_nodes(arg)
                 upstream_nodes.extend(dag_nodes)
                 scanner.clear()
-                self._args_contains_nested_dag_node = len(dag_nodes) > 0
+                self._args_contain_nested_dag_node = len(dag_nodes) > 0
 
         scanner = _PyObjScanner()
         other_upstream_nodes: List["DAGNode"] = scanner.find_nodes(
@@ -409,26 +411,8 @@ class DAGNode(DAGNodeBase):
 
         while queue:
             node = queue.pop(0)
-            if node._args_contains_nested_dag_node:
-                for arg in node._bound_args:
-                    if isinstance(arg, DAGNode):
-                        continue
-                    else:
-                        scanner = _PyObjScanner()
-                        dag_nodes = scanner.find_nodes([arg])
-                        scanner.clear()
-                        if len(dag_nodes) > 0:
-                            raise ValueError(
-                                f"Found {len(dag_nodes)} DAGNodes from the arg {arg} "
-                                f"in {self}. Please ensure that the argument is a "
-                                "single DAGNode and that a DAGNode is not allowed to "
-                                "be placed inside any type of container."
-                            )
-                raise AssertionError(
-                    "A DAGNode's args should contain nested DAGNodes as args, "
-                    "but none were found during the compilation process. This is a "
-                    "Ray internal error. Please report this issue to the Ray team."
-                )
+            if node._args_contain_nested_dag_node:
+                self._raise_nested_dag_node_error(node._bound_args)
 
             if node not in visited:
                 if node.is_adag_output_node:
@@ -465,6 +449,33 @@ class DAGNode(DAGNodeBase):
                 ):
                     if neighbor not in visited:
                         queue.append(neighbor)
+
+    def _raise_nested_dag_node_error(self, args):
+        """
+        Raise an error for nested DAGNodes in Ray Compiled Graphs.
+
+        Args:
+            args: The arguments of the DAGNode.
+        """
+        for arg in args:
+            if isinstance(arg, DAGNode):
+                continue
+            else:
+                scanner = _PyObjScanner()
+                dag_nodes = scanner.find_nodes([arg])
+                scanner.clear()
+                if len(dag_nodes) > 0:
+                    raise ValueError(
+                        f"Found {len(dag_nodes)} DAGNodes from the arg {arg} "
+                        f"in {self}. Please ensure that the argument is a "
+                        "single DAGNode and that a DAGNode is not allowed to "
+                        "be placed inside any type of container."
+                    )
+        raise AssertionError(
+            "A DAGNode's args should contain nested DAGNodes as args, "
+            "but none were found during the compilation process. This is a "
+            "Ray internal error. Please report this issue to the Ray team."
+        )
 
     def _find_root(self) -> "DAGNode":
         """
