@@ -120,6 +120,20 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_to_pandas_different_block_types(ray_start_regular_shared):
+    # Test for https://github.com/ray-project/ray/issues/48575.
+    df = pd.DataFrame({"a": [0]})
+    ds1 = ray.data.from_pandas(df)
+
+    table = pa.Table.from_pandas(df)
+    ds2 = ray.data.from_arrow(table)
+
+    actual_df = ds1.union(ds2).to_pandas()
+
+    expected_df = pd.DataFrame({"a": [0, 0]})
+    pd.testing.assert_frame_equal(actual_df, expected_df)
+
+
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})
