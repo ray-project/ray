@@ -82,48 +82,48 @@ class MockNcclGroupSet:
     def __call__(
         self,
         actors: List["ray.actor.ActorHandle"],
-        custom_nccl_group: Optional[GPUCommunicator] = None,
+        custom_communicator_group: Optional[GPUCommunicator] = None,
         use_communication_streams: bool = False,
     ) -> str:
         group_id = str(uuid.uuid4())
         self.ids_to_actors_and_custom_comms[group_id] = (
             frozenset(actors),
-            custom_nccl_group,
+            custom_communicator_group,
         )
 
-        if custom_nccl_group is None:
+        if custom_communicator_group is None:
             ranks = list(range(len(actors)))
         else:
-            ranks = [custom_nccl_group.get_rank(actor) for actor in actors]
+            ranks = [custom_communicator_group.get_rank(actor) for actor in actors]
         init_tasks = [
             actor.__ray_call__.remote(
                 mock_do_init_communicator_group,
                 group_id,
                 rank,
                 actors,
-                custom_nccl_group,
+                custom_communicator_group,
             )
             for rank, actor in zip(ranks, actors)
         ]
         ray.get(init_tasks, timeout=30)
 
         ctx = ChannelContext.get_current()
-        if custom_nccl_group is not None:
-            ctx.nccl_groups[group_id] = custom_nccl_group
+        if custom_communicator_group is not None:
+            ctx.communicator_groups[group_id] = custom_communicator_group
         else:
-            ctx.nccl_groups[group_id] = AbstractNcclGroup(actors)
+            ctx.communicator_groups[group_id] = AbstractNcclGroup(actors)
 
         return group_id
 
-    def mock_destroy_nccl_group(self, group_id: str) -> None:
+    def mock_destroy_communicator_group(self, group_id: str) -> None:
         ctx = ChannelContext.get_current()
-        if group_id not in ctx.nccl_groups:
+        if group_id not in ctx.communicator_groups:
             return
 
         actors, _ = self.ids_to_actors_and_custom_comms[group_id]
         destroy_tasks = [
             actor.__ray_call__.remote(
-                mock_do_destroy_nccl_group,
+                mock_do_destroy_communicator_group,
                 group_id,
             )
             for actor in actors
@@ -132,8 +132,8 @@ class MockNcclGroupSet:
 
         if group_id in self.ids_to_actors_and_custom_comms:
             del self.ids_to_actors_and_custom_comms[group_id]
-        ctx.nccl_groups[group_id].destroy()
-        del ctx.nccl_groups[group_id]
+        ctx.communicator_groups[group_id].destroy()
+        del ctx.communicator_groups[group_id]
 
     def check_init(
         self,
@@ -150,21 +150,21 @@ class MockNcclGroupSet:
             set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
         )
 
-        nccl_group_id_p2p = compiled_dag.nccl_group_id_p2p
+        communicator_group_id_p2p = compiled_dag.communicator_group_id_p2p
         if p2p_actors_and_custom_comm is None:
-            assert nccl_group_id_p2p is None
+            assert communicator_group_id_p2p is None
         else:
-            assert nccl_group_id_p2p
+            assert communicator_group_id_p2p
             assert (
-                self.ids_to_actors_and_custom_comms[nccl_group_id_p2p]
+                self.ids_to_actors_and_custom_comms[communicator_group_id_p2p]
                 == p2p_actors_and_custom_comm
             )
 
-    def check_teardown(self, nccl_group_ids: List[str]) -> None:
+    def check_teardown(self, communicator_group_ids: List[str]) -> None:
         ctx = ChannelContext.get_current()
-        for nccl_group_id in nccl_group_ids:
-            assert nccl_group_id not in self.ids_to_actors_and_custom_comms
-            assert nccl_group_id not in ctx.nccl_groups
+        for communicator_group_id in communicator_group_ids:
+            assert communicator_group_id not in self.ids_to_actors_and_custom_comms
+            assert communicator_group_id not in ctx.communicator_groups
 
 
 @ray.remote
@@ -185,27 +185,27 @@ def mock_do_init_communicator_group(
     group_id: str,
     rank: int,
     actors: List[ray.actor.ActorHandle],
-    custom_nccl_group: Optional[GPUCommunicator],
+    custom_communicator_group: Optional[GPUCommunicator],
 ) -> None:
     ctx = ChannelContext.get_current()
-    if custom_nccl_group is None:
-        nccl_group = AbstractNcclGroup(actors)
-        nccl_group.initialize(rank)
-        ctx.nccl_groups[group_id] = nccl_group
+    if custom_communicator_group is None:
+        communicator_group = AbstractNcclGroup(actors)
+        communicator_group.initialize(rank)
+        ctx.communicator_groups[group_id] = communicator_group
     else:
-        custom_nccl_group.initialize(rank)
-        ctx.nccl_groups[group_id] = custom_nccl_group
+        custom_communicator_group.initialize(rank)
+        ctx.communicator_groups[group_id] = custom_communicator_group
 
 
-def mock_do_destroy_nccl_group(self, group_id: str) -> None:
+def mock_do_destroy_communicator_group(self, group_id: str) -> None:
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
+    if group_id not in ctx.communicator_groups:
         return
-    ctx.nccl_groups[group_id].destroy()
-    del ctx.nccl_groups[group_id]
+    ctx.communicator_groups[group_id].destroy()
+    del ctx.communicator_groups[group_id]
 
 
-def check_nccl_group_init(
+def check_communicator_group_init(
     monkeypatch,
     dag: "ray.dag.DAGNode",
     actors_and_custom_comms: Set[
@@ -215,36 +215,36 @@ def check_nccl_group_init(
         Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
     ] = None,
 ) -> "ray.dag.CompiledDAG":
-    mock_nccl_group_set = MockNcclGroupSet()
+    mock_communicator_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
         "ray.dag.compiled_dag_node._init_communicator_group",
-        mock_nccl_group_set,
+        mock_communicator_group_set,
     )
     monkeypatch.setattr(
         "ray.dag.collective_node._init_communicator_group",
-        mock_nccl_group_set,
+        mock_communicator_group_set,
     )
 
     compiled_dag = dag.experimental_compile()
-    mock_nccl_group_set.check_init(
+    mock_communicator_group_set.check_init(
         compiled_dag,
         actors_and_custom_comms,
         p2p_actors_and_custom_comm,
     )
 
-    return compiled_dag, mock_nccl_group_set
+    return compiled_dag, mock_communicator_group_set
 
 
-def check_nccl_group_teardown(
+def check_communicator_group_teardown(
     monkeypatch,
     compiled_dag: "ray.dag.CompiledDAG",
-    mock_nccl_group_set: MockNcclGroupSet,
+    mock_communicator_group_set: MockNcclGroupSet,
 ):
     monkeypatch.setattr(
-        "ray.dag.compiled_dag_node._destroy_nccl_group",
-        mock_nccl_group_set.mock_destroy_nccl_group,
+        "ray.dag.compiled_dag_node._destroy_communicator_group",
+        mock_communicator_group_set.mock_destroy_communicator_group,
     )
 
-    nccl_group_ids = copy.deepcopy(compiled_dag.nccl_group_ids)
+    communicator_group_ids = copy.deepcopy(compiled_dag.communicator_group_ids)
     compiled_dag.teardown()
-    mock_nccl_group_set.check_teardown(nccl_group_ids)
+    mock_communicator_group_set.check_teardown(communicator_group_ids)
