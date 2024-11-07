@@ -4054,7 +4054,8 @@ class TrainIterCtx:
                 (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
             )
             self.init_env_steps_trained = self.algo.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                default=0,
             )
             self.init_agent_steps_sampled = sum(
                 self.algo.metrics.peek(
@@ -4063,7 +4064,7 @@ class TrainIterCtx:
             )
             self.init_agent_steps_trained = sum(
                 self.algo.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
+                    (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
                 ).values()
             )
         else:
