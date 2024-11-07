@@ -63,3 +63,9 @@ def test_convert_to_pyarrow_array_object_ext_type_fallback():
     pa_array = convert_to_pyarrow_array(column_values, column_name)
 
     assert pa_array.to_pylist() == column_values.tolist()
+
+
+if __name__ == "__main__":
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))
