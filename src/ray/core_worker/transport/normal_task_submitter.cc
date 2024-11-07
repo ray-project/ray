@@ -39,43 +39,39 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
     absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
-      cancelled_tasks_.erase(task_spec.TaskId());
-    } else {
-      task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
-          current_sys_time_ms());
-      // Note that the dependencies in the task spec are mutated to only contain
-      // plasma dependencies after ResolveDependencies finishes.
-      const SchedulingKey scheduling_key(
-          task_spec.GetSchedulingClass(),
-          task_spec.GetDependencyIds(),
-          task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
-          task_spec.GetRuntimeEnvHash());
-      auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
-      scheduling_key_entry.task_queue.push_back(task_spec);
-      scheduling_key_entry.resource_spec = task_spec;
+    task_spec.GetMutableMessage().set_dependency_resolution_timestamp_ms(
+        current_sys_time_ms());
+    // Note that the dependencies in the task spec are mutated to only contain
+    // plasma dependencies after ResolveDependencies finishes.
+    const SchedulingKey scheduling_key(
+        task_spec.GetSchedulingClass(),
+        task_spec.GetDependencyIds(),
+        task_spec.IsActorCreationTask() ? task_spec.ActorCreationId() : ActorID::Nil(),
+        task_spec.GetRuntimeEnvHash());
+    auto &scheduling_key_entry = scheduling_key_entries_[scheduling_key];
+    scheduling_key_entry.task_queue.push_back(task_spec);
+    scheduling_key_entry.resource_spec = task_spec;
 
-      if (!scheduling_key_entry.AllWorkersBusy()) {
-        // There are idle workers, so we don't need more
-        // workers.
+    if (!scheduling_key_entry.AllWorkersBusy()) {
+      // There are idle workers, so we don't need more
+      // workers.
 
-        for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
-          RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
-                    worker_to_lease_entry_.end());
-          auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
-          if (!lease_entry.is_busy) {
-            OnWorkerIdle(active_worker_addr,
-                         scheduling_key,
-                         /*was_error*/ false,
-                         /*error_detail*/ "",
-                         /*worker_exiting*/ false,
-                         lease_entry.assigned_resources);
-            break;
-          }
+      for (const auto &active_worker_addr : scheduling_key_entry.active_workers) {
+        RAY_CHECK(worker_to_lease_entry_.find(active_worker_addr) !=
+                  worker_to_lease_entry_.end());
+        auto &lease_entry = worker_to_lease_entry_[active_worker_addr];
+        if (!lease_entry.is_busy) {
+          OnWorkerIdle(active_worker_addr,
+                       scheduling_key,
+                       /*was_error*/ false,
+                       /*error_detail*/ "",
+                       /*worker_exiting*/ false,
+                       lease_entry.assigned_resources);
+          break;
         }
       }
-      RequestNewWorkerIfNeeded(scheduling_key);
     }
+    RequestNewWorkerIfNeeded(scheduling_key);
   });
   return Status::OK();
 }
@@ -698,8 +694,7 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   std::shared_ptr<rpc::CoreWorkerClientInterface> client = nullptr;
   {
     absl::MutexLock lock(&mu_);
-    if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+    if (!task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
       return Status::OK();
     }
 
@@ -721,7 +716,6 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     // This will get removed either when the RPC call to cancel is returned
     // or when all dependencies are resolved.
-    RAY_CHECK(cancelled_tasks_.emplace(task_spec.TaskId()).second);
     auto rpc_client = executing_tasks_.find(task_spec.TaskId());
 
     if (rpc_client == executing_tasks_.end()) {
@@ -757,7 +751,6 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
         absl::MutexLock lock(&mu_);
         RAY_LOG(DEBUG) << "CancelTask RPC response received for " << task_spec.TaskId()
                        << " with status " << status.ToString();
-        cancelled_tasks_.erase(task_spec.TaskId());
 
         // Retry is not attempted if !status.ok() because force-kill may kill the worker
         // before the reply is sent.

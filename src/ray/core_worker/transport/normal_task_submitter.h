@@ -360,9 +360,6 @@ class NormalTaskSubmitter {
   absl::flat_hash_map<SchedulingKey, SchedulingKeyEntry> scheduling_key_entries_
       ABSL_GUARDED_BY(mu_);
 
-  // Tasks that were cancelled while being resolved.
-  absl::flat_hash_set<TaskID> cancelled_tasks_ ABSL_GUARDED_BY(mu_);
-
   // Keeps track of where currently executing tasks are being run.
   absl::flat_hash_map<TaskID, rpc::Address> executing_tasks_ ABSL_GUARDED_BY(mu_);
 
