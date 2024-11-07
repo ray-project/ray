@@ -249,7 +249,7 @@ def test_static_shape(ray_start_cluster):
         transport="nccl",
         _static_shape=True,
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
     sender.create_traced_channel.remote("cpu_data", receiver_to_node)
@@ -338,7 +338,7 @@ def test_direct_return(ray_start_cluster):
         transport="nccl",
         _direct_return=True,
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
     sender.create_traced_channel.remote("cpu_data", receiver_to_node)
@@ -426,7 +426,7 @@ def test_static_shape_and_direct_return(ray_start_cluster):
         _static_shape=True,
         _direct_return=True,
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_group_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
     sender.create_traced_channel.remote("cpu_data", receiver_to_node)
