@@ -209,7 +209,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   ///
   /// \param[in] address Address of the worker server.
   /// \param[in] client_call_manager The `ClientCallManager` used for managing requests.
-  CoreWorkerClient(const rpc::Address &address, ClientCallManager &client_call_manager)
+  CoreWorkerClient(const rpc::Address &address,
+                   ClientCallManager &client_call_manager,
+                   std::function<void()> core_worker_unavailable_timeout_callback)
       : addr_(address) {
     grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
         addr_.ip_address(), addr_.port(), client_call_manager);
@@ -223,9 +225,9 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
         ::RayConfig::instance()
             .grpc_client_check_connection_status_interval_milliseconds(),
         /*server_unavailable_timeout_seconds=*/
-        std::numeric_limits<uint64_t>::max(),
+        ::RayConfig::instance().core_worker_rpc_server_reconnect_timeout_s(),
         /*server_unavailable_timeout_callback=*/
-        []() { RAY_LOG(FATAL) << "Server unavailable should never timeout"; },
+        core_worker_unavailable_timeout_callback,
         /*server_name=*/"Core worker " + addr_.ip_address());
   };
 
@@ -488,7 +490,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 };
 
 typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-    ClientFactoryFn;
+    CoreWorkerClientFactoryFn;
 
 }  // namespace rpc
 }  // namespace ray

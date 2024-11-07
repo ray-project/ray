@@ -411,7 +411,9 @@ void GcsServer::InitClusterTaskManager() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   auto client_factory = [this](const rpc::Address &address) {
-    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
+      // Keep retrying
+    });
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
@@ -447,7 +449,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
     gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
   };
   auto client_factory = [this](const rpc::Address &address) {
-    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
+      // Keep retrying
+    });
   };
 
   RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
@@ -474,7 +478,10 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
       [this](const rpc::Address &address) {
-        return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+        return std::make_shared<rpc::CoreWorkerClient>(
+            address, client_call_manager_, []() {
+              // Keep retrying.
+            });
       });
 
   // Initialize by gcs tables data.

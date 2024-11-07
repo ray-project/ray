@@ -293,7 +293,43 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   }
 
   core_worker_client_pool_ =
-      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+      std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr, *client_call_manager_, [this, addr]() {
+              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+              const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
+              const rpc::GcsNodeInfo *node_info =
+                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
+              if (node_info == nullptr) {
+                RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                    << "Disconnect core worker client since its node is dead";
+                io_service_.post(
+                    [this, worker_id]() {
+                      core_worker_client_pool_->Disconnect(worker_id);
+                    },
+                    "CoreWorkerClientPool.Disconnect");
+
+                return;
+              }
+
+              std::shared_ptr<raylet::RayletClient> raylet_client =
+                  std::make_shared<raylet::RayletClient>(
+                      rpc::NodeManagerWorkerClient::make(
+                          node_info->node_manager_address(),
+                          node_info->node_manager_port(),
+                          *client_call_manager_));
+              raylet_client->IsLocalWorkerDead(
+                  worker_id,
+                  [this, worker_id](const Status &status,
+                                    rpc::IsLocalWorkerDeadReply &&reply) {
+                    if (status.ok() && reply.is_dead()) {
+                      RAY_LOG(INFO).WithField(worker_id)
+                          << "Disconnect core worker client since it is dead";
+                      core_worker_client_pool_->Disconnect(worker_id);
+                    }
+                  });
+            });
+      });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*channels=*/std::vector<

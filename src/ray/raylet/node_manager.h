@@ -224,7 +224,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
   /// Get the local drain request.
-  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
@@ -551,6 +551,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
