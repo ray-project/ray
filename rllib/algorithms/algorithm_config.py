@@ -404,6 +404,9 @@ class AlgorithmConfig(_Config):
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
         if not hasattr(self, "exploration_config"):
+            # Helper to keep track of the original exploration config when dis-/enabling
+            # rl modules.
+            self._prior_exploration_config = None
             self.exploration_config = {}
 
         # `self.api_stack()`
@@ -536,9 +539,6 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self._model_config = {}
         self._rl_module_spec = None
-        # Helper to keep track of the original exploration config when dis-/enabling
-        # rl modules.
-        self.__prior_exploration_config = None
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -1599,13 +1599,13 @@ class AlgorithmConfig(_Config):
             self.enable_rl_module_and_learner = enable_rl_module_and_learner
 
             if enable_rl_module_and_learner is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
+                self._prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
 
             elif enable_rl_module_and_learner is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
+                if self._prior_exploration_config is not None:
+                    self.exploration_config = self._prior_exploration_config
+                    self._prior_exploration_config = None
                 else:
                     logger.warning(
                         "config.enable_rl_module_and_learner was set to False, but no "
