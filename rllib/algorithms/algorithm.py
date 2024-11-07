@@ -3427,7 +3427,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             logger.warning(
                 "This evaluation iteration resulted in an empty set of episode summary "
                 "results! It's possible that your configured duration timesteps are not"
-                " enough to finish even a single episode. Your have configured "
+                " enough to finish even a single episode. You have configured "
                 f"{self.config.evaluation_duration}"
                 f"{self.config.evaluation_duration_unit}. For 'timesteps', try "
                 "increasing this value via the `config.evaluation(evaluation_duration="
