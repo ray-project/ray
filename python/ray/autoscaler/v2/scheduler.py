@@ -1597,7 +1597,7 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # Skip it.
                 if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
                     logger.debug(
-                        "Node {}(idle for {} secs) is needed by the cluster resource "
+                        "Node {} (idle for {} secs) is needed by the cluster resource "
                         "constraints, skip idle termination.".format(
                             node.ray_node_id, node.idle_duration_ms / s_to_ms
                         )
@@ -1614,6 +1614,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                 - terminate_nodes_by_type[node_type]
                 <= min_count
             ):
+                logger.info(
+                    "Node {} (idle for {} secs) belongs to node_type {} and is "
+                    "required by min_worker_nodes, skipping idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+                    )
+                )
                 continue
 
             terminate_nodes_by_type[node.node_type] += 1
