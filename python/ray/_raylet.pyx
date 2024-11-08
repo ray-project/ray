@@ -3829,10 +3829,13 @@ cdef class CoreWorker:
     def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
-
+            
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only))
+            status = CCoreWorkerProcess.GetCoreWorker().Delete(free_ids, local_only)
+            if status.IsIOError():
+                check_status(CRayStatus.UnexpectedSystemExit(status.ToString()))
+            else:
+                check_status(status)
 
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:

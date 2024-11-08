@@ -85,8 +85,7 @@ Status raylet::RayletConnection::AtomicRequestReply(MessageType request_type,
 }
 
 void raylet::RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if ((!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) ||
-      status.IsIOError()) {
+  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
     RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
                         "dead or is unreachable. Terminate the process. Status: "
                      << status;
@@ -184,6 +183,12 @@ Status raylet::RayletClient::Disconnect(
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
+  // TODO (myan): In the current implementation, if raylet is already terminated in the
+  // "WriteMessage" function above, the worker process will exit early in the function 
+  // and will not reach here. However, the code path here is shared between graceful 
+  // shutdown and force termination. We need to make sure the above early exit 
+  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
+  // leak if early exit is triggered 
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << status.ToString()
