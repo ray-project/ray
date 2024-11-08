@@ -83,10 +83,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         RequestNewWorkerIfNeeded(scheduling_key);
       }
     }
-    if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
-    }
   });
   return Status::OK();
 }
@@ -712,7 +708,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+        !task_finisher_->MarkTaskCanceled(task_spec.TaskId()) ||
+        !task_finisher_->IsTaskPending(task_spec.TaskId())) {
       return Status::OK();
     }
 
@@ -742,7 +739,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
-      // No executing tasks, so cancelling is a noop.
+      resolver_.CancelDependencyResolution(task_spec.TaskId());
+      RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                                 rpc::ErrorType::TASK_CANCELLED));
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
