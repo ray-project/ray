@@ -93,8 +93,6 @@ class UvProcessor:
         logger.info("Installing package uv to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
-    # TODO(hjiang): Add an integration test for existence check after
-    # PR (https://github.com/ray-project/ray/pull/48619) gets merged.
     async def _check_uv_existence(
         self, path: str, cwd: str, env: dict, logger: logging.Logger
     ) -> bool:
