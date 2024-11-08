@@ -5,7 +5,7 @@ import queue
 import uuid
 from functools import partial
 from numbers import Number
-from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type
+from typing import Any, Callable, Dict, Optional, Type
 
 import ray.train
 from ray.air._internal.util import RunnerThread, StartTraceback
@@ -18,15 +18,11 @@ from ray.train._internal.session import (
     init_session,
     shutdown_session,
 )
-from ray.train._internal.storage import StorageContext
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
 from ray.util.annotations import DeveloperAPI
-
-if TYPE_CHECKING:
-    from ray.tune.logger import Logger
 
 logger = logging.getLogger(__name__)
 
@@ -45,17 +41,6 @@ class FunctionTrainable(Trainable):
 
     _name = "func"
 
-    def __init__(
-        self,
-        config: Dict[str, Any] = None,
-        logger_creator: Callable[[Dict[str, Any]], "Logger"] = None,  # Deprecated (2.7)
-        storage: Optional[StorageContext] = None,
-    ):
-        super(FunctionTrainable, self).__init__(config, logger_creator, storage)
-        # This is the run_id for training sessions. It is used to
-        # register the run_id info to the train controller process.
-        self._run_id = uuid.uuid4().hex
-
     def setup(self, config):
         init_session(
             training_func=lambda: self._trainable_func(self.config),
@@ -67,7 +52,9 @@ class FunctionTrainable(Trainable):
                 driver_ip=None,
                 driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
-                run_id=self._run_id,
+                # This run_id is used for train observability and logging,
+                # and will not be used for general tune use case.
+                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
             synchronous_result_reporting=True,
@@ -198,7 +185,9 @@ class FunctionTrainable(Trainable):
                 driver_ip=None,
                 driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
-                run_id=self._run_id,
+                # Reset run_id for the trial if the config changes.
+                # This is a niche use cases and most likely not needed.
+                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
         )
