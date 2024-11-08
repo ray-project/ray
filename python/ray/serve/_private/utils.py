@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import requests
 
@@ -39,12 +39,12 @@ except ImportError:
     np = None
 
 MESSAGE_PACK_OFFSET = 9
-
 GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
     "Streaming deployment handle results cannot be passed to "
     "downstream handle calls. If you have a use case requiring "
     "this feature, please file a feature request on GitHub."
 )
+
 
 # Use a global singleton enum to emulate default options. We cannot use None
 # for those option because None is a valid new value.
