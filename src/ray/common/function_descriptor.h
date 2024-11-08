@@ -131,7 +131,7 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
 
   virtual std::string ToString() const {
     return absl::StrFormat(
-        "{type=JavaFunctionDescriptor, class_name=%s, function_name=%s, , signature=%s}",
+        "{type=JavaFunctionDescriptor, class_name=%s, function_name=%s, signature=%s}",
         typed_message_->class_name(),
         typed_message_->function_name(),
         typed_message_->signature());
