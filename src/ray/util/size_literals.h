@@ -44,46 +44,46 @@ constexpr unsigned long long operator""_PiB(unsigned long long sz) {
 constexpr unsigned long long operator""_PB(unsigned long long sz) { return sz * 1000_TB; }
 
 constexpr unsigned long long operator""_KiB(long double sz) {
-  const long double res = sz * 1024ULL;
+  const long double res = sz * 1_KiB;
   return static_cast<unsigned long long>(res);
 }
 constexpr unsigned long long operator""_KB(long double sz) {
-  const long double res = sz * 1000ULL;
+  const long double res = sz * 1_KB;
   return static_cast<unsigned long long>(res);
 }
 
 constexpr unsigned long long operator""_MiB(long double sz) {
-  const long double res = sz * 1024_KiB;
+  const long double res = sz * 1_MiB;
   return static_cast<unsigned long long>(res);
 }
 constexpr unsigned long long operator""_MB(long double sz) {
-  const long double res = sz * 1000_KB;
+  const long double res = sz * 1_MB;
   return static_cast<unsigned long long>(res);
 }
 
 constexpr unsigned long long operator""_GiB(long double sz) {
-  const long double res = sz * 1024_MiB;
+  const long double res = sz * 1_GiB;
   return static_cast<unsigned long long>(res);
 }
 constexpr unsigned long long operator""_GB(long double sz) {
-  const long double res = sz * 1000_MB;
+  const long double res = sz * 1_GB;
   return static_cast<unsigned long long>(res);
 }
 
 constexpr unsigned long long operator""_TiB(long double sz) {
-  const long double res = sz * 1024_GiB;
+  const long double res = sz * 1_TiB;
   return static_cast<unsigned long long>(res);
 }
 constexpr unsigned long long operator""_TB(long double sz) {
-  const long double res = sz * 1000_GB;
+  const long double res = sz * 1_TB;
   return static_cast<unsigned long long>(res);
 }
 
 constexpr unsigned long long operator""_PiB(long double sz) {
-  const long double res = sz * 1024_TiB;
+  const long double res = sz * 1_PiB;
   return static_cast<unsigned long long>(res);
 }
 constexpr unsigned long long operator""_PB(long double sz) {
-  const long double res = sz * 1000_TB;
+  const long double res = sz * 1_PB;
   return static_cast<unsigned long long>(res);
 }
