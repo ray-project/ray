@@ -27,7 +27,7 @@ from ray.serve._private.utils import (
     get_current_actor_id,
     get_head_node_id,
     inside_ray_client_context,
-    resolve_request_args,
+    resolve_deployment_response,
 )
 
 # NOTE: Please read carefully before changing!
@@ -124,7 +124,7 @@ def create_router(
             not is_inside_ray_client_context
             and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
         ),
-        resolve_request_args_func=resolve_request_args,
+        resolve_request_arg_func=resolve_deployment_response,
     )
 
 
