@@ -363,7 +363,7 @@ class RuntimeEnv(dict):
                 "runtime_env cannot be specified at the same time.\n"
                 f"specified pip field: {self.get('pip')}\n"
                 f"specified conda field: {self.get('conda')}\n"
-                f"specified conda field: {self.get('uv')}\n"
+                f"specified uv field: {self.get('uv')}\n"
                 "To use pip with conda, please only set the 'conda'"
                 "field, and specify your pip dependencies within the conda YAML "
                 "config dict: see https://conda.io/projects/conda/en/latest/"
