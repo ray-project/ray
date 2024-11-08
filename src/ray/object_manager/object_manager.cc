@@ -17,9 +17,9 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
+#include "ray/object_manager/plasma/store.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
-#include "src/ray/object_manager/plasma/store.h"
 
 namespace asio = boost::asio;
 
