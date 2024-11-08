@@ -116,8 +116,6 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-double operator""_MB(unsigned long long int x) { return static_cast<double>(x * 1_MiB); }
-
 DEFINE_stats(object_store_dist,
              "The distribution of object size in bytes",
              ("Source"),
