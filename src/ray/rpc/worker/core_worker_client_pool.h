@@ -29,7 +29,7 @@ class CoreWorkerClientPool {
 
   /// Creates a CoreWorkerClientPool by a given connection function.
   explicit CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
-      : core_worker_client_factory_(client_factory){};
+      : core_worker_client_factory_(std::move(client_factory)){};
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
@@ -69,7 +69,7 @@ class CoreWorkerClientPool {
     CoreWorkerClientEntry() {}
     CoreWorkerClientEntry(ray::WorkerID worker_id,
                           std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
-        : worker_id(worker_id), core_worker_client(core_worker_client) {}
+        : worker_id(worker_id), core_worker_client(std::move(core_worker_client)) {}
 
     ray::WorkerID worker_id;
     std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
