@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 import numpy as np
@@ -11,7 +11,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.zero_padding import (
     create_mask_and_seq_lens,
@@ -397,10 +397,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             )
         return mod.model_config["max_seq_len"]
 
-
-@Deprecated(
-    new="ray.rllib.utils.postprocessing.zero_padding.split_and_zero_pad()",
-    error=True,
-)
-def split_and_zero_pad_list(*args, **kwargs):
-    pass
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (),  # args,
+            {
+                "as_learner_connector": self._as_learner_connector,
+            },  # kwargs
+        )

@@ -145,3 +145,12 @@ class _FrameStacking(ConnectorV2):
             shape=list(obs_space.shape)[:-1] + [self.num_frames],
             dtype=obs_space.dtype,
         )
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (),  # args,
+            {
+                "as_learner_connector": self._as_learner_connector,
+            },  # kwargs
+        )

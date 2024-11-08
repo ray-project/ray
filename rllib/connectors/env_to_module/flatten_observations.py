@@ -209,3 +209,12 @@ class FlattenObservations(ConnectorV2):
             sa_episode.observation_space = self.observation_space
 
         return batch
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (),  # args,
+            {
+                "as_learner_connector": self._as_learner_connector,
+            },  # kwargs
+        )
