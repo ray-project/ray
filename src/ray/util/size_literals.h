@@ -18,6 +18,7 @@
 
 #include <cstdint>
 
+// Size literal for integer values.
 constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
 
 constexpr unsigned long long operator""_KiB(unsigned long long sz) { return sz * 1024_B; }
@@ -43,6 +44,7 @@ constexpr unsigned long long operator""_PiB(unsigned long long sz) {
 }
 constexpr unsigned long long operator""_PB(unsigned long long sz) { return sz * 1000_TB; }
 
+// Size literals for floating point values.
 constexpr unsigned long long operator""_KiB(long double sz) {
   const long double res = sz * 1_KiB;
   return static_cast<unsigned long long>(res);
