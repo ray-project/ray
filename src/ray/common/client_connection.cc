@@ -66,7 +66,7 @@ void SetFdCloseOnExec(int fd) {
   int flags = fcntl(fd, F_GETFD, 0);
   RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
   const int ret = fcntl(fd, F_SETFD, flags | FD_CLOEXEC);
-  RAY_CHECK_NE(flags, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
+  RAY_CHECK_NE(ret, -1) << "fcntl error: errno = " << errno << ", fd = " << fd;
   RAY_LOG(DEBUG) << "set FD_CLOEXEC to fd " << fd;
 }
 #endif
@@ -125,7 +125,7 @@ ServerConnection::ServerConnection(local_stream_socket &&socket)
       async_write_queue_(),
       async_write_in_flight_(false),
       async_write_broken_pipe_(false) {
-  SetCloseOnFork(socket_);
+  SetCloseOnExec(socket_);
 }
 
 ServerConnection::~ServerConnection() {
