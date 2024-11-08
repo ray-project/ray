@@ -364,7 +364,8 @@ class RuntimeEnvAgent:
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 serialized_runtime_env: The serialized runtime env.
-                setup_timeout_seconds: The timeout of runtime environment creation.
+                setup_timeout_seconds: The timeout of runtime environment creation for
+                each attempt.
 
             Returns:
                 a tuple which contains result (bool), runtime env context (str), error
