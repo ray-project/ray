@@ -9,11 +9,9 @@ import pyarrow as pa
 import pyarrow.dataset as pds
 import pyarrow.parquet as pq
 import pytest
-from pkg_resources import parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
 from ray.data import Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
@@ -571,13 +569,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
     ]
 
 
-# Skip this test if pyarrow is below version 7. As the old
-# pyarrow does not support single path with partitioning,
-# this issue cannot be resolved by Ray data itself.
-@pytest.mark.skipif(
-    parse_version(_get_pyarrow_version()) < parse_version("7.0.0"),
-    reason="Old pyarrow behavior cannot be fixed.",
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -620,15 +611,13 @@ def test_parquet_read_partitioned_with_partition_filter(
         ),
     )
 
-    assert ds.schema() == Schema(
-        pa.schema(
-            [
-                ("x", pa.string()),
-                ("y", pa.string()),
-                ("z", pa.float64()),
-            ]
-        )
-    )
+    # Where we insert partition columns is an implementation detail, so we don't check
+    # the order of the columns.
+    assert sorted(zip(ds.schema().names, ds.schema().types)) == [
+        ("x", pa.string()),
+        ("y", pa.string()),
+        ("z", pa.float64()),
+    ]
 
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
 
@@ -1054,8 +1043,10 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
+
     ds = ray.data.read_parquet(path)
-    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+    assert ds.take_all() == []
 
 
 def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
@@ -1325,6 +1316,15 @@ def test_count_with_filter(ray_start_regular_shared):
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
+
+
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
 
 
 if __name__ == "__main__":

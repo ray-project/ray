@@ -530,7 +530,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
 
 void NormalTaskSubmitter::PushNormalTask(
     const rpc::Address &addr,
-    shared_ptr<rpc::CoreWorkerClientInterface> client,
+    std::shared_ptr<rpc::CoreWorkerClientInterface> client,
     const SchedulingKey &scheduling_key,
     const TaskSpecification &task_spec,
     const google::protobuf::RepeatedPtrField<rpc::ResourceMapEntry> &assigned_resources) {

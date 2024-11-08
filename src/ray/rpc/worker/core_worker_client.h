@@ -14,12 +14,6 @@
 
 #pragma once
 
-#ifdef __clang__
-// TODO(mehrdadn): Remove this when the warnings are addressed
-#pragma clang diagnostic push
-#pragma clang diagnostic warning "-Wunused-result"
-#endif
-
 #include <grpcpp/grpcpp.h>
 
 #include <deque>
@@ -471,12 +465,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
 };
 
-using ClientFactoryFn =
+using CoreWorkerClientFactoryFn =
     std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>;
 
 }  // namespace rpc
 }  // namespace ray
-
-#ifdef __clang__
-#pragma clang diagnostic pop
-#endif

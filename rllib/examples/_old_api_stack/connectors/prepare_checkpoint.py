@@ -7,7 +7,13 @@ from ray.rllib.algorithms.sac import SACConfig
 
 def create_appo_cartpole_checkpoint(output_dir, use_lstm=False):
     config = (
-        APPOConfig().environment("CartPole-v1").training(model={"use_lstm": use_lstm})
+        APPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
+        )
+        .environment("CartPole-v1")
+        .training(model={"use_lstm": use_lstm})
     )
     # Build algorithm object.
     algo = config.build()
