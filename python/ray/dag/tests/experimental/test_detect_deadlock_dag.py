@@ -103,7 +103,8 @@ def test_invalid_graph_1_actor_log(ray_start_regular):
         dag.experimental_compile()
 
     error_msg = (
-        "Detected a deadlock caused by using NCCL channels to transfer "
+        "Detected a deadlock caused by using communicator "
+        "channels to transfer "
         f"data between the task `no_op` and its downstream method `no_op` on "
         f"the same actor {str(a)}. Please remove "
         '`TorchTensorType(transport="nccl")` between DAG '
