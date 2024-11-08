@@ -5,8 +5,12 @@ import pytest
 import yaml
 
 import ray
-from ray.train._internal.logging import configure_logging, get_log_directory
-from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
+from ray.train._internal.logging import (
+    LOG_CONFIG_PATH_ENV,
+    LOG_ENCODING_ENV,
+    configure_logging,
+    get_log_directory,
+)
 
 
 @pytest.fixture(name="configure_logging")

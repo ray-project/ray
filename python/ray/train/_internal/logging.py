@@ -8,10 +8,14 @@ import yaml
 
 import ray
 from ray.train._internal.session import _get_session
-from ray.train.constants import LOG_CONFIG_PATH_ENV, LOG_ENCODING_ENV
 
 # JSON Encoding format for Ray Train structured logging
 DEFAULT_JSON_LOG_ENCODING_FORMAT = "JSON"
+# Env. variable to specify the encoding of the file logs when using the default config.
+LOG_ENCODING_ENV = "RAY_TRAIN_LOG_ENCODING"
+# Env. variable to specify the logging config path use defaults if not set
+LOG_CONFIG_PATH_ENV = "RAY_TRAIN_LOG_CONFIG_PATH"
+
 
 # Default logging configuration for Ray Train
 DEFAULT_LOG_CONFIG_JSON_STRING = {
@@ -68,10 +72,6 @@ class TrainLogKey(str, Enum):
     LOCAL_WORLD_SIZE = "local_world_size"
     LOCAL_RANK = "local_rank"
     NODE_RANK = "node_rank"
-    # This key is used to hide the log record if the value is True.
-    # By default, train workers that are not ranked zero will hide
-    # the log record.
-    HIDE = "hide"
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -91,7 +91,7 @@ class HiddenRecordFilter(logging.Filter):
     """
 
     def filter(self, record):
-        return not getattr(record, TrainLogKey.HIDE, False)
+        return not getattr(record, "hide", False)
 
 
 class TrainContextFilter(logging.Filter):
@@ -133,8 +133,6 @@ class TrainContextFilter(logging.Filter):
         setattr(record, TrainLogKey.LOCAL_WORLD_SIZE, _get_session().local_rank)
         setattr(record, TrainLogKey.LOCAL_RANK, _get_session().local_world_size)
         setattr(record, TrainLogKey.NODE_RANK, _get_session().node_rank)
-        if _get_session().world_rank != 0:
-            setattr(record, TrainLogKey.HIDE, True)
         return True
 
 
