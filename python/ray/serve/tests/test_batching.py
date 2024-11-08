@@ -51,7 +51,7 @@ def test_batching_exception(serve_instance):
     # Set the max batch size.
     handle = serve.run(NoListReturned.bind())
 
-    with pytest.raises(ray.exceptions.RayTaskError):
+    with pytest.raises(TypeError):
         assert handle.remote(1).result()
 
 
