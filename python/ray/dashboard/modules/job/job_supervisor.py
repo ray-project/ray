@@ -362,7 +362,7 @@ class JobSupervisor:
 
             self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
-                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
+                f"{env[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
             child_process = self._exec_entrypoint(env, log_path)
