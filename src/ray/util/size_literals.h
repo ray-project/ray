@@ -21,9 +21,9 @@
 constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
 
 constexpr unsigned long long operator""_KiB(unsigned long long sz) {
-  return sz * 1024ULL;
+  return sz * 1024_B;
 }
-constexpr unsigned long long operator""_KB(unsigned long long sz) { return sz * 1000ULL; }
+constexpr unsigned long long operator""_KB(unsigned long long sz) { return sz * 1000_B; }
 
 constexpr unsigned long long operator""_MiB(unsigned long long sz) {
   return sz * 1024_KiB;
