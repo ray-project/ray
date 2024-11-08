@@ -42,7 +42,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -111,8 +111,8 @@ class EnvRunnerGroup:
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
-                old="WorkerSet(num_workers=... OR local_worker=...)",
-                new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
+                old="WorkerSet(num_workers=..., local_worker=...)",
+                new="EnvRunnerGroup(num_env_runners=..., local_env_runner=...)",
                 error=True,
             )
 
@@ -862,7 +862,7 @@ class EnvRunnerGroup:
                 synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
@@ -936,7 +936,7 @@ class EnvRunnerGroup:
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).

@@ -14,7 +14,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(
+    default_reward=20.0,
+    default_timesteps=10000000,
+)
 parser.set_defaults(
     enable_new_api_stack=True,
     env="ALE/Pong-v5",
@@ -52,11 +55,6 @@ register_env("env", _env_creator)
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(
         "env",
         env_config={
@@ -100,8 +98,8 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 20.0,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 5000000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
 
