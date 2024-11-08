@@ -13,6 +13,9 @@ class CPUCommunicator:
     """
     Communicator actor that blocks the given number of actors until all actors have
     reached the communicator. This is used to mock out blocking NCCL ops.
+
+    A CPUCommunicator which is used for collective ops will never be used for p2p ops,
+    and vice versa.
     """
     def __init__(self, num_actors=2):
         self.num_actors = num_actors
@@ -23,6 +26,10 @@ class CPUCommunicator:
         self.collective_data: Dict[int, List[torch.Tensor]] = defaultdict(list)
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
+        # Number of actors who have read the result, and about the exit the function.
+        # State is kept so we only garbage collect after the last actor has read the
+        # relevant data. 
+        self.num_actors_read = defaultdict(int)
 
     async def wait_p2p(self, op_id: int, data=None):
         """
@@ -46,12 +53,14 @@ class CPUCommunicator:
 
             if data is None:
                 data = self.data[op_id]
+            self.num_actors_read[op_id] += 1
 
-            if self.num_actors_seen[op_id] == self.num_actors:
+            if self.num_actors_read[op_id] == self.num_actors:
                 del self.data[op_id]
                 del self.num_actors_seen[op_id]
+                del self.num_actors_read[op_id]
 
-        return data
+            return data
 
     async def wait_collective(self, op_id: int, data: torch.Tensor, op: ReduceOp):
         """
@@ -65,19 +74,21 @@ class CPUCommunicator:
 
             if self.num_actors_seen[op_id] == self.num_actors:
                 # Apply the collective operation across all gathered tensors
-                result = self._apply_op(op, self.collective_data[op_id])
-                self.collective_data[op_id] = result
+                data = self._apply_op(op, self.collective_data[op_id])
+                self.collective_data[op_id] = data
                 self.condition.notify_all()
             else:
                 await self.condition.wait_for(lambda: self.num_actors_seen[op_id] == self.num_actors)
 
-            result = self.collective_data[op_id]
+            data = self.collective_data[op_id]
+            self.num_actors_read[op_id] += 1
 
-            if self.num_actors_seen[op_id] == self.num_actors:
+            if self.num_actors_read[op_id] == self.num_actors:
                 del self.collective_data[op_id]
                 del self.num_actors_seen[op_id]
+                del self.num_actors_read[op_id]
 
-            return result
+            return data
 
     def _apply_op(self, op: ReduceOp, tensors: List[torch.Tensor]) -> torch.Tensor:
         """Apply the specified reduction operation across a list of tensors."""
@@ -101,15 +112,22 @@ class CPUCommunicator:
         return result
 
 
-class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
+class CPUNcclGroup(GPUCommunicator):
     """
     Mock the internal _NcclGroup to use a communicator actor instead of a NCCL group
     for communication.
     """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
+    def __init__(
+        self,
+        world_size: int, 
+        rank: Optional[int], 
+        actor_handles: List["ray.actor.ActorHandle"]
+    ):
         """We use the op index to synchronize the sender and receiver at the
         communicator actor."""
+        self._world_size = world_size
+        self._rank = rank
+        self._actor_handles = actor_handles
         self.num_ops = defaultdict(int)
         self.communicators = set()
 
@@ -173,3 +191,36 @@ class CPUNcclGroup(ray_channel.nccl_group._NcclGroup):
     def destroy(self) -> None:
         for communicator in self.communicators:
             ray.kill(communicator)
+    
+    def initialize(self, rank: int) -> None:
+        # No additional initialization is needed.
+        pass
+
+    def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+        return self._actor_handles
+
+    def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+        """
+        Return the given actor's rank in the NCCL communicator.
+
+        Args:
+            actor: The actor handle to look up.
+        """
+        actor_ids = [a._ray_actor_id for a in self._actor_handles]
+        try:
+            rank = actor_ids.index(actor._ray_actor_id)
+        except ValueError:
+            raise ValueError("Actor is not in the NCCL group.")
+        return rank
+
+    def get_self_rank(self) -> Optional[int]:
+        """
+        Return this actor's rank.
+        """
+        return self._rank
+
+    def get_world_size(self) -> int:
+        """
+        Return the number of ranks in the NCCL communicator.
+        """
+        return self._world_size
