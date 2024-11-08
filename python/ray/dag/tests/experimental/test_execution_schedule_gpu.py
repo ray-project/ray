@@ -148,35 +148,25 @@ def test_simulate_pp_2workers_2batches_1f1b(
     compiled_dag = dag.experimental_compile()
 
     w1_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
-        (1, _DAGNodeOperationType.READ),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
-        (2, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.NCCL_WRITE),
         (2, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.READ),
-        (2, _DAGNodeOperationType.WRITE),
+        (3, _DAGNodeOperationType.NCCL_READ),
+        (2, _DAGNodeOperationType.NCCL_WRITE),
         (3, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.WRITE),
-        (4, _DAGNodeOperationType.READ),
+        (4, _DAGNodeOperationType.NCCL_READ),
         (4, _DAGNodeOperationType.COMPUTE),
-        (4, _DAGNodeOperationType.WRITE),
     ]
     w2_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
-        (1, _DAGNodeOperationType.READ),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
-        (2, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.NCCL_WRITE),
+        (2, _DAGNodeOperationType.NCCL_READ),
         (2, _DAGNodeOperationType.COMPUTE),
-        (2, _DAGNodeOperationType.WRITE),
-        (3, _DAGNodeOperationType.READ),
         (3, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.WRITE),
+        (3, _DAGNodeOperationType.NCCL_WRITE),
     ]
     w1_schedule = compiled_dag.actor_to_execution_schedule[w1]
     w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
@@ -254,22 +244,20 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     a_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
-        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
+        (1, _DAGNodeOperationType.NCCL_READ),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
     b_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
     ]
     c_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
     ]
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
     b_schedule = compiled_dag.actor_to_execution_schedule[b]
@@ -322,28 +310,22 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
     compiled_dag = dag.experimental_compile()
 
     a_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
-        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
+        (1, _DAGNodeOperationType.NCCL_READ),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
     b_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.READ),
-        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.NCCL_READ),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
     c_expected_schedule = [
-        (0, _DAGNodeOperationType.READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.READ),
-        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.NCCL_READ),
+        (0, _DAGNodeOperationType.NCCL_WRITE),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
 
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
@@ -410,20 +392,16 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
 
     # Check receiver schedule
     expected_no_overlap_schedule = [
-        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
-        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.NCCL_READ),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
     expected_overlap_schedule = [
-        (0, _DAGNodeOperationType.READ),
-        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.NCCL_READ),
+        (1, _DAGNodeOperationType.NCCL_READ),
         (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.WRITE),
         (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.WRITE),
     ]
     if overlap_gpu_communication:
         expected_receiver_schedule = expected_overlap_schedule
