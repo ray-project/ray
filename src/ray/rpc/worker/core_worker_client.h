@@ -53,10 +53,10 @@ namespace ray {
 namespace rpc {
 
 /// The maximum number of requests in flight per client.
-constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
+inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 
 /// The base size in bytes per request.
-constexpr int64_t kBaseRequestSize = 1024;
+inline constexpr int64_t kBaseRequestSize = 1024;
 
 /// Get the estimated size in bytes of the given task.
 const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
