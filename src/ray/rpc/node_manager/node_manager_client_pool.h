@@ -22,9 +22,6 @@
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 
-using absl::optional;
-using std::shared_ptr;
-
 namespace ray {
 namespace rpc {
 
@@ -36,12 +33,13 @@ class NodeManagerClientPool {
 
   /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
-  optional<shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(ray::NodeID id);
+  std::optional<std::shared_ptr<ray::RayletClientInterface>> GetOrConnectByID(
+      ray::NodeID id);
 
   /// Return an existing NodeManagerWorkerClient if exists, and connect to one if it does
   /// not. The returned pointer is borrowed, and expected to be used briefly.
   /// The function is guaranteed to return the non-nullptr.
-  shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
+  std::shared_ptr<ray::RayletClientInterface> GetOrConnectByAddress(
       const rpc::Address &address);
 
   /// Removes a connection to the worker from the pool, if one exists. Since the
@@ -77,8 +75,8 @@ class NodeManagerClientPool {
 
   /// A pool of open connections by host:port. Clients can reuse the connection
   /// objects in this pool by requesting them
-  absl::flat_hash_map<ray::NodeID, shared_ptr<ray::RayletClientInterface>> client_map_
-      ABSL_GUARDED_BY(mu_);
+  absl::flat_hash_map<ray::NodeID, std::shared_ptr<ray::RayletClientInterface>>
+      client_map_ ABSL_GUARDED_BY(mu_);
 };
 
 }  // namespace rpc
