@@ -94,7 +94,6 @@ class OfflineData:
                 f"{stop_time - start_time}s."
             )
             logger.info("Reading data from {}".format(self.path))
-            logger.debug(self.data.schema())
         except Exception as e:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
@@ -148,8 +147,7 @@ class OfflineData:
                 # Add constructor `kwargs` when using remote learners.
                 fn_constructor_kwargs.update(
                     {
-                        "learner": self.learner_handles,
-                        "locality_hints": self.locality_hints,
+                        "learner": None,
                         "module_spec": self.module_spec,
                         "module_state": module_state,
                     }
