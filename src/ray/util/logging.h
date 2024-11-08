@@ -59,7 +59,7 @@
 #include <string>
 #include <vector>
 
-#include "ray/util/likely.h"
+#include "ray/util/macros.h"
 
 #if defined(_WIN32)
 #ifndef _WINDOWS_
@@ -131,19 +131,19 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                          \
-  ray::Likely((condition))                                                            \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                               << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                      \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                           << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                         \
-  ray::Likely((condition))                                                            \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                               << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                     \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                           << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -153,7 +153,7 @@ enum class RayLogLevel {
 #define RAY_CHECK_OP(left, op, right)        \
   if (const auto &_left_ = (left); true)     \
     if (const auto &_right_ = (right); true) \
-  RAY_CHECK(ray::Likely(_left_ op _right_)) << " " << _left_ << " vs " << _right_
+  RAY_CHECK(RAY_PREDICT_TRUE(_left_ op _right_)) << " " << _left_ << " vs " << _right_
 
 #define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
 #define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)

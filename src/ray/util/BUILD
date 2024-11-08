@@ -49,11 +49,3 @@ cc_library(
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
 )
-
-cc_library(
-    name = "likely",
-    hdrs = ["likely.h"],
-    deps = [
-        "@com_google_absl//absl/base:core_headers",
-    ],
-)
