@@ -224,7 +224,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
   /// Get the local drain request.
-  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 

@@ -1043,8 +1043,10 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
+
     ds = ray.data.read_parquet(path)
-    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+    assert ds.take_all() == []
 
 
 def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
@@ -1314,6 +1316,15 @@ def test_count_with_filter(ray_start_regular_shared):
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
+
+
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
 
 
 if __name__ == "__main__":
