@@ -96,7 +96,7 @@ class UvProcessor:
     async def _check_uv_existence(
         self, path: str, cwd: str, env: dict, logger: logging.Logger
     ) -> bool:
-        """Check and return the existence of `uv` in system executable path."""
+        """Check and return the existence of `uv` in virtual env."""
         python = virtualenv_utils.get_virtualenv_python(path)
 
         check_existence_cmd = [
