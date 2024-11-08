@@ -26,11 +26,13 @@ if TYPE_CHECKING:
 # entry/init points.
 logger = logging.getLogger(__name__)
 USE_GPU = True
+USE_NPU = False
 if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
     try:
         from ray.experimental.channel.hccl_group import _HcclGroup as _CommunicatorGroup
 
         USE_GPU = False
+        USE_NPU = True
     except Exception:
         logger.warning("Failed in import hccl_group, use nccl_group instead")
         from ray.experimental.channel.nccl_group import _NcclGroup as _CommunicatorGroup
@@ -207,7 +209,7 @@ class TorchTensorCommunicatorChannel(ChannelInterface):
                     "return a CUDA torch.Tensor, instead found CPU tensor. "
                     "DAG will shut down."
                 )
-            elif not value.is_npu:
+            elif USE_NPU and (not value.is_npu):
                 raise ValueError(
                     "Task annotated with _direct_return=True must "
                     "return a NPU torch.Tensor, instead found CPU tensor. "
