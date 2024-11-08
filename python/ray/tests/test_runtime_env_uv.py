@@ -50,11 +50,8 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
         import pip
 
         return pip.__version__
-    
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
-        ray.get(f.remote())
 
-    with pytest.raises(ray.exceptions.RuntimeEnvSetupError) as _:
+    with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(f.remote())
 
 
