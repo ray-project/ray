@@ -184,11 +184,11 @@ Status raylet::RayletClient::Disconnect(
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
   // TODO (myan): In the current implementation, if raylet is already terminated in the
-  // "WriteMessage" function above, the worker process will exit early in the function 
-  // and will not reach here. However, the code path here is shared between graceful 
-  // shutdown and force termination. We need to make sure the above early exit 
+  // "WriteMessage" function above, the worker process will exit early in the function
+  // and will not reach here. However, the code path here is shared between graceful
+  // shutdown and force termination. We need to make sure the above early exit
   // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
-  // leak if early exit is triggered 
+  // leak if early exit is triggered
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << status.ToString()
