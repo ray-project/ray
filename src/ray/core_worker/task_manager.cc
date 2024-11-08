@@ -398,7 +398,7 @@ void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
 
 bool TaskManager::IsTaskSubmissible(const TaskID &task_id) const {
   absl::MutexLock lock(&mu_);
-  return submissible_tasks_.count(task_id) > 0;
+  return submissible_tasks_.contains(task_id);
 }
 
 bool TaskManager::IsTaskPending(const TaskID &task_id) const {
@@ -1043,13 +1043,8 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
     auto it = submissible_tasks_.find(task_id);
     RAY_CHECK(it != submissible_tasks_.end())
         << "Tried to fail task that was not pending " << task_id;
-    // task was finished by the time it got to cancelling here
-    if (it->second.GetStatus() == rpc::TaskStatus::FINISHED) {
-      submissible_tasks_.erase(it);
-      return;
-    }
-    RAY_CHECK(it->second.GetStatus() != rpc::TaskStatus::FAILED)
-        << "Tried to fail task that was already failed " << task_id;
+    RAY_CHECK(it->second.IsPending())
+        << "Tried to fail task that was not pending " << task_id;
     spec = it->second.spec;
 
     if ((status != nullptr) && status->IsIntentionalSystemExit()) {
