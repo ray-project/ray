@@ -29,7 +29,6 @@ from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
 
-
 # Register all ALE environments with gymnasium.
 gym.register_envs(ale_py)
 
@@ -148,6 +147,31 @@ parser = add_rllib_example_script_args(
 )
 args = parser.parse_args()
 
+# If multiple learners are requested define a scheduling
+# strategy with best data locality.
+if args.num_learners and args.num_learners > 1:
+    import ray
+
+    ray.init()
+    # Check, if we have a multi-node cluster.
+    nodes = ray.nodes()
+    ray.shutdown()
+    print(f"Number of nodes in cluster: {len(nodes)}")
+    # If we have a multi-node cluster spread learners.
+    if len(nodes) > 1:
+        os.environ["TRAIN_ENABLE_WORKER_SPREAD_ENV"] = "1"
+        print(
+            "Multi-node cluster and multi-learner setup. "
+            "Using a 'SPREAD' scheduling strategy for learners"
+            "to support data locality."
+        )
+    # Otherwise pack the learners on the single node.
+    else:
+        print(
+            "Single-node cluster and multi-learner setup. "
+            "Using a 'PACK' scheduling strategy for learners"
+            "to support data locality."
+        )
 # Anyscale RLUnplugged storage bucket. The bucket contains from the
 # original `RLUnplugged` bucket only the first `atari/Pong` run.
 anyscale_storage_bucket = os.environ["ANYSCALE_ARTIFACT_STORAGE"]
@@ -184,7 +208,9 @@ config = (
         evaluation_parallel_to_training=True,
     )
     .learners(
-        num_learners=args.num_learners if args.num_learners > 1 else 0,
+        num_learners=args.num_learners
+        if args.num_learners and args.num_learners > 1
+        else 0,
         num_gpus_per_learner=args.num_gpus_per_learner,
     )
     # Note, the `input_` argument is the major argument for the
@@ -213,7 +239,6 @@ config = (
         # training, new batches are transformed while others are used in updating.
         map_batches_kwargs={
             "concurrency": 12,
-            "num_cpus": 12,
         },
         # When iterating over batches in the dataset, prefetch at least 4
         # batches per learner.
@@ -224,12 +249,19 @@ config = (
         },
         # Iterate over 10 batches per RLlib iteration if multiple learners
         # are used.
-        dataset_num_iters_per_learner=10 if args.num_learners > 1 else 1,
+        dataset_num_iters_per_learner=10
+        if args.num_learners and args.num_learners > 1
+        else 1,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_gpus**0.5),
+        lr=0.0008
+        * max(
+            1,
+            (args.num_learners if args.num_learners and args.num_learners > 1 else 1)
+            ** 0.5,
+        ),
         train_batch_size_per_learner=1024,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,
