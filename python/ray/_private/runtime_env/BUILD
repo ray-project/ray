@@ -1,3 +1,6 @@
+# TODO(hjiang): All existing pythons are not using bazel as build system, which leads to missing BUILD file and targets.
+# Revisit if we decide to support bazel build in the future.
+
 load("@rules_python//python:defs.bzl", "py_library", "py_test")
 
 package(default_visibility = ["//visibility:public"])
