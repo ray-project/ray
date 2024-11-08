@@ -288,7 +288,6 @@ void ServerConnection::WriteMessageAsync(
   write_buffer->write_cookie = RayConfig::instance().ray_cookie();
   write_buffer->write_type = type;
   write_buffer->write_length = length;
-  write_buffer->write_message.resize(length);
   write_buffer->write_message.assign(message, message + length);
   write_buffer->handler = handler;
 
