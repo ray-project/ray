@@ -55,7 +55,7 @@ class GcsJobManager : public rpc::JobInfoHandler {
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
-                         rpc::ClientFactoryFn client_factory = nullptr)
+                         rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
       : gcs_table_storage_(std::move(gcs_table_storage)),
         gcs_publisher_(std::move(gcs_publisher)),
         runtime_env_manager_(runtime_env_manager),

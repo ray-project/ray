@@ -17,7 +17,7 @@
 namespace ray {
 namespace rpc {
 
-shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddress(
+std::shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddress(
     const rpc::Address &address) {
   RAY_CHECK(address.raylet_id() != "");
   absl::MutexLock lock(&mu_);
@@ -36,8 +36,8 @@ shared_ptr<ray::RayletClientInterface> NodeManagerClientPool::GetOrConnectByAddr
   return connection;
 }
 
-optional<shared_ptr<ray::RayletClientInterface>> NodeManagerClientPool::GetOrConnectByID(
-    ray::NodeID id) {
+std::optional<std::shared_ptr<ray::RayletClientInterface>>
+NodeManagerClientPool::GetOrConnectByID(ray::NodeID id) {
   absl::MutexLock lock(&mu_);
   auto it = client_map_.find(id);
   if (it == client_map_.end()) {

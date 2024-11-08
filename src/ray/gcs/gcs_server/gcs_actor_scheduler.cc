@@ -31,7 +31,7 @@ GcsActorScheduler::GcsActorScheduler(
     GcsActorSchedulerFailureCallback schedule_failure_handler,
     GcsActorSchedulerSuccessCallback schedule_success_handler,
     std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    rpc::ClientFactoryFn client_factory,
+    rpc::CoreWorkerClientFactoryFn client_factory,
     std::function<void(const NodeID &, const rpc::ResourcesData &)>
         normal_task_resources_changed_callback)
     : io_context_(io_context),
