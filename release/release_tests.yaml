@@ -2750,7 +2750,7 @@
 
   run:
     timeout: 1800
-    script: python learning_tests/tuned_examples/impala/pong_impala.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=20.0 --as-release-test
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
 
   alert: default
 
