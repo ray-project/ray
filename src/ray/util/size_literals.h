@@ -18,74 +18,32 @@
 
 #include <cstdint>
 
-constexpr unsigned long long operator""_PiB(unsigned long long sz) {
-  return sz * 1024ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-}
-constexpr unsigned long long operator""_PB(unsigned long long sz) {
-  return sz * 1000ULL * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-}
-
-constexpr unsigned long long operator""_TiB(unsigned long long sz) {
-  return sz * 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-}
-constexpr unsigned long long operator""_TB(unsigned long long sz) {
-  return sz * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-}
-
-constexpr unsigned long long operator""_GiB(unsigned long long sz) {
-  return sz * 1024ULL * 1024ULL * 1024ULL;
-}
-constexpr unsigned long long operator""_GB(unsigned long long sz) {
-  return sz * 1000ULL * 1000ULL * 1000ULL;
-}
-
-constexpr unsigned long long operator""_MiB(unsigned long long sz) {
-  return sz * 1024ULL * 1024ULL;
-}
-constexpr unsigned long long operator""_MB(unsigned long long sz) {
-  return sz * 1000ULL * 1000ULL;
-}
+constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
 
 constexpr unsigned long long operator""_KiB(unsigned long long sz) {
   return sz * 1024ULL;
 }
 constexpr unsigned long long operator""_KB(unsigned long long sz) { return sz * 1000ULL; }
 
-constexpr unsigned long long operator""_PiB(long double sz) {
-  const long double res = sz * 1024ULL * 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-  return static_cast<unsigned long long>(res);
+constexpr unsigned long long operator""_MiB(unsigned long long sz) {
+  return sz * 1024_KiB;
 }
-constexpr unsigned long long operator""_PB(long double sz) {
-  const long double res = sz * 1000ULL * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-  return static_cast<unsigned long long>(res);
-}
+constexpr unsigned long long operator""_MB(unsigned long long sz) { return sz * 1000_KB; }
 
-constexpr unsigned long long operator""_TiB(long double sz) {
-  const long double res = sz * 1024ULL * 1024ULL * 1024ULL * 1024ULL;
-  return static_cast<unsigned long long>(res);
+constexpr unsigned long long operator""_GiB(unsigned long long sz) {
+  return sz * 1024_MiB;
 }
-constexpr unsigned long long operator""_TB(long double sz) {
-  const long double res = sz * 1000ULL * 1000ULL * 1000ULL * 1000ULL;
-  return static_cast<unsigned long long>(res);
-}
+constexpr unsigned long long operator""_GB(unsigned long long sz) { return sz * 1000_MB; }
 
-constexpr unsigned long long operator""_GiB(long double sz) {
-  const long double res = sz * 1024ULL * 1024ULL * 1024ULL;
-  return static_cast<unsigned long long>(res);
+constexpr unsigned long long operator""_TiB(unsigned long long sz) {
+  return sz * 1024_GiB;
 }
-constexpr unsigned long long operator""_GB(long double sz) {
-  const long double res = sz * 1000ULL * 1000ULL * 1000ULL;
-  return static_cast<unsigned long long>(res);
-}
+constexpr unsigned long long operator""_TB(unsigned long long sz) { return sz * 1000_GB; }
 
-constexpr unsigned long long operator""_MiB(long double sz) {
-  const long double res = sz * 1024ULL * 1024ULL;
-  return static_cast<unsigned long long>(res);
+constexpr unsigned long long operator""_PiB(unsigned long long sz) {
+  return sz * 1024_TiB;
 }
-constexpr unsigned long long operator""_MB(long double sz) {
-  const long double res = sz * 1000ULL * 1000ULL;
-  return static_cast<unsigned long long>(res);
-}
+constexpr unsigned long long operator""_PB(unsigned long long sz) { return sz * 1000_TB; }
 
 constexpr unsigned long long operator""_KiB(long double sz) {
   const long double res = sz * 1024ULL;
@@ -96,4 +54,38 @@ constexpr unsigned long long operator""_KB(long double sz) {
   return static_cast<unsigned long long>(res);
 }
 
-constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
+constexpr unsigned long long operator""_MiB(long double sz) {
+  const long double res = sz * 1024_KiB;
+  return static_cast<unsigned long long>(res);
+}
+constexpr unsigned long long operator""_MB(long double sz) {
+  const long double res = sz * 1000_KB;
+  return static_cast<unsigned long long>(res);
+}
+
+constexpr unsigned long long operator""_GiB(long double sz) {
+  const long double res = sz * 1024_MiB;
+  return static_cast<unsigned long long>(res);
+}
+constexpr unsigned long long operator""_GB(long double sz) {
+  const long double res = sz * 1000_MB;
+  return static_cast<unsigned long long>(res);
+}
+
+constexpr unsigned long long operator""_TiB(long double sz) {
+  const long double res = sz * 1024_GiB;
+  return static_cast<unsigned long long>(res);
+}
+constexpr unsigned long long operator""_TB(long double sz) {
+  const long double res = sz * 1000_GB;
+  return static_cast<unsigned long long>(res);
+}
+
+constexpr unsigned long long operator""_PiB(long double sz) {
+  const long double res = sz * 1024_TiB;
+  return static_cast<unsigned long long>(res);
+}
+constexpr unsigned long long operator""_PB(long double sz) {
+  const long double res = sz * 1000_TB;
+  return static_cast<unsigned long long>(res);
+}

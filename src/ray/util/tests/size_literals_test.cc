@@ -19,8 +19,9 @@
 namespace {
 
 TEST(SizeLiteralsTest, BasicTest) {
-  EXPECT_EQ(2_MiB, 2 * 1024 * 1024);
-  EXPECT_EQ(2.5_KB, 2500);
+  static_assert(2_MiB == 2 * 1024 * 1024);
+  static_assert(2.5_KB == 2500);
+  static_assert(4_GB == 4'000'000'000);
 }
 
 }  // namespace
