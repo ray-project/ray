@@ -341,14 +341,13 @@ def parse_and_validate_env_vars(env_vars: Dict[str, str]) -> Optional[Dict[str, 
 
 # Dictionary mapping runtime_env options with the function to parse and
 # validate them.
-#
-# TODO(hjiang): Expose `uv` related validation after implementation finished.
 OPTION_TO_VALIDATION_FN = {
     "py_modules": parse_and_validate_py_modules,
     "working_dir": parse_and_validate_working_dir,
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
+    "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }
