@@ -44,6 +44,15 @@ cc_library(
 )
 
 cc_library(
+    name = "resize_uninitialized",
+    hdrs = ["resize_uninitialized.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings:internal",
+    ],
+)
+
+cc_library(
     name = "thread_checker",
     hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],

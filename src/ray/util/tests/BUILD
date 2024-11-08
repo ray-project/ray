@@ -182,3 +182,12 @@ cc_test(
         "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
+
+cc_test(
+    name = "resize_uninitialized_test",
+    srcs = ["resize_uninitialized_test.cc"],
+    deps = [
+        "//src/ray/util:resize_uninitialized",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
