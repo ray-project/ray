@@ -1,7 +1,5 @@
 import logging
 import os
-import re
-from datetime import datetime
 
 import pytest
 import yaml
@@ -64,34 +62,6 @@ def test_hidden_messages_not_printed_to_console(
     assert "ham" not in capsys.readouterr().err
 
 
-def test_message_format(configure_logging, reset_logging, shutdown_only):
-    ray.init()
-    logger = logging.getLogger("ray.train.spam")
-
-    logger.info("ham")
-
-    log_path = os.path.join(get_log_directory(), "ray-train.log")
-    with open(log_path, "r") as f:
-        log_contents = f.read()
-    (
-        logged_ds,
-        logged_ts,
-        logged_level,
-        logged_filepath,
-        sep,
-        logged_msg,
-    ) = log_contents.split()
-
-    try:
-        datetime.strptime(f"{logged_ds} {logged_ts}", "%Y-%m-%d %H:%M:%S,%f")
-    except ValueError:
-        raise Exception(f"Invalid log timestamp: {logged_ds} {logged_ts}")
-
-    assert logged_level == logging.getLevelName(logging.INFO)
-    assert re.match(r"test_logging.py:\d+", logged_filepath)
-    assert logged_msg == "ham"
-
-
 def test_custom_config(reset_logging, monkeypatch, tmp_path):
     config_path = tmp_path / "logging.yaml"
     monkeypatch.setenv(LOG_CONFIG_PATH_ENV, config_path)
@@ -137,8 +107,8 @@ def test_json_logging_configuration(
 
     # Ensure handlers correctly setup
     handlers = logger.handlers
-    assert sum(handler.name == "file_json" for handler in handlers) == 1
-    assert sum(handler.name == "console" for handler in handlers) == 1
+    assert sum(handler.name == "file" for handler in handlers) == 1
+    assert sum(handler.name == "console_json" for handler in handlers) == 1
 
     logger.info("ham")
     logger.debug("turkey")
@@ -155,15 +125,6 @@ def test_json_logging_configuration(
 
     assert "ham" in messages
     assert "turkey" in messages
-
-    # Validate console logs are in text mode
-    console_log_output = capsys.readouterr().err
-    for log_line in console_log_output.splitlines():
-        with pytest.raises(json.JSONDecodeError):
-            json.loads(log_line)
-
-    assert "ham" in console_log_output
-    assert "turkey" not in console_log_output
 
 
 if __name__ == "__main__":

@@ -33,28 +33,28 @@ DEFAULT_LOG_CONFIG_JSON_STRING = {
         },
     },
     "handlers": {
-        "file_text": {
-            "class": "ray.train._internal.logging.SessionFileHandler",
-            "formatter": "ray",
-            "filename": "ray-train.log",
+        "console_json": {
+            "class": "logging.StreamHandler",
+            "formatter": "ray_json",
+            "filters": ["core_context_filter", "train_context_filter"],
         },
-        "file_json": {
+        "console_text": {
+            "class": "ray._private.log.PlainRayHandler",
+            "formatter": "ray",
+            "level": "INFO",
+            "filters": ["train_context_filter", "console_filter"],
+        },
+        "file": {
             "class": "ray.train._internal.logging.SessionFileHandler",
             "formatter": "ray_json",
             "filename": "ray-train.log",
             "filters": ["core_context_filter", "train_context_filter"],
         },
-        "console": {
-            "class": "ray._private.log.PlainRayHandler",
-            "formatter": "ray",
-            "level": "INFO",
-            "filters": ["console_filter"],
-        },
     },
     "loggers": {
         "ray.train": {
             "level": "DEBUG",
-            "handlers": ["file_text", "console"],
+            "handlers": ["file", "console_text"],
             "propagate": False,
         },
     },
@@ -71,7 +71,7 @@ class TrainLogKey(str, Enum):
     # This key is used to hide the log record if the value is True.
     # By default, train workers that are not ranked zero will hide
     # the log record.
-    HIDDEN_DEFAULT = "hide_default"
+    HIDE = "hide"
 
 
 class HiddenRecordFilter(logging.Filter):
@@ -91,7 +91,7 @@ class HiddenRecordFilter(logging.Filter):
     """
 
     def filter(self, record):
-        return not getattr(record, "hide", False)
+        return not getattr(record, TrainLogKey.HIDE, False)
 
 
 class TrainContextFilter(logging.Filter):
@@ -134,7 +134,7 @@ class TrainContextFilter(logging.Filter):
         setattr(record, TrainLogKey.LOCAL_RANK, _get_session().local_world_size)
         setattr(record, TrainLogKey.NODE_RANK, _get_session().node_rank)
         if _get_session().world_rank != 0:
-            setattr(record, TrainLogKey.HIDDEN_DEFAULT, True)
+            setattr(record, TrainLogKey.HIDE, True)
         return True
 
 
@@ -211,8 +211,8 @@ def configure_logging() -> None:
             and ray_train_log_encoding.upper() == DEFAULT_JSON_LOG_ENCODING_FORMAT
         ):
             for logger in config["loggers"].values():
-                logger["handlers"].remove("file_text")
-                logger["handlers"].append("file_json")
+                logger["handlers"].remove("console_text")
+                logger["handlers"].append("console_json")
 
     logging.config.dictConfig(config)
 
