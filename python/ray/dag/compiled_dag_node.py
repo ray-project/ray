@@ -832,9 +832,9 @@ class CompiledDAG:
         self.worker_task_refs: Dict["ray.actor.ActorHandle", "ray.ObjectRef"] = {}
         # Set of actors present in the DAG.
         self.actor_refs = set()
-        self.actor_to_tasks: Dict["ray.actor.ActorHandle", List["CompiledTask"]] = (
-            defaultdict(list)
-        )
+        self.actor_to_tasks: Dict[
+            "ray.actor.ActorHandle", List["CompiledTask"]
+        ] = defaultdict(list)
         self.actor_to_executable_tasks: Dict[
             "ray.actor.ActorHandle", List["ExecutableTask"]
         ] = {}
@@ -1172,9 +1172,9 @@ class CompiledDAG:
                 self._custom_nccl_group_p2p,
                 self._overlap_gpu_communication,
             )
-            custom_nccl_group_to_id[self._custom_nccl_group_p2p] = (
-                self._nccl_group_id_p2p
-            )
+            custom_nccl_group_to_id[
+                self._custom_nccl_group_p2p
+            ] = self._nccl_group_id_p2p
             actors = frozenset(nccl_actors_p2p)
             actors_to_nccl_group_id[actors] = self._nccl_group_id_p2p
 
@@ -1717,18 +1717,14 @@ class CompiledDAG:
                 op_nodes: List[_DAGOperationGraphNode] = []
                 if requires_nccl_read:
                     nccl_read_node = _DAGOperationGraphNode(
-                        _DAGNodeOperation(
-                            exec_task_idx, OpType.NCCL_READ, method_name
-                        ),
+                        _DAGNodeOperation(exec_task_idx, OpType.NCCL_READ, method_name),
                         task_idx,
                         actor_handle,
                         requires_nccl_read=requires_nccl_read,
                     )
                     op_nodes.append(nccl_read_node)
                 compute_node = _DAGOperationGraphNode(
-                    _DAGNodeOperation(
-                        exec_task_idx, OpType.COMPUTE, method_name
-                    ),
+                    _DAGNodeOperation(exec_task_idx, OpType.COMPUTE, method_name),
                     task_idx,
                     actor_handle,
                     requires_nccl_collective=requires_nccl_collective,
@@ -1737,8 +1733,8 @@ class CompiledDAG:
                 if requires_nccl_write:
                     nccl_write_node = _DAGOperationGraphNode(
                         _DAGNodeOperation(
-                        exec_task_idx, OpType.NCCL_WRITE, method_name
-                    ),
+                            exec_task_idx, OpType.NCCL_WRITE, method_name
+                        ),
                         task_idx,
                         actor_handle,
                         requires_nccl_write=requires_nccl_write,
