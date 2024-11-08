@@ -14,6 +14,8 @@
 
 #include "ray/stats/metric_defs.h"
 
+#include "ray/util/size_literals.h"
+
 namespace ray {
 
 namespace stats {
@@ -114,9 +116,7 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-double operator""_MB(unsigned long long int x) {
-  return static_cast<double>(1024L * 1024L * x);
-}
+double operator""_MB(unsigned long long int x) { return static_cast<double>(x * 1_MiB); }
 
 DEFINE_stats(object_store_dist,
              "The distribution of object size in bytes",
