@@ -379,7 +379,7 @@ def test_select_columns(ray_start_regular_shared):
     ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
 
     for each_ds in [ds1, ds2]:
-        assert each_ds.select_columns(cols=[]).take(1) == [{}]
+        assert each_ds.select_columns(cols=[]).take(1) == []
         assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
             {"col1": 1, "col2": 2, "col3": 3}
         ]
@@ -390,14 +390,20 @@ def test_select_columns(ray_start_regular_shared):
             {"col1": 1, "col2": 2}
         ]
         # Test selecting columns with duplicates
-        assert each_ds.select_columns(cols=["col1", "col2", "col2"]).schema().names == [
-            "col1",
-            "col2",
-            "col2",
-        ]
+        with pytest.raises(ValueError, match="expected unique column names"):
+            each_ds.select_columns(cols=["col1", "col2", "col2"]).schema()
         # Test selecting a column that is not in the dataset schema
         with pytest.raises((UserCodeException, KeyError)):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
+
+
+@pytest.mark.parametrize("cols", [None, 1, [1]])
+def test_select_columns_validation(ray_start_regular_shared, cols):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+
+    with pytest.raises(ValueError):
+        ds1.select_columns(cols=cols)
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):
