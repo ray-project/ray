@@ -432,25 +432,21 @@ class AsyncioRouter:
     async def _resolve_request_arguments(
         self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
     ) -> Tuple[Tuple[Any], Dict[str, Any]]:
-        """Replaces top-level `DeploymentResponse` objects with resolved object refs.
-
-        This enables composition without explicitly calling `_to_object_ref`.
-        """
-
+        """Asynchronously resolve and replace top-level request args and kwargs."""
         new_args = list(request_args)
         new_kwargs = request_kwargs.copy()
 
         # Map from index -> task to resolve positional arg
         resolve_arg_tasks = {}
         for i, obj in enumerate(request_args):
-            task = self._resolve_request_arg_func(obj)
+            task = await self._resolve_request_arg_func(obj)
             if task is not None:
                 resolve_arg_tasks[i] = task
 
         # Map from key -> task to resolve key-word arg
         resolve_kwarg_tasks = {}
         for k, obj in request_kwargs.items():
-            task = self._resolve_request_arg_func(obj)
+            task = await self._resolve_request_arg_func(obj)
             if task is not None:
                 resolve_kwarg_tasks[k] = task
 

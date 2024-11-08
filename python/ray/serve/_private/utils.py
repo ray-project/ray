@@ -594,7 +594,11 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
-def resolve_deployment_response(obj: Any):
+async def resolve_deployment_response(obj: Any):
+    """Resolve `DeploymentResponse` objects to underlying object references.
+
+    This enables composition without explicitly calling `_to_object_ref`.
+    """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
     if isinstance(obj, DeploymentResponseGenerator):
