@@ -106,7 +106,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.core.rl_module.rl_module import RLModule
-    from ray.rllib.evaluation.episode import Episode as OldEpisode
+    from ray.rllib.utils.typing import EpisodeType
 
 logger = logging.getLogger(__name__)
 
@@ -2874,7 +2874,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
-            Callable[[AgentID, "OldEpisode"], PolicyID]
+            Callable[[AgentID, "EpisodeType"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
@@ -3562,7 +3562,7 @@ class AlgorithmConfig(_Config):
         # Not yet determined, try to figure this out.
         if self._is_atari is None:
             # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ALE/Breakout-v5".
+            # or "ale_py:ALE/Breakout-v5".
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
@@ -4424,6 +4424,7 @@ class AlgorithmConfig(_Config):
     def _validate_new_api_stack_settings(self):
         """Checks, whether settings related to the new API stack make sense."""
 
+        # Old API stack checks.
         if not self.enable_rl_module_and_learner:
             # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)`
             # but has not enabled the new API stack at the same time.
