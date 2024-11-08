@@ -107,6 +107,69 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
+# TODO(hjiang): More package installation options to implement:
+# 1. Allow users to pass in a local requirements.txt file, which relates to all
+# packages to install;
+# 2. Allow specific version of `uv` to use; as of now we only use default version.
+# 3. `pip_check` has different semantics for `uv` and `pip`, see
+# https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
+# it; or simply ignore the field when people come from `pip`.
+def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
+    """Parses and validates a user-provided 'uv' option.
+
+    The value of the input 'uv' field can be one of two cases:
+        1) A List[str] describing the requirements. This is passed through.
+           Example usage: ["tensorflow", "requests"]
+        2) A python dictionary that has one field:
+            a) packages (required, List[str]): a list of uv packages, it same as 1).
+
+    The returned parsed value will be a list of packages. If a Ray library
+    (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
+    dependencies (e.g. "uvicorn", "requests").
+    """
+    assert uv is not None
+    if sys.platform == "win32":
+        logger.warning(
+            "runtime environment support is experimental on Windows. "
+            "If you run into issues please file a report at "
+            "https://github.com/ray-project/ray/issues."
+        )
+
+    result: str = ""
+    if isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
+        result = dict(packages=uv)
+    elif isinstance(uv, dict):
+        if set(uv.keys()) - {"packages"}:
+            raise ValueError(
+                "runtime_env['uv'] can only have these fields: "
+                "packages, but got: "
+                f"{list(uv.keys())}"
+            )
+        if "packages" not in uv:
+            raise ValueError(
+                f"runtime_env['uv'] must include field 'packages', but got {uv}"
+            )
+
+        result = uv.copy()
+        if not isinstance(uv["packages"], list):
+            raise ValueError(
+                "runtime_env['uv']['packages'] must be of type list, "
+                f"got: {type(uv['packages'])}"
+            )
+    else:
+        raise TypeError(
+            "runtime_env['uv'] must be of type " f"List[str], or dict, got {type(uv)}"
+        )
+
+    # Deduplicate packages for package lists.
+    result["packages"] = list(OrderedDict.fromkeys(result["packages"]))
+
+    if len(result["packages"]) == 0:
+        result = None
+    logger.debug(f"Rewrote runtime_env `uv` field from {uv} to {result}.")
+    return result
+
+
 def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'pip' option.
 
@@ -280,6 +343,7 @@ OPTION_TO_VALIDATION_FN = {
     "excludes": parse_and_validate_excludes,
     "conda": parse_and_validate_conda,
     "pip": parse_and_validate_pip,
+    "uv": parse_and_validate_uv,
     "env_vars": parse_and_validate_env_vars,
     "container": parse_and_validate_container,
 }

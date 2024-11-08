@@ -489,8 +489,8 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   int64_t max_finished_seq_no_ ABSL_GUARDED_BY(mutex_) = -1;
 };
 
-typedef std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>
-    CoreWorkerClientFactoryFn;
+using CoreWorkerClientFactoryFn =
+    std::function<std::shared_ptr<CoreWorkerClientInterface>(const rpc::Address &)>;
 
 }  // namespace rpc
 }  // namespace ray
