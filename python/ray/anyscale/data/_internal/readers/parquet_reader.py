@@ -37,7 +37,6 @@ class ParquetReader(FileReader):
         self,
         *,
         schema: "pyarrow.Schema",
-        columns: Optional[List[str]],
         dataset_kwargs: Dict[str, Any],
         batch_size: Optional[int],
         use_threads: bool,
@@ -51,8 +50,6 @@ class ParquetReader(FileReader):
         Args:
             schema: An explicit user-provided schema. If not provided, the schema is
                 inferred from the data.
-            columns: A list of column names to read. If not provided, all columns are
-                read. This list can include partition columns.
             dataset_kwargs: Additional keyword arguments to pass to `ParquetDataset`
                 when this class creates fragments.
             batch_size: The number of rows to read per batch. If not provided, a default
@@ -71,7 +68,6 @@ class ParquetReader(FileReader):
             batch_size = DEFAULT_BATCH_SIZE
 
         self._user_provided_schema = schema
-        self._columns = columns
         self._dataset_kwargs = dataset_kwargs
         self._batch_size = batch_size
         self._use_threads = use_threads
@@ -91,6 +87,7 @@ class ParquetReader(FileReader):
         self,
         paths: List[str],
         *,
+        columns: Optional[List[str]] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
         fragments, schema = self._create_fragments(paths, filesystem=filesystem)
@@ -101,11 +98,11 @@ class ParquetReader(FileReader):
         if num_threads > 0:
             yield from make_async_gen(
                 iter(fragments),
-                functools.partial(self._read_fragments, schema=schema),
+                functools.partial(self._read_fragments, schema=schema, columns=columns),
                 num_workers=num_threads,
             )
         else:
-            yield from self._read_fragments(fragments, schema)
+            yield from self._read_fragments(fragments, schema=schema, columns=columns)
 
     def _create_fragments(
         self, paths: List[str], *, filesystem: pa.fs.FileSystem
@@ -136,6 +133,7 @@ class ParquetReader(FileReader):
         self,
         fragments: List[pyarrow.dataset.ParquetFileFragment],
         schema: pyarrow.Schema,
+        columns: Optional[List[str]],
     ) -> Iterable["pyarrow.Table"]:
         for fragment in fragments:
             partitions = {}
@@ -143,29 +141,31 @@ class ParquetReader(FileReader):
                 parse = PathPartitionParser(self._partitioning)
                 partitions = parse(fragment.path)
 
-            for batch in self._read_batches(fragment, schema):
+            for batch in self._read_batches(fragment, schema, columns):
                 if self._include_paths:
                     batch = batch.append_column(
                         "path", pa.array([fragment.path] * len(batch))
                     )
                 for partition, value in partitions.items():
-                    if self._columns is None or partition in self._columns:
+                    if columns is None or partition in columns:
                         batch = batch.append_column(
                             partition, pa.array([value] * len(batch))
                         )
                 yield batch
 
     def _read_batches(
-        self, fragment: pyarrow.dataset.ParquetFileFragment, schema: pyarrow.Schema
+        self,
+        fragment: pyarrow.dataset.ParquetFileFragment,
+        schema: pyarrow.Schema,
+        columns: Optional[List[str]],
     ) -> Iterable[pyarrow.Table]:
         ctx = ray.data.DataContext.get_current()
 
-        columns = self._columns
         if columns is not None:
             # The actual data might not contain all of the user-specified columns (e.g.,
             # if the user includes partition columns). So, filter out columns that
             # aren't in the actual data.
-            columns = [column for column in self._columns if column in schema.names]
+            columns = [column for column in columns if column in schema.names]
 
         def get_batch_iterable():
             return fragment.to_batches(

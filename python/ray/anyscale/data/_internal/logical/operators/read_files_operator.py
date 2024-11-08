@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
 from ray.anyscale.data._internal.readers import FileReader
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -11,6 +11,7 @@ class ReadFiles(LogicalOperator):
         *,
         reader: FileReader,
         filesystem,
+        columns: Optional[List[str]],
         ray_remote_args: Dict[str, Any],
         concurrency: int
     ):
@@ -18,6 +19,7 @@ class ReadFiles(LogicalOperator):
 
         self.reader = reader
         self.filesystem = filesystem
+        self.columns = columns
         self.ray_remote_args = ray_remote_args
         self.concurrency = concurrency
 

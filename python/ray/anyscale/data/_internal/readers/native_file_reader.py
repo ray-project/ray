@@ -2,6 +2,7 @@ import abc
 import io
 from typing import Any, Dict, Iterable, List, Optional
 
+import pandas as pd
 import pyarrow
 
 from .file_reader import FileReader
@@ -47,6 +48,7 @@ class NativeFileReader(FileReader):
         self,
         paths: List[str],
         *,
+        columns: Optional[List[str]] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
         num_threads = self._NUM_THREADS_PER_TASK
@@ -77,7 +79,10 @@ class NativeFileReader(FileReader):
                     if self._include_paths:
                         batch = _add_column_to_batch(batch, "path", path)
                     for partition, value in partitions.items():
-                        batch = _add_column_to_batch(batch, partition, value)
+                        if columns is None or partition in columns:
+                            batch = _add_column_to_batch(batch, partition, value)
+                    if columns is not None:
+                        batch = _filter_columns(batch, columns)
                     yield batch
 
         if num_threads > 0:
@@ -187,18 +192,28 @@ class NativeFileReader(FileReader):
         return in_memory_size
 
 
-def _add_column_to_batch(batch: DataBatch, column: str, value: Any) -> DataBatch:
-    import pandas as pd
-    import pyarrow as pa
+def _filter_columns(batch: DataBatch, columns: List[str]) -> DataBatch:
+    assert isinstance(batch, (pd.DataFrame, dict, pyarrow.Table)), batch
 
-    assert isinstance(batch, (pd.DataFrame, dict, pa.Table)), batch
+    if isinstance(batch, pd.DataFrame):
+        batch = batch[columns]
+    elif isinstance(batch, dict):
+        batch = {column: batch[column] for column in columns}
+    elif isinstance(batch, pyarrow.Table):
+        batch = batch.select(columns)
+
+    return batch
+
+
+def _add_column_to_batch(batch: DataBatch, column: str, value: Any) -> DataBatch:
+    assert isinstance(batch, (pd.DataFrame, dict, pyarrow.Table)), batch
 
     if isinstance(batch, pd.DataFrame) and column not in batch.columns:
         batch[column] = value
     elif isinstance(batch, dict) and column not in batch:
         batch_size = len(batch[next(iter(batch.keys()))])
         batch[column] = [value] * batch_size
-    elif isinstance(batch, pa.Table) and column not in batch.column_names:
-        batch = batch.append_column(column, pa.array([value] * len(batch)))
+    elif isinstance(batch, pyarrow.Table) and column not in batch.column_names:
+        batch = batch.append_column(column, pyarrow.array([value] * len(batch)))
 
     return batch

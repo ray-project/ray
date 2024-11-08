@@ -33,7 +33,9 @@ def plan_read_files_op(
         for block in blocks:
             assert isinstance(block, pa.Table), type(block)
             paths = block[PATH_COLUMN_NAME].to_pylist()
-            yield from op.reader.read_paths(paths, filesystem=op.filesystem)
+            yield from op.reader.read_paths(
+                paths, columns=op.columns, filesystem=op.filesystem
+            )
 
     transform_fns: List[MapTransformFn] = [
         BlocksToBatchesMapTransformFn(batch_format=None),

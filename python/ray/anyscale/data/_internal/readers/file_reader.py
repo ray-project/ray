@@ -1,5 +1,5 @@
 import abc
-from typing import TYPE_CHECKING, Iterable, List
+from typing import TYPE_CHECKING, Iterable, List, Optional
 
 from ray.data.block import DataBatch
 
@@ -18,12 +18,17 @@ class FileReader(abc.ABC):
 
     @abc.abstractmethod
     def read_paths(
-        self, paths: List[str], *, filesystem: "pyarrow.fs.FileSystem"
+        self,
+        paths: List[str],
+        *,
+        columns: Optional[List[str]],
+        filesystem: "pyarrow.fs.FileSystem"
     ) -> Iterable[DataBatch]:
         """Read batches of data from the given file paths.
 
         Args:
             paths: A list of file paths to read.
+            columns: The columns that will be read. If None, all columns will be read.
             filesystem: The filesystem to read from.
 
         Returns:
