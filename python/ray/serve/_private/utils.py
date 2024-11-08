@@ -604,6 +604,5 @@ async def resolve_deployment_response(obj: Any):
     if isinstance(obj, DeploymentResponseGenerator):
         raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
     elif isinstance(obj, DeploymentResponse):
-        # Launch async task to convert DeploymentResponse to an object ref, and
-        # keep track of the argument index in the original `request_args`
+        # Launch async task to convert DeploymentResponse to an object ref
         return asyncio.create_task(obj._to_object_ref())

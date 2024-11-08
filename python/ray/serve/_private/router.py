@@ -436,14 +436,14 @@ class AsyncioRouter:
         new_args = list(request_args)
         new_kwargs = request_kwargs.copy()
 
-        # Map from index -> task to resolve positional arg
+        # Map from index -> task for resolving positional arg
         resolve_arg_tasks = {}
         for i, obj in enumerate(request_args):
             task = await self._resolve_request_arg_func(obj)
             if task is not None:
                 resolve_arg_tasks[i] = task
 
-        # Map from key -> task to resolve key-word arg
+        # Map from key -> task for resolving key-word arg
         resolve_kwarg_tasks = {}
         for k, obj in request_kwargs.items():
             task = await self._resolve_request_arg_func(obj)
@@ -457,7 +457,7 @@ class AsyncioRouter:
             )
             await asyncio.wait(all_tasks)
 
-        # Update new args and new kwargs with resolved object refs
+        # Update new args and new kwargs with resolved arguments
         for index, task in resolve_arg_tasks.items():
             new_args[index] = task.result()
         for key, task in resolve_kwarg_tasks.items():
