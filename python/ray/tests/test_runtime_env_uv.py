@@ -70,7 +70,7 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
 
 
 # Specify uv version.
-def test_uv_with_version():
+def test_uv_with_version(shutdown_only):
     @ray.remote(
         runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
     )
