@@ -1,5 +1,4 @@
 import logging
-import uuid
 from typing import Any, Callable, Dict, List, Optional, Type, Union
 
 import ray
@@ -444,7 +443,7 @@ class DataParallelTrainer(BaseTrainer):
             driver_ip=ray.util.get_node_ip_address(),
             driver_node_id=ray.get_runtime_context().get_node_id(),
             experiment_name=session.get_experiment_name(),
-            run_id=uuid.uuid4().hex,
+            run_id=session.get_run_id(),
         )
 
         backend_executor = self._backend_executor_cls(
