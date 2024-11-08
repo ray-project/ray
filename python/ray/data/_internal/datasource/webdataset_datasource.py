@@ -314,6 +314,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         filerename: Optional[Union[bool, callable, list]] = None,
         suffixes: Optional[Union[bool, callable, list]] = None,
         verbose_open: bool = False,
+        output_format: Optional[str] = "pandas",
         **file_based_datasource_kwargs,
     ):
         super().__init__(paths, **file_based_datasource_kwargs)
@@ -323,6 +324,7 @@ class WebDatasetDatasource(FileBasedDatasource):
         self.filerename = filerename
         self.suffixes = suffixes
         self.verbose_open = verbose_open
+        self.output_format = output_format
 
     def _read_stream(self, stream: "pyarrow.NativeFile", path: str):
         """Read and decode samples from a stream.
@@ -343,6 +345,7 @@ class WebDatasetDatasource(FileBasedDatasource):
             List[Dict[str, Any]]: List of sample (list of length 1).
         """
         import pandas as pd
+        import pyarrow as pa
 
         def get_tar_file_iterator():
             return _tar_file_iterator(
@@ -362,4 +365,17 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
-            yield pd.DataFrame({k: [v] for k, v in sample.items()})
+            if self.output_format == "pandas":
+                yield pd.DataFrame(
+                    {
+                        k: v if isinstance(v, list) and len(v) == 1 else [v]
+                        for k, v in sample.items()
+                    }
+                )
+            else:
+                column_names = list(sample.keys())
+                arrays = [
+                    pa.array(v if isinstance(v, list) and len(v) == 1 else [v])
+                    for v in sample.values()
+                ]
+                yield pa.Table.from_arrays(arrays, names=column_names)

@@ -1855,6 +1855,7 @@ def read_webdataset(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    output_format: Optional[str] = "pandas",
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1918,6 +1919,7 @@ def read_webdataset(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        output_format=output_format,
     )
     return read_datasource(
         datasource,
