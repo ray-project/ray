@@ -213,7 +213,7 @@ if __name__ == "__main__":
             # Define the number of reading blocks, these should be larger than 1
             # and aligned with the data size.
             input_read_method_kwargs={
-                "override_num_blocks": max(args.num_learners * 2, 2)
+                "override_num_blocks": max((args.num_learners or 1) * 2, 2)
             },
             # Concurrency defines the number of processes that run the
             # `map_batches` transformations. This should be aligned with the
@@ -229,13 +229,13 @@ if __name__ == "__main__":
             # mode in a single RLlib training iteration. Leave this to `None` to
             # run an entire epoch on the dataset during a single RLlib training
             # iteration. For single-learner mode 1 is the only option.
-            dataset_num_iters_per_learner=1 if args.num_learners == 0 else None,
+            dataset_num_iters_per_learner=1 if not args.num_learners else None,
         )
         .training(
             train_batch_size_per_learner=1024,
             # To increase learning speed with multiple learners,
             # increase the learning rate correspondingly.
-            lr=0.0008 * max(1, args.num_learners**0.5),
+            lr=0.0008 * (args.num_learners or 1) ** 0.5,
         )
         # Plug in our simple custom BC model from above.
         .rl_module(rl_module_spec=RLModuleSpec(module_class=MyBCModel))
@@ -266,10 +266,6 @@ if __name__ == "__main__":
     # Create a new PPO config.
     base_config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(args.env)
         .training(
             # Keep lr relatively low at the beginning to avoid catastrophic forgetting.

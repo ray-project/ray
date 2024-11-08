@@ -2716,7 +2716,7 @@
 
   run:
     timeout: 43200  # 12h
-    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
+    script: python learning_tests/tuned_examples/dreamerv3/atari_100k.py --framework=tf2 --env=ale_py:ALE/Pong-v5 --num-learners=1 --stop-reward=15.0 --as-release-test
 
   alert: default
 
@@ -2728,6 +2728,39 @@
       cluster:
         cluster_compute: 1gpu_4cpus_gce.yaml
 
+# --------------------------
+# IMPALA
+# --------------------------
+- name: rllib_learning_tests_impala_ppo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_64cpus.yaml
+
+  run:
+    timeout: 1800
+    script: python learning_tests/tuned_examples/impala/pong_impala.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=20.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_64cpus_gce.yaml
 
 # --------------------------
 # PPO
@@ -2747,11 +2780,11 @@
       runtime_env:
         - RLLIB_TEST_NO_JAX_IMPORT=1
         - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
-    cluster_compute: 8gpus_96cpus.yaml
+    cluster_compute: 4gpus_96cpus.yaml
 
   run:
     timeout: 1200
-    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env=ALE/Pong-v5 --num-learners=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
+    script: python learning_tests/tuned_examples/ppo/atari_ppo.py --enable-new-api-stack --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95 --stop-reward=20.0 --as-release-test
 
   alert: default
 
@@ -2761,7 +2794,7 @@
       env: gce
       frequency: manual
       cluster:
-        cluster_compute: 8gpus_96cpus_gce.yaml
+        cluster_compute: 4gpus_96cpus_gce.yaml
 
 
 # --------------------------

@@ -128,7 +128,7 @@ def _make_learner_connector(observation_space, action_space):
 # in the collection of the `rl_unplugged` data.
 def _env_creator(cfg):
     return wrap_atari_for_new_api_stack(
-        gym.make("ALE/Pong-v5", **cfg),
+        gym.make("ale_py:ALE/Pong-v5", **cfg),
         # Perform frame-stacking through ConnectorV2 API.
         framestack=4,
         dim=84,
@@ -140,7 +140,7 @@ tune.register_env("WrappedALE/Pong-v5", _env_creator)
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 # RLUnplugged GCS bucket. This bucket contains for each set of environments
@@ -262,7 +262,7 @@ config = (
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_learners**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=1024,
         # Use the defined learner connector above, to decode observations.
         learner_connector=_make_learner_connector,

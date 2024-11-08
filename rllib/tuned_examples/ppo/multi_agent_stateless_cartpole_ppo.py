@@ -17,7 +17,7 @@ parser.set_defaults(
     num_env_runners=3,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env(
@@ -27,11 +27,6 @@ register_env(
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("multi_stateless_cart")
     .env_runners(
         env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),

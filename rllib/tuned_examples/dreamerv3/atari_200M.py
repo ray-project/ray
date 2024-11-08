@@ -9,7 +9,7 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 
 # Run with:
-# python [this script name].py --env ALE/[gym ID e.g. Pong-v5]
+# python [this script name].py --env ale_py:ALE/[gym ID e.g. Pong-v5]
 
 # To see all available options:
 # python [this script name].py --help
@@ -23,7 +23,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=1000000,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
