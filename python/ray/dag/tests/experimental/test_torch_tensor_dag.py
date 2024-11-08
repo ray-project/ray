@@ -37,8 +37,11 @@ USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
     runtime_env={
         "nsight": {
             "t": "cuda,cudnn,cublas,nvtx",
+            "sample": "cpu",
             "cuda-memory-usage": "true",
             "cuda-graph-trace": "graph",
+            "cudabacktrace": "all",
+            "stop-on-exit": "true",
         }
     }
 )
@@ -989,10 +992,10 @@ def test_vllm_simulation(ray_start_regular):
     #     sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     # ), "This test requires at least 2 GPUs"
 
-    actor_cls = TorchTensorWorker.options(num_cpus=1, num_gpus=0)
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
     pp_tp_workers: List[List[TorchTensorWorker]] = []
     PIPELINE_PARALLELISM = 2
-    TENSOR_PARALLELISM = 2
+    TENSOR_PARALLELISM = 1
     LAST_PP_STAGE = PIPELINE_PARALLELISM - 1
     for _ in range(PIPELINE_PARALLELISM):
         pp_tp_workers.append([actor_cls.remote() for _ in range(TENSOR_PARALLELISM)])
@@ -1005,18 +1008,20 @@ def test_vllm_simulation(ray_start_regular):
                 for i, worker in enumerate(tp_group)
             ]
 
-        # if pp_stage < LAST_PP_STAGE:
-        #     outputs = [
-        #         output.with_type_hint(TorchTensorType(transport="nccl"))
-        #         for output in outputs
-        #     ]
+            if pp_stage < LAST_PP_STAGE:
+                outputs = [
+                    output.with_type_hint(TorchTensorType(transport="nccl"))
+                    for output in outputs
+                ]
         dag = MultiOutputNode(outputs)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
 
-    ref = compiled_dag.execute(10)
-    result = ray.get(ref)
-    print(result)
+
+    for i in range(10):
+        ref = compiled_dag.execute(10)
+        result = ray.get(ref)
+        print(f"====== iteration {i}")
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

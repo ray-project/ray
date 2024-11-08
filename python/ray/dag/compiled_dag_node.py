@@ -157,6 +157,9 @@ def do_exec_tasks(
 
         records = []
         done = False
+        import nvtx
+        pr = nvtx.Profile()
+        pr.enable()
         while True:
             if done:
                 break
@@ -169,6 +172,7 @@ def do_exec_tasks(
                 if done:
                     find_overlap(records)
                     break
+        pr.disable()
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
