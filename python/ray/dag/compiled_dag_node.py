@@ -831,6 +831,12 @@ class CompiledDAG:
 
         # The `default_nccl_group` specified in `experimental_compile`.
         self._default_nccl_group_p2p: Optional[GPUCommunicator] = default_nccl_group
+        if self._default_nccl_group_p2p is not None and not isinstance(
+            self._default_nccl_group_p2p, GPUCommunicator
+        ):
+            raise ValueError(
+                "`default_nccl_group` must be a `GPUCommunicator` or None."
+            )
         self._default_nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
         self._nccl_group_ids: Set[str] = set()
@@ -915,9 +921,11 @@ class CompiledDAG:
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
 
-        # Senders are the DAG nodes who use the custom NCCL group as their
-        # transport in the type hints. Receivers are downstream DAG nodes of
-        # the senders.
+        # Senders are the DAG nodes who use the custom NCCL group as their transport
+        # in the type hints. Receivers are downstream DAG nodes of the senders.
+        # `custom_nccl_group_to_p2p_senders` is needed to set NCCL group IDs in
+        # senders' type hints. `custom_nccl_group_to_p2p_senders_and_receivers` is
+        # used to check that each group has correct membership.
         custom_nccl_group_to_p2p_senders: Dict[
             Optional[GPUCommunicator], Set[DAGNode]
         ] = defaultdict(set)
