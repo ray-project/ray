@@ -7,7 +7,6 @@ import pytest
 import requests
 from starlette.responses import StreamingResponse
 
-import ray
 from ray import serve
 
 
