@@ -66,6 +66,15 @@ class _DAGNodeOperation:
             f" type: {self.type})"
         )
 
+    def prev_op(self):
+        if self.type == _DAGNodeOperationType.WRITE:
+            op_type = _DAGNodeOperationType.COMPUTE
+        elif self.type == _DAGNodeOperationType.COMPUTE:
+            op_type = _DAGNodeOperationType.READ
+        else:
+            assert False, f"No previous operation for type: {self.type}"
+        return _DAGNodeOperation(self.exec_task_idx, op_type, self.method_name)
+
     def vis_str(self):
         """
         A string representation of the node to be used in visualization.

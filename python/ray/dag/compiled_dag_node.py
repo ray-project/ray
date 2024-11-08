@@ -20,6 +20,8 @@ import time
 import uuid
 import traceback
 
+import concurrent
+
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
@@ -152,12 +154,13 @@ def do_exec_tasks(
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         done = False
+        executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
         while True:
             if done:
                 break
             for operation in schedule:
                 done = tasks[operation.exec_task_idx].exec_operation(
-                    self, operation.type, overlap_gpu_communication
+                    self, executor, operation, overlap_gpu_communication
                 )
                 if done:
                     break
@@ -426,6 +429,7 @@ class ExecutableTask:
         # The result of a READ operation will be used by a COMPUTE operation,
         # and the result of a COMPUTE operation will be used by a WRITE operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
+        self._cpu_futures: Dict[_DAGNodeOperation, concurrent.futures.Future] = {}
 
     def cancel(self):
         """
@@ -516,7 +520,26 @@ class ExecutableTask:
         self._intermediate_future = None
         return future.wait()
 
-    def _read(self, overlap_gpu_communication: bool) -> bool:
+    def submit_and_set_cpu_future(
+        self, op: _DAGNodeOperation, executor: concurrent.futures.ThreadPoolExecutor, fn
+    ) -> None:
+        assert self._cpu_futures.get(op) is None
+        future = executor.submit(fn)
+        self._cpu_futures[op] = future
+
+    def reset_and_wait_cpu_future(self, op: _DAGNodeOperation) -> Any:
+        future = self._cpu_futures[op]
+        assert future is not None
+        result = future.result()
+        self._cpu_futures.pop(op)
+        return result
+
+    def _read(
+        self,
+        op: _DAGNodeOperation,
+        executor: concurrent.futures.ThreadPoolExecutor,
+        overlap_gpu_communication: bool,
+    ) -> bool:
         """
         Read input data from upstream DAG nodes and cache the intermediate result.
 
@@ -530,17 +553,23 @@ class ExecutableTask:
         assert self._intermediate_future is None
         exit = False
         try:
-            input_data = self.input_reader.read()
-            # When overlap_gpu_communication is enabled, wrap the result in
-            # a GPUFuture so that this read operation (communication) can
-            # be overlapped with computation.
-            self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
-            )
+            # input_data = self.input_reader.read()
+            self._submit_and_set_cpu_future(op, executor, self.input_reader.read)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
         return exit
+
+    def _post_read(
+        self, op: _DAGNodeOperation, overlap_gpu_communication: bool
+    ) -> None:
+        input_data = self.reset_and_wait_cpu_future(op)
+        # When overlap_gpu_communication is enabled, wrap the result in
+        # a GPUFuture so that this read operation (communication) can
+        # be overlapped with computation.
+        self.wrap_and_set_intermediate_future(
+            input_data, wrap_in_gpu_future=overlap_gpu_communication
+        )
 
     def _compute(
         self,
@@ -617,8 +646,9 @@ class ExecutableTask:
 
     def exec_operation(
         self,
+        executor: concurrent.futures.ThreadPoolExecutor,
         class_handle,
-        op_type: _DAGNodeOperationType,
+        op: _DAGNodeOperation,
         overlap_gpu_communication: bool = False,
     ) -> bool:
         """
@@ -635,14 +665,17 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
+        op_type = op.type
         if op_type == _DAGNodeOperationType.READ:
             with self._recv_stream:
-                return self._read(overlap_gpu_communication)
+                return self._read(op, executor, overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
+            with self._recv_stream:
+                self._post_read(op.prev_op(), overlap_gpu_communication)
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             with self._send_stream:
-                return self._write()
+                return self._write(executor)
 
 
 @dataclass
