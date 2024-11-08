@@ -28,6 +28,7 @@ def start_mongo():
         if db not in ("admin", "local", "config"):
             client.drop_database(db)
     yield client, mongo_url
+
     subprocess.check_call(["service", "mongodb", "stop"])
 
 

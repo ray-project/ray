@@ -874,8 +874,6 @@ class Dataset:
         """Select one or more columns from the dataset.
 
         Specified columns must be in the dataset schema.
-        If `cols` contains duplicate column names, the resulting dataset will
-        contain only one copy of each column.
 
         .. tip::
             If you're reading parquet files with :meth:`ray.data.read_parquet`,
@@ -4358,7 +4356,6 @@ class Dataset:
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> import pyarrow as pa
             >>> ds = ds.add_column("sample weights", lambda df: 1)
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
