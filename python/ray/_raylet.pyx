@@ -3829,7 +3829,7 @@ cdef class CoreWorker:
     def free_objects(self, object_refs, c_bool local_only):
         cdef:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
-            
+
         with nogil:
             status = CCoreWorkerProcess.GetCoreWorker().Delete(free_ids, local_only)
             if status.IsIOError():
