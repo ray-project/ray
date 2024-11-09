@@ -72,8 +72,6 @@ class UvProcessor:
         self._uv_env = os.environ.copy()
         self._uv_env.update(self._runtime_env.env_vars())
 
-    # TODO(hjiang): Check `uv` existence before installation, so we don't blindly
-    # install.
     async def _install_uv(
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
     ):
