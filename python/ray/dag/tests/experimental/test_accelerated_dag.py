@@ -196,6 +196,14 @@ def test_basic_destruction(ray_start_regular):
             "released upon destruction."
         )
 
+    # Ensure that subsequent DAG executions do not fail due to memory leak
+    # and the results can be retrieved by ray.get().
+    val = np.ones(100)
+    ref = compiled_dag.execute(val)
+    result = ray.get(ref)
+    assert (result == val).all()
+    del ref
+
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_two_returns_one_reader(ray_start_regular, single_fetch):
