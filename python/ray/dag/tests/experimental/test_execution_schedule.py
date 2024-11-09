@@ -55,24 +55,14 @@ def generate_dag_graph_nodes(
             False,
             False,
         )
-    if requires_nccl_collective:
-        type_to_node[OpType.NCCL_COLLECTIVE] = _DAGOperationGraphNode(
-            _DAGNodeOperation(exec_task_idx, OpType.NCCL_COLLECTIVE),
-            task_idx,
-            actor_handle,
-            False,
-            False,
-            True,
-        )
-    else:
-        type_to_node[OpType.COMPUTE] = _DAGOperationGraphNode(
-            _DAGNodeOperation(exec_task_idx, OpType.COMPUTE),
-            task_idx,
-            actor_handle,
-            False,
-            False,
-            False,
-        )
+    type_to_node[OpType.COMPUTE] = _DAGOperationGraphNode(
+        _DAGNodeOperation(exec_task_idx, OpType.COMPUTE),
+        task_idx,
+        actor_handle,
+        False,
+        False,
+        requires_nccl_collective,
+    )
     if requires_nccl_write:
         type_to_node[OpType.NCCL_WRITE] = _DAGOperationGraphNode(
             _DAGNodeOperation(exec_task_idx, OpType.NCCL_WRITE),
@@ -90,9 +80,9 @@ def set_collective_idxs(
     dag_idxs: List[int],
 ) -> None:
     OpType = _DAGNodeOperationType
-    collective_idxs = {(dag_idx, OpType.NCCL_COLLECTIVE) for dag_idx in dag_idxs}
+    collective_idxs = {(dag_idx, OpType.COMPUTE) for dag_idx in dag_idxs}
     for dag_idx in dag_idxs:
-        graph[dag_idx][OpType.NCCL_COLLECTIVE].collective_idxs = collective_idxs
+        graph[dag_idx][OpType.COMPUTE].collective_idxs = collective_idxs
 
 
 def set_ready_collective_idxs(
@@ -100,11 +90,9 @@ def set_ready_collective_idxs(
     dag_idxs: List[int],
 ) -> None:
     OpType = _DAGNodeOperationType
-    ready_collective_idxs = {(dag_idx, OpType.NCCL_COLLECTIVE) for dag_idx in dag_idxs}
+    ready_collective_idxs = {(dag_idx, OpType.COMPUTE) for dag_idx in dag_idxs}
     for dag_idx in dag_idxs:
-        graph[dag_idx][
-            OpType.NCCL_COLLECTIVE
-        ].ready_collective_idxs = ready_collective_idxs
+        graph[dag_idx][OpType.COMPUTE].ready_collective_idxs = ready_collective_idxs
 
 
 def _generate_and_extract_execution_schedule(graph):
@@ -318,12 +306,12 @@ class TestSelectNextNodes:
         set_ready_collective_idxs(mock_graph, [task_idx_1, task_idx_2])
 
         mock_actor_to_candidates = {
-            fake_actor_1: [mock_graph[task_idx_1][OpType.NCCL_COLLECTIVE]],
+            fake_actor_1: [mock_graph[task_idx_1][OpType.COMPUTE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
-            mock_graph[task_idx_1][OpType.NCCL_COLLECTIVE],
-            mock_graph[task_idx_2][OpType.NCCL_COLLECTIVE],
+            mock_graph[task_idx_1][OpType.COMPUTE],
+            mock_graph[task_idx_2][OpType.COMPUTE],
         }
 
     def test_two_nccl_collectives(self, monkeypatch):
@@ -368,18 +356,18 @@ class TestSelectNextNodes:
         set_ready_collective_idxs(mock_graph, [task_idx_3, task_idx_4])
 
         mock_actor_to_candidates = {
-            fake_actor_2: [mock_graph[task_idx_2][OpType.NCCL_COLLECTIVE]],
-            fake_actor_4: [mock_graph[task_idx_4][OpType.NCCL_COLLECTIVE]],
+            fake_actor_2: [mock_graph[task_idx_2][OpType.COMPUTE]],
+            fake_actor_4: [mock_graph[task_idx_4][OpType.COMPUTE]],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
-            mock_graph[task_idx_1][OpType.NCCL_COLLECTIVE],
-            mock_graph[task_idx_2][OpType.NCCL_COLLECTIVE],
+            mock_graph[task_idx_1][OpType.COMPUTE],
+            mock_graph[task_idx_2][OpType.COMPUTE],
         }
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert set(next_nodes) == {
-            mock_graph[task_idx_3][OpType.NCCL_COLLECTIVE],
-            mock_graph[task_idx_4][OpType.NCCL_COLLECTIVE],
+            mock_graph[task_idx_3][OpType.COMPUTE],
+            mock_graph[task_idx_4][OpType.COMPUTE],
         }
 
 
