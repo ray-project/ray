@@ -116,6 +116,7 @@ ray_cc_library(
         "src/ray/rpc/grpc_server.cc",
         "src/ray/rpc/server_call.cc",
         "src/ray/rpc/rpc_chaos.cc",
+        "src/ray/rpc/retryable_grpc_client.cc",
     ],
     hdrs = glob([
         "src/ray/rpc/rpc_chaos.h",
