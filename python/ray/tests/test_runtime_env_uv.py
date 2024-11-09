@@ -82,6 +82,19 @@ def test_uv_with_version(shutdown_only):
     assert ray.get(f.remote()) == "2.3.0"
 
 
+# Specify uv version and check.
+def test_uv_with_version_and_check(shutdown_only):
+    @ray.remote(
+        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+    )
+    def f():
+        import pkg_resources
+
+        return pkg_resources.get_distribution("uv").version
+
+    assert ray.get(f.remote()) == "0.4.0"
+
+
 # Package installation via requirements file.
 def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     requirements_file = tmp_working_dir
