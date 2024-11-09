@@ -80,7 +80,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
   void PushActorTask(std::unique_ptr<rpc::PushTaskRequest> request,
                      bool skip_queue,
-                     const rpc::ClientCallback<rpc::PushTaskReply> &callback) override {
+                     rpc::ClientCallback<rpc::PushTaskReply> &&callback) override {
     received_seq_nos.push_back(request->sequence_number());
     callbacks.push_back(callback);
   }

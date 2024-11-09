@@ -91,8 +91,10 @@ void LocalDependencyResolver::ResolveDependencies(
     // This is deleted when the last dependency fetch callback finishes.
     auto inserted = pending_tasks_.emplace(
         task_id,
-        std::make_unique<TaskState>(
-            task, local_dependency_ids, actor_dependency_ids, on_dependencies_resolved));
+        std::make_unique<TaskState>(task,
+                                    local_dependency_ids,
+                                    actor_dependency_ids,
+                                    std::move(on_dependencies_resolved)));
     RAY_CHECK(inserted.second);
   }
 
@@ -137,7 +139,7 @@ void LocalDependencyResolver::ResolveDependencies(
 
   for (const auto &actor_id : actor_dependency_ids) {
     actor_creator_.AsyncWaitForActorRegisterFinish(
-        actor_id, [this, task_id, on_dependencies_resolved](const Status &status) {
+        actor_id, [this, task_id](const Status &status) {
           std::unique_ptr<TaskState> resolved_task_state = nullptr;
 
           {
