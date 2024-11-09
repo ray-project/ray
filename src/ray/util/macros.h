@@ -31,7 +31,7 @@
 //
 #if defined(__GNUC__)
 #define RAY_PREDICT_FALSE(x) (__builtin_expect((x), 0))
-#define RAY_PREDICT_TRUE(x) (__builtin_expect((x), 1))
+#define RAY_PREDICT_TRUE(x) (__builtin_expect(!!(x), 1))
 #define RAY_NORETURN __attribute__((noreturn))
 #define RAY_PREFETCH(addr) __builtin_prefetch(addr)
 #elif defined(_MSC_VER)
