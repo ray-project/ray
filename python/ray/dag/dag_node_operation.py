@@ -23,6 +23,7 @@ class _DAGNodeOperationType(Enum):
     NCCL_READ = "NCCL_READ"
     NCCL_WRITE = "NCCL_WRITE"
     # [CL] NCCL_COLLECTIVE
+    NCCL_COLLECTIVE = "NCCL_COLLECTIVE"
     COMPUTE = "COMPUTE"
 
     def viz_str(self):
@@ -33,7 +34,10 @@ class _DAGNodeOperationType(Enum):
         """
         if self == _DAGNodeOperationType.NCCL_READ:
             return "R"
-        elif self == _DAGNodeOperationType.COMPUTE:
+        elif (
+            self == _DAGNodeOperationType.COMPUTE
+            or self == _DAGNodeOperationType.NCCL_COLLECTIVE
+        ):
             return "C"
         elif self == _DAGNodeOperationType.NCCL_WRITE:
             return "W"
@@ -77,7 +81,7 @@ class _DAGNodeOperation:
     def __hash__(self):
         return hash((self.exec_task_idx, self.type))
 
-    def __eq__(self, other):
+    def __eq__(self, other: "_DAGNodeOperation"):
         # An operation is uniquely identified by its `exec_task_idx` and type.
         # `method_name` is only for debugging purposes.
         return self.exec_task_idx == other.exec_task_idx and self.type == other.type
@@ -410,22 +414,28 @@ def _build_dag_node_operation_graph(
             type_to_node: Dict[_DAGNodeOperationType, _DAGOperationGraphNode] = {}
             for i in range(len(op_nodes)):
                 type_to_node[op_nodes[i].op.type] = op_nodes[i]
-            assert OpType.COMPUTE in type_to_node, "Expected a COMPUTE node"
+            assert (OpType.COMPUTE in type_to_node) != (
+                OpType.NCCL_COLLECTIVE in type_to_node
+            ), "Expected either a COMPUTE node or a NCCL collective node"
+            if OpType.COMPUTE in type_to_node:
+                compute_node_type = OpType.COMPUTE
+            else:
+                compute_node_type = OpType.NCCL_COLLECTIVE
             if OpType.NCCL_READ in type_to_node:
                 # Add an edge from NCCL_READ to COMPUTE.
                 _add_edge(
                     type_to_node[OpType.NCCL_READ],
-                    type_to_node[OpType.COMPUTE],
+                    type_to_node[compute_node_type],
                 )
             if OpType.NCCL_WRITE in type_to_node:
                 # Add an edge from COMPUTE to NCCL_WRITE.
                 _add_edge(
-                    type_to_node[OpType.COMPUTE],
+                    type_to_node[compute_node_type],
                     type_to_node[OpType.NCCL_WRITE],
                 )
             # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
             # `bind_index` i+1 if they belong to the same actor.
-            next_compute_node = type_to_node[OpType.COMPUTE]
+            next_compute_node = type_to_node[compute_node_type]
             if prev_compute_node is not None:
                 _add_edge(prev_compute_node, next_compute_node, "", True)
             prev_compute_node = next_compute_node
@@ -468,9 +478,17 @@ def _build_dag_node_operation_graph(
                 )
             else:
                 # Add an edge from COMPUTE to COMPUTE.
+                if OpType.COMPUTE in graph[task_idx]:
+                    upstream_compute_node_type = OpType.COMPUTE
+                else:
+                    upstream_compute_node_type = OpType.NCCL_COLLECTIVE
+                if OpType.COMPUTE in graph[downstream_task_idx]:
+                    downstream_compute_node_type = OpType.COMPUTE
+                else:
+                    downstream_compute_node_type = OpType.NCCL_COLLECTIVE
                 _add_edge(
-                    graph[task_idx][OpType.COMPUTE],
-                    graph[downstream_task_idx][OpType.COMPUTE],
+                    graph[task_idx][upstream_compute_node_type],
+                    graph[downstream_task_idx][downstream_compute_node_type],
                     "shm",
                 )
 
@@ -623,6 +641,7 @@ def _generate_actor_to_execution_schedule(
     operation nodes to be executed. The function uses a topological sort
     algorithm to generate the schedule.
 
+    [CL]
     Args:
         graph: A graph where each node is a _DAGOperationGraphNode. The key is
             `task_idx`, the index to retrieve its task from `idx_to_task`, and
@@ -734,7 +753,11 @@ def _generate_overlapped_execution_schedule(
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
-                    if overlapped_schedule[j].op.type == _DAGNodeOperationType.COMPUTE:
+                    if (
+                        overlapped_schedule[j].op.type == _DAGNodeOperationType.COMPUTE
+                        or overlapped_schedule[j].op.type
+                        == _DAGNodeOperationType.NCCL_COLLECTIVE
+                    ):
                         # Found a desired compute operation, make the swap
                         nccl_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
