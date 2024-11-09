@@ -9,6 +9,7 @@ import time
 from math import floor
 
 from packaging.version import Version
+from tzlocal import get_localzone
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -138,6 +139,15 @@ class HttpServerDashboardHead:
                 os.path.dirname(os.path.abspath(__file__)), "client/build/favicon.ico"
             )
         )
+
+    @routes.get("/timezone")
+    async def get_timezone(self, req) -> aiohttp.web.Response:
+        try:
+            current_timezone = str(get_localzone())
+            return aiohttp.web.Response(text=current_timezone)
+        except Exception as e:
+            logger.error(f"Error getting timezone: {e}")
+            return aiohttp.web.Response(status=500, text=e)
 
     def get_address(self):
         assert self.http_host and self.http_port
