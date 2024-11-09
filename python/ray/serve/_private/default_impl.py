@@ -5,7 +5,6 @@ import grpc
 
 import ray
 from ray._raylet import GcsClient
-from ray.anyscale.serve.utils import asyncio_grpc_exception_handler
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
@@ -187,9 +186,15 @@ def create_router(  # noqa: F811
     deployment_id: DeploymentID,
     handle_options: Any,
 ):
+    from functools import partial
+
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
         gRPCReplicaWrapper,
+    )
+    from ray.anyscale.serve.utils import (
+        asyncio_grpc_exception_handler,
+        resolve_deployment_resp_and_ray_objects,
     )
     from ray.serve.context import _get_global_client
 
@@ -234,7 +239,10 @@ def create_router(  # noqa: F811
             not is_inside_ray_client_context
             and RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
         ),
-        resolve_request_args_func=resolve_request_args,
+        resolve_request_arg_func=partial(
+            resolve_deployment_resp_and_ray_objects,
+            by_reference=handle_options._by_reference,
+        ),
     )
     router._get_singleton_asyncio_loop().set_exception_handler(
         asyncio_grpc_exception_handler
