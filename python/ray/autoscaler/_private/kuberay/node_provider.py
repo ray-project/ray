@@ -47,15 +47,6 @@ KUBERAY_REQUEST_TIMEOUT_S = int(os.getenv("KUBERAY_REQUEST_TIMEOUT_S", 60))
 
 RAY_HEAD_POD_NAME = os.getenv("RAY_HEAD_POD_NAME")
 
-# https://kubernetes.io/docs/tasks/run-application/access-api-from-pod
-# While running in a Pod, your container can create an HTTPS URL for the
-# Kubernetes API server by fetching the KUBERNETES_SERVICE_HOST and
-# KUBERNETES_SERVICE_PORT_HTTPS environment variables.
-KUBERNETES_SERVICE_HOST = os.getenv(
-    "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
-)
-KUBERNETES_SERVICE_PORT = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
-KUBERNETES_HOST = f"{KUBERNETES_SERVICE_HOST}:{KUBERNETES_SERVICE_PORT}"
 # Key for GKE label that identifies which multi-host replica a pod belongs to
 REPLICA_INDEX_KEY = "replicaIndex"
 
@@ -121,6 +112,30 @@ def _replica_index_label(pod: Dict[str, Any]) -> Optional[str]:
     """
     labels = pod["metadata"]["labels"]
     return labels.get(REPLICA_INDEX_KEY, None)
+
+
+def _get_k8s_host() -> str:
+    """Returns the hostname of the K8s API server.
+    Uses $KUBERNETES_SERVICE_HOST and $KUBERNETES_SERVICE_PORT to construct
+    the kubernetes_host if not provided.
+    When set by Kubernetes, $KUBERNETES_SERVICE_HOST could be an IP address.
+    That's why the https scheme is added here.
+    Defaults to "https://kubernetes.default:443".
+    """
+    # https://kubernetes.io/docs/tasks/run-application/access-api-from-pod
+    # While running in a Pod, your container can create an HTTPS URL for the
+    # Kubernetes API server by fetching the KUBERNETES_SERVICE_HOST and
+    # KUBERNETES_SERVICE_PORT_HTTPS environment variables.
+    k8s_service_host = os.getenv(
+        "KUBERNETES_SERVICE_HOST", "https://kubernetes.default"
+    )
+    k8s_service_port = os.getenv("KUBERNETES_SERVICE_PORT_HTTPS", "443")
+    kubernetes_host = f"{k8s_service_host}:{k8s_service_port}"
+    if kubernetes_host.startswith("http://"):
+        raise ValueError("Kubernetes host must be accessed over HTTPS.")
+    if not kubernetes_host.startswith("https://"):
+        kubernetes_host = "https://" + kubernetes_host
+    return kubernetes_host
 
 
 def pod_ip(pod: Dict[str, Any]) -> NodeIP:
@@ -191,7 +206,6 @@ def url_from_resource(
     namespace: str,
     path: str,
     kuberay_crd_version: str = KUBERAY_CRD_VER,
-    kubernetes_host: str = KUBERNETES_HOST,
 ) -> str:
     """Convert resource path to REST URL for Kubernetes API server.
 
@@ -201,20 +215,8 @@ def url_from_resource(
             Supported resource types are "pods" and "rayclusters".
         kuberay_crd_version: The API version of the KubeRay CRD.
             Looks like "v1alpha1", "v1".
-        kubernetes_host: The host of the Kubernetes API server.
-            Uses $KUBERNETES_SERVICE_HOST and
-            $KUBERNETES_SERVICE_PORT to construct the kubernetes_host if not provided.
-
-            When set by Kubernetes,
-            $KUBERNETES_SERVICE_HOST could be an IP address. That's why the https
-            scheme is added here.
-
-            Defaults to "https://kubernetes.default:443".
     """
-    if kubernetes_host.startswith("http://"):
-        raise ValueError("Kubernetes host must be accessed over HTTPS.")
-    if not kubernetes_host.startswith("https://"):
-        kubernetes_host = "https://" + kubernetes_host
+    kubernetes_host = _get_k8s_host()
     if path.startswith("pods"):
         api_group = "/api/v1"
     elif path.startswith("rayclusters"):
@@ -533,12 +535,7 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
                 "Tried to access unknown entity at {}".format(path)
             )
         return (
-            "https://kubernetes.default:443"
-            + api_group
-            + "/namespaces/"
-            + self.namespace
-            + "/"
-            + path
+            _get_k8s_host() + api_group + "/namespaces/" + self.namespace + "/" + path
         )
 
     def _get(self, path: str) -> Dict[str, Any]:
