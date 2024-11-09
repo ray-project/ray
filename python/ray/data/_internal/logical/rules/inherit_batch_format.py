@@ -2,12 +2,12 @@ from collections import deque
 from typing import Iterable
 
 from ray.data._internal.logical.interfaces import LogicalOperator, LogicalPlan, Rule
-from ray.data._internal.logical.operators.all_to_all_operator import Aggregate, Sort
+from ray.data._internal.logical.operators.all_to_all_operator import AbstractAllToAll
 from ray.data._internal.logical.operators.map_operator import MapBatches
 
 
 class InheritBatchFormatRule(Rule):
-    """For Sort and Aggregate logicla operator, apply this rule
+    """For AbstractAllToAll based operator, apply this rule
     to inherit batch_format from upstream operator by traversing
     the entire DAG."""
 
@@ -25,7 +25,7 @@ class InheritBatchFormatRule(Rule):
         while len(nodes) > 0:
             current_op = nodes.pop()
 
-            if isinstance(current_op, (Sort, Aggregate)):
+            if isinstance(current_op, AbstractAllToAll):
                 # traversal up the DAG until we find MapBatches with batch_format
                 # or we reach to source op and do nothing
                 upstream_op = current_op.input_dependencies[0]
