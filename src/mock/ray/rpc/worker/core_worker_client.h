@@ -22,7 +22,7 @@ class MockCoreWorkerClientInterface : public ray::pubsub::MockSubscriberClientIn
               PushActorTask,
               (std::unique_ptr<PushTaskRequest> request,
                bool skip_queue,
-               const ClientCallback<PushTaskReply> &callback),
+               ClientCallback<PushTaskReply> &&callback),
               (override));
   MOCK_METHOD(void,
               PushNormalTask,
