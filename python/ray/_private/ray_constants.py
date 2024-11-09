@@ -459,6 +459,15 @@ DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
 
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
+
 
 def gcs_actor_scheduling_enabled():
     return os.environ.get("RAY_gcs_actor_scheduling_enabled") == "true"
