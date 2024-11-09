@@ -129,6 +129,8 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
         2) a string containing the path to a local pip “requirements.txt” file.
         3) A python dictionary that has one field:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
+            b) uv_check (optional, bool): whether to enable pip check at the end of uv
+               install, default to False.
 
     The returned parsed value will be a list of packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -145,22 +147,28 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     result: str = ""
     if isinstance(uv, str):
         uv_list = _handle_local_deps_requirement_file(uv)
-        result = dict(packages=uv_list)
+        result = dict(packages=uv_list, uv_check=False)
     elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
-        result = dict(packages=uv)
+        result = dict(packages=uv, uv_check=False)
     elif isinstance(uv, dict):
-        if set(uv.keys()) - {"packages"}:
+        if set(uv.keys()) - {"packages", "uv_check"}:
             raise ValueError(
                 "runtime_env['uv'] can only have these fields: "
-                "packages, but got: "
+                "packages and uv_check, but got: "
                 f"{list(uv.keys())}"
             )
         if "packages" not in uv:
             raise ValueError(
                 f"runtime_env['uv'] must include field 'packages', but got {uv}"
             )
+        if "uv_check" in uv and not isinstance(uv["uv_check"], bool):
+            raise TypeError(
+                "runtime_env['uv']['uv_check'] must be of type bool, "
+                f"got {type(uv['uv_check'])}"
+            )
 
         result = uv.copy()
+        result["uv_check"] = uv.get("uv_check", False)
         if not isinstance(uv["packages"], list):
             raise ValueError(
                 "runtime_env['uv']['packages'] must be of type list, "

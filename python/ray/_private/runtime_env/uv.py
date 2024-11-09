@@ -113,6 +113,20 @@ class UvProcessor:
         except Exception:
             return False
 
+    async def _uv_check(sef, python: str, cwd: str, logger: logging.Logger) -> None:
+        """Check virtual env dependency compatibility.
+        If any incompatibility detected, exception will be thrown.
+
+        param:
+            python: the path for python executable within virtual environment.
+        """
+        cmd = [python, "-m", "uv", "pip", "check"]
+        await check_output_cmd(
+            cmd,
+            logger=logger,
+            cwd=cwd,
+        )
+
     async def _install_uv_packages(
         self,
         path: str,
@@ -157,6 +171,10 @@ class UvProcessor:
         ]
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+
+        # Check python environment for conflicts.
+        if self._uv_config.get("uv_check", False):
+            await self._uv_check(python, cwd, logger)
 
     async def _run(self):
         path = self._target_dir
