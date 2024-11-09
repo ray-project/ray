@@ -102,10 +102,12 @@ class UvProcessor:
         logger.info("Installing package uv to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
-    async def _check_uv_existence(
+    async def _get_existing_uv_version(
         self, path: str, cwd: str, env: dict, logger: logging.Logger
-    ) -> bool:
-        """Check and return the existence of `uv` in virtual env."""
+    ) -> Optional[str]:
+        """Get the version of `uv` in virtual env.
+        If not installed, return None.
+        """
         python = virtualenv_utils.get_virtualenv_python(path)
 
         check_existence_cmd = [
@@ -117,10 +119,41 @@ class UvProcessor:
 
         try:
             # If `uv` doesn't exist, exception will be thrown.
-            await check_output_cmd(check_existence_cmd, logger=logger, cwd=cwd, env=env)
-            return True
+            version_output = await check_output_cmd(
+                check_existence_cmd, logger=logger, cwd=cwd, env=env
+            )
+
+            # If exists, the output format would look like
+            # uv <version> (<sha> <release date>), for example,
+            # uv 0.5.1 (f399a5271 2024-11-08)
+            version_strs = version_output.split()
+            if version_strs[0] == "uv":
+                return version_strs[1]
+            return None
         except Exception:
+            return None
+
+    def _whether_to_install_uv(self, uv_version: Optional[str]) -> bool:
+        """Returns whether we need to re-install uv.
+        params:
+            uv_version: version for uv in virtual env; None if doesn't exist.
+        return:
+            whether need to (re)install uv.
+        """
+        if uv_version is None:
+            return True
+
+        # User doesn't specify uv version, so as long as we have uv it's fine.
+        required_uv = self._uv_config.get("uv_version", None)
+        if required_uv is None:
             return False
+
+        # Uv version in virtual environment perfectly matches user request.
+        if required_uv.endswith(uv_version):
+            return False
+
+        # Version we have doesn't match with required one.
+        return True
 
     async def _install_uv_packages(
         self,
@@ -137,15 +170,10 @@ class UvProcessor:
         requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
         # Check existence for `uv` and see if we could skip `uv` installation.
-        uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
+        uv_version = await self._get_existing_uv_version(python, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
-        #
-        # TODO(hjiang): If `uv` in virtual env perfectly matches the version users
-        # require, we don't need to install also. It requires a different
-        # implementation to execute and check existence. Here we take the simpliest
-        # implementation, always reinstall the required version.
-        if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
+        if self._whether_to_install_uv(uv_version):
             await self._install_uv(path, cwd, pip_env, logger)
 
         # Avoid blocking the event loop.

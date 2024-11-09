@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 class TestRuntimeEnv:
     def uv_config(self):
-        return {"packages": ["requests"]}
+        return {"packages": ["requests"], "uv_version": "==0.4.30"}
 
     def env_vars(self):
         return {}
@@ -38,6 +38,16 @@ async def test_run(mock_install_uv, mock_install_uv_packages):
 
     uv_processor = uv.UvProcessor(target_dir=target_dir, runtime_env=runtime_env)
     await uv_processor._run()
+
+
+def test_whether_to_install_uv():
+    target_dir = "/tmp"
+    runtime_env = TestRuntimeEnv()
+
+    uv_processor = uv.UvProcessor(target_dir=target_dir, runtime_env=runtime_env)
+    assert uv_processor._whether_to_install_uv(None)
+    assert uv_processor._whether_to_install_uv("0.0.1")
+    assert not uv_processor._whether_to_install_uv("0.4.30")
 
 
 if __name__ == "__main__":
