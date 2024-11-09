@@ -127,7 +127,7 @@ class UvProcessor:
             # uv <version> (<sha> <release date>), for example,
             # uv 0.5.1 (f399a5271 2024-11-08)
             version_strs = version_output.split()
-            if version_strs[0] == "uv":
+            if len(version_strs) == 4 and version_strs[0] == "uv":
                 return version_strs[1]
             return None
         except Exception:
