@@ -521,7 +521,10 @@ class ExecutableTask:
         return future.wait()
 
     def submit_and_set_cpu_future(
-        self, op: _DAGNodeOperation, executor: concurrent.futures.ThreadPoolExecutor, fn
+        self,
+        op: _DAGNodeOperation,
+        executor: concurrent.futures.ThreadPoolExecutor,
+        fn
     ) -> None:
         assert self._cpu_futures.get(op) is None
         future = executor.submit(fn)
@@ -646,8 +649,8 @@ class ExecutableTask:
 
     def exec_operation(
         self,
-        executor: concurrent.futures.ThreadPoolExecutor,
         class_handle,
+        executor: concurrent.futures.ThreadPoolExecutor,
         op: _DAGNodeOperation,
         overlap_gpu_communication: bool = False,
     ) -> bool:
@@ -675,7 +678,7 @@ class ExecutableTask:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
             with self._send_stream:
-                return self._write(executor)
+                return self._write()
 
 
 @dataclass
