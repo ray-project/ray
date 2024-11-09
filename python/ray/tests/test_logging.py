@@ -11,6 +11,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
 from typing import Dict
 from unittest.mock import Mock, MagicMock, patch
+from ray.cluster_utils import AutoscalingCluster
 
 import colorama
 import pytest
@@ -1056,6 +1057,41 @@ def test_print_worker_logs_multi_color() -> None:
         f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
         + "is running\n"
     )
+
+
+def test_multiple_ray_nodes_on_same_host(shutdown_only):
+    # Test that launching multiple Ray nodes on the same host will
+    # not produce redundant logs. Use `AutoScalingCluster` to launch
+    # the cluster instead of `ray_start_cluster`, as the latter only
+    # starts certain processes for worker nodes. For example, LogMonitor
+    # is not launched.
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 1},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 1,
+                "max_workers": 1,
+            },
+        },
+        autoscaler_v2=True,
+    )
+    try:
+        cluster.start()
+        script = """
+import ray
+ray.init()
+@ray.remote
+def f():
+    print("hello world")
+ray.get(f.remote())
+"""
+        stderr = run_string_as_driver(script)
+        assert stderr.count("hello world") == 1
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
 
 
 if __name__ == "__main__":

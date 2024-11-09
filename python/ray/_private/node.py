@@ -1078,6 +1078,18 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
+        filename = ray_constants.LOG_MONITOR_LOG_FILE_NAME
+        file_path = os.path.join(self._logs_dir, filename)
+        # Avoid launching multiple log monitors on a single host.
+        # This can happen if the user starts multiple Ray nodes on the same host.
+        if os.path.isfile(file_path):
+            logger.debug(
+                f"File {file_path} exists, not starting log monitor again. "
+                "This can happen if the user starts multiple Ray nodes on "
+                "the same host."
+            )
+            return
+
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.
         _, stderr_file = self.get_log_file_handles(
