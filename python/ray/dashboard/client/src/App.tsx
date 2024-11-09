@@ -23,7 +23,11 @@ import {
   StateApiLogViewerPage,
 } from "./pages/log/Logs";
 import { Metrics } from "./pages/metrics";
-import { DashboardUids, getMetricsInfo } from "./pages/metrics/utils";
+import {
+  DashboardUids,
+  getMetricsInfo,
+  getTimeZoneInfo,
+} from "./pages/metrics/utils";
 import Nodes, { ClusterMainPageLayout } from "./pages/node";
 import { ClusterDetailInfoPage } from "./pages/node/ClusterDetailInfoPage";
 import { ClusterLayout } from "./pages/node/ClusterLayout";
@@ -91,6 +95,12 @@ export type GlobalContextType = {
    * The name of the current selected datasource.
    */
   dashboardDatasource: string | undefined;
+  /**
+   * The name of the current server-side timezone.
+   */
+  serverTimeZone: string | undefined;
+
+  serverTimeZoneLoaded: boolean | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -102,6 +112,8 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   prometheusHealth: undefined,
   sessionName: undefined,
   dashboardDatasource: undefined,
+  serverTimeZone: undefined,
+  serverTimeZoneLoaded: false,
 });
 
 const App = () => {
@@ -115,6 +127,8 @@ const App = () => {
     prometheusHealth: undefined,
     sessionName: undefined,
     dashboardDatasource: undefined,
+    serverTimeZone: undefined,
+    serverTimeZoneLoaded: false,
   });
   useEffect(() => {
     getNodeList().then((res) => {
@@ -156,6 +170,18 @@ const App = () => {
       }));
     };
     doEffect();
+  }, []);
+
+  useEffect(() => {
+    const updateTimezone = async () => {
+      const serverTimeZone = await getTimeZoneInfo();
+      setContext((existingContext) => ({
+        ...existingContext,
+        serverTimeZone,
+        serverTimeZoneLoaded: true,
+      }));
+    };
+    updateTimezone();
   }, []);
 
   return (

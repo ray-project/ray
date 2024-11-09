@@ -2,6 +2,7 @@ import { get } from "../../service/requestHandlers";
 
 const GRAFANA_HEALTHCHECK_URL = "/api/grafana_health";
 const PROMETHEUS_HEALTHCHECK_URL = "/api/prometheus_health";
+const TIMEZONE_URL = "/timezone";
 
 export type DashboardUids = {
   default: string;
@@ -67,4 +68,14 @@ export const getMetricsInfo = async () => {
   } catch (e) {}
 
   return info;
+};
+
+export const getTimeZoneInfo = async () => {
+  try {
+    const resp = await get<string>(TIMEZONE_URL);
+    if (resp.data) {
+      console.log("resp.data", resp.data);
+      return String(resp.data);
+    }
+  } catch (e) {}
 };

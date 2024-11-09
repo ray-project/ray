@@ -21,6 +21,8 @@ export const TEST_APP_WRAPPER = ({ children }: PropsWithChildren<{}>) => {
     prometheusHealth: true,
     sessionName: "session-name",
     dashboardDatasource: "Prometheus",
+    serverTimeZone: "",
+    serverTimeZoneLoaded: false,
   };
 
   return (

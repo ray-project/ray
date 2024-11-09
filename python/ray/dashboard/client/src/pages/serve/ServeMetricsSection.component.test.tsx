@@ -26,6 +26,8 @@ const Wrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
+        serverTimeZone: undefined,
+        serverTimeZoneLoaded: false,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
@@ -51,6 +53,8 @@ const MetricsDisabledWrapper = ({ children }: PropsWithChildren<{}>) => {
         nodeMapByIp: {},
         namespaceMap: {},
         dashboardDatasource: "Prometheus",
+        serverTimeZone: undefined,
+        serverTimeZoneLoaded: false,
       }}
     >
       <STYLE_WRAPPER>{children}</STYLE_WRAPPER>
