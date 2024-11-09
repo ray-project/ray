@@ -77,11 +77,13 @@ class UvProcessor:
     async def _install_uv(
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
     ):
-        """Before package install, make sure `uv` is installed."""
+        """Before package install, make sure the required version `uv` (if specifieds)
+        is installed.
+        """
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
 
-        def _get_uv_exec_to_install():
+        def _get_uv_exec_to_install() -> str:
             """Get `uv` executable with version to install."""
             uv_version = self._uv_config.get("uv_version", None)
             if uv_version:
@@ -96,6 +98,7 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
+            "--force-reinstall",
             _get_uv_exec_to_install(),
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
@@ -139,7 +142,12 @@ class UvProcessor:
         uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
-        if not uv_exists:
+        #
+        # TODO(hjiang): If `uv` in virtual env perfectly matches the version users
+        # require, we don't need to install also. It requires a different
+        # implementation to execute and check existence. Here we take the simpliest
+        # implementation, always reinstall the required version.
+        if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
             await self._install_uv(path, cwd, pip_env, logger)
 
         # Avoid blocking the event loop.
