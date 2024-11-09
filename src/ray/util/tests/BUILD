@@ -186,6 +186,9 @@ cc_test(
 cc_test(
     name = "resize_uninitialized_test",
     srcs = ["resize_uninitialized_test.cc"],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
     deps = [
         "//src/ray/util:resize_uninitialized",
         "@com_google_googletest//:gtest_main",
