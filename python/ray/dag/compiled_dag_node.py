@@ -554,7 +554,7 @@ class ExecutableTask:
         exit = False
         try:
             # input_data = self.input_reader.read()
-            self._submit_and_set_cpu_future(op, executor, self.input_reader.read)
+            self.submit_and_set_cpu_future(op, executor, self.input_reader.read)
         except RayChannelError:
             # Channel closed. Exit the loop.
             exit = True
@@ -1715,10 +1715,16 @@ class CompiledDAG:
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
                 requires_nccl = dag_node.type_hint.requires_nccl()
+                # TODO: use downstream_nccl_actors instead
+                downstream_actors = set(
+                    self.idx_to_task[task_idx].downstream_task_idxs.values()
+                )
                 upstream_requires_nccl = False
+                upstream_nccl_actors = set()
                 for upstream_node in dag_node._upstream_nodes:
                     if upstream_node.type_hint.requires_nccl():
                         upstream_requires_nccl = True
+                        upstream_nccl_actors.add(upstream_node._get_actor_handle())
                         break
 
                 read_node = _DAGOperationGraphNode(
@@ -1744,6 +1750,8 @@ class CompiledDAG:
                     task_idx,
                     actor_handle,
                     requires_nccl,
+                    upstream_nccl_actors,
+                    downstream_actors,
                 )
 
                 actor_to_operation_nodes[actor_handle].append(

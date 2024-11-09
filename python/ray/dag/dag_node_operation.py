@@ -98,6 +98,8 @@ class _DAGOperationGraphNode:
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
+        upstream_nccl_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
+        downstream_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -116,6 +118,8 @@ class _DAGOperationGraphNode:
         self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
+        self.upstream_nccl_actors = upstream_nccl_actors or set()
+        self.downstream_actors = downstream_actors or set()
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -724,6 +728,15 @@ def _generate_overlapped_execution_schedule(
         for the actor.
     """
 
+    def _write_to_same_peer(op: _DAGOperationGraphNode):
+        """
+        Check if the WRITE operation is writing to the same peer actor that
+        the corresponding READ operation is reading from.
+        """
+        if op.operation.type != _DAGNodeOperationType.WRITE:
+            return False
+        return len(op.downstream_actors.intersection(op.upstream_nccl_actors)) > 0
+
     actor_to_overlapped_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
@@ -750,13 +763,27 @@ def _generate_overlapped_execution_schedule(
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
-                        or overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.WRITE
+                        or _write_to_same_peer(overlapped_schedule[j])
                     ) and overlapped_schedule[j].requires_nccl:
                         # Found a NCCL read/write operation, skip the overlap
                         # optimization to keep relative order of NCCL operations
                         break
     return actor_to_overlapped_schedule
+
+
+def _generate_inter_execution_overlapped_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
+    unrolled_execution_schedule = copy.deepcopy(actor_to_execution_schedule) * 2
+    inter_execution_schedule = _generate_overlapped_execution_schedule(
+        unrolled_execution_schedule
+    )
+    if inter_execution_schedule == unrolled_execution_schedule:
+        return actor_to_execution_schedule
+    else:
+        return inter_execution_schedule
 
 
 def _extract_execution_schedule(
