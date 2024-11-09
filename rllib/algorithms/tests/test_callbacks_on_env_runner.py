@@ -24,19 +24,19 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
     def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"start": 1})
 
     def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"step": 1})
 
     def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
         assert isinstance(env_runner, EnvRunner)
         assert isinstance(metrics_logger, MetricsLogger)
-        assert isinstance(env, gym.Env)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"end": 1})
 
     def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
@@ -94,10 +94,6 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -146,10 +142,6 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 batch_mode="complete_episodes",
@@ -195,23 +187,12 @@ class TestCallbacks(unittest.TestCase):
 
     def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
         """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .callbacks(OnEpisodeCreatedCallback)
-        )
+        config = PPOConfig().callbacks(OnEpisodeCreatedCallback)
         self.assertRaises(ValueError, lambda: config.validate())
 
     def test_tune_trial_id_visible_in_callbacks(self):
         config = (
             PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("multi_cart", env_config={"num_agents": 2})
             .callbacks(OnEnvironmentCreatedCallback)
             .multi_agent(
