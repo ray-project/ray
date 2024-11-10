@@ -137,6 +137,16 @@ class MARWILConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a MARWILConfig instance."""
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or MARWIL)
 
         # fmt: off
@@ -165,18 +175,6 @@ class MARWILConfig(AlgorithmConfig):
         self.lr = 1e-4
         self.lambda_ = 1.0
         self.train_batch_size = 2000
-        # TODO (Artur): MARWIL should not need an exploration config as an offline
-        #  algorithm. However, the current implementation of the CRR algorithm
-        #  requires it. Investigate.
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
 
         # Materialize only the data in raw format, but not the mapped data b/c
         # MARWIL uses a connector to calculate values and therefore the module

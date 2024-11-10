@@ -49,6 +49,10 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=2)
             .environment(env="CartPole-v1")
             .evaluation(
@@ -111,6 +115,10 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=1)
             .evaluation(
                 evaluation_num_env_runners=1,
@@ -148,6 +156,10 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=0)
             .offline_data(input_=[data_file])
         )  # Learn from offline data.

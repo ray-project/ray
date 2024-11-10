@@ -4,9 +4,7 @@ import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import (
-    LEARNER_RESULTS,
-)
+from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import (
     check_train_results,
     check_train_results_new_api_stack,
