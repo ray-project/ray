@@ -76,27 +76,8 @@ class VizierSearch(search.Searcher):
                 self.algorithm = problem.algorithm
 
     def set_search_properties(
-            self, metric: Optional[str], mode: Optional[str], config: Dict, **spec  # pylint: disable=g-bare-generic
+        self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        """Pass search properties to searcher.
-
-        This method acts as an alternative to instantiating search algorithms
-        with their own specific search spaces. Instead they can accept a
-        Tune config through this method. A searcher should return ``True``
-        if setting the config was successful, or ``False`` if it was
-        unsuccessful, e.g. when the search space has already been set.
-
-        Args:
-            metric: Metric to optimize
-            mode: One of ["min", "max"]. Direction to optimize.
-            config: Tune config dict.
-            **spec: Any kwargs for forward compatiblity. Info like
-                Experiment.PUBLIC_KEYS is provided through here.
-
-        Returns:   
-
-            True on success, False on failure.
-        """
         if self.study_client:
             # The study is already configured.
             return False
@@ -124,7 +105,7 @@ class VizierSearch(search.Searcher):
         )
         return True
 
-    def on_trial_result(self, trial_id: str, result: Dict) -> None:  # pylint: disable=g-bare-generic
+    def on_trial_result(self, trial_id: str, result: Dict) -> None:
         if trial_id not in self._active_trials:
             raise RuntimeError(f'No active trial for {trial_id}')
         if self.study_client is None:
@@ -144,7 +125,7 @@ class VizierSearch(search.Searcher):
         )
 
     def on_trial_complete(
-            self, trial_id: str, result: Optional[Dict] = None, error: bool = False  # pylint: disable=g-bare-generic
+        self, trial_id: str, result: Optional[Dict] = None, error: bool = False
     ) -> None:
         if trial_id not in self._active_trials:
             raise RuntimeError(f'No active trial for {trial_id}')
@@ -173,7 +154,7 @@ class VizierSearch(search.Searcher):
             trial_client.complete(measurement=measurement)
         self._active_trials.pop(trial_id)
 
-    def suggest(self, trial_id):
+    def suggest(self, trial_id: str) -> Optional[Dict]:
         if self.study_client is None:
             study_config = svz.StudyConfig.from_problem(self._problem)
             study_config.algorithm = self.algorithm
@@ -188,7 +169,7 @@ class VizierSearch(search.Searcher):
         return self._active_trials[trial_id].parameters
 
     # TODO: Test save and restore.
-    def save(self, checkpoint_path):
+    def save(self, checkpoint_path) -> None:
         # We assume that the Vizier service continues running, so the only
         # information needed to restore this searcher is the mapping from the Ray
         # to Vizier trial ids. All other information can become stale and is best
@@ -205,7 +186,7 @@ class VizierSearch(search.Searcher):
                 f,
             )
 
-    def restore(self, checkpoint_path):
+    def restore(self, checkpoint_path) -> None:
         with open(checkpoint_path, 'r') as f:
             obj = json.load(f)
 
