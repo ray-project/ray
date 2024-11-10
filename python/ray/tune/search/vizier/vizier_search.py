@@ -26,21 +26,16 @@ class VizierSearch(search.Searcher):
 
     def __init__(
         self,
+        metric: Optional[str] = None,
+        mode: Optional[str] = None,
         study_id: Optional[str] = None,
-        problem: Optional['StudyConfig'] = None,
         algorithm: Optional[str] = 'DEFAULT',
-        **kwargs,
     ):
         """Initialize a Searcher via ProblemStatement.
 
-        To initialize VizierSearch via set_search_properties, do not set problem.
-
         Args:
             study_id: The study id in the Vizier service.
-            problem: The study config to optimize over. `problem.algorithm` is
-                overwritten by `algorithm`.
-            algorithm: The Vizier algorithm to use. Overrides the algorithm in
-                problem.
+            algorithm: The Vizier algorithm to use.
             **kwargs:
         """
         assert IMPORT_SUCCESSFUL, 'Vizier must be installed with `pip install google-vizier[jax]`.'
@@ -62,18 +57,6 @@ class VizierSearch(search.Searcher):
 
         # Vizier service client.
         self.study_client: Optional[clients.Study] = None
-        if problem:
-            if not problem.is_single_objective:
-                raise ValueError(
-                    f'Only single objective studies are supported: {problem}'
-                )
-            # We can't store StudyConfig since it contains a proto, and it's not
-            # pickleable, so we store problem statement instead.
-            # TODO: store a proto string instead.
-            self._problem = problem.to_problem()
-            self._metric = problem.metric_information.item().name
-            if self.algorithm is None:
-                self.algorithm = problem.algorithm
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
@@ -155,12 +138,6 @@ class VizierSearch(search.Searcher):
         self._active_trials.pop(trial_id)
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
-        if self.study_client is None:
-            study_config = svz.StudyConfig.from_problem(self._problem)
-            study_config.algorithm = self.algorithm
-            self.study_client = clients.Study.from_study_config(
-                study_config, owner='raytune', study_id=self.study_id
-            )
         suggestions = self.study_client.suggest(count=1, client_id=trial_id)
         if not suggestions:
             return search.Searcher.FINISHED
