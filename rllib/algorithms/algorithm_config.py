@@ -3992,7 +3992,7 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override RLModuleSpec -> Use this to
+                # User provided an override RLModuleSpec -> Use this to
                 # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
@@ -4007,7 +4007,7 @@ class AlgorithmConfig(_Config):
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.rl_module_specs
                         )
-                    # The currently setup multi-agent spec has NO
+                    # The currently set up multi-agent spec has NO
                     # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
@@ -4017,7 +4017,7 @@ class AlgorithmConfig(_Config):
                             "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
                             "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., single_agent_rl_module_spec=..)`."
+                            "policy_dict=.., rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only

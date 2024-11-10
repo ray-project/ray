@@ -14,7 +14,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 from ray.tune.registry import register_env
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(
+    default_reward=20.0,
+    default_timesteps=10000000,
+)
 parser.set_defaults(
     enable_new_api_stack=True,
     env="ale_py:ALE/Pong-v5",
@@ -95,8 +98,8 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 20.0,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME: 5000000,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 
 

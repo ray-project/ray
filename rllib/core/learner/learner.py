@@ -1341,8 +1341,8 @@ class Learner(Checkpointable):
         #  a) Either also pass given batches through the learner connector (even if
         #     episodes is None). (preferred solution)
         #  b) Get rid of the option to pass in a batch altogether.
-        if episodes is None:
-            batch = self._convert_batch_type(batch)
+        # if episodes is None:
+        #    batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
