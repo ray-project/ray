@@ -144,7 +144,7 @@ class VizierSearch(search.Searcher):
         return self._active_trials[trial_id].parameters
 
     # TODO: Test save and restore.
-    def save(self, checkpoint_path) -> None:
+    def save(self, checkpoint_path: str) -> None:
         # We assume that the Vizier service continues running, so the only
         # information needed to restore this searcher is the mapping from the Ray
         # to Vizier trial ids. All other information can become stale and is best
@@ -161,7 +161,7 @@ class VizierSearch(search.Searcher):
                 f,
             )
 
-    def restore(self, checkpoint_path) -> None:
+    def restore(self, checkpoint_path: str) -> None:
         with open(checkpoint_path, 'r') as f:
             obj = json.load(f)
 
