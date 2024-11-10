@@ -39,7 +39,6 @@ class VizierSearch(search.Searcher):
             **kwargs:
         """
         assert IMPORT_SUCCESSFUL, 'Vizier must be installed with `pip install google-vizier[jax]`.'
-      
         super(VizierSearch, self).__init__(metric=metric, mode=mode)
 
         if study_id:
@@ -160,7 +159,7 @@ class VizierSearch(search.Searcher):
             obj = json.load(f)
 
         self._study_id = obj['study_id']
-        self._study_client = clients.Study.from_owner_and_id('raytune', self.study_id)
+        self._study_client = clients.Study.from_owner_and_id('raytune', self._study_id)
         self._metric = (
             self._study_client.materialize_study_config().metric_information.item()
         )
