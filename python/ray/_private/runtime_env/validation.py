@@ -34,6 +34,14 @@ def validate_uri(uri: str):
         raise ValueError("Only .zip or .whl files supported for remote URIs.")
 
 
+def _handle_local_deps_requirement_file(requirements_file: str):
+    """Read the given [requirements_file], and return all required dependencies."""
+    requirements_path = Path(requirements_file)
+    if not requirements_path.is_file():
+        raise ValueError(f"{requirements_path} is not a valid file")
+    return requirements_path.read_text().strip().split("\n")
+
+
 def parse_and_validate_py_modules(py_modules: List[str]) -> List[str]:
     """Parses and validates a 'py_modules' option.
 
@@ -108,10 +116,8 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
 
 # TODO(hjiang): More package installation options to implement:
-# 1. Allow users to pass in a local requirements.txt file, which relates to all
-# packages to install;
-# 2. Allow specific version of `uv` to use; as of now we only use default version.
-# 3. `pip_check` has different semantics for `uv` and `pip`, see
+# 1. Allow specific version of `uv` to use; as of now we only use default version.
+# 2. `pip_check` has different semantics for `uv` and `pip`, see
 # https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
 # it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
@@ -120,7 +126,8 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     The value of the input 'uv' field can be one of two cases:
         1) A List[str] describing the requirements. This is passed through.
            Example usage: ["tensorflow", "requests"]
-        2) A python dictionary that has one field:
+        2) a string containing the path to a local pip “requirements.txt” file.
+        3) A python dictionary that has one field:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
 
     The returned parsed value will be a list of packages. If a Ray library
@@ -136,7 +143,10 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
         )
 
     result: str = ""
-    if isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
+    if isinstance(uv, str):
+        uv_list = _handle_local_deps_requirement_file(uv)
+        result = dict(packages=uv_list)
+    elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
         result = dict(packages=uv)
     elif isinstance(uv, dict):
         if set(uv.keys()) - {"packages"}:
@@ -192,12 +202,6 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
     """
     assert pip is not None
 
-    def _handle_local_pip_requirement_file(pip_file: str):
-        pip_path = Path(pip_file)
-        if not pip_path.is_file():
-            raise ValueError(f"{pip_path} is not a valid file")
-        return pip_path.read_text().strip().split("\n")
-
     result = None
     if sys.platform == "win32":
         logger.warning(
@@ -207,7 +211,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
         )
     if isinstance(pip, str):
         # We have been given a path to a requirements.txt file.
-        pip_list = _handle_local_pip_requirement_file(pip)
+        pip_list = _handle_local_deps_requirement_file(pip)
         result = dict(packages=pip_list, pip_check=False)
     elif isinstance(pip, list) and all(isinstance(dep, str) for dep in pip):
         result = dict(packages=pip, pip_check=False)
@@ -237,7 +241,7 @@ def parse_and_validate_pip(pip: Union[str, List[str], Dict]) -> Optional[Dict]:
                 f"runtime_env['pip'] must include field 'packages', but got {pip}"
             )
         elif isinstance(pip["packages"], str):
-            result["packages"] = _handle_local_pip_requirement_file(pip["packages"])
+            result["packages"] = _handle_local_deps_requirement_file(pip["packages"])
         elif not isinstance(pip["packages"], list):
             raise ValueError(
                 "runtime_env['pip']['packages'] must be of type str of list, "

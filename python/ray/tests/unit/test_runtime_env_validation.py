@@ -29,7 +29,7 @@ def test_directory():
 
 
 class TestVaidationUv:
-    def test_parse_and_validate_uv(self):
+    def test_parse_and_validate_uv(self, test_directory):
         # Valid case w/o duplication.
         result = validation.parse_and_validate_uv({"packages": ["tensorflow"]})
         assert result == {"packages": ["tensorflow"]}
@@ -46,13 +46,19 @@ class TestVaidationUv:
         )
         assert result == {"packages": ["requests==1.0.0", "aiohttp", "ray[serve]"]}
 
-        # Invalid case, `str` is not supported for now.
-        with pytest.raises(TypeError):
-            result = validation.parse_and_validate_uv("./requirements.txt")
-
         # Invalid case, unsupport keys.
         with pytest.raises(ValueError):
             result = validation.parse_and_validate_uv({"random_key": "random_value"})
+
+        # Valid requirement files.
+        _, requirements_file = test_directory
+        requirements_file = requirements_file.resolve()
+        result = validation.parse_and_validate_uv(str(requirements_file))
+        assert result == {"packages": ["requests==1.0.0", "pip-install-test"]}
+
+        # Invalid requiremnt files.
+        with pytest.raises(ValueError):
+            result = validation.parse_and_validate_uv("some random non-existent file")
 
 
 class TestValidatePip:
