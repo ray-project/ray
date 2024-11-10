@@ -43,11 +43,11 @@ class VizierSearch(search.Searcher):
         super(VizierSearch, self).__init__(metric=metric, mode=mode)
 
         if study_id:
-            self.study_id = study_id
+            self._study_id = study_id
         else:
-            self.study_id = f'ray_vizier_{uuid.uuid1()}'
+            self._study_id = f'ray_vizier_{uuid.uuid1()}'
 
-        self.algorithm = algorithm
+        self._algorithm = algorithm
 
         # Mapping from Ray trial id to Vizier Trial client.
         self._active_trials: Dict[str, clients.Trial] = {}
@@ -56,13 +56,12 @@ class VizierSearch(search.Searcher):
         self._metric = None
 
         # Vizier service client.
-        self.study_client: Optional[clients.Study] = None
+        self._study_client: Optional[clients.Study] = None
 
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
-        if self.study_client:
-            # The study is already configured.
+        if self._study_client:  # The study is already configured.
             return False
 
         if mode not in ['min', 'max']:
@@ -70,28 +69,27 @@ class VizierSearch(search.Searcher):
 
         self._metric = metric or tune.result.DEFAULT_METRIC
 
-        search_space = converters.SearchSpaceConverter.to_vizier(config)
         vizier_goal = (
             svz.ObjectiveMetricGoal.MAXIMIZE
             if mode == 'max'
             else svz.ObjectiveMetricGoal.MINIMIZE
         )
         study_config = svz.StudyConfig(
-            search_space=search_space,
-            algorithm=self.algorithm,
+            search_space=converters.SearchSpaceConverter.to_vizier(config),
+            algorithm=self._algorithm,
             metric_information=[
                 svz.MetricInformation(self._metric, goal=vizier_goal)
             ],
         )
-        self.study_client = clients.Study.from_study_config(
-            study_config, owner='raytune', study_id=self.study_id
+        self._study_client = clients.Study.from_study_config(
+            study_config, owner='raytune', study_id=self._study_id
         )
         return True
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
         if trial_id not in self._active_trials:
             raise RuntimeError(f'No active trial for {trial_id}')
-        if self.study_client is None:
+        if self._study_client is None:
             raise RuntimeError(
                 'VizierSearch not initialized! Set a search space first.'
             )
@@ -138,7 +136,7 @@ class VizierSearch(search.Searcher):
         self._active_trials.pop(trial_id)
 
     def suggest(self, trial_id: str) -> Optional[Dict]:
-        suggestions = self.study_client.suggest(count=1, client_id=trial_id)
+        suggestions = self._study_client.suggest(count=1, client_id=trial_id)
         if not suggestions:
             return search.Searcher.FINISHED
 
@@ -157,7 +155,7 @@ class VizierSearch(search.Searcher):
         with open(checkpoint_path, 'w') as f:
             json.dump(
                 {
-                    'study_id': self.study_id,
+                    'study_id': self._study_id,
                     'ray_to_vizier_trial_ids': ray_to_vizier_trial_ids,
                 },
                 f,
@@ -167,13 +165,13 @@ class VizierSearch(search.Searcher):
         with open(checkpoint_path, 'r') as f:
             obj = json.load(f)
 
-        self.study_id = obj['study_id']
-        self.study_client = clients.Study.from_owner_and_id(
+        self._study_id = obj['study_id']
+        self._study_client = clients.Study.from_owner_and_id(
             'raytune', self.study_id
         )
         self._metric = (
-            self.study_client.materialize_study_config().metric_information.item()
+            self._study_client.materialize_study_config().metric_information.item()
         )
         self._active_trials = {}
         for ray_id, vizier_trial_id in obj['ray_to_vizier_trial_ids'].items():
-            self._active_trials[ray_id] = self.study_client.get_trial(vizier_trial_id)
+            self._active_trials[ray_id] = self._study_client.get_trial(vizier_trial_id)
