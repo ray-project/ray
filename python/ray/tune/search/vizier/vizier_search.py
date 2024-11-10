@@ -13,22 +13,64 @@ try:
     from vizier import raytune as vzr
     from vizier.service import clients
     from vizier.service import pyvizier as svz
-
-    StudyConfig = svz.StudyConfig
     IMPORT_SUCCESSFUL = True
 except ImportError:
     IMPORT_SUCCESSFUL = False
-    StudyConfig = None
 
 
 class VizierSearch(search.Searcher):
-    """An OSS Vizier Searcher for Ray."""
+    """A wrapper around OSS Vizier to provide trial suggestions.
+    
+    OSS Vizier is a Python-based service for black-box optimization based on Google Vizier,
+    one of the first hyperparameter tuning services designed to work at scale. 
+
+    More info can be found here: https://github.com/google/viizer.
+
+    You will need to install OSS Vizier via the following:
+
+    .. code-block:: bash
+
+        pip install google-vizier[jax]
+
+    For simplicity, this wrapper only handles Tune search spaces via ``Tuner(param_space=...)``,
+    where the Tune space will be automatically converted into a Vizier StudyConfig.
+
+    Args:
+        metric: The training result objective value attribute. If None
+            but a mode was passed, the anonymous metric `_metric` will be used
+            per default.
+        mode: One of {min, max}. Determines whether objective is
+            minimizing or maximizing the metric attribute.
+        algorithm: Specific algorithm from Vizier's library to use. "DEFAULT" corresponds to GP-UCB-PE. See 
+            https://oss-vizier.readthedocs.io/en/latest/guides/user/supported_algorithms.html for more options.
+
+    Tune automatically converts search spaces to Vizier's format:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.search.bayesopt import VizierSearch
+
+        config = {
+            "width": tune.uniform(0, 20),
+            "height": tune.uniform(-100, 100)
+        }
+
+        vizier = VizierSearch(metric="mean_loss", mode="min")
+        tuner = tune.Tuner(
+            my_func,
+            tune_config=tune.TuneConfig(
+                search_alg=vizier,
+            ),
+            param_space=config,
+        )
+        tuner.fit()
+    """
 
     def __init__(
         self,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
-        study_id: Optional[str] = None,
         algorithm: Optional[str] = 'DEFAULT',
     ):
         """Initialize a Searcher via ProblemStatement.
@@ -40,13 +82,10 @@ class VizierSearch(search.Searcher):
         """
         assert IMPORT_SUCCESSFUL, 'Vizier must be installed with `pip install google-vizier[jax]`.'
         super(VizierSearch, self).__init__(metric=metric, mode=mode)
-
-        if study_id:
-            self._study_id = study_id
-        else:
-            self._study_id = f'ray_vizier_{uuid.uuid1()}'
-
         self._algorithm = algorithm
+
+        # For Vizier to identify the unique study.
+        self._study_id = f'ray_vizier_{uuid.uuid1()}'
 
         # Mapping from Ray trial id to Vizier Trial client.
         self._active_trials: Dict[str, clients.Trial] = {}
