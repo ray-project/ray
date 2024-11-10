@@ -103,9 +103,9 @@ message PrestartWorkersRequest {
   optional bytes root_detached_actor_id = 3;
   RuntimeEnvInfo runtime_env_info = 4;
   // Started idle workers will be kept alive for this duration. Reset on task assignment.
-  int64 keep_alive_duration_secs = 5;
+  uint64 keep_alive_duration_secs = 5;
   // Raylet will try to start `num_workers` workers.
-  int64 num_workers = 6;
+  uint64 num_workers = 6;
 }
 
 message PrestartWorkersReply {

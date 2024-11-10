@@ -925,7 +925,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   // This API is sync. It blocks until raylet replies. But it provides no guarantee that
   // the workers are actually started.
   Status PrestartWorkers(const std::string &serialized_runtime_env_info,
-                         int64_t keep_alive_duration_secs,
+                         uint64_t keep_alive_duration_secs,
                          size_t num_workers);
 
   /// Submit a normal task.

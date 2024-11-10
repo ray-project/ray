@@ -1872,8 +1872,8 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                                         rpc::PrestartWorkersReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  const int64_t num_workers =
-      std::min(RayConfig::restart_workers_api_max_num_workers(), request.num_workers());
+  const uint64_t num_workers = std::min(
+      RayConfig::instance().restart_workers_api_max_num_workers(), request.num_workers());
   if (num_workers < request.num_workers()) {
     RAY_LOG(WARNING) << "Requested to prestart " << request.num_workers()
                      << " workers, but only " << num_workers

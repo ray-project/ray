@@ -2166,7 +2166,7 @@ void CoreWorker::BuildCommonTaskSpec(
 }
 
 Status CoreWorker::PrestartWorkers(const std::string &serialized_runtime_env_info,
-                                   int64_t keep_alive_duration_secs,
+                                   uint64_t keep_alive_duration_secs,
                                    size_t num_workers) {
   rpc::PrestartWorkersRequest request;
   request.set_language(GetLanguage());
