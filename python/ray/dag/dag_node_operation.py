@@ -44,6 +44,7 @@ class _DAGNodeOperation:
         exec_task_idx: int,
         operation_type: _DAGNodeOperationType,
         method_name: Optional[str] = None,
+        loop_idx: int = 0,
     ):
         """
         Args:
@@ -58,6 +59,7 @@ class _DAGNodeOperation:
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
         self.method_name = method_name
+        self.loop_idx = loop_idx
 
     def __repr__(self):
         return (
@@ -73,7 +75,9 @@ class _DAGNodeOperation:
             op_type = _DAGNodeOperationType.READ
         else:
             assert False, f"No previous operation for type: {self.type}"
-        return _DAGNodeOperation(self.exec_task_idx, op_type, self.method_name)
+        return _DAGNodeOperation(
+            self.exec_task_idx, op_type, self.method_name, self.loop_idx
+        )
 
     def vis_str(self):
         """
@@ -82,12 +86,16 @@ class _DAGNodeOperation:
         return f"([{self.exec_task_idx}] {self.method_name} {self.type.viz_str()})"
 
     def __hash__(self):
-        return hash((self.exec_task_idx, self.type))
+        return hash((self.exec_task_idx, self.type, self.loop_idx))
 
     def __eq__(self, other):
         # An operation is uniquely identified by its `exec_task_idx` and type.
         # `method_name` is only for debugging purposes.
-        return self.exec_task_idx == other.exec_task_idx and self.type == other.type
+        return (
+            self.exec_task_idx == other.exec_task_idx
+            and self.type == other.type
+            and self.loop_idx == other.loop_idx
+        )
 
 
 @total_ordering
@@ -842,6 +850,14 @@ def _extract_execution_schedule(
     and discard unnecessary information.
     """
     return {
-        actor: [node.operation for node in nodes]
+        actor: [
+            _DAGNodeOperation(
+                node.operation.exec_task_idx,
+                node.operation.type,
+                node.operation.method_name,
+                node.loop_idx,
+            )
+            for node in nodes
+        ]
         for actor, nodes in actor_to_execution_schedule.items()
     }
