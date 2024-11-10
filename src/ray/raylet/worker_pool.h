@@ -19,6 +19,8 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <memory>
+#include <optional>
 #include <queue>
 #include <string_view>
 #include <unordered_set>
@@ -76,6 +78,44 @@ using PopWorkerCallback =
     std::function<bool(const std::shared_ptr<WorkerInterface> &worker,
                        PopWorkerStatus status,
                        const std::string &runtime_env_setup_error_message)>;
+
+struct PopWorkerRequest {
+  const rpc::Language language;
+  const rpc::WorkerType worker_type;
+  const JobID job_id;                    // can be Nil
+  const ActorID root_detached_actor_id;  // can be Nil
+  const std::optional<bool> is_gpu;
+  const std::optional<bool> is_actor_worker;
+  const rpc::RuntimeEnvInfo runtime_env_info;
+  const int runtime_env_hash;
+  const std::vector<std::string> dynamic_options;
+  std::optional<absl::Duration> idle_worker_keep_alive_duration;
+
+  PopWorkerCallback callback;
+
+  PopWorkerRequest(rpc::Language lang,
+                   rpc::WorkerType worker_type,
+                   JobID job,
+                   ActorID root_actor_id,
+                   std::optional<bool> gpu,
+                   std::optional<bool> actor_worker,
+                   rpc::RuntimeEnvInfo runtime_env_info,
+                   std::vector<std::string> options,
+                   std::optional<absl::Duration> idle_worker_keep_alive_duration,
+                   PopWorkerCallback callback)
+      : language(lang),
+        worker_type(worker_type),
+        job_id(job),
+        root_detached_actor_id(root_actor_id),
+        is_gpu(gpu),
+        is_actor_worker(actor_worker),
+        runtime_env_info(std::move(runtime_env_info)),
+        // this-> is needed to disambiguate the member variable from the ctor arg.
+        runtime_env_hash(),
+        dynamic_options(std::move(options)),
+        idle_worker_keep_alive_duration(idle_worker_keep_alive_duration),
+        callback(std::move(callback)) {}
+};
 
 /// \class WorkerPoolInterface
 ///
@@ -417,6 +457,24 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Get the NodeID of this worker pool.
   const NodeID &GetNodeID() const;
 
+  /// Returns a worker id if an idle worker is reused for this request. Otherwise,
+  /// asynchronously start a worker and return WorkerID::Nil().
+  WorkerID PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request);
+
+  // Find an idle worker that can serve the task. If found, pop it out and return it.
+  // Otherwise, return nullptr.
+  std::shared_ptr<WorkerInterface> FindAndPopIdleWorker(
+      const PopWorkerRequest &pop_worker_request);
+
+  // Starts a new worker that fulfills `pop_worker_request`. Difference on methods:
+  // - PopWorker may reuse idle workers.
+  // - StartNewWorker force starts a new worker, with runtime env created.
+  // - StartWorkerProcess starts a new worker process, *without* runtime env creation.
+  //
+  // Note: NONE of these methods guarantee that pop_worker_request.callback will be called
+  // with the started worker. It may be called with any fitting workers.
+  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
+
  protected:
   void update_worker_startup_token_counter();
 
@@ -437,6 +495,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param runtime_env_hash The hash of runtime env.
   /// \param serialized_runtime_env_context The context of runtime env.
   /// \param runtime_env_info The raw runtime env info.
+  /// \param idle_worker_keep_alive_duration If set, the worker will be kept alive for
+  ///   this duration even if it's idle. This is reset after a task assignment.
   /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
   std::tuple<Process, StartupToken> StartWorkerProcess(
@@ -447,7 +507,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       const std::vector<std::string> &dynamic_options = {},
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
-      const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo());
+      const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
+      std::optional<absl::Duration> idle_worker_keep_alive_duration = std::nullopt);
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -505,45 +566,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
+    /// The duration to keep the worker alive even if it's idle.
+    std::optional<absl::Duration> idle_worker_keep_alive_duration;
   };
-
-  struct PopWorkerRequest {
-    rpc::Language language;
-    rpc::WorkerType worker_type;
-    JobID job_id;                    // can be Nil
-    ActorID root_detached_actor_id;  // can be Nil
-    std::optional<bool> is_gpu;
-    std::optional<bool> is_actor_worker;
-    rpc::RuntimeEnvInfo runtime_env_info;
-    int runtime_env_hash;
-    std::vector<std::string> dynamic_options;
-
-    PopWorkerCallback callback;
-
-    PopWorkerRequest(rpc::Language lang,
-                     rpc::WorkerType worker_type,
-                     JobID job,
-                     ActorID root_actor_id,
-                     std::optional<bool> gpu,
-                     std::optional<bool> actor_worker,
-                     rpc::RuntimeEnvInfo runtime_env_info,
-                     int runtime_hash,
-                     std::vector<std::string> options,
-                     PopWorkerCallback callback)
-        : language(lang),
-          worker_type(worker_type),
-          job_id(job),
-          root_detached_actor_id(root_actor_id),
-          is_gpu(gpu),
-          is_actor_worker(actor_worker),
-          runtime_env_info(std::move(runtime_env_info)),
-          runtime_env_hash(runtime_hash),
-          dynamic_options(std::move(options)),
-          callback(std::move(callback)) {}
-  };
-
-  // Starts a new worker that fulfills `pop_worker_request`.
-  void StartNewWorker(const std::shared_ptr<PopWorkerRequest> &pop_worker_request);
 
   /// An internal data structure that maintains the pool state per language.
   struct State {
@@ -709,11 +734,12 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   void DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env);
 
   void AddWorkerProcess(State &state,
-                        const rpc::WorkerType worker_type,
+                        rpc::WorkerType worker_type,
                         const Process &proc,
                         const std::chrono::high_resolution_clock::time_point &start,
                         const rpc::RuntimeEnvInfo &runtime_env_info,
-                        const std::vector<std::string> &dynamic_options);
+                        const std::vector<std::string> &dynamic_options,
+                        std::optional<absl::Duration> idle_worker_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 

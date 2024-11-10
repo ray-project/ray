@@ -597,6 +597,11 @@ RAY_CONFIG(bool, enable_worker_prestart, false)
 /// TODO(clarng): reconcile with enable_worker_prestart
 RAY_CONFIG(bool, prestart_worker_first_driver, true)
 
+/// For a PrestartWorkers request to a single raylet, the maximum number of workers to
+/// prestart. If a request asks for more workers than this, the num of workers will be
+/// capped.
+RAY_CONFIG(uint64_t, restart_workers_api_max_num_workers, 10)
+
 /// The interval of periodic idle worker killing. Value of 0 means worker capping is
 /// disabled.
 RAY_CONFIG(uint64_t, kill_idle_workers_interval_ms, 200)

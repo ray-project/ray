@@ -117,6 +117,9 @@ class WorkerInterface {
 
   virtual const ActorID &GetRootDetachedActorId() const = 0;
 
+  virtual void SetIdleKeepAliveDeadline(absl::Time deadline) = 0;
+  virtual bool IsIdleKillable(absl::Time now) const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -234,6 +237,7 @@ class Worker : public WorkerInterface {
     SetIsActorWorker(task_spec.IsActorCreationTask());
     assigned_task_ = assigned_task;
     root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
+    idle_keep_alive_deadline_ = std::nullopt;
   }
 
   absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
@@ -255,6 +259,17 @@ class Worker : public WorkerInterface {
   void SetJobId(const JobID &job_id);
   void SetIsGpu(bool is_gpu);
   void SetIsActorWorker(bool is_actor_worker);
+
+  bool IsIdleKillable(absl::Time now) const {
+    if (!idle_keep_alive_deadline_.has_value()) {
+      return true;
+    }
+    return now > idle_keep_alive_deadline_.value();
+  }
+
+  void SetIdleKeepAliveDeadline(absl::Time deadline) {
+    idle_keep_alive_deadline_ = deadline;
+  }
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -330,6 +345,10 @@ class Worker : public WorkerInterface {
   std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
+  /// If set, the worker is not eligible for killing even if it's idle. This status is
+  /// reset when the worker is assigned a new task. Note if the job is finished, the
+  /// worker is still killable.
+  std::optional<absl::Time> idle_keep_alive_deadline_ = std::nullopt;
 };
 
 }  // namespace raylet

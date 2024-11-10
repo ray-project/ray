@@ -18,7 +18,10 @@
 #include <csignal>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/time/clock.h"
@@ -40,6 +43,7 @@
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
+#include "src/ray/raylet/worker_pool.h"
 
 namespace {
 
@@ -1863,6 +1867,49 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
+}
+
+void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                                        rpc::PrestartWorkersReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  const int64_t num_workers =
+      std::min(RayConfig::restart_workers_api_max_num_workers(), request.num_workers());
+  if (num_workers < request.num_workers()) {
+    RAY_LOG(WARNING) << "Requested to prestart " << request.num_workers()
+                     << " workers, but only " << num_workers
+                     << " workers are allowed to prestart. See "
+                        "RAY_restart_workers_api_max_num_workers";
+  }
+
+  auto pop_worker_request = std::make_shared<PopWorkerRequest>(
+      request.language(),
+      rpc::WorkerType::WORKER,
+      request.has_job_id() ? JobID::FromBinary(request.job_id()) : JobID::Nil(),
+      request.has_root_detached_actor_id()
+          ? ActorID::FromBinary(request.root_detached_actor_id())
+          : ActorID::Nil(),
+      /*gpu=*/std::nullopt,
+      /*actor_worker=*/std::nullopt,
+      request.runtime_env_info(),
+      /*options=*/std::vector<std::string>{},
+      absl::Seconds(request.keep_alive_duration_secs()),
+      /*callback=*/
+      [request](const std::shared_ptr<WorkerInterface> &worker,
+                PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) {
+        // This callback does not use the worker.
+        RAY_LOG(ERROR) << "Prestart worker started! token " <<
+
+            worker->GetStartupToken() << ", id " << worker->WorkerId() << ", status "
+                       << status << ", runtime_env_setup_error_message "
+                       << runtime_env_setup_error_message;
+        return false;
+      });
+
+  for (int64_t i = 0; i < num_workers; i++) {
+    worker_pool_.StartNewWorker(pop_worker_request);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePrepareBundleResources(

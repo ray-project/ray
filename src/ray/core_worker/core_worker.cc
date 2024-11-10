@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/core_worker.h"
 
+#include <future>
+
 #ifndef _WIN32
 #include <unistd.h>
 #endif
@@ -2161,6 +2163,25 @@ void CoreWorker::BuildCommonTaskSpec(
   for (const auto &arg : args) {
     builder.AddArg(*arg);
   }
+}
+
+Status CoreWorker::PrestartWorkers(const std::string &serialized_runtime_env_info,
+                                   int64_t keep_alive_duration_secs,
+                                   size_t num_workers) {
+  rpc::PrestartWorkersRequest request;
+  request.set_language(GetLanguage());
+  request.set_job_id(GetCurrentJobId().Binary());
+  *request.mutable_runtime_env_info() =
+      *OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
+  request.set_keep_alive_duration_secs(keep_alive_duration_secs);
+  request.set_num_workers(num_workers);
+  // this is sync
+  std::promise<Status> promise;
+  local_raylet_client_->PrestartWorkers(
+      request, [&promise](const Status &status, const rpc::PrestartWorkersReply &reply) {
+        promise.set_value(status);
+      });
+  return promise.get_future().get();
 }
 
 std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
