@@ -10,7 +10,7 @@ from ray.tune import search
 
 # Make sure that importing this file doesn't crash Ray, even if Vizier wasn't installed.
 try:
-    from vizier._src.raytune import converters
+    from vizier import raytune as vzr
     from vizier.service import clients
     from vizier.service import pyvizier as svz
 
@@ -75,7 +75,7 @@ class VizierSearch(search.Searcher):
             else svz.ObjectiveMetricGoal.MINIMIZE
         )
         study_config = svz.StudyConfig(
-            search_space=converters.SearchSpaceConverter.to_vizier(config),
+            search_space=vzr.SearchSpaceConverter.to_vizier(config),
             algorithm=self._algorithm,
             metric_information=[
                 svz.MetricInformation(self._metric, goal=vizier_goal)
