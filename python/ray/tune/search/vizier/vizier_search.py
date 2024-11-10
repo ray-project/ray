@@ -143,7 +143,6 @@ class VizierSearch(search.Searcher):
         self._active_trials[trial_id] = suggestions[0]
         return self._active_trials[trial_id].parameters
 
-    # TODO: Test save and restore.
     def save(self, checkpoint_path: str) -> None:
         # We assume that the Vizier service continues running, so the only
         # information needed to restore this searcher is the mapping from the Ray
@@ -153,22 +152,15 @@ class VizierSearch(search.Searcher):
         for trial_id, trial_client in self._active_trials.items():
             ray_to_vizier_trial_ids[trial_id] = trial_client.id
         with open(checkpoint_path, 'w') as f:
-            json.dump(
-                {
-                    'study_id': self._study_id,
-                    'ray_to_vizier_trial_ids': ray_to_vizier_trial_ids,
-                },
-                f,
-            )
+            info = {'study_id': self._study_id, 'ray_to_vizier_trial_ids': ray_to_vizier_trial_ids}
+            json.dump(info, f)
 
     def restore(self, checkpoint_path: str) -> None:
         with open(checkpoint_path, 'r') as f:
             obj = json.load(f)
 
         self._study_id = obj['study_id']
-        self._study_client = clients.Study.from_owner_and_id(
-            'raytune', self.study_id
-        )
+        self._study_client = clients.Study.from_owner_and_id('raytune', self.study_id)
         self._metric = (
             self._study_client.materialize_study_config().metric_information.item()
         )
