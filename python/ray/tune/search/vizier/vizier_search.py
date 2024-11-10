@@ -40,7 +40,7 @@ class VizierSearch(search.Searcher):
         """
         assert IMPORT_SUCCESSFUL, 'Vizier must be installed with `pip install google-vizier[jax]`.'
       
-        super().__init__(**kwargs)
+        super(VizierSearch, self).__init__(metric=metric, mode=mode)
 
         if study_id:
             self.study_id = study_id
