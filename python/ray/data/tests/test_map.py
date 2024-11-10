@@ -82,8 +82,8 @@ def test_basic_actors(shutdown_only):
     def _all_actors_dead():
         actor_table = ray.state.actors()
         actors = {
-            id: actor_info
-            for actor_info in actor_table.values()
+            _id: actor_info
+            for _id, actor_info in actor_table.items()
             if actor_info["ActorClassName"] == _MapWorker.__name__
         }
         assert len(actors) > 0

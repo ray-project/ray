@@ -570,7 +570,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.module
+        assert self.env and hasattr(self, "module")
 
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.

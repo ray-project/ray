@@ -948,12 +948,13 @@ py_test(
 )
 
 # CQL
+# @OldAPIStack
 py_test(
-    name = "test_cql",
+    name = "test_cql_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     data = ["tests/data/pendulum/small.json"],
-    srcs = ["algorithms/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql_old_api_stack.py"]
 )
 
 # DQN
