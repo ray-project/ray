@@ -25,11 +25,11 @@ class VizierSearch(search.Searcher):
     """An OSS Vizier Searcher for Ray."""
 
     def __init__(
-            self,
-            study_id: Optional[str] = None,
-            problem: Optional['StudyConfig'] = None,
-            algorithm: Optional[str] = 'DEFAULT',
-            **kwargs,
+        self,
+        study_id: Optional[str] = None,
+        problem: Optional['StudyConfig'] = None,
+        algorithm: Optional[str] = 'DEFAULT',
+        **kwargs,
     ):
         """Initialize a Searcher via ProblemStatement.
 
