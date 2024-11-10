@@ -22,7 +22,6 @@ class _DAGNodeOperationType(Enum):
 
     NCCL_READ = "NCCL_READ"
     NCCL_WRITE = "NCCL_WRITE"
-    # [CL] NCCL_COLLECTIVE
     COMPUTE = "COMPUTE"
 
     def viz_str(self):
@@ -77,7 +76,7 @@ class _DAGNodeOperation:
     def __hash__(self):
         return hash((self.exec_task_idx, self.type))
 
-    def __eq__(self, other):
+    def __eq__(self, other: "_DAGNodeOperation"):
         # An operation is uniquely identified by its `exec_task_idx` and type.
         # `method_name` is only for debugging purposes.
         return self.exec_task_idx == other.exec_task_idx and self.type == other.type

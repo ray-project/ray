@@ -6,6 +6,9 @@ PREV_CLASS_METHOD_CALL_KEY = "prev_class_method_call"
 BIND_INDEX_KEY = "bind_index"
 IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
+# Reserved keys used to handle NCCL P2P send/recv nodes in Ray DAG building.
+P2P_OPERATION_KEY = "p2p_operation"
+
 # Reserved keys used to handle CollectiveOutputNode in Ray DAG building.
 COLLECTIVE_OPERATION_KEY = "collective_operation"
 

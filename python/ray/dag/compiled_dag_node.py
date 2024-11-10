@@ -915,6 +915,111 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
+    def _add_nccl_p2p_nodes(self) -> None:
+        """
+        Add NCCL P2P send/recv nodes to the DAG.
+        """
+        from ray.dag import (
+            DAGNode,
+            InputNode,
+            MultiOutputNode,
+            ClassMethodNode,
+        )
+        from ray.dag.p2p_node import (
+            _P2POperation,
+            _NCCLRecvNode,
+            _NCCLSendNode,
+        )
+        from ray.dag.constants import PARENT_CLASS_NODE_KEY, P2P_OPERATION_KEY, BIND_INDEX_KEY
+        from ray.experimental.channel import ChannelOutputType
+
+        nccl_send_nodes: Dict[DAGNode, _NCCLSendNode] = dict()
+        nccl_recv_nodes: Dict[DAGNode, Dict[int, _NCCLRecvNode]] = defaultdict(dict)
+
+        # Gather NCCL P2P send nodes.
+        for _, task in self.idx_to_task.items():
+            if isinstance(task.dag_node, _NCCLSendNode) or isinstance(
+                task.dag_node, _NCCLRecvNode
+            ):
+                raise ValueError(
+                    "Please use type hints to specify NCCL transport instead of "
+                    "adding NCCLSendNode or NCCLRecvNode to the DAG"
+                )
+
+            if not task.dag_node.type_hint.requires_nccl():
+                continue
+
+            if isinstance(task.dag_node, InputNode):
+                raise ValueError(
+                    "DAG inputs cannot be transferred via NCCL because "
+                    "the driver cannot participate in the NCCL group"
+                )
+            elif not isinstance(task.dag_node, ClassMethodNode):
+                raise ValueError(
+                    "NCCL P2P send/recv is only supported with ClassMethodNodes"
+                )
+
+            send_actor_handle: "ray.actor.ActorHandle" = (
+                task.dag_node._get_actor_handle()
+            )
+            assert send_actor_handle is not None, "Expected an actor handle"
+            nccl_send_nodes[task.dag_node] = _NCCLSendNode(
+                method_args=(task.dag_node,),
+                other_args_to_resolve={
+                    PARENT_CLASS_NODE_KEY: send_actor_handle,
+                    P2P_OPERATION_KEY: _P2POperation(),
+                    # [TODO] What should the bind index be here?
+                    BIND_INDEX_KEY: task.dag_node._get_bind_index(),
+                },
+            )
+
+        # Gather NCCL P2P recv nodes.
+        for _, task in self.idx_to_task.items():
+            for arg_idx, arg in enumerate(task.args):
+                if not isinstance(arg, DAGNode) or not arg.type_hint.requires_nccl():
+                    continue
+
+                if isinstance(task.dag_node, MultiOutputNode):
+                    raise ValueError(
+                        "Outputs cannot be transferred via NCCL because the driver "
+                        "cannot participate in the NCCL group"
+                    )
+                elif not isinstance(task.dag_node, ClassMethodNode):
+                    raise ValueError(
+                        "NCCL P2P send/recv is only supported with ClassMethodNodes"
+                    )
+
+                send_node = nccl_send_nodes[arg]
+                recv_actor_handle: "ray.actor.ActorHandle" = (
+                    task.dag_node._get_actor_handle()
+                )
+                assert recv_actor_handle is not None, "Expected an actor handle"
+                recv_node = _NCCLRecvNode(
+                    method_args=(send_node,),
+                    other_args_to_resolve={
+                        PARENT_CLASS_NODE_KEY: recv_actor_handle,
+                        P2P_OPERATION_KEY: send_node.p2p_op,
+                        # [TODO] What should the bind index be here?
+                        BIND_INDEX_KEY: task.dag_node._get_bind_index(),
+                    },
+                )
+                nccl_recv_nodes[task.dag_node][arg_idx] = recv_node
+
+        # Add NCCL P2P send nodes to the DAG.
+        for dag_node, send_node in nccl_send_nodes.items():
+            type_hint = dag_node.type_hint
+            dag_node.with_type_hint(ChannelOutputType())
+            send_node.with_type_hint(type_hint)
+            self._add_node(send_node)
+
+        # Add NCCL P2P recv nodes to the DAG.
+        for dag_node in nccl_recv_nodes:
+            new_args: List[Any] = list(dag_node._bound_args)
+            for arg_idx, recv_node in nccl_recv_nodes[dag_node].items():
+                new_args[arg_idx] = recv_node
+                self._add_node(recv_node)
+            dag_node._bound_args = tuple(new_args)
+
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
         upstream and downstream tasks, and to set the input and output node(s)
@@ -932,6 +1037,8 @@ class CompiledDAG:
             MultiOutputNode,
         )
         from ray.dag.collective_node import _CollectiveOperation
+
+        self._add_nccl_p2p_nodes()
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
