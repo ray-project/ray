@@ -73,13 +73,6 @@ class VizierSearch(search.Searcher):
         mode: Optional[str] = None,
         algorithm: Optional[str] = 'DEFAULT',
     ):
-        """Initialize a Searcher via ProblemStatement.
-
-        Args:
-            study_id: The study id in the Vizier service.
-            algorithm: The Vizier algorithm to use.
-            **kwargs:
-        """
         assert IMPORT_SUCCESSFUL, 'Vizier must be installed with `pip install google-vizier[jax]`.'
         super(VizierSearch, self).__init__(metric=metric, mode=mode)
         self._algorithm = algorithm
