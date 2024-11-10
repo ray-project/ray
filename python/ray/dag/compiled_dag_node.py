@@ -65,7 +65,9 @@ from ray.dag.dag_node_operation import (
     _build_dag_node_operation_graph,
     _extract_execution_schedule,
     _generate_actor_to_execution_schedule,
+    _generate_inter_execution_overlapped_schedule,
     _generate_overlapped_execution_schedule,
+    _same_schedule,
     _visualize_execution_schedule,
 )
 
@@ -521,10 +523,7 @@ class ExecutableTask:
         return future.wait()
 
     def submit_and_set_cpu_future(
-        self,
-        op: _DAGNodeOperation,
-        executor: concurrent.futures.ThreadPoolExecutor,
-        fn
+        self, op: _DAGNodeOperation, executor: concurrent.futures.ThreadPoolExecutor, fn
     ) -> None:
         assert self._cpu_futures.get(op) is None
         future = executor.submit(fn)
@@ -1817,6 +1816,18 @@ class CompiledDAG:
             actor_to_overlapped_schedule = _generate_overlapped_execution_schedule(
                 actor_to_execution_schedule
             )
+            if _same_schedule(
+                actor_to_execution_schedule, actor_to_overlapped_schedule
+            ):
+                logger.info("No intra-execution overlap.")
+                old, new = _generate_inter_execution_overlapped_schedule(
+                    actor_to_execution_schedule
+                )
+                if old == new:
+                    logger.info("No inter-execution overlap.")
+                else:
+                    logger.info("Found inter-execution overlap.")
+                    actor_to_execution_schedule, actor_to_overlapped_schedule = old, new
 
         if RAY_ADAG_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
