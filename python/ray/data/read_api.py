@@ -735,6 +735,7 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
     if meta_provider is None:
@@ -897,6 +898,8 @@ def read_images(
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = ImageFileMetadataProvider()
 
@@ -1023,6 +1026,8 @@ def read_parquet_bulk(
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
@@ -1168,6 +1173,8 @@ def read_json(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1334,6 +1341,8 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1445,6 +1454,8 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1553,6 +1564,8 @@ def read_avro(
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1648,6 +1661,8 @@ def read_numpy(
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1783,6 +1798,8 @@ def read_tfrecords(
     """
     import platform
 
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     tfx_read = False
 
     if tfx_read_options and platform.processor() != "arm":
@@ -1901,6 +1918,8 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -2017,6 +2036,8 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -3251,4 +3272,15 @@ def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
             "Valid values are None, 'files'."
+        )
+
+
+def _emit_meta_provider_deprecation_warning(
+    meta_provider: Optional[BaseFileMetadataProvider],
+) -> None:
+    if meta_provider is not None:
+        warnings.warn(
+            "The `meta_provider` argument is deprecated and will be removed after June "
+            "2025.",
+            DeprecationWarning,
         )
