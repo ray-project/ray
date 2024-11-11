@@ -146,8 +146,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.num_gpu_loader_threads = 8
-        # IMPALA takes care of its own EnvRunner (weights, connector, counters)
-        # synching.
+        # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
         self._dont_auto_sync_env_runner_states = True
 
         self.grad_clip = 40.0
@@ -650,15 +649,21 @@ class IMPALA(Algorithm):
                 value=len(data_packages_for_learner_group),
             )
             rl_module_state = None
-            last_good_learner_results = None
             num_learner_group_results_received = 0
 
             for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
+                return_state = (
+                    self.metrics.peek(
+                        NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                        default=0,
+                    )
+                    >= self.config.broadcast_interval
+                )
                 if self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
-                        return_state=True,
+                        return_state=return_state,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                                 (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
@@ -673,7 +678,7 @@ class IMPALA(Algorithm):
                     learner_results = self.learner_group.update_from_episodes(
                         episodes=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
-                        return_state=True,
+                        return_state=return_state,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
                                 (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
@@ -684,6 +689,13 @@ class IMPALA(Algorithm):
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
                     )
+                # TODO (sven): Rename this metric into a more fitting name: ex.
+                #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
+                self.metrics.log_value(
+                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
+                    1,
+                    reduce="sum",
+                )
                 if not do_async_updates:
                     learner_results = [learner_results]
 
@@ -699,7 +711,6 @@ class IMPALA(Algorithm):
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
                     )
-                    last_good_learner_results = results_from_n_learners
             self.metrics.log_value(
                 key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
                 value=num_learner_group_results_received,
@@ -711,31 +722,17 @@ class IMPALA(Algorithm):
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
-        if last_good_learner_results:
-            # TODO (sven): Rename this metric into a more fitting name: ex.
-            #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
-            self.metrics.log_value(
-                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 1, reduce="sum"
+        if rl_module_state is not None:
+            self.metrics.set_value(
+                NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
             )
-            # Merge available EnvRunner states into local worker's EnvRunner state.
-            # Broadcast merged EnvRunner state AND new model weights back to all remote
-            # EnvRunners that - in this call - had returned samples.
-            if (
-                self.metrics.peek(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS
+            self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                self.env_runner_group.sync_env_runner_states(
+                    config=self.config,
+                    connector_states=connector_states,
+                    rl_module_state=rl_module_state,
                 )
-                >= self.config.broadcast_interval
-            ):
-                self.metrics.set_value(
-                    NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS, 0
-                )
-                self.metrics.log_value(NUM_SYNCH_WORKER_WEIGHTS, 1, reduce="sum")
-                with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-                    self.env_runner_group.sync_env_runner_states(
-                        config=self.config,
-                        connector_states=connector_states,
-                        rl_module_state=rl_module_state,
-                    )
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
