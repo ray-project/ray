@@ -208,7 +208,7 @@ Optuna (tune.search.optuna.OptunaSearch)
 
 .. _vizier:
 
-Vizier (tung.search.vizier.VizierSearch)
+Vizier (tune.search.vizier.VizierSearch)
 ----------------------------------------
 
 .. autosummary::
