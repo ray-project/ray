@@ -134,18 +134,19 @@ class DQNConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a DQNConfig instance."""
-        super().__init__(algo_class=algo_class or DQN)
-
-        # Overrides of AlgorithmConfig defaults
-        # `env_runners()`
-        # Set to `self.n_step`, if 'auto'.
-        self.rollout_fragment_length: Union[int, str] = "auto"
         self.exploration_config = {
             "type": "EpsilonGreedy",
             "initial_epsilon": 1.0,
             "final_epsilon": 0.02,
             "epsilon_timesteps": 10000,
         }
+
+        super().__init__(algo_class=algo_class or DQN)
+
+        # Overrides of AlgorithmConfig defaults
+        # `env_runners()`
+        # Set to `self.n_step`, if 'auto'.
+        self.rollout_fragment_length: Union[int, str] = "auto"
         # New stack uses `epsilon` as either a constant value or a scheduler
         # defined like this.
         # TODO (simon): Ensure that users can understand how to provide epsilon.
@@ -174,7 +175,6 @@ class DQNConfig(AlgorithmConfig):
         self.target_network_update_freq = 500
         self.num_steps_sampled_before_learning_starts = 1000
         self.store_buffer_in_checkpoints = False
-        self.lr_schedule = None
         self.adam_epsilon = 1e-8
 
         self.tau = 1.0
@@ -203,13 +203,10 @@ class DQNConfig(AlgorithmConfig):
             # Beta parameter for sampling from prioritized replay buffer.
             "beta": 0.4,
         }
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # fmt: on
         # __sphinx_doc_end__
+
+        self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated
         self.buffer_size = DEPRECATED_VALUE
@@ -427,11 +424,12 @@ class DQNConfig(AlgorithmConfig):
         # Warn about new API stack on by default.
         if self.enable_rl_module_and_learner:
             logger.warning(
-                "You are running DQN on the new API stack! This is the new default "
-                "behavior for this algorithm. If you don't want to use the new API "
-                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
-                "enable_env_runner_and_connector_v2=False)`. For a detailed "
-                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+                f"You are running {self.algo_class.__name__} on the new API stack! "
+                "This is the new default behavior for this algorithm. If you don't "
+                "want to use the new API stack, set `config.api_stack("
+                "enable_rl_module_and_learner=False,"
+                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
         if (

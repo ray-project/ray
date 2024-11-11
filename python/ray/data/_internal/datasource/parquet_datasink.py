@@ -72,13 +72,16 @@ class ParquetDatasink(_FileDatasink):
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
+        schema = write_kwargs.pop("schema", None)
+        if schema is None:
+            schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
 
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
-                schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
+                tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
                 with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
-                    for block in blocks:
-                        table = BlockAccessor.for_block(block).to_arrow()
+                    for table in tables:
+                        table = table.cast(schema)
                         writer.write_table(table)
 
         logger.debug(f"Writing {write_path} file.")

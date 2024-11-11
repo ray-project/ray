@@ -37,8 +37,9 @@
 #include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
-namespace ray {
-namespace core {
+using json = nlohmann::json;
+
+namespace ray::core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options) {
   if (options.worker_type == WorkerType::DRIVER) {
@@ -640,7 +641,6 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats().StatsString() << "\n\n"
-                        << task_execution_service_.stats().StatsString() << "\n\n"
                         << "-----------------\n"
                         << "Task execution event stats:\n"
                         << task_execution_service_.stats().StatsString() << "\n\n"
@@ -4037,7 +4037,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     RAY_LOG(INFO).WithField(task_id).WithField(current_actor_id)
         << "Cancel an actor task";
     CancelActorTaskOnExecutor(
-        caller_worker_id, task_id, force_kill, recursive, on_cancel_callback);
+        caller_worker_id, task_id, force_kill, recursive, std::move(on_cancel_callback));
   } else {
     RAY_CHECK(current_actor_id.IsNil());
     RAY_LOG(INFO).WithField(task_id) << "Cancel a normal task";
@@ -4048,7 +4048,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
                                       bool force_kill,
                                       bool recursive,
-                                      OnCanceledCallback on_canceled) {
+                                      const OnCanceledCallback &on_canceled) {
   bool requested_task_running;
   {
     absl::MutexLock lock(&mutex_);
@@ -4748,5 +4748,4 @@ void ClusterSizeBasedLeaseRequestRateLimiter::OnNodeChanges(
   RAY_LOG_EVERY_MS(INFO, 60000) << "Number of alive nodes:" << num_alive_nodes_.load();
 }
 
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core

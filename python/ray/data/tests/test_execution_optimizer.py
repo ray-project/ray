@@ -45,6 +45,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.write_operator import Write
@@ -332,6 +333,26 @@ def test_filter_e2e(ray_start_regular_shared):
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
+
+
+def test_project_operator(ray_start_regular_shared):
+    """Checks that the physical plan is properly generated for the Project operator."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    cols = ["sepal.length", "petal.width"]
+    ds = ds.select_columns(cols)
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+    assert op.cols == cols
+
+    physical_plan = Planner().plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
 
 
 def test_flat_map(ray_start_regular_shared):

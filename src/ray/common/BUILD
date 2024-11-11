@@ -267,8 +267,8 @@ ray_cc_library(
     srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
-        "//src/ray/util",
         ":source_location",
+        "//src/ray/util",
     ],
 )
 
