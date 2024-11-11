@@ -46,4 +46,5 @@ class ServeRLlibRLModule:
 # Defining the builder function. This is so we can start our deployment via:
 # `serve run [this py module]:rl_module checkpoint=[some algo checkpoint path]`
 def rl_module(args: Dict[str, str]):
+    serve.start(http_options={"host": "0.0.0.0", "port": args.get("port", 12345)})
     return ServeRLlibRLModule.bind(args["rl_module_checkpoint"])

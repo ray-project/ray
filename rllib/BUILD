@@ -2979,7 +2979,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
-    args = ["--train-iters=2", "--serve-episodes=2", "--no-render"]
+    args = ["--stop-iters=2", "--num-episodes-served=2", "--no-render", "--port=12345"]
 )
 
 # subdirectory: ray_tune/

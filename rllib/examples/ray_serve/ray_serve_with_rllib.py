@@ -73,7 +73,7 @@ parser.set_defaults(
 )
 parser.add_argument("--num-episodes-served", type=int, default=2)
 parser.add_argument("--no-render", action="store_true")
-parser.add_argument("--port", type=int, default=8000)
+parser.add_argument("--port", type=int, default=12345)
 
 
 def kill_proc(proc):
@@ -88,15 +88,8 @@ def kill_proc(proc):
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    from ray import serve
-
-    serve.start(http_options={"host": "0.0.0.0", "port": 12345})
-
     # Config for the served RLlib RLModule/Algorithm.
-    base_config = (
-        PPOConfig()
-        .environment("CartPole-v1")
-    )
+    base_config = PPOConfig().environment("CartPole-v1")
 
     results = run_rllib_example_script_experiment(base_config, args)
     algo_checkpoint = results.get_best_result(
@@ -121,6 +114,7 @@ if __name__ == "__main__":
             "run",
             "classes.cartpole_deployment:rl_module",
             f"rl_module_checkpoint={rl_module_checkpoint}",
+            f"port={args.port}",
             "route_prefix=/rllib-rlmodule",
         ]
     )
@@ -147,7 +141,7 @@ if __name__ == "__main__":
             # print(f"-> Requesting action for obs={obs} ...", end="")
             # Send a request to serve.
             resp = requests.get(
-                "http://localhost:12345/rllib-rlmodule",
+                f"http://localhost:{args.port}/rllib-rlmodule",
                 json={"observation": obs.tolist()},
             )
             response = resp.json()
@@ -155,11 +149,11 @@ if __name__ == "__main__":
 
             # Apply the action in the env.
             action = response["action"]
-            obs, reward, done, _, _ = env.step(action)
+            obs, reward, terminated, truncated, _ = env.step(action)
             episode_return += reward
 
             # If episode done -> reset to get initial observation of new episode.
-            if done:
+            if terminated or truncated:
                 print(f"Episode R={episode_return}")
                 obs, _ = env.reset()
                 num_episodes += 1
