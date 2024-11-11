@@ -129,6 +129,15 @@ class ConvergenceTest(unittest.TestCase):
         assert len(analysis.trials) < 100
         assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-1)
 
+    def testConvergenceVizier(self):
+        from ray.tune.search.vizier import VizierSearch
+
+        np.random.seed(0)
+        searcher = VizierSearch()
+        analysis = self._testConvergence(searcher, patience=50, top=5)
+
+        assert math.isclose(analysis.best_config["x"], 0, abs_tol=1e-2)
+
     def testConvergenceZoopt(self):
         from ray.tune.search.zoopt import ZOOptSearch
 
