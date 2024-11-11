@@ -1436,7 +1436,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
-# Learner
+# LearnerGroup
 py_test(
     name = "TestLearnerGroupSyncUpdate",
     main = "core/learner/tests/test_learner_group.py",
@@ -1473,16 +1473,17 @@ py_test(
     args = ["TestLearnerGroupSaveLoadState"]
 )
 
+# Learner
 py_test(
     name = "test_learner",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
 py_test(
     name = "test_torch_learner_compile",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )

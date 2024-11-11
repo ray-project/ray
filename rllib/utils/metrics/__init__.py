@@ -19,6 +19,7 @@ NUM_AGENT_STEPS_SAMPLED_LIFETIME = "num_agent_steps_sampled_lifetime"
 NUM_AGENT_STEPS_SAMPLED_THIS_ITER = "num_agent_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED = "num_env_steps_sampled"
 NUM_ENV_STEPS_SAMPLED_LIFETIME = "num_env_steps_sampled_lifetime"
+NUM_ENV_STEPS_SAMPLED_PER_SECOND = "num_env_steps_sampled_per_second"
 NUM_ENV_STEPS_SAMPLED_THIS_ITER = "num_env_steps_sampled_this_iter"  # @OldAPIStack
 NUM_ENV_STEPS_SAMPLED_FOR_EVALUATION_THIS_ITER = (
     "num_env_steps_sampled_for_evaluation_this_iter"
