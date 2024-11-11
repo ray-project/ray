@@ -4,6 +4,7 @@ import os
 PARENT_CLASS_NODE_KEY = "parent_class_node"
 PREV_CLASS_METHOD_CALL_KEY = "prev_class_method_call"
 BIND_INDEX_KEY = "bind_index"
+NO_CONTROL_EDGE_BIND_INDEX_VALUE = -1
 IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
 # Reserved keys used to handle NCCL P2P send/recv nodes in Ray DAG building.

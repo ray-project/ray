@@ -81,6 +81,10 @@ class DAGNode(DAGNodeBase):
         self._requires_nccl_collective = False
 
     @property
+    def synchronous_peers(self) -> List["DAGNode"]:
+        return list()
+
+    @property
     def requires_nccl_read(self) -> bool:
         return self._requires_nccl_read
 

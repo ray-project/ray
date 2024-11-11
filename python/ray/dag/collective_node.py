@@ -71,6 +71,7 @@ class _CollectiveOperation:
                 raise ValueError(
                     "Expected actor handles to match the custom NCCL group"
                 )
+        self._output_nodes: List[DAGNode] = []
 
     def __str__(self) -> str:
         return (
@@ -87,6 +88,13 @@ class _CollectiveOperation:
     @property
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
+
+    def _add_output_node(self, output_node: "CollectiveOutputNode"):
+        self._output_nodes.append(output_node)
+
+    @property
+    def output_nodes(self) -> List["CollectiveOutputNode"]:
+        return self._output_nodes
 
     def init_nccl_group(self, nccl_group_id: Optional[str] = None) -> str:
         """
@@ -164,6 +172,7 @@ class CollectiveOutputNode(ClassMethodNode):
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective operation")
+        self.collective_op._add_output_node(self)
         self.set_requires_nccl_collective(True)
 
     def _copy_impl(
@@ -189,3 +198,7 @@ class CollectiveOutputNode(ClassMethodNode):
     @property
     def collective_op(self) -> _CollectiveOperation:
         return self._collective_op
+
+    @property
+    def synchronous_peers(self) -> List["CollectiveOutputNode"]:
+        return self._collective_op.output_nodes

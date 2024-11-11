@@ -26,7 +26,7 @@ class _P2POperation:
         self._recv_nodes.append(recv_node)
 
     @property
-    def p2p_nodes(self) -> List[Union["_NCCLSendNode", "_NCCLRecvNode"]]:
+    def p2p_nodes(self) -> List["_NCCLP2PNode"]:
         return [self._send_node] + self._recv_nodes
 
 
@@ -57,6 +57,10 @@ class _NCCLP2PNode(ClassMethodNode):
     @property
     def p2p_op(self) -> _P2POperation:
         return self._p2p_op
+
+    @property
+    def synchronous_peers(self) -> List["_NCCLP2PNode"]:
+        return self._p2p_op.p2p_nodes
 
     def _copy_impl(
         self,

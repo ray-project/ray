@@ -364,7 +364,7 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag import CollectiveOutputNode
+        from ray.dag import DAGNode, CollectiveOutputNode
 
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -377,9 +377,11 @@ class ExecutableTask:
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
+        self.synchronous_peer_nodes: List[DAGNode] = task.dag_node.synchronous_peers
+        self.synchronous_peer_idxs: List[int] = None
 
         # The NCCL collective operation.
-        self.collective_op: Optional["ray.dag.CollectiveOperation"] = None
+        self.collective_op: Optional["ray.dag._CollectiveOperation"] = None
         if isinstance(task.dag_node, CollectiveOutputNode):
             self.collective_op = task.dag_node.collective_op
 
@@ -587,6 +589,8 @@ class ExecutableTask:
         if self.collective_op is not None:
             # Run a NCCL collective operation.
             method = self.collective_op.execute
+        elif self.requires_nccl_read or self.requires_nccl_write:
+            method = lambda arg: arg
         else:
             # Run an actor method.
             method = getattr(class_handle, self.method_name)
@@ -622,14 +626,25 @@ class ExecutableTask:
 
     # [CL]
     def _compute_aio(self, overlap_gpu_communication, class_handle) -> bool:
-        if not self.requires_nccl_read:
+        # if not self.requires_nccl_read:
+        #     if self._read(overlap_gpu_communication):
+        #         return True
+        # if self._compute(overlap_gpu_communication, class_handle):
+        #     return True
+        # if not self.requires_nccl_write:
+        #     if self._write():
+        #         return True
+        # return False
+        # print(f"actor handle {class_handle} start")
+        with self._recv_stream:
             if self._read(overlap_gpu_communication):
                 return True
         if self._compute(overlap_gpu_communication, class_handle):
             return True
-        if not self.requires_nccl_write:
+        with self._send_stream:
             if self._write():
                 return True
+        # print(f"actor handle {class_handle} success")
         return False
 
     def exec_operation(
@@ -653,16 +668,9 @@ class ExecutableTask:
             True if the next operation should not be executed; otherwise, False.
         """
         OpType = _DAGNodeOperationType
-        if op_type == OpType.NCCL_READ:
-            with self._recv_stream:
-                return self._read(overlap_gpu_communication)
-        elif op_type == OpType.COMPUTE:
-            return self._compute_aio(overlap_gpu_communication, class_handle)
-        elif op_type == OpType.NCCL_WRITE:
-            with self._send_stream:
-                return self._write()
-        else:
+        if op_type != OpType.COMPUTE:
             raise ValueError(f"Unsupported operation type: {op_type}")
+        return self._compute_aio(overlap_gpu_communication, class_handle)
 
 
 @dataclass
@@ -804,6 +812,8 @@ class CompiledDAG:
 
         # idx -> CompiledTask.
         self.idx_to_task: Dict[int, "CompiledTask"] = {}
+        # idx -> ExecutableTask.
+        self.idx_to_exec_task: Dict[int, "ExecutableTask"] = {}
         # DAGNode -> idx.
         self.dag_node_to_idx: Dict["ray.dag.DAGNode", int] = {}
         # idx counter.
@@ -930,7 +940,12 @@ class CompiledDAG:
             _NCCLRecvNode,
             _NCCLSendNode,
         )
-        from ray.dag.constants import PARENT_CLASS_NODE_KEY, P2P_OPERATION_KEY, BIND_INDEX_KEY
+        from ray.dag.constants import (
+            PARENT_CLASS_NODE_KEY,
+            P2P_OPERATION_KEY,
+            BIND_INDEX_KEY,
+            NO_CONTROL_EDGE_BIND_INDEX_VALUE,
+        )
         from ray.experimental.channel import ChannelOutputType
 
         nccl_send_nodes: Dict[DAGNode, _NCCLSendNode] = dict()
@@ -968,8 +983,8 @@ class CompiledDAG:
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: send_actor_handle,
                     P2P_OPERATION_KEY: _P2POperation(),
-                    # [TODO] What should the bind index be here?
-                    BIND_INDEX_KEY: task.dag_node._get_bind_index(),
+                    # [TODO:andyub] What should the bind index be here?
+                    BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
                 },
             )
 
@@ -999,8 +1014,8 @@ class CompiledDAG:
                     other_args_to_resolve={
                         PARENT_CLASS_NODE_KEY: recv_actor_handle,
                         P2P_OPERATION_KEY: send_node.p2p_op,
-                        # [TODO] What should the bind index be here?
-                        BIND_INDEX_KEY: task.dag_node._get_bind_index(),
+                        # [TODO:andyub] What should the bind index be here?
+                        BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
                     },
                 )
                 nccl_recv_nodes[task.dag_node][arg_idx] = recv_node
@@ -1088,6 +1103,10 @@ class CompiledDAG:
         # Collect the set of InputNode keys bound to DAG node args.
         input_positional_args: Set[int] = set()
         input_kwargs: Set[str] = set()
+
+        # for task_idx, task in self.idx_to_task.items():
+        #     dag_node = task.dag_node
+        #     print(f"idx: {task_idx}, dag_node: {dag_node}")
 
         # For each task node, set its upstream and downstream task nodes.
         # Also collect the set of tasks that produce torch.tensors.
@@ -1699,6 +1718,9 @@ class CompiledDAG:
                     resolved_args,
                     task.kwargs,
                 )
+                self.idx_to_exec_task[self.dag_node_to_idx[task.dag_node]] = (
+                    executable_task
+                )
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
@@ -1745,6 +1767,19 @@ class CompiledDAG:
         # channels.
         if not self._returns_list:
             assert len(self.dag_output_channels) == 1
+
+        # from ray.experimental.channel import CompositeChannel, IntraProcessChannel
+
+        # for idx, task in self.idx_to_task.items():
+        #     print("after allocating channels:")
+        #     print(
+        #         f"idx: {idx}, node: {type(task.dag_node)}, channel: {task.output_channels}"
+        #     )
+        #     for channel in task.output_channels:
+        #         if isinstance(channel, CompositeChannel):
+        #             for nested_channel in channel._channels:
+        #                 if isinstance(nested_channel, IntraProcessChannel):
+        #                     print(f"IPC: {nested_channel._channel_id}")
 
         # Driver should ray.put on input, ray.get/release on output
         self._monitor = self._monitor_failures()
@@ -1798,15 +1833,23 @@ class CompiledDAG:
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
+        for _, exec_tasks in self.actor_to_executable_tasks.items():
+            for exec_task in exec_tasks:
+                exec_task.synchronous_peer_idxs = [
+                    self.dag_node_to_idx[peer_node]
+                    for peer_node in exec_task.synchronous_peer_nodes
+                ]
+
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[List[_DAGOperationGraphNode]]
         ] = defaultdict(list)
-        collective_op_to_nodes: Dict[
-            _CollectiveOperation, Set[_DAGOperationGraphNode]
-        ] = defaultdict(set)
-        collective_op_to_idxs: Dict[
-            _CollectiveOperation, Tuple[int, _DAGNodeOperationType]
-        ] = defaultdict(set)
+        idx_to_operation_node: Dict[int, _DAGOperationGraphNode] = dict()
+        # collective_op_to_nodes: Dict[
+        #     _CollectiveOperation, Set[_DAGOperationGraphNode]
+        # ] = defaultdict(set)
+        # collective_op_to_idxs: Dict[
+        #     _CollectiveOperation, Set[Tuple[int, _DAGNodeOperationType]]
+        # ] = defaultdict(set)
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
@@ -1822,44 +1865,34 @@ class CompiledDAG:
                 requires_nccl_collective = dag_node.requires_nccl_collective
 
                 op_nodes: List[_DAGOperationGraphNode] = []
-                if requires_nccl_read:
-                    nccl_read_node = _DAGOperationGraphNode(
-                        _DAGNodeOperation(exec_task_idx, OpType.NCCL_READ, method_name),
-                        task_idx,
-                        actor_handle,
-                        requires_nccl_read=requires_nccl_read,
-                    )
-                    op_nodes.append(nccl_read_node)
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, OpType.COMPUTE, method_name),
                     task_idx,
                     actor_handle,
-                    requires_nccl_collective=requires_nccl_collective,
+                    exec_task.synchronous_peer_idxs,
+                    requires_nccl_read,
+                    requires_nccl_write,
+                    requires_nccl_collective,
                 )
                 op_nodes.append(compute_node)
-                if requires_nccl_write:
-                    nccl_write_node = _DAGOperationGraphNode(
-                        _DAGNodeOperation(
-                            exec_task_idx, OpType.NCCL_WRITE, method_name
-                        ),
-                        task_idx,
-                        actor_handle,
-                        requires_nccl_write=requires_nccl_write,
-                    )
-                    op_nodes.append(nccl_write_node)
 
                 actor_to_operation_nodes[actor_handle].append(op_nodes)
-                if isinstance(dag_node, CollectiveOutputNode):
-                    collective_op_to_nodes[dag_node.collective_op].add(compute_node)
-                    collective_op_to_idxs[dag_node.collective_op].add(
-                        (task_idx, OpType.COMPUTE)
-                    )
-
+                idx_to_operation_node[task_idx] = compute_node
+                # if isinstance(dag_node, CollectiveOutputNode):
+                #     collective_op_to_nodes[dag_node.collective_op].add(compute_node)
+                #     collective_op_to_idxs[dag_node.collective_op].add(
+                #         (task_idx, OpType.COMPUTE)
+                #     )
         # Set collective nodes for all the NCCL collective operation nodes.
-        for collective_op, nodes in collective_op_to_nodes.items():
-            idxs = collective_op_to_idxs[collective_op]
-            for node in nodes:
-                node.collective_idxs = idxs
+        # for collective_op, nodes in collective_op_to_nodes.items():
+        #     idxs = collective_op_to_idxs[collective_op]
+        #     for node in nodes:
+        #         node.collective_idxs = idxs
+
+        for _, op_node in idx_to_operation_node.items():
+            op_node.synchronous_peer_nodes = {
+                idx_to_operation_node[idx] for idx in op_node.synchronous_peer_idxs
+            }
 
         return actor_to_operation_nodes
 
