@@ -649,7 +649,6 @@ class IMPALA(Algorithm):
                 value=len(data_packages_for_learner_group),
             )
             rl_module_state = None
-            last_good_learner_results = None
             num_learner_group_results_received = 0
 
             for batch_ref_or_episode_list_ref in data_packages_for_learner_group:
@@ -712,7 +711,6 @@ class IMPALA(Algorithm):
                         stats_dicts=results_from_n_learners,
                         key=LEARNER_RESULTS,
                     )
-                    last_good_learner_results = results_from_n_learners
             self.metrics.log_value(
                 key=MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
                 value=num_learner_group_results_received,
