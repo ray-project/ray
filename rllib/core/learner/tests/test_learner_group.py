@@ -54,10 +54,11 @@ FAKE_EPISODES = [
             np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
             np.array([0.9, 1.0, 1.1, 1.2], dtype=np.float32),
             np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([-0.1, -0.2, -0.3, -0.4], dtype=np.float32),
         ],
         action_space=gym.spaces.Discrete(2),
-        actions=[0, 1, 1],
-        rewards=[1.0, -1.0, 0.5],
+        actions=[0, 1, 1, 0],
+        rewards=[1.0, -1.0, 0.5, 0.3],
         terminated=True,
         len_lookback_buffer=0,  # all data part of actual episode
     ),
@@ -80,7 +81,7 @@ FAKE_MA_EPISODES = [
                 0: FAKE_EPISODES[0].get_observations(i),
                 1: FAKE_EPISODES[0].get_observations(i),
             }
-            for i in range(4)
+            for i in range(5)
         ],
         action_space=gym.spaces.Dict(
             {
@@ -93,14 +94,14 @@ FAKE_MA_EPISODES = [
                 0: FAKE_EPISODES[0].get_actions(i),
                 1: FAKE_EPISODES[0].get_actions(i),
             }
-            for i in range(3)
+            for i in range(4)
         ],
         rewards=[
             {
                 0: FAKE_EPISODES[0].get_rewards(i),
                 1: FAKE_EPISODES[0].get_rewards(i),
             }
-            for i in range(3)
+            for i in range(4)
         ],
         len_lookback_buffer=0,  # all data part of actual episode
     ),
@@ -111,10 +112,10 @@ FAKE_MA_EPISODES_WO_P1 = [
     MultiAgentEpisode(
         agent_module_ids={0: "p0"},
         observation_space=gym.spaces.Dict({0: FAKE_EPISODES[0].observation_space}),
-        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(4)],
+        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(5)],
         action_space=gym.spaces.Dict({0: FAKE_EPISODES[0].action_space}),
-        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(3)],
-        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(3)],
+        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(4)],
+        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(4)],
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
@@ -475,10 +476,12 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            results_2nd_update_with_break[0][ALL_MODULES].pop("learner_connector_timer")
-            results_2nd_update_without_break[0][ALL_MODULES].pop(
-                "learner_connector_timer"
-            )
+            for r1, r2 in zip(
+                results_2nd_update_with_break,
+                results_2nd_update_without_break,
+            ):
+                r1[ALL_MODULES].pop("learner_connector_timer")
+                r2[ALL_MODULES].pop("learner_connector_timer")
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
                 MetricsLogger.peek_results(results_2nd_update_without_break),
