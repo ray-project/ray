@@ -1358,6 +1358,82 @@ class SearchSpaceTest(unittest.TestCase):
 
         self._testTuneSampleAPI(config_generator(), ignore=ignore)
 
+    def testConvertVizier(self):
+        from vizier import pyvizier as vz
+        from ray.tune.search.vizier import VizierSearch
+
+        # Grid search not supported, should raise ValueError
+        with self.assertRaises(ValueError):
+            VizierSearch.convert_search_space({"grid": tune.grid_search([0, 1])})
+
+        config = {
+            "a": ray.tune.search.sample.Categorical([2, 3, 4]).uniform(),
+            "b": ray.tune.search.sample.Integer(0, 5),
+            "c": ray.tune.search.sample.Float(1e-4, 1e-2),
+        },
+        converted_config = VizierSearch.convert_search_space(config)
+
+        vizier_space = vz.SearchSpace()
+        vizier_space.root.add_discrete_param('a', [2, 3, 4])
+        vizier_space.root.add_int_param('b', 0, 4)
+        vizier_space.root.add_float_param('c', 1e-4, 1e-2)
+
+        searcher1 = VizierSearch(
+            space=converted_config, metric="a", mode="max"
+        )
+        searcher2 = VizierSearch(
+            space=vizier_space, metric="a", mode="max"
+        )
+
+        # Very first trial is a centering trial.
+        config1 = searcher1.suggest("0")
+        config2 = searcher2.suggest("0")
+
+        self.assertEqual(config1, config2)
+        self.assertIn(config1["a"], [2, 3, 4])
+        self.assertIn(config1["b"], list(range(5)))
+        self.assertLessEqual(1e-4, config1["c"])
+        self.assertLessEqual(config1["c"], 1e-2)
+
+        searcher = VizierSearch(metric="a", mode="max")
+        analysis = tune.run(
+            _mock_objective, config=config, search_alg=searcher, num_samples=1
+        )
+        trial = analysis.trials[0]
+        self.assertIn(trial.config["a"], [2, 3, 4])
+        self.assertIn(trial.config["b"], list(range(5)))
+        self.assertLessEqual(1e-4, trial.config["c"])
+        self.assertLessEqual(trial.config["c"], 1e-2)
+
+        # Mixed configs are not supported
+
+    def testSampleBoundsVizier(self):
+        from ray.tune.search.vizier import VizierSearch
+
+        ignore = [
+            "func",
+            "randn",
+            "qrandn",
+            "quniform",
+            "qloguniform",
+            "qrandint",
+            "qrandint_q1",
+            "qrandint_q3",
+            "qlograndint",
+        ]
+
+        config = self.config.copy()
+        for k in ignore:
+            config.pop(k)
+
+        searcher = VizierSearch(space=config, metric="a", mode="max")
+
+        def config_generator():
+            for i in range(100):
+                yield searcher.suggest(f"trial_{i}")
+
+        self._testTuneSampleAPI(config_generator(), ignore=ignore)
+    
     def testConvertZOOpt(self):
         from zoopt import ValueType
 
