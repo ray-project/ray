@@ -42,14 +42,10 @@ from ray.rllib.utils.metrics import (
     MEAN_NUM_LEARNER_GROUP_RESULTS_RECEIVED,
     MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
     NUM_AGENT_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_SAMPLED_LIFETIME,
     NUM_AGENT_STEPS_TRAINED,
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_EPISODES,
-    NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
@@ -607,7 +603,7 @@ class IMPALA(Algorithm):
             self._learner_thread.start()
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
+    def training_step(self):
         # Old API stack.
         if not self.config.enable_rl_module_and_learner:
             return self._training_step_old_api_stack()
@@ -626,28 +622,12 @@ class IMPALA(Algorithm):
             ) = self._sample_and_get_connector_states()
             # Reduce EnvRunner metrics over the n EnvRunners.
             self.metrics.merge_and_log_n_dicts(
-                env_runner_metrics, key=ENV_RUNNER_RESULTS
+                env_runner_metrics,
+                key=ENV_RUNNER_RESULTS,
             )
 
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
-
-        # Log lifetime counts for env- and agent steps.
-        if env_runner_metrics:
-            self.metrics.log_dict(
-                {
-                    NUM_AGENT_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_SAMPLED)
-                    ),
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED)
-                    ),
-                    NUM_EPISODES_LIFETIME: self.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_EPISODES)
-                    ),
-                },
-                reduce="sum",
-            )
 
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
@@ -687,7 +667,8 @@ class IMPALA(Algorithm):
                         return_state=return_state,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                                default=0,
                             ),
                         },
                         num_epochs=self.config.num_epochs,
@@ -701,7 +682,8 @@ class IMPALA(Algorithm):
                         return_state=return_state,
                         timesteps={
                             NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
+                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
+                                default=0,
                             ),
                         },
                         num_epochs=self.config.num_epochs,
@@ -738,16 +720,6 @@ class IMPALA(Algorithm):
 
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
-        self.metrics.log_value(
-            NUM_ENV_STEPS_TRAINED_LIFETIME,
-            self.metrics.peek(
-                (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED), default=0
-            ),
-            reduce="sum",
-        )
-        # self.metrics.log_value(NUM_MODULE_STEPS_TRAINED_LIFETIME, self.metrics.peek(
-        #    (LEARNER_RESULTS, NUM_MODULE_STEPS_TRAINED)
-        # ), reduce="sum")
 
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
@@ -760,16 +732,9 @@ class IMPALA(Algorithm):
             with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
                 self.env_runner_group.sync_env_runner_states(
                     config=self.config,
-                    env_steps_sampled=self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ),
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
-
-        if env_runner_metrics or last_good_learner_results:
-            return self.metrics.reduce()
-        return {}
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
