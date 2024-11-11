@@ -231,18 +231,21 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
-        
-        dim_dict = {
-            "height": (ValueType.CONTINUOUS, [-100, 100], 1e-2),
-            "width": (ValueType.DISCRETE, [0, 20], False),
+        space = {
+            "x": hp.uniform("x", 0, 10),
+            "y": hp.uniform("y", -10, 10),
+            "z": hp.uniform("z", -10, 0),
         }
 
-        def cost(param):
-            train.report(
-                dict(loss=(param["height"] - 14) ** 2 - abs(param["width"] - 3))
-            )
+        def cost(space):
+            loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
+            train.report(dict(loss=loss))
 
-        search_alg = VizierSearch(metric="loss", mode="min")
+        search_alg = VizierSearch(
+            space,
+            metric="loss",
+            mode="min",
+        )
         return search_alg, cost
 
 
