@@ -126,7 +126,7 @@ class VizierSearch(Searcher):
         elif self._mode == 'min:
             vizier_goal = svz.ObjectiveMetricGoal.MINIMIZE
         else:
-            raise RuntimeError(UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__, metric=self._metric, mode = self._mode)
+            raise RuntimeError(UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__, metric=self._metric, mode = self._mode))
 
         study_config = svz.StudyConfig(
             search_space=self._space,
