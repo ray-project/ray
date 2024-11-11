@@ -102,6 +102,7 @@ if __name__ == "__main__":
         root_dir=Path("./"),
         exclude_patterns=frozenset([
             r'(?i)(?:^|/)(java|test)(?:/|$)',
-            r'test\.cc$'
+            r'test\.cc$',
+            r'test_util.cc$'
         ])
     )
