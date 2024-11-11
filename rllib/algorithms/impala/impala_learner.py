@@ -137,36 +137,53 @@ class IMPALALearner(Learner):
         with self.metrics.log_time((ALL_MODULES, RAY_GET_EPISODES_TIMER)):
             # Resolve batch/episodes being ray object refs (instead of
             # actual batch/episodes objects).
-            episodes = ray.get(episodes)
-            episodes = tree.flatten(episodes)
-            env_steps = sum(map(len, episodes))
+            # If this fails, it might be because some of the EnvRunners that collected
+            # `episodes` are down (ex. SPOT preemption or single EnvRunner crash).
+            # In this case, we should ignore those List[EpisodeType] references and not
+            # use these for the train batch.
+            try:
+                episodes = ray.get(episodes)
+                episodes_flat = tree.flatten(episodes)
+            except ray.exceptions.RayError:
+                # Try unreferencing one by one and collect those that are ok.
+                episodes_flat = []
+                for e in episodes:
+                    try:
+                        episodes_flat.extend(ray.get(e))
+                    # Ignore exceptions and move on with other references.
+                    except Exception:
+                        pass
 
-        # Call the learner connector pipeline.
-        with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
-            batch = self._learner_connector(
-                rl_module=self.module,
-                batch={},
-                episodes=episodes,
-                shared_data={},
-            )
+            env_steps = sum(map(len, episodes_flat))
 
-        # Queue the CPU batch to the GPU-loader thread.
-        if self.config.num_gpus_per_learner > 0:
-            self._gpu_loader_in_queue.put((batch, env_steps))
-            self.metrics.log_value(
-                (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
-                self._gpu_loader_in_queue.qsize(),
-            )
-        else:
-            # Enqueue to Learner thread's in-queue.
-            _LearnerThread.enqueue(
-                self._learner_thread_in_queue,
-                MultiAgentBatch(
-                    {mid: SampleBatch(b) for mid, b in batch.items()},
-                    env_steps=env_steps,
-                ),
-                self.metrics,
-            )
+        # Only send a batch to the learner pipeline if its size is > 0.
+        if env_steps > 0:
+            # Call the learner connector pipeline.
+            with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
+                batch = self._learner_connector(
+                    rl_module=self.module,
+                    batch={},
+                    episodes=episodes_flat,
+                    shared_data={},
+                )
+
+            # Queue the CPU batch to the GPU-loader thread.
+            if self.config.num_gpus_per_learner > 0:
+                self._gpu_loader_in_queue.put((batch, env_steps))
+                self.metrics.log_value(
+                    (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
+                    self._gpu_loader_in_queue.qsize(),
+                )
+            else:
+                # Enqueue to Learner thread's in-queue.
+                _LearnerThread.enqueue(
+                    self._learner_thread_in_queue,
+                    MultiAgentBatch(
+                        {mid: SampleBatch(b) for mid, b in batch.items()},
+                        env_steps=env_steps,
+                    ),
+                    self.metrics,
+                )
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
