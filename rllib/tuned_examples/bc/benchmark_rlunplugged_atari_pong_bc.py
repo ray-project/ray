@@ -249,7 +249,7 @@ config = (
         },
         # Iterate over 10 batches per RLlib iteration if multiple learners
         # are used.
-        dataset_num_iters_per_learner=10
+        dataset_num_iters_per_learner=100
         if args.num_learners and args.num_learners > 1
         else 1,
     )
