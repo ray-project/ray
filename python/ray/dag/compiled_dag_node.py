@@ -536,8 +536,11 @@ class ExecutableTask:
         """
         assert self._intermediate_future is None
         exit = False
+        import time
         try:
             input_data = self.input_reader.read()
+            print(f"[timestamp:{time.perf_counter()}] reading input data {input_data}")
+            # print(f"reader: {self.input_reader}")
             # When overlap_gpu_communication is enabled, wrap the result in
             # a GPUFuture so that this read operation (communication) can
             # be overlapped with computation.
@@ -570,6 +573,8 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         input_data = self.reset_and_wait_intermediate_future()
+        import time
+        print(f"[timestamp:{time.perf_counter()} computing with input data: {input_data}")
         try:
             _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
@@ -585,6 +590,7 @@ class ExecutableTask:
         resolved_inputs = []
         for task_input in self.task_inputs:
             resolved_inputs.append(task_input.resolve(input_data))
+        # print(f"resolved inputs: {resolved_inputs}")
 
         if self.collective_op is not None:
             # Run a NCCL collective operation.
@@ -598,6 +604,7 @@ class ExecutableTask:
             output_val = method(*resolved_inputs, **self.resolved_kwargs)
         except Exception as exc:
             output_val = _wrap_exception(exc)
+        # print(f"output value: {output_val}")
 
         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
         # so that this compute operation can be overlapped with communication.
@@ -617,6 +624,7 @@ class ExecutableTask:
         """
         output_val = self.reset_and_wait_intermediate_future()
         exit = False
+        print(f"[timestamp:{time.perf_counter()} writing output data: {output_val}")
         try:
             self.output_writer.write(output_val)
         except RayChannelError:
@@ -1025,6 +1033,9 @@ class CompiledDAG:
             type_hint = dag_node.type_hint
             dag_node.with_type_hint(ChannelOutputType())
             send_node.with_type_hint(type_hint)
+            if dag_node.is_adag_output_node:
+                dag_node.is_adag_output_node = False
+                send_node.is_adag_output_node = True
             self._add_node(send_node)
 
         # Add NCCL P2P recv nodes to the DAG.
@@ -1889,10 +1900,10 @@ class CompiledDAG:
         #     for node in nodes:
         #         node.collective_idxs = idxs
 
-        for _, op_node in idx_to_operation_node.items():
-            op_node.synchronous_peer_nodes = {
-                idx_to_operation_node[idx] for idx in op_node.synchronous_peer_idxs
-            }
+        # for _, op_node in idx_to_operation_node.items():
+        #     op_node.synchronous_peer_nodes = {
+        #         idx_to_operation_node[idx] for idx in op_node.synchronous_peer_idxs
+        #     }
 
         return actor_to_operation_nodes
 
@@ -1974,6 +1985,7 @@ class CompiledDAG:
         assert self.actor_to_tasks
 
         from ray.dag import ClassMethodNode
+        from ray.dag.p2p_node import _NCCLSendNode, _NCCLRecvNode
 
         def _is_same_actor(idx1: int, idx2: int) -> bool:
             """
@@ -2004,13 +2016,19 @@ class CompiledDAG:
         for idx, task in self.idx_to_task.items():
             for downstream_idx in task.downstream_task_idxs:
                 if task.dag_node.type_hint.requires_nccl():
+                    assert isinstance(task.dag_node, _NCCLSendNode)
                     if _is_same_actor(idx, downstream_idx):
+                        assert isinstance(
+                            self.idx_to_task[downstream_idx].dag_node, _NCCLRecvNode
+                        )
                         actor_handle = self.idx_to_task[
                             idx
                         ].dag_node._get_actor_handle()
-                        method = self.idx_to_task[idx].dag_node.get_method_name()
+                        method = self.idx_to_task[idx].args[0].get_method_name()
+                        downstream_task = self.idx_to_task[downstream_idx]
+                        assert len(downstream_task.downstream_task_idxs) == 1
                         downstream_method = self.idx_to_task[
-                            downstream_idx
+                            list(downstream_task.downstream_task_idxs)[0]
                         ].dag_node.get_method_name()
                         logger.error(
                             "Detected a deadlock caused by using NCCL channels to "

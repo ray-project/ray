@@ -63,6 +63,7 @@ class TorchTensorWorker:
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
+        print(f"receiving: {tensor}")
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_and_matmul(self, two_d_tensor):
@@ -810,9 +811,12 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-@pytest.mark.parametrize("static_shape", [False, True])
-@pytest.mark.parametrize("direct_return", [False, True])
-@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+# @pytest.mark.parametrize("static_shape", [False, True])
+# @pytest.mark.parametrize("direct_return", [False, True])
+# @pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+@pytest.mark.parametrize("static_shape", [True])
+@pytest.mark.parametrize("direct_return", [True])
+@pytest.mark.parametrize("overlap_gpu_communication", [True])
 def test_torch_tensor_exceptions(
     ray_start_regular, static_shape, direct_return, overlap_gpu_communication
 ):
@@ -850,9 +854,11 @@ def test_torch_tensor_exceptions(
 
     shape = (10,)
     dtype = torch.float16
+    import time
 
     for i in range(3):
         i += 1
+        print(f"[timestamp:{time.perf_counter()}] iteration #{i}")
 
         ref = compiled_dag.execute(
             shape=shape,

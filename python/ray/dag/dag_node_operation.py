@@ -129,7 +129,7 @@ class _DAGOperationGraphNode:
         self.in_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         self.out_edges: Dict[Tuple[int, _DAGNodeOperationType], Tuple[str, bool]] = {}
         self.synchronous_peer_idxs: Set[int] = set(synchronous_peer_idxs)
-        self.synchronous_peer_nodes: Set["_DAGOperationGraphNode"] = None
+        # self.synchronous_peer_nodes: Set["_DAGOperationGraphNode"] = None
         # # The collective nodes are the nodes that belong to the same collective
         # # operation. Each node is represented by a tuple of its task idx and type.
         # self.collective_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
@@ -139,7 +139,33 @@ class _DAGOperationGraphNode:
         # # collective operation.
         # self.ready_collective_idxs: Set[Tuple[int, _DAGNodeOperationType]] = set()
 
+    # def __deepcopy__(self, memo):
+    #     if id(self) in memo:
+    #         return memo[id(self)]
+
+    #     new_node = _DAGOperationGraphNode(
+    #         self.op,
+    #         self.task_idx,
+    #         self.actor_handle,
+    #         self.synchronous_peer_idxs,
+    #         self.requires_nccl_read,
+    #         self.requires_nccl_write,
+    #         self.requires_nccl_collective,
+    #     )
+    #     new_node.in_edges = copy.deepcopy(self.in_edges, memo)
+    #     new_node.out_edges = copy.deepcopy(self.out_edges, memo)
+
+    #     memo[id(self)] = new_node
+    #     return new_node
+
     def __repr__(self):
+        # print(type(self))
+        # print(getattr(self, "op", None))
+        # print(getattr(self, "task_idx", None))
+        # print(getattr(self, "actor_handle", None))
+        # print(getattr(self, "requires_nccl_read", None))
+        # print(getattr(self, "requires_nccl_write", None))
+        # print(getattr(self, "requires_nccl_collective", None))
         return (
             f"_DAGOperationGraphNode("
             f"op: {self.op}, "
@@ -194,21 +220,24 @@ class _DAGOperationGraphNode:
         """
         An operation is uniquely identified by its `task_idx` and type.
         """
+        # print(self)
         return hash((self.op, self.task_idx))
 
     @property
     def in_degree(self) -> int:
         return len(self.in_edges)
 
-    @property
-    def is_ready(self) -> bool:
+    def is_ready(
+        self, graph: Dict[int, Dict[_DAGNodeOperationType, "_DAGOperationGraphNode"]]
+    ) -> bool:
         """
         If a node is not a NCCL collective, it is ready when it has a zero
         in-degree. If it is a NCCL collective, it is ready when all the nodes
         in its collective operation have zero in-degrees.
         """
         return self.in_degree == 0 and all(
-            node.in_degree == 0 for node in self.synchronous_peer_nodes
+            graph[idx][_DAGNodeOperationType.COMPUTE].in_degree == 0
+            for idx in self.synchronous_peer_idxs
         )
 
     @property
@@ -238,6 +267,13 @@ class _DAGOperationGraphNode:
     @property
     def _actor_id(self):
         return self.actor_handle._ray_actor_id.hex()
+
+
+# class _DAGOperationGraph:
+#     def __init__(
+#         self,
+#     ):
+#         pass
 
 
 def _add_edge(
@@ -277,7 +313,7 @@ def _push_candidate_node_if_ready(
     #         task_idx, op_type = collective_node_metadata
     #         collective_node = graph[task_idx][op_type]
     #         collective_node.ready_collective_idxs.add((node.task_idx, node.op.type))
-    if node.is_ready:
+    if node.is_ready(graph):
         heapq.heappush(
             actor_to_candidates[node.actor_handle._actor_id],
             node,
@@ -340,11 +376,12 @@ def _select_next_nodes(
         # A non-NCCL operation node is picked.
         assert len(next_nodes) == 1
     else:
-        for peer_node in top_priority_node.synchronous_peer_nodes:
-            assert peer_node.is_ready
+        for peer_idx in top_priority_node.synchronous_peer_idxs:
+            peer_node = graph[peer_idx][_DAGNodeOperationType.COMPUTE]
+            assert peer_node.is_ready(graph)
             next_nodes.add(peer_node)
         assert len(next_nodes) == len(
-            top_priority_node.synchronous_peer_nodes.union({top_priority_node})
+            top_priority_node.synchronous_peer_idxs.union({top_priority_node.task_idx})
         )
     # elif top_priority_node.requires_nccl_write:
     #     # a NCCL write node is picked. NCCL is a blocking operation, so we need
@@ -367,7 +404,7 @@ def _select_next_nodes(
     #             next_nodes.append(collective_node)
     #     assert len(next_nodes) == len(top_priority_node.collective_idxs)
 
-    return next_nodes
+    return list(next_nodes)
 
 
 def _build_dag_node_operation_graph(
@@ -709,11 +746,9 @@ def _generate_actor_to_execution_schedule(
                     # case 2.
                     _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     num_nodes = sum([len(nodes) for nodes in graph.values()])
-    assert (
-        len(visited_nodes) == num_nodes
-    ), f"Expected all nodes to be visited: {num_nodes} total nodes, graph: {graph}, {len(visited_nodes)} visited nodes, visited nodes: {visited_nodes}"
+    assert len(visited_nodes) == num_nodes
     for node in visited_nodes:
-        assert node.is_ready, f"Expected {node} to be ready"
+        assert node.is_ready(graph), f"Expected {node} to be ready"
     for _, candidates in actor_to_candidates.items():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 
@@ -759,27 +794,26 @@ def _generate_overlapped_execution_schedule(
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
-                    if overlapped_schedule[
-                        j
-                    ].op.type == _DAGNodeOperationType.COMPUTE and (
-                        not overlapped_schedule[j].requires_nccl_write
-                        and not overlapped_schedule[j].requires_nccl_read
+                    assert (
+                        overlapped_schedule[j].op.type == _DAGNodeOperationType.COMPUTE
+                    )
+                    if (
+                        overlapped_schedule[j].requires_nccl_write
+                        or overlapped_schedule[j].requires_nccl_read
                     ):
+                        break
+                    else:
                         # Found a desired compute operation, make the swap
                         nccl_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
                         overlapped_schedule[j + 1 : i + 1] = prev_ops
                         overlapped_schedule[j] = nccl_read_op
                         break
-                    if overlapped_schedule[
-                        j
-                    ].op.type == _DAGNodeOperationType.COMPUTE and (
-                        overlapped_schedule[j].requires_nccl_read
-                        or overlapped_schedule[j].requires_nccl_write
-                    ):
-                        # Found a NCCL read/write operation, skip the overlap
-                        # optimization to keep relative order of NCCL operations
-                        break
+    # for actor, overlapped_schedule in actor_to_overlapped_schedule.items():
+    #     print(f"actor: {actor}")
+    print(actor_to_execution_schedule)
+    print("===========================")
+    print(actor_to_overlapped_schedule)
     return actor_to_overlapped_schedule
 
 
