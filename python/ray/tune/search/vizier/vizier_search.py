@@ -69,6 +69,7 @@ class VizierSearch(search.Searcher):
 
     def __init__(
         self,
+        space: Optional[Dict] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         algorithm: Optional[str] = 'DEFAULT',
@@ -83,12 +84,19 @@ class VizierSearch(search.Searcher):
         # Mapping from Ray trial id to Vizier Trial client.
         self._active_trials: Dict[str, clients.Trial] = {}
 
-        # The name of the metric being optimized, for single objective studies.
-        self._metric = None
-
         # Vizier service client.
         self._study_client: Optional[clients.Study] = None
 
+        if isinstance(space, dict) and space:
+            resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if domain_vars or grid_vars:
+                logger.warning(
+                    UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
+                )
+                space = vzr.SearchSpaceConverter.to_vizier(space)
+            self._space = space
+            self._setup_vizier()
+    
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
     ) -> bool:
@@ -99,23 +107,26 @@ class VizierSearch(search.Searcher):
             raise ValueError("'mode' must be one of ['min', 'max']")
 
         self._metric = metric or tune.result.DEFAULT_METRIC
+        self._mode = mode
+        self._space = vzr.SearchSpaceConverter.to_vizier(config)
+   
+        self._setup_vizier()
+        return True
 
-        vizier_goal = (
-            svz.ObjectiveMetricGoal.MAXIMIZE
-            if mode == 'max'
-            else svz.ObjectiveMetricGoal.MINIMIZE
-        )
+    def _setup_vizier(self) -> None:
+        if self._mode == 'max':
+            vizier_goal = svz.ObjectiveMetricGoal.MAXIMIZE
+        else:
+            vizier_goal = svz.ObjectiveMetricGoal.MINIMIZE
+    
         study_config = svz.StudyConfig(
-            search_space=vzr.SearchSpaceConverter.to_vizier(config),
+            search_space=self._space,
             algorithm=self._algorithm,
-            metric_information=[
-                svz.MetricInformation(self._metric, goal=vizier_goal)
-            ],
+            metric_information=[svz.MetricInformation(self._metric, goal=vizier_goal)],
         )
         self._study_client = clients.Study.from_study_config(
             study_config, owner='raytune', study_id=self._study_id
         )
-        return True
 
     def on_trial_result(self, trial_id: str, result: Dict) -> None:
         if trial_id not in self._active_trials:
