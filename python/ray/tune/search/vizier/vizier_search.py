@@ -20,6 +20,7 @@ try:
     from vizier.service import pyvizier as svz
     IMPORT_SUCCESSFUL = True
 except ImportError:
+    svz = None
     IMPORT_SUCCESSFUL = False
 
 
@@ -41,7 +42,7 @@ class VizierSearch(Searcher):
     where the Tune space will be automatically converted into a Vizier SearchSpace.
 
     Args:
-        space: A dict mapping parameter names to Tune search spaces.
+        space: A dict mapping parameter names to Tune search spaces or a Vizier SearchSpace object.
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -71,11 +72,33 @@ class VizierSearch(Searcher):
             param_space=config,
         )
         tuner.fit()
+
+    Alternatively, you can pass a Vizier `SearchSpace` object manually to the
+    Searcher:
+
+    .. code-block:: python
+
+        from ray import tune
+        from ray.tune.search.vizier import VizierSearch
+        from vizier import pyvizier as vz
+
+        search_space = vz.SearchSpace()
+        search_space.root.add_float_param('w', 0.0, 5.0)
+
+        vizier = VizierSearch(search_space, metric="mean_loss", mode="min")
+        tuner = tune.Tuner(
+            trainable_function,
+            tune_config=tune.TuneConfig(
+                search_alg=vizier
+            )
+        )
+        tuner.fit()
+
     """
 
     def __init__(
         self,
-        space: Optional[Dict] = None,
+        space: Optional[Union[Dict, "svz.SearchSpace"] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         algorithm: Optional[str] = 'DEFAULT',
@@ -103,9 +126,13 @@ class VizierSearch(Searcher):
                 )
                 space = vzr.SearchSpaceConverter.to_vizier(space)
             self._space = space
-            self._setup_vizier()
-        elif space:
+        elif isinstance(space, svz.SearchSpace):
+            self._space = space
+        else:
             raise TypeError(SPACE_ERROR_MESSAGE + " Got {}.".format(type(space)))
+
+    if self._space:
+        self._setup_vizier()
     
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
