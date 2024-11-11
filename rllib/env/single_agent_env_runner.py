@@ -171,6 +171,13 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 value=time.perf_counter() - self._time_after_sampling,
             )
 
+        # Log current weight seq no.
+        self.metrics.log_value(
+            key=WEIGHTS_SEQ_NO,
+            value=self._weights_seq_no,
+            window=1,
+        )
+
         with self.metrics.log_time(SAMPLE_TIMER):
             # If no execution details are provided, use the config to try to infer the
             # desired timesteps/episodes to sample and exploration behavior.
@@ -471,7 +478,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         **kwargs,
     ) -> StateDict:
         state = {
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
@@ -485,6 +491,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
         ):
@@ -519,6 +526,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 ):
                     rl_module_state = rl_module_state[DEFAULT_MODULE_ID]
                 self.module.set_state(rl_module_state)
+
             # Update our weights_seq_no, if the new one is > 0.
             if weights_seq_no > 0:
                 self._weights_seq_no = weights_seq_no
@@ -567,7 +575,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             AssertionError: If the EnvRunner Actor has NOT been properly initialized.
         """
         # Make sure, we have built our gym.vector.Env and RLModule properly.
-        assert self.env and self.module
+        assert self.env and hasattr(self, "module")
 
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.

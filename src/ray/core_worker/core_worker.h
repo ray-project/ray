@@ -1426,7 +1426,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
+  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
+                                           const std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1709,7 +1710,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CancelTaskOnExecutor(TaskID intended_task_id,
                             bool force_kill,
                             bool recursive,
-                            OnCanceledCallback on_canceled);
+                            const OnCanceledCallback &on_canceled);
 
   /// Cancel an actor task queued or running in the current worker.
   ///

@@ -1218,18 +1218,18 @@ class Learner(Checkpointable):
     def set_state(self, state: StateDict) -> None:
         self._check_is_built()
 
-        if COMPONENT_RL_MODULE in state:
-            weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
+        weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
 
+        if COMPONENT_RL_MODULE in state:
             if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
                 self.module.set_state(state[COMPONENT_RL_MODULE])
 
-            # Update our weights_seq_no, if the new one is > 0.
-            if weights_seq_no > 0:
-                self._weights_seq_no = weights_seq_no
-
         if COMPONENT_OPTIMIZER in state:
             self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
+
+        # Update our weights_seq_no, if the new one is > 0.
+        if weights_seq_no > 0:
+            self._weights_seq_no = weights_seq_no
 
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
@@ -1341,8 +1341,8 @@ class Learner(Checkpointable):
         #  a) Either also pass given batches through the learner connector (even if
         #     episodes is None). (preferred solution)
         #  b) Get rid of the option to pass in a batch altogether.
-        if episodes is None:
-            batch = self._convert_batch_type(batch)
+        # if episodes is None:
+        #    batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
@@ -1412,6 +1412,13 @@ class Learner(Checkpointable):
                 )
 
         self._weights_seq_no += 1
+        self.metrics.log_dict(
+            {
+                (mid, WEIGHTS_SEQ_NO): self._weights_seq_no
+                for mid in batch.policy_batches.keys()
+            },
+            window=1,
+        )
 
         self._set_slicing_by_batch_id(batch, value=False)
 

@@ -22,6 +22,8 @@
 #include "absl/base/call_once.h"
 #include "absl/time/time.h"
 
+using json = nlohmann::json;
+
 namespace ray {
 ///
 /// LogEventReporter

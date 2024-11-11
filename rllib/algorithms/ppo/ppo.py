@@ -110,8 +110,6 @@ class PPOConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a PPOConfig instance."""
-        super().__init__(algo_class=algo_class or PPO)
-
         self.exploration_config = {
             # The Exploration class to use. In the simplest case, this is the name
             # (str) of any class present in the `rllib.utils.exploration` package.
@@ -122,9 +120,10 @@ class PPOConfig(AlgorithmConfig):
             # Add constructor kwargs here (if any).
         }
 
+        super().__init__(algo_class=algo_class or PPO)
+
         # fmt: off
         # __sphinx_doc_begin__
-        self.lr_schedule = None
         self.lr = 5e-5
         self.rollout_fragment_length = "auto"
         self.train_batch_size = 4000
@@ -141,22 +140,18 @@ class PPOConfig(AlgorithmConfig):
         self.kl_target = 0.01
         self.vf_loss_coeff = 1.0
         self.entropy_coeff = 0.0
-        self.entropy_coeff_schedule = None
         self.clip_param = 0.3
         self.vf_clip_param = 10.0
         self.grad_clip = None
 
         # Override some of AlgorithmConfig's default values with PPO-specific values.
         self.num_env_runners = 2
-        self.model["vf_share_layers"] = False
-
-        # `.api_stack()`
-        self.api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # __sphinx_doc_end__
         # fmt: on
+
+        self.model["vf_share_layers"] = False  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
+        self.lr_schedule = None  # @OldAPIStack
 
         # Deprecated keys.
         self.sgd_minibatch_size = DEPRECATED_VALUE

@@ -257,7 +257,7 @@ def _warn_on_high_parallelism(requested_parallelism, num_read_tasks):
         and num_read_tasks > available_cpu_slots * 4
         and num_read_tasks >= 5000
     ):
-        logger.warn(
+        logger.warning(
             f"{WARN_PREFIX} The requested parallelism of {requested_parallelism} "
             "is more than 4x the number of available CPU slots in the cluster of "
             f"{available_cpu_slots}. This can "
@@ -699,7 +699,7 @@ def unify_block_metadata_schema(
         except ImportError:
             pa = None
         # If the result contains PyArrow schemas, unify them
-        if pa is not None and any(isinstance(s, pa.Schema) for s in schemas_to_unify):
+        if pa is not None and all(isinstance(s, pa.Schema) for s in schemas_to_unify):
             return unify_schemas(schemas_to_unify)
         # Otherwise, if the resulting schemas are simple types (e.g. int),
         # return the first schema.
