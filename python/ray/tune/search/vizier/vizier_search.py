@@ -6,10 +6,9 @@ from typing import Dict, Optional
 import uuid
 
 from ray.tune.result import DEFAULT_METRIC
-from ray.tune.search.variant_generator import assign_value, parse_spec_vars
+from ray.tune.search.variant_generator import parse_spec_vars
 from ray.tune.search import (
     UNDEFINED_METRIC_MODE,
-    UNDEFINED_SEARCH_SPACE,
     UNRESOLVED_SEARCH_SPACE,
     Searcher,
 )
@@ -114,9 +113,6 @@ class VizierSearch(Searcher):
         if self._study_client:  # The study is already configured.
             return False
 
-        if mode not in ['min', 'max']:
-            raise ValueError("'mode' must be one of ['min', 'max']")
-
         self._metric = metric or DEFAULT_METRIC
         self._mode = mode
         self._space = vzr.SearchSpaceConverter.to_vizier(config)
@@ -127,9 +123,11 @@ class VizierSearch(Searcher):
     def _setup_vizier(self) -> None:
         if self._mode == 'max':
             vizier_goal = svz.ObjectiveMetricGoal.MAXIMIZE
-        else:
+        elif self._mode == 'min:
             vizier_goal = svz.ObjectiveMetricGoal.MINIMIZE
-    
+        else:
+            raise RuntimeError(UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__, metric=self._metric, mode = self._mode)
+
         study_config = svz.StudyConfig(
             search_space=self._space,
             algorithm=self._algorithm,
