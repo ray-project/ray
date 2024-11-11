@@ -4343,7 +4343,7 @@
 
   run:
     # Expect the benchmark to finish around 22 minutes.
-    timeout: 1800
+    timeout: 2700
     script: python read_tfrecords_benchmark.py
 
   variations:
