@@ -30,10 +30,6 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
 logger = logging.getLogger(__name__)
 
-try:
-    import pydot
-except Exception:
-    logging.info("pydot is not installed, visualization tests will be skiped")
 
 pytestmark = [
     pytest.mark.skipif(
@@ -3159,7 +3155,6 @@ class TestVisualizationAscii:
         ), f"Expected edges {expected_edges} not found."
 
         compiled_dag.teardown()
-
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
