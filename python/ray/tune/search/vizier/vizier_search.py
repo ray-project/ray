@@ -121,7 +121,7 @@ class VizierSearch(Searcher):
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
                 )
-                space = vzr.SearchSpaceConverter.to_vizier(space)
+                space = self.convert_search_space(space)
             self._space = space
         elif isinstance(space, svz.SearchSpace):
             self._space = space
@@ -242,3 +242,7 @@ class VizierSearch(Searcher):
         self._active_trials = {}
         for ray_id, vizier_trial_id in obj['ray_to_vizier_trial_ids'].items():
             self._active_trials[ray_id] = self._study_client.get_trial(vizier_trial_id)
+
+    @staticmethod
+    def convert_search_space(spec: Dict) -> "svz.SearchSpace":
+        return vzr.SearchSpaceConverter.to_vizier(spec)
