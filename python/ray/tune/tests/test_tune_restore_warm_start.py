@@ -232,9 +232,9 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {
-            "x": hp.uniform("x", 0, 10),
-            "y": hp.uniform("y", -10, 10),
-            "z": hp.uniform("z", -10, 0),
+            "x": tune.uniform("x", 0, 10),
+            "y": tune.uniform("y", -10, 10),
+            "z": tune.uniform("z", -10, 0),
         }
 
         def cost(space):
