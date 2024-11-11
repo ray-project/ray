@@ -38,9 +38,6 @@ class VizierSearch(Searcher):
 
         pip install google-vizier[jax]
 
-    For simplicity, this wrapper only handles Tune search spaces via ``Tuner(param_space=...)``,
-    where the Tune space will be automatically converted into a Vizier SearchSpace.
-
     Args:
         space: A dict mapping parameter names to Tune search spaces or a Vizier SearchSpace object.
         metric: The training result objective value attribute. If None
