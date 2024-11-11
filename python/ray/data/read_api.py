@@ -3280,7 +3280,7 @@ def _emit_meta_provider_deprecation_warning(
 ) -> None:
     if meta_provider is not None:
         warnings.warn(
-            "The `meta_provider` argument is deprecated and will be removed after June "
+            "The `meta_provider` argument is deprecated and will be removed after May "
             "2025.",
             DeprecationWarning,
         )
