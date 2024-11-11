@@ -6,10 +6,24 @@ constants_cpp_lib_dep = declare_dependency(
 # === @end: constants ===
 
 
+# === @begin: source_location_cpp_lib (original: source_location) ===
+source_location_cpp_lib = static_library(
+    'source_location_cpp_lib',
+    ['source_location.cc'],
+    install: false
+)
+
+source_location_cpp_lib_dep = declare_dependency(
+    link_with: [source_location_cpp_lib]
+)
+# === @end: source_location_cpp_lib (original: source_location) ===
+
+
 # === @begin: status_cpp_lib (original: status) ===
 status_cpp_lib_dependencies = [
     # Package-managed
-    util_cpp_lib_dep
+    util_cpp_lib_dep,
+    source_location_cpp_lib_dep
 ]
 
 status_cpp_lib = static_library(
@@ -336,19 +350,3 @@ ray_common_cpp_lib_dep = declare_dependency(
     dependencies: ray_common_cpp_lib_dependencies
 )
 # === @end: ray_common_cpp_lib (original: ray_common) ===
-
-
-#ray_cc_library(
-#    name = "test_util",
-#    srcs = ["test_util.cc"],
-#    hdrs = ["test_util.h"],
-#    deps = [
-#    ":id",
-#    ":network",
-#    ":ray_object",
-#    "//src/ray/protobuf:common_cc_proto",
-#    "//src/ray/util",
-#    "@boost//:optional",
-#    "@com_google_googletest//:gtest",
-#    ],
-#)
