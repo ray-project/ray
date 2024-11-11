@@ -5,8 +5,14 @@ import json
 from typing import Dict, Optional
 import uuid
 
-from ray import tune
-from ray.tune import search
+from ray.tune.result import DEFAULT_METRIC
+from ray.tune.search.variant_generator import assign_value, parse_spec_vars
+from ray.tune.search import (
+    UNDEFINED_METRIC_MODE,
+    UNDEFINED_SEARCH_SPACE,
+    UNRESOLVED_SEARCH_SPACE,
+    Searcher,
+)
 
 # Make sure that importing this file doesn't crash Ray, even if Vizier wasn't installed.
 try:
@@ -18,7 +24,7 @@ except ImportError:
     IMPORT_SUCCESSFUL = False
 
 
-class VizierSearch(search.Searcher):
+class VizierSearch(Searcher):
     """A wrapper around OSS Vizier to provide trial suggestions.
     
     OSS Vizier is a Python-based service for black-box optimization based on Google Vizier,
@@ -36,6 +42,7 @@ class VizierSearch(search.Searcher):
     where the Tune space will be automatically converted into a Vizier StudyConfig.
 
     Args:
+        space: A dict mapping parameter names to Tune search spaces.
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
@@ -89,6 +96,8 @@ class VizierSearch(search.Searcher):
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
+            if resolved_vars:
+                raise TypeError(SPACE_ERROR_MESSAGE)
             if domain_vars or grid_vars:
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
@@ -96,6 +105,8 @@ class VizierSearch(search.Searcher):
                 space = vzr.SearchSpaceConverter.to_vizier(space)
             self._space = space
             self._setup_vizier()
+        elif space:
+            raise TypeError(SPACE_ERROR_MESSAGE + " Got {}.".format(type(space)))
     
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
@@ -106,7 +117,7 @@ class VizierSearch(search.Searcher):
         if mode not in ['min', 'max']:
             raise ValueError("'mode' must be one of ['min', 'max']")
 
-        self._metric = metric or tune.result.DEFAULT_METRIC
+        self._metric = metric or DEFAULT_METRIC
         self._mode = mode
         self._space = vzr.SearchSpaceConverter.to_vizier(config)
    
@@ -180,7 +191,7 @@ class VizierSearch(search.Searcher):
     def suggest(self, trial_id: str) -> Optional[Dict]:
         suggestions = self._study_client.suggest(count=1, client_id=trial_id)
         if not suggestions:
-            return search.Searcher.FINISHED
+            return Searcher.FINISHED
 
         self._active_trials[trial_id] = suggestions[0]
         return self._active_trials[trial_id].parameters
