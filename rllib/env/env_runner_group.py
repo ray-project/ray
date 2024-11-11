@@ -464,7 +464,7 @@ class EnvRunnerGroup:
 
         # Update the global number of environment steps, if necessary.
         # Make sure to divide by the number of env runners (such that each EnvRunner
-        # knows (roughly) its own lifetime count and can infer the global lifetime
+        # knows (roughly) its own(!) lifetime count and can infer the global lifetime
         # count from it).
         if env_steps_sampled is not None:
             env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (

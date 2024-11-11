@@ -1205,8 +1205,6 @@ class Learner(Checkpointable):
 
         state = {
             "should_module_be_updated": self.config.policies_to_train,
-            # TODO (sven): Make `MetricsLogger` a Checkpointable.
-            COMPONENT_METRICS_LOGGER: self.metrics.get_state(),
         }
 
         if self._check_component(COMPONENT_RL_MODULE, components, not_components):
@@ -1220,6 +1218,10 @@ class Learner(Checkpointable):
             state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
+
+        if self._check_component(COMPONENT_METRICS_LOGGER, components, not_components):
+            # TODO (sven): Make `MetricsLogger` a Checkpointable.
+            state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
 
         return state
 
