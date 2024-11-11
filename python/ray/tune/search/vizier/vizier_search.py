@@ -24,7 +24,7 @@ class VizierSearch(search.Searcher):
     OSS Vizier is a Python-based service for black-box optimization based on Google Vizier,
     one of the first hyperparameter tuning services designed to work at scale. 
 
-    More info can be found here: https://github.com/google/viizer.
+    More info can be found here: https://github.com/google/vizier.
 
     You will need to install OSS Vizier via the following:
 
