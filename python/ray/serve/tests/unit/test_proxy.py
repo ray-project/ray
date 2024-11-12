@@ -705,14 +705,16 @@ class TestHTTPProxy:
 async def test_head_http_unhealthy_until_route_table_updated():
     """Health endpoint should error until `update_routes` has been called."""
 
+    def get_handle_override(endpoint, info, protocol):
+        return MockDeploymentHandle(endpoint.name, endpoint.app_name)
+
     http_proxy = HTTPProxy(
         node_id="fake-node-id",
         node_ip_address="fake-node-ip-address",
         # proxy is on head node
         is_head=True,
-        proxy_router_class=EndpointRouter,
+        proxy_router=EndpointRouter(get_handle_override),
         proxy_actor=FakeActorHandle(),
-        get_handle_override=lambda d, a: MockDeploymentHandle(d, a),
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -748,15 +750,13 @@ async def test_worker_http_unhealthy_until_replicas_populated():
     """Health endpoint should error until handle's running replicas is populated."""
 
     handle = MockDeploymentHandle("a", "b")
-
     http_proxy = HTTPProxy(
         node_id="fake-node-id",
         node_ip_address="fake-node-ip-address",
         # proxy is on worker node
         is_head=False,
-        proxy_router_class=EndpointRouter,
+        proxy_router_class=EndpointRouter(lambda *args: handle),
         proxy_actor=FakeActorHandle(),
-        get_handle_override=lambda *args: handle,
     )
     proxy_request = FakeProxyRequest(
         request_type="http",

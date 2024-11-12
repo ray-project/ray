@@ -1,16 +1,24 @@
 from typing import Callable, Optional, Tuple
 
 import ray
+
+# from ray import serve
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
-from ray.serve._private.common import DeploymentID
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    EndpointInfo,
+    RequestProtocol,
+)
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
     RAY_SERVE_PROXY_PREFER_LOCAL_AZ_ROUTING,
+    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
 )
 from ray.serve._private.deployment_scheduler import (
     DefaultDeploymentScheduler,
@@ -131,3 +139,25 @@ def create_router(
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):
     """Helper function to add a address to gRPC server."""
     grpc_server.add_insecure_port(server_address)
+
+
+def get_proxy_handle(
+    endpoint: DeploymentID, info: EndpointInfo, protocol: RequestProtocol
+):
+    from ray.serve.context import _get_global_client
+
+    client = _get_global_client()
+    handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
+
+    # NOTE(zcin): since the router is eagerly initialized here, the
+    # proxy will receive the replica set from the controller early.
+    if not handle.is_initialized:
+        handle._init(
+            _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+            _source=DeploymentHandleSource.PROXY,
+        )
+
+    # Streaming codepath isn't supported for Java.
+    handle._set_request_protocol(protocol)
+
+    return handle.options(stream=not info.app_is_cross_language)

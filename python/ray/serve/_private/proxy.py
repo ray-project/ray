@@ -6,7 +6,6 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
-from functools import partial
 from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
 
 import grpc
@@ -19,7 +18,6 @@ from starlette.middleware import Middleware
 from starlette.types import Receive
 
 import ray
-from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
@@ -41,7 +39,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import add_grpc_address
+from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -68,11 +66,7 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
-from ray.serve._private.proxy_router import (
-    EndpointRouter,
-    LongestPrefixRouter,
-    ProxyRouter,
-)
+from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -151,9 +145,8 @@ class GenericProxy(ABC):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -165,11 +158,7 @@ class GenericProxy(ABC):
         # Used only for displaying the route table.
         self.route_info: Dict[str, DeploymentID] = dict()
 
-        self.proxy_router = proxy_router_class(
-            get_handle_override
-            or partial(serve.get_deployment_handle, _record_telemetry=False),
-            self.protocol,
-        )
+        self.proxy_router = proxy_router
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
             description=f"The number of {self.protocol} requests processed.",
@@ -256,7 +245,7 @@ class GenericProxy(ABC):
             route = info.route
             self.route_info[route] = deployment_id
 
-        self.proxy_router.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints, self.protocol)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -784,18 +773,16 @@ class HTTPProxy(GenericProxy):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
         proxy_actor: Optional[ActorHandle] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         super().__init__(
             node_id,
             node_ip_address,
             is_head,
-            proxy_router_class,
+            proxy_router,
             request_timeout_s=request_timeout_s,
-            get_handle_override=get_handle_override,
         )
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -1231,11 +1218,12 @@ class ProxyActor:
             http_middlewares.extend(middlewares)
 
         is_head = node_id == get_head_node_id()
+        proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=LongestPrefixRouter,
+            proxy_router=proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
@@ -1245,7 +1233,7 @@ class ProxyActor:
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 is_head=is_head,
-                proxy_router_class=EndpointRouter,
+                proxy_router=proxy_router,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
