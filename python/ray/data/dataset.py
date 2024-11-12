@@ -3811,9 +3811,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
-    def iter_rows(
-        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
-    ) -> Iterable[Dict[str, Any]]:
+    def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
         Examples:
@@ -3826,18 +3824,10 @@ class Dataset:
 
         Time complexity: O(1)
 
-        Args:
-            prefetch_batches: The number of batches to prefetch ahead of the current
-                batch during the scan.
-            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
-                instead.
-
         Returns:
             An iterable over the rows in this dataset.
         """
-        return self.iterator().iter_rows(
-            prefetch_batches=prefetch_batches, prefetch_blocks=prefetch_blocks
-        )
+        return self.iterator().iter_rows()
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
