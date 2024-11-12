@@ -1,10 +1,10 @@
 import gymnasium as gym
 import logging
 import numpy as np
-import random
+import uuid
+
 from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
-import ray
 from ray.actor import ActorHandle
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner import Learner
@@ -86,8 +86,8 @@ class OfflinePreLearner:
         self,
         config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
+        locality_hints: List[str] = None,
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
-        locality_hints: Optional[list] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
     ):
@@ -103,24 +103,6 @@ class OfflinePreLearner:
             self._module = self._learner._module
         # Otherwise we have remote `Learner`s.
         else:
-            # TODO (simon): Check with the data team how to get at
-            # initialization the data block location.
-            node_id = ray.get_runtime_context().get_node_id()
-            # Shuffle indices such that not each data block syncs weights
-            # with the same learner in case there are multiple learners
-            # on the same node like the `PreLearner`.
-            indices = list(range(len(locality_hints)))
-            random.shuffle(indices)
-            locality_hints = [locality_hints[i] for i in indices]
-            learner = [learner[i] for i in indices]
-            # Choose a learner from the same node.
-            for i, hint in enumerate(locality_hints):
-                if hint == node_id:
-                    self._learner = learner[i]
-            # If no learner has been chosen, there is none on the same node.
-            if not self._learner:
-                # Then choose a learner randomly.
-                self._learner = learner[random.randint(0, len(learner) - 1)]
             self.learner_is_remote = True
             # Build the module from spec. Note, this will be a MultiRLModule.
             self._module = module_spec.build()
@@ -526,20 +508,64 @@ class OfflinePreLearner:
                 NotImplementedError
             else:
                 # Unpack observations, if needed.
-                obs = (
-                    unpack_if_needed(obs.tolist())
-                    if schema[Columns.OBS] in input_compress_columns
-                    else obs.tolist()
-                )
-                # Append the last `new_obs` to get the correct length of observations.
-                obs.append(
-                    unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
-                    if schema[Columns.OBS] in input_compress_columns
-                    else batch[schema[Columns.NEXT_OBS]][i][-1]
-                )
+                if isinstance(obs, str):
+                    # Decompress the observations
+                    obs = unpack_if_needed(obs)
+                    # Convert to a list of arrays.
+                    obs = [obs[i, ...] for i in range(obs.shape[0])]
+                else:
+                    obs = (
+                        unpack_if_needed(obs.tolist())
+                        if schema[Columns.OBS] in input_compress_columns
+                        else obs.tolist()
+                    )
+
+                if schema[Columns.NEXT_OBS] in batch:
+                    # Append the last `new_obs` to get the correct length of
+                    # observations.
+                    obs.append(
+                        unpack_if_needed(batch[schema[Columns.NEXT_OBS]][i][-1])
+                        if schema[Columns.OBS] in input_compress_columns
+                        else batch[schema[Columns.NEXT_OBS]][i][-1]
+                    )
+                else:
+                    # Otherwise we duplicate the last observation.
+                    obs.append(obs[-1])
+
+                # Check, if we have `done`, `truncated`, or `terminated`s in
+                # the batch.
+                if (
+                    schema[Columns.TRUNCATEDS] in batch
+                    and schema[Columns.TERMINATEDS] in batch
+                ):
+                    truncateds = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminateds = batch[schema[Columns.TERMINATEDS]][i][-1]
+                elif (
+                    schema[Columns.TRUNCATEDS] in batch
+                    and schema[Columns.TERMINATEDS] not in batch
+                ):
+                    truncateds = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminateds = False
+                elif (
+                    schema[Columns.TRUNCATEDS] not in batch
+                    and schema[Columns.TERMINATEDS] in batch
+                ):
+                    terminateds = batch[schema[Columns.TERMINATEDS]][i][-1]
+                    truncateds = False
+                elif "done" in batch:
+                    terminateds = batch["done"][i][-1]
+                    truncateds = False
+                else:
+                    terminateds = True
+                    truncateds = False
+
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
-                    id_=str(batch[schema[Columns.EPS_ID]][i][0]),
+                    # If the recorded episode has an ID we use this ID,
+                    # otherwise we generate a new one.
+                    id_=str(batch[schema[Columns.EPS_ID]][i][0])
+                    if schema[Columns.EPS_ID] in batch
+                    else uuid.uuid4().hex,
                     agent_id=agent_id,
                     observations=obs,
                     infos=(
@@ -554,16 +580,8 @@ class OfflinePreLearner:
                         else batch[schema[Columns.ACTIONS]][i]
                     ),
                     rewards=batch[schema[Columns.REWARDS]][i],
-                    terminated=(
-                        any(batch[schema[Columns.TERMINATEDS]][i])
-                        if schema[Columns.TERMINATEDS] in batch
-                        else any(batch["dones"][i])
-                    ),
-                    truncated=(
-                        any(batch[schema[Columns.TRUNCATEDS]][i])
-                        if schema[Columns.TRUNCATEDS] in batch
-                        else False
-                    ),
+                    terminated=terminateds,
+                    truncated=truncateds,
                     # TODO (simon): Results in zero-length episodes in connector.
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
