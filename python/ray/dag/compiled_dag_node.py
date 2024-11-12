@@ -2300,17 +2300,17 @@ class CompiledDAG:
 
 
             # Output:
-            # 0: InputNode
+            # 0:InputNode
             # |
-            # 1: Actor:return_three
-            # |----------------->|------------------>|
-            # 2: Output[0]        3: Output[1]        4: Output[2]
-            # |                  |                   |
-            # 5: Actor:echo     6: Actor:echo       7: Actor:return_two
-            # |                  |                   |------------------>|
-            # |                  |                   9: Output[0]       10: Output[1]
-            # |<-----------------|-------------------|-------------------|
-            # 8: MultiOutputNode
+            # 1:Actor_54777d:return_three
+            # |---------------------------->|---------------------------->|                                                  # noqa
+            # 2:Output[0]                   3:Output[1]                   4:Output[2]                                        # noqa
+            # |                             |                             |                                                  # noqa
+            # 5:Actor_c927c9:echo           6:Actor_c927c9:echo           7:Actor_c927c9:return_two                          # noqa
+            # |                             |                             |---------------------------->|                    # noqa
+            # |                             |                             9:Output[0]                   10:Output[1]         # noqa
+            # |<----------------------------|-----------------------------|-----------------------------|                    # noqa
+            # 8:MultiOutputNode
             ```
 
             Example of Anti-pattern Visualization (ordering to reduce intersections):
@@ -2325,17 +2325,17 @@ class CompiledDAG:
             print(compiled_dag.visualize_ascii())
 
             # Output (Nodes 5, 7, 9, 10 should connect to Node 8):
-            # 0: InputNode
+            # 0:InputNode
             # |
-            # 1: Actor:return_three
-            # |-------------------|-------------------|
-            # 2: Output[0]        3: Output[1]        4: Output[2]
-            # |                   |                  |
-            # 5: Actor:echo      6: Actor:return_two  7: Actor:echo
-            # |                  |-------------------|
-            # |                  9: Output[0]       10: Output[1]
-            # |---------------------------------------|
-            # 8: MultiOutputNode
+            # 1:Actor_84835a:return_three
+            # |---------------------------->|---------------------------->|                            # noqa
+            # 2:Output[0]                   3:Output[1]                   4:Output[2]                  # noqa
+            # |                             |                             |                            # noqa
+            # 5:Actor_02a6a1:echo           6:Actor_02a6a1:return_two     7:Actor_02a6a1:echo          # noqa
+            # |                             |---------------------------->|                            # noqa
+            # |                             9:Output[0]                   10:Output[1]                 # noqa
+            # |<----------------------------------------------------------|                            # noqa
+            # 8:MultiOutputNod
             ```
         """
 
