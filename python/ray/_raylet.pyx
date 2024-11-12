@@ -261,6 +261,8 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
+async_task_name = contextvars.ContextVar('async_task_name', default=None)
+async_task_function = contextvars.ContextVar('async_task_function', default=None)
 
 
 class DynamicObjectRefGenerator:
@@ -1799,8 +1801,9 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
+                        name_of_concurrency_group_to_execute, task_id=task_id, 
+                        task_name=task_name, func_args=(actor, *arguments),
+                        func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1912,7 +1915,8 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                                task_name=task_name)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -3400,6 +3404,46 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
+    def get_current_task_name(self) -> str:
+        """Return the current task name.
+
+        If it is a normal task, it returns the task name from the main thread.
+        If it is a threaded actor, it returns the task name for the current thread.
+        If it is async actor, it returns the task name stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task name within asyncio task
+        # via async_task_name contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task name.
+        task_name = async_task_name.get()
+        if task_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName().decode("utf-8")
+        return task_name
+
+    def get_current_task_function(self) -> str:
+        """Return the current task function.
+
+        If it is a normal task, it returns the task function from the main thread.
+        If it is a threaded actor, it returns the task function for the current thread.
+        If it is async actor, it returns the task function stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task function within asyncio task
+        # via async_task_function contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task function.
+        task_function = async_task_function.get()
+        if task_function is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_function = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskFunction().decode("utf-8")
+        return task_function
+    
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
 
@@ -4796,6 +4840,7 @@ cdef class CoreWorker:
           specified_cgname: str,
           *,
           task_id: Optional[TaskID] = None,
+          task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
           func_kwargs: Optional[Dict] = None,
     ):
@@ -4842,6 +4887,9 @@ cdef class CoreWorker:
             try:
                 if task_id:
                     async_task_id.set(task_id)
+                if task_name:
+                    async_task_name.set(task_name)
+                async_task_function.set(function_descriptor.repr)
 
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro

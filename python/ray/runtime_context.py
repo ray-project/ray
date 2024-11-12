@@ -124,7 +124,7 @@ class RuntimeContext(object):
     @property
     @Deprecated(message="Use get_task_id() instead", warning=True)
     def task_id(self):
-        """Get current task ID for this worker or driver.
+        """Get current task ID for this worker.
 
         Task ID is the id of a Ray task.
         This shouldn't be used in a driver process.
@@ -155,7 +155,7 @@ class RuntimeContext(object):
         Returns:
             The current worker's task id. None if there's no task id.
         """
-        # only worker mode has actor_id
+        # only worker mode has task_id
         assert (
             self.worker.mode == ray._private.worker.WORKER_MODE
         ), f"This method is only available when the process is a\
@@ -165,7 +165,7 @@ class RuntimeContext(object):
         return task_id if not task_id.is_nil() else None
 
     def get_task_id(self) -> Optional[str]:
-        """Get current task ID for this worker or driver.
+        """Get current task ID for this worker.
 
         Task ID is the id of a Ray task. The ID will be in hex format.
         This shouldn't be used in a driver process.
@@ -201,23 +201,107 @@ class RuntimeContext(object):
         Returns:
             The current worker's task id in hex. None if there's no task id.
         """
-        # only worker mode has actor_id
+        # only worker mode has task_id
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
             return None
-        task_id = self._get_current_task_id()
+        task_id = self.worker.current_task_id
         return task_id.hex() if not task_id.is_nil() else None
 
-    def _get_current_task_id(self) -> TaskID:
-        async_task_id = ray._raylet.async_task_id.get()
-        if async_task_id is None:
-            task_id = self.worker.current_task_id
-        else:
-            task_id = async_task_id
-        return task_id
+    def get_task_name(self) -> Optional[str]:
+        """Get current task name for this worker.
+        
+        Task name by default is the task's funciton call string. It can also be 
+        specified in options when triggering a task. 
+
+        Example:
+
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def get_task_name(self):
+                        return ray.get_runtime_context().get_task_name()
+
+                @ray.remote
+                def get_task_name():
+                    return ray.get_runtime_context().get_task_name()
+
+                a = Actor.remote()
+                # Task names are available for actor tasks.
+                print(ray.get(a.get_task_name.remote()))
+                # Task names are available for normal tasks.
+                # Get default task name
+                print(ray.get(get_task_name.remote()))
+                # Get specified task name
+                print(ray.get(get_task_name.options(name="task_name").remote()))
+
+            .. testoutput::
+                :options: +MOCK
+
+                Actor.get_task_name
+                get_task_name
+                task_nams
+
+        Returns:
+            The current worker's task name
+        """   
+        # only worker mode has task_name
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+            return None
+        return self.worker.current_task_name
+
+
+    def get_task_function(self) -> Optional[str]:
+        """Get current task function string for this worker. 
+
+        Example:
+
+            .. testcode::
+
+                import ray
+
+                @ray.remote
+                class Actor:
+                    def get_task_function(self):
+                        return ray.get_runtime_context().get_task_function()
+
+                @ray.remote
+                def get_task_function():
+                    return ray.get_runtime_context().get_task_function()
+
+                a = Actor.remote()
+                # Task functions are available for actor tasks.
+                print(ray.get(a.get_task_function.remote()))
+                # Task functions are available for normal tasks.
+                print(ray.get(get_task_function.remote()))
+
+            .. testoutput::
+                :options: +MOCK
+
+                [python modual name].Actor.get_task_name
+                [python modual name].get_task_name
+
+        Returns:
+            The current worker's task function call string
+        """
+        # only worker mode has task_function
+        if self.worker.mode != ray._private.worker.WORKER_MODE:
+            logger.warning(
+                "This method is only available when the process is a "
+                f"worker. Current mode: {self.worker.mode}"
+            )
+            return None
+        return self.worker.current_task_function
 
     @property
     @Deprecated(message="Use get_actor_id() instead", warning=True)
