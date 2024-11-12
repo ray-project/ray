@@ -152,7 +152,7 @@ class _DeploymentHandleBase:
         self.init_options = create_init_handle_options(**kwargs)
         self._get_or_create_router()
 
-        # Record telemetry when not in the proxy
+        # Record handle api telemetry when not in the proxy
         if (
             self.init_handle_options._source != DeploymentHandleSource.PROXY
             and self.__class__ == DeploymentHandle
