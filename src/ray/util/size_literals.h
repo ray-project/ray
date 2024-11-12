@@ -18,6 +18,8 @@
 
 #include <cstdint>
 
+namespace ray::unit {
+
 // Size literal for integer values.
 constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
 
@@ -89,3 +91,5 @@ constexpr unsigned long long operator""_PB(long double sz) {
   const long double res = sz * 1_PB;
   return static_cast<unsigned long long>(res);
 }
+
+}  // namespace ray::unit

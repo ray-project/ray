@@ -119,16 +119,47 @@ DEFINE_stats(
 DEFINE_stats(object_store_dist,
              "The distribution of object size in bytes",
              ("Source"),
-             ({32_MB,
-               64_MB,
-               128_MB,
-               256_MB,
-               512_MB,
-               1024_MB,
-               2048_MB,
-               4096_MB,
-               8192_MB,
-               16384_MB}),
+             ({[]() constexpr -> unsigned long long { using namespace ray::unit; return 32_MiB;
+}  // namespace stats
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 64_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 128_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 256_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 512_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 1024_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 2048_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 4096_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 8192_MiB;
+}
+(), []() constexpr->unsigned long long {
+  using namespace ray::unit;
+  return 16382_MiB;
+}
+(),
+}  // namespace ray
+),
              ray::stats::HISTOGRAM);
 
 /// Placement group metrics from the GCS.
