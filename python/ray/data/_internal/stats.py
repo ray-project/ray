@@ -405,13 +405,6 @@ class _StatsActor:
             for prom_metric in self.execution_metrics_misc.values():
                 prom_metric.set(0, tags)
 
-    def clear_iteration_metrics(self, dataset_tag: str):
-        tags = self._create_tags(dataset_tag)
-        # NOTE(rickyx): We should not be clearing the iter_total_blocked_s and
-        # iter_user_s metrics because they are technically counters we tracked, and
-        # should not be reset by each iteration.
-        self.iter_initialize_s.set(0, tags)
-
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
             "job_id": job_id,
@@ -619,19 +612,6 @@ class _StatsManager:
         with self._stats_lock:
             self._last_iteration_stats[dataset_tag] = (stats, dataset_tag)
         self._start_thread_if_not_running()
-
-    def clear_iteration_metrics(self, dataset_tag: str):
-        with self._stats_lock:
-            if dataset_tag in self._last_iteration_stats:
-                del self._last_iteration_stats[dataset_tag]
-
-        try:
-            self._stats_actor(
-                create_if_not_exists=False
-            ).clear_iteration_metrics.remote(dataset_tag)
-        except Exception:
-            # Cluster may be shut down.
-            pass
 
     # Other methods
 
