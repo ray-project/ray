@@ -2392,7 +2392,7 @@ class CompiledDAG:
                     actor_id = (
                         actor_handle._actor_id.hex()[:6] if actor_handle else "unknown"
                     )
-                    label += f"Actor: {actor_id}...Method: {method_name}"
+                    label += f"Actor: {actor_id}... Method: {method_name}"
                 elif dag_node.is_class_method_output:
                     label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
                 else:
@@ -2460,7 +2460,7 @@ class CompiledDAG:
                 edgs_channel = "---"
             ascii_visualization += (
                 f"{upstream_task} {edgs_channel}>" 
-                f"{downstream_task}[label={type_hint}]\n"
+                f" {downstream_task} [label={type_hint}]\n"
             )
 
         # Find the maximum width (number of nodes in any layer)
@@ -2497,7 +2497,7 @@ class CompiledDAG:
                 adjust_col_num = 0
                 if task_idx in is_multi_output:
                     adjust_col_num = layers[layer_num - 1].index(child2parent[task_idx])
-                col_x = (col_num + adjust_col_num) * 20  # Every 20th column for spacing
+                col_x = (col_num + adjust_col_num) * 30  # Every 30th column for spacing
                 # Place the task information into the grid
                 for i, char in enumerate(task_info):
                     if col_x + i < len(grid[0]):  # Ensure we don't overflow the grid
