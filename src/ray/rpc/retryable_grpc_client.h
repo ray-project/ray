@@ -46,7 +46,8 @@ class Executor {
   explicit Executor(std::function<void(const ray::Status &)> abort_callback)
       : abort_callback_(std::move(abort_callback)) {}
 
-  /// This function is used to execute the given operation.
+  /// This function is used to execute the given operation
+  /// and the operation is stored for retry purpose.
   ///
   /// \param operation The operation to be executed.
   void Execute(std::function<void()> operation) {
@@ -103,7 +104,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
   template <typename Service, typename Request, typename Reply>
   void CallMethod(PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-                  GrpcClient<Service> &grpc_client,
+                  std::shared_ptr<GrpcClient<Service>> grpc_client,
                   const std::string &call_name,
                   const Request &request,
                   const ClientCallback<Reply> &callback,
@@ -170,12 +171,12 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       }
     };
     auto operation = [prepare_async_function,
-                      &grpc_client,
+                      grpc_client,
                       call_name,
                       request,
                       operation_callback,
                       timeout_ms]() {
-      grpc_client.template CallMethod<Request, Reply>(
+      grpc_client->template CallMethod<Request, Reply>(
           prepare_async_function, request, operation_callback, call_name, timeout_ms);
     };
     executor->Execute(std::move(operation));

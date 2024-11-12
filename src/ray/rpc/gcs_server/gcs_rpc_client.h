@@ -89,7 +89,7 @@ namespace rpc {
                         NAMESPACE::METHOD##Reply,                          \
                         handle_payload_status>(                            \
         &NAMESPACE::SERVICE::Stub::PrepareAsync##METHOD,                   \
-        *grpc_client,                                                      \
+        grpc_client,                                                       \
         #NAMESPACE "::" #SERVICE ".grpc_client." #METHOD,                  \
         request,                                                           \
         callback,                                                          \
@@ -152,31 +152,31 @@ class GcsRpcClient {
     }
 
     job_info_grpc_client_ =
-        std::make_unique<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<JobInfoGcsService>>(channel_, client_call_manager);
     actor_info_grpc_client_ =
-        std::make_unique<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<ActorInfoGcsService>>(channel_, client_call_manager);
     node_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<NodeInfoGcsService>>(channel_, client_call_manager);
     node_resource_info_grpc_client_ =
-        std::make_unique<GrpcClient<NodeResourceInfoGcsService>>(channel_,
+        std::make_shared<GrpcClient<NodeResourceInfoGcsService>>(channel_,
                                                                  client_call_manager);
     worker_info_grpc_client_ =
-        std::make_unique<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<WorkerInfoGcsService>>(channel_, client_call_manager);
     placement_group_info_grpc_client_ =
-        std::make_unique<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
+        std::make_shared<GrpcClient<PlacementGroupInfoGcsService>>(channel_,
                                                                    client_call_manager);
     internal_kv_grpc_client_ =
-        std::make_unique<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
-    internal_pubsub_grpc_client_ = std::make_unique<GrpcClient<InternalPubSubGcsService>>(
+        std::make_shared<GrpcClient<InternalKVGcsService>>(channel_, client_call_manager);
+    internal_pubsub_grpc_client_ = std::make_shared<GrpcClient<InternalPubSubGcsService>>(
         channel_, client_call_manager);
     task_info_grpc_client_ =
-        std::make_unique<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<TaskInfoGcsService>>(channel_, client_call_manager);
     autoscaler_state_grpc_client_ =
-        std::make_unique<GrpcClient<autoscaler::AutoscalerStateService>>(
+        std::make_shared<GrpcClient<autoscaler::AutoscalerStateService>>(
             channel_, client_call_manager);
 
     runtime_env_grpc_client_ =
-        std::make_unique<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
+        std::make_shared<GrpcClient<RuntimeEnvGcsService>>(channel_, client_call_manager);
 
     retryable_grpc_client_ = RetryableGrpcClient::Create(
         channel_,
@@ -211,14 +211,14 @@ class GcsRpcClient {
             bool handle_payload_status>
   void invoke_async_method(
       PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
-      GrpcClient<Service> &grpc_client,
+      std::shared_ptr<GrpcClient<Service>> grpc_client,
       const std::string &call_name,
       const Request &request,
       const ClientCallback<Reply> &callback,
       const int64_t timeout_ms) {
     retryable_grpc_client_->template CallMethod<Service, Request, Reply>(
         prepare_async_function,
-        grpc_client,
+        std::move(grpc_client),
         call_name,
         request,
         [callback](const Status &status, Reply &&reply) {
@@ -564,18 +564,18 @@ class GcsRpcClient {
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 
   /// The gRPC-generated stub.
-  std::unique_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
-  std::unique_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
-  std::unique_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
-  std::unique_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
-  std::unique_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
-  std::unique_ptr<GrpcClient<PlacementGroupInfoGcsService>>
+  std::shared_ptr<GrpcClient<JobInfoGcsService>> job_info_grpc_client_;
+  std::shared_ptr<GrpcClient<ActorInfoGcsService>> actor_info_grpc_client_;
+  std::shared_ptr<GrpcClient<NodeInfoGcsService>> node_info_grpc_client_;
+  std::shared_ptr<GrpcClient<NodeResourceInfoGcsService>> node_resource_info_grpc_client_;
+  std::shared_ptr<GrpcClient<WorkerInfoGcsService>> worker_info_grpc_client_;
+  std::shared_ptr<GrpcClient<PlacementGroupInfoGcsService>>
       placement_group_info_grpc_client_;
-  std::unique_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
-  std::unique_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
-  std::unique_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
-  std::unique_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
-  std::unique_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
+  std::shared_ptr<GrpcClient<InternalKVGcsService>> internal_kv_grpc_client_;
+  std::shared_ptr<GrpcClient<InternalPubSubGcsService>> internal_pubsub_grpc_client_;
+  std::shared_ptr<GrpcClient<TaskInfoGcsService>> task_info_grpc_client_;
+  std::shared_ptr<GrpcClient<RuntimeEnvGcsService>> runtime_env_grpc_client_;
+  std::shared_ptr<GrpcClient<autoscaler::AutoscalerStateService>>
       autoscaler_state_grpc_client_;
 
   friend class GcsClientReconnectionTest;

@@ -213,7 +213,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
                    ClientCallManager &client_call_manager,
                    std::function<void()> core_worker_unavailable_timeout_callback)
       : addr_(address) {
-    grpc_client_ = std::make_unique<GrpcClient<CoreWorkerService>>(
+    grpc_client_ = std::make_shared<GrpcClient<CoreWorkerService>>(
         addr_.ip_address(), addr_.port(), client_call_manager);
 
     retryable_grpc_client_ = RetryableGrpcClient::Create(
@@ -301,7 +301,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   VOID_RETRYABLE_RPC_CLIENT_METHOD(retryable_grpc_client_,
                                    CoreWorkerService,
                                    ReportGeneratorItemReturns,
-                                   *grpc_client_,
+                                   grpc_client_,
                                    /*method_timeout_ms*/ -1,
                                    override)
 
@@ -474,7 +474,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
   rpc::Address addr_;
 
   /// The RPC client.
-  std::unique_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
+  std::shared_ptr<GrpcClient<CoreWorkerService>> grpc_client_;
 
   std::shared_ptr<RetryableGrpcClient> retryable_grpc_client_;
 
