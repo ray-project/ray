@@ -16,7 +16,6 @@ import yaml
 
 import ray
 import ray._private.ray_constants as ray_constants
-from ray._private.utils import binary_to_hex
 from ray.autoscaler._private.constants import (
     AUTOSCALER_HEARTBEAT_TIMEOUT_S,
     AUTOSCALER_MAX_CONCURRENT_LAUNCHES,
@@ -506,8 +505,7 @@ class StandardAutoscaler:
         # to get idle_duration_ms from raylet
         ray_state = get_cluster_resource_state(self.gcs_client)
         ray_nodes_idle_duration_ms_by_id = {
-            binary_to_hex(node.node_id): node.idle_duration_ms
-            for node in ray_state.node_states
+            node.node_id: node.idle_duration_ms for node in ray_state.node_states
         }
 
         idle_timeout_ms = 60 * 1000 * self.config["idle_timeout_minutes"]
@@ -559,9 +557,16 @@ class StandardAutoscaler:
 
             node_ip = self.provider.internal_ip(node_id)
 
+            # Only attempt to drain connected nodes, i.e. nodes with ips in
+            # LoadMetrics.
+            internal_node_id = None
+            if node_ip in self.load_metrics.raylet_id_by_ip:
+                internal_node_id = self.load_metrics.raylet_id_by_ip[node_ip]
+
             if (
-                node_id in ray_nodes_idle_duration_ms_by_id
-                and ray_nodes_idle_duration_ms_by_id[node_id] > idle_timeout_ms
+                internal_node_id
+                and internal_node_id in ray_nodes_idle_duration_ms_by_id
+                and ray_nodes_idle_duration_ms_by_id[internal_node_id] > idle_timeout_ms
             ):
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
