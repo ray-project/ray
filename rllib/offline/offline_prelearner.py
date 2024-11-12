@@ -86,7 +86,7 @@ class OfflinePreLearner:
         self,
         config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
-        locality_hints: List[str] = None,
+        locality_hints: Optional[List[str]] = None,
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
@@ -507,17 +507,33 @@ class OfflinePreLearner:
                 # TODO (simon): Add support for multi-agent episodes.
                 NotImplementedError
             else:
-                # Unpack observations, if needed.
+                # Unpack observations, if needed. Note, observations could
+                # be either compressed by their entirety (the complete batch
+                # column) or individually (each column entry).
                 if isinstance(obs, str):
-                    # Decompress the observations
+                    # Decompress the observations if we have a string, i.e.
+                    # observations are compressed in their entirety.
                     obs = unpack_if_needed(obs)
-                    # Convert to a list of arrays.
+                    # Convert to a list of arrays. This is needed as input by
+                    # the `SingleAgentEpisode`.
                     obs = [obs[i, ...] for i in range(obs.shape[0])]
-                else:
+                # Otherwise observations are only compressed inside of the
+                # batch column (if at all).
+                elif isinstance(obs, np.array):
+                    # Unpack observations, if they are compressed otherwise we
+                    # simply convert to a list, which is needed by the
+                    # `SingleAgentEpisode`.
                     obs = (
                         unpack_if_needed(obs.tolist())
                         if schema[Columns.OBS] in input_compress_columns
                         else obs.tolist()
+                    )
+                else:
+                    raise TypeError(
+                        f"Unknown observation type: {type(obs)}. When mapping "
+                        "from old recorded `SampleBatches` batched "
+                        "observations should be either of type `np.array` "
+                        "or - if the column is compressed - of `str` type."
                     )
 
                 if schema[Columns.NEXT_OBS] in batch:
@@ -538,26 +554,28 @@ class OfflinePreLearner:
                     schema[Columns.TRUNCATEDS] in batch
                     and schema[Columns.TERMINATEDS] in batch
                 ):
-                    truncateds = batch[schema[Columns.TRUNCATEDS]][i][-1]
-                    terminateds = batch[schema[Columns.TERMINATEDS]][i][-1]
+                    truncated = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminated = batch[schema[Columns.TERMINATEDS]][i][-1]
                 elif (
                     schema[Columns.TRUNCATEDS] in batch
                     and schema[Columns.TERMINATEDS] not in batch
                 ):
-                    truncateds = batch[schema[Columns.TRUNCATEDS]][i][-1]
-                    terminateds = False
+                    truncated = batch[schema[Columns.TRUNCATEDS]][i][-1]
+                    terminated = False
                 elif (
                     schema[Columns.TRUNCATEDS] not in batch
                     and schema[Columns.TERMINATEDS] in batch
                 ):
-                    terminateds = batch[schema[Columns.TERMINATEDS]][i][-1]
-                    truncateds = False
+                    terminated = batch[schema[Columns.TERMINATEDS]][i][-1]
+                    truncated = False
                 elif "done" in batch:
-                    terminateds = batch["done"][i][-1]
-                    truncateds = False
+                    terminated = batch["done"][i][-1]
+                    truncated = False
+                # Otherwise, if no `terminated`, nor `truncated` nor `done`
+                # is given, we consider the episode as terminated.
                 else:
-                    terminateds = True
-                    truncateds = False
+                    terminated = True
+                    truncated = False
 
                 # Create a `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
@@ -580,8 +598,8 @@ class OfflinePreLearner:
                         else batch[schema[Columns.ACTIONS]][i]
                     ),
                     rewards=batch[schema[Columns.REWARDS]][i],
-                    terminated=terminateds,
-                    truncated=truncateds,
+                    terminated=terminated,
+                    truncated=truncated,
                     # TODO (simon): Results in zero-length episodes in connector.
                     # t_started=batch[Columns.T if Columns.T in batch else
                     # "unroll_id"][i][0],
