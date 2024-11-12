@@ -48,16 +48,17 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
+        init_options: Optional[InitHandleOptionsBase] = None,
         handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        self.init_options: Optional[InitHandleOptionsBase] = init_options
         self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
@@ -178,6 +179,7 @@ class _DeploymentHandleBase:
         return DeploymentHandle(
             self.deployment_name,
             self.app_name,
+            init_options=self.init_options,
             handle_options=new_handle_options,
             _router=self._router,
             _create_router=self._create_router,
@@ -721,12 +723,15 @@ class DeploymentHandle(_DeploymentHandleBase):
         """
         _request_context = ray.serve.context._serve_request_context.get()
 
-        if _request_context.is_http_request:
-            request_protocol = RequestProtocol.HTTP
-        elif _request_context.grpc_context:
-            request_protocol = RequestProtocol.GRPC
-        else:
-            request_protocol = RequestProtocol.UNDEFINED
+        request_protocol = RequestProtocol.UNDEFINED
+        if (
+            self.init_options
+            and self.init_options._source == DeploymentHandleSource.PROXY
+        ):
+            if _request_context.is_http_request:
+                request_protocol = RequestProtocol.HTTP
+            elif _request_context.grpc_context:
+                request_protocol = RequestProtocol.GRPC
 
         request_metadata = RequestMetadata(
             request_id=_request_context.request_id
