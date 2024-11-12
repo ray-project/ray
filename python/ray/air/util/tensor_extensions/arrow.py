@@ -100,7 +100,26 @@ def get_arrow_extension_tensor_types():
     """Returns list of extension types of Arrow Array holding
     multidimensional tensors
     """
-    return ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
+    return (
+        *get_arrow_extension_fixed_shape_tensor_types(),
+        *get_arrow_extension_variable_shape_tensor_types(),
+    )
+
+
+@DeveloperAPI
+def get_arrow_extension_fixed_shape_tensor_types():
+    """Returns list of Arrow extension types holding multidimensional
+    tensors of *fixed* shape
+    """
+    return ArrowTensorType, ArrowTensorTypeV2
+
+
+@DeveloperAPI
+def get_arrow_extension_variable_shape_tensor_types():
+    """Returns list of Arrow extension types holding multidimensional
+    tensors of *fixed* shape
+    """
+    return (ArrowVariableShapedTensorType,)
 
 
 class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
@@ -225,7 +244,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             # short-circuit since we require a variable-shaped representation.
             if isinstance(arr_type, ArrowVariableShapedTensorType):
                 return True
-            if not isinstance(arr_type, (ArrowTensorType, ArrowTensorTypeV2)):
+            if not isinstance(arr_type, get_arrow_extension_fixed_shape_tensor_types()):
                 raise ValueError(
                     "All provided array types must be an instance of either "
                     "ArrowTensorType or ArrowVariableShapedTensorType, but "
@@ -635,7 +654,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if ArrowTensorType._need_variable_shaped_tensor_array(arrs_types):
             new_arrs = []
             for a in arrs:
-                if isinstance(a.type, (ArrowTensorType, ArrowTensorTypeV2)):
+                if isinstance(a.type, get_arrow_extension_fixed_shape_tensor_types()):
                     a = a.to_variable_shaped_tensor_array()
                 assert isinstance(a.type, ArrowVariableShapedTensorType)
                 new_arrs.append(a)
