@@ -36,7 +36,33 @@ You can visualize experiment results in ~/ray_results using TensorBoard.
 Results to expect
 -----------------
 
-TODO
+You should see something similar to the following on the command line when using the
+options: `--stop-reward=250.0`, `--num-episodes-served=2`, and `--port=12345`:
+
+[First, the RLModule is trained through PPO]
+
++-----------------------------+------------+-----------------+--------+
+| Trial name                  | status     | loc             |   iter |
+|                             |            |                 |        |
+|-----------------------------+------------+-----------------+--------+
+| PPO_CartPole-v1_84778_00000 | TERMINATED | 127.0.0.1:40411 |      1 |
++-----------------------------+------------+-----------------+--------+
++------------------+---------------------+------------------------+
+|   total time (s) | episode_return_mean |   num_env_steps_sample |
+|                  |                     |             d_lifetime |
+|------------------+---------------------|------------------------|
+|          2.87052 |               253.2 |                  12000 |
++------------------+---------------------+------------------------+
+
+[The RLModule is deployed through Ray Serve on port 12345]
+
+Started Ray Serve with PID: 40458
+
+[A few episodes are played through using the policy service (w/ greedy, non-exploratory
+actions)]
+
+Episode R=500.0
+Episode R=500.0
 """
 
 import atexit

@@ -2979,6 +2979,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
+    data = glob(["examples/ray_serve/classes/**"]),
     args = ["--stop-iters=2", "--num-episodes-served=2", "--no-render", "--port=12345"]
 )
 
