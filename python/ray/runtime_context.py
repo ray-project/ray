@@ -213,9 +213,9 @@ class RuntimeContext(object):
 
     def get_task_name(self) -> Optional[str]:
         """Get current task name for this worker.
-        
-        Task name by default is the task's funciton call string. It can also be 
-        specified in options when triggering a task. 
+
+        Task name by default is the task's funciton call string. It can also be
+        specified in options when triggering a task.
 
         Example:
 
@@ -250,7 +250,7 @@ class RuntimeContext(object):
 
         Returns:
             The current worker's task name
-        """   
+        """
         # only worker mode has task_name
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
@@ -260,9 +260,8 @@ class RuntimeContext(object):
             return None
         return self.worker.current_task_name
 
-
     def get_task_function(self) -> Optional[str]:
-        """Get current task function string for this worker. 
+        """Get current task function string for this worker.
 
         Example:
 

@@ -530,11 +530,11 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
-    
+
     @property
     def current_task_name(self):
         return self.core_worker.get_current_task_name()
-    
+
     @property
     def current_task_function(self):
         return self.core_worker.get_current_task_function()
