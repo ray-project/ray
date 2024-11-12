@@ -2694,6 +2694,40 @@
 # ----------------------------------------------------------
 
 # --------------------------
+# APPO
+# --------------------------
+- name: rllib_learning_tests_pong_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 2gpus_64cpus.yaml
+
+  run:
+    timeout: 1800
+    script: python learning_tests/tuned_examples/appo/pong_appo.py --enable-new-api-stack --num-learners=0 --num-env-runners=46 --stop-reward=19.5 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_64cpus_gce.yaml
+
+# --------------------------
 # DreamerV3
 # --------------------------
 # TODO (sven): Move algo and this test to pytorch
@@ -2731,7 +2765,7 @@
 # --------------------------
 # IMPALA
 # --------------------------
-- name: rllib_learning_tests_impala_ppo_torch
+- name: rllib_learning_tests_pong_impala_torch
   group: RLlib tests
   working_dir: rllib_tests
 
@@ -4342,8 +4376,8 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 22 minutes.
-    timeout: 1800
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2700
     script: python read_tfrecords_benchmark.py
 
   variations:
