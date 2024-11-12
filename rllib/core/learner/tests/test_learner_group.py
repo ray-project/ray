@@ -1,5 +1,4 @@
 import gymnasium as gym
-import itertools
 import numpy as np
 import tempfile
 import unittest
@@ -9,6 +8,7 @@ import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core import (
+    Columns,
     COMPONENT_LEARNER,
     COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
@@ -54,10 +54,11 @@ FAKE_EPISODES = [
             np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
             np.array([0.9, 1.0, 1.1, 1.2], dtype=np.float32),
             np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([-0.1, -0.2, -0.3, -0.4], dtype=np.float32),
         ],
         action_space=gym.spaces.Discrete(2),
-        actions=[0, 1, 1],
-        rewards=[1.0, -1.0, 0.5],
+        actions=[0, 1, 1, 0],
+        rewards=[1.0, -1.0, 0.5, 0.3],
         terminated=True,
         len_lookback_buffer=0,  # all data part of actual episode
     ),
@@ -80,7 +81,7 @@ FAKE_MA_EPISODES = [
                 0: FAKE_EPISODES[0].get_observations(i),
                 1: FAKE_EPISODES[0].get_observations(i),
             }
-            for i in range(4)
+            for i in range(5)
         ],
         action_space=gym.spaces.Dict(
             {
@@ -93,14 +94,14 @@ FAKE_MA_EPISODES = [
                 0: FAKE_EPISODES[0].get_actions(i),
                 1: FAKE_EPISODES[0].get_actions(i),
             }
-            for i in range(3)
+            for i in range(4)
         ],
         rewards=[
             {
                 0: FAKE_EPISODES[0].get_rewards(i),
                 1: FAKE_EPISODES[0].get_rewards(i),
             }
-            for i in range(3)
+            for i in range(4)
         ],
         len_lookback_buffer=0,  # all data part of actual episode
     ),
@@ -111,10 +112,10 @@ FAKE_MA_EPISODES_WO_P1 = [
     MultiAgentEpisode(
         agent_module_ids={0: "p0"},
         observation_space=gym.spaces.Dict({0: FAKE_EPISODES[0].observation_space}),
-        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(4)],
+        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(5)],
         action_space=gym.spaces.Dict({0: FAKE_EPISODES[0].action_space}),
-        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(3)],
-        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(3)],
+        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(4)],
+        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(4)],
         len_lookback_buffer=0,  # all data part of actual episode
     ),
 ]
@@ -159,12 +160,10 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
@@ -270,13 +269,11 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
-        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
-        test_iterator = itertools.product(fws, scaling_modes)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
@@ -368,6 +365,38 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
 
 class TestLearnerGroupSaveLoadState(unittest.TestCase):
+
+    FAKE_BATCH = {
+        Columns.OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.NEXT_OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0, 1, 1, 0]),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True, False]),
+        Columns.TRUNCATEDS: np.array([False, False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0, 0]),
+    }
+
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -439,7 +468,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
             learner_group.update_from_episodes(FAKE_EPISODES)
-            results_2nd_without_break = learner_group.update_from_episodes(
+            results_2nd_update_without_break = learner_group.update_from_episodes(
                 FAKE_EPISODES
             )
             weights_after_2_updates_without_break = learner_group.get_weights()
@@ -447,11 +476,15 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             del learner_group
 
             # Compare the results of the two updates.
-            results_2nd_update_with_break[0][ALL_MODULES].pop("learner_connector_timer")
-            results_2nd_without_break[0][ALL_MODULES].pop("learner_connector_timer")
+            for r1, r2 in zip(
+                results_2nd_update_with_break,
+                results_2nd_update_without_break,
+            ):
+                r1[ALL_MODULES].pop("learner_connector_timer")
+                r2[ALL_MODULES].pop("learner_connector_timer")
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
-                MetricsLogger.peek_results(results_2nd_without_break),
+                MetricsLogger.peek_results(results_2nd_update_without_break),
                 rtol=0.05,
             )
             check(
