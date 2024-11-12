@@ -1,5 +1,5 @@
 import math
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import numpy as np
@@ -11,7 +11,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.zero_padding import (
     create_mask_and_seq_lens,
@@ -396,12 +395,3 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 "model_config={'max_seq_len': [some int]})`."
             )
         return mod.model_config["max_seq_len"]
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "as_learner_connector": self._as_learner_connector,
-            },  # kwargs
-        )

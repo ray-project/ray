@@ -1,5 +1,5 @@
 import numpy as np
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 import tree  # pip install dm_tree
@@ -8,7 +8,6 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import PublicAPI
 
@@ -145,15 +144,4 @@ class _FrameStacking(ConnectorV2):
             high=np.repeat(obs_space.high, repeats=self.num_frames, axis=-1),
             shape=list(obs_space.shape)[:-1] + [self.num_frames],
             dtype=obs_space.dtype,
-        )
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "num_frames": self.num_frames,
-                "multi_agent": self._multi_agent,
-                "as_learner_connector": self._as_learner_connector,
-            },  # kwargs
         )

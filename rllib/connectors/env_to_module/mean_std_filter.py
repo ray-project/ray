@@ -1,4 +1,4 @@
-from typing import Any, Collection, Dict, List, Optional, Tuple, Union
+from typing import Any, Collection, Dict, List, Optional, Union
 
 import gymnasium as gym
 from gymnasium.spaces import Discrete, MultiDiscrete
@@ -8,7 +8,6 @@ import tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.filter import MeanStdFilter as _MeanStdFilter, RunningStat
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType, StateDict
@@ -252,16 +251,3 @@ class MeanStdFilter(ConnectorV2):
                 ],
             }
         return ret
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "multi_agent": self._multi_agent,
-                "de_mean_to_zero": self.de_mean_to_zero,
-                "de_std_to_one": self.de_std_to_one,
-                "clip_by_value": self.clip_by_value,
-                "update_stats": self._update_stats,
-            },  # kwargs
-        )

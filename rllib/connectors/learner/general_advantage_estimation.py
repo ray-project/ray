@@ -1,4 +1,4 @@
-from typing import Any, List, Dict, Tuple
+from typing import Any, List, Dict
 
 import numpy as np
 
@@ -9,7 +9,6 @@ from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import (
@@ -194,13 +193,3 @@ class GeneralAdvantageEstimation(ConnectorV2):
             batch[mid].update(module_batch)
 
         return batch
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "gamma": self.gamma,
-                "lambda_": self.lambda_,
-            },  # kwargs
-        )

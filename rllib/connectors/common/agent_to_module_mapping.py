@@ -1,5 +1,5 @@
 from collections import defaultdict
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -7,7 +7,6 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 from ray.util.annotations import PublicAPI
 
@@ -288,13 +287,3 @@ class AgentToModuleMapping(ConnectorV2):
                     )
 
         return gym.spaces.Dict(ret_space)
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "rl_module_specs": self._rl_module_specs,
-                "agent_to_module_mapping_fn": self._agent_to_module_mapping_fn,
-            },  # kwargs
-        )

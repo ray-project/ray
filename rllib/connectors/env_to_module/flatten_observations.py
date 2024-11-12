@@ -1,4 +1,4 @@
-from typing import Any, Collection, Dict, List, Optional, Tuple
+from typing import Any, Collection, Dict, List, Optional
 
 import gymnasium as gym
 from gymnasium.spaces import Box
@@ -8,7 +8,6 @@ import tree  # pip install dm_tree
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.numpy import flatten_inputs_to_1d_tensor
 from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import AgentID, EpisodeType
@@ -210,13 +209,3 @@ class FlattenObservations(ConnectorV2):
             sa_episode.observation_space = self.observation_space
 
         return batch
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "multi_agent": self._multi_agent,
-                "agent_ids": self._agent_ids,
-            },  # kwargs
-        )

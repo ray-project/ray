@@ -1,5 +1,5 @@
 import copy
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional
 
 import gymnasium as gym
 
@@ -7,7 +7,6 @@ from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.spaces.space_utils import (
     clip_action,
     get_base_struct_from_space,
@@ -145,13 +144,3 @@ class NormalizeAndClipActions(ConnectorV2):
             )
 
         return batch
-
-    @override(Checkpointable)
-    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
-        return (
-            (),  # args,
-            {
-                "normalize_actions": self.normalize_actions,
-                "clip_actions": self.clip_actions,
-            },  # kwargs
-        )
