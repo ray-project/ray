@@ -115,12 +115,9 @@ class APPOConfig(IMPALAConfig):
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
-        self.min_time_s_per_iteration = 10
         self.target_network_update_freq = 1
         self.learner_queue_size = 16
         self.learner_queue_timeout = 300
-        self.max_sample_requests_in_flight_per_worker = 2
-        self.broadcast_interval = 1
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
         # be configured by the user. On the old API stack, RLlib will always clip by

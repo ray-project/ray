@@ -71,7 +71,7 @@ class IMPALALearner(Learner):
         ):
             self._learner_connector.prepend(AddOneTsToEpisodesAndTruncate())
             # Leave all batches on the CPU (they'll be moved to the GPU, if applicable,
-            # by the n GPU loader threads.
+            # by the n GPU loader threads).
             numpy_to_tensor_connector = self._learner_connector[NumpyToTensor][0]
             numpy_to_tensor_connector._device = "cpu"  # TODO (sven): Provide API?
 
@@ -98,11 +98,14 @@ class IMPALALearner(Learner):
                 t.start()
 
         # Create and start the Learner thread.
+        #TODO
+        from ray.rllib.algorithms.appo.utils import CircularBuffer
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
             out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
+            circular_buffer=CircularBuffer(capacity=4, max_picks_per_batch=2),#TODO
             num_epochs=self.config.num_epochs,
             minibatch_size=self.config.minibatch_size,
             shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
