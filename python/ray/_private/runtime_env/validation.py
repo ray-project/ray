@@ -116,8 +116,7 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
 
 
 # TODO(hjiang): More package installation options to implement:
-# 1. Allow specific version of `uv` to use; as of now we only use default version.
-# 2. `pip_check` has different semantics for `uv` and `pip`, see
+# 1. `pip_check` has different semantics for `uv` and `pip`, see
 # https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
 # it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
@@ -149,15 +148,20 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
         result = dict(packages=uv)
     elif isinstance(uv, dict):
-        if set(uv.keys()) - {"packages"}:
+        if set(uv.keys()) - {"packages", "uv_version"}:
             raise ValueError(
                 "runtime_env['uv'] can only have these fields: "
-                "packages, but got: "
+                "packages and uv_version, but got: "
                 f"{list(uv.keys())}"
             )
         if "packages" not in uv:
             raise ValueError(
                 f"runtime_env['uv'] must include field 'packages', but got {uv}"
+            )
+        if "uv_version" in uv and not isinstance(uv["uv_version"], str):
+            raise TypeError(
+                "runtime_env['uv']['uv_version'] must be of type str, "
+                f"got {type(uv['uv_version'])}"
             )
 
         result = uv.copy()
