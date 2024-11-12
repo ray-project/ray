@@ -11,7 +11,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.zero_padding import (
     create_mask_and_seq_lens,
@@ -396,11 +395,3 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 "model_config={'max_seq_len': [some int]})`."
             )
         return mod.model_config["max_seq_len"]
-
-
-@Deprecated(
-    new="ray.rllib.utils.postprocessing.zero_padding.split_and_zero_pad()",
-    error=True,
-)
-def split_and_zero_pad_list(*args, **kwargs):
-    pass
