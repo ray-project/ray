@@ -1,11 +1,10 @@
-from ray.rllib.env.env_runner_group import EnvRunnerGroup
-from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.deprecation import Deprecated
 
-deprecation_warning(
-    old="WorkerSet",
+
+@Deprecated(
     new="ray.rllib.env.env_runner_group.EnvRunnerGroup",
     help="The class has only be renamed w/o any changes in functionality.",
-    error=False,
+    error=True,
 )
-
-WorkerSet = EnvRunnerGroup
+class WorkerSet:
+    pass

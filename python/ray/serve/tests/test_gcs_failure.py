@@ -122,7 +122,8 @@ def router_populated_with_replicas(
     of replicas in set is at least `threshold`.
     """
     if handle:
-        replicas = handle._router._replica_scheduler._replica_id_set
+        router = handle._router._asyncio_router
+        replicas = router._replica_scheduler._replica_id_set
     else:
         replicas = get_replicas_func()
 
@@ -132,7 +133,8 @@ def router_populated_with_replicas(
     if not check_cache_populated:
         return True
 
-    cache = handle._router._replica_scheduler.replica_queue_len_cache
+    router = handle._router._asyncio_router
+    cache = router._replica_scheduler.replica_queue_len_cache
     for replica_id in replicas:
         assert (
             cache.get(replica_id) is not None
@@ -170,7 +172,7 @@ def test_new_router_on_gcs_failure(serve_ha, use_proxy: bool):
     h._recorded_telemetry = True
     # Eagerly create router so it receives the replica set instead of
     # waiting for the first request
-    h._get_or_create_router()
+    h._init()
 
     if use_proxy:
         proxy_handles = ray.get(client._controller.get_proxies.remote())

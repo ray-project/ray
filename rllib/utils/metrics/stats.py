@@ -565,7 +565,7 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         return {
-            "values": self.values,
+            "values": convert_to_numpy(self.values),
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,

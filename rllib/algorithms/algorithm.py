@@ -62,7 +62,6 @@ from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.env.utils import _gym_env_creator
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.metrics import (
     collect_episodes,
     summarize_episodes,
@@ -1364,7 +1363,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1554,7 +1553,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 " too unstable, b) you have enough evaluation workers "
                 "(`config.evaluation(evaluation_num_env_runners=...)`) to cover for "
                 "occasional losses, and c) you use the `config.fault_tolerance("
-                "recreate_failed_env_runners=True)` setting."
+                "restart_failed_env_runners=True)` setting."
             )
 
         if not self.config.enable_env_runner_and_connector_v2:
@@ -1582,8 +1581,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             logger.warning(
                 "This evaluation iteration resulted in an empty set of episode summary "
                 "results! It's possible that your configured duration timesteps are not"
-                " enough to finish even a single episode. Your have configured "
-                f"{self.config.evaluation_duration}"
+                " enough to finish even a single episode. You have configured "
+                f"{self.config.evaluation_duration} "
                 f"{self.config.evaluation_duration_unit}. For 'timesteps', try "
                 "increasing this value via the `config.evaluation(evaluation_duration="
                 "...)` OR change the unit to 'episodes' via `config.evaluation("
@@ -1636,10 +1635,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             # worker of an EnvRunnerGroup.
             state = from_worker.get_state()
             # Take out (old) connector states from local worker's state.
-            if (
-                self.config.enable_connectors
-                and not self.config.enable_env_runner_and_connector_v2
-            ):
+            if not self.config.enable_env_runner_and_connector_v2:
                 for pol_states in state["policy_states"].values():
                     pol_states.pop("connector_configs", None)
             state_ref = ray.put(state)
@@ -2042,7 +2038,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         full_fetch: bool = False,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episode: Optional[Episode] = None,
+        episode=None,
         unsquash_action: Optional[bool] = None,
         clip_action: Optional[bool] = None,
         # Kwargs placeholder for future compatibility.
@@ -2129,53 +2125,44 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 f"PolicyID '{policy_id}' not found in PolicyMap of the "
                 f"Algorithm's local worker!"
             )
-        local_worker = self.env_runner_group.local_env_runner
+        # Just preprocess observations, similar to how it used to be done before.
+        pp = policy.agent_connectors[ObsPreprocessorConnector]
 
-        if not self.config.get("enable_connectors"):
-            # Check the preprocessor and preprocess, if necessary.
-            pp = local_worker.preprocessors[policy_id]
-            if pp and type(pp).__name__ != "NoPreprocessor":
-                observation = pp.transform(observation)
-            observation = local_worker.filters[policy_id](observation, update=False)
-        else:
-            # Just preprocess observations, similar to how it used to be done before.
-            pp = policy.agent_connectors[ObsPreprocessorConnector]
+        # convert the observation to array if possible
+        if not isinstance(observation, (np.ndarray, dict, tuple)):
+            try:
+                observation = np.asarray(observation)
+            except Exception:
+                raise ValueError(
+                    f"Observation type {type(observation)} cannot be converted to "
+                    f"np.ndarray."
+                )
+        if pp:
+            assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
+            pp = pp[0]
 
-            # convert the observation to array if possible
-            if not isinstance(observation, (np.ndarray, dict, tuple)):
-                try:
-                    observation = np.asarray(observation)
-                except Exception:
+            if not pp.is_identity():
+                # Note(Kourosh): This call will leave the policy's connector
+                # in eval mode. would that be a problem?
+                pp.in_eval()
+                if observation is not None:
+                    _input_dict = {Columns.OBS: observation}
+                elif input_dict is not None:
+                    _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
+                else:
                     raise ValueError(
-                        f"Observation type {type(observation)} cannot be converted to "
-                        f"np.ndarray."
+                        "Either observation or input_dict must be provided."
                     )
-            if pp:
-                assert len(pp) == 1, "Only one preprocessor should be in the pipeline"
-                pp = pp[0]
 
-                if not pp.is_identity():
-                    # Note(Kourosh): This call will leave the policy's connector
-                    # in eval mode. would that be a problem?
-                    pp.in_eval()
-                    if observation is not None:
-                        _input_dict = {Columns.OBS: observation}
-                    elif input_dict is not None:
-                        _input_dict = {Columns.OBS: input_dict[Columns.OBS]}
-                    else:
-                        raise ValueError(
-                            "Either observation or input_dict must be provided."
-                        )
-
-                    # TODO (Kourosh): Create a new util method for algorithm that
-                    # computes actions based on raw inputs from env and can keep track
-                    # of its own internal state.
-                    acd = AgentConnectorDataType("0", "0", _input_dict)
-                    # make sure the state is reset since we are only applying the
-                    # preprocessor
-                    pp.reset(env_id="0")
-                    ac_o = pp([acd])[0]
-                    observation = ac_o.data[Columns.OBS]
+                # TODO (Kourosh): Create a new util method for algorithm that
+                # computes actions based on raw inputs from env and can keep track
+                # of its own internal state.
+                acd = AgentConnectorDataType("0", "0", _input_dict)
+                # make sure the state is reset since we are only applying the
+                # preprocessor
+                pp.reset(env_id="0")
+                ac_o = pp([acd])[0]
+                observation = ac_o.data[Columns.OBS]
 
         # Input-dict.
         if input_dict is not None:
@@ -2227,7 +2214,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         full_fetch: bool = False,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List[Episode]] = None,
+        episodes=None,
         unsquash_actions: Optional[bool] = None,
         clip_actions: Optional[bool] = None,
         **kwargs,
@@ -2559,15 +2546,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             onnx: If given, will export model in ONNX format. The
                 value of this parameter set the ONNX OpSet version to use.
                 If None, the output format will be DL framework specific.
-
-        .. testcode::
-
-            from ray.rllib.algorithms.ppo import PPO, PPOConfig
-            config = PPOConfig().environment("CartPole-v1")
-            algo = PPO(config=config)
-            algo.train()
-            algo.export_policy_checkpoint("/tmp/export_dir")
-            algo.export_policy_model("/tmp/dir")
         """
         self.get_policy(policy_id).export_model(export_dir, onnx)
 
@@ -2588,14 +2566,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         Raises:
             KeyError: if `policy_id` cannot be found in this Algorithm.
-
-        .. testcode::
-
-            from ray.rllib.algorithms.ppo import PPO, PPOConfig
-            config = PPOConfig().environment("CartPole-v1")
-            algo = PPO(config=config)
-            algo.train()
-            algo.export_policy_checkpoint("/tmp/export_dir")
         """
         policy = self.get_policy(policy_id)
         if policy is None:
@@ -2909,7 +2879,14 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         else:
             driver = {
                 "CPU": cf.num_cpus_for_main_process,
-                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                # Ignore `cf.num_gpus` on the new API stack.
+                "GPU": (
+                    0
+                    if cf._fake_gpus
+                    else cf.num_gpus
+                    if not cf.enable_rl_module_and_learner
+                    else 0
+                ),
             }
 
         # resources for remote rollout env samplers
@@ -3238,6 +3215,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                             "None. The logged results are compiled automatically into "
                             "one single result dict per training iteration."
                         )
+
                     # TODO (sven): Resolve this metric through log_time's future
                     #  ability to compute throughput.
                     self.metrics.log_value(
@@ -3249,7 +3227,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Only here (at the end of the iteration), reduce the results into a single
         # result dict.
-        return self.metrics.reduce(), train_iter_ctx
 
     def _run_one_evaluation(
         self,
@@ -3460,7 +3437,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             logger.warning(
                 "This evaluation iteration resulted in an empty set of episode summary "
                 "results! It's possible that your configured duration timesteps are not"
-                " enough to finish even a single episode. Your have configured "
+                " enough to finish even a single episode. You have configured "
                 f"{self.config.evaluation_duration}"
                 f"{self.config.evaluation_duration_unit}. For 'timesteps', try "
                 "increasing this value via the `config.evaluation(evaluation_duration="
@@ -4090,7 +4067,8 @@ class TrainIterCtx:
                 (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
             )
             self.init_env_steps_trained = self.algo.metrics.peek(
-                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                default=0,
             )
             self.init_agent_steps_sampled = sum(
                 self.algo.metrics.peek(
@@ -4099,7 +4077,7 @@ class TrainIterCtx:
             )
             self.init_agent_steps_trained = sum(
                 self.algo.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
+                    (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME), default={}
                 ).values()
             )
         else:
@@ -4149,7 +4127,7 @@ class TrainIterCtx:
                 self.trained = (
                     sum(
                         self.algo.metrics.peek(
-                            (ENV_RUNNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME),
+                            (LEARNER_RESULTS, NUM_AGENT_STEPS_TRAINED_LIFETIME),
                             default={},
                         ).values()
                     )
@@ -4164,7 +4142,8 @@ class TrainIterCtx:
                 )
                 self.trained = (
                     self.algo.metrics.peek(
-                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                        default=0,
                     )
                     - self.init_env_steps_trained
                 )

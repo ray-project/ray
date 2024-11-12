@@ -91,7 +91,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(INFO).WithField(node_id)
         << "Finished registering node info, address = "
         << request.node_info().node_manager_address()
-        << ", node name = " << request.node_info().node_name();
+        << ", node name = " << request.node_info().node_name()
+        << ", is_head_node = " << request.node_info().is_head_node();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
