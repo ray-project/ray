@@ -278,6 +278,7 @@ class _LearnerThread(threading.Thread):
         num_epochs,
         minibatch_size,
         shuffle_batch_per_epoch,
+        circular_buffer=None,
     ):
         super().__init__()
         self.daemon = True
@@ -292,6 +293,8 @@ class _LearnerThread(threading.Thread):
         self._minibatch_size = minibatch_size
         self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
+        self._circular_buffer = circular_buffer
+
     def run(self) -> None:
         while not self.stopped:
             self.step()
@@ -299,10 +302,16 @@ class _LearnerThread(threading.Thread):
     def step(self):
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+            # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
             if not self._in_queue:
                 time.sleep(0.001)
                 return
             ma_batch_on_gpu = self._in_queue.pop()
+
+        # Funnel all incoming batches through a (circular) buffer.
+        if self._circular_buffer is not None:
+            self._circular_buffer.add(ma_batch_on_gpu)
+            ma_batch_on_gpu = self._circular_buffer.sample()
 
         # Call the update method on the batch.
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):

@@ -1,12 +1,40 @@
+from collections import deque
+import random
+
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
+from ray.rllib.utils.annotations import OldAPIStack
 
 
 POLICY_SCOPE = "func"
 TARGET_POLICY_SCOPE = "target_func"
 
 
-# TODO (sven): Deprecate once APPO and IMPALA fully on RLModules/Learner APIs.
+class CircularBuffer:
+    def __init__(self, capacity: int, max_picks_per_batch: int):
+        # N from the paper (buffer size).
+        self.capacity = capacity
+        # K ("replay coefficient") from the paper.
+        self.max_picks_per_batch = max_picks_per_batch
+
+        self._buffer = deque(maxlen=self.capacity)
+        self._ks = deque(maxlen=self.capacity)
+
+    def add(self, batch):
+        self._buffer.append(batch)
+        self._ks.append(0)
+
+    def sample(self):
+        index = random.randint(0, len(self._buffer) - 1)
+        self._ks[index] += 1
+        batch = self._buffer[index]
+        # This batch has been exhausted -> Remove it from the buffer.
+        if self._ks[index] == self.max_picks_per_batch:
+
+        return batch
+
+
+@OldAPIStack
 def make_appo_models(policy) -> ModelV2:
     """Builds model and target model for APPO.
 

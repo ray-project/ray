@@ -122,7 +122,7 @@ FAKE_MA_EPISODES_WO_P1 = [
 FAKE_MA_EPISODES_WO_P1[0].finalize()
 
 
-class TestLearnerGroup(unittest.TestCase):
+class TestLearnerGroupSyncUpdate(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
