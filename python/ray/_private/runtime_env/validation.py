@@ -115,10 +115,6 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-# TODO(hjiang): More package installation options to implement:
-# 1. `pip_check` has different semantics for `uv` and `pip`, see
-# https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
-# it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'uv' option.
 
