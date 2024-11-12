@@ -73,18 +73,25 @@ class ParquetDatasink(_FileDatasink):
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
+        user_schema = write_kwargs.pop("schema", None)
 
+        print(f"write_path={write_path} with len(blocks)={len(blocks)}")
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
                 tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
-                # We only allow unifying nullable fields by promote_options=`default`
-                unified_schema = pa.unify_schemas(
-                    [table.schema for table in tables], promote_options="default"
-                )
-                with pq.ParquetWriter(file, unified_schema, **write_kwargs) as writer:
+                if user_schema is None:
+                    # We only allow unifying nullable fields by promote_options=`default`
+                    output_schema = pa.unify_schemas(
+                        [table.schema for table in tables], promote_options="default"
+                    )
+                    print(f"unified schema: {output_schema}")
+                else:
+                    output_schema = user_schema
+
+                with pq.ParquetWriter(file, output_schema, **write_kwargs) as writer:
                     for table in tables:
-                        if not table.schema.equals(unified_schema):
-                            table = table.cast(unified_schema)
+                        print(f"casted table schema={table.schema}")
+                        table = table.cast(output_schema)
                         writer.write_table(table)
 
         logger.debug(f"Writing {write_path} file.")

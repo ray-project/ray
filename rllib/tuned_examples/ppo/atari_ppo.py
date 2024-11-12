@@ -14,9 +14,12 @@ parser = add_rllib_example_script_args(
     default_timesteps=3000000,
     default_iters=100000000000,
 )
-parser.set_defaults(enable_new_api_stack=True)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    env="ale_py:ALE/Pong-v5",
+)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 
@@ -67,7 +70,7 @@ config = (
         vf_clip_param=10.0,
         entropy_coeff=0.01,
         num_epochs=10,
-        lr=0.00015 * args.num_gpus,
+        lr=0.00015 * (args.num_learners or 1),
         grad_clip=100.0,
         grad_clip_by="global_norm",
     )

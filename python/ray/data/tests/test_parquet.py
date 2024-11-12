@@ -569,13 +569,6 @@ def test_parquet_read_partitioned_with_columns(ray_start_regular_shared, fs, dat
     ]
 
 
-# Skip this test if pyarrow is below version 7. As the old
-# pyarrow does not support single path with partitioning,
-# this issue cannot be resolved by Ray data itself.
-@pytest.mark.skipif(
-    tuple(pa.__version__.split(".")) < ("7",),
-    reason="Old pyarrow behavior cannot be fixed.",
-)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
@@ -618,9 +611,17 @@ def test_parquet_read_partitioned_with_partition_filter(
         ),
     )
 
-    assert ds.columns() == ["x", "y", "z"]
+    # Where we insert partition columns is an implementation detail, so we don't check
+    # the order of the columns.
+    assert sorted(zip(ds.schema().names, ds.schema().types)) == [
+        ("x", pa.string()),
+        ("y", pa.string()),
+        ("z", pa.float64()),
+    ]
+
     values = [[s["x"], s["y"], s["z"]] for s in ds.take()]
-    assert sorted(values) == [[0, "a", 0.1]]
+
+    assert sorted(values) == [["0", "a", 0.1]]
 
 
 def test_parquet_read_partitioned_explicit(ray_start_regular_shared, tmp_path):
@@ -1042,8 +1043,10 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
+
     ds = ray.data.read_parquet(path)
-    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+    assert ds.take_all() == []
 
 
 def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
@@ -1175,25 +1178,6 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         table = pq.read_table(os.path.join(tmp_path, filename))
         assert len(table) == num_rows_per_file
 
-
-@pytest.mark.parametrize(
-    "row_data",
-    [
-        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
-        [{"a": None, "b": None}, {"a": 1, "b": 2}],
-        [{"a": 1, "b": 2}, {"a": 1, "b": "hi"}],
-    ],
-    ids=["row1_b_null", "row1_a_null", "row2_a_null"],
-)
-def test_write_auto_infer_nullable_fields(tmp_path, ray_start_regular_shared, row_data):
-    from ray.data._internal.logical.optimizers import _PHYSICAL_RULES
-    from ray.data._internal.logical.rules.operator_fusion import OperatorFusionRule
-
-    if OperatorFusionRule in _PHYSICAL_RULES:
-        _PHYSICAL_RULES.remove(OperatorFusionRule)
-    ray.data.range(2, override_num_blocks=2).map(
-        lambda i: row_data[i["id"]]
-    ).write_parquet(tmp_path, num_rows_per_file=2)
 
 
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
@@ -1333,6 +1317,35 @@ def test_count_with_filter(ray_start_regular_shared):
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
+
+
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
+
+
+@pytest.mark.parametrize(
+    "row_data",
+    [
+        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 3}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 1}, {"a": 1, "b": None}],
+    ],
+    ids=["row1_b_null", "row1_a_null", "row_each_null"],
+)
+def test_write_auto_infer_nullable_fields(tmp_path, ray_start_regular_shared, row_data):
+    # Write each row to a separate file.
+    for i, row in enumerate(row_data):
+        ray.data.from_pandas(pd.DataFrame([row])).write_parquet(
+            os.path.join(tmp_path, f"file_{i}.parquet")
+        )
+
+    # Read files and merge into a single file shouldn't error.
+    ray.data.read_parquet(tmp_path).write_parquet(tmp_path, num_rows_per_file=2)
 
 
 if __name__ == "__main__":

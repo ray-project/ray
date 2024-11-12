@@ -42,7 +42,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -111,8 +111,8 @@ class EnvRunnerGroup:
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
-                old="WorkerSet(num_workers=... OR local_worker=...)",
-                new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
+                old="WorkerSet(num_workers=..., local_worker=...)",
+                new="EnvRunnerGroup(num_env_runners=..., local_env_runner=...)",
                 error=True,
             )
 
@@ -558,34 +558,41 @@ class EnvRunnerGroup:
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER]
             # EnvRunner has-a RLModule.
             elif self._remote_config.enable_env_runner_and_connector_v2:
                 rl_module_state = weights_src.get_state(
                     components=modules,
                     inference_only=inference_only,
-                )[COMPONENT_RL_MODULE]
+                )
             else:
                 rl_module_state = weights_src.get_weights(
                     policies=policies,
                     inference_only=inference_only,
                 )
 
-            # Move weights to the object store to avoid having to make n pickled copies
-            # of the weights dict for each worker.
-            rl_module_state_ref = ray.put(rl_module_state)
-
             if self._remote_config.enable_env_runner_and_connector_v2:
 
+                # Make sure `rl_module_state` only contains the weights and the
+                # weight seq no, nothing else.
+                rl_module_state = {
+                    k: v
+                    for k, v in rl_module_state.items()
+                    if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
+                }
+
+                # Move weights to the object store to avoid having to make n pickled
+                # copies of the weights dict for each worker.
+                rl_module_state_ref = ray.put(rl_module_state)
+
                 def _set_weights(env_runner):
-                    _rl_module_state = ray.get(rl_module_state_ref)
-                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
+                    env_runner.set_state(ray.get(rl_module_state_ref))
 
             else:
+                rl_module_state_ref = ray.put(rl_module_state)
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(rl_module_state_ref)
-                    env_runner.set_weights(_weights, global_vars)
+                    env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
             self.foreach_worker(
@@ -600,9 +607,7 @@ class EnvRunnerGroup:
         if self.local_env_runner is not None:
             if from_worker_or_learner_group is not None:
                 if self._remote_config.enable_env_runner_and_connector_v2:
-                    self.local_env_runner.set_state(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                    )
+                    self.local_env_runner.set_state(rl_module_state)
                 else:
                     self.local_env_runner.set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
@@ -862,7 +867,7 @@ class EnvRunnerGroup:
                 synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
@@ -936,7 +941,7 @@ class EnvRunnerGroup:
             timeout_seconds: Time to wait for results. Default is None.
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
