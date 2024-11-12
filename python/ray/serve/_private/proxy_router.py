@@ -160,7 +160,6 @@ class ProxyRouter:
             (route, handle, is_cross_language) for the single app if there
             is only one, else find the app and handle for exact match. Else return None.
         """
-        print("handles", self.handles)
         for endpoint_tag, handle in self.handles.items():
             # If the target_app_name matches with the endpoint or if
             # there is only one endpoint.
