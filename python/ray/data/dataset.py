@@ -4008,7 +4008,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(api_group=CD_API_GROUP)
+    @Deprecated
     def iter_tf_batches(
         self,
         *,
@@ -4081,6 +4081,11 @@ class Dataset:
             :meth:`Dataset.iter_batches`
                 Call this method to manually convert your data to TensorFlow tensors.
         """  # noqa: E501
+        warnings.warn(
+            "`iter_tf_batches` is deprecated and will be removed after May 2025. Use "
+            "`to_tf` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
