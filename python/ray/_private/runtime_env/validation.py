@@ -160,7 +160,7 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
             )
         if "uv_version" in uv and not isinstance(uv["uv_version"], str):
             raise TypeError(
-                "runtime_env['uv']['uv_version'] must be of type bool, "
+                "runtime_env['uv']['uv_version'] must be of type str, "
                 f"got {type(uv['uv_version'])}"
             )
 

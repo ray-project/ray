@@ -948,12 +948,13 @@ py_test(
 )
 
 # CQL
+# @OldAPIStack
 py_test(
-    name = "test_cql",
+    name = "test_cql_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     data = ["tests/data/pendulum/small.json"],
-    srcs = ["algorithms/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql_old_api_stack.py"]
 )
 
 # DQN
@@ -1435,7 +1436,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
-# Learner
+# LearnerGroup
 py_test(
     name = "TestLearnerGroupSyncUpdate",
     main = "core/learner/tests/test_learner_group.py",
@@ -1472,16 +1473,17 @@ py_test(
     args = ["TestLearnerGroupSaveLoadState"]
 )
 
+# Learner
 py_test(
     name = "test_learner",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
 py_test(
     name = "test_torch_learner_compile",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
@@ -2971,15 +2973,15 @@ py_test(
 
 # subdirectory: ray_serve/
 # ....................................
-# TODO (sven): Uncomment once the problem with the path on BAZEL is solved.
-# py_test(
-#    name = "examples/ray_serve/ray_serve_with_rllib",
-#    main = "examples/ray_serve/ray_serve_with_rllib.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
-#    args = ["--train-iters=2", "--serve-episodes=2", "--no-render"]
-# )
+py_test(
+    name = "examples/ray_serve/ray_serve_with_rllib",
+    main = "examples/ray_serve/ray_serve_with_rllib.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
+    data = glob(["examples/ray_serve/classes/**"]),
+    args = ["--stop-iters=2", "--num-episodes-served=2", "--no-render", "--port=12345"]
+)
 
 # subdirectory: ray_tune/
 # ....................................
