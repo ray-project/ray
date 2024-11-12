@@ -72,13 +72,9 @@ class ProxyRouter:
 
         return False, NO_REPLICAS_MESSAGE
 
-    def update_routes(
-        self,
-        endpoints: Dict[DeploymentID, EndpointInfo],
-        protocol: RequestProtocol,
-    ) -> None:
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
-            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": True}
         )
         if endpoints:
             self._route_table_populated = True
@@ -96,7 +92,7 @@ class ProxyRouter:
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                self.handles[endpoint] = self._get_handle(endpoint, info, protocol)
+                self.handles[endpoint] = self._get_handle(endpoint, info)
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:

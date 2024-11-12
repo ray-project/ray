@@ -155,9 +155,6 @@ class GenericProxy(ABC):
         self._node_id = node_id
         self._is_head = is_head
 
-        # Used only for displaying the route table.
-        self.route_info: Dict[str, DeploymentID] = dict()
-
         self.proxy_router = proxy_router
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
@@ -238,14 +235,6 @@ class GenericProxy(ABC):
     def _is_draining(self) -> bool:
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
-
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.route_info: Dict[str, DeploymentID] = dict()
-        for deployment_id, info in endpoints.items():
-            route = info.route
-            self.route_info[route] = deployment_id
-
-        self.proxy_router.update_routes(endpoints, self.protocol)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -579,7 +568,7 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         yield ListApplicationsResponse(
             application_names=[
-                endpoint.app_name for endpoint in self.route_info.values()
+                endpoint.app_name for endpoint in self.proxy_router.endpoints
             ],
         ).SerializeToString()
 
@@ -810,13 +799,13 @@ class HTTPProxy(GenericProxy):
         status_code = 200 if healthy else 503
         if healthy:
             response = dict()
-            for route, endpoint in self.route_info.items():
+            for endpoint, info in self.proxy_router.endpoints.items():
                 # For 2.x deployments, return {route -> app name}
                 if endpoint.app_name:
-                    response[route] = endpoint.app_name
+                    response[info.route] = endpoint.app_name
                 # Keep compatibility with 1.x deployments.
                 else:
-                    response[route] = endpoint.name
+                    response[info.route] = endpoint.name
         else:
             response = message
 
@@ -1218,12 +1207,12 @@ class ProxyActor:
             http_middlewares.extend(middlewares)
 
         is_head = node_id == get_head_node_id()
-        proxy_router = ProxyRouter(get_proxy_handle)
+        self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router=proxy_router,
+            proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
@@ -1233,7 +1222,7 @@ class ProxyActor:
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 is_head=is_head,
-                proxy_router=proxy_router,
+                proxy_router=self.proxy_router,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
@@ -1271,9 +1260,7 @@ class ProxyActor:
         )
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.http_proxy.update_routes(endpoints)
-        if self.grpc_proxy is not None:
-            self.grpc_proxy.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints)
 
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(

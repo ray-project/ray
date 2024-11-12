@@ -20,7 +20,7 @@ def get_handle_function(router: ProxyRouter) -> Callable:
 
 @pytest.fixture
 def mock_router():
-    def mock_get_handle(endpoint, info, protocol):
+    def mock_get_handle(endpoint, info):
         return MockDeploymentHandle(endpoint.name, endpoint.app_name)
 
     yield ProxyRouter(mock_get_handle)
@@ -37,7 +37,6 @@ def test_no_match(mock_router: ProxyRouter):
                 route="/hello2"
             ),
         },
-        RequestProtocol.UNDEFINED,
     )
     assert router.match_route("/nonexistent") is None
     assert router.get_handle_for_endpoint("/nonexistent") is None
@@ -54,7 +53,6 @@ def test_default_route(mock_router: ProxyRouter):
                 route="/endpoint2"
             ),
         },
-        RequestProtocol.UNDEFINED,
     )
 
     # Route based matching
@@ -82,7 +80,6 @@ def test_trailing_slash(mock_router: ProxyRouter):
                 route="/test"
             )
         },
-        RequestProtocol.UNDEFINED,
     )
 
     route, handle, _ = router.match_route("/test/")
@@ -94,7 +91,6 @@ def test_trailing_slash(mock_router: ProxyRouter):
                 route="/test/"
             )
         },
-        RequestProtocol.UNDEFINED,
     )
 
     assert router.match_route("/test") is None
@@ -112,7 +108,6 @@ def test_prefix_match(mock_router):
             ),
             DeploymentID(name="endpoint3", app_name="default"): EndpointInfo(route="/"),
         },
-        RequestProtocol.UNDEFINED,
     )
 
     route, handle, _ = router.match_route("/test/test2/subpath")
@@ -139,7 +134,6 @@ def test_update_routes(mock_router):
     router = mock_router
     router.update_routes(
         {DeploymentID("endpoint", "app1"): EndpointInfo(route="/endpoint")},
-        RequestProtocol.UNDEFINED,
     )
 
     route, handle, app_is_cross_language = router.match_route("/endpoint")
@@ -163,7 +157,6 @@ def test_update_routes(mock_router):
                 app_is_cross_language=True,
             ),
         },
-        RequestProtocol.UNDEFINED,
     )
 
     assert router.match_route("/endpoint") == None
@@ -199,9 +192,7 @@ class TestReadyForTraffic:
         """
 
         d_id = DeploymentID(name="A", app_name="B")
-        mock_router.update_routes(
-            {d_id: EndpointInfo(route="/")}, RequestProtocol.UNDEFINED
-        )
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_router.handles[d_id].set_running_replicas_populated(False)
 
         ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=True)
@@ -216,9 +207,7 @@ class TestReadyForTraffic:
         """
 
         d_id = DeploymentID(name="A", app_name="B")
-        mock_router.update_routes(
-            {d_id: EndpointInfo(route="/")}, RequestProtocol.UNDEFINED
-        )
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_router.handles[d_id].set_running_replicas_populated(False)
 
         ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=False)
@@ -233,9 +222,7 @@ class TestReadyForTraffic:
         """
 
         d_id = DeploymentID(name="A", app_name="B")
-        mock_router.update_routes(
-            {d_id: EndpointInfo(route="/")}, RequestProtocol.UNDEFINED
-        )
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
         mock_router.handles[d_id].set_running_replicas_populated(True)
 
         ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=is_head)

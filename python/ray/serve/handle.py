@@ -153,6 +153,7 @@ class _DeploymentHandleBase:
         to initialize a handle with custom init options, you must do it
         before calling `.options()` or `.remote()`.
         """
+        print("cindy init!!!")
         if self._router is not None:
             raise RuntimeError(
                 "Handle has already been initialized. Note that a handle is implicitly "
@@ -729,6 +730,14 @@ class DeploymentHandle(_DeploymentHandleBase):
                 remote method call.
         """
         _request_context = ray.serve.context._serve_request_context.get()
+
+        if _request_context.is_http_request:
+            request_protocol = RequestProtocol.HTTP
+        elif _request_context.grpc_context:
+            request_protocol = RequestProtocol.GRPC
+        else:
+            request_protocol = RequestProtocol.UNDEFINED
+
         request_metadata = RequestMetadata(
             request_id=_request_context.request_id
             if _request_context.request_id
@@ -741,7 +750,7 @@ class DeploymentHandle(_DeploymentHandleBase):
             app_name=self.app_name,
             multiplexed_model_id=self.handle_options.multiplexed_model_id,
             is_streaming=self.handle_options.stream,
-            _request_protocol=self.handle_options._request_protocol,
+            _request_protocol=request_protocol,
             grpc_context=_request_context.grpc_context,
         )
 
