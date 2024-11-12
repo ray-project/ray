@@ -311,8 +311,7 @@ class MockWorkerClient : public MockCoreWorkerClientInterface {
             publisher_.get(),
             subscriber_.get(),
             [](const NodeID &node_id) { return true; },
-            /*lineage_pinning_enabled=*/false,
-            client_factory) {}
+            /*lineage_pinning_enabled=*/false) {}
 
   ~MockWorkerClient() override {
     if (!failed_) {
@@ -828,7 +827,8 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
       rpc::Address(), publisher.get(), subscriber.get(), [](const NodeID &node_id) {
         return true;
       }));
-  CoreWorkerMemoryStore store(rc);
+  InstrumentedIOContextWithThread io_context("TestSimple");
+  CoreWorkerMemoryStore store(io_context.GetIoService(), rc);
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

@@ -42,7 +42,6 @@ from ray.data._internal.datasource.parquet_datasink import ParquetDatasink
 from ray.data._internal.datasource.sql_datasink import SQLDatasink
 from ray.data._internal.datasource.tfrecords_datasink import TFRecordDatasink
 from ray.data._internal.datasource.webdataset_datasink import WebDatasetDatasink
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.equalize import _equalize
 from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
@@ -56,12 +55,14 @@ from ray.data._internal.logical.operators.all_to_all_operator import (
     Repartition,
     Sort,
 )
+from ray.data._internal.logical.operators.count_operator import Count
 from ray.data._internal.logical.operators.input_data_operator import InputData
 from ray.data._internal.logical.operators.map_operator import (
     Filter,
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.n_ary_operator import (
     Union as UnionLogicalOperator,
@@ -70,7 +71,7 @@ from ray.data._internal.logical.operators.n_ary_operator import Zip
 from ray.data._internal.logical.operators.one_to_one_operator import Limit
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data._internal.logical.optimizers import LogicalPlan
-from ray.data._internal.pandas_block import PandasBlockSchema
+from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
 from ray.data._internal.remote_fn import cached_remote_fn
@@ -272,6 +273,12 @@ class Dataset:
             If your transformation is vectorized like most NumPy or pandas operations,
             :meth:`~Dataset.map_batches` might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -365,7 +372,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_op)
+        logical_plan = LogicalPlan(map_op, self.context)
         return Dataset(plan, logical_plan)
 
     def _set_name(self, name: Optional[str]):
@@ -416,6 +423,12 @@ class Dataset:
         .. tip::
             If ``fn`` doesn't mutate its input, set ``zero_copy_batch=True`` to improve
             performance and decrease memory utilization.
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
 
@@ -677,7 +690,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(map_batches_op)
+        logical_plan = LogicalPlan(map_batches_op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -819,6 +832,11 @@ class Dataset:
 
         Specified columns must be in the dataset schema.
 
+        .. tip::
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            you might be able to speed it up by using projection pushdown; see
+            :ref:`Parquet column pruning <parquet_column_pruning>` for details.
+
         Examples:
 
             >>> import ray
@@ -841,7 +859,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to select. If a name isn't in the
-                dataset schema, an exception is raised.
+                dataset schema, an exception is raised. Columns also should be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -850,17 +868,41 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        def select_columns(batch):
-            return BlockAccessor.for_block(batch).select(columns=cols)
+        if not isinstance(cols, list):
+            raise ValueError(
+                "select_columns expected List[str], "
+                f"got {type(cols)} for input '{cols}'"
+            )
 
-        return self.map_batches(
-            select_columns,
-            batch_format="pandas",
-            zero_copy_batch=True,
+        bad_input = [col for col in cols if not isinstance(col, str)]
+
+        if bad_input:
+            raise ValueError(
+                "select_columns expected List[str], "
+                f"got input type: {type(bad_input[0])} "
+                f"for input {cols}"
+            )
+
+        if len(cols) != len(set(cols)):
+            raise ValueError(
+                "select_columns expected unique column names, "
+                f"got duplicate column names: {cols}"
+            )
+
+        # Don't feel like we really need this
+        from ray.data._internal.compute import TaskPoolStrategy
+
+        compute = TaskPoolStrategy(size=concurrency)
+
+        plan = self._plan.copy()
+        select_op = Project(
+            self._logical_plan.dag,
+            cols=cols,
             compute=compute,
-            concurrency=concurrency,
-            **ray_remote_args,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(select_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def rename_columns(
@@ -973,6 +1015,12 @@ class Dataset:
             transformation is vectorized like most NumPy and pandas operations,
             it might be faster.
 
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
+
         Examples:
 
             .. testcode::
@@ -1059,7 +1107,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1085,9 +1133,10 @@ class Dataset:
             dropping rows.
 
         .. tip::
-            If you're using parquet and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown, see
-            :ref:`Parquet row pruning <parquet_row_pruning>`.
+            If you're reading parquet files with :meth:`ray.data.read_parquet`,
+            and the filter is a simple predicate, you might
+            be able to speed it up by using filter pushdown; see
+            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
 
         Examples:
 
@@ -1129,7 +1178,7 @@ class Dataset:
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1187,7 +1236,7 @@ class Dataset:
             num_outputs=num_blocks,
             shuffle=shuffle,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1237,7 +1286,7 @@ class Dataset:
             seed=seed,
             ray_remote_args=ray_remote_args,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @AllToAllAPI
@@ -1274,7 +1323,7 @@ class Dataset:
             self._logical_plan.dag,
             seed=seed,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -1504,7 +1553,8 @@ class Dataset:
             )
 
         bundle = self._plan.execute()
-        owned_by_consumer = bundle.owns_blocks
+        # We should not free blocks since we will materialize the Datasets.
+        owned_by_consumer = False
         stats = self._plan.stats()
         block_refs, metadata = zip(*bundle.blocks)
 
@@ -1520,7 +1570,9 @@ class Dataset:
                     RefBundle([(b, m)], owns_blocks=owned_by_consumer)
                     for b, m in zip(block_refs_split, metadata_split)
                 ]
-                logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+                logical_plan = LogicalPlan(
+                    InputData(input_data=ref_bundles), self.context
+                )
                 split_datasets.append(
                     MaterializedDataset(
                         ExecutionPlan(stats),
@@ -1638,7 +1690,7 @@ class Dataset:
 
         split_datasets = []
         for bundle in per_split_bundles:
-            logical_plan = LogicalPlan(InputData(input_data=[bundle]))
+            logical_plan = LogicalPlan(InputData(input_data=[bundle]), self.context)
             split_datasets.append(
                 MaterializedDataset(
                     ExecutionPlan(stats),
@@ -1712,7 +1764,7 @@ class Dataset:
             ref_bundles = [
                 RefBundle([(b, m)], owns_blocks=False) for b, m in zip(bs, ms)
             ]
-            logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+            logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
 
             splits.append(
                 MaterializedDataset(
@@ -1900,7 +1952,7 @@ class Dataset:
         op = UnionLogicalOperator(
             *[plan.dag for plan in logical_plans],
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
 
         stats = DatasetStats(
             metadata={"Union": []},
@@ -2348,7 +2400,7 @@ class Dataset:
             self._logical_plan.dag,
             sort_key=sort_key,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=SMD_API_GROUP)
@@ -2384,7 +2436,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Zip(self._logical_plan.dag, other._logical_plan.dag)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
@@ -2411,7 +2463,7 @@ class Dataset:
         """
         plan = self._plan.copy()
         op = Limit(self._logical_plan.dag, limit=limit)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @ConsumptionAPI
@@ -2627,15 +2679,21 @@ class Dataset:
         if meta_count is not None:
             return meta_count
 
-        # Directly loop over the iterator of `RefBundle`s instead of
-        # retrieving a full list of `BlockRef`s.
-        total_rows = 0
-        for ref_bundle in self.iter_internal_ref_bundles():
-            num_rows = ref_bundle.num_rows()
-            # Executing the dataset always returns blocks with valid `num_rows`.
-            assert num_rows is not None
-            total_rows += num_rows
-        return total_rows
+        plan = self._plan.copy()
+        count_op = Count([self._logical_plan.dag])
+        logical_plan = LogicalPlan(count_op, self.context)
+        count_ds = Dataset(plan, logical_plan)
+
+        count = 0
+        for batch in count_ds.iter_batches(batch_size=None):
+            assert Count.COLUMN_NAME in batch, (
+                "Outputs from the 'Count' logical operator should contain a column "
+                f"named '{Count.COLUMN_NAME}'"
+            )
+            count += batch[Count.COLUMN_NAME].sum()
+        # Explicitly cast to int to avoid returning `np.int64`, which is the result
+        # from calculating `sum()` from numpy batches.
+        return int(count)
 
     @ConsumptionAPI(
         if_more_than_read=True,
@@ -2845,10 +2903,12 @@ class Dataset:
                 instead of ``arrow_parquet_args`` if any of your write arguments
                 can't pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -2956,10 +3016,12 @@ class Dataset:
                 instead of ``pandas_json_args`` if any of your write arguments
                 can't be pickled, or if you'd like to lazily resolve the write
                 arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3140,10 +3202,12 @@ class Dataset:
                 Use this argument instead of ``arrow_csv_args`` if any of your write
                 arguments cannot be pickled, or if you'd like to lazily resolve the
                 write arguments for each dataset block.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3243,10 +3307,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3328,10 +3394,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3416,10 +3484,12 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            num_rows_per_file: The target number of rows to write to each file. If
-                ``None``, Ray Data writes a system-chosen number of rows to each file.
-                The specified value is a hint, not a strict limit. Ray Data might write
-                more or fewer rows to each file.
+            num_rows_per_file: [Experimental] The target number of rows to write to each
+                file. If ``None``, Ray Data writes a system-chosen number of rows to
+                each file. The specified value is a hint, not a strict limit. Ray Data
+                might write more or fewer rows to each file. In specific, if the number
+                of rows per block is larger than the specified value, Ray Data writes
+                the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3701,7 +3771,7 @@ class Dataset:
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
         )
-        logical_plan = LogicalPlan(write_op)
+        logical_plan = LogicalPlan(write_op, self.context)
 
         try:
             import pandas as pd
@@ -4211,7 +4281,8 @@ class Dataset:
             :class:`~ray.data.preprocessors.Concatenator`.
 
             >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+            >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> ds = preprocessor.transform(ds)
             >>> ds
             Concatenator
@@ -4567,14 +4638,16 @@ class Dataset:
                     f"{count} rows will fit in local memory, set "
                     "ds.to_pandas(limit=None) to disable limits."
                 )
-        bundles = self.iter_internal_ref_bundles()
-        output = DelegatingBlockBuilder()
 
-        for bundle in bundles:
-            for block_ref in bundle.block_refs:
-                output.add_block(ray.get(block_ref))
-        block = output.build()
-        return _block_to_df(block)
+        builder = PandasBlockBuilder()
+        for batch in self.iter_batches(batch_format="pandas", batch_size=None):
+            builder.add_block(batch)
+        block = builder.build()
+
+        # `PandasBlockBuilder` creates a dataframe with internal extension types like
+        # 'TensorDtype'. We use the `to_pandas` method to convert these extension
+        # types to regular types.
+        return BlockAccessor.for_block(block).to_pandas()
 
     @ConsumptionAPI(pattern="Time complexity:")
     @DeveloperAPI
@@ -4754,7 +4827,7 @@ class Dataset:
             )
             for block_with_metadata in blocks_with_metadata
         ]
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        logical_plan = LogicalPlan(InputData(input_data=ref_bundles), self.context)
         output = MaterializedDataset(
             ExecutionPlan(copy._plan.stats()),
             logical_plan,
@@ -5174,14 +5247,6 @@ class Dataset:
                 num_rows.append(get_num_rows.remote(block_ref))
         return ray.get(num_rows)
 
-    def _block_size_bytes(self) -> List[int]:
-        get_size_bytes = cached_remote_fn(_get_size_bytes)
-        size_bytes = []
-        for ref_bundle in self.iter_internal_ref_bundles():
-            for block_ref in ref_bundle.block_refs:
-                size_bytes.append(get_size_bytes.remote(block_ref))
-        return ray.get(size_bytes)
-
     def _meta_count(self) -> Optional[int]:
         return self._plan.meta_count()
 
@@ -5327,7 +5392,11 @@ class Schema:
         return arrow_types
 
     def __eq__(self, other):
-        return isinstance(other, Schema) and other.base_schema == self.base_schema
+        return (
+            isinstance(other, Schema)
+            and other.types == self.types
+            and other.names == self.names
+        )
 
     def __repr__(self):
         column_width = max([len(name) for name in self.names] + [len("Column")])
@@ -5348,11 +5417,6 @@ class Schema:
 
         output = output.rstrip()
         return output
-
-
-def _get_size_bytes(block: Block) -> int:
-    block = BlockAccessor.for_block(block)
-    return block.size_bytes()
 
 
 def _block_to_df(block: Block) -> "pandas.DataFrame":

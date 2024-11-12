@@ -20,6 +20,7 @@ namespace core {
 OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
+    worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
@@ -28,6 +29,7 @@ OutOfOrderActorSchedulingQueue::OutOfOrderActorSchedulingQueue(
     : io_service_(main_io_service),
       main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
+      task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
       is_asyncio_(is_asyncio) {
@@ -68,14 +70,11 @@ void OutOfOrderActorSchedulingQueue::ScheduleRequests() {
 void OutOfOrderActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    const std::string &concurrency_group_name,
-    const ray::FunctionDescriptor &function_descriptor,
-    TaskID task_id,
-    uint64_t attempt_number,
-    const std::vector<rpc::ObjectReference> &dependencies) {
+    TaskSpecification task_spec) {
   // Add and execute a task. For different attempts of the same
   // task id, if an attempt is running, the other attempt will
   // wait until the first attempt finishes so that no more
@@ -84,14 +83,11 @@ void OutOfOrderActorSchedulingQueue::Add(
   // task concurrently is that it's not safe to assume user's
   // code can handle concurrent execution of the same actor method.
   RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
+  auto task_id = task_spec.TaskId();
   auto request = InboundRequest(std::move(accept_request),
                                 std::move(reject_request),
                                 std::move(send_reply_callback),
-                                task_id,
-                                attempt_number,
-                                dependencies,
-                                concurrency_group_name,
-                                function_descriptor);
+                                std::move(task_spec));
   bool run_request = true;
   std::optional<InboundRequest> request_to_cancel;
   {
@@ -171,15 +167,40 @@ void OutOfOrderActorSchedulingQueue::RunRequestWithSatisfiedDependencies(
 }
 
 void OutOfOrderActorSchedulingQueue::RunRequest(InboundRequest request) {
+  const TaskSpecification &task_spec = request.TaskSpec();
   if (!request.PendingDependencies().empty()) {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        /* include_task_info */ false));
     // Make a copy since request is going to be moved.
     auto dependencies = request.PendingDependencies();
     waiter_.Wait(dependencies, [this, request = std::move(request)]() mutable {
       RAY_CHECK_EQ(boost::this_thread::get_id(), main_thread_id_);
+
+      const TaskSpecification &task_spec = request.TaskSpec();
+      RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+          task_spec.TaskId(),
+          task_spec.JobId(),
+          task_spec.AttemptNumber(),
+          task_spec,
+          rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+          /* include_task_info */ false));
+
       request.MarkDependenciesSatisfied();
       RunRequestWithSatisfiedDependencies(request);
     });
   } else {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        /* include_task_info */ false));
     request.MarkDependenciesSatisfied();
     RunRequestWithSatisfiedDependencies(request);
   }
