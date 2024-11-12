@@ -6,12 +6,7 @@ from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,
     DefaultClusterNodeInfoCache,
 )
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    EndpointInfo,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentHandleSource, DeploymentID, EndpointInfo
 from ray.serve._private.constants import (
     RAY_SERVE_ENABLE_QUEUE_LENGTH_CACHE,
     RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
