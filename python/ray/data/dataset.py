@@ -28,7 +28,7 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, get_arrow_extension_fixed_shape_tensor_types
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -4480,13 +4480,15 @@ class Dataset:
             elif pa is not None and isinstance(schema, pa.Schema):
                 from ray.data.extensions import ArrowTensorType
 
-                if any(isinstance(type_, ArrowTensorType) for type_ in schema.types):
+                arrow_tensor_ext_types = get_arrow_extension_fixed_shape_tensor_types()
+
+                if any(isinstance(type_, arrow_tensor_ext_types) for type_ in schema.types):
                     meta = pd.DataFrame(
                         {
                             col: pd.Series(
                                 dtype=(
                                     dtype.to_pandas_dtype()
-                                    if not isinstance(dtype, ArrowTensorType)
+                                    if not isinstance(dtype, arrow_tensor_ext_types)
                                     else np.object_
                                 )
                             )
