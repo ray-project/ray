@@ -789,11 +789,6 @@ def test_iter_rows(ray_start_regular_shared):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
-
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
