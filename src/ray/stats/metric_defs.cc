@@ -16,9 +16,9 @@
 
 #include "ray/util/size_literals.h"
 
-namespace ray {
+using namespace ray::literals;
 
-namespace stats {
+namespace ray::stats {
 
 /// The definitions of metrics that you can use everywhere.
 ///
@@ -119,47 +119,16 @@ DEFINE_stats(
 DEFINE_stats(object_store_dist,
              "The distribution of object size in bytes",
              ("Source"),
-             ({[]() constexpr -> unsigned long long { using namespace ray::unit; return 32_MiB;
-}  // namespace stats
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 64_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 128_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 256_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 512_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 1024_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 2048_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 4096_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 8192_MiB;
-}
-(), []() constexpr->unsigned long long {
-  using namespace ray::unit;
-  return 16382_MiB;
-}
-(),
-}  // namespace ray
-),
+             ({32_MiB,
+               64_MiB,
+               128_MiB,
+               256_MiB,
+               512_MiB,
+               1024_MiB,
+               2048_MiB,
+               4096_MiB,
+               8192_MiB,
+               16384_MiB}),
              ray::stats::HISTOGRAM);
 
 /// Placement group metrics from the GCS.
@@ -416,6 +385,4 @@ DEFINE_stats(
     (),
     ray::stats::GAUGE);
 
-}  // namespace stats
-
-}  // namespace ray
+}  // namespace ray::stats

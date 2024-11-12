@@ -18,7 +18,7 @@
 
 #include <cstdint>
 
-namespace ray::unit {
+namespace ray::literals {
 
 // Size literal for integer values.
 constexpr unsigned long long operator""_B(unsigned long long sz) { return sz; }
@@ -92,4 +92,4 @@ constexpr unsigned long long operator""_PB(long double sz) {
   return static_cast<unsigned long long>(res);
 }
 
-}  // namespace ray::unit
+}  // namespace ray::literals

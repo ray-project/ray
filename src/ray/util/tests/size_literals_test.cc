@@ -16,7 +16,7 @@
 
 #include <gtest/gtest.h>
 
-namespace ray::unit {
+namespace ray::literals {
 
 namespace {
 
@@ -28,4 +28,4 @@ TEST(SizeLiteralsTest, BasicTest) {
 
 }  // namespace
 
-}  // namespace ray::unit
+}  // namespace ray::literals
