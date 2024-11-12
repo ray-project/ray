@@ -85,12 +85,19 @@ def test_uv_with_version_and_check(shutdown_only):
 
 
 # Package installation via requirements file.
+def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
+    requirements_file = tmp_working_dir
+
+    @ray.remote(runtime_env={"uv": requirements_file})
+    def f():
+        import requests
 
         return requests.__version__
 
     assert ray.get(f.remote()) == "2.3.0"
 
 
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
