@@ -80,6 +80,21 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
         ray.get(f.remote())
 
 
+# Specify uv version and check.
+def test_uv_with_version_and_check(shutdown_only):
+    @ray.remote(
+        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+    )
+    def f():
+        import pkg_resources
+        import requests
+
+        assert pkg_resources.get_distribution("uv").version == "0.4.0"
+        assert requests.__version__ == "2.3.0"
+
+    ray.get(f.remote())
+
+
 # Package installation via requirements file.
 def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
     requirements_file = tmp_working_dir
