@@ -208,8 +208,11 @@ class RuntimeContext(object):
                 f"worker. Current mode: {self.worker.mode}"
             )
             return None
-        task_id = self.worker.current_task_id
+        task_id = self._get_current_task_id()
         return task_id.hex() if not task_id.is_nil() else None
+
+    def _get_current_task_id(self) -> TaskID:
+        return self.worker.current_task_id
 
     def get_task_name(self) -> Optional[str]:
         """Get current task name for this worker.

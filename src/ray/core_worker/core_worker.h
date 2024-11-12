@@ -336,14 +336,16 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
 
   const std::string GetCurrentTaskName() const {
-    return worker_context_.GetCurrentTask() != nullptr 
-      ? worker_context_.GetCurrentTask()->GetName() : "";
+    return worker_context_.GetCurrentTask() != nullptr
+               ? worker_context_.GetCurrentTask()->GetName()
+               : "";
   }
 
   const std::string GetCurrentTaskFunction() const {
-    return (worker_context_.GetCurrentTask() != nullptr 
-      && worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
-        ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString() : "";
+    return (worker_context_.GetCurrentTask() != nullptr &&
+            worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
+               ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()
+               : "";
   }
 
   /// Controls the is debugger paused flag.
