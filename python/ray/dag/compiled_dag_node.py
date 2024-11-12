@@ -44,7 +44,6 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
     CompositeChannel,
-    IntraProcessChannel,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -2382,8 +2381,7 @@ class CompiledDAG:
                         downstream_actor_id.hex()
                     ]
                     output_channel_info += f"\n{type(inner_channel).__name__}"
-                    if type(inner_channel) == IntraProcessChannel:
-                        output_channel_info += f", {inner_channel._channel_id[:6]}..."
+                    output_channel_info += f", {inner_channel._channel_id[:6]}..."
                 return output_channel_info
 
             # This logic is built on the assumption that there will only be multiple
