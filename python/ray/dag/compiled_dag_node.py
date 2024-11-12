@@ -2411,8 +2411,7 @@ class CompiledDAG:
                         if task.arg_type_hints[arg_index].requires_nccl():
                             type_hint = "Nccl"
                         else:
-                            type_hint = type(
-                                task.arg_type_hints[arg_index]).__name__
+                            type_hint = type(task.arg_type_hints[arg_index]).__name__
                     else:
                         type_hint = "UnknownType"
 
@@ -2459,7 +2458,7 @@ class CompiledDAG:
             else:
                 edgs_channel = "---"
             ascii_visualization += (
-                f"{upstream_task} {edgs_channel}>" 
+                f"{upstream_task} {edgs_channel}>"
                 f" {downstream_task} [label={type_hint}]\n"
             )
 
@@ -2484,7 +2483,9 @@ class CompiledDAG:
                         method_name = task.dag_node.get_method_name()
                         actor_handle = task.dag_node._get_actor_handle()
                         actor_id = (
-                            actor_handle._actor_id.hex()[:6] if actor_handle else "unknown"
+                            actor_handle._actor_id.hex()[:6]
+                            if actor_handle
+                            else "unknown"
                         )
                         task_info += f"Actor_{actor_id}:{method_name}"
                     elif task.dag_node.is_class_method_output:

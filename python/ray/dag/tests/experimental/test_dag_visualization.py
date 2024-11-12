@@ -164,6 +164,7 @@ def test_visualize_multi_return2(ray_start_regular):
 
     compiled_dag.teardown()
 
+
 class TestVisualizationAscii:
 
     """Tests for the visualize_ascii method of compiled DAGs."""
@@ -232,19 +233,19 @@ class TestVisualizationAscii:
         """
         Expect output:
             Nodes Information:
-            0 [label="Task 0  InputNode"] 
-            1 [label="Task 1  Actor: d1d677... Method: echo"] 
-            2 [label="Task 2  MultiOutputNode"] 
+            0 [label="Task 0  InputNode"]
+            1 [label="Task 1  Actor: d1d677... Method: echo"]
+            2 [label="Task 2  MultiOutputNode"]
 
             Edges Information:
             0 --->1[label=SharedMemoryType]
             1 --->2[label=SharedMemoryType]
 
             Experimental Graph Built:
-            0:InputNode         
-            |                   
-            1:Actor_d1d677:echo 
-            |                   
+            0:InputNode
+            |
+            1:Actor_d1d677:echo
+            |
             2:MultiOutputNode
         """
 
@@ -283,11 +284,11 @@ class TestVisualizationAscii:
         """
         Expect output:
             Nodes Information:
-            0 [label="Task 0  InputNode"] 
-            1 [label="Task 1  Actor: 885f1d... Method: return_two"] 
-            2 [label="Task 2  ClassMethodOutputNode[0]"] 
-            3 [label="Task 3  ClassMethodOutputNode[1]"] 
-            4 [label="Task 4  MultiOutputNode"] 
+            0 [label="Task 0  InputNode"]
+            1 [label="Task 1  Actor: 885f1d... Method: return_two"]
+            2 [label="Task 2  ClassMethodOutputNode[0]"]
+            3 [label="Task 3  ClassMethodOutputNode[1]"]
+            4 [label="Task 4  MultiOutputNode"]
 
             Edges Information:
             0 ---> 1 [label=SharedMemoryType]
@@ -297,12 +298,12 @@ class TestVisualizationAscii:
             3 ---> 4 [label=SharedMemoryType]
 
             Experimental Graph Built:
-            0:InputNode                                                                     
-            |                                                                               
-            1:Actor_885f1d:return_two                                                       
-            |---------------------------->|                                                 
-            2:Output[0]                   3:Output[1]                                       
-            |<----------------------------|                                                 
+            0:InputNode
+            |
+            1:Actor_885f1d:return_two
+            |---------------------------->|
+            2:Output[0]                   3:Output[1]
+            |<----------------------------|
             4:MultiOutputNode
         """
 
@@ -342,13 +343,13 @@ class TestVisualizationAscii:
         """
         Expect output:
             Nodes Information:
-            0 [label="Task 0  InputNode"] 
-            1 [label="Task 1  Actor: f3e919... Method: return_two"] 
-            2 [label="Task 2  ClassMethodOutputNode[0]"] 
-            3 [label="Task 3  ClassMethodOutputNode[1]"] 
-            4 [label="Task 4  Actor: 15ec69... Method: echo"] 
-            5 [label="Task 5  Actor: 15ec69... Method: echo"] 
-            6 [label="Task 6  MultiOutputNode"] 
+            0 [label="Task 0  InputNode"]
+            1 [label="Task 1  Actor: f3e919... Method: return_two"]
+            2 [label="Task 2  ClassMethodOutputNode[0]"]
+            3 [label="Task 3  ClassMethodOutputNode[1]"]
+            4 [label="Task 4  Actor: 15ec69... Method: echo"]
+            5 [label="Task 5  Actor: 15ec69... Method: echo"]
+            6 [label="Task 6  MultiOutputNode"]
 
             Edges Information:
             0 ---> 1 [label=SharedMemoryType]
@@ -360,14 +361,14 @@ class TestVisualizationAscii:
             5 ---> 6 [label=SharedMemoryType]
 
             Experimental Graph Built:
-            0:InputNode                                                                     
-            |                                                                               
-            1:Actor_f3e919:return_two                                                       
-            |---------------------------->|                                                 
-            2:Output[0]                   3:Output[1]                                       
-            |                             |                                                 
-            4:Actor_15ec69:echo           5:Actor_15ec69:echo                               
-            |<----------------------------|                                                 
+            0:InputNode
+            |
+            1:Actor_f3e919:return_two
+            |---------------------------->|
+            2:Output[0]                   3:Output[1]
+            |                             |
+            4:Actor_15ec69:echo           5:Actor_15ec69:echo
+            |<----------------------------|
             6:MultiOutputNode
         """
 
@@ -420,17 +421,17 @@ class TestVisualizationAscii:
         """
         Expect output:
             Nodes Information:
-            0 [label="Task 0  InputNode"] 
-            1 [label="Task 1  Actor: 54777d... Method: return_three"] 
-            2 [label="Task 2  ClassMethodOutputNode[0]"] 
-            3 [label="Task 3  ClassMethodOutputNode[1]"] 
-            4 [label="Task 4  ClassMethodOutputNode[2]"] 
-            5 [label="Task 5  Actor: c927c9... Method: echo"] 
-            6 [label="Task 6  Actor: c927c9... Method: echo"] 
-            7 [label="Task 7  Actor: c927c9... Method: return_two"] 
-            8 [label="Task 8  MultiOutputNode"] 
-            9 [label="Task 9  ClassMethodOutputNode[0]"] 
-            10 [label="Task 10  ClassMethodOutputNode[1]"] 
+            0 [label="Task 0  InputNode"]
+            1 [label="Task 1  Actor: 54777d... Method: return_three"]
+            2 [label="Task 2  ClassMethodOutputNode[0]"]
+            3 [label="Task 3  ClassMethodOutputNode[1]"]
+            4 [label="Task 4  ClassMethodOutputNode[2]"]
+            5 [label="Task 5  Actor: c927c9... Method: echo"]
+            6 [label="Task 6  Actor: c927c9... Method: echo"]
+            7 [label="Task 7  Actor: c927c9... Method: return_two"]
+            8 [label="Task 8  MultiOutputNode"]
+            9 [label="Task 9  ClassMethodOutputNode[0]"]
+            10 [label="Task 10  ClassMethodOutputNode[1]"]
 
             Edges Information:
             0 ---> 1 [label=SharedMemoryType]
@@ -448,17 +449,17 @@ class TestVisualizationAscii:
             7 ---> 10 [label=SharedMemoryType]
 
             Experimental Graph Built:
-            0:InputNode                                                                                                             
-            |                                                                                                                       
-            1:Actor_54777d:return_three                                                                                             
-            |---------------------------->|---------------------------->|                                                  # noqa                                        
-            2:Output[0]                   3:Output[1]                   4:Output[2]                                        # noqa                                   
-            |                             |                             |                                                  # noqa                                  
-            5:Actor_c927c9:echo           6:Actor_c927c9:echo           7:Actor_c927c9:return_two                          # noqa                          
-            |                             |                             |---------------------------->|                    # noqa                         
-            |                             |                             9:Output[0]                   10:Output[1]         # noqa             
+            0:InputNode
+            |
+            1:Actor_54777d:return_three
+            |---------------------------->|---------------------------->|                                                  # noqa
+            2:Output[0]                   3:Output[1]                   4:Output[2]                                        # noqa
+            |                             |                             |                                                  # noqa
+            5:Actor_c927c9:echo           6:Actor_c927c9:echo           7:Actor_c927c9:return_two                          # noqa
+            |                             |                             |---------------------------->|                    # noqa
+            |                             |                             9:Output[0]                   10:Output[1]         # noqa
             |<----------------------------|-----------------------------|-----------------------------|                    # noqa
-            8:MultiOutputNode 
+            8:MultiOutputNode
         """
 
         @ray.remote
@@ -521,17 +522,17 @@ class TestVisualizationAscii:
         """
         Expect output:
             Nodes Information:
-            0 [label="Task 0  InputNode"] 
-            1 [label="Task 1  Actor: 84835a... Method: return_three"] 
-            2 [label="Task 2  ClassMethodOutputNode[0]"] 
-            3 [label="Task 3  ClassMethodOutputNode[1]"] 
-            4 [label="Task 4  ClassMethodOutputNode[2]"] 
-            5 [label="Task 5  Actor: 02a6a1... Method: echo"] 
-            6 [label="Task 6  Actor: 02a6a1... Method: return_two"] 
-            7 [label="Task 7  Actor: 02a6a1... Method: echo"] 
-            8 [label="Task 8  MultiOutputNode"] 
-            9 [label="Task 9  ClassMethodOutputNode[0]"] 
-            10 [label="Task 10  ClassMethodOutputNode[1]"] 
+            0 [label="Task 0  InputNode"]
+            1 [label="Task 1  Actor: 84835a... Method: return_three"]
+            2 [label="Task 2  ClassMethodOutputNode[0]"]
+            3 [label="Task 3  ClassMethodOutputNode[1]"]
+            4 [label="Task 4  ClassMethodOutputNode[2]"]
+            5 [label="Task 5  Actor: 02a6a1... Method: echo"]
+            6 [label="Task 6  Actor: 02a6a1... Method: return_two"]
+            7 [label="Task 7  Actor: 02a6a1... Method: echo"]
+            8 [label="Task 8  MultiOutputNode"]
+            9 [label="Task 9  ClassMethodOutputNode[0]"]
+            10 [label="Task 10  ClassMethodOutputNode[1]"]
 
             Edges Information:
             0 ---> 1 [label=SharedMemoryType]
@@ -549,16 +550,16 @@ class TestVisualizationAscii:
             6 ---> 10 [label=SharedMemoryType]
 
             Experimental Graph Built:
-            0:InputNode                                                                                                             
-            |                                                                                                                       
-            1:Actor_84835a:return_three                                                                                             
-            |---------------------------->|---------------------------->|                            # noqa                               
-            2:Output[0]                   3:Output[1]                   4:Output[2]                  # noqa                               
-            |                             |                             |                            # noqa                               
-            5:Actor_02a6a1:echo           6:Actor_02a6a1:return_two     7:Actor_02a6a1:echo          # noqa                               
-            |                             |---------------------------->|                            # noqa                               
-            |                             9:Output[0]                   10:Output[1]                 # noqa                               
-            |<----------------------------------------------------------|                            # noqa                               
+            0:InputNode
+            |
+            1:Actor_84835a:return_three
+            |---------------------------->|---------------------------->|                            # noqa
+            2:Output[0]                   3:Output[1]                   4:Output[2]                  # noqa
+            |                             |                             |                            # noqa
+            5:Actor_02a6a1:echo           6:Actor_02a6a1:return_two     7:Actor_02a6a1:echo          # noqa
+            |                             |---------------------------->|                            # noqa
+            |                             9:Output[0]                   10:Output[1]                 # noqa
+            |<----------------------------------------------------------|                            # noqa
             8:MultiOutputNod
         """
 
@@ -617,6 +618,7 @@ class TestVisualizationAscii:
         ), f"Expected edges {expected_edges} not found."
 
         compiled_dag.teardown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
