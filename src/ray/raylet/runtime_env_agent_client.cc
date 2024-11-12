@@ -23,7 +23,10 @@
 #include <queue>
 #include <string>
 
+#include <chrono>
+
 #include "absl/container/flat_hash_set.h"
+#include "ray/raylet/resolution_cache.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
@@ -39,6 +42,22 @@ namespace ray {
 namespace raylet {
 
 namespace {
+
+struct ResolutionKey {
+  ResolutionKey(std::string_view h, std::string_view p) : host(h), port(p) {}
+
+  std::string host;
+  std::string port;
+
+  bool operator==(const ResolutionKey& rhs) const {
+    return host == rhs.host && port == rhs.port;
+  }
+
+  template <typename H>
+  friend H AbslHashValue(H h, const ResolutionKey& k) {
+    return H::combine(std::move(h), k.host, k.port);
+  }
+};
 
 //------------------------------------------------------------------------------
 // Simple class to make a async POST call.
@@ -91,12 +110,25 @@ class Session : public std::enable_shared_from_this<Session> {
   //
   // This method should only be called once.
   void run(FinishedCallback finished_callback) {
-    finished_callback_ = finished_callback;
-    // Starts the state machine by looking up the domain name.
-    resolver_.async_resolve(
-        host_,
-        port_,
-        beast::bind_front_handler(&Session::on_resolve, shared_from_this()));
+    start_ = std::chrono::steady_clock::now();
+    finished_callback_ = std::move(finished_callback);
+
+    ResolutionKey key{host_, port_};
+    auto opt_tcp_stream = tcp_stream_cache_.GetAndPop(key);
+    if (opt_tcp_stream.has_value()) {
+      stream_ = std::move(opt_tcp_stream.value());
+      stream_->expires_never();
+
+      // Send the HTTP request to the remote host
+      http::async_write(
+          *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    } else {
+      // Starts the state machine by looking up the domain name.
+      resolver_.async_resolve(
+          host_,
+          port_,
+          beast::bind_front_handler(&Session::on_resolve, shared_from_this()));
+    }
   }
 
  private:
@@ -109,13 +141,13 @@ class Session : public std::enable_shared_from_this<Session> {
                    std::function<void(std::string)> succ_callback,
                    std::function<void(ray::Status)> fail_callback)
       : resolver_(ioc),
-        stream_(ioc),
+        stream_(std::make_shared<beast::tcp_stream>(ioc)),
         host_(std::string(host)),
         port_(std::string(port)),
         method_(method),
         succ_callback_(std::move(succ_callback)),
         fail_callback_(std::move(fail_callback)) {
-    stream_.expires_never();
+    stream_->expires_never();
     req_.method(method_);
     req_.target(target);
     req_.body() = std::move(body);
@@ -143,9 +175,9 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
-    stream_.expires_never();
+    stream_->expires_never();
     // Make the connection on the IP address we get from a lookup
-    stream_.async_connect(
+    stream_->async_connect(
         results, beast::bind_front_handler(&Session::on_connect, shared_from_this()));
   }
 
@@ -155,10 +187,10 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
-    stream_.expires_never();
+    stream_->expires_never();
     // Send the HTTP request to the remote host
     http::async_write(
-        stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+        *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
@@ -168,9 +200,9 @@ class Session : public std::enable_shared_from_this<Session> {
                                        std::to_string(bytes_transferred)));
       return;
     }
-    stream_.expires_never();
+    stream_->expires_never();
     // Receive the HTTP response
-    http::async_read(stream_,
+    http::async_read(*stream_,
                      buffer_,
                      res_,
                      beast::bind_front_handler(&Session::on_read, shared_from_this()));
@@ -194,15 +226,22 @@ class Session : public std::enable_shared_from_this<Session> {
     }
 
     // Gracefully close the socket
-    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+    // stream_->socket().shutdown(tcp::socket::shutdown_both, ec);
+
+    tcp_stream_cache_.Put(ResolutionKey{std::move(host_), std::move(port_)}, std::move(stream_));
+
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != beast::errc::not_connected) {
       RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
     }
+
+    auto end = std::chrono::steady_clock::now();
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
+    RAY_LOG(INFO) << "Session takes " << elapsed;
   }
 
   tcp::resolver resolver_;
-  beast::tcp_stream stream_;
+  std::shared_ptr<beast::tcp_stream> stream_;
   std::string host_;
   std::string port_;
   http::verb method_;
@@ -212,6 +251,9 @@ class Session : public std::enable_shared_from_this<Session> {
   http::request<http::string_body> req_;
   http::response<http::string_body> res_;
   FinishedCallback finished_callback_;
+
+  inline static ResolutionCache<ResolutionKey, std::shared_ptr<beast::tcp_stream>> tcp_stream_cache_;
+  std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
 // A pool of sessions with a fixed max concurrency. Each session can handle 1 concurrent
