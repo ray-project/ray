@@ -43,6 +43,8 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
     RayDAGArgs,
+    CompositeChannel,
+    IntraProcessChannel,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -2297,10 +2299,13 @@ class CompiledDAG:
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
+        # Give every actor a unique color (Colors between 22k -> 40k seem readable)
+        actor_id_to_color = defaultdict(
+            lambda: f"#{((len(actor_id_to_color) * 2000) + 24000 % 0xFFFFFF):06X}"
+        )
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
-
             # Initialize the label and attributes
             label = f"Task {idx}\n"
             shape = "oval"  # Default shape
@@ -2328,10 +2333,11 @@ class CompiledDAG:
                     if actor_handle:
                         actor_id = actor_handle._actor_id.hex()
                         label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                        fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"
+                        fillcolor = "lightgreen"
                     shape = "oval"
-                    fillcolor = "lightgreen"
                 elif dag_node.is_class_method_output:
                     # Class Method Output Node
                     label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
@@ -2355,23 +2361,45 @@ class CompiledDAG:
                 if dag_node.type_hint
                 else "UnknownType"
             ) + "\n"
-            get_output_channel_type = (
-                lambda output_channel: (
-                    type(self._channel_dict[output_channel]).__name__
-                    if output_channel in self._channel_dict
-                    else type(output_channel).__name__
-                )
-                if channel_details
-                else ""
-            )
+
+            def get_output_channel_info(output_channel, downstream_actor_id):
+                if not channel_details:
+                    return ""
+                output_channel_info = type(output_channel).__name__
+                if (
+                    output_channel in self._channel_dict
+                    and self._channel_dict[output_channel] != output_channel
+                ):
+                    outer_channel = self._channel_dict[output_channel]
+                    output_channel_info += f"\n{type(outer_channel).__name__}"
+                    if type(outer_channel) == CachedChannel:
+                        output_channel_info += f", {outer_channel._channel_id[:6]}..."
+                if (
+                    type(output_channel) == CompositeChannel
+                    and downstream_actor_id.hex() in output_channel._channel_dict
+                ):
+                    inner_channel = output_channel._channel_dict[
+                        downstream_actor_id.hex()
+                    ]
+                    output_channel_info += f"\n{type(inner_channel).__name__}"
+                    if type(inner_channel) == IntraProcessChannel:
+                        output_channel_info += f", {inner_channel._channel_id[:6]}..."
+                return output_channel_info
+
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
             # case: task with one output
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    edge_label = type_hint_type + get_output_channel_type(
-                        task.output_channels[0]
+                    edge_label = type_hint_type
+                    edge_label += get_output_channel_info(
+                        task.output_channels[0],
+                        (
+                            downstream_node._get_actor_handle()._actor_id
+                            if type(downstream_node) == ClassMethodNode
+                            else self._proxy_actor._actor_id
+                        ),
                     )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
             # case: multi return, output channels connect to class method output nodes
@@ -2380,8 +2408,9 @@ class CompiledDAG:
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    edge_label = type_hint_type + get_output_channel_type(
-                        output_channel
+                    edge_label = type_hint_type
+                    edge_label += get_output_channel_info(
+                        output_channel, task.dag_node._get_actor_handle()._actor_id
                     )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
         if return_dot:
