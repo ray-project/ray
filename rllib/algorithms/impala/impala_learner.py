@@ -356,5 +356,5 @@ class _LearnerThread(threading.Thread):
         # Log current queue size.
         metrics_logger.log_value(
             (ALL_MODULES, QUEUE_SIZE_LEARNER_THREAD_QUEUE),
-            learner_queue.qsize(),
+            len(learner_queue),
         )
