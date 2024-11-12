@@ -4376,8 +4376,8 @@
     cluster_compute: single_node_benchmark_compute.yaml
 
   run:
-    # Expect the benchmark to finish around 22 minutes.
-    timeout: 1800
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2700
     script: python read_tfrecords_benchmark.py
 
   variations:
