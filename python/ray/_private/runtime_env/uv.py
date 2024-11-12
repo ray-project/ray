@@ -75,7 +75,7 @@ class UvProcessor:
     async def _install_uv(
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
     ):
-        """Before package install, make sure the required version `uv` (if specifieds)
+        """Before package install, make sure the required version `uv` (if specified)
         is installed.
         """
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
