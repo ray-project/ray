@@ -150,8 +150,8 @@ def test_update_routes(mock_router):
         },
     )
 
-    assert router.match_route("/endpoint") == None
-    assert router.match_route("app1") == None
+    assert router.match_route("/endpoint") is None
+    assert router.match_route("app1") is None
 
     route, handle, app_is_cross_language = router.match_route("/endpoint2")
     assert route == "/endpoint2"
