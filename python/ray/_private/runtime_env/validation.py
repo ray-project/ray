@@ -164,6 +164,7 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
             raise TypeError(
                 "runtime_env['uv']['uv_check'] must be of type bool, "
                 f"got {type(uv['uv_check'])}"
+            )
         if "uv_version" in uv and not isinstance(uv["uv_version"], str):
             raise TypeError(
                 "runtime_env['uv']['uv_version'] must be of type str, "
