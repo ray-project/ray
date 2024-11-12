@@ -1,4 +1,5 @@
 import logging
+import os
 import threading
 from typing import Dict, Optional
 
@@ -14,6 +15,8 @@ logger = logging.getLogger(__name__)
 @ray.remote(num_cpus=0)
 class TrainStateActor:
     def __init__(self):
+        # Proto schemas should be imported within the scope of TrainStateActor to
+        # prevent serialization errors.
         from ray.core.generated.export_event_pb2 import ExportEvent
 
         self._run_infos: Dict[str, TrainRunInfo] = {}
@@ -22,11 +25,13 @@ class TrainStateActor:
             if ray_constants.RAY_ENABLE_EXPORT_API_WRITE:
                 self._export_train_run_info_logger = get_export_event_logger(
                     ExportEvent.SourceType.EXPORT_TRAIN_RUN,
-                    "/tmp/ray/session_latest/logs",
+                    os.path.join(
+                        ray._private.worker._global_node.get_session_dir_path(), "logs"
+                    ),
                 )
         except Exception:
             logger.exception(
-                "Unable to initialize export event logger so no export "
+                "Unable to initialize export event logger so no train export "
                 "events will be written."
             )
 
@@ -44,10 +49,13 @@ class TrainStateActor:
         return self._run_infos
 
     def _write_train_run_export_event(self, run_info: TrainRunInfo) -> None:
+        # Proto schemas should be imported within the scope of TrainStateActor to
+        # prevent serialization errors.
         from ray.core.generated.export_train_run_info_pb2 import ExportTrainRunInfo
 
         if not self._export_train_run_info_logger:
             return
+
         export_run_info = ExportTrainRunInfo(
             name=run_info.name,
             run_id=run_info.id,
