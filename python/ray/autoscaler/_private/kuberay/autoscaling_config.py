@@ -82,7 +82,10 @@ class AutoscalingConfigProducer:
 
     def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
         result = requests.get(
-            self._ray_cr_url, headers=self._headers, verify=self._verify
+            self._ray_cr_url,
+            headers=self._headers,
+            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()

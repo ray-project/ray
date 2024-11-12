@@ -3,24 +3,21 @@ import concurrent.futures
 import logging
 import time
 import warnings
-from abc import ABC
-from dataclasses import dataclass, fields
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray._raylet import ObjectRefGenerator
-from ray.serve._private.common import (
-    DeploymentHandleSource,
-    DeploymentID,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     CreateRouterCallable,
     create_dynamic_handle_options,
     create_init_handle_options,
     create_router,
+)
+from ray.serve._private.handle_options import (
+    DynamicHandleOptionsBase,
+    InitHandleOptionsBase,
 )
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
@@ -33,71 +30,11 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeException, RequestCancelledError
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
-
-
-@dataclass(frozen=True)
-class _InitHandleOptionsBase:
-    """Init options for each ServeHandle instance.
-
-    These fields can be set by calling `.init()` on a handle before
-    sending the first request.
-    """
-
-    _prefer_local_routing: bool = False
-    _source: DeploymentHandleSource = DeploymentHandleSource.UNKNOWN
-
-
-@dataclass(frozen=True)
-class _InitHandleOptions(_InitHandleOptionsBase):
-    @classmethod
-    def create(cls, **kwargs) -> "_InitHandleOptions":
-        for k in list(kwargs.keys()):
-            if kwargs[k] == DEFAULT.VALUE:
-                # Use default value
-                del kwargs[k]
-
-        # Detect replica source for handles
-        if (
-            "_source" not in kwargs
-            and ray.serve.context._get_internal_replica_context() is not None
-        ):
-            kwargs["_source"] = DeploymentHandleSource.REPLICA
-
-        return cls(**kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptionsBase(ABC):
-    """Dynamic options for each ServeHandle instance.
-
-    These fields can be changed by calling `.options()` on a handle.
-    """
-
-    method_name: str = "__call__"
-    multiplexed_model_id: str = ""
-    stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
-
-    def copy_and_update(self, **kwargs) -> "_DynamicHandleOptionsBase":
-        new_kwargs = {}
-
-        for f in fields(self):
-            if f.name not in kwargs or kwargs[f.name] == DEFAULT.VALUE:
-                new_kwargs[f.name] = getattr(self, f.name)
-            else:
-                new_kwargs[f.name] = kwargs[f.name]
-
-        return _DynamicHandleOptions(**new_kwargs)
-
-
-@dataclass(frozen=True)
-class _DynamicHandleOptions(_DynamicHandleOptionsBase):
-    pass
 
 
 class _DeploymentHandleBase:
@@ -106,17 +43,17 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
-        handle_options: Optional[_DynamicHandleOptionsBase] = None,
+        handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
         _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
-        self.handle_options: _DynamicHandleOptionsBase = (
+        self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[_InitHandleOptionsBase] = None
+        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
@@ -256,29 +193,16 @@ class _DeploymentHandleBase:
         )
 
     def _remote(
-        self, args: Tuple[Any], kwargs: Dict[str, Any]
+        self,
+        request_metadata: RequestMetadata,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
     ) -> concurrent.futures.Future:
         self._record_telemetry_if_needed()
-        _request_context = ray.serve.context._serve_request_context.get()
-        request_metadata = RequestMetadata(
-            request_id=_request_context.request_id
-            if _request_context.request_id
-            else generate_request_id(),
-            internal_request_id=_request_context._internal_request_id
-            if _request_context._internal_request_id
-            else generate_request_id(),
-            call_method=self.handle_options.method_name,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-            _request_protocol=self.handle_options._request_protocol,
-            grpc_context=_request_context.grpc_context,
-        )
         self.request_counter.inc(
             tags={
-                "route": _request_context.route,
-                "application": _request_context.app_name,
+                "route": request_metadata.route,
+                "application": request_metadata.app_name,
             }
         )
 
@@ -312,10 +236,19 @@ class _DeploymentHandleBase:
 
 
 class _DeploymentResponseBase:
-    def __init__(self, replica_result_future: concurrent.futures.Future[ReplicaResult]):
+    def __init__(
+        self,
+        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        request_metadata: RequestMetadata,
+    ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
+        self._request_metadata: RequestMetadata = request_metadata
+
+    @property
+    def request_id(self) -> str:
+        return self._request_metadata.request_id
 
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
@@ -332,6 +265,8 @@ class _DeploymentResponseBase:
                 )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
+            except concurrent.futures.CancelledError:
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -344,9 +279,12 @@ class _DeploymentResponseBase:
         if self._replica_result is None:
             # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
             # safely from any asyncio loop.
-            self._replica_result = await asyncio.wrap_future(
-                self._replica_result_future
-            )
+            try:
+                self._replica_result = await asyncio.wrap_future(
+                    self._replica_result_future
+                )
+            except asyncio.CancelledError:
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -474,7 +412,12 @@ class DeploymentResponse(_DeploymentResponseBase):
             "only pass `DeploymentResponse` objects as top level arguments."
         )
 
-    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -484,11 +427,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         a `TimeoutError` is raised.
         """
 
-        if is_running_in_asyncio_loop():
+        if not _skip_asyncio_check and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response` instead."
             )
 
         start_time_s = time.time()
@@ -514,7 +456,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return await replica_result.resolve_gen_to_ref_if_necessary_async()
+        return await replica_result.to_object_ref_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -540,8 +482,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         # First, fetch the result of the future
@@ -554,7 +495,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return replica_result.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
+        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -615,7 +556,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def __await__(self):
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
-            "or `_to_object_ref_gen` instead."
+            "or `await response.__anext__() instead`."
         )
 
     def __aiter__(self) -> AsyncIterator[Any]:
@@ -632,8 +573,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `async for` or `await response.__anext__()` instead."
             )
 
         replica_result = self._fetch_future_result_sync()
@@ -651,7 +591,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -674,12 +614,11 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         replica_result = self._fetch_future_result_sync(_timeout_s)
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
 
 @PublicAPI(stability="beta")
@@ -789,10 +728,27 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        future = self._remote(args, kwargs)
+        _request_context = ray.serve.context._serve_request_context.get()
+        request_metadata = RequestMetadata(
+            request_id=_request_context.request_id
+            if _request_context.request_id
+            else generate_request_id(),
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            call_method=self.handle_options.method_name,
+            route=_request_context.route,
+            app_name=self.app_name,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
+            _request_protocol=self.handle_options._request_protocol,
+            grpc_context=_request_context.grpc_context,
+        )
+
+        future = self._remote(request_metadata, args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future)
+        return response_cls(future, request_metadata)
