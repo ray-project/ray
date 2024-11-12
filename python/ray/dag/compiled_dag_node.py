@@ -2258,7 +2258,7 @@ class CompiledDAG:
           **after** compiling the graph with `experimental_compile()`.
 
         Returns:
-            ASCII representation of the CG with  Nodes Information,
+            ASCII representation of the CG with Nodes Information,
             Edges Information and Experimental Graph Built.
 
 
@@ -2376,7 +2376,7 @@ class CompiledDAG:
 
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
-            label = f"Task {idx}\n"
+            label = f"Task {idx}  "
 
             # Determine the type and label of the node
             if isinstance(dag_node, InputNode):
@@ -2392,7 +2392,7 @@ class CompiledDAG:
                     actor_id = (
                         actor_handle._actor_id.hex()[:6] if actor_handle else "unknown"
                     )
-                    label += f"Actor: {actor_id}...\nMethod: {method_name}"
+                    label += f"Actor: {actor_id}...Method: {method_name}"
                 elif dag_node.is_class_method_output:
                     label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
                 else:
@@ -2408,7 +2408,11 @@ class CompiledDAG:
 
                     # Get the type hint for this argument
                     if arg_index < len(task.arg_type_hints):
-                        type_hint = type(task.arg_type_hints[arg_index]).__name__
+                        if task.arg_type_hints[arg_index].requires_nccl():
+                            type_hint = "Nccl"
+                        else:
+                            type_hint = type(
+                                task.arg_type_hints[arg_index]).__name__
                     else:
                         type_hint = "UnknownType"
 
@@ -2450,8 +2454,13 @@ class CompiledDAG:
         # Print edges
         ascii_visualization += "\nEdges Information:\n"
         for upstream_task, downstream_task, type_hint in edge_info:
+            if type_hint == "Nccl":
+                edgs_channel = "+++"
+            else:
+                edgs_channel = "---"
             ascii_visualization += (
-                f"{upstream_task} -> {downstream_task} [label={type_hint}]\n"
+                f"{upstream_task} {edgs_channel}>" 
+                f"{downstream_task}[label={type_hint}]\n"
             )
 
         # Find the maximum width (number of nodes in any layer)
@@ -2473,7 +2482,11 @@ class CompiledDAG:
                 if isinstance(task.dag_node, ClassMethodNode):
                     if task.dag_node.is_class_method_call:
                         method_name = task.dag_node.get_method_name()
-                        task_info += f"Actor:{method_name}"
+                        actor_handle = task.dag_node._get_actor_handle()
+                        actor_id = (
+                            actor_handle._actor_id.hex()[:6] if actor_handle else "unknown"
+                        )
+                        task_info += f"Actor_{actor_id}:{method_name}"
                     elif task.dag_node.is_class_method_output:
                         task_info += f"Output[{task.dag_node.output_idx}]"
                     else:
