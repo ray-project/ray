@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import gymnasium as gym
 from gymnasium.spaces import Box
@@ -7,6 +7,7 @@ import numpy as np
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.spaces.space_utils import (
     batch as batch_fn,
     flatten_to_single_ndarray,
@@ -165,4 +166,15 @@ class PrevActionsPrevRewards(ConnectorV2):
                     np.float32,
                 ),
             }
+        )
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (),  # args,
+            {
+                "multi_agent": self._multi_agent,
+                "n_prev_actions": self.n_prev_actions,
+                "n_prev_rewards": self.n_prev_rewards,
+            },  # kwargs
         )
