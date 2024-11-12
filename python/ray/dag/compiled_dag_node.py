@@ -2299,9 +2299,9 @@ class CompiledDAG:
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
-        # Give every actor a unique color (Colors between 22k -> 40k seem readable)
+        # Give every actor a unique color (Colors between 24k -> 40k seem readable)
         actor_id_to_color = defaultdict(
-            lambda: f"#{((len(actor_id_to_color) * 2000) + 24000 % 0xFFFFFF):06X}"
+            lambda: f"#{((len(actor_id_to_color) * 2000 + 24000) % 0xFFFFFF):06X}"
         )
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
