@@ -52,7 +52,6 @@ class DynamicHandleOptionsBase(ABC):
     method_name: str = "__call__"
     multiplexed_model_id: str = ""
     stream: bool = False
-    _request_protocol: str = RequestProtocol.UNDEFINED
 
     def copy_and_update(self, **kwargs) -> "DynamicHandleOptionsBase":
         new_kwargs = {}

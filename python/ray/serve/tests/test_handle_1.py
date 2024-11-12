@@ -265,37 +265,6 @@ def test_handle_options_with_same_router(serve_instance):
     assert handle2._router is handle._router
 
 
-def test_set_request_protocol(serve_instance):
-    """Test setting request protocol for a handle.
-
-    When a handle is created, it's _request_protocol is undefined. When calling
-    `_set_request_protocol()`, _request_protocol is set to the specified protocol.
-    When chaining options, the _request_protocol on the new handle is copied over.
-    When calling `_set_request_protocol()` on the new handle, _request_protocol
-    on the new handle is changed accordingly, while _request_protocol on the
-    original handle remains unchanged.
-    """
-
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind())
-    assert handle.handle_options._request_protocol == RequestProtocol.UNDEFINED
-
-    handle._set_request_protocol(RequestProtocol.HTTP)
-    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
-
-    multiplexed_model_id = "fake-multiplexed_model_id"
-    new_handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-    assert new_handle.handle_options.multiplexed_model_id == multiplexed_model_id
-    assert new_handle.handle_options._request_protocol == RequestProtocol.HTTP
-
-    new_handle._set_request_protocol(RequestProtocol.GRPC)
-    assert new_handle.handle_options._request_protocol == RequestProtocol.GRPC
-    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
-
-
 def test_init(serve_instance):
     @serve.deployment
     def f():

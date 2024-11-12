@@ -11,13 +11,6 @@ from ray.serve._private.proxy_router import (  # LongestPrefixRouter,
 from ray.serve._private.test_utils import MockDeploymentHandle
 
 
-def get_handle_function(router: ProxyRouter) -> Callable:
-    if isinstance(router, LongestPrefixRouter):
-        return router.match_route
-    else:
-        return router.get_handle_for_endpoint
-
-
 @pytest.fixture
 def mock_router():
     def mock_get_handle(endpoint, info):

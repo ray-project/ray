@@ -7,7 +7,12 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray._raylet import ObjectRefGenerator
-from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    RequestMetadata,
+    RequestProtocol,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     CreateRouterCallable,
@@ -47,7 +52,6 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
-        _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.handle_options: DynamicHandleOptionsBase = (
@@ -59,7 +63,6 @@ class _DeploymentHandleBase:
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
-        self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
         if _create_router is None:
@@ -70,23 +73,6 @@ class _DeploymentHandleBase:
         logger.info(
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
             extra={"log_to_stderr": False},
-        )
-
-    def _record_telemetry_if_needed(self):
-        # Record telemetry once per handle and not when used from the proxy
-        # (detected via request protocol).
-        if (
-            not self._recorded_telemetry
-            and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
-        ):
-            if self.__class__ == DeploymentHandle:
-                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
-
-            self._recorded_telemetry = True
-
-    def _set_request_protocol(self, request_protocol: RequestProtocol):
-        self.handle_options = self.handle_options.copy_and_update(
-            _request_protocol=request_protocol
         )
 
     def _get_or_create_router(self) -> Router:
@@ -153,7 +139,6 @@ class _DeploymentHandleBase:
         to initialize a handle with custom init options, you must do it
         before calling `.options()` or `.remote()`.
         """
-        print("cindy init!!!")
         if self._router is not None:
             raise RuntimeError(
                 "Handle has already been initialized. Note that a handle is implicitly "
@@ -166,6 +151,13 @@ class _DeploymentHandleBase:
 
         self.init_options = create_init_handle_options(**kwargs)
         self._get_or_create_router()
+
+        # Record telemetry when not in the proxy
+        if (
+            self.init_handle_options._source != DeploymentHandleSource.PROXY
+            and self.__class__ == DeploymentHandle
+        ):
+            ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
     def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
@@ -190,7 +182,6 @@ class _DeploymentHandleBase:
             _router=self._router,
             _create_router=self._create_router,
             _request_counter=self.request_counter,
-            _recorded_telemetry=self._recorded_telemetry,
         )
 
     def _remote(
@@ -199,7 +190,6 @@ class _DeploymentHandleBase:
         args: Tuple[Any],
         kwargs: Dict[str, Any],
     ) -> concurrent.futures.Future:
-        self._record_telemetry_if_needed()
         self.request_counter.inc(
             tags={
                 "route": request_metadata.route,
