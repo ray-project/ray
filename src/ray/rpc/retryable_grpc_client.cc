@@ -94,7 +94,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   switch (status) {
   case GRPC_CHANNEL_TRANSIENT_FAILURE:
   case GRPC_CHANNEL_CONNECTING: {
-    if (server_unavailable_timeout_time_ > absl::Now()) {
+    if (server_unavailable_timeout_time_ < absl::Now()) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
                        << server_unavailable_timeout_seconds_ << " seconds";
       server_unavailable_timeout_callback_();
