@@ -6,10 +6,12 @@ import pyarrow as pa
 import pytest
 
 import ray
-from ray.air.util.tensor_extensions.arrow import get_arrow_extension_fixed_shape_tensor_types
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block
-from ray.data.extensions import ArrowTensorArray, ArrowTensorType, TensorDtype
+from ray.data.extensions import ArrowTensorArray, TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa

@@ -12,8 +12,10 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2, \
-    get_arrow_extension_fixed_shape_tensor_types
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data import Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
@@ -1246,7 +1248,8 @@ def test_tensors_in_tables_parquet(
     )
 
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, get_arrow_extension_fixed_shape_tensor_types()
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        get_arrow_extension_fixed_shape_tensor_types(),
     )
 
     expected_tuples = list(zip(id_vals, group_vals, arr))

@@ -89,8 +89,10 @@ def unify_schemas(
                 cols_with_null_list.add(col_name)
             all_columns.add(col_name)
 
-    from ray.air.util.tensor_extensions.arrow import get_arrow_extension_fixed_shape_tensor_types, get_arrow_extension_tensor_types
-
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_fixed_shape_tensor_types,
+        get_arrow_extension_tensor_types,
+    )
 
     arrow_tensor_types = get_arrow_extension_tensor_types()
     arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
@@ -128,9 +130,7 @@ def unify_schemas(
         if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
-            elif isinstance(
-                tensor_array_types[0], arrow_fixed_shape_tensor_types
-            ):
+            elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
                 new_type = ArrowVariableShapedTensorType(
                     dtype=tensor_array_types[0].scalar_type,
                     ndim=len(tensor_array_types[0].shape),

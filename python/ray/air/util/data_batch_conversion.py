@@ -6,7 +6,9 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.tensor_extensions.arrow import get_arrow_extension_fixed_shape_tensor_types
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -224,7 +226,9 @@ def _convert_batch_type_to_numpy(
         )
 
         if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(data.schema.types[0], get_arrow_extension_fixed_shape_tensor_types())
+            isinstance(
+                data.schema.types[0], get_arrow_extension_fixed_shape_tensor_types()
+            )
         ):
             # If representing a tensor dataset, return as a single numpy array.
             # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
