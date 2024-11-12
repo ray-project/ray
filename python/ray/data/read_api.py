@@ -83,7 +83,7 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -923,7 +923,7 @@ def read_images(
     )
 
 
-@PublicAPI
+@Deprecated
 def read_parquet_bulk(
     paths: Union[str, List[str]],
     *,
@@ -1023,6 +1023,12 @@ def read_parquet_bulk(
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    warnings.warn(
+        "`read_parquet_bulk` is deprecated and will be removed after May 2025. Use "
+        "`read_parquet` instead.",
+        DeprecationWarning,
+    )
+
     if meta_provider is None:
         meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
