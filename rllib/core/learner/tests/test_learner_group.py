@@ -1,5 +1,4 @@
 import gymnasium as gym
-import itertools
 import numpy as np
 import tempfile
 import unittest
@@ -7,28 +6,26 @@ import pytest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.core import (
+    Columns,
     COMPONENT_LEARNER,
     COMPONENT_MULTI_RL_MODULE_SPEC,
     COMPONENT_RL_MODULE,
     DEFAULT_MODULE_ID,
 )
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
 from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
-from ray.rllib.core.testing.utils import (
-    add_module_to_learner_or_learner_group,
-)
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import SampleBatch, MultiAgentBatch
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
 from ray.rllib.utils.metrics import ALL_MODULES
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
-from ray.rllib.utils.torch_utils import convert_to_torch_tensor
+from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
 
 
@@ -47,6 +44,82 @@ LOCAL_CONFIGS = {
     "local-cpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=0),
     "local-gpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=1),
 }
+
+
+FAKE_EPISODES = [
+    SingleAgentEpisode(
+        observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+        observations=[
+            np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+            np.array([0.9, 1.0, 1.1, 1.2], dtype=np.float32),
+            np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([-0.1, -0.2, -0.3, -0.4], dtype=np.float32),
+        ],
+        action_space=gym.spaces.Discrete(2),
+        actions=[0, 1, 1, 0],
+        rewards=[1.0, -1.0, 0.5, 0.3],
+        terminated=True,
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
+
+FAKE_MA_EPISODES = [
+    MultiAgentEpisode(
+        agent_module_ids={
+            0: "p0",
+            1: "p1",
+        },
+        observation_space=gym.spaces.Dict(
+            {
+                0: FAKE_EPISODES[0].observation_space,
+                1: FAKE_EPISODES[0].observation_space,
+            }
+        ),
+        observations=[
+            {
+                0: FAKE_EPISODES[0].get_observations(i),
+                1: FAKE_EPISODES[0].get_observations(i),
+            }
+            for i in range(5)
+        ],
+        action_space=gym.spaces.Dict(
+            {
+                0: FAKE_EPISODES[0].action_space,
+                1: FAKE_EPISODES[0].action_space,
+            }
+        ),
+        actions=[
+            {
+                0: FAKE_EPISODES[0].get_actions(i),
+                1: FAKE_EPISODES[0].get_actions(i),
+            }
+            for i in range(4)
+        ],
+        rewards=[
+            {
+                0: FAKE_EPISODES[0].get_rewards(i),
+                1: FAKE_EPISODES[0].get_rewards(i),
+            }
+            for i in range(4)
+        ],
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
+FAKE_MA_EPISODES[0].finalize()
+
+FAKE_MA_EPISODES_WO_P1 = [
+    MultiAgentEpisode(
+        agent_module_ids={0: "p0"},
+        observation_space=gym.spaces.Dict({0: FAKE_EPISODES[0].observation_space}),
+        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(5)],
+        action_space=gym.spaces.Dict({0: FAKE_EPISODES[0].action_space}),
+        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(4)],
+        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(4)],
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
+FAKE_MA_EPISODES_WO_P1[0].finalize()
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
@@ -87,23 +160,19 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
     def test_update_multi_gpu(self):
         return
 
-        fws = ["torch"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
             for iter_i in range(1000):
-                batch = convert_to_torch_tensor(reader.next().as_multi_agent())
-                results = learner_group.update_from_batch(batch=batch)
+                results = learner_group.update_from_episodes(FAKE_EPISODES)
 
                 loss = np.mean(
                     [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
@@ -129,61 +198,59 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             del learner_group
 
     def test_add_module_and_remove_module(self):
-        fws = ["torch"]
         scaling_modes = ["local-cpu", "multi-cpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
-            env = gym.make("CartPole-v1")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
+            ma_env = MultiAgentCartPole({"num_agents": 2})
             config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
                 scaling_mode
             )
-            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-            learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = convert_to_torch_tensor(reader.next())
+            config = (
+                BCConfig()
+                .update_from_dict(config_overrides)
+                .multi_agent(
+                    policies={"p0"},
+                    policy_mapping_fn=lambda aid, *ar, **kw: f"p{aid}",
+                )
+                .rl_module(
+                    rl_module_spec=MultiRLModuleSpec(
+                        rl_module_specs={"p0": RLModuleSpec()},
+                    )
+                )
+            )
+            learner_group = config.build_learner_group(env=ma_env)
 
             # Update once with the default policy.
-            learner_group.update_from_batch(batch.as_multi_agent())
-            module_ids_before_add = {DEFAULT_MODULE_ID}
-            new_module_id = "test_module"
+            learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
 
             # Add a test_module.
-            add_module_to_learner_or_learner_group(
-                config, env, new_module_id, learner_group
+            learner_group.add_module(
+                module_id="p1",
+                module_spec=config.get_multi_rl_module_spec(env=ma_env).module_specs[
+                    "p0"
+                ],
             )
-
             # Do training that includes the test_module.
-            results = learner_group.update_from_batch(
-                batch=MultiAgentBatch(
-                    {new_module_id: batch, DEFAULT_MODULE_ID: batch}, batch.count
-                ),
-            )
-
-            _check_multi_worker_weights(learner_group, results)
+            results = learner_group.update_from_episodes(episodes=FAKE_MA_EPISODES)
 
             # check that module ids are updated to include the new module
-            module_ids_after_add = {DEFAULT_MODULE_ID, new_module_id}
+            module_ids_after_add = {"p0", "p1"}
             # Compare module IDs in results with expected ones.
             self.assertEqual(
                 set(results[0].keys()) - {ALL_MODULES}, module_ids_after_add
             )
 
             # Remove the test_module.
-            learner_group.remove_module(module_id=new_module_id)
+            learner_group.remove_module(module_id="p1")
 
             # Run training without the test_module.
-            results = learner_group.update_from_batch(batch.as_multi_agent())
-
-            _check_multi_worker_weights(learner_group, results)
+            results = learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
 
             # check that module ids are updated after remove operation to not
             # include the new module
             # remove the total_loss key since its not a module key
-            self.assertEqual(
-                set(results[0].keys()) - {ALL_MODULES}, module_ids_before_add
-            )
+            self.assertEqual(set(results[0].keys()) - {ALL_MODULES}, {"p0"})
 
             # make sure the learner_group resources are freed up so that we don't
             # autoscale
@@ -202,13 +269,11 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
-        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
-        test_iterator = itertools.product(fws, scaling_modes)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
@@ -300,6 +365,38 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
 
 
 class TestLearnerGroupSaveLoadState(unittest.TestCase):
+
+    FAKE_BATCH = {
+        Columns.OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.NEXT_OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0, 1, 1, 0]),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True, False]),
+        Columns.TRUNCATEDS: np.array([False, False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0, 0]),
+    }
+
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -310,14 +407,11 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
 
     def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch"]
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(convert_to_torch_tensor(FAKE_BATCH)).as_multi_agent()
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
@@ -333,7 +427,7 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             initial_weights = learner_group.get_weights()
 
             # Do a single update.
-            learner_group.update_from_batch(batch)
+            learner_group.update_from_episodes(FAKE_EPISODES)
             weights_after_update = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -354,7 +448,9 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
 
             # Do another update.
-            results_2nd_update_with_break = learner_group.update_from_batch(batch=batch)
+            results_2nd_update_with_break = learner_group.update_from_episodes(
+                FAKE_EPISODES
+            )
             weights_after_2_updates_with_break = learner_group.get_state(
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
             )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
@@ -371,16 +467,24 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
             weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
             check(initial_weights, weights_after_restore)
             # Perform 2 updates to get to the same state as the previous learners.
-            learner_group.update_from_batch(batch)
-            results_2nd_without_break = learner_group.update_from_batch(batch=batch)
+            learner_group.update_from_episodes(FAKE_EPISODES)
+            results_2nd_update_without_break = learner_group.update_from_episodes(
+                FAKE_EPISODES
+            )
             weights_after_2_updates_without_break = learner_group.get_weights()
             learner_group.shutdown()
             del learner_group
 
             # Compare the results of the two updates.
+            for r1, r2 in zip(
+                results_2nd_update_with_break,
+                results_2nd_update_without_break,
+            ):
+                r1[ALL_MODULES].pop("learner_connector_timer")
+                r2[ALL_MODULES].pop("learner_connector_timer")
             check(
                 MetricsLogger.peek_results(results_2nd_update_with_break),
-                MetricsLogger.peek_results(results_2nd_without_break),
+                MetricsLogger.peek_results(results_2nd_update_without_break),
                 rtol=0.05,
             )
             check(
@@ -401,40 +505,36 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = reader.next()
             timer_sync = _Timer()
             timer_async = _Timer()
             with timer_sync:
-                learner_group.update_from_batch(
-                    batch=batch.as_multi_agent(), async_update=False
+                learner_group.update_from_episodes(
+                    episodes=FAKE_EPISODES, async_update=False
                 )
             with timer_async:
-                result_async = learner_group.update_from_batch(
-                    batch=batch.as_multi_agent(), async_update=True
+                result_async = learner_group.update_from_episodes(
+                    episodes=FAKE_EPISODES, async_update=True
                 )
-            # Ideally the the first async update will return nothing, and an easy
+            # Ideally the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
             # than the time for a sync update call.
             self.assertLess(timer_async.mean, timer_sync.mean)
             self.assertIsInstance(result_async, list)
+            loss = float("inf")
             iter_i = 0
             while True:
-                batch = reader.next()
-                result_async = learner_group.update_from_batch(
-                    batch.as_multi_agent(), async_update=True
+                result_async = learner_group.update_from_episodes(
+                    FAKE_EPISODES, async_update=True
                 )
                 if not result_async:
                     continue
