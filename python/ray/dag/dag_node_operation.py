@@ -44,6 +44,7 @@ class _DAGNodeOperation:
         exec_task_idx: int,
         operation_type: _DAGNodeOperationType,
         method_name: Optional[str] = None,
+        loop_idx: int = 0,
     ):
         """
         Args:
@@ -58,12 +59,24 @@ class _DAGNodeOperation:
         self.exec_task_idx = exec_task_idx
         self.type = operation_type
         self.method_name = method_name
+        self.loop_idx = loop_idx
 
     def __repr__(self):
         return (
             f"_DAGNodeOperation("
             f"exec_task_idx: {self.exec_task_idx}, "
             f" type: {self.type})"
+        )
+
+    def prev_op(self):
+        if self.type == _DAGNodeOperationType.WRITE:
+            op_type = _DAGNodeOperationType.COMPUTE
+        elif self.type == _DAGNodeOperationType.COMPUTE:
+            op_type = _DAGNodeOperationType.READ
+        else:
+            assert False, f"No previous operation for type: {self.type}"
+        return _DAGNodeOperation(
+            self.exec_task_idx, op_type, self.method_name, self.loop_idx
         )
 
     def vis_str(self):
@@ -73,12 +86,16 @@ class _DAGNodeOperation:
         return f"([{self.exec_task_idx}] {self.method_name} {self.type.viz_str()})"
 
     def __hash__(self):
-        return hash((self.exec_task_idx, self.type))
+        return hash((self.exec_task_idx, self.type, self.loop_idx))
 
     def __eq__(self, other):
         # An operation is uniquely identified by its `exec_task_idx` and type.
         # `method_name` is only for debugging purposes.
-        return self.exec_task_idx == other.exec_task_idx and self.type == other.type
+        return (
+            self.exec_task_idx == other.exec_task_idx
+            and self.type == other.type
+            and self.loop_idx == other.loop_idx
+        )
 
 
 @total_ordering
@@ -89,6 +106,9 @@ class _DAGOperationGraphNode:
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
+        upstream_nccl_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
+        downstream_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
+        loop_idx=0,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -107,6 +127,9 @@ class _DAGOperationGraphNode:
         self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
+        self.upstream_nccl_actors = upstream_nccl_actors or set()
+        self.downstream_actors = downstream_actors or set()
+        self.loop_idx = loop_idx
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -172,13 +195,14 @@ class _DAGOperationGraphNode:
             self.actor_handle == other.actor_handle
             and self.operation.exec_task_idx == other.operation.exec_task_idx
             and self.operation.type == other.operation.type
+            and self.loop_idx == other.loop_idx
         )
 
     def __hash__(self):
         """
         An operation is uniquely identified by its `task_idx` and type.
         """
-        return hash((self.operation, self.task_idx))
+        return hash((self.operation, self.task_idx, self.loop_idx))
 
     @property
     def in_degree(self) -> int:
@@ -540,7 +564,7 @@ def _visualize_execution_schedule(
         )
 
     dot = graphviz.Digraph(comment="DAG")
-    node_to_viz: Dict[_DAGOperationGraphNode, str] = {}
+    node_to_viz: Dict[Tuple, str] = {}
 
     if actor_to_overlapped_schedule is None:
         # TODO(rui): make the visualization more concise by only displaying
@@ -569,7 +593,8 @@ def _visualize_execution_schedule(
             for out_edge, viz_info in node.out_edges.items():
                 label, control_dependency = viz_info
                 out_task_idx, out_op_type = out_edge
-                out_node = graph[out_task_idx][out_op_type]
+                out_node = copy.deepcopy(graph[out_task_idx][out_op_type])
+                out_node.loop_idx = node.loop_idx
                 out_node_repr = node_to_viz[out_node]
                 color = "blue" if label == "nccl" else "black"
                 style = "dashed" if control_dependency else "solid"
@@ -722,6 +747,15 @@ def _generate_overlapped_execution_schedule(
         for the actor.
     """
 
+    def _write_to_same_peer(op: _DAGOperationGraphNode):
+        """
+        Check if the WRITE operation is writing to the same peer actor that
+        the corresponding READ operation is reading from.
+        """
+        if op.operation.type != _DAGNodeOperationType.WRITE:
+            return False
+        return len(op.downstream_actors.intersection(op.upstream_nccl_actors)) > 0
+
     actor_to_overlapped_schedule: Dict[
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
@@ -748,13 +782,69 @@ def _generate_overlapped_execution_schedule(
                     if (
                         overlapped_schedule[j].operation.type
                         == _DAGNodeOperationType.READ
-                        or overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.WRITE
+                        or _write_to_same_peer(overlapped_schedule[j])
                     ) and overlapped_schedule[j].requires_nccl:
                         # Found a NCCL read/write operation, skip the overlap
                         # optimization to keep relative order of NCCL operations
                         break
     return actor_to_overlapped_schedule
+
+
+def _unroll_schedule(
+    original_schedule: List[_DAGOperationGraphNode],
+):
+    """
+    Unroll the schedule by duplicating each node in the schedule.
+
+    Args:
+        original_schedule: The original schedule to be unrolled.
+
+    Returns:
+        The unrolled schedule.
+    """
+    unrolled_schedule = copy.deepcopy(original_schedule)
+    for node in original_schedule:
+        new_node = copy.deepcopy(node)
+        new_node.loop_idx += 1
+        unrolled_schedule.append(new_node)
+    return unrolled_schedule
+
+
+def _generate_inter_execution_overlapped_schedule(
+    actor_to_execution_schedule: Dict[
+        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
+    ],
+) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
+    unrolled_execution_schedule = {
+        actor: _unroll_schedule(actor_to_execution_schedule[actor])
+        for actor in actor_to_execution_schedule
+    }
+    inter_execution_schedule = _generate_overlapped_execution_schedule(
+        unrolled_execution_schedule
+    )
+    if inter_execution_schedule == unrolled_execution_schedule:
+        return actor_to_execution_schedule, actor_to_execution_schedule
+    else:
+        return unrolled_execution_schedule, inter_execution_schedule
+
+
+def _same_schedule(
+    actor_to_schedule1: Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]],
+    actor_to_schedule2: Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]],
+) -> bool:
+    if len(actor_to_schedule1) != len(actor_to_schedule2):
+        return False
+    for actor in actor_to_schedule1:
+        if actor not in actor_to_schedule2:
+            return False
+        schedule1 = actor_to_schedule1[actor]
+        schedule2 = actor_to_schedule2[actor]
+        if len(schedule1) != len(schedule2):
+            return False
+        for node1, node2 in zip(schedule1, schedule2):
+            if node1 != node2:
+                return False
+    return True
 
 
 def _extract_execution_schedule(
@@ -767,6 +857,14 @@ def _extract_execution_schedule(
     and discard unnecessary information.
     """
     return {
-        actor: [node.operation for node in nodes]
+        actor: [
+            _DAGNodeOperation(
+                node.operation.exec_task_idx,
+                node.operation.type,
+                node.operation.method_name,
+                node.loop_idx,
+            )
+            for node in nodes
+        ]
         for actor, nodes in actor_to_execution_schedule.items()
     }
