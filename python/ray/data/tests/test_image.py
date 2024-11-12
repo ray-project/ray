@@ -275,6 +275,13 @@ class TestReadImages:
             with pytest.raises(ValueError):
                 ray.data.read_images(paths=file.name).materialize()
 
+    def test_custom_meta_provider_emits_deprecation_warning(ray_start_regular_shared):
+        with pytest.warns(DeprecationWarning):
+            ray.data.read_images(
+                paths=["example://image-datasets/simple/image1.jpg"],
+                meta_provider=FastFileMetadataProvider(),
+            )
+
 
 class TestWriteImages:
     def test_write_images(ray_start_regular_shared, tmp_path):
