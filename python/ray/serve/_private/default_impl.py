@@ -1,8 +1,6 @@
 from typing import Callable, Optional, Tuple
 
 import ray
-
-# from ray import serve
 from ray._raylet import GcsClient
 from ray.serve._private.cluster_node_info_cache import (
     ClusterNodeInfoCache,

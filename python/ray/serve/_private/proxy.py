@@ -6,7 +6,7 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
 
 import grpc
 import starlette

@@ -7,7 +7,12 @@ from unittest.mock import AsyncMock
 import grpc
 import pytest
 
-from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
+from ray.serve._private.common import (
+    DeploymentID,
+    EndpointInfo,
+    RequestMetadata,
+    RequestProtocol,
+)
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
     HEALTHY_MESSAGE,
@@ -20,7 +25,6 @@ from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
-    EndpointRouter,
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
@@ -107,7 +111,11 @@ class FakeProxyRouter(ProxyRouter):
         self.app_is_cross_language = None
         self._ready_for_traffic = False
 
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
+    def update_routes(
+        self,
+        endpoints: Dict[DeploymentID, EndpointInfo],
+        protocol: RequestProtocol,
+    ):
         pass
 
     def get_handle_for_endpoint(self, *args, **kwargs):
@@ -254,7 +262,7 @@ class TestgRPCProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=FakeProxyRouter,
+            proxy_router=FakeProxyRouter(),
         )
 
     @pytest.mark.asyncio
@@ -447,7 +455,7 @@ class TestHTTPProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=FakeProxyRouter,
+            proxy_router=FakeProxyRouter(),
             proxy_actor=FakeActorHandle(),
         )
 
@@ -713,7 +721,7 @@ async def test_head_http_unhealthy_until_route_table_updated():
         node_ip_address="fake-node-ip-address",
         # proxy is on head node
         is_head=True,
-        proxy_router=EndpointRouter(get_handle_override),
+        proxy_router=ProxyRouter(get_handle_override),
         proxy_actor=FakeActorHandle(),
     )
     proxy_request = FakeProxyRequest(
@@ -755,7 +763,7 @@ async def test_worker_http_unhealthy_until_replicas_populated():
         node_ip_address="fake-node-ip-address",
         # proxy is on worker node
         is_head=False,
-        proxy_router_class=EndpointRouter(lambda *args: handle),
+        proxy_router=ProxyRouter(lambda *args: handle),
         proxy_actor=FakeActorHandle(),
     )
     proxy_request = FakeProxyRequest(

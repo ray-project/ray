@@ -83,6 +83,8 @@ class ProxyRouter:
         if endpoints:
             self._route_table_populated = True
 
+        self.endpoints = endpoints
+
         existing_handles = set(self.handles.keys())
         routes = []
         route_info = {}
@@ -155,9 +157,10 @@ class ProxyRouter:
         Args:
             target_app_name: app_name to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) for the single app if there
+            (route, handle, is_cross_language) for the single app if there
             is only one, else find the app and handle for exact match. Else return None.
         """
+        print("handles", self.handles)
         for endpoint_tag, handle in self.handles.items():
             # If the target_app_name matches with the endpoint or if
             # there is only one endpoint.
