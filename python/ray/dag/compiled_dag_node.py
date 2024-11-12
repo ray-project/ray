@@ -2411,6 +2411,9 @@ class CompiledDAG:
                         output_channel, task.dag_node._get_actor_handle()._actor_id
                     )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
+            if type(task.dag_node) == InputAttributeNode:
+                # Add an edge from the InputAttributeNode to the InputNode
+                dot.edge(str(self.input_task_idx), str(idx))
         if return_dot:
             return dot.source
         else:
