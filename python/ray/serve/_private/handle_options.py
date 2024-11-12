@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass, fields
 
 import ray
-from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
+from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.utils import DEFAULT
 
 
