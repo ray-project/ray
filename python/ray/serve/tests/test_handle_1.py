@@ -7,7 +7,7 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
+from ray.serve._private.common import DeploymentHandleSource
 from ray.serve._private.constants import (
     RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
     SERVE_DEFAULT_APP_NAME,

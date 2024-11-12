@@ -7,12 +7,7 @@ from unittest.mock import AsyncMock
 import grpc
 import pytest
 
-from ray.serve._private.common import (
-    DeploymentID,
-    EndpointInfo,
-    RequestMetadata,
-    RequestProtocol,
-)
+from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadata
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
     HEALTHY_MESSAGE,

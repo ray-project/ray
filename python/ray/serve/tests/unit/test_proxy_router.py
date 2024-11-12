@@ -1,9 +1,7 @@
-from typing import Callable
-
 import pytest
 
-from ray.serve._private.common import DeploymentID, EndpointInfo, RequestProtocol
-from ray.serve._private.proxy_router import (  # LongestPrefixRouter,
+from ray.serve._private.common import DeploymentID, EndpointInfo
+from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
     ProxyRouter,

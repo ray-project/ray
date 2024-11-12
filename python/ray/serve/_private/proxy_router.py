@@ -1,12 +1,7 @@
 import logging
 from typing import Callable, Dict, List, Optional, Tuple
 
-from ray.serve._private.common import (
-    ApplicationName,
-    DeploymentID,
-    EndpointInfo,
-    RequestProtocol,
-)
+from ray.serve._private.common import ApplicationName, DeploymentID, EndpointInfo
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import DeploymentHandle
 

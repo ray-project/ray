@@ -135,6 +135,8 @@ def add_grpc_address(grpc_server: gRPCServer, server_address: str):
 
 
 def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):
+    # NOTE(zcin): needs to be lazy import due to a circular dependency.
+    # We should not be importing from application_state in context.
     from ray.serve.context import _get_global_client
 
     client = _get_global_client()
