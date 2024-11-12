@@ -123,38 +123,6 @@ FAKE_MA_EPISODES_WO_P1[0].finalize()
 
 
 class TestLearnerGroup(unittest.TestCase):
-
-    FAKE_BATCH = {
-        Columns.OBS: np.array(
-            [
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-                [0.9, 1.0, 1.1, 1.2],
-                [1.3, 1.4, 1.5, 1.6],
-            ],
-            dtype=np.float32,
-        ),
-        Columns.NEXT_OBS: np.array(
-            [
-                [0.1, 0.2, 0.3, 0.4],
-                [0.5, 0.6, 0.7, 0.8],
-                [0.9, 1.0, 1.1, 1.2],
-                [1.3, 1.4, 1.5, 1.6],
-            ],
-            dtype=np.float32,
-        ),
-        Columns.ACTIONS: np.array([0, 1, 1, 0]),
-        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
-        Columns.TERMINATEDS: np.array([False, False, True, False]),
-        Columns.TRUNCATEDS: np.array([False, False, False, False]),
-        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
-        Columns.ACTION_DIST_INPUTS: np.array(
-            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
-        ),
-        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
-        Columns.EPS_ID: np.array([0, 0, 0, 0]),
-    }
-
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -188,16 +156,6 @@ class TestLearnerGroup(unittest.TestCase):
         learner_group = config.build_learner_group(env=env)
         print(learner_group)
         learner_group.shutdown()
-
-    # def test_learner_group_local(self):
-    #    # run the logic of this test inside of a ray actor because we want tensorflow
-    #    # resources to be gracefully released. Tensorflow blocks the gpu resources
-    #    # otherwise between test cases, causing a gpu oom error.
-    #    for scaling_mode in LOCAL_CONFIGS:
-    #        print(f"Testing scaling_mode: {scaling_mode}")
-    #        training_helper = RemoteTrainingHelper.remote()
-    #        ray.get(training_helper.local_training_helper.remote(scaling_mode))
-    #        del training_helper
 
     def test_update_multi_gpu(self):
         return
@@ -298,6 +256,16 @@ class TestLearnerGroup(unittest.TestCase):
             # autoscale
             learner_group.shutdown()
             del learner_group
+
+
+class TestLearnerGroupCheckpointRestore(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDownClass(cls) -> None:
+        ray.shutdown()
 
     def test_restore_from_path_multi_rl_module_and_individual_modules(self):
         """Tests whether MultiRLModule- and single RLModule states can be restored."""
@@ -524,6 +492,16 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
                 weights_after_2_updates_without_break,
                 rtol=0.05,
             )
+
+
+class TestLearnerGroupAsyncUpdate(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        ray.init()
+
+    @classmethod
+    def tearDown(cls) -> None:
+        ray.shutdown()
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
