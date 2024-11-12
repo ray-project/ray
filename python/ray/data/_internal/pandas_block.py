@@ -415,14 +415,14 @@ class PandasBlockAccessor(TableBlockAccessor):
         return find_partitions(table, boundaries, sort_key)
 
     def combine(
-        self, key: Union[str, List[str]], aggs: Tuple["AggregateFn"]
+        self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":
         """Combine rows with the same key into an accumulator.
 
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: A column name or list of column names.
+            key: A SortKey object which holds column names/keys.
             If this is ``None``, place all rows in a single group.
 
             aggs: The aggregations to do.
@@ -433,16 +433,11 @@ class PandasBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
-        if key is not None and not isinstance(key, (str, list)):
-            raise ValueError(
-                "key must be a string, list of strings or None when aggregating "
-                "on Pandas blocks, but "
-                f"got: {type(key)}."
-            )
+        keys: List[str] = sort_key.get_columns()
 
         def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
             """Creates an iterator over zero-copy group views."""
-            if key is None:
+            if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
                 yield None, self.to_block()
                 return
@@ -454,8 +449,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                 try:
                     if next_row is None:
                         next_row = next(iter)
-                    next_key = next_row[key]
-                    while np.all(next_row[key] == next_key):
+                    next_key = next_row[keys]
+                    while np.all(next_row[keys] == next_key):
                         end += 1
                         try:
                             next_row = next(iter)
@@ -468,22 +463,15 @@ class PandasBlockAccessor(TableBlockAccessor):
                     break
 
         builder = PandasBlockBuilder()
-        for group_key, group_view in iter_groups():
+        for group_keys, group_view in iter_groups():
             # Aggregate.
-            accumulators = [agg.init(group_key) for agg in aggs]
+            accumulators = [agg.init(group_keys) for agg in aggs]
             for i in range(len(aggs)):
                 accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
 
             # Build the row.
             row = {}
-            if key is not None:
-                if isinstance(key, list):
-                    keys = key
-                    group_keys = group_key
-                else:
-                    keys = [key]
-                    group_keys = [group_key]
-
+            if keys:
                 for k, gk in zip(keys, group_keys):
                     row[k] = gk
 
@@ -520,7 +508,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     @staticmethod
     def aggregate_combined_blocks(
         blocks: List["pandas.DataFrame"],
-        key: Union[str, List[str]],
+        sort_key: "SortKey",
         aggs: Tuple["AggregateFn"],
         finalize: bool,
     ) -> Tuple["pandas.DataFrame", BlockMetadata]:
@@ -545,12 +533,13 @@ class PandasBlockAccessor(TableBlockAccessor):
         """
 
         stats = BlockExecStats.builder()
-        keys = key if isinstance(key, list) else [key]
-        key_fn = (
-            (lambda r: tuple(r[r._row.columns[: len(keys)]]))
-            if key is not None
-            else (lambda r: (0,))
-        )
+        keys = sort_key.get_columns()
+
+        def key_fn(r):
+            if sort_key is not None:
+                return tuple(r[k] for k in keys if k in r)
+            else:
+                return (0,)
 
         # Handle blocks of different types.
         blocks = TableBlockAccessor.normalize_block_types(blocks, "pandas")
@@ -569,9 +558,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_keys = key_fn(next_row)
-                next_key_names = (
-                    next_row._row.columns[: len(keys)] if key is not None else None
-                )
+                next_key_names = keys
 
                 def gen():
                     nonlocal iter
@@ -610,7 +597,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                             )
                 # Build the row.
                 row = {}
-                if key is not None:
+                if keys:
                     for next_key, next_key_name in zip(next_keys, next_key_names):
                         row[next_key_name] = next_key
 

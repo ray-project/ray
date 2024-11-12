@@ -437,7 +437,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
+    def combine(self, key: "SortKey", agg: "AggregateFn") -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 

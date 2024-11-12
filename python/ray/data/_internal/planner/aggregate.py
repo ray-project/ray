@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Union
 
 from ray.data._internal.execution.interfaces import (
     AllToAllTransformFn,
@@ -22,7 +22,7 @@ from ray.data.context import DataContext
 
 
 def generate_aggregate_fn(
-    key: Optional[str],
+    key: Optional[Union[str, List[str]]],
     aggs: List[AggregateFn],
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
@@ -49,6 +49,8 @@ def generate_aggregate_fn(
 
         num_mappers = len(blocks)
 
+        sort_key = SortKey(key)
+
         if key is None:
             num_outputs = 1
             boundaries = []
@@ -60,12 +62,12 @@ def generate_aggregate_fn(
             ]
             # Sample boundaries for aggregate key.
             boundaries = SortTaskSpec.sample_boundaries(
-                blocks, SortKey(key), num_outputs, sample_bar
+                blocks, sort_key, num_outputs, sample_bar
             )
 
         agg_spec = SortAggregateTaskSpec(
             boundaries=boundaries,
-            key=key,
+            key=sort_key,
             aggs=aggs,
         )
         if DataContext.get_current().use_push_based_shuffle:
