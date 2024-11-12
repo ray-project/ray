@@ -54,6 +54,17 @@ def test_package_install_with_uv(shutdown_only):
     assert ray.get(f.remote()) == "2.3.0"
 
 
+# Package installation succeeds, with compatibility enabled.
+def test_package_install_with_uv_and_validation(shutdown_only):
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_check": True}})
+    def f():
+        import requests
+
+        return requests.__version__
+
+    assert ray.get(f.remote()) == "2.3.0"
+
+
 # Package installation fails due to conflict versions.
 def test_package_install_has_conflict_with_uv(shutdown_only):
     # moto require requests>=2.5
