@@ -4096,7 +4096,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    @PublicAPI(api_group=IOC_API_GROUP)
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -4207,7 +4207,11 @@ class Dataset:
         Returns:
             A `Torch IterableDataset`_.
         """  # noqa: E501
-
+        warnings.warn(
+            "`to_torch` is deprecated and will be removed after May 2025. Use "
+            "`iter_torch_batches` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().to_torch(
             label_column=label_column,
             feature_columns=feature_columns,
