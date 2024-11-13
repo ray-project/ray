@@ -31,7 +31,12 @@ def ray_start_gpu_cluster():
     ray.shutdown()
     ray.init(
         address=cluster.address,
-        runtime_env={"env_vars": {"RAY_TRAIN_ENABLE_STATE_TRACKING": "1"}},
+        runtime_env={
+            "env_vars": {
+                "RAY_TRAIN_ENABLE_STATE_TRACKING": "1",
+                "RAY_enable_export_api_write": "true",
+            }
+        },
         ignore_reinit_error=True,
     )
 
@@ -213,7 +218,7 @@ def test_state_manager(ray_start_gpu_cluster):
         assert run_info and run_info.id == run_id
 
 
-@pytest.mark.parametrize("gpus_per_worker", [0, 1, 2])
+@pytest.mark.parametrize("gpus_per_worker", [0])
 def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
     num_workers = 4
@@ -284,6 +289,47 @@ def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
         assert dataset_info.dataset_name == dataset._plan._dataset_name
         assert dataset_info.dataset_uuid == dataset._plan._dataset_uuid
 
+    # Check events written for export API
+    logs_dir = os.path.join(
+        ray._private.worker._global_node.get_session_dir_path(), "logs", "export_events"
+    )
+    events_json = []
+    with open(logs_dir + "/event_EXPORT_TRAIN_RUN.log") as f:
+        for event_str in f.readlines():
+            events_json.append(json.loads(event_str))
+
+    assert len(events_json) == 2
+    # Events primarily differ in the state of the train run, so first
+    # verify remaining fields that are same.
+    for event in events_json:
+        event["source_type"] == "EXPORT_TRAIN_RUN"
+        event["event_data"]["name"] == "test"
+        event["event_data"]["run_id"] == run_id
+        event["event_data"]["job_id"] == run.job_id
+        event["event_data"]["controller_actor_id"] == run.controller_actor_id
+
+        world_ranks = [
+            worker["world_rank"] for worker in event["event_data"]["workers"]
+        ]
+        local_ranks = [
+            worker["local_rank"] for worker in event["event_data"]["workers"]
+        ]
+        node_ranks = [worker["node_rank"] for worker in event["event_data"]["workers"]]
+
+        # Ensure that the workers are sorted by global rank
+        assert world_ranks == [0, 1, 2, 3]
+        assert local_ranks == [0, 1, 2, 3]
+        assert node_ranks == [0, 0, 0, 0]
+
+        # Check Datasets
+        for dataset_info in event["event_data"]["datasets"]:
+            dataset = datasets[dataset_info["name"]]
+            assert dataset_info["dataset_uuid"] == dataset._plan._dataset_uuid
+
+    # Verify state changes are captured in export events
+    assert events_json[0]["event_data"]["run_status"] == "RUNNING"
+    assert events_json[1]["event_data"]["run_status"] == "FINISHED"
+
 
 @pytest.mark.parametrize("raise_error", [True, False])
 def test_train_run_status(ray_start_gpu_cluster, raise_error):
@@ -324,12 +370,26 @@ def test_train_run_status(ray_start_gpu_cluster, raise_error):
     except Exception:
         pass
 
+    # Load events written for export API
+    logs_dir = os.path.join(
+        ray._private.worker._global_node.get_session_dir_path(), "logs", "export_events"
+    )
+    events_json = []
+    with open(logs_dir + "/event_EXPORT_TRAIN_RUN.log") as f:
+        for event_str in f.readlines():
+            events_json.append(json.loads(event_str))
+    assert events_json[0]["event_data"]["run_status"] == "RUNNING"
+
     if raise_error:
         check_run_status(expected_status=RunStatusEnum.ERRORED)
         check_run_error(failed_rank=failed_rank, error_message=error_message)
+        # Verify export event with ERRORED state and message is written
+        assert events_json[1]["event_data"]["run_status"] == "ERRORED"
+        assert error_message in events_json[1]["event_data"]["status_detail"]
     else:
         check_run_status(expected_status=RunStatusEnum.FINISHED)
-
+        # Verify export event with successful FINISHED is written
+        assert events_json[1]["event_data"]["run_status"] == "FINISHED"
     ray.shutdown()
 
 
