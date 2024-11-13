@@ -112,7 +112,7 @@ class PandasBlockBuilder(TableBlockBuilder):
     def _table_from_pydict(columns: Dict[str, List[Any]]) -> "pandas.DataFrame":
         pandas = lazy_import_pandas()
 
-        pd_columns: Dict[str, Any] = dict()
+        pd_columns: Dict[str, Any] = {}
 
         for col_name, col_vals in columns.items():
             np_col_vals = convert_to_numpy(col_vals)
