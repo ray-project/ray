@@ -435,7 +435,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         """
         keys: List[str] = sort_key.get_columns()
 
-        def iter_groups() -> Iterator[Tuple[KeyType, Block]]:
+        def iter_groups() -> Iterator[Tuple[Tuple[KeyType], Block]]:
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
@@ -449,15 +449,15 @@ class PandasBlockAccessor(TableBlockAccessor):
                 try:
                     if next_row is None:
                         next_row = next(iter)
-                    next_key = next_row[keys]
-                    while np.all(next_row[keys] == next_key):
+                    next_keys = next_row[keys]
+                    while np.all(next_row[keys] == next_keys):
                         end += 1
                         try:
                             next_row = next(iter)
                         except StopIteration:
                             next_row = None
                             break
-                    yield next_key, self.slice(start, end, copy=False)
+                    yield next_keys, self.slice(start, end, copy=False)
                     start = end
                 except StopIteration:
                     break
@@ -465,7 +465,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         builder = PandasBlockBuilder()
         for group_keys, group_view in iter_groups():
             # Aggregate.
-            accumulators = [agg.init(group_keys) for agg in aggs]
+            init_vals = group_keys
+            if len(group_keys) == 1:
+                init_vals = group_keys[0]
+            accumulators = [agg.init(init_vals) for agg in aggs]
             for i in range(len(aggs)):
                 accumulators[i] = aggs[i].accumulate_block(accumulators[i], group_view)
 
@@ -536,7 +539,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         keys = sort_key.get_columns()
 
         def key_fn(r):
-            if sort_key is not None:
+            if keys:
                 return tuple(r[k] for k in keys if k in r)
             else:
                 return (0,)
