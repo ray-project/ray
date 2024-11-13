@@ -79,11 +79,7 @@ class ParquetDatasink(_FileDatasink):
             with self.open_output_stream(write_path) as file:
                 tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
                 if user_schema is None:
-                    # We only allow unifying nullable fields by
-                    # promote_options=`default`
-                    output_schema = pa.unify_schemas(
-                        [table.schema for table in tables], promote_options="default"
-                    )
+                    output_schema = pa.unify_schemas([table.schema for table in tables])
                 else:
                     output_schema = user_schema
 
