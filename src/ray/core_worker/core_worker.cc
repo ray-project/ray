@@ -4042,7 +4042,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     RAY_LOG(INFO).WithField(task_id).WithField(current_actor_id)
         << "Cancel an actor task";
     CancelActorTaskOnExecutor(
-        caller_worker_id, task_id, force_kill, recursive, on_cancel_callback);
+        caller_worker_id, task_id, force_kill, recursive, std::move(on_cancel_callback));
   } else {
     RAY_CHECK(current_actor_id.IsNil());
     RAY_LOG(INFO).WithField(task_id) << "Cancel a normal task";
@@ -4053,7 +4053,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
                                       bool force_kill,
                                       bool recursive,
-                                      OnCanceledCallback on_canceled) {
+                                      const OnCanceledCallback &on_canceled) {
   bool requested_task_running;
   {
     absl::MutexLock lock(&mutex_);
