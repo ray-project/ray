@@ -595,6 +595,14 @@ py_test(
 )
 
 py_test(
+    name = "test_bundle_queue",
+    size = "small",
+    srcs = ["tests/test_bundle_queue.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = ["tests/test_autoscaler.py"],
