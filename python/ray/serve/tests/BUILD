@@ -468,33 +468,3 @@ py_test_module_list(
       "//python/ray/serve:serve_lib",
     ],
 )
-
-# Temporary list of tests to be tested with gRPC.
-# This will be removed once the support for gRPC is complete,
-# and the entire suite of tests will be tested with gRPC.
-py_test_module_list(
-    size = "large",
-    files = [
-        "test_api.py",
-        "test_autoscaling_policy.py",
-        "test_handle_cancellation.py",
-        "test_handle_streaming.py",
-        "test_http_cancellation.py",
-        "test_runtime_env_2.py",
-        "test_failure.py",
-        "test_gcs_failure.py",
-        "test_handle_2.py",
-        "test_advanced.py",
-    ],
-    name_suffix = "_with_grpc",
-    tags = [
-        "exclusive",
-        "team:serve",
-        "grpc",
-    ],
-    deps = [
-        ":common",
-        ":conftest",
-        "//python/ray/serve:serve_lib",
-    ],
-)

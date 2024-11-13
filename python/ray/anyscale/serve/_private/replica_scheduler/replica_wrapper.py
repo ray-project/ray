@@ -6,6 +6,9 @@ import grpc
 
 import ray
 from ray import cloudpickle
+from ray.anyscale.serve._private.constants import (
+    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+)
 from ray.anyscale.serve._private.replica_result import gRPCReplicaResult
 from ray.exceptions import ActorUnavailableError
 from ray.serve._private.common import ReplicaQueueLengthInfo, RunningReplicaInfo
@@ -24,7 +27,13 @@ class gRPCReplicaWrapper(ReplicaWrapper):
         ), "gRPC requests not supported for Java."
 
         self._channel = grpc.aio.insecure_channel(
-            f"{replica_info.node_ip}:{replica_info.port}"
+            f"{replica_info.node_ip}:{replica_info.port}",
+            options=[
+                (
+                    "grpc.max_receive_message_length",
+                    ANYSCALE_RAY_SERVE_REPLICA_GRPC_MAX_MESSAGE_LENGTH,
+                )
+            ],
         )
         self._stub = serve_proprietary_pb2_grpc.ASGIServiceStub(self._channel)
         self._loop = asyncio.get_running_loop()
