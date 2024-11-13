@@ -249,7 +249,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
-      const auto spec = task.GetTaskSpecification();
+      const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
