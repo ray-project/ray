@@ -281,7 +281,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
           // While we're over capacity and cannot run the task,
           // try to spill to a node that can run it.
-          bool did_spill = TrySpillback(work, is_infeasible);
+          bool did_spill = TrySpillback(work, spec, is_infeasible);
           if (did_spill) {
             work_it = dispatch_queue.erase(work_it);
             continue;
@@ -353,7 +353,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         ReleaseTaskArgs(task_id);
         // The local node currently does not have the resources to run the task, so we
         // should try spilling to another node.
-        bool did_spill = TrySpillback(work, is_infeasible);
+        bool did_spill = TrySpillback(work, spec, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
           // should stay on this node. We can skip the rest of the shape because the
@@ -433,7 +433,8 @@ void LocalTaskManager::SpillWaitingTasks() {
   while (it != waiting_task_queue_.begin()) {
     it--;
     const auto &task = (*it)->task;
-    const auto &task_id = task.GetTaskSpecification().TaskId();
+    const auto &spec = task.GetTaskSpecification();
+    const auto &task_id = spec.TaskId();
 
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
@@ -449,9 +450,9 @@ void LocalTaskManager::SpillWaitingTasks() {
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
-    if (!task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
+    if (!spec.IsSpreadSchedulingStrategy()) {
       scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-          task.GetTaskSpecification(),
+          spec,
           /*preferred_node_id*/ self_node_id_.Binary(),
           /*exclude_local_node*/ task_dependencies_blocked,
           /*requires_object_store_memory*/ true,
@@ -467,9 +468,8 @@ void LocalTaskManager::SpillWaitingTasks() {
         scheduling_node_id.Binary() != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
-      if (!task.GetTaskSpecification().GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
+      if (!spec.GetDependencies().empty()) {
+        task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
       }
       num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
@@ -491,15 +491,16 @@ void LocalTaskManager::SpillWaitingTasks() {
 }
 
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
+                                    const TaskSpecification &spec,
                                     bool &is_infeasible) {
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-      work->task.GetTaskSpecification(),
+      spec,
       // We should prefer to stay local if possible
       // to avoid unnecessary spillback
       // since this node is already selected by the cluster scheduler.
-      /*preferred_node_id*/ self_node_id_.Binary(),
-      /*exclude_local_node*/ false,
-      /*requires_object_store_memory*/ false,
+      /*preferred_node_id=*/self_node_id_.Binary(),
+      /*exclude_local_node=*/false,
+      /*requires_object_store_memory=*/false,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
@@ -510,9 +511,8 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   num_unschedulable_task_spilled_++;
-  if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(
-        work->task.GetTaskSpecification().TaskId());
+  if (!spec.GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
   }
   return true;
 }
