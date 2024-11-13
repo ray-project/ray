@@ -279,7 +279,7 @@ def test_get_task_name(shutdown_only):
     assert (
         task_name == expected_task_name
     ), f"Check normal task name failed. expected={expected_task_name}, \
-        actual={task_name}"
+actual={task_name}"
 
     # for an actor task
     @ray.remote
@@ -293,7 +293,7 @@ def test_get_task_name(shutdown_only):
     assert (
         task_name == expected_task_name
     ), f"Check actor task name failed. expected={expected_task_name}, \
-        actual={task_name}"
+actual={task_name}"
 
     # for a threaded actor task
     @ray.remote
@@ -307,7 +307,7 @@ def test_get_task_name(shutdown_only):
     assert (
         task_name == expected_task_name
     ), f"Check actor task name failed. expected={expected_task_name}, \
-        actual={task_name}"
+actual={task_name}"
 
     # for a async actor task
     @ray.remote
@@ -321,7 +321,7 @@ def test_get_task_name(shutdown_only):
     assert (
         task_name == expected_task_name
     ), f"Check actor task name failed. expected={expected_task_name}, \
-        actual={task_name}"
+actual={task_name}"
 
 
 def test_get_task_function(shutdown_only):
@@ -337,7 +337,7 @@ def test_get_task_function(shutdown_only):
     assert (
         task_function == expected_task_function
     ), f"Check normal task function failed. expected={expected_task_function}, \
-        actual={task_function}"
+actual={task_function}"
 
     # for an actor task
     @ray.remote
@@ -351,7 +351,7 @@ def test_get_task_function(shutdown_only):
     assert (
         task_function == expected_task_function
     ), f"Check actor task function failed. expected={expected_task_function}, \
-        actual={task_function}"
+actual={task_function}"
 
     # for a threaded actor task
     @ray.remote
@@ -369,7 +369,7 @@ def test_get_task_function(shutdown_only):
     assert (
         task_function == expected_task_function
     ), f"Check actor task function failed. expected={expected_task_function}, \
-        actual={task_function}"
+actual={task_function}"
 
     # for a async actor task
     @ray.remote
@@ -380,14 +380,14 @@ def test_get_task_function(shutdown_only):
     expected_task_function = (
         __name__
         + ".test_get_task_function.<locals>.AsyncActor.\
-            get_task_function_for_async_actor_task"
+get_task_function_for_async_actor_task"
     )
     async_actor = AsyncActor.remote()
     task_function = ray.get(async_actor.get_task_function_for_async_actor_task.remote())
     assert (
         task_function == expected_task_function
     ), f"Check actor task function failed. expected={expected_task_function}, \
-        actual={task_function}"
+actual={task_function}"
 
 
 def test_async_actor_task_id(shutdown_only):
