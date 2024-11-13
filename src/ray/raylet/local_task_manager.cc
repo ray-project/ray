@@ -104,7 +104,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(task));
+    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
   return can_dispatch;
 }
