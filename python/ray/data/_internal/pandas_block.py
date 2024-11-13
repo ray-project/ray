@@ -8,6 +8,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -434,8 +435,9 @@ class PandasBlockAccessor(TableBlockAccessor):
             If key is None then the k column is omitted.
         """
         keys: List[str] = sort_key.get_columns()
+        pd = lazy_import_pandas()
 
-        def iter_groups() -> Iterator[Tuple[Tuple[KeyType], Block]]:
+        def iter_groups() -> Iterator[Tuple[Sequence[KeyType], Block]]:
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
@@ -457,6 +459,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                         except StopIteration:
                             next_row = None
                             break
+                    if isinstance(next_keys, pd.Series):
+                        next_keys = next_keys.values
                     yield next_keys, self.slice(start, end, copy=False)
                     start = end
                 except StopIteration:

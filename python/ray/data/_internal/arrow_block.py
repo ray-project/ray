@@ -10,6 +10,7 @@ from typing import (
     Iterator,
     List,
     Optional,
+    Sequence,
     Tuple,
     TypeVar,
     Union,
@@ -519,9 +520,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             aggregation.
             If key is None then the k column is omitted.
         """
-        keys = sort_key.get_columns()
+        keys: List[str] = sort_key.get_columns()
 
-        def iter_groups() -> Iterator[Tuple[Tuple[KeyType], Block]]:
+        def iter_groups() -> Iterator[Tuple[Sequence[KeyType], Block]]:
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
