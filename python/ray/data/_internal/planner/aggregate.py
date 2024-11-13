@@ -24,6 +24,7 @@ from ray.data.context import DataContext
 def generate_aggregate_fn(
     key: Optional[str],
     aggs: List[AggregateFn],
+    batch_format: str,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to aggregate blocks by the specified key column or key
@@ -67,6 +68,7 @@ def generate_aggregate_fn(
             boundaries=boundaries,
             key=key,
             aggs=aggs,
+            batch_format=batch_format,
         )
         if DataContext.get_current().use_push_based_shuffle:
             scheduler = PushBasedShuffleTaskScheduler(agg_spec)

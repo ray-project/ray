@@ -6,6 +6,7 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -116,10 +117,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         self,
         boundaries: List[T],
         sort_key: SortKey,
+        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, sort_key],
-            reduce_args=[sort_key],
+            reduce_args=[sort_key, batch_format],
         )
 
     @staticmethod
@@ -138,11 +140,15 @@ class SortTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def reduce(
         sort_key: SortKey,
+        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, sort_key
+        normalized_blocks = TableBlockAccessor.normalize_block_types(
+            mapper_outputs, normalize_type=batch_format
+        )
+        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+            normalized_blocks, sort_key
         )
 
     @staticmethod

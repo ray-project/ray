@@ -29,10 +29,11 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         boundaries: List[KeyType],
         key: Optional[str],
         aggs: List[AggregateFn],
+        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, key, aggs],
-            reduce_args=[key, aggs],
+            reduce_args=[key, aggs, batch_format],
         )
 
     @staticmethod
@@ -62,11 +63,15 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     def reduce(
         key: Optional[str],
         aggs: List[AggregateFn],
+        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).aggregate_combined_blocks(
-            list(mapper_outputs), key, aggs, finalize=not partial_reduce
+        normalized_blocks = TableBlockAccessor.normalize_block_types(
+            mapper_outputs, normalize_type=batch_format
+        )
+        return BlockAccessor.for_block(normalized_blocks[0]).aggregate_combined_blocks(
+            list(normalized_blocks), key, aggs, finalize=not partial_reduce
         )
 
     @staticmethod
