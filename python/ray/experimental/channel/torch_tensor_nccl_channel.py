@@ -9,6 +9,7 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
+from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
@@ -552,10 +553,11 @@ def _do_init_nccl_group(
     custom_nccl_group: Optional[GPUCommunicator] = None,
 ):
     import torch
-
-    assert (
-        ray.get_gpu_ids()
-    ), "Actors participating in NCCL group must have at least one GPU assigned"
+    
+    if not custom_nccl_group or not isinstance(custom_nccl_group, CPUNcclGroup):
+        assert (
+            ray.get_gpu_ids()
+        ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
     if custom_nccl_group is not None:
@@ -648,7 +650,7 @@ def _init_nccl_group(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
     )
     for has_gpu, actor in zip(has_gpus, actors):
-        if not has_gpu:
+        if not has_gpu and not isinstance(custom_nccl_group, CPUNcclGroup):
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
                 'TorchTensor(transport="nccl") or '

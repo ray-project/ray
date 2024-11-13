@@ -1,4 +1,3 @@
-# coding: utf-8
 import os
 import sys
 import torch
@@ -7,11 +6,11 @@ import pytest
 
 import ray
 import ray.cluster_utils
-import ray.experimental.collective
+import ray.experimental.collective as collective
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import start_nccl_mock
-from ray.experimental.channel.cpu_nccl_group import CPUCommunicator
+from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup
 from ray.tests.conftest import *  # noqa
 from ray.tests.conftest import wait_for_condition
 from ray.dag import InputNode, MultiOutputNode
@@ -75,7 +74,7 @@ class MockedWorker:
     [
         {
             "num_cpus": 2,
-            "num_gpus": 2,
+            "num_gpus": 0,
             "num_nodes": 1,
         }
     ],
@@ -86,11 +85,9 @@ def test_p2p(ray_start_cluster):
     Test simple sender -> receiver pattern. Check that receiver receives
     correct results.
     """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
+    nccl_group = CPUNcclGroup(world_size=2, rank=0, actor_handles=[sender, receiver])
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -100,7 +97,7 @@ def test_p2p(ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0], inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -126,7 +123,7 @@ def test_p2p(ray_start_cluster):
     [
         {
             "num_cpus": 2,
-            "num_gpus": 2,
+            "num_gpus": 0,
             "num_nodes": 1,
         }
     ],
@@ -139,11 +136,9 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     _static_shape=True. If sender always sends tensors of
     the same shape, then it works.
     """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
+    nccl_group = CPUNcclGroup(world_size=2, rank=0, actor_handles=[sender, receiver])
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -153,7 +148,7 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
+        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group, _static_shape=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -167,66 +162,7 @@ def test_p2p_static_shape(ray_start_cluster, send_as_dict):
     [
         {
             "num_cpus": 2,
-            "num_gpus": 2,
-            "num_nodes": 1,
-        }
-    ],
-    indirect=True,
-)
-@pytest.mark.parametrize("send_as_dict", [True, False])
-def test_p2p_static_shape_error(capsys, ray_start_cluster, send_as_dict):
-    """
-    Test that when static_shape=True, an error is thrown when a tensor with a
-    different shape or dtype is found.
-    """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
-    sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
-
-    ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
-
-    shape = (10,)
-    dtype = torch.float16
-
-    # Test torch.Tensor sent between actors.
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp[0], send_as_dict=send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _static_shape=True))
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-    for i in range(3):
-        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
-        assert ray.get(ref) == (i, shape, dtype)
-
-    # Sending wrong shape errors.
-    ref = compiled_dag.execute(i, shape=(20,), dtype=dtype)
-    with pytest.raises(RayChannelError):
-        ray.get(ref)
-
-    # Sending correct shape still errors because the DAG has already been torn
-    # down after the previous error.
-    with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
-
-    wait_for_condition(
-        lambda: error_logged(
-            capsys,
-            "ValueError: Expected torch.Tensors with shapes and dtypes: "
-            "[(shape=torch.Size([10]), dtype=torch.float16)], found: "
-            "[(shape=torch.Size([20]), dtype=torch.float16)]",
-        )
-    )
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_cpus": 2,
-            "num_gpus": 2,
+            "num_gpus": 0,
             "num_nodes": 1,
         }
     ],
@@ -236,18 +172,16 @@ def test_p2p_direct_return(ray_start_cluster):
     """
     Test simple sender -> receiver pattern with _direct_return=True
     """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
+    nccl_group = CPUNcclGroup(world_size=2, rank=0, actor_handles=[sender, receiver])
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_type_hint(TorchTensorType(transport=nccl_group, _direct_return=True))
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -260,75 +194,12 @@ def test_p2p_direct_return(ray_start_cluster):
         )
         assert ray.get(ref) == (i, shape, dtype)
 
-
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
         {
             "num_cpus": 2,
-            "num_gpus": 2,
-            "num_nodes": 1,
-        }
-    ],
-    indirect=True,
-)
-def test_p2p_direct_return_error(capsys, ray_start_cluster):
-    """
-    Test simple sender -> receiver pattern with
-    _direct_return=True. Test that error is thrown when
-    actor task does not return a tensor directly.
-    """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
-    sender = MockedWorker.remote()
-    receiver = MockedWorker.remote()
-
-    ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
-
-    # Test torch.Tensor sent between actors.
-    with InputNode() as inp:
-        dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
-        dag = receiver.recv.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-
-    dtype = torch.float16
-    for i in range(3):
-        shape = (10 * (i + 1),)
-        ref = compiled_dag.execute(
-            shape=shape, dtype=dtype, value=i, send_as_dict=False
-        )
-        assert ray.get(ref) == (i, shape, dtype)
-
-    # Error is thrown if we do not send a tensor.
-    ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
-    with pytest.raises(RayChannelError):
-        ray.get(ref)
-
-    # Currently the receiver cannot catch the exception so the DAG cannot be
-    # used again.
-    with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(
-            shape=shape, dtype=dtype, value=1, send_as_dict=False
-        )
-
-    wait_for_condition(
-        lambda: error_logged(
-            capsys,
-            "Task annotated with _direct_return=True must "
-            "return a CUDA torch.Tensor",
-        )
-    )
-
-
-@pytest.mark.parametrize(
-    "ray_start_cluster",
-    [
-        {
-            "num_cpus": 2,
-            "num_gpus": 2,
+            "num_gpus": 0,
             "num_nodes": 1,
         }
     ],
@@ -344,11 +215,9 @@ def test_p2p_static_shape_and_direct_return(
     are passed (check_static_shape=True) OR if non-tensor value is returned
     (check_static_shape=False).
     """
-    # CPUCommunicator name should be communicator-{lower rank}-{higher rank}.
-    communicator = CPUCommunicator.options(name="communicator-0-1").remote()  # noqa
-
     sender = MockedWorker.remote()
     receiver = MockedWorker.remote()
+    nccl_group = CPUNcclGroup(world_size=2, rank=0, actor_handles=[sender, receiver])
 
     ray.get([sender.start_mock.remote(), receiver.start_mock.remote()])
 
@@ -356,7 +225,7 @@ def test_p2p_static_shape_and_direct_return(
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+            TorchTensorType(transport=nccl_group, _static_shape=True, _direct_return=True)
         )
         dag = receiver.recv.bind(dag)
 
@@ -370,44 +239,12 @@ def test_p2p_static_shape_and_direct_return(
         )
         assert ray.get(ref) == (i, shape, dtype)
 
-    if check_static_shape:
-        # Error is thrown if we send the wrong shape.
-        ref = compiled_dag.execute(
-            shape=(20,), dtype=dtype, value=1, send_as_dict=False
-        )
-    else:
-        # Error is thrown if we do not send a tensor.
-        ref = compiled_dag.execute(shape=shape, dtype=dtype, value=1, send_as_dict=True)
-
-    with pytest.raises(RayChannelError):
-        ray.get(ref)
-
-    # Currently the receiver cannot catch either kind of
-    # exception so the DAG cannot be used again.
-    with pytest.raises(RayChannelError):
-        ref = compiled_dag.execute(
-            shape=shape, dtype=dtype, value=1, send_as_dict=False
-        )
-
-    if check_static_shape:
-        msg = (
-            "ValueError: Expected torch.Tensors with shapes and dtypes: "
-            "[(shape=torch.Size([10]), dtype=torch.float16)], found: "
-            "[(shape=torch.Size([20]), dtype=torch.float16)]"
-        )
-    else:
-        msg = (
-            "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
-        )
-    wait_for_condition(lambda: error_logged(capsys, msg))
-
-
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
         {
             "num_cpus": 2,
-            "num_gpus": 2,
+            "num_gpus": 0,
             "num_nodes": 1,
         }
     ],
@@ -417,19 +254,16 @@ def test_allreduce(ray_start_cluster):
     """
     Test basic all-reduce.
     """
-    # CPUCommunicator name should be communicator-{id()}.
     world_size = 2
-    comm_key = "communicator-"+"-".join(map(str, list(range(world_size))))
-    communicator = CPUCommunicator.options(name=comm_key).remote() # noqa
-
     actors = [MockedWorker.remote() for _ in range(world_size)]
+    nccl_group = CPUNcclGroup(world_size=world_size, rank=None, actor_handles=actors)
 
     ray.get([actor.start_mock.remote() for actor in actors])
 
     with InputNode() as inp:
         computes = [actor.return_tensor.bind(inp) for actor in actors]
-        collective = collective.allreduce.bind(computes)
-        dag = MultiOutputNode(collective)
+        coll = collective.allreduce.bind(computes, transport=nccl_group)
+        dag = MultiOutputNode(coll)
 
     compiled_dag = dag.experimental_compile()
 

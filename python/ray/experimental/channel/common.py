@@ -146,7 +146,6 @@ class ChannelContext:
     @property
     def torch_device(self) -> "torch.device":
         if self._torch_device is None:
-
             if not ray.get_gpu_ids():
                 import torch
 

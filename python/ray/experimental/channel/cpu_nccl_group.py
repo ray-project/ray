@@ -6,7 +6,7 @@ import torch
 
 import ray
 import ray.experimental.channel as ray_channel
-from ray.experimental.channel.gpu_communicator import TorchTensorAllocator, ReduceOp
+from ray.experimental.channel.gpu_communicator import TorchTensorAllocator, ReduceOp, GPUCommunicator
 
 @ray.remote(num_cpus=0)
 class CPUCommunicator:
@@ -111,7 +111,6 @@ class CPUCommunicator:
             raise ValueError(f"Operation {op} not supported")
         return result
 
-
 class CPUNcclGroup(GPUCommunicator):
     """
     Mock the internal _NcclGroup to use a communicator actor instead of a NCCL group
@@ -131,18 +130,17 @@ class CPUNcclGroup(GPUCommunicator):
         self.num_ops = defaultdict(int)
         self.communicators = set()
 
-    def _ensure_communicator_exists(self, comm_key: str, is_p2p: bool = False):
+    def get_communicator(self, comm_key: str, is_p2p: bool = False):
         """Ensure the necessary communicator actor is created."""
         try:
-            ray.get_actor(name=comm_key)
+            return ray.get_actor(name=comm_key)
         except ValueError:
-            ray.remote(CPUCommunicator).options(name=comm_key).remote(2 if is_p2p else self._world_size)
+            return CPUCommunicator.options(name=comm_key).remote(2 if is_p2p else self._world_size)
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         """Send the tensor to the communicator actor."""
         comm_key = f"communicator-{self.get_self_rank()}-{peer_rank}"
-        self._ensure_communicator_exists(comm_key, is_p2p=True)
-        communicator = ray.get_actor(name=comm_key)
+        communicator = self.get_communicator(comm_key, is_p2p=True)
 
         self.communicators.add(communicator)
         ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key], tensor))
@@ -157,8 +155,7 @@ class CPUNcclGroup(GPUCommunicator):
     ):
         """Receive the tensor from the communicator actor."""
         comm_key = f"communicator-{peer_rank}-{self.get_self_rank()}"
-        self._ensure_communicator_exists(comm_key, is_p2p=True)
-        communicator = ray.get_actor(name=comm_key)
+        communicator = self.get_communicator(comm_key, is_p2p=True)
         self.communicators.add(communicator)
         received_tensor = ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key]))
 
@@ -178,8 +175,7 @@ class CPUNcclGroup(GPUCommunicator):
         # can't know id(self) without creating a CPUNcclGroup as a custom group
         all_ranks = [self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()]
         comm_key = "communicator-"+"-".join(map(str, sorted(all_ranks)))
-        self._ensure_communicator_exists(comm_key)
-        comm = ray.get_actor(name=comm_key)
+        comm = self.get_communicator(comm_key)
         self.communicators.add(comm)
 
         result = ray.get(comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op))
@@ -224,3 +220,10 @@ class CPUNcclGroup(GPUCommunicator):
         Return the number of ranks in the NCCL communicator.
         """
         return self._world_size
+
+
+    def recv_stream(self):
+        pass
+
+    def send_stream(self):
+        pass

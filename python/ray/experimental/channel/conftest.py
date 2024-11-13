@@ -51,7 +51,6 @@ def start_nccl_mock():
     tensor_allocator_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
-    ctx.set_torch_device(torch.device("cuda"))
 
 
 class TracedChannel(ray_channel.shared_memory_channel.Channel):

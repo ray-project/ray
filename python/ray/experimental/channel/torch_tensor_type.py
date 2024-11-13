@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
 
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    CPU = "cpu"
 
     def __init__(
         self,
@@ -67,11 +69,11 @@ class TorchTensorType(ChannelOutputType):
         self._custom_nccl_group: Optional[GPUCommunicator] = None
         if isinstance(transport, GPUCommunicator):
             self._custom_nccl_group = transport
-            transport = self.NCCL
+            transport = self.NCCL if not isinstance(transport, CPUNcclGroup) else self.CPU
 
-        if transport not in [self.AUTO, self.NCCL]:
+        if transport not in [self.AUTO, self.NCCL, self.CPU]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, or TorchTensorType.CPU"
             )
         self.transport = transport
 
