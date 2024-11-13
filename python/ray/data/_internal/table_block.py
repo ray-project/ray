@@ -307,3 +307,7 @@ class TableBlockAccessor(BlockAccessor):
                 "with block normalization."
             )
         return results
+
+    @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
