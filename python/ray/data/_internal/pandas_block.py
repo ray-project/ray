@@ -423,7 +423,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         This assumes the block is already sorted by key in ascending order.
 
         Args:
-            key: A SortKey object which holds column names/keys.
+            sort_key: A SortKey object which holds column names/keys.
             If this is ``None``, place all rows in a single group.
 
             aggs: The aggregations to do.
@@ -526,7 +526,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         Args:
             blocks: A list of partially combined and sorted blocks.
-            key: The column name of key or None for global aggregation.
+            sort_key: The column name of key or None for global aggregation.
             aggs: The aggregations to do.
             finalize: Whether to finalize the aggregation. This is used as an
                 optimization for cases where we repeatedly combine partially
