@@ -3,7 +3,6 @@ from typing import TYPE_CHECKING, List, Union
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
 
 try:
     import pyarrow
@@ -90,11 +89,14 @@ def unify_schemas(
                 cols_with_null_list.add(col_name)
             all_columns.add(col_name)
 
-    arrow_tensor_types = (
-        ArrowVariableShapedTensorType,
-        ArrowTensorType,
-        ArrowTensorTypeV2,
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_fixed_shape_tensor_types,
+        get_arrow_extension_tensor_types,
     )
+
+    arrow_tensor_types = get_arrow_extension_tensor_types()
+    arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
     columns_with_objects = set()
     columns_with_tensor_array = set()
     for col_name in all_columns:
@@ -124,12 +126,11 @@ def unify_schemas(
             for s in schemas
             if isinstance(s.field(col_name).type, arrow_tensor_types)
         ]
+
         if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
-            elif isinstance(
-                tensor_array_types[0], (ArrowTensorType, ArrowTensorTypeV2)
-            ):
+            elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
                 new_type = ArrowVariableShapedTensorType(
                     dtype=tensor_array_types[0].scalar_type,
                     ndim=len(tensor_array_types[0].shape),

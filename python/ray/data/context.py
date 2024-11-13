@@ -78,7 +78,7 @@ DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 #       total cumulative size (due to it internally utilizing int32 offsets)
 #
 #       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
-DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", False)
+DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
 
 DEFAULT_AUTO_LOG_STATS = False
 
