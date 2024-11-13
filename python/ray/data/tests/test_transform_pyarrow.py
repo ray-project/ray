@@ -446,9 +446,12 @@ def _create_dataset(op, data):
         assert op == "map_batches"
 
         def map_batches(x):
+            row_id = x["id"][0]
             return {
                 "id": x["id"],
-                "my_data": data[x["id"][0]],
+                "my_data": [
+                    data[row_id]
+                ],
             }
 
         ds = ds.map_batches(map_batches, batch_size=None)
@@ -466,8 +469,8 @@ def _create_dataset(op, data):
     "op, data",
     [
         ("map", [UnsupportedType(), 1]),
-        ("map_batches", [[None], [1]]),
-        ("map_batches", [[{"a": 1}], [{"a": 2}]]),
+        ("map_batches", [None, 1]),
+        ("map_batches", [{"a": 1}, {"a": 2}]),
     ],
 )
 def test_fallback_to_pandas_on_incompatible_data(
@@ -487,8 +490,8 @@ def test_fallback_to_pandas_on_incompatible_data(
 @pytest.mark.parametrize(
     "op, data, should_fail",
     [
-        ("map", [1, 2**100], False),
-        ("map_batches", [[1.0], [2**4]], True),
+        ("map_batches", [1, 2**100], False),
+        ("map_batches", [1.0, 2**4], True),
     ],
 )
 def test_pyarrow_conversion_error_handling(
