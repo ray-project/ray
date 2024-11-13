@@ -1254,6 +1254,9 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 210
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
     with pytest.warns(DeprecationWarning):
         ray.data.range(1).iter_tf_batches()
