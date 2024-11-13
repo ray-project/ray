@@ -13,10 +13,10 @@ attrs==21.4.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.31.0
+azure-core==1.32.0
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
-azure-mgmt-core==1.4.0
+azure-mgmt-core==1.5.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 backoff==1.10.0
@@ -32,7 +32,7 @@ charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1727884725164/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1729155160301/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1718138267740/work
@@ -59,7 +59,7 @@ google-auth-httplib2==0.2.0
 google-oauth==1.0.1
 googleapis-common-protos==1.61.0
 grpcio==1.66.2
-gymnasium==0.28.1
+gymnasium==1.0.0
 h11==0.12.0
 httplib2==0.22.0
 httptools==0.6.4
@@ -68,7 +68,6 @@ idna @ file:///croot/idna_1714398848350/work
 imageio==2.34.2
 importlib-metadata==6.11.0
 isodate==0.7.2
-jax-jumpy==1.0.0
 Jinja2==3.1.2
 jmespath==1.0.1
 jsonpatch @ file:///croot/jsonpatch_1714483231291/work
@@ -130,7 +129,7 @@ python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=0ad223b423c13a8d8dc7e73a3592e5e9bcff73492bf15e2b13e29b68eae2bfc7
+ray @ file:///home/ray/ray-2.39.0-cp39-cp39-manylinux2014_x86_64.whl#sha256=2a43624caf9f3b89643d3c700f153768dcf6b168e4a2a5f44454a3c680acc79c
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0
