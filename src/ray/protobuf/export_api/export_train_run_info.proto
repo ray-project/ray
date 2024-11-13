@@ -20,23 +20,25 @@ package ray.rpc;
 message ExportTrainRunInfo {
   // State of an train run.
   enum RunStatus {
+    UNKNOWN = 0;
     // The train run is running
-    RUNNING = 0;
+    RUNNING = 1;
     // The train run was terminated as expected
-    FINISHED = 1;
+    FINISHED = 2;
     // The train run was terminated early due to errors in the training function
-    ERRORED = 2;
+    ERRORED = 3;
     // The train run was terminated early due to system errors or controller errors
-    ABORTED = 3;
-  }
-
-  // State of an actor.
-  enum ActorStatus {
-    DEAD = 0;
-    ALIVE = 1;
+    ABORTED = 4;
   }
 
   message TrainWorkerInfo {
+    // State of an actor.
+    enum ActorStatus {
+      UNKNOWN = 0;
+      DEAD = 1;
+      ALIVE = 2;
+    }
+
     // Actor ID of the worker.
     string actor_id = 1;
     // World rank of the worker.
