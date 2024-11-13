@@ -210,8 +210,6 @@ def test_groupby_large_udf_returns(ray_start_regular_shared):
 
 @pytest.mark.parametrize("keys", ["A", ["A", "B"]])
 def test_agg_inputs(ray_start_regular_shared, keys):
-    from ray.data._internal.aggregate import Max
-
     xs = list(range(100))
     ds = ray.data.from_items([{"A": (x % 3), "B": x, "C": (x % 2)} for x in xs])
 
