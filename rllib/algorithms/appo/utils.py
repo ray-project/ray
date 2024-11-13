@@ -23,9 +23,21 @@ class CircularBuffer:
         self._lock = threading.Lock()
 
     def add(self, batch):
+        dropped_ts = 0
+
         # Add buffer and k=0 information to the deque.
         with self._lock:
+            len_ = len(self._buffer)
+            if len_ == self._buffer.maxlen:
+                dropped_batch = self._buffer[0][0]
+                if dropped_batch is not None:
+                    dropped_ts += (
+                        dropped_batch.env_steps()
+                        * (self.max_picks_per_batch - self._buffer[0][1])
+                    )
             self._buffer.append([batch, 0])
+
+        return dropped_ts
 
     def sample(self):
         k = entry = batch = None
@@ -37,8 +49,7 @@ class CircularBuffer:
                 continue
             # Sample a random buffer index.
             with self._lock:
-                len_ = len(self._buffer)
-                entry = self._buffer[random.randint(0, len_ - 1)]
+                entry = self._buffer[random.randint(0, len(self._buffer) - 1)]
             batch, k = entry
             # Ignore batches that have already been invalidated.
             if batch is not None:
@@ -51,7 +62,7 @@ class CircularBuffer:
         # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
         if k == self.max_picks_per_batch:
             entry[0] = None
-            entry[1] = 0
+            entry[1] = None
 
         # Return the sampled batch.
         return batch

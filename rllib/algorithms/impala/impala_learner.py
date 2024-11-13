@@ -188,7 +188,12 @@ class IMPALALearner(Learner):
                 )
                 # Add the batch directly to the circular buffer.
                 if self._circular_buffer:
-                    self._circular_buffer.add(ma_batch)
+                    ts_dropped = self._circular_buffer.add(ma_batch)
+                    self.metrics.log_value(
+                        (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                        ts_dropped,
+                        reduce="sum",
+                    )
                 else:
                     # Enqueue to Learner thread's in-queue.
                     _LearnerThread.enqueue(

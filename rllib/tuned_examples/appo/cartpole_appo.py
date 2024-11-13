@@ -15,10 +15,14 @@ args = parser.parse_args()
 config = (
     APPOConfig()
     .environment("CartPole-v1")
+    .learners(num_learners=0)
     .training(
+        train_batch_size_per_learner=500,
+        target_network_update_freq=2 * 500,  # 2n = 2*K*N
         vf_loss_coeff=0.05,
-        entropy_coeff=0.0,
-        # not needed: replaced by circular buffer: learner_queue_size=1,
+        entropy_coeff=0.01,
+        # not needed: replaced by circular buffer:
+        # learner_queue_size=1,
         grad_clip=10.0,
         lr=0.0001,
     )
