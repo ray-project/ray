@@ -1801,7 +1801,7 @@ cdef void execute_task(
                 else:
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
-                        name_of_concurrency_group_to_execute, task_id=task_id, 
+                        name_of_concurrency_group_to_execute, task_id=task_id,
                         task_name=task_name, func_args=(actor, *arguments),
                         func_kwargs=kwarguments)
 
@@ -3421,7 +3421,8 @@ cdef class CoreWorker:
         if task_name is None:
             # if it is not within asyncio context, fallback to TaskName
             # obtainable from core worker.
-            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName().decode("utf-8")
+            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName() \
+                .decode("utf-8")
         return task_name
 
     def get_current_task_function(self) -> str:
@@ -3441,9 +3442,10 @@ cdef class CoreWorker:
         if task_function is None:
             # if it is not within asyncio context, fallback to TaskName
             # obtainable from core worker.
-            task_function = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskFunction().decode("utf-8")
+            task_function = CCoreWorkerProcess.GetCoreWorker() \
+                .GetCurrentTaskFunction().decode("utf-8")
         return task_function
-    
+
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
 
