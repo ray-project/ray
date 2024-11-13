@@ -204,23 +204,28 @@ class AutoscalingCoordinator:
         """Reallocate cluster resources."""
         now = time.time()
         cluster_node_resources = copy.deepcopy(self._cluster_node_resources)
+        ongoing_reqs = sorted(
+            [req for req in self._ongoing_reqs.values() if req.expiration_time >= now]
+        )
         # Allocate resources to ongoing requests.
         # TODO(hchen): Optimize the following triple loop.
-        for ongoing_req in sorted(self._ongoing_reqs.values()):
-            if ongoing_req.expiration_time < now:
-                continue
+        for ongoing_req in ongoing_reqs:
             ongoing_req.allocated_resources = []
             for req in ongoing_req.requested_resources:
                 for node_resource in cluster_node_resources:
                     if self._maybe_sutract_resources(node_resource, req):
                         ongoing_req.allocated_resources.append(req)
                         break
-        # Allocate remaining resources to the first request_remaining request.
+        # Allocate remaining resources.
+        # NOTE, to handle the case where multiple datasets are running concurrently,
+        # now we double-allocate remaining resources to all requesters with
+        # `request_remaining=True`.
+        # This achieves parity with the behavior before Ray Data was integrated with
+        # AutoscalingCoordinator, where each dataset assumes it has the whole cluster.
         # TODO(hchen): handle multiple request_remaining requests better.
-        for ongoing_req in sorted(self._ongoing_reqs.values()):
+        for ongoing_req in ongoing_reqs:
             if ongoing_req.request_remaining:
                 ongoing_req.allocated_resources.extend(cluster_node_resources)
-                break
 
         if logger.isEnabledFor(logging.DEBUG):
             msg = "Allocated resources:\n"

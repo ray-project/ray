@@ -26,6 +26,14 @@ def enable_actor_pool_downscaling(monkeypatch):
     yield
 
 
+@pytest.fixture(autouse=True)
+def patch_autoscaling_coordinator():
+    with patch(
+        "ray.anyscale.air._internal.autoscaling_coordinator.get_or_create_autoscaling_coordinator"  # noqa: E501
+    ):
+        yield
+
+
 def patch_time(func):
     global MOCKED_CURRENT_TIME
     MOCKED_CURRENT_TIME = 0
@@ -150,7 +158,10 @@ class TestClusterAutoscaling(unittest.TestCase):
         with patch("ray.nodes", return_value=node_table):
             assert autoscaler._get_node_resource_spec_and_count() == expected
 
-    def test_try_scale_up_cluster(self):
+    @patch(
+        "ray.anyscale.data.autoscaler.anyscale_autoscaler.AnyscaleAutoscaler._send_resource_request",  # noqa: E501
+    )
+    def test_try_scale_up_cluster(self, _send_resource_request):
         # Test _try_scale_up_cluster
         scaling_up_factor = 1.5
         autoscaler = AnyscaleAutoscaler(
@@ -159,9 +170,8 @@ class TestClusterAutoscaling(unittest.TestCase):
             execution_id="test_execution_id",
             cluster_scaling_up_factor=scaling_up_factor,
         )
-        autoscaler._get_cluster_cpu_and_mem_util = MagicMock(
-            return_value=(1, 1),
-        )
+        _send_resource_request.assert_called_with([])
+
         resource_spec1 = _NodeResourceSpec.of(
             self._node_type1["CPU"], self._node_type1["memory"]
         )
@@ -174,17 +184,41 @@ class TestClusterAutoscaling(unittest.TestCase):
                 resource_spec2: 1,
             },
         )
-        autoscaler._send_resource_request = MagicMock()
-        autoscaler._try_scale_up_cluster()
 
-        expected_resource_request = [
-            {"CPU": self._node_type1["CPU"], "memory": self._node_type1["memory"]}
-        ] * math.ceil(scaling_up_factor * 2)
-        expected_resource_request.extend(
-            [{"CPU": self._node_type2["CPU"], "memory": self._node_type2["memory"]}]
-            * math.ceil(scaling_up_factor * 1)
+        # Test different CPU/memory utilization combinations.
+        scale_up_threshold = (
+            AnyscaleAutoscaler.DEFAULT_CLUSTER_SCALING_UP_UTIL_THRESHOLD
         )
-        autoscaler._send_resource_request.assert_called_with(expected_resource_request)
+        for cpu_util in [scale_up_threshold / 2, scale_up_threshold]:
+            for mem_util in [scale_up_threshold / 2, scale_up_threshold]:
+                # Should scale up if either CPU or memory utilization is above
+                # the threshold.
+                should_scale_up = (
+                    cpu_util >= scale_up_threshold or mem_util >= scale_up_threshold
+                )
+                autoscaler._get_cluster_cpu_and_mem_util = MagicMock(
+                    return_value=(cpu_util, mem_util),
+                )
+                autoscaler._try_scale_up_cluster()
+                if not should_scale_up:
+                    _send_resource_request.assert_called_with([])
+                else:
+                    expected_resource_request = [
+                        {
+                            "CPU": self._node_type1["CPU"],
+                            "memory": self._node_type1["memory"],
+                        }
+                    ] * math.ceil(scaling_up_factor * 2)
+                    expected_resource_request.extend(
+                        [
+                            {
+                                "CPU": self._node_type2["CPU"],
+                                "memory": self._node_type2["memory"],
+                            }
+                        ]
+                        * math.ceil(scaling_up_factor * 1)
+                    )
+                    _send_resource_request.assert_called_with(expected_resource_request)
 
 
 class MockAutoscalingActorPool(AutoscalingActorPool):

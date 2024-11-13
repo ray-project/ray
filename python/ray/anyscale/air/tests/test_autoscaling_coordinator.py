@@ -94,6 +94,15 @@ class TestAutoscalingCoordinator(unittest.TestCase):
         assert res1 == []
         assert res2 == req2 + [{"CPU": 8, "GPU": 4, "object_store_memory": 900}]
 
+        # After req2_timeout, req2 should be expired.
+        MOCKED_TIME = req2_timeout + 0.1
+        as_coordinator.tick()
+        mock_request_resources.assert_called_with(bundles=[])
+        res1 = as_coordinator.get_allocated_resources("requester1")
+        res2 = as_coordinator.get_allocated_resources("requester2")
+        assert res1 == []
+        assert res2 == []
+
         # Test canceling a request
         as_coordinator.cancel_request("requester2")
         res2 = as_coordinator.get_allocated_resources("requester2")
