@@ -34,7 +34,7 @@ def ray_start_gpu_cluster():
         runtime_env={
             "env_vars": {
                 "RAY_TRAIN_ENABLE_STATE_TRACKING": "1",
-                "RAY_enable_export_api_write": "true",
+                "RAY_enable_export_api_write": "1",
             }
         },
         ignore_reinit_error=True,
@@ -218,7 +218,7 @@ def test_state_manager(ray_start_gpu_cluster):
         assert run_info and run_info.id == run_id
 
 
-@pytest.mark.parametrize("gpus_per_worker", [0])
+@pytest.mark.parametrize("gpus_per_worker", [0, 1, 2])
 def test_track_e2e_training(ray_start_gpu_cluster, gpus_per_worker):
     os.environ["RAY_TRAIN_ENABLE_STATE_TRACKING"] = "1"
     num_workers = 4
