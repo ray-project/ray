@@ -155,7 +155,7 @@ class _DeploymentHandleBase:
 
         # Record handle api telemetry when not in the proxy
         if (
-            self.init_handle_options._source != DeploymentHandleSource.PROXY
+            self.init_options._source != DeploymentHandleSource.PROXY
             and self.__class__ == DeploymentHandle
         ):
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
