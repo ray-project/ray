@@ -797,7 +797,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
   /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
-  /// that calls this function in application code can properly retry when hitting the 
+  /// that calls this function in application code can properly retry when hitting the
   /// IOError.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
