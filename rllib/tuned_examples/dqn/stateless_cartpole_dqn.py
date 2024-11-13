@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.dqn import DQNConfig
+from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
@@ -12,7 +13,7 @@ parser.set_defaults(
     num_env_runners=3,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
@@ -43,6 +44,7 @@ config = (
             fcnet_bias_initializer="zeros_",
             head_fcnet_bias_initializer="zeros_",
             head_fcnet_hiddens=[256],
+            head_fcnet_activation="tanh",
             lstm_kernel_initializer="xavier_uniform_",
             use_lstm=True,
             max_seq_len=20,
