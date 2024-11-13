@@ -186,7 +186,6 @@ class FunctionTrainable(Trainable):
                 driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
                 # Reset run_id for the trial if the config changes, since a brand new trial is being slotted to run.
-                # This is a niche use cases and most likely not needed.
                 run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
