@@ -525,7 +525,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self.to_block()
+                yield tuple(), self.to_block()
                 return
 
             start = end = 0

@@ -134,6 +134,12 @@ def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     assert agg_ds.count() == 0
 
 
+def test_groupby_none(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
+    assert ds.groupby(None).max().take_all() == [{"max(id)": 9}]
+
+
 def test_groupby_errors(ray_start_regular_shared):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK

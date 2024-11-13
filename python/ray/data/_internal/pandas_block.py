@@ -439,7 +439,7 @@ class PandasBlockAccessor(TableBlockAccessor):
             """Creates an iterator over zero-copy group views."""
             if not keys:
                 # Global aggregation consists of a single "group", so we short-circuit.
-                yield None, self.to_block()
+                yield tuple(), self.to_block()
                 return
 
             start = end = 0
@@ -449,7 +449,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 try:
                     if next_row is None:
                         next_row = next(iter)
-                    next_keys = next_row[keys]
+                    next_keys = tuple(next_row[keys])
                     while np.all(next_row[keys] == next_keys):
                         end += 1
                         try:
