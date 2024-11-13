@@ -157,6 +157,10 @@ def do_exec_tasks(
 
         done = False
         executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+        import nvtx
+
+        pr = nvtx.Profile()
+        pr.enable()
         while True:
             if done:
                 break
@@ -166,6 +170,7 @@ def do_exec_tasks(
                 )
                 if done:
                     break
+        pr.disable()
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise

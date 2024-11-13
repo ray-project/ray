@@ -33,7 +33,18 @@ if sys.platform != "linux" and sys.platform != "darwin":
 USE_GPU = bool(os.environ.get("RAY_PYTEST_USE_GPU", 0))
 
 
-@ray.remote
+@ray.remote(
+    runtime_env={
+        "nsight": {
+            "t": "cuda,cudnn,cublas,nvtx",
+            "sample": "cpu",
+            "cuda-memory-usage": "true",
+            "cuda-graph-trace": "graph",
+            "cudabacktrace": "all",
+            "stop-on-exit": "true",
+        }
+    }
+)
 class TorchTensorWorker:
     def __init__(self):
         self.device = torch_utils.get_devices()[0]
