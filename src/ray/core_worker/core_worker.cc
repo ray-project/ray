@@ -1868,7 +1868,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
     }
   }
   // Also try to delete all objects locally.
-  return DeleteImpl(object_ids, local_only);
+  Status status = DeleteImpl(object_ids, local_only);
+  if (status.IsIOError()) {
+    return Status::UnexpectedSystemExit(status.ToString());
+  } else {
+    return status;
+  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
