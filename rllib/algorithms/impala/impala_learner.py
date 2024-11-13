@@ -285,7 +285,12 @@ class _GPULoaderThread(threading.Thread):
             )
 
             if self._circular_buffer:
-                self._circular_buffer.add(ma_batch_on_gpu)
+                ts_dropped = self._circular_buffer.add(ma_batch_on_gpu)
+                self.metrics.log_value(
+                    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                    ts_dropped,
+                    reduce="sum",
+                )
             else:
                 # Enqueue to Learner thread's in-queue.
                 _LearnerThread.enqueue(self._out_queue, ma_batch_on_gpu, self.metrics)
