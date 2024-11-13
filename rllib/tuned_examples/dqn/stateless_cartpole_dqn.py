@@ -18,23 +18,19 @@ args = parser.parse_args()
 
 config = (
     DQNConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .environment(env=StatelessCartPole)
+    .environment(StatelessCartPole)
     .training(
         lr=0.0003,
         train_batch_size_per_learner=128,
         replay_buffer_config={
             "type": "EpisodeReplayBuffer",
-            "capacity": 150000,
+            "capacity": 50000,
         },
         n_step=1,
-        double_q=False,
-        dueling=False,
+        double_q=True,
+        dueling=True,
         num_atoms=1,
-        epsilon=[(0, 1.0), (100000, 0.02)],
+        epsilon=[(0, 1.0), (50000, 0.02)],
     )
     .rl_module(
         # Settings identical to old stack.
