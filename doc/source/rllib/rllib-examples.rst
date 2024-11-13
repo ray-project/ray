@@ -349,7 +349,7 @@ in roughly 5 minutes. It can be run as follows on a single g5.24xlarge (or g6.24
 .. code-block:: bash
 
     $ cd ray/rllib/tuned_examples/ppo
-    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
+    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
 Note that some of the files in this folder are used for RLlib's daily or weekly release tests as well.
 
