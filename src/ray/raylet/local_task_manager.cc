@@ -249,7 +249,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
-      const auto spec = task.GetTaskSpecification();
+      const auto &spec = task.GetTaskSpecification();
 
 
       RAY_LOG(INFO) << "first task spec empty ? " << spec.RuntimeEnvInfo().serialized_runtime_env().empty();
