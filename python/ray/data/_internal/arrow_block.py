@@ -630,7 +630,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         def key_fn(r):
             if keys:
-                return tuple(r[k] for k in keys if k in r)
+                return tuple(r[keys])
             else:
                 return (0,)
 
