@@ -181,15 +181,15 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-const rpc::RuntimeEnvInfo& TaskSpecification::RuntimeEnvInfo() const {
+const rpc::RuntimeEnvInfo &TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }
 
-const std::string& TaskSpecification::SerializedRuntimeEnv() const {
+const std::string &TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
-const rpc::RuntimeEnvConfig& TaskSpecification::RuntimeEnvConfig() const {
+const rpc::RuntimeEnvConfig &TaskSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }
 

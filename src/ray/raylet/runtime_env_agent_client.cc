@@ -16,6 +16,7 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/beast.hpp>
 #include <boost/beast/http.hpp>
+#include <chrono>
 #include <cstdlib>
 #include <functional>
 #include <iostream>
@@ -23,13 +24,11 @@
 #include <queue>
 #include <string>
 
-#include <chrono>
-
 #include "absl/container/flat_hash_set.h"
-#include "ray/raylet/resolution_cache.h"
 #include "absl/strings/str_format.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
+#include "ray/raylet/resolution_cache.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
@@ -49,12 +48,12 @@ struct ResolutionKey {
   std::string host;
   std::string port;
 
-  bool operator==(const ResolutionKey& rhs) const {
+  bool operator==(const ResolutionKey &rhs) const {
     return host == rhs.host && port == rhs.port;
   }
 
   template <typename H>
-  friend H AbslHashValue(H h, const ResolutionKey& k) {
+  friend H AbslHashValue(H h, const ResolutionKey &k) {
     return H::combine(std::move(h), k.host, k.port);
   }
 };
@@ -117,7 +116,7 @@ class Session : public std::enable_shared_from_this<Session> {
 
     bool found = false;
 
-    int cache_hit_count  = 0;
+    int cache_hit_count = 0;
     int cache_miss_count = 0;
     {
       std::lock_guard lck(cache_mutex_);
@@ -134,13 +133,16 @@ class Session : public std::enable_shared_from_this<Session> {
       cache_miss_count = cache_miss;
     }
 
-    RAY_LOG_EVERY_N(INFO, 10) << "Cache hit " << cache_hit_count << ", cache miss " << cache_miss_count;
+    RAY_LOG_EVERY_N(INFO, 10) << "Cache hit " << cache_hit_count << ", cache miss "
+                              << cache_miss_count;
 
     if (found) {
       stream_->expires_never();
       // Send the HTTP request to the remote host
       http::async_write(
-        *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+          *stream_,
+          req_,
+          beast::bind_front_handler(&Session::on_write, shared_from_this()));
     } else {
       // Starts the state machine by looking up the domain name.
       resolver_.async_resolve(
@@ -208,8 +210,9 @@ class Session : public std::enable_shared_from_this<Session> {
 
     stream_->expires_never();
     // Send the HTTP request to the remote host
-    http::async_write(
-        *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    http::async_write(*stream_,
+                      req_,
+                      beast::bind_front_handler(&Session::on_write, shared_from_this()));
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
@@ -251,7 +254,6 @@ class Session : public std::enable_shared_from_this<Session> {
       std::lock_guard lck(cache_mutex_);
       tcp_stream_cache_.emplace_back(std::move(stream_));
     }
-    
 
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != beast::errc::not_connected) {
@@ -259,7 +261,8 @@ class Session : public std::enable_shared_from_this<Session> {
     }
 
     auto end = std::chrono::steady_clock::now();
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
+    auto elapsed =
+        std::chrono::duration_cast<std::chrono::milliseconds>(end - start_).count();
     RAY_LOG(INFO) << "Session takes " << elapsed;
   }
 
@@ -431,7 +434,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              GetOrCreateRuntimeEnvCallback callback) override {
     callback(true, "{}", "");
     return;
-    
+
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {

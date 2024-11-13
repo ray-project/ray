@@ -81,6 +81,8 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
 }
 
 bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
+  { const auto &spec = work->task.GetTaskSpecification(); }
+
   const auto &task = work->task;
   const auto &task_id = task.GetTaskSpecification().TaskId();
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
@@ -93,18 +95,18 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
         {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      tasks_to_dispatch_[scheduling_key].emplace_back(std::move(task));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), work);
+      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(task));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].push_back(work);
+    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(task));
   }
   return can_dispatch;
 }
@@ -251,8 +253,8 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       const auto &task = work->task;
       const auto &spec = task.GetTaskSpecification();
 
-
-      RAY_LOG(INFO) << "first task spec empty ? " << spec.RuntimeEnvInfo().serialized_runtime_env().empty();
+      RAY_LOG(INFO) << "first task spec empty ? "
+                    << spec.RuntimeEnvInfo().serialized_runtime_env().empty();
 
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {

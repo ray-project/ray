@@ -5,7 +5,8 @@ import time
 import tqdm
 
 from ray.util.state import summarize_tasks
-from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
+# from many_nodes_tests.dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
@@ -68,7 +69,7 @@ def no_resource_leaks():
 @click.command()
 @click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
 def test(num_tasks):
-    addr = ray.init()
+    ray.init()
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
@@ -95,7 +96,10 @@ def test(num_tasks):
     print(f"Peak memory usage per processes:\n {usage}")
     ray.get(api_caller.stop.remote())
 
-    print(f"end time = {end_time}, start time = {start_time}, sleep time = {sleep_time}, num tasks = {num_tasks}")
+    print(
+        f"end time = {end_time}, start time = {start_time},"
+        "sleep time = {sleep_time}, num tasks = {num_tasks}"
+    )
 
     rate = num_tasks / (end_time - start_time - sleep_time)
     print(
