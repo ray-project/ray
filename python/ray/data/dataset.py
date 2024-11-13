@@ -701,10 +701,7 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Union[
-            Callable[["pandas.DataFrame"], "pandas.Series"],
-            Callable[["pyarrow.Table"], "pyarrow.Array"],
-        ],
+        fn: Callable[[DataBatch], Union[pyarrow.Array, pandas.Series, np.ndarray]],
         *,
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
