@@ -1179,7 +1179,6 @@ def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_pe
         assert len(table) == num_rows_per_file
 
 
-
 @pytest.mark.parametrize("shuffle", [True, False, "file"])
 def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 
@@ -1338,14 +1337,16 @@ def test_write_with_schema(ray_start_regular_shared, tmp_path):
     ids=["row1_b_null", "row1_a_null", "row_each_null"],
 )
 def test_write_auto_infer_nullable_fields(tmp_path, ray_start_regular_shared, row_data):
-    # Write each row to a separate file.
-    for i, row in enumerate(row_data):
-        ray.data.from_pandas(pd.DataFrame([row])).write_parquet(
-            os.path.join(tmp_path, f"file_{i}.parquet")
-        )
-
-    # Read files and merge into a single file shouldn't error.
-    ray.data.read_parquet(tmp_path).write_parquet(tmp_path, num_rows_per_file=2)
+    """
+    Test that when writing multiple blocks, we can automatically infer nullable
+    fields.
+    """
+    ctx = DataContext.get_current()
+    # So that we force multiple blocks on mapping.
+    ctx.target_max_block_size = 1
+    ds = ray.data.range(len(row_data)).map(lambda i: row_data[i["id"]])
+    # So we force writing to a single file.
+    ds.write_parquet(tmp_path, num_rows_per_file=2)
 
 
 if __name__ == "__main__":
