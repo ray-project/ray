@@ -185,7 +185,7 @@ rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }
 
-std::string TaskSpecification::SerializedRuntimeEnv() const {
+const std::string& TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 

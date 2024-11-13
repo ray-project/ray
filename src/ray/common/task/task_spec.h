@@ -308,7 +308,7 @@ class TaskSpecification : public MessageWrapper<rpc::TaskSpec> {
 
   [[nodiscard]] rpc::RuntimeEnvInfo RuntimeEnvInfo() const;
 
-  std::string SerializedRuntimeEnv() const;
+  const std::string& SerializedRuntimeEnv() const;
 
   rpc::RuntimeEnvConfig RuntimeEnvConfig() const;
 
