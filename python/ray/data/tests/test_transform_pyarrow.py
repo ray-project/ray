@@ -449,9 +449,7 @@ def _create_dataset(op, data):
             row_id = x["id"][0]
             return {
                 "id": x["id"],
-                "my_data": [
-                    data[row_id]
-                ],
+                "my_data": [data[row_id]],
             }
 
         ds = ds.map_batches(map_batches, batch_size=None)
@@ -488,10 +486,16 @@ def test_fallback_to_pandas_on_incompatible_data(
 
 
 @pytest.mark.parametrize(
-    "op, data, should_fail",
+    "op, data, should_fail, expected_type",
     [
-        ("map_batches", [1, 2**100], False),
-        ("map_batches", [1.0, 2**4], True),
+        # Case A: Upon serializing to Arrow fallback to `ArrowPythonObjectType`
+        ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
+        # Case B: No fallback to `ArrowPythonObjectType` and hence arrow is enforcing
+        #         deduced schema
+        ("map_batches", [1.0, 2**4], True, None),
+        ("map_batches", ["1.0", 2**4], True, None),
     ],
 )
 def test_pyarrow_conversion_error_handling(
@@ -499,15 +503,20 @@ def test_pyarrow_conversion_error_handling(
     op,
     data,
     should_fail: bool,
+    expected_type: pa.DataType,
 ):
     # Ray Data infers the block type (arrow or pandas) and the block schema
-    # based on the first UDF output.
-    # In one of the following cases, an error will be raised:
-    # * The first UDF output is compatible with Arrow, but the second is not.
-    # * Both UDF outputs are compatible with Arrow, but the second has a different
-    #   schema.
-    # Check that we'll raise an ArrowConversionError with detailed information
-    # about the incompatible data.
+    # based on the first *block* produced by UDF.
+    #
+    # These tests simulate following scenarios
+    #   1. (Case A) Type of the value of the first block is deduced as Arrow scalar
+    #      type, but second block carries value that overflows pa.int64 representation,
+    #      abd column henceforth will be serialized as `ArrowPythonObjectExtensionType`
+    #      coercing first block to it as well
+    #
+    #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have
+    #      diverging types and therefore Arrow fails during merging of these blocks
+    #      into 1
     ds = _create_dataset(op, data)
 
     if should_fail:
@@ -516,10 +525,16 @@ def test_pyarrow_conversion_error_handling(
 
         error_msg = str(e.value)
         expected_msg = "ArrowConversionError: Error converting data to Arrow:"
-        assert expected_msg in error_msg, error_msg
-        assert "my_data" in error_msg, error_msg
+
+        assert expected_msg in error_msg
+        assert "my_data" in error_msg
+
     else:
         ds.materialize()
+
+        assert ds.schema().base_schema == pa.schema(
+            [pa.field("id", pa.int64()), pa.field("my_data", expected_type)]
+        )
 
         assert ds.take_all() == [
             {"id": i, "my_data": data[i]} for i in range(len(data))
