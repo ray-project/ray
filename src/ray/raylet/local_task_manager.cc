@@ -130,13 +130,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
 
-    if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
+    auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
+    if (sched_cls_iter == info_by_sched_cls_.end()) {
       // Initialize the class info.
-      info_by_sched_cls_.emplace(
-          scheduling_class,
-          SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(scheduling_class)));
+      sched_cls_iter = info_by_sched_cls_
+                           .emplace(scheduling_class,
+                                    SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(
+                                        scheduling_class)))
+                           .first;
     }
-    auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
+    auto &sched_cls_info = sched_cls_iter->second;
 
     // Fair scheduling is applied only when the total CPU requests exceed the node's
     // capacity. This skips scheduling classes whose number of running tasks exceeds the
