@@ -250,6 +250,10 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
       auto &work = *work_it;
       const auto &task = work->task;
       const auto spec = task.GetTaskSpecification();
+
+
+      RAY_LOG(INFO) << "first task spec empty ? " << spec.RuntimeEnvInfo().serialized_runtime_env().empty();
+
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;

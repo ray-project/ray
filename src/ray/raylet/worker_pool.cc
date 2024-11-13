@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
+#include <boost/stacktrace.hpp>
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -230,6 +231,9 @@ void WorkerPool::AddWorkerProcess(
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options) {
+  
+  RAY_LOG(INFO) << "Add worker process, runtime env empty " << runtime_env_info.serialized_runtime_env().empty();
+
   state.worker_processes.emplace(worker_startup_token_counter_,
                                  WorkerProcessInfo{/*is_pending_registration=*/true,
                                                    worker_type,
@@ -444,6 +448,8 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info) {
+  RAY_LOG(INFO) << "at start worker process, empty " << runtime_env_info.serialized_runtime_env().empty();
+  
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -1016,6 +1022,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   }
 
   if (pop_worker_request) {
+
+    RAY_LOG(INFO) << "DEBUG STR empty ? " << pop_worker_request->runtime_env_info.serialized_runtime_env().empty();
+
     bool used = pop_worker_request->callback(worker, PopWorkerStatus::OK, "");
     if (!used) {
       // Retry PushWorker. Maybe it can be used by other tasks.
@@ -1205,6 +1214,10 @@ WorkerUnfitForTaskReason WorkerPool::WorkerFitsForTask(
 
 void WorkerPool::StartNewWorker(
     const std::shared_ptr<PopWorkerRequest> &pop_worker_request) {
+  
+  RAY_LOG(INFO) << "when start worker, runtime env empty ? " << pop_worker_request->runtime_env_info.serialized_runtime_env().empty();
+
+  // <---- hjiang
   auto start_worker_process_fn = [this](
                                      std::shared_ptr<PopWorkerRequest> pop_worker_request,
                                      const std::string &serialized_runtime_env_context) {
@@ -1240,7 +1253,8 @@ void WorkerPool::StartNewWorker(
   const std::string &serialized_runtime_env =
       pop_worker_request->runtime_env_info.serialized_runtime_env();
 
-  if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+  // if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
+  if (false) {
     // create runtime env.
     GetOrCreateRuntimeEnv(
         serialized_runtime_env,
@@ -1267,6 +1281,9 @@ void WorkerPool::StartNewWorker(
 
 void WorkerPool::PopWorker(const TaskSpecification &task_spec,
                            const PopWorkerCallback &callback) {
+  
+  RAY_LOG(INFO) << "task spec empty ? " << task_spec.RuntimeEnvInfo().serialized_runtime_env().empty();
+  
   RAY_LOG(DEBUG) << "Pop worker for task " << task_spec.TaskId() << " task name "
                  << task_spec.FunctionDescriptor()->ToString();
   // Code path of actor task.
@@ -1307,6 +1324,8 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       });
 
   absl::flat_hash_map<WorkerUnfitForTaskReason, size_t> skip_reason_count;
+
+  RAY_LOG(INFO) << "before work fits for work, empty ? " << pop_worker_request->runtime_env_info.serialized_runtime_env().empty();
 
   auto worker_fits_for_task_fn =
       [this, &pop_worker_request, &skip_reason_count](
@@ -1649,7 +1668,24 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
 void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                                        const rpc::RuntimeEnvConfig &runtime_env_config,
                                        const JobID &job_id,
-                                       const GetOrCreateRuntimeEnvCallback &callback) {
+                                       const GetOrCreateRuntimeEnvCallback &callback) {    
+  RAY_LOG(INFO) << "serialized env length = " << serialized_runtime_env.length() << "\n"
+                << boost::stacktrace::stacktrace();
+
+  /*
+  message RuntimeEnvConfig {
+    /// The timeout of runtime env creation.
+    int32 setup_timeout_seconds = 1;
+    /// Indicates whether to install runtime env eagerly before the workers are leased.
+    bool eager_install = 2;
+    /// A list of files to stream the runtime env setup logs to.
+    repeated string log_files = 3;
+  }
+  */
+  for (const auto& cur_log : runtime_env_config.log_files()) {
+    RAY_LOG(INFO) << "log file length = " << cur_log.length();
+  }
+  
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
   runtime_env_agent_client_->GetOrCreateRuntimeEnv(
@@ -1661,6 +1697,12 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
           const std::string &serialized_runtime_env_context,
           const std::string &setup_error_message) {
         if (successful) {
+
+          // RAY_LOG(INFO) << "runtime env context len = " << serialized_runtime_env_context.length()
+          //               << "|" << serialized_runtime_env_context << "|"
+          //               << serialized_runtime_env_context[0] << "|"
+          //               << serialized_runtime_env_context[1] << "|";
+
           callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
@@ -1676,6 +1718,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
 
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
+  return;
+
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
         serialized_runtime_env, [serialized_runtime_env](bool successful) {

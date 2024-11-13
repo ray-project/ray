@@ -114,14 +114,33 @@ class Session : public std::enable_shared_from_this<Session> {
     finished_callback_ = std::move(finished_callback);
 
     ResolutionKey key{host_, port_};
-    auto opt_tcp_stream = tcp_stream_cache_.GetAndPop(key);
-    if (opt_tcp_stream.has_value()) {
-      stream_ = std::move(opt_tcp_stream.value());
-      stream_->expires_never();
 
+    bool found = false;
+
+    int cache_hit_count  = 0;
+    int cache_miss_count = 0;
+    {
+      std::lock_guard lck(cache_mutex_);
+      if (!tcp_stream_cache_.empty()) {
+        stream_ = std::move(tcp_stream_cache_.front());
+        tcp_stream_cache_.pop_front();
+        found = true;
+        cache_hit++;
+      } else {
+        ++cache_miss;
+      }
+
+      cache_hit_count = cache_hit;
+      cache_miss_count = cache_miss;
+    }
+
+    RAY_LOG_EVERY_N(INFO, 10) << "Cache hit " << cache_hit_count << ", cache miss " << cache_miss_count;
+
+    if (found) {
+      stream_->expires_never();
       // Send the HTTP request to the remote host
       http::async_write(
-          *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+        *stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
     } else {
       // Starts the state machine by looking up the domain name.
       resolver_.async_resolve(
@@ -228,7 +247,11 @@ class Session : public std::enable_shared_from_this<Session> {
     // Gracefully close the socket
     // stream_->socket().shutdown(tcp::socket::shutdown_both, ec);
 
-    tcp_stream_cache_.Put(ResolutionKey{std::move(host_), std::move(port_)}, std::move(stream_));
+    {
+      std::lock_guard lck(cache_mutex_);
+      tcp_stream_cache_.emplace_back(std::move(stream_));
+    }
+    
 
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != beast::errc::not_connected) {
@@ -252,7 +275,11 @@ class Session : public std::enable_shared_from_this<Session> {
   http::response<http::string_body> res_;
   FinishedCallback finished_callback_;
 
-  inline static ResolutionCache<ResolutionKey, std::shared_ptr<beast::tcp_stream>> tcp_stream_cache_;
+  inline static std::deque<std::shared_ptr<beast::tcp_stream>> tcp_stream_cache_;
+  inline static std::mutex cache_mutex_;
+  inline static int cache_hit = 0;
+  inline static int cache_miss = 0;
+
   std::chrono::time_point<std::chrono::steady_clock> start_;
 };
 
@@ -402,6 +429,9 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
                              const std::string &serialized_runtime_env,
                              const rpc::RuntimeEnvConfig &runtime_env_config,
                              GetOrCreateRuntimeEnvCallback callback) override {
+    callback(true, "{}", "");
+    return;
+    
     RetryInvokeOnNotFoundWithDeadline<rpc::GetOrCreateRuntimeEnvReply>(
         [=](SuccCallback<rpc::GetOrCreateRuntimeEnvReply> succ_callback,
             FailCallback fail_callback) {

@@ -539,7 +539,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
           runtime_env_info(std::move(runtime_env_info)),
           runtime_env_hash(runtime_hash),
           dynamic_options(std::move(options)),
-          callback(std::move(callback)) {}
+          callback(std::move(callback)) {
+            // RAY_LOG(INFO) << "DEBUG STR empty ? " << runtime_env_info.serialized_runtime_env().empty();
+          }
   };
 
   // Starts a new worker that fulfills `pop_worker_request`.
