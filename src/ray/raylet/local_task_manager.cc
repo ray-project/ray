@@ -281,7 +281,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
 
           // While we're over capacity and cannot run the task,
           // try to spill to a node that can run it.
-          bool did_spill = TrySpillback(work, spec, is_infeasible);
+          bool did_spill = TrySpillback(work, is_infeasible);
           if (did_spill) {
             work_it = dispatch_queue.erase(work_it);
             continue;
@@ -353,7 +353,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         ReleaseTaskArgs(task_id);
         // The local node currently does not have the resources to run the task, so we
         // should try spilling to another node.
-        bool did_spill = TrySpillback(work, spec, is_infeasible);
+        bool did_spill = TrySpillback(work, is_infeasible);
         if (!did_spill) {
           // There must not be any other available nodes in the cluster, so the task
           // should stay on this node. We can skip the rest of the shape because the
@@ -491,8 +491,8 @@ void LocalTaskManager::SpillWaitingTasks() {
 }
 
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
-                                    const TaskSpecification &spec,
                                     bool &is_infeasible) {
+  const auto &spec = work->task.GetTaskSpecification();
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
       spec,
       // We should prefer to stay local if possible

@@ -228,9 +228,7 @@ class LocalTaskManager : public ILocalTaskManager {
   /// \returns true if the task was spilled. The task may not be spilled if the
   /// spillback policy specifies the local node (which may happen if no other nodes have
   /// the requested resources available).
-  bool TrySpillback(const std::shared_ptr<internal::Work> &work,
-                    const TaskSpecification &spec,
-                    bool &is_infeasible);
+  bool TrySpillback(const std::shared_ptr<internal::Work> &work, bool &is_infeasible);
 
   // Try to spill waiting tasks to a remote node, starting from the end of the
   // queue.
