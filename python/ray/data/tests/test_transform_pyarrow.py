@@ -7,6 +7,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -87,17 +89,27 @@ def test_arrow_concat_tensor_extension_uniform():
     t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
     ts = [t1, t2]
     out = concat(ts)
+
     # Check length.
     assert len(out) == 6
+
     # Check schema.
+    if DataContext.get_current().use_arrow_tensor_v2:
+        tensor_type = ArrowTensorTypeV2
+    else:
+        tensor_type = ArrowTensorType
+
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowTensorType((2, 2), pa.int64())]
+    assert out.schema.types == [tensor_type((2, 2), pa.int64())]
+
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
+
     # Check content.
     np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
     np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
+
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
     assert out == expected
