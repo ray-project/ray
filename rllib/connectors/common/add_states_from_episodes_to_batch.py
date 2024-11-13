@@ -363,6 +363,20 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         single_agent_episode=sa_episode,
                     )
 
+                len_next_state_in = int(math.ceil(len(sa_episode) / max_seq_len))
+                if len_next_state_in >= 1:
+                    print("====")
+                    print(f"Length 'NEXT_STATE_IN: {len_next_state_in}")
+                    print(f"Length obs: {len(batch['obs'])}")
+
+                if (
+                    True
+                ):  # len(batch["obs"]) < len(batch["state_in"]) or len(batch["obs"])
+                    # < len(batch["new_state_in"]):
+                    print(f"len(obs): {len(batch['obs'])}")
+                    print(f"len(STATE_IN): {len(batch[Columns.STATE_IN])}")
+                    print(f"len(NEXT_STATE_IN): {len(batch[Columns.STATE_IN])}")
+
                 # Also, create the loss mask (b/c of our now possibly zero-padded data)
                 # as well as the seq_lens array and add these to `data` as well.
                 mask, seq_lens = create_mask_and_seq_lens(len(sa_episode), max_seq_len)

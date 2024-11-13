@@ -154,7 +154,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                         Columns.STATE_IN: tree.map_structure(
                             lambda t1, t2: torch.cat([t1, t2], dim=0),
                             batch[Columns.STATE_IN],
-                            batch["new_state_in"],
+                            batch[Columns.NEXT_STATE_IN],
                         )
                     }
                 )
@@ -167,8 +167,8 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Stateful encoder?
-        if "new_state_in" in batch:
-            batch_target.update({Columns.STATE_IN: batch["new_state_in"]})
+        if Columns.NEXT_STATE_IN in batch:
+            batch_target.update({Columns.STATE_IN: batch[Columns.NEXT_STATE_IN]})
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_base)
