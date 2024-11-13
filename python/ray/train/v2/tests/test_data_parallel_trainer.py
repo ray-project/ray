@@ -6,14 +6,11 @@ import pyarrow.fs
 import pytest
 
 import ray
-from ray.data.context import DataContext
-from ray.data.tests.conftest import restore_data_context  # noqa: F401
-from ray.train import BackendConfig, Checkpoint
+from ray.train import BackendConfig, Checkpoint, RunConfig, ScalingConfig
 from ray.train.backend import Backend
 from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR, _get_ray_train_session_dir
 from ray.train.tests.util import create_dict_checkpoint
 from ray.train.v2._internal.exceptions import TrainingFailedError
-from ray.train.v2.api.config import RunConfig, ScalingConfig
 from ray.train.v2.api.data_parallel_trainer import DataParallelTrainer
 from ray.train.v2.api.result import Result
 
@@ -177,41 +174,6 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
         _check_same_working_directory,
         scaling_config=ScalingConfig(num_workers=2),
         run_config=RunConfig(name=experiment_dir_name, storage_path=str(tmp_path)),
-    )
-    trainer.fit()
-
-
-def test_datasets(restore_data_context):  # noqa: F811
-    # Test passing datasets to the trainer.
-    NUM_ROWS = 1000
-    NUM_TRAIN_WORKERS = 2
-
-    # Test propagating DataContext to the Train workers.
-    data_context = DataContext.get_current()
-    data_context.set_config("foo", "bar")
-
-    train_ds = ray.data.range(NUM_ROWS)
-
-    def train_fn():
-        data_context = DataContext.get_current()
-        assert data_context.get_config("foo") == "bar"
-
-        try:
-            ray.train.get_context().get_dataset_shard("val")
-            assert False, "Should raise an error if the dataset is not found"
-        except KeyError:
-            pass
-
-        train_ds = ray.train.get_context().get_dataset_shard("train")
-        num_rows = 0
-        for batch in train_ds.iter_batches():
-            num_rows += len(batch["id"])
-        assert num_rows == NUM_ROWS // NUM_TRAIN_WORKERS
-
-    trainer = DataParallelTrainer(
-        train_fn,
-        datasets={"train": train_ds},
-        scaling_config=ScalingConfig(num_workers=NUM_TRAIN_WORKERS),
     )
     trainer.fit()
 

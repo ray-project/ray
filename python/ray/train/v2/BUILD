@@ -40,6 +40,14 @@ py_test(
 )
 
 py_test(
+    name = "test_data_integration",
+    size = "small",
+    srcs = ["tests/test_data_integration.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+py_test(
     name = "test_data_parallel_trainer",
     size = "small",
     srcs = ["tests/test_data_parallel_trainer.py"],

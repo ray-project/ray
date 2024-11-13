@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import List, Optional
 from unittest.mock import MagicMock
 
 import pytest
@@ -24,6 +24,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
     ScalingPolicy,
 )
 from ray.train.v2._internal.execution.worker_group import (
+    Worker,
     WorkerGroupStatus,
     WorkerStatus,
 )
@@ -67,6 +68,9 @@ class DummyWorkerGroup:
 
     def __len__(self) -> int:
         return self._num_workers
+
+    def get_workers(self) -> List[Worker]:
+        return [MagicMock()] * self._num_workers
 
     # === Test methods ===
     def error_worker(self, worker_index):

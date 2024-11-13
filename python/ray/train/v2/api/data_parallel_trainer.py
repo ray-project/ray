@@ -9,9 +9,10 @@ from ray.train.constants import RAY_CHDIR_TO_TRIAL_DIR
 from ray.train.v2._internal.callbacks import (
     AcceleratorSetupCallback,
     BackendSetupCallback,
+    DatasetsSetupCallback,
     WorkingDirectorySetupCallback,
 )
-from ray.train.v2._internal.callbacks.datasets import DatasetsSetupCallback, GenDataset
+from ray.train.v2._internal.callbacks.datasets import GenDataset
 from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
@@ -173,8 +174,9 @@ class DataParallelTrainer:
         )
         backend_setup_callback = BackendSetupCallback(self.backend_config)
         datasets_setup_callback = DatasetsSetupCallback(
-            self.datasets,
-            self.data_config,
+            datasets=self.datasets,
+            data_config=self.data_config,
+            scaling_config=self.scaling_config,
         )
         callbacks = [
             accelerator_setup_callback,
