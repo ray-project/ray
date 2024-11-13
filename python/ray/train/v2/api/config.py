@@ -82,12 +82,6 @@ class ScalingConfig(ScalingConfigV1):
     def _trainer_resources_not_none(self):
         return {}
 
-    @property
-    def _trainer_resources_not_none(self):
-        # TODO(justinvyu): Add back support for `trainer_resources`
-        # + `placement_strategy`
-        return {}
-
 
 @dataclass
 class FailureConfig(FailureConfigV1):
