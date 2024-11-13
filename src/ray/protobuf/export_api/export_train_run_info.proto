@@ -85,5 +85,5 @@ message ExportTrainRunInfo {
   // The UNIX timestamp of the start time of this Train run.
   uint64 start_time_ms = 9;
   // The UNIX timestamp of the end time of this Train run.
-  uint64 end_time_ms = 10; 
+  uint64 end_time_ms = 10;
 }
