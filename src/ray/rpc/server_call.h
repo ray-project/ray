@@ -190,7 +190,11 @@ class ServerCallImpl : public ServerCall {
         cluster_id_(cluster_id),
         start_time_(0),
         record_metrics_(record_metrics) {
+#if GOOGLE_PROTOBUF_VERSION < 5029000
     reply_ = google::protobuf::Arena::CreateMessage<Reply>(&arena_);
+#else
+    reply_ = google::protobuf::Arena::Create<Reply>(&arena_);
+#endif
     // TODO call_name_ sometimes get corrunpted due to memory issues.
     RAY_CHECK(!call_name_.empty()) << "Call name is empty";
     if (record_metrics_) {
