@@ -16,6 +16,7 @@
 
 #include "absl/functional/bind_front.h"
 #include "absl/strings/str_format.h"
+#include "absl/strings/str_cat.h"
 
 namespace ray {
 
