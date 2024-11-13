@@ -1191,6 +1191,7 @@ def test_inherit_batch_format_rule():
 
 
 def test_batch_format_on_sort(ray_start_regular_shared):
+    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
     ds = ray.data.from_items(
         [
             {"col1": 1, "col2": 2},
@@ -1215,6 +1216,8 @@ def test_batch_format_on_sort(ray_start_regular_shared):
 
 
 def test_batch_format_on_aggregate(ray_start_regular_shared):
+    """Checks that the Aggregate op can inherit batch_format
+    from upstream ops correctly."""
     from ray.data.aggregate import AggregateFn
 
     ds = ray.data.from_items(
