@@ -60,6 +60,9 @@ class OpBufferQueue:
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
         with self._lock:
+            # The split queues contain bundles popped from the main queue. So, a bundle
+            # will either be in the main queue or in one of the split queues, and we
+            # don't need to worry about double counting.
             return self._queue.estimate_size_bytes() + sum(
                 split_queue.estimate_size_bytes()
                 for split_queue in self._outputs_by_split.values()
