@@ -451,7 +451,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 try:
                     if next_row is None:
                         next_row = next(iter)
-                    next_keys = tuple(next_row[keys])
+                    next_keys = next_row[keys]
                     while np.all(next_row[keys] == next_keys):
                         end += 1
                         try:
