@@ -77,8 +77,13 @@ class WorkerGroupStartupTimeoutError(RayTrainError):
         super().__init__(
             f"The worker group startup timed out after {timeout} seconds waiting "
             f"for {num_workers} workers. "
-            "Possible causes include insufficient cluster resources and "
-            f"transient network issues. Set the {WORKER_GROUP_START_TIMEOUT_S_ENV_VAR} "
+            "Potential causes include: "
+            "(1) temporary insufficient cluster resources while waiting for "
+            "autoscaling (ignore this warning in this case), "
+            "(2) infeasible resource request where the provided `ScalingConfig` "
+            "cannot be satisfied), "
+            "and (3) transient network issues. "
+            f"Set the {WORKER_GROUP_START_TIMEOUT_S_ENV_VAR} "
             "environment variable to increase the timeout."
         )
 

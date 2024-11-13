@@ -194,11 +194,11 @@ class DataParallelTrainer:
 
         # TODO: Add support for user-defined callbacks
 
+        # By default, attach the controller to the node running the driver script.
         controller_actor_cls = ray.remote(
             num_cpus=0,
             scheduling_strategy=NodeAffinitySchedulingStrategy(
-                node_id=ray.get_runtime_context().get_node_id(),
-                soft=False,
+                node_id=ray.get_runtime_context().get_node_id(), soft=False
             ),
             runtime_env={"env_vars": get_env_vars_to_propagate()},
         )(TrainController)

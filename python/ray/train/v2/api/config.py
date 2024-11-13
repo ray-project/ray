@@ -3,9 +3,8 @@ from typing import TYPE_CHECKING, Callable, List, Mapping, Optional, Tuple, Unio
 
 from ray.air.config import FailureConfig as FailureConfigV1
 from ray.air.config import RunConfig as RunConfigV1
-from ray.air.config import SampleRange
 from ray.air.config import ScalingConfig as ScalingConfigV1
-from ray.train.v2._internal.constants import _UNSUPPORTED
+from ray.train.v2._internal.constants import _DEPRECATED
 from ray.train.v2._internal.execution.callback import Callback
 from ray.train.v2._internal.util import date_str
 
@@ -15,9 +14,6 @@ if TYPE_CHECKING:
     from ray.tune.progress_reporter import ProgressReporter
     from ray.tune.stopper import Stopper
     from ray.tune.utils.log import Verbosity
-
-
-_UNSUPPORTED_MESSAGE = "The '{}' argument is not supported yet."
 
 
 @dataclass
@@ -37,6 +33,9 @@ class ScalingConfig(ScalingConfigV1):
             defined in this Dict is reserved for each worker.
             Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
             override the number of CPU or GPUs used by each worker.
+        placement_strategy: The placement strategy to use for the
+            placement group of the Ray actors. See :ref:`Placement Group
+            Strategies <pgroup-strategy>` for the possible options.
         accelerator_type: [Experimental] If specified, Ray Train will launch the
             training coordinator and workers on the nodes with the specified type
             of accelerators.
@@ -63,16 +62,25 @@ class ScalingConfig(ScalingConfigV1):
 
     """
 
-    trainer_resources: Optional[dict] = _UNSUPPORTED
-    placement_strategy: Union[str, SampleRange] = _UNSUPPORTED
+    trainer_resources: Union[Optional[dict], str] = _DEPRECATED
 
     def __post_init__(self):
+        if self.trainer_resources != _DEPRECATED:
+            raise NotImplementedError(
+                "`ScalingConfig(trainer_resources)` is deprecated. "
+                "This parameter was an advanced configuration that specified "
+                "resources for the Ray Train driver actor, which doesn't "
+                "need to reserve logical resources because it doesn't perform "
+                "any heavy computation. "
+                "Only the `resources_per_worker` parameter is useful "
+                "to specify resources for the training workers."
+            )
+
         super().__post_init__()
 
-        unsupported_params = ["trainer_resources", "placement_strategy"]
-        for param in unsupported_params:
-            if getattr(self, param) != _UNSUPPORTED:
-                raise NotImplementedError(_UNSUPPORTED_MESSAGE.format(param))
+    @property
+    def _trainer_resources_not_none(self):
+        return {}
 
     @property
     def _trainer_resources_not_none(self):
@@ -92,11 +100,12 @@ class FailureConfig(FailureConfigV1):
             Setting to 0 will disable retries. Defaults to 0.
     """
 
-    fail_fast: Union[bool, str] = _UNSUPPORTED
+    fail_fast: Union[bool, str] = _DEPRECATED
 
     def __post_init__(self):
-        if self.fail_fast != _UNSUPPORTED:
-            raise NotImplementedError(_UNSUPPORTED_MESSAGE.format("fail_fast"))
+        # TODO(justinvyu): Add link to migration guide.
+        if self.fail_fast != _DEPRECATED:
+            raise NotImplementedError("`FailureConfig(fail_fast)` is deprecated.")
 
 
 @dataclass
@@ -122,20 +131,31 @@ class RunConfig(RunConfigV1):
         checkpoint_config: Checkpointing configuration.
     """
 
-    callbacks: Optional[List["Callback"]] = _UNSUPPORTED
-    sync_config: Optional["SyncConfig"] = _UNSUPPORTED
-    verbose: Optional[Union[int, "AirVerbosity", "Verbosity"]] = _UNSUPPORTED
-    stop: Optional[
-        Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]
-    ] = _UNSUPPORTED
-    progress_reporter: Optional["ProgressReporter"] = _UNSUPPORTED
-    log_to_file: Union[bool, str, Tuple[str, str]] = _UNSUPPORTED
+    callbacks: Optional[List["Callback"]] = None
+    sync_config: Union[Optional["SyncConfig"], str] = _DEPRECATED
+    verbose: Union[Optional[Union[int, "AirVerbosity", "Verbosity"]], str] = _DEPRECATED
+    stop: Union[
+        Optional[Union[Mapping, "Stopper", Callable[[str, Mapping], bool]]], str
+    ] = _DEPRECATED
+    progress_reporter: Union[Optional["ProgressReporter"], str] = _DEPRECATED
+    log_to_file: Union[bool, str, Tuple[str, str]] = _DEPRECATED
 
     def __post_init__(self):
         super().__post_init__()
 
+        if self.callbacks is not None:
+            raise NotImplementedError("`RunConfig(callbacks)` is not supported yet.")
+
+        # TODO(justinvyu): Add link to migration guide.
+        run_config_deprecation_message = (
+            "`RunConfig({})` is deprecated. This configuration was a "
+            "Ray Tune API that did not support Ray Train usage well, "
+            "so we are dropping support going forward. "
+            "If you heavily rely on these configurations, "
+            "you can run Ray Train as a single Ray Tune trial."
+        )
+
         unsupported_params = [
-            "callbacks",
             "sync_config",
             "verbose",
             "stop",
@@ -143,8 +163,8 @@ class RunConfig(RunConfigV1):
             "log_to_file",
         ]
         for param in unsupported_params:
-            if getattr(self, param) != _UNSUPPORTED:
-                raise NotImplementedError(_UNSUPPORTED_MESSAGE.format(param))
+            if getattr(self, param) != _DEPRECATED:
+                raise NotImplementedError(run_config_deprecation_message.format(param))
 
         if not self.name:
             self.name = f"ray_train_run-{date_str()}"

@@ -11,9 +11,9 @@ from ray.train import FailureConfig, RunConfig, ScalingConfig
     [
         (lambda: FailureConfig(fail_fast=True), True),
         (lambda: RunConfig(verbose=0), True),
-        (lambda: ScalingConfig(placement_strategy="PACK"), True),
         (lambda: FailureConfig(), False),
         (lambda: RunConfig(), False),
+        (lambda: ScalingConfig(trainer_resources={"CPU": 1}), True),
         (lambda: ScalingConfig(), False),
     ],
 )
@@ -26,6 +26,23 @@ def test_api_configs(operation, raise_error):
             operation()
         except Exception as e:
             pytest.fail(f"Default Operation raised an exception: {e}")
+
+
+def test_scaling_config_total_resources():
+    """Test the patched scaling config total resources calculation."""
+    num_workers = 2
+    num_cpus_per_worker = 1
+    num_gpus_per_worker = 1
+
+    scaling_config = ScalingConfig(
+        num_workers=num_workers,
+        use_gpu=True,
+        resources_per_worker={"CPU": num_cpus_per_worker, "GPU": num_gpus_per_worker},
+    )
+    scaling_config.total_resources == {
+        "CPU": num_workers * num_cpus_per_worker,
+        "GPU": num_workers * num_gpus_per_worker,
+    }
 
 
 @pytest.mark.parametrize("env_v2_enabled", [True, False])

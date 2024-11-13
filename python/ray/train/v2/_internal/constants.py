@@ -5,6 +5,7 @@ from ray._private.ray_constants import env_bool, env_set_by_user
 
 # Unsupported configs can use this value to detect if the user has set it.
 _UNSUPPORTED = "UNSUPPORTED"
+_DEPRECATED = "DEPRECATED"
 
 # The name of the file that is used to validate the storage.
 VALIDATE_STORAGE_MARKER_FILENAME = ".validate_storage_marker"

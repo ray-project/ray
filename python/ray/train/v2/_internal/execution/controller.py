@@ -176,7 +176,7 @@ class TrainController:
 
         if failure_decision == FailureDecision.RESTART:
             logger.error(
-                "Restarting worker group after encountering "
+                "Restarting training worker group after encountering "
                 f"failures on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
@@ -185,7 +185,7 @@ class TrainController:
             self._set_state(TrainControllerState.RECOVERING)
         elif failure_decision == FailureDecision.RAISE:
             logger.error(
-                "Terminating worker group after encountering "
+                "Terminating training worker group after encountering "
                 f"failure(s) on {len(worker_group_status.errors)} worker(s):\n"
                 f"{errors_str}"
             )
@@ -219,6 +219,7 @@ class TrainController:
         latest_checkpoint = (
             latest_checkpoint_result.checkpoint if latest_checkpoint_result else None
         )
+        placement_strategy = self._scaling_policy.scaling_config.placement_strategy
 
         # Start the worker group with the latest checkpoint if there is one.
         # Otherwise, start the worker group with the checkpoint set by controller.
@@ -228,10 +229,14 @@ class TrainController:
                 train_fn=self._train_fn,
                 num_workers=num_workers,
                 resources_per_worker=resources_per_worker,
+                placement_strategy=placement_strategy,
                 checkpoint=latest_checkpoint or self._resume_from_checkpoint,
             )
         except (WorkerGroupStartupTimeoutError, WorkerGroupStartupFailedError):
-            logger.exception("Worker group startup failed:")
+            logger.exception(
+                "Retrying training worker group startup. "
+                "The previous attempt encountered the following failure:"
+            )
 
             # TODO: Should this logic go through the failure policy?
             # The current logic will always try recovering unconditionally

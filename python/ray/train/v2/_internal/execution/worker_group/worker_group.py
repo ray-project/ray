@@ -225,6 +225,7 @@ class WorkerGroup:
         train_fn: Callable[[], None],
         num_workers: int,
         resources_per_worker: dict,
+        placement_strategy: str = "PACK",
         checkpoint: Optional[Checkpoint] = None,
     ):
         """Start the a number of workers with the given resources.
@@ -251,9 +252,15 @@ class WorkerGroup:
             remote_actor_cls = ray.remote(
                 **bundle_to_remote_args(resources_per_worker)
             )(self._worker_cls)
-            pg = placement_group([resources_per_worker] * num_workers)
 
-            logger.info(f"Starting worker group of size {num_workers}.")
+            pg = placement_group(
+                bundles=[resources_per_worker] * num_workers,
+                strategy=placement_strategy,
+            )
+            logger.info(
+                f"Attempting to start training worker group of size {num_workers} with "
+                f"the following resources: [{resources_per_worker}] * {num_workers}"
+            )
 
             # Wait for the placement group to be ready before proceeding
             # to create actors.
