@@ -15,7 +15,7 @@ from ray.tune.schedulers.pb2 import PB2
 from ray import tune
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(env="ale_py:ALE/Pong-v5")
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",
@@ -58,11 +58,6 @@ pb2_scheduler = PB2(
 
 config = (
     IMPALAConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(
         "env",
         env_config={
@@ -84,7 +79,7 @@ config = (
     #    entropy_coeff=0.008,
     #    # Only update connector states and model weights every n training_step calls.
     #    broadcast_interval=5,
-    #    lr=0.009 * ((args.num_gpus or 1) ** 0.5),
+    #    lr=0.009 * ((args.num_learners or 1) ** 0.5),
     # )
     .training(
         train_batch_size_per_learner=tune.randint(256, 1024),
@@ -101,7 +96,7 @@ config = (
         rl_module_spec=(
             RLModuleSpec(module_class=TinyAtariCNN) if args.use_tiny_cnn else None
         ),
-        model_config_dict=(
+        model_config=(
             {
                 "vf_share_layers": True,
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],

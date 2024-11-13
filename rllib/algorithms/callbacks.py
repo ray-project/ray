@@ -11,7 +11,6 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
@@ -227,7 +226,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         # TODO (sven): Deprecate Episode/EpisodeV2 with new API stack.
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         # TODO (sven): Deprecate this arg new API stack (in favor of `env_runner`).
         worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
@@ -284,7 +283,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_start(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -326,7 +325,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_step(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -369,7 +368,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_end(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -473,7 +472,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         worker: "EnvRunner",
-        episode: Episode,
+        episode,
         agent_id: AgentID,
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
@@ -603,7 +602,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     def on_episode_end(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -743,7 +742,7 @@ def make_multi_callbacks(
             self,
             *,
             worker: "EnvRunner",
-            episode: Episode,
+            episode,
             agent_id: AgentID,
             policy_id: PolicyID,
             policies: Dict[PolicyID, Policy],

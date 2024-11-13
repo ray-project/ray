@@ -15,6 +15,7 @@ load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
 load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -85,6 +86,27 @@ config_setting(
     flag_values = {":jemalloc_flag": "true"},
 )
 
+# bazel run :refresh_compile_commands for compile_commands generation for clangd
+# https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
+refresh_compile_commands(
+    name = "refresh_compile_commands",
+    # Specify the targets of interest.
+    # For example, specify a dict of targets and any flags required to build.
+    targets = {
+      "//:ray_pkg": "",
+    },
+    exclude_external_sources = True, # removed below to have lsp index external cc files at the cost of 2x index time
+    # No need to add flags already in .bazelrc. They're automatically picked up.
+)
+
+# bazel run :refresh_compile_commands_external_sources for generation with external source files (cc files)
+refresh_compile_commands(
+    name = "refresh_compile_commands_external_sources",
+    targets = {
+      "//:ray_pkg": "",
+    },
+)
+
 # === Begin of rpc definitions ===
 # GRPC common lib.
 ray_cc_library(
@@ -93,8 +115,10 @@ ray_cc_library(
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
         "src/ray/rpc/server_call.cc",
+        "src/ray/rpc/rpc_chaos.cc",
     ],
     hdrs = glob([
+        "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
@@ -513,6 +537,7 @@ ray_cc_library(
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
+        "//src/ray/util:thread_checker",
     ],
 )
 
@@ -595,6 +620,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
@@ -805,6 +831,7 @@ ray_cc_test(
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
     tags = ["team:core"],
     deps = [
+        ":ray_mock",
         ":core_worker_lib",
         "@com_google_googletest//:gtest_main",
     ],
@@ -1256,9 +1283,11 @@ ray_cc_test(
         "no_windows",
         "team:core",
     ],
-    target_compatible_with = [
-        "@platforms//os:linux",
-    ],
+    target_compatible_with = select({
+        "@platforms//os:osx": [],
+        "@platforms//os:linux": [],
+        "//conditions:default": ["@platforms//:incompatible"],
+    }),
     deps = [
         ":core_worker_lib",
         ":plasma_store_server_lib",
@@ -1547,6 +1576,19 @@ ray_cc_test(
     deps = [
         ":grpc_common_lib",
         ":test_service_cc_grpc",
+    ],
+)
+
+ray_cc_test(
+    name = "rpc_chaos_test",
+    size = "small",
+    srcs = [
+        "src/ray/rpc/test/rpc_chaos_test.cc",
+    ],
+    tags = ["team:core"],
+    deps = [
+        ":grpc_common_lib",
+        "@com_google_googletest//:gtest_main",
     ],
 )
 

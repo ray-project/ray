@@ -57,13 +57,13 @@ class ParquetDatasink(_FileDatasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         import pyarrow.parquet as pq
 
         blocks = list(blocks)
 
         if all(BlockAccessor.for_block(block).num_rows() == 0 for block in blocks):
-            return "skip"
+            return
 
         filename = self.filename_provider.get_filename_for_block(
             blocks[0], ctx.task_idx, 0
@@ -72,13 +72,16 @@ class ParquetDatasink(_FileDatasink):
         write_kwargs = _resolve_kwargs(
             self.arrow_parquet_args_fn, **self.arrow_parquet_args
         )
+        schema = write_kwargs.pop("schema", None)
+        if schema is None:
+            schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
 
         def write_blocks_to_path():
             with self.open_output_stream(write_path) as file:
-                schema = BlockAccessor.for_block(blocks[0]).to_arrow().schema
+                tables = [BlockAccessor.for_block(block).to_arrow() for block in blocks]
                 with pq.ParquetWriter(file, schema, **write_kwargs) as writer:
-                    for block in blocks:
-                        table = BlockAccessor.for_block(block).to_arrow()
+                    for table in tables:
+                        table = table.cast(schema)
                         writer.write_table(table)
 
         logger.debug(f"Writing {write_path} file.")
@@ -89,8 +92,6 @@ class ParquetDatasink(_FileDatasink):
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )
-
-        return "ok"
 
     @property
     def num_rows_per_write(self) -> Optional[int]:

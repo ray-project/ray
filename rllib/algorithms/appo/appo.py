@@ -26,9 +26,6 @@ from ray.rllib.utils.metrics import (
     NUM_TARGET_UPDATES,
 )
 from ray.rllib.utils.metrics import LEARNER_STATS_KEY
-from ray.rllib.utils.typing import (
-    ResultDict,
-)
 
 logger = logging.getLogger(__name__)
 
@@ -45,8 +42,11 @@ class APPOConfig(IMPALAConfig):
     .. testcode::
 
         from ray.rllib.algorithms.appo import APPOConfig
-        config = APPOConfig().training(lr=0.01, grad_clip=30.0, train_batch_size=50)
-        config = config.resources(num_gpus=0)
+        config = (
+            APPOConfig()
+            .training(lr=0.01, grad_clip=30.0, train_batch_size_per_learner=50)
+        )
+        config = config.learners(num_learners=1)
         config = config.env_runners(num_env_runners=1)
         config = config.environment("CartPole-v1")
 
@@ -66,12 +66,13 @@ class APPOConfig(IMPALAConfig):
         config = config.training(lr=tune.grid_search([0.001,]))
         # Set the config object's env.
         config = config.environment(env="CartPole-v1")
-        # Use to_dict() to get the old-style python config dict
-        # when running with tune.
+        # Use to_dict() to get the old-style python config dict when running with tune.
         tune.Tuner(
             "APPO",
-            run_config=air.RunConfig(stop={"training_iteration": 1},
-                                     verbose=0),
+            run_config=air.RunConfig(
+                stop={"training_iteration": 1},
+                verbose=0,
+            ),
             param_space=config.to_dict(),
 
         ).fit()
@@ -84,11 +85,20 @@ class APPOConfig(IMPALAConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a APPOConfig instance."""
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or APPO)
 
         # fmt: off
         # __sphinx_doc_begin__
-
         # APPO specific settings:
         self.vtrace = True
         self.use_critic = True
@@ -119,33 +129,24 @@ class APPOConfig(IMPALAConfig):
 
         self.opt_type = "adam"
         self.lr = 0.0005
-        self.lr_schedule = None
         self.decay = 0.99
         self.momentum = 0.0
         self.epsilon = 0.1
         self.vf_loss_coeff = 0.5
         self.entropy_coeff = 0.01
-        self.entropy_coeff_schedule = None
         self.tau = 1.0
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
+        # __sphinx_doc_end__
+        # fmt: on
 
+        self.lr_schedule = None  # @OldAPIStack
+        self.entropy_coeff_schedule = None  # @OldAPIStack
         self.num_gpus = 0  # @OldAPIStack
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIStack
         self.minibatch_buffer_size = 1  # @OldAPIStack
         self.replay_proportion = 0.0  # @OldAPIStack
         self.replay_buffer_num_slots = 100  # @OldAPIStack
 
-        # __sphinx_doc_end__
-        # fmt: on
-
+        # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
 
     @override(IMPALAConfig)
@@ -200,9 +201,8 @@ class APPOConfig(IMPALAConfig):
             deprecation_warning(
                 old="target_update_frequency",
                 new="target_network_update_freq",
-                error=False,
+                error=True,
             )
-            target_network_update_freq = target_update_frequency
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
@@ -238,14 +238,15 @@ class APPOConfig(IMPALAConfig):
             )
 
             return APPOTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.appo.tf.appo_tf_learner import APPOTfLearner
-
-            return APPOTfLearner
+        elif self.framework_str in ["tf2", "tf"]:
+            raise ValueError(
+                "TensorFlow is no longer supported on the new API stack! "
+                "Use `framework='torch'`."
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `framework='torch'`."
             )
 
     @override(IMPALAConfig)
@@ -264,9 +265,9 @@ class APPOConfig(IMPALAConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
-        from ray.rllib.algorithms.appo.appo_catalog import APPOCatalog
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
-        return RLModuleSpec(module_class=RLModule, catalog_class=APPOCatalog)
+        return RLModuleSpec(module_class=RLModule, catalog_class=PPOCatalog)
 
     @property
     @override(AlgorithmConfig)
@@ -287,60 +288,51 @@ class APPO(IMPALA):
             self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
     @override(IMPALA)
-    def training_step(self) -> ResultDict:
-        train_results = super().training_step()
+    def training_step(self) -> None:
+        if self.config.enable_rl_module_and_learner:
+            return super().training_step()
 
+        train_results = super().training_step()
         # Update the target network and the KL coefficient for the APPO-loss.
         # The target network update frequency is calculated automatically by the product
         # of `num_epochs` setting (usually 1 for APPO) and `minibatch_buffer_size`.
-        if self.config.enable_rl_module_and_learner:
-            if NUM_TARGET_UPDATES in train_results:
-                self._counters[NUM_TARGET_UPDATES] += train_results[NUM_TARGET_UPDATES]
-                self._counters[LAST_TARGET_UPDATE_TS] = train_results[
-                    LAST_TARGET_UPDATE_TS
-                ]
-        else:
-            last_update = self._counters[LAST_TARGET_UPDATE_TS]
-            cur_ts = self._counters[
-                (
-                    NUM_AGENT_STEPS_SAMPLED
-                    if self.config.count_steps_by == "agent_steps"
-                    else NUM_ENV_STEPS_SAMPLED
-                )
-            ]
-            target_update_freq = (
-                self.config.num_epochs * self.config.minibatch_buffer_size
+        last_update = self._counters[LAST_TARGET_UPDATE_TS]
+        cur_ts = self._counters[
+            (
+                NUM_AGENT_STEPS_SAMPLED
+                if self.config.count_steps_by == "agent_steps"
+                else NUM_ENV_STEPS_SAMPLED
             )
-            if cur_ts - last_update > target_update_freq:
-                self._counters[NUM_TARGET_UPDATES] += 1
-                self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
+        ]
+        target_update_freq = self.config.num_epochs * self.config.minibatch_buffer_size
+        if cur_ts - last_update > target_update_freq:
+            self._counters[NUM_TARGET_UPDATES] += 1
+            self._counters[LAST_TARGET_UPDATE_TS] = cur_ts
 
-                # Update our target network.
-                self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
+            # Update our target network.
+            self.env_runner.foreach_policy_to_train(lambda p, _: p.update_target())
 
-                # Also update the KL-coefficient for the APPO loss, if necessary.
-                if self.config.use_kl_loss:
+            # Also update the KL-coefficient for the APPO loss, if necessary.
+            if self.config.use_kl_loss:
 
-                    def update(pi, pi_id):
-                        assert LEARNER_STATS_KEY not in train_results, (
-                            "{} should be nested under policy id key".format(
-                                LEARNER_STATS_KEY
-                            ),
-                            train_results,
-                        )
-                        if pi_id in train_results:
-                            kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
-                            assert kl is not None, (train_results, pi_id)
-                            # Make the actual `Policy.update_kl()` call.
-                            pi.update_kl(kl)
-                        else:
-                            logger.warning(
-                                "No data for {}, not updating kl".format(pi_id)
-                            )
+                def update(pi, pi_id):
+                    assert LEARNER_STATS_KEY not in train_results, (
+                        "{} should be nested under policy id key".format(
+                            LEARNER_STATS_KEY
+                        ),
+                        train_results,
+                    )
+                    if pi_id in train_results:
+                        kl = train_results[pi_id][LEARNER_STATS_KEY].get("kl")
+                        assert kl is not None, (train_results, pi_id)
+                        # Make the actual `Policy.update_kl()` call.
+                        pi.update_kl(kl)
+                    else:
+                        logger.warning("No data for {}, not updating kl".format(pi_id))
 
-                    # Update KL on all trainable policies within the local (trainer)
-                    # Worker.
-                    self.env_runner.foreach_policy_to_train(update)
+                # Update KL on all trainable policies within the local (trainer)
+                # Worker.
+                self.env_runner.foreach_policy_to_train(update)
 
         return train_results
 

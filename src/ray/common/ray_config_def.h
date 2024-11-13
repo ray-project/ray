@@ -549,6 +549,16 @@ RAY_CONFIG(bool, enable_metrics_collection, true)
 /// available *after* a grpc call.
 RAY_CONFIG(std::string, enable_grpc_metrics_collection_for, "")
 
+/// Only effective if `enable_metrics_collection` is also true.
+///
+/// If > 0, we monitor each instrumented_io_context every
+/// `io_context_event_loop_lag_collection_interval_ms` milliseconds, by posting a task to
+/// the io_context to measure the duration from post to run. The metric is
+/// `ray_io_context_event_loop_lag_ms`.
+///
+/// A probe task is only posted after a previous probe task has completed.
+RAY_CONFIG(int64_t, io_context_event_loop_lag_collection_interval_ms, 250)
+
 // Max number bytes of inlined objects in a task rpc request/response.
 RAY_CONFIG(int64_t, task_rpc_inlined_bytes_limit, 10 * 1024 * 1024)
 
@@ -834,6 +844,11 @@ RAY_CONFIG(std::string, REDIS_SERVER_NAME, "")
 //  The delay is a random number between the interval. If method equals '*',
 //  it will apply to all methods.
 RAY_CONFIG(std::string, testing_asio_delay_us, "")
+
+///  To use this, simply do
+///      export
+///      RAY_testing_rpc_failure="method1=max_num_failures,method2=max_num_failures"
+RAY_CONFIG(std::string, testing_rpc_failure, "")
 
 /// The following are configs for the health check. They are borrowed
 /// from k8s health probe (shorturl.at/jmTY3)
