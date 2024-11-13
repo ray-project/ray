@@ -11,8 +11,6 @@ from ray._private.runtime_env.validation import (
     parse_and_validate_excludes,
     parse_and_validate_working_dir,
     parse_and_validate_conda,
-    parse_and_validate_pip,
-    parse_and_validate_env_vars,
     parse_and_validate_py_modules,
 )
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
@@ -173,62 +171,6 @@ class TestValidateConda:
 
     def test_validate_conda_valid_dict(self):
         assert parse_and_validate_conda(CONDA_DICT) == CONDA_DICT
-
-
-class TestValidatePip:
-    def test_validate_pip_invalid_types(self):
-        with pytest.raises(TypeError):
-            parse_and_validate_pip(1)
-
-        with pytest.raises(TypeError):
-            parse_and_validate_pip(True)
-
-    def test_validate_pip_invalid_path(self):
-        with pytest.raises(ValueError):
-            parse_and_validate_pip("../bad_path.txt")
-
-    @pytest.mark.parametrize("absolute_path", [True, False])
-    def test_validate_pip_valid_file(self, test_directory, absolute_path):
-        _, requirements_file, _, _ = test_directory
-
-        if absolute_path:
-            requirements_file = requirements_file.resolve()
-
-        result = parse_and_validate_pip(str(requirements_file))
-        assert result["packages"] == PIP_LIST
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-    def test_validate_pip_valid_list(self):
-        result = parse_and_validate_pip(PIP_LIST)
-        assert result["packages"] == PIP_LIST
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-    def test_validate_ray(self):
-        result = parse_and_validate_pip(["pkg1", "ray", "pkg2"])
-        assert result["packages"] == ["pkg1", "ray", "pkg2"]
-        assert not result["pip_check"]
-        assert "pip_version" not in result
-
-
-class TestValidateEnvVars:
-    def test_type_validation(self):
-        # Only strings allowed.
-        with pytest.raises(TypeError, match=".*Dict[str, str]*"):
-            parse_and_validate_env_vars({"INT_ENV": 1})
-
-        with pytest.raises(TypeError, match=".*Dict[str, str]*"):
-            parse_and_validate_env_vars({1: "hi"})
-
-        with pytest.raises(TypeError, match=".*value 123 is of type <class 'int'>*"):
-            parse_and_validate_env_vars({"hi": 123})
-
-        with pytest.raises(TypeError, match=".*value True is of type <class 'bool'>*"):
-            parse_and_validate_env_vars({"hi": True})
-
-        with pytest.raises(TypeError, match=".*key 1.23 is of type <class 'float'>*"):
-            parse_and_validate_env_vars({1.23: "hi"})
 
 
 class TestParsedRuntimeEnv:

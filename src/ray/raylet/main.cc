@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
+  SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service;
 
@@ -448,7 +449,7 @@ int main(int argc, char *argv[]) {
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
-    optional<ray::rpc::DrainRayletRequest> drain_request =
+    std::optional<ray::rpc::DrainRayletRequest> drain_request =
         raylet->node_manager().GetLocalDrainRequest();
     RAY_LOG(INFO) << "received SIGTERM. Existing local drain request = "
                   << (drain_request.has_value() ? drain_request->DebugString() : "None");

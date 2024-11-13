@@ -28,6 +28,9 @@ def register_plan_logical_op_fn(
 
 
 def _register_default_plan_logical_op_fns():
+    from ray.data._internal.execution.operators.aggregate_num_rows import (
+        AggregateNumRows,
+    )
     from ray.data._internal.execution.operators.input_data_buffer import InputDataBuffer
     from ray.data._internal.execution.operators.limit_operator import LimitOperator
     from ray.data._internal.execution.operators.union_operator import UnionOperator
@@ -35,16 +38,23 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.all_to_all_operator import (
         AbstractAllToAll,
     )
+    from ray.data._internal.logical.operators.count_operator import Count
     from ray.data._internal.logical.operators.from_operators import AbstractFrom
     from ray.data._internal.logical.operators.input_data_operator import InputData
-    from ray.data._internal.logical.operators.map_operator import AbstractUDFMap
+    from ray.data._internal.logical.operators.map_operator import (
+        AbstractUDFMap,
+        Project,
+    )
     from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
     from ray.data._internal.logical.operators.one_to_one_operator import Limit
     from ray.data._internal.logical.operators.read_operator import Read
     from ray.data._internal.logical.operators.write_operator import Write
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
-    from ray.data._internal.planner.plan_udf_map_op import plan_udf_map_op
+    from ray.data._internal.planner.plan_udf_map_op import (
+        plan_project_op,
+        plan_udf_map_op,
+    )
     from ray.data._internal.planner.plan_write_op import plan_write_op
 
     register_plan_logical_op_fn(Read, plan_read_op)
@@ -91,6 +101,14 @@ def _register_default_plan_logical_op_fns():
 
     register_plan_logical_op_fn(Limit, plan_limit_op)
 
+    def plan_count_op(logical_op, physical_children):
+        assert len(physical_children) == 1
+        return AggregateNumRows([physical_children[0]], column_name=Count.COLUMN_NAME)
+
+    register_plan_logical_op_fn(Count, plan_count_op)
+
+    register_plan_logical_op_fn(Project, plan_project_op)
+
 
 _register_default_plan_logical_op_fns()
 
@@ -108,7 +126,12 @@ class Planner:
     def plan(self, logical_plan: LogicalPlan) -> PhysicalPlan:
         """Convert logical to physical operators recursively in post-order."""
         physical_dag = self._plan(logical_plan.dag)
-        return PhysicalPlan(physical_dag, self._physical_op_to_logical_op)
+        physical_plan = PhysicalPlan(
+            physical_dag,
+            self._physical_op_to_logical_op,
+            logical_plan.context,
+        )
+        return physical_plan
 
     def _plan(self, logical_op: LogicalOperator) -> PhysicalOperator:
         # Plan the input dependencies first.
@@ -119,6 +142,8 @@ class Planner:
         physical_op = None
         for op_type, plan_fn in PLAN_LOGICAL_OP_FNS:
             if isinstance(logical_op, op_type):
+                # We will call `set_logical_operators()` in the following for-loop,
+                # no need to do it here.
                 physical_op = plan_fn(logical_op, physical_children)
                 break
 

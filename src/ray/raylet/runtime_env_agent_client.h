@@ -58,7 +58,7 @@ class RuntimeEnvAgentClient {
       uint32_t agent_manager_retry_interval_ms =
           RayConfig::instance().agent_manager_retry_interval_ms());
 
-  virtual ~RuntimeEnvAgentClient() {}
+  virtual ~RuntimeEnvAgentClient() = default;
 
   /// Request agent to increase the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.
