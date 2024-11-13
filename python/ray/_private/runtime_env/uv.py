@@ -96,7 +96,6 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
-            "--force-reinstall",
             _get_uv_exec_to_install(),
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
