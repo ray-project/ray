@@ -561,7 +561,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 if next_row is None:
                     next_row = next(iter)
                 next_keys = key_fn(next_row)
-                next_key_names = keys
+                next_key_columns = keys
 
                 def gen():
                     nonlocal iter
@@ -601,8 +601,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Build the row.
                 row = {}
                 if keys:
-                    for next_key, next_key_name in zip(next_keys, next_key_names):
-                        row[next_key_name] = next_key
+                    for col_name, next_key in zip(next_key_columns, next_keys):
+                        row[col_name] = next_key
 
                 for agg, agg_name, accumulator in zip(
                     aggs, resolved_agg_names, accumulators
