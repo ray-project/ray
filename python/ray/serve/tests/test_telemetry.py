@@ -11,6 +11,7 @@ import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
 from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
+from ray.anyscale.serve._private.constants import ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
 from ray.serve._private.constants import SERVE_MULTIPLEXED_MODEL_ID
 from ray.serve._private.test_utils import check_apps_running, check_telemetry
 from ray.serve._private.usage import ServeUsageTag
@@ -288,6 +289,10 @@ def test_handle_apis_detected(manage_ray_with_telemetry, call_in_deployment):
     )
 
 
+@pytest.mark.skipif(
+    ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT,
+    reason="cannot convert to object ref when using gRPC",
+)
 @pytest.mark.parametrize("mode", ["http", "outside_deployment", "inside_deployment"])
 def test_deployment_handle_to_obj_ref_detected(manage_ray_with_telemetry, mode):
     """Check that the handle to_object_ref API is detected correctly by telemetry."""
