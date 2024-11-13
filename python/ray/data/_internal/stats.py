@@ -613,6 +613,11 @@ class _StatsManager:
             self._last_iteration_stats[dataset_tag] = (stats, dataset_tag)
         self._start_thread_if_not_running()
 
+    def clear_iteration_metrics(self, dataset_tag: str):
+        with self._stats_lock:
+            if dataset_tag in self._last_iteration_stats:
+                del self._last_iteration_stats[dataset_tag]
+
     # Other methods
 
     def register_dataset_to_stats_actor(self, dataset_tag, operator_tags):

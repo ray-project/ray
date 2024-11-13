@@ -239,7 +239,9 @@ def patch_update_stats_actor():
 def patch_update_stats_actor_iter():
     with patch(
         "ray.data._internal.stats.StatsManager.update_iteration_metrics"
-    ) as update_fn:
+    ) as update_fn, patch(
+        "ray.data._internal.stats.StatsManager.clear_iteration_metrics"
+    ):
         yield update_fn
 
 
@@ -1661,7 +1663,9 @@ def test_stats_manager(shutdown_only):
     datasets = [None] * num_threads
     # Mock clear methods so that _last_execution_stats and _last_iteration_stats
     # are not cleared. We will assert on them afterwards.
-    with patch.object(StatsManager, "clear_execution_metrics"):
+    with patch.object(StatsManager, "clear_execution_metrics"), patch.object(
+        StatsManager, "clear_iteration_metrics"
+    ):
 
         def update_stats_manager(i):
             datasets[i] = ray.data.range(10).map_batches(lambda x: x)
@@ -1688,6 +1692,7 @@ def test_stats_manager(shutdown_only):
         StatsManager.clear_execution_metrics(
             dataset_tag, ["Input0", "ReadRange->MapBatches(<lambda>)1"]
         )
+        StatsManager.clear_iteration_metrics(dataset_tag)
 
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
     prev_thread = StatsManager._update_thread
