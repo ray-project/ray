@@ -136,7 +136,7 @@ class TaskSpecBuilder {
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
-      const std::unordered_map<std::string, std::string> &metadata = {}) {
+      const std::unordered_map<std::string, std::string> &labels = {}) {
     message_->set_type(TaskType::NORMAL_TASK);
     message_->set_name(name);
     message_->set_language(language);
@@ -166,7 +166,7 @@ class TaskSpecBuilder {
     }
     message_->set_concurrency_group_name(concurrency_group_name);
     message_->set_enable_task_events(enable_task_events);
-    message_->mutable_metadata()->insert(metadata.begin(), metadata.end());
+    message_->mutable_labels()->insert(labels.begin(), labels.end());
     return *this;
   }
 

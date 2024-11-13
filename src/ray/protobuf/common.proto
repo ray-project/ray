@@ -556,8 +556,8 @@ message TaskSpec {
   // this field contains the detached actor id.
   // Otherwise it's empty and is originated from a driver.
   bytes root_detached_actor_id = 40;
-  // An opaque kv store for task and actor related metadata.
-  map<string, string> metadata = 41;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
 }
 
 message TaskInfoEntry {
@@ -990,5 +990,5 @@ message LineageReconstructionTask {
   string name = 1;
   map<string, double> resources = 2;
   TaskStatus status = 3;
-  map<string, string> metadata = 4;
+  map<string, string> labels = 4;
 }

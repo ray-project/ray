@@ -737,19 +737,19 @@ cdef class Language:
     JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
-cdef int prepare_metadata(
-        dict metadata_dict,
-        unordered_map[c_string, c_string] *metadata_map) except -1:
+cdef int prepare_labels(
+        dict label_dict,
+        unordered_map[c_string, c_string] *label_map) except -1:
 
-    if metadata_dict is None:
+    if label_dict is None:
         return 0
 
-    for key, value in metadata_dict.items():
+    for key, value in label_dict.items():
         if not isinstance(key, str):
-            raise ValueError(f"Metadata key must be string, but got {type(key)}")
+            raise ValueError(f"Label key must be string, but got {type(key)}")
         if not isinstance(value, str):
-            raise ValueError(f"Metadata value must be string, but got {type(value)}")
-        metadata_map[0][key.encode("ascii")] = value.encode("ascii")
+            raise ValueError(f"Label value must be string, but got {type(value)}")
+        label_map[0][key.encode("ascii")] = value.encode("ascii")
 
     return 0
 
@@ -4025,11 +4025,11 @@ cdef class CoreWorker:
                     c_string serialized_runtime_env_info,
                     int64_t generator_backpressure_num_objects,
                     c_bool enable_task_events,
-                    metadata,
+                    labels,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
-            unordered_map[c_string, c_string] c_metadata
+            unordered_map[c_string, c_string] c_labels
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -4049,7 +4049,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
-            prepare_metadata(metadata, &c_metadata)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4062,7 +4062,7 @@ cdef class CoreWorker:
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info,
                 enable_task_events,
-                c_metadata,
+                c_labels,
                 )
 
             current_c_task_id = current_task.native()
@@ -4267,7 +4267,7 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
-            unordered_map[c_string, c_string] c_metadata
+            unordered_map[c_string, c_string] c_labels
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -4297,7 +4297,7 @@ cdef class CoreWorker:
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
                         enable_task_events,
-                        c_metadata),
+                        c_labels),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,

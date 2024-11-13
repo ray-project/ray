@@ -2111,7 +2111,7 @@ void CoreWorker::BuildCommonTaskSpec(
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
     bool enable_task_events,
-    const std::unordered_map<std::string, std::string> &metadata) {
+    const std::unordered_map<std::string, std::string> &labels) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2158,7 +2158,7 @@ void CoreWorker::BuildCommonTaskSpec(
       override_runtime_env_info,
       concurrency_group_name,
       enable_task_events,
-      metadata);
+      labels);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2215,7 +2215,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
                       /*enable_task_event*/ task_options.enable_task_events,
-                      task_options.metadata);
+                      task_options.labels);
   ActorID root_detached_actor_id;
   if (!worker_context_.GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_.GetRootDetachedActorID();

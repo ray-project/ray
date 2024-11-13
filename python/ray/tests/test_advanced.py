@@ -138,7 +138,9 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             self.count = self.count + 1
             return self.count
 
-    @ray.remote(max_retries=-1, num_cpus=0, resources={"worker": 1}, _metadata={"hello": "world"})
+    @ray.remote(
+        max_retries=-1, num_cpus=0, resources={"worker": 1}, _labels={"hello": "world"}
+    )
     def task(counter):
         count = ray.get(counter.inc.remote())
         if count > 1:
@@ -162,7 +164,7 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             len(lineage_reconstruction_tasks) == 1
             and lineage_reconstruction_tasks[0][0].name == "task"
             and lineage_reconstruction_tasks[0][0].resources == {"worker": 1.0}
-            and lineage_reconstruction_tasks[0][0].metadata == {"hello": "world"}
+            and lineage_reconstruction_tasks[0][0].labels == {"hello": "world"}
             and lineage_reconstruction_tasks[0][0].status == expected_task_status
             and lineage_reconstruction_tasks[0][1] == 1
         )

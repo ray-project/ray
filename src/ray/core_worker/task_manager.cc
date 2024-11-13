@@ -1495,8 +1495,8 @@ TaskManager::GetOngoingLineageReconstructionTasks() const {
     task.mutable_resources()->insert(resources.begin(), resources.end());
     task.set_status(task_entry.GetStatus());
     if (task_entry.spec.IsNormalTask()) {
-      task.mutable_metadata()->insert(task_entry.spec.GetMessage().metadata().begin(),
-                                      task_entry.spec.GetMessage().metadata().end());
+      task.mutable_labels()->insert(task_entry.spec.GetMessage().labels().begin(),
+                                    task_entry.spec.GetMessage().labels().end());
     }
 
     if (result.find(task) != result.end()) {
