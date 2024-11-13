@@ -153,11 +153,6 @@ class UvProcessor:
         uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
-        #
-        # TODO(hjiang): If `uv` in virtual env perfectly matches the version users
-        # require, we don't need to install also. It requires a different
-        # implementation to execute and check existence. Here we take the simpliest
-        # implementation, always reinstall the required version.
         if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
             await self._install_uv(path, cwd, pip_env, logger)
 
