@@ -788,11 +788,11 @@ def test_block_ref_bundler_basic(target, in_bundles, expected_bundles):
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
-            out_bundle = _get_bundles(bundler.get_next_bundle())
+            out_bundle = _get_bundles(bundler.get_next_bundle()[1])
             out_bundles.append(out_bundle)
     bundler.done_adding_bundles()
     if bundler.has_bundle():
-        out_bundle = _get_bundles(bundler.get_next_bundle())
+        out_bundle = _get_bundles(bundler.get_next_bundle()[1])
         out_bundles.append(out_bundle)
     assert len(out_bundles) == len(expected_bundles)
     for bundle, expected in zip(out_bundles, expected_bundles):
@@ -820,10 +820,12 @@ def test_block_ref_bundler_uniform(
     for bundle in bundles:
         bundler.add_bundle(bundle)
         while bundler.has_bundle():
-            out_bundles.append(bundler.get_next_bundle())
+            _, out_bundle = bundler.get_next_bundle()
+            out_bundles.append(out_bundle)
     bundler.done_adding_bundles()
     if bundler.has_bundle():
-        out_bundles.append(bundler.get_next_bundle())
+        _, out_bundle = bundler.get_next_bundle()
+        out_bundles.append(out_bundle)
     assert len(out_bundles) == num_out_bundles
     for out_bundle in out_bundles:
         assert out_bundle.num_rows() == out_bundle_size
