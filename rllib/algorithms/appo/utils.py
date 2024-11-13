@@ -1,5 +1,7 @@
 from collections import deque
 import random
+import threading
+import time
 
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
@@ -18,21 +20,41 @@ class CircularBuffer:
         self.max_picks_per_batch = max_picks_per_batch
 
         self._buffer = deque(maxlen=self.capacity)
-        self._ks = deque(maxlen=self.capacity)
+        self._lock = threading.Lock()
 
     def add(self, batch):
-        self._buffer.append(batch)
-        self._ks.append(0)
+        # Add buffer and k=0 information to the deque.
+        with self._lock:
+            self._buffer.append([batch, 0])
 
     def sample(self):
-        index = random.randint(0, len(self._buffer) - 1)
-        self._ks[index] += 1
-        batch = self._buffer[index]
-        # This batch has been exhausted -> Remove it from the buffer.
-        if self._ks[index] == self.max_picks_per_batch:
+        k = entry = batch = None
 
+        while True:
+            # Only initially, the buffer may be empty -> Just wait for some time.
+            if len(self._buffer) == 0:
+                time.sleep(0.001)
+                continue
+            # Sample a random buffer index.
+            with self._lock:
+                len_ = len(self._buffer)
+                entry = self._buffer[random.randint(0, len_ - 1)]
+            batch, k = entry
+            # Ignore batches that have already been invalidated.
+            if batch is not None:
+                break
+
+        # Increase k += 1 for this batch.
+        assert k is not None
+        entry[1] += 1
+
+        # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
+        if k == self.max_picks_per_batch:
+            entry[0] = None
+            entry[1] = 0
+
+        # Return the sampled batch.
         return batch
-
 
 @OldAPIStack
 def make_appo_models(policy) -> ModelV2:

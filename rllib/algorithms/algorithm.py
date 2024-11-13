@@ -3227,6 +3227,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # Only here (at the end of the iteration), reduce the results into a single
         # result dict.
+        return self.metrics.reduce(), train_iter_ctx
 
     def _run_one_evaluation(
         self,

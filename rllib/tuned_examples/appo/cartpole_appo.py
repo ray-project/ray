@@ -18,6 +18,9 @@ config = (
     .training(
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
+        # not needed: replaced by circular buffer: learner_queue_size=1,
+        grad_clip=10.0,
+        lr=0.0001,
     )
     .rl_module(
         model_config=DefaultModelConfig(vf_share_layers=True),

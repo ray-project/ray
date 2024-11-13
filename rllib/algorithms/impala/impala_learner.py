@@ -83,14 +83,19 @@ class IMPALALearner(Learner):
         self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
         self._learner_thread_out_queue = Queue()
 
+        #TODO
+        from ray.rllib.algorithms.appo.utils import CircularBuffer
+        self._circular_buffer = CircularBuffer(capacity=4, max_picks_per_batch=2)#TODO
+
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_threads = [
                 _GPULoaderThread(
                     in_queue=self._gpu_loader_in_queue,
-                    out_queue=self._learner_thread_in_queue,
+                    out_queue=None,#self._learner_thread_in_queue,
                     device=self._device,
                     metrics_logger=self.metrics,
+                    circular_buffer=self._circular_buffer,
                 )
                 for _ in range(self.config.num_gpu_loader_threads)
             ]
@@ -99,13 +104,12 @@ class IMPALALearner(Learner):
 
         # Create and start the Learner thread.
         #TODO
-        from ray.rllib.algorithms.appo.utils import CircularBuffer
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
-            in_queue=self._learner_thread_in_queue,
+            in_queue=None,#self._learner_thread_in_queue,
             out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
-            circular_buffer=CircularBuffer(capacity=4, max_picks_per_batch=2),#TODO
+            circular_buffer=self._circular_buffer,
             num_epochs=self.config.num_epochs,
             minibatch_size=self.config.minibatch_size,
             shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -178,15 +182,20 @@ class IMPALALearner(Learner):
                     self._gpu_loader_in_queue.qsize(),
                 )
             else:
-                # Enqueue to Learner thread's in-queue.
-                _LearnerThread.enqueue(
-                    self._learner_thread_in_queue,
-                    MultiAgentBatch(
-                        {mid: SampleBatch(b) for mid, b in batch.items()},
-                        env_steps=env_steps,
-                    ),
-                    self.metrics,
+                ma_batch = MultiAgentBatch(
+                    {mid: SampleBatch(b) for mid, b in batch.items()},
+                    env_steps=env_steps,
                 )
+                # Add the batch directly to the circular buffer.
+                if self._circular_buffer:
+                    self._circular_buffer.add(ma_batch)
+                else:
+                    # Enqueue to Learner thread's in-queue.
+                    _LearnerThread.enqueue(
+                        self._learner_thread_in_queue,
+                        ma_batch,
+                        self.metrics,
+                    )
 
         # Return all queued result dicts thus far (after reducing over them).
         results = {}
@@ -229,9 +238,10 @@ class _GPULoaderThread(threading.Thread):
         self,
         *,
         in_queue: Queue,
-        out_queue: deque,
+        out_queue: deque = None,
         device: torch.device,
         metrics_logger: MetricsLogger,
+        circular_buffer=None
     ):
         super().__init__()
         self.daemon = True
@@ -241,6 +251,8 @@ class _GPULoaderThread(threading.Thread):
         self._ts_dropped = 0
         self._device = device
         self.metrics = metrics_logger
+
+        self._circular_buffer = circular_buffer
 
     def run(self) -> None:
         while True:
@@ -266,8 +278,12 @@ class _GPULoaderThread(threading.Thread):
                 policy_batches={mid: SampleBatch(b) for mid, b in batch_on_gpu.items()},
                 env_steps=env_steps,
             )
-            # Enqueue to Learner thread's in-queue.
-            _LearnerThread.enqueue(self._out_queue, ma_batch_on_gpu, self.metrics)
+
+            if self._circular_buffer:
+                self._circular_buffer.add(ma_batch_on_gpu)
+            else:
+                # Enqueue to Learner thread's in-queue.
+                _LearnerThread.enqueue(self._out_queue, ma_batch_on_gpu, self.metrics)
 
 
 class _LearnerThread(threading.Thread):
@@ -304,17 +320,15 @@ class _LearnerThread(threading.Thread):
 
     def step(self):
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
-        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
-            # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
-            if not self._in_queue:
-                time.sleep(0.001)
-                return
-            ma_batch_on_gpu = self._in_queue.pop()
-
-        # Funnel all incoming batches through a (circular) buffer.
-        if self._circular_buffer is not None:
-            self._circular_buffer.add(ma_batch_on_gpu)
+        if self._circular_buffer:
             ma_batch_on_gpu = self._circular_buffer.sample()
+        else:
+            with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+                # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
+                if not self._in_queue:
+                    time.sleep(0.001)
+                    return
+                ma_batch_on_gpu = self._in_queue.pop()
 
         # Call the update method on the batch.
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
