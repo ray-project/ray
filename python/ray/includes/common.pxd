@@ -329,7 +329,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events)
+                     c_string serialized_runtime_env, c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &metadata)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()

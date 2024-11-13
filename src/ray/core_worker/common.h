@@ -67,14 +67,16 @@ struct TaskOptions {
               const std::string &concurrency_group_name = "",
               int64_t generator_backpressure_num_objects = -1,
               const std::string &serialized_runtime_env_info = "{}",
-              bool enable_task_events = kDefaultTaskEventEnabled)
+              bool enable_task_events = kDefaultTaskEventEnabled,
+              const std::unordered_map<std::string, std::string> &metadata = {})
       : name(name),
         num_returns(num_returns),
         resources(resources),
         concurrency_group_name(concurrency_group_name),
         serialized_runtime_env_info(serialized_runtime_env_info),
         generator_backpressure_num_objects(generator_backpressure_num_objects),
-        enable_task_events(enable_task_events) {}
+        enable_task_events(enable_task_events),
+        metadata(metadata) {}
 
   /// The name of this task.
   std::string name;
@@ -95,6 +97,7 @@ struct TaskOptions {
   /// True if task events (worker::TaskEvent) from this task should be reported, default
   /// to true.
   bool enable_task_events = kDefaultTaskEventEnabled;
+  std::unordered_map<std::string, std::string> metadata;
 };
 
 /// Options for actor creation tasks.
@@ -290,6 +293,10 @@ struct hash<ray::rpc::LineageReconstructionTask> {
       hash ^= std::hash<double>()(resource.second);
     }
     hash ^= std::hash<ray::rpc::TaskStatus>()(task.status());
+    for (const auto &m : task.metadata()) {
+      hash ^= std::hash<std::string>()(m.first);
+      hash ^= std::hash<std::string>()(m.second);
+    }
     return hash;
   }
 };

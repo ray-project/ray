@@ -3547,9 +3547,7 @@ def remote(
             node id based affinity scheduling.
             See :ref:`Ray scheduling strategies <ray-scheduling-strategies>`
             for more details.
-        _metadata: Extended options for Ray libraries. For example,
-            _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
+        _metadata: Metadata of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
