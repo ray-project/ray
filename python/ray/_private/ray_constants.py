@@ -236,7 +236,8 @@ LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
 LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE = "RAY_LOG_TO_STDERR_FORMAT"
 # Default logging format when logging stderr. Should not be used directly,
 # use `ray._private.ray_logging.formatters._get_logging_redirect_stderr_format()`
-# to resolve with the user-provided format string - `LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE` if it exists.
+# to resolve with the user-provided format string - 
+# `LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE` if it exists.
 LOGGER_FORMAT_STDERR_DEFAULT = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
