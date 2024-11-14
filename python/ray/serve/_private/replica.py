@@ -360,6 +360,49 @@ class ReplicaBase(ABC):
 
         return route
 
+    @contextmanager
+    def _handle_errors_and_metrics(self, request_metadata):
+        start_time = time.time()
+        user_exception = None
+        try:
+            self._metrics_manager.inc_num_ongoing_requests()
+            yield
+        except asyncio.CancelledError as e:
+            user_exception = e
+            self._on_request_cancelled(request_metadata, e)
+        except Exception as e:
+            user_exception = e
+            logger.exception("Request failed.")
+            self._on_request_failed(request_metadata, e)
+        finally:
+            self._metrics_manager.dec_num_ongoing_requests()
+
+        latency_ms = (time.time() - start_time) * 1000
+        if user_exception is None:
+            status_str = "OK"
+        elif isinstance(user_exception, asyncio.CancelledError):
+            status_str = "CANCELLED"
+        else:
+            status_str = "ERROR"
+
+        logger.info(
+            access_log_msg(
+                method=request_metadata.call_method,
+                status=status_str,
+                latency_ms=latency_ms,
+            ),
+            extra={"serve_access_log": True},
+        )
+        self._metrics_manager.record_request_metrics(
+            route=request_metadata.route,
+            status_str=status_str,
+            latency_ms=latency_ms,
+            was_error=user_exception is not None,
+        )
+
+        if user_exception is not None:
+            raise user_exception from None
+
     async def _call_user_generator(
         self,
         request_metadata: RequestMetadata,
@@ -576,49 +619,6 @@ class ReplicaBase(ABC):
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
     ):
         pass
-
-    @contextmanager
-    def _handle_errors_and_metrics(self, request_metadata):
-        start_time = time.time()
-        user_exception = None
-        try:
-            self._metrics_manager.inc_num_ongoing_requests()
-            yield
-        except asyncio.CancelledError as e:
-            user_exception = e
-            self._on_request_cancelled(request_metadata, e)
-        except Exception as e:
-            user_exception = e
-            logger.exception("Request failed.")
-            self._on_request_failed(request_metadata, e)
-        finally:
-            self._metrics_manager.dec_num_ongoing_requests()
-
-        latency_ms = (time.time() - start_time) * 1000
-        if user_exception is None:
-            status_str = "OK"
-        elif isinstance(user_exception, asyncio.CancelledError):
-            status_str = "CANCELLED"
-        else:
-            status_str = "ERROR"
-
-        logger.info(
-            access_log_msg(
-                method=request_metadata.call_method,
-                status=status_str,
-                latency_ms=latency_ms,
-            ),
-            extra={"serve_access_log": True},
-        )
-        self._metrics_manager.record_request_metrics(
-            route=request_metadata.route,
-            status_str=status_str,
-            latency_ms=latency_ms,
-            was_error=user_exception is not None,
-        )
-
-        if user_exception is not None:
-            raise user_exception from None
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
