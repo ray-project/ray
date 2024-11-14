@@ -2240,7 +2240,9 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def get_channel_details(self, channel, downstream_actor_id):
+    def get_channel_details(
+        self, channel: ChannelInterface, downstream_actor_id: str
+    ) -> str:
         """
         Get details about outer and inner channel types and channel ids
         based on the channel and the downstream actor ID.
@@ -2262,9 +2264,9 @@ class CompiledDAG:
         # get inner channel
         if (
             type(channel) == CompositeChannel
-            and downstream_actor_id.hex() in channel._channel_dict
+            and downstream_actor_id in channel._channel_dict
         ):
-            inner_channel = channel._channel_dict[downstream_actor_id.hex()]
+            inner_channel = channel._channel_dict[downstream_actor_id]
             channel_details += f"\n{type(inner_channel).__name__}"
             if type(inner_channel) == IntraProcessChannel:
                 channel_details += f", {inner_channel._channel_id[:6]}..."
@@ -2404,9 +2406,9 @@ class CompiledDAG:
                         edge_label += self.get_channel_details(
                             task.output_channels[0],
                             (
-                                downstream_node._get_actor_handle()._actor_id
+                                downstream_node._get_actor_handle()._actor_id.hex()
                                 if type(downstream_node) == ClassMethodNode
-                                else self._proxy_actor._actor_id
+                                else self._proxy_actor._actor_id.hex()
                             ),
                         )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
@@ -2419,7 +2421,8 @@ class CompiledDAG:
                     edge_label = channel_type_str
                     if channel_details:
                         edge_label += self.get_channel_details(
-                            output_channel, task.dag_node._get_actor_handle()._actor_id
+                            output_channel,
+                            task.dag_node._get_actor_handle()._actor_id.hex(),
                         )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
             if type(task.dag_node) == InputAttributeNode:
