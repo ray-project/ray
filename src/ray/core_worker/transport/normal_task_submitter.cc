@@ -333,7 +333,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const TaskSpecification resource_spec = TaskSpecification(std::move(resource_spec_msg));
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
