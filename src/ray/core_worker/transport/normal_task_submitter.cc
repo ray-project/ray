@@ -41,8 +41,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     bool keep_executing = true;
     {
       absl::MutexLock lock(&mu_);
-      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_spec.TaskId());
+      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+      if (task_iter != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_iter);
         keep_executing = false;
       }
       if (keep_executing) {
