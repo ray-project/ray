@@ -294,14 +294,6 @@ class ReplicaBase(ABC):
     def get_num_ongoing_requests(self):
         return self._metrics_manager.get_num_ongoing_requests()
 
-    def get_metadata(self) -> ReplicaMetadata:
-        return ReplicaMetadata(
-            self._version.deployment_config,
-            self._version,
-            self._initialization_latency,
-            self._port,
-        )
-
     @abstractmethod
     async def _on_initialized(self):
         raise NotImplementedError
@@ -334,13 +326,6 @@ class ReplicaBase(ABC):
         # for the first time.
         if self._initialization_latency is None:
             self._initialization_latency = time.time() - initialization_start_time
-
-    async def check_health(self):
-        # If there's no user-defined health check, nothing runs on the user code event
-        # loop and no future is returned.
-        f = self._user_callable_wrapper.call_user_health_check()
-        if f is not None:
-            await asyncio.wrap_future(f)
 
     async def handle_request(
         self, request_metadata, *request_args, **request_kwargs
@@ -432,27 +417,6 @@ class ReplicaBase(ABC):
             servable_object=self._user_callable_wrapper.user_callable
         )
 
-    async def perform_graceful_shutdown(self):
-        # If the replica was never initialized it never served traffic, so we
-        # can skip the wait period.
-        if self._user_callable_initialized:
-            await self._drain_ongoing_requests()
-
-        try:
-            await asyncio.wrap_future(self._user_callable_wrapper.call_destructor())
-        except:  # noqa: E722
-            # We catch a blanket exception since the constructor may still be
-            # running, so instance variables used by the destructor may not exist.
-            if self._user_callable_initialized:
-                logger.exception(
-                    "__del__ ran before replica finished initializing, and "
-                    "raised an exception."
-                )
-            else:
-                logger.exception("__del__ raised an exception.")
-
-        await self._metrics_manager.shutdown()
-
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
@@ -492,30 +456,6 @@ class ReplicaBase(ABC):
                 route = matched_route
 
         return route
-
-    async def _drain_ongoing_requests(self):
-        """Wait for any ongoing requests to finish.
-
-        Sleep for a grace period before the first time we check the number of ongoing
-        requests to allow the notification to remove this replica to propagate to
-        callers first.
-        """
-        wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
-        while True:
-            await asyncio.sleep(wait_loop_period_s)
-
-            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
-            if num_ongoing_requests > 0:
-                logger.info(
-                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
-                    f"because there are {num_ongoing_requests} ongoing requests."
-                )
-            else:
-                logger.info(
-                    "Graceful shutdown complete; replica exiting.",
-                    extra={"log_to_stderr": False},
-                )
-                break
 
     def _configure_logger_and_profilers(
         self, logging_config: Union[None, Dict, LoggingConfig]
@@ -671,6 +611,66 @@ class ReplicaBase(ABC):
 
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
+
+    def get_metadata(self) -> ReplicaMetadata:
+        return ReplicaMetadata(
+            self._version.deployment_config,
+            self._version,
+            self._initialization_latency,
+            self._port,
+        )
+
+    async def _drain_ongoing_requests(self):
+        """Wait for any ongoing requests to finish.
+
+        Sleep for a grace period before the first time we check the number of ongoing
+        requests to allow the notification to remove this replica to propagate to
+        callers first.
+        """
+        wait_loop_period_s = self._deployment_config.graceful_shutdown_wait_loop_s
+        while True:
+            await asyncio.sleep(wait_loop_period_s)
+
+            num_ongoing_requests = self._metrics_manager.get_num_ongoing_requests()
+            if num_ongoing_requests > 0:
+                logger.info(
+                    f"Waiting for an additional {wait_loop_period_s}s to shut down "
+                    f"because there are {num_ongoing_requests} ongoing requests."
+                )
+            else:
+                logger.info(
+                    "Graceful shutdown complete; replica exiting.",
+                    extra={"log_to_stderr": False},
+                )
+                break
+
+    async def perform_graceful_shutdown(self):
+        # If the replica was never initialized it never served traffic, so we
+        # can skip the wait period.
+        if self._user_callable_initialized:
+            await self._drain_ongoing_requests()
+
+        try:
+            await asyncio.wrap_future(self._user_callable_wrapper.call_destructor())
+        except:  # noqa: E722
+            # We catch a blanket exception since the constructor may still be
+            # running, so instance variables used by the destructor may not exist.
+            if self._user_callable_initialized:
+                logger.exception(
+                    "__del__ ran before replica finished initializing, and "
+                    "raised an exception."
+                )
+            else:
+                logger.exception("__del__ raised an exception.")
+
+        await self._metrics_manager.shutdown()
+
+    async def check_health(self):
+        # If there's no user-defined health check, nothing runs on the user code event
+        # loop and no future is returned.
+        f = self._user_callable_wrapper.call_user_health_check()
+        if f is not None:
+            await asyncio.wrap_future(f)
 
 
 class Replica(ReplicaBase):
