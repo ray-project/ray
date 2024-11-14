@@ -1354,6 +1354,30 @@ def test_write_with_schema(ray_start_regular_shared, tmp_path):
     assert pq.read_table(tmp_path).schema == schema
 
 
+@pytest.mark.parametrize(
+    "row_data",
+    [
+        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 3}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 1}, {"a": 1, "b": None}],
+    ],
+    ids=["row1_b_null", "row1_a_null", "row_each_null"],
+)
+def test_write_auto_infer_nullable_fields(
+    tmp_path, ray_start_regular_shared, row_data, restore_data_context
+):
+    """
+    Test that when writing multiple blocks, we can automatically infer nullable
+    fields.
+    """
+    ctx = DataContext.get_current()
+    # So that we force multiple blocks on mapping.
+    ctx.target_max_block_size = 1
+    ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
+    # So we force writing to a single file.
+    ds.write_parquet(tmp_path, num_rows_per_file=2)
+
+
 if __name__ == "__main__":
     import sys
 
