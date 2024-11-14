@@ -76,7 +76,7 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // guarantee that the local node is not selected for scheduling.
   ASSERT_FALSE(
       cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
-  WaitForTaskArgsRequests(work);
+  WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
 
