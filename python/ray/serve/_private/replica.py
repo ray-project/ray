@@ -348,7 +348,6 @@ class ReplicaBase(ABC):
     async def handle_request(
         self, request_metadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
-        """Entrypoint for `stream=False` calls."""
         with self._wrap_user_method_call(request_metadata, request_args):
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
@@ -359,7 +358,6 @@ class ReplicaBase(ABC):
     async def handle_request_streaming(
         self, request_metadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
-        """Generator that is the entrypoint for all `stream=True` handle calls."""
         with self._wrap_user_method_call(request_metadata, request_args):
             async for result in self._call_user_generator(
                 request_metadata,
@@ -695,7 +693,6 @@ class Replica(ReplicaBase):
             task.cancel()
 
     async def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
-        pass
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
@@ -835,7 +832,7 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        return self._replica_impl.handle_request(
+        return await self._replica_impl.handle_request(
             request_metadata, *request_args, **request_kwargs
         )
 
@@ -897,12 +894,9 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        with self._wrap_user_method_call(request_metadata, request_args):
-            return await asyncio.wrap_future(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
-            )
+        return await self._replica_impl.handle_request(
+            request_metadata, *request_args, **request_kwargs
+        )
 
     async def perform_graceful_shutdown(self):
         await self._replica_impl.perform_graceful_shutdown()
