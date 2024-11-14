@@ -568,35 +568,39 @@ class ReplicaBase(ABC):
             raise RuntimeError(traceback.format_exc()) from None
 
     async def reconfigure(self, deployment_config: DeploymentConfig):
-        user_config_changed = (
-            deployment_config.user_config != self._deployment_config.user_config
-        )
-        logging_config_changed = (
-            deployment_config.logging_config != self._deployment_config.logging_config
-        )
-        self._deployment_config = deployment_config
-        self._version = DeploymentVersion.from_deployment_version(
-            self._version, deployment_config
-        )
-
-        self._metrics_manager.set_autoscaling_config(
-            deployment_config.autoscaling_config
-        )
-        if logging_config_changed:
-            self._configure_logger_and_profilers(deployment_config.logging_config)
-
-        if user_config_changed:
-            await asyncio.wrap_future(
-                self._user_callable_wrapper.call_reconfigure(
-                    deployment_config.user_config
-                )
+        try:
+            user_config_changed = (
+                deployment_config.user_config != self._deployment_config.user_config
+            )
+            logging_config_changed = (
+                deployment_config.logging_config
+                != self._deployment_config.logging_config
+            )
+            self._deployment_config = deployment_config
+            self._version = DeploymentVersion.from_deployment_version(
+                self._version, deployment_config
             )
 
-        # We need to update internal replica context to reflect the new
-        # deployment_config.
-        self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
-        )
+            self._metrics_manager.set_autoscaling_config(
+                deployment_config.autoscaling_config
+            )
+            if logging_config_changed:
+                self._configure_logger_and_profilers(deployment_config.logging_config)
+
+            if user_config_changed:
+                await asyncio.wrap_future(
+                    self._user_callable_wrapper.call_reconfigure(
+                        deployment_config.user_config
+                    )
+                )
+
+            # We need to update internal replica context to reflect the new
+            # deployment_config.
+            self._set_internal_replica_context(
+                servable_object=self._user_callable_wrapper.user_callable
+            )
+        except Exception:
+            raise RuntimeError(traceback.format_exc()) from None
 
     def get_metadata(
         self,
@@ -816,11 +820,7 @@ class ReplicaActor:
     async def reconfigure(
         self, deployment_config
     ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
-        try:
-            await self._replica_impl.reconfigure(deployment_config)
-        except Exception:
-            raise RuntimeError(traceback.format_exc()) from None
-
+        await self._replica_impl.reconfigure(deployment_config)
         return self._replica_impl.get_metadata()
 
     async def handle_request(
