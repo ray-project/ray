@@ -258,7 +258,7 @@ If you need these features, consider using the {ref}`Fluent Bit solution <kubera
 For clusters on VMs, don't redirect logs to stderr. Instead, follow {ref}`this guide <vm-logging>` to persist logs.
 ```
 
-Redirecting logging to stderr also prepends a `({component})` prefix, for example, `(raylet)`, to each log record message.
+By default, redirecting logging to stderr also prepends a `({component})` prefix, for example, `(raylet)`, to each log record message.
 
 ```bash
 [2022-01-24 19:42:02,978 I 1829336 1829336] (gcs_server) grpc_server.cc:103: GcsServer server started, listening on port 50009.
@@ -268,6 +268,8 @@ Redirecting logging to stderr also prepends a `({component})` prefix, for exampl
 ```
 
 These prefixes allow you to filter the stderr stream of logs by the component of interest. Note, however, that multi-line log records **don't** have this component marker at the beginning of each line.
+
+You may provide a custom stderr log format through the ``RAY_LOG_TO_STDERR_FORMAT`` environmental variable. This format will be applied to all logs passing through stderr. The template value `{component}` may be included in your custom log format. If so, it is substituted at runtime with the correct component name. For example: ``RAY_LOG_TO_STDERR_FORMAT={component} - %(message)`` would resolve to `raylet - %(message)` while ``RAY_LOG_TO_STDERR_FORMAT=%(message)`` would provide no additional formatting. 
 
 Follow the steps below to set the environment variable ``RAY_LOG_TO_STDERR=1`` on all Ray nodes
 
