@@ -250,5 +250,5 @@ def is_dynamic_passthrough(node_config):
     if "gpu_config" in node_config:
         gpu_config = node_config["gpu_config"]
         if gpu_config and gpu_config["dynamic_pci_passthrough"]:
-            return True
-    return False
+            return True, gpu_config["pci_passthru_64bit_mmio_size_gb"]
+    return False, 0

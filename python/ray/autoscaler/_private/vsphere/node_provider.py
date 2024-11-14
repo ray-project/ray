@@ -190,12 +190,13 @@ class VsphereNodeProvider(NodeProvider):
             )
 
         if to_be_plugged_gpu:
-            is_dynamic = is_dynamic_passthrough(node_config)
+            is_dynamic, MMIO_size = is_dynamic_passthrough(node_config)
             plug_gpu_cards_to_vm(
                 self.get_pyvmomi_sdk_provider(),
                 target_vm_name,
                 to_be_plugged_gpu,
                 is_dynamic,
+                MMIO_size
             )
 
         return self.get_vsphere_sdk_provider().get_vsphere_sdk_vm_obj(target_vm_id)

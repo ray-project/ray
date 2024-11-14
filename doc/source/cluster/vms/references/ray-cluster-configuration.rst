@@ -231,6 +231,7 @@ vSphere GPU Configs
         .. parsed-literal::
 
             :ref:`dynamic_pci_passthrough <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: bool
+            :ref:`pci_passthru_64bit_mmio_size_gb <cluster-configuration-vsphere-gpu-config-pci-passthrough>`: int
 
 .. _cluster-configuration-node-types-type:
 
@@ -1459,6 +1460,17 @@ The VM with Dynamic PCI passthrough GPU can still support vSphere DRS (https://w
 * **Importance:** Low
 * **Type:** Boolean
 
+
+.. _cluster-configuration-pci-passthru-64bit-mmio-size-gb:
+
+``vsphere_config.gpu_config.resources.pci_passthru_64bit_mmio_size_gb``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Defines the memory mapped IO size in gigabytes for the PCI passthrough. This parameter is used to allocate memory for devices that use PCI passthrough.
+
+* **Required:** Yes (if Dynamic PCI passthrough is enabled)
+* **Importance:** Low
+* **Type:** Integer
 
 .. _cluster-configuration-node-config:
 
