@@ -343,6 +343,8 @@ class StreamingHashAggregate(PhysicalOperator):
         if should_finalize:
             logger.debug(f"Finalizing aggregator {idx}")
             self._aggregator_finalized[idx] = True
+
+        empty_ref_bundle = RefBundle(blocks=tuple(), owns_blocks=True)
         try:
             # TODO(hchen): dispatch multiple inputs at once.
             input_ref_bundle = self._pending_aggregate_inputs[idx].popleft()
@@ -352,7 +354,7 @@ class StreamingHashAggregate(PhysicalOperator):
             else:
                 # When finalizing, we should still send a task to the aggregator
                 # with no input to trigger finalization.
-                input_ref_bundle = RefBundle(blocks=tuple(), owns_blocks=True)
+                input_ref_bundle = empty_ref_bundle
         # TODO(hchen): handle checkpointing.
         should_checkpoint = False
         agg_result_gen = self._aggregator_pool.get_aggregator(idx).aggregate.remote(
@@ -370,7 +372,10 @@ class StreamingHashAggregate(PhysicalOperator):
                 logger.error(f"Error in aggregate task {idx}: {error}")
             else:
                 input_ref_bundle.destroy_if_owned()
-                self._metrics.on_input_dequeued(input_ref_bundle)
+                # Don't dequeue the empty ref bundle, because we never enqueued it in
+                # the first place.
+                if input_ref_bundle is not empty_ref_bundle:
+                    self._metrics.on_input_dequeued(input_ref_bundle)
                 self._aggregate_tasks.pop(idx)
                 # Try to dispatch more inputs.
                 self._dispatch_aggregate_tasks(idx)
