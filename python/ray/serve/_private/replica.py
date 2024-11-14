@@ -291,138 +291,41 @@ class ReplicaBase(ABC):
 
         self._port: Optional[int] = None
 
-    def get_num_ongoing_requests(self):
-        return self._metrics_manager.get_num_ongoing_requests()
-
-    @abstractmethod
-    async def _on_initialized(self):
-        raise NotImplementedError
-
-    async def initialize(self, deployment_config):
-        # Ensure that initialization is only performed once.
-        # When controller restarts, it will call this method again.
-        async with self._user_callable_initialized_lock:
-            initialization_start_time = time.time()
-            if not self._user_callable_initialized:
-                self._user_callable_asgi_app = await asyncio.wrap_future(
-                    self._user_callable_wrapper.initialize_callable()
-                )
-                await self._on_initialized()
-                self._user_callable_initialized = True
-
-            if deployment_config:
-                await asyncio.wrap_future(
-                    self._user_callable_wrapper.call_reconfigure(
-                        deployment_config.user_config
-                    )
-                )
-
-        # A new replica should not be considered healthy until it passes
-        # an initial health check. If an initial health check fails,
-        # consider it an initialization failure.
-        await self.check_health()
-
-        # Save the initialization latency if the replica is initializing
-        # for the first time.
-        if self._initialization_latency is None:
-            self._initialization_latency = time.time() - initialization_start_time
-
-    async def handle_request(
-        self, request_metadata, *request_args, **request_kwargs
-    ) -> Tuple[bytes, Any]:
-        with self._wrap_user_method_call(request_metadata, request_args):
-            return await asyncio.wrap_future(
-                self._user_callable_wrapper.call_user_method(
-                    request_metadata, request_args, request_kwargs
-                )
-            )
-
-    async def handle_request_streaming(
-        self, request_metadata, *request_args, **request_kwargs
-    ) -> AsyncGenerator[Any, None]:
-        with self._wrap_user_method_call(request_metadata, request_args):
-            async for result in self._call_user_generator(
-                request_metadata,
-                request_args,
-                request_kwargs,
-            ):
-                yield result
-
-    async def handle_request_with_rejection(
-        self, request_metadata, *request_args, **request_kwargs
-    ):
-        limit = self._deployment_config.max_ongoing_requests
-        num_ongoing_requests = self.get_num_ongoing_requests()
-        if num_ongoing_requests >= limit:
-            logger.warning(
-                f"Replica at capacity of max_ongoing_requests={limit}, "
-                f"rejecting request {request_metadata.request_id}.",
-                extra={"log_to_stderr": False},
-            )
-            yield ReplicaQueueLengthInfo(
-                accepted=False, num_ongoing_requests=num_ongoing_requests
-            )
-            return
-
-        with self._wrap_user_method_call(request_metadata, request_args):
-            yield ReplicaQueueLengthInfo(
-                accepted=True,
-                # NOTE(edoakes): `_wrap_user_method_call` will increment the number
-                # of ongoing requests to include this one, so re-fetch the value.
-                num_ongoing_requests=self.get_num_ongoing_requests(),
-            )
-
-            if request_metadata.is_streaming:
-                async for result in self._call_user_generator(
-                    request_metadata,
-                    request_args,
-                    request_kwargs,
-                ):
-                    yield result
-            else:
-                yield await asyncio.wrap_future(
-                    self._user_callable_wrapper.call_user_method(
-                        request_metadata, request_args, request_kwargs
-                    )
-                )
-
-    async def reconfigure(self, deployment_config: DeploymentConfig):
-        user_config_changed = (
-            deployment_config.user_config != self._deployment_config.user_config
-        )
-        logging_config_changed = (
-            deployment_config.logging_config != self._deployment_config.logging_config
-        )
-        self._deployment_config = deployment_config
-        self._version = DeploymentVersion.from_deployment_version(
-            self._version, deployment_config
-        )
-
-        self._metrics_manager.set_autoscaling_config(
-            deployment_config.autoscaling_config
-        )
-        if logging_config_changed:
-            self._configure_logger_and_profilers(deployment_config.logging_config)
-
-        if user_config_changed:
-            await asyncio.wrap_future(
-                self._user_callable_wrapper.call_reconfigure(
-                    deployment_config.user_config
-                )
-            )
-
-        # We need to update internal replica context to reflect the new
-        # deployment_config.
-        self._set_internal_replica_context(
-            servable_object=self._user_callable_wrapper.user_callable
-        )
-
     def _set_internal_replica_context(self, *, servable_object: Callable = None):
         ray.serve.context._set_internal_replica_context(
             replica_id=self._replica_id,
             servable_object=servable_object,
             _deployment_config=self._deployment_config,
         )
+
+    def _configure_logger_and_profilers(
+        self, logging_config: Union[None, Dict, LoggingConfig]
+    ):
+
+        if logging_config is None:
+            logging_config = {}
+        if isinstance(logging_config, dict):
+            logging_config = LoggingConfig(**logging_config)
+
+        configure_component_logger(
+            component_type=ServeComponentType.REPLICA,
+            component_name=self._component_name,
+            component_id=self._component_id,
+            logging_config=logging_config,
+        )
+        configure_component_memory_profiler(
+            component_type=ServeComponentType.REPLICA,
+            component_name=self._component_name,
+            component_id=self._component_id,
+        )
+        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
+            component_type=ServeComponentType.REPLICA,
+            component_name=self._component_name,
+            component_id=self._component_id,
+        )
+
+    def get_num_ongoing_requests(self):
+        return self._metrics_manager.get_num_ongoing_requests()
 
     def _maybe_get_asgi_route(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
@@ -456,92 +359,6 @@ class ReplicaBase(ABC):
                 route = matched_route
 
         return route
-
-    def _configure_logger_and_profilers(
-        self, logging_config: Union[None, Dict, LoggingConfig]
-    ):
-
-        if logging_config is None:
-            logging_config = {}
-        if isinstance(logging_config, dict):
-            logging_config = LoggingConfig(**logging_config)
-
-        configure_component_logger(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-            logging_config=logging_config,
-        )
-        configure_component_memory_profiler(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-        )
-        self.cpu_profiler, self.cpu_profiler_log = configure_component_cpu_profiler(
-            component_type=ServeComponentType.REPLICA,
-            component_name=self._component_name,
-            component_id=self._component_id,
-        )
-
-    @abstractmethod
-    def _on_request_cancelled(
-        self, request_metadata: RequestMetadata, e: asyncio.CancelledError
-    ):
-        pass
-
-    @abstractmethod
-    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
-        pass
-
-    @abstractmethod
-    @contextmanager
-    def _wrap_user_method_call(
-        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
-        pass
-
-    @contextmanager
-    def _handle_errors_and_metrics(self, request_metadata):
-        start_time = time.time()
-        user_exception = None
-        try:
-            self._metrics_manager.inc_num_ongoing_requests()
-            yield
-        except asyncio.CancelledError as e:
-            user_exception = e
-            self._on_request_cancelled(request_metadata, e)
-        except Exception as e:
-            user_exception = e
-            logger.exception("Request failed.")
-            self._on_request_failed(request_metadata, e)
-        finally:
-            self._metrics_manager.dec_num_ongoing_requests()
-
-        latency_ms = (time.time() - start_time) * 1000
-        if user_exception is None:
-            status_str = "OK"
-        elif isinstance(user_exception, asyncio.CancelledError):
-            status_str = "CANCELLED"
-        else:
-            status_str = "ERROR"
-
-        logger.info(
-            access_log_msg(
-                method=request_metadata.call_method,
-                status=status_str,
-                latency_ms=latency_ms,
-            ),
-            extra={"serve_access_log": True},
-        )
-        self._metrics_manager.record_request_metrics(
-            route=request_metadata.route,
-            status_str=status_str,
-            latency_ms=latency_ms,
-            was_error=user_exception is not None,
-        )
-
-        if user_exception is not None:
-            raise user_exception from None
 
     async def _call_user_generator(
         self,
@@ -612,6 +429,129 @@ class ReplicaBase(ABC):
             if wait_for_message_task is not None and not wait_for_message_task.done():
                 wait_for_message_task.cancel()
 
+    async def handle_request(
+        self, request_metadata, *request_args, **request_kwargs
+    ) -> Tuple[bytes, Any]:
+        with self._wrap_user_method_call(request_metadata, request_args):
+            return await asyncio.wrap_future(
+                self._user_callable_wrapper.call_user_method(
+                    request_metadata, request_args, request_kwargs
+                )
+            )
+
+    async def handle_request_streaming(
+        self, request_metadata, *request_args, **request_kwargs
+    ) -> AsyncGenerator[Any, None]:
+        with self._wrap_user_method_call(request_metadata, request_args):
+            async for result in self._call_user_generator(
+                request_metadata,
+                request_args,
+                request_kwargs,
+            ):
+                yield result
+
+    async def handle_request_with_rejection(
+        self, request_metadata, *request_args, **request_kwargs
+    ):
+        limit = self._deployment_config.max_ongoing_requests
+        num_ongoing_requests = self.get_num_ongoing_requests()
+        if num_ongoing_requests >= limit:
+            logger.warning(
+                f"Replica at capacity of max_ongoing_requests={limit}, "
+                f"rejecting request {request_metadata.request_id}.",
+                extra={"log_to_stderr": False},
+            )
+            yield ReplicaQueueLengthInfo(
+                accepted=False, num_ongoing_requests=num_ongoing_requests
+            )
+            return
+
+        with self._wrap_user_method_call(request_metadata, request_args):
+            yield ReplicaQueueLengthInfo(
+                accepted=True,
+                # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                # of ongoing requests to include this one, so re-fetch the value.
+                num_ongoing_requests=self.get_num_ongoing_requests(),
+            )
+
+            if request_metadata.is_streaming:
+                async for result in self._call_user_generator(
+                    request_metadata,
+                    request_args,
+                    request_kwargs,
+                ):
+                    yield result
+            else:
+                yield await asyncio.wrap_future(
+                    self._user_callable_wrapper.call_user_method(
+                        request_metadata, request_args, request_kwargs
+                    )
+                )
+
+    @abstractmethod
+    async def _on_initialized(self):
+        raise NotImplementedError
+
+    async def initialize(self, deployment_config):
+        # Ensure that initialization is only performed once.
+        # When controller restarts, it will call this method again.
+        async with self._user_callable_initialized_lock:
+            initialization_start_time = time.time()
+            if not self._user_callable_initialized:
+                self._user_callable_asgi_app = await asyncio.wrap_future(
+                    self._user_callable_wrapper.initialize_callable()
+                )
+                await self._on_initialized()
+                self._user_callable_initialized = True
+
+            if deployment_config:
+                await asyncio.wrap_future(
+                    self._user_callable_wrapper.call_reconfigure(
+                        deployment_config.user_config
+                    )
+                )
+
+        # A new replica should not be considered healthy until it passes
+        # an initial health check. If an initial health check fails,
+        # consider it an initialization failure.
+        await self.check_health()
+
+        # Save the initialization latency if the replica is initializing
+        # for the first time.
+        if self._initialization_latency is None:
+            self._initialization_latency = time.time() - initialization_start_time
+
+    async def reconfigure(self, deployment_config: DeploymentConfig):
+        user_config_changed = (
+            deployment_config.user_config != self._deployment_config.user_config
+        )
+        logging_config_changed = (
+            deployment_config.logging_config != self._deployment_config.logging_config
+        )
+        self._deployment_config = deployment_config
+        self._version = DeploymentVersion.from_deployment_version(
+            self._version, deployment_config
+        )
+
+        self._metrics_manager.set_autoscaling_config(
+            deployment_config.autoscaling_config
+        )
+        if logging_config_changed:
+            self._configure_logger_and_profilers(deployment_config.logging_config)
+
+        if user_config_changed:
+            await asyncio.wrap_future(
+                self._user_callable_wrapper.call_reconfigure(
+                    deployment_config.user_config
+                )
+            )
+
+        # We need to update internal replica context to reflect the new
+        # deployment_config.
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper.user_callable
+        )
+
     def get_metadata(self) -> ReplicaMetadata:
         return ReplicaMetadata(
             self._version.deployment_config,
@@ -619,6 +559,66 @@ class ReplicaBase(ABC):
             self._initialization_latency,
             self._port,
         )
+
+    @abstractmethod
+    def _on_request_cancelled(
+        self, request_metadata: RequestMetadata, e: asyncio.CancelledError
+    ):
+        pass
+
+    @abstractmethod
+    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
+        pass
+
+    @abstractmethod
+    @contextmanager
+    def _wrap_user_method_call(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ):
+        pass
+
+    @contextmanager
+    def _handle_errors_and_metrics(self, request_metadata):
+        start_time = time.time()
+        user_exception = None
+        try:
+            self._metrics_manager.inc_num_ongoing_requests()
+            yield
+        except asyncio.CancelledError as e:
+            user_exception = e
+            self._on_request_cancelled(request_metadata, e)
+        except Exception as e:
+            user_exception = e
+            logger.exception("Request failed.")
+            self._on_request_failed(request_metadata, e)
+        finally:
+            self._metrics_manager.dec_num_ongoing_requests()
+
+        latency_ms = (time.time() - start_time) * 1000
+        if user_exception is None:
+            status_str = "OK"
+        elif isinstance(user_exception, asyncio.CancelledError):
+            status_str = "CANCELLED"
+        else:
+            status_str = "ERROR"
+
+        logger.info(
+            access_log_msg(
+                method=request_metadata.call_method,
+                status=status_str,
+                latency_ms=latency_ms,
+            ),
+            extra={"serve_access_log": True},
+        )
+        self._metrics_manager.record_request_metrics(
+            route=request_metadata.route,
+            status_str=status_str,
+            latency_ms=latency_ms,
+            was_error=user_exception is not None,
+        )
+
+        if user_exception is not None:
+            raise user_exception from None
 
     async def _drain_ongoing_requests(self):
         """Wait for any ongoing requests to finish.
