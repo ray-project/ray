@@ -1584,6 +1584,12 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             idle_timeout_s = ctx.get_idle_timeout_s()
+            # Override the scheduler idle_timeout_s if set for this node_type.
+            for node_type in node_type_configs:
+                if node_type != node.node_type:
+                    continue
+                if node_type_configs[node_type].idle_timeout_s is not None:
+                    idle_timeout_s = node_type_configs[node_type].idle_timeout_s
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.
                 continue
