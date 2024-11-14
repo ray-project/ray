@@ -15,7 +15,7 @@ from typing import Any, Dict, Optional
 
 
 def _get_logging_redirect_stderr_format(component: Optional[str]) -> str:
-    """Get the format string for redirecting stderr.
+    """Get the logging format for logs redirected to stderr.
 
     Use the users format string if it is set, otherwise use the default format string.
     Format with the component if it is provided and present in the format string.
@@ -27,7 +27,7 @@ def _get_logging_redirect_stderr_format(component: Optional[str]) -> str:
 
     if component is not None:
         # this is a no-op if `{component}` is not in the str
-        desired_format.format(component=component)
+        desired_format = desired_format.format(component=component)
 
     return desired_format
 
