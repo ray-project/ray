@@ -134,6 +134,12 @@ def test_groupby_arrow(ray_start_regular_shared, use_push_based_shuffle):
     assert agg_ds.count() == 0
 
 
+def test_groupby_none(ray_start_regular_shared):
+    ds = ray.data.range(10)
+    assert ds.groupby(None).min().take_all() == [{"min(id)": 0}]
+    assert ds.groupby(None).max().take_all() == [{"max(id)": 9}]
+
+
 def test_groupby_errors(ray_start_regular_shared):
     ds = ray.data.range(100)
     ds.groupby(None).count().show()  # OK
@@ -206,6 +212,44 @@ def test_groupby_large_udf_returns(ray_start_regular_shared):
         .map_groups(create_large_data)
     )
     ds.take(1)
+
+
+@pytest.mark.parametrize("keys", ["A", ["A", "B"]])
+def test_agg_inputs(ray_start_regular_shared, keys):
+    xs = list(range(100))
+    ds = ray.data.from_items([{"A": (x % 3), "B": x, "C": (x % 2)} for x in xs])
+
+    def check_init(k):
+        if len(keys) == 2:
+            assert isinstance(k, tuple), k
+            assert len(k) == 2
+        elif len(keys) == 1:
+            assert isinstance(k, int)
+        return 1
+
+    def check_finalize(v):
+        assert v == 1
+
+    def check_accumulate_merge(a, r):
+        assert a == 1
+        if isinstance(r, int):
+            return 1
+        elif len(r) == 3:
+            assert all(x in r for x in ["A", "B", "C"])
+        else:
+            assert False, r
+        return 1
+
+    output = ds.groupby(keys).aggregate(
+        AggregateFn(
+            init=check_init,
+            accumulate_row=check_accumulate_merge,
+            merge=check_accumulate_merge,
+            finalize=check_finalize,
+            name="foo",
+        )
+    )
+    output.take_all()
 
 
 def test_agg_errors(ray_start_regular_shared):
