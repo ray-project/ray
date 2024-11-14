@@ -442,18 +442,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         #       from another async task)
         current_stub_node_id_tuples = list(self._stubs.items())
 
-        if current_stub_node_id_tuples:
-            node_ids, _ = zip(*current_stub_node_id_tuples)
-        else:
-            node_ids = []
-
+        node_ids = []
         get_node_stats_tasks = []
 
-        for i, (node_id, stub) in enumerate(current_stub_node_id_tuples):
+        for _, (node_id, stub) in enumerate(current_stub_node_id_tuples):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
 
+            node_ids.append(node_id)
             get_node_stats_tasks.append(
                 stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
