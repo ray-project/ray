@@ -120,6 +120,21 @@ class RemoteFunction:
         if "runtime_env" in self._default_options:
             self._default_options["runtime_env"] = self._runtime_env
 
+        # Pre-calculate runtime env info, to avoid re-calculation at `remote`
+        # invocation. When `remote` call has specified extra `option` field,
+        # runtime env will be merged and re-serialized.
+        #
+        # Caveat: for `func.option().remote()`, we have to recalculate serialized
+        # runtime env info upon every call. But it's acceptable since pre-calculation
+        # here only happens once at `RemoteFunction` initialization.
+        self._serialized_base_runtime_env_info = ""
+        if self._runtime_env:
+            self._serialized_base_runtime_env_info = get_runtime_env_info(
+                self._runtime_env,
+                is_job_runtime_env=False,
+                serialize=True,
+            )
+
         self._language = language
         self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
@@ -136,7 +151,12 @@ class RemoteFunction:
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
-            return self._remote(args=args, kwargs=kwargs, **self._default_options)
+            return self._remote(
+                args=args,
+                kwargs=kwargs,
+                serialized_runtime_env=self._serialized_base_runtime_env_info,
+                **self._default_options,
+            )
 
         self.remote = _remote_proxy
 
@@ -239,15 +259,28 @@ class RemoteFunction:
         updated_options = ray_option_utils.update_options(default_options, task_options)
         ray_option_utils.validate_task_options(updated_options, in_options=True)
 
-        # only update runtime_env when ".options()" specifies new runtime_env
+        # Only update runtime_env and re-calculate serialized runtime env info when
+        # ".options()" specifies new runtime_env.
+        serialized_runtime_env_info = self._serialized_base_runtime_env_info
         if "runtime_env" in task_options:
             updated_options["runtime_env"] = parse_runtime_env(
                 updated_options["runtime_env"]
             )
+            # Re-calculate runtime env info based on updated runtime env.
+            serialized_runtime_env_info = get_runtime_env_info(
+                updated_options["runtime_env"],
+                is_job_runtime_env=True,
+                serialize=True,
+            )
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
+                return func_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    serialized_runtime_env_info=serialized_runtime_env_info,
+                    **updated_options,
+                )
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
@@ -263,7 +296,13 @@ class RemoteFunction:
 
     @wrap_auto_init
     @_tracing_task_invocation
-    def _remote(self, args=None, kwargs=None, **task_options):
+    def _remote(
+        self,
+        args=None,
+        kwargs=None,
+        serialized_runtime_env_info: str = "",
+        **task_options,
+    ):
         """Submit the remote function for execution."""
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
@@ -329,7 +368,6 @@ class RemoteFunction:
 
         # TODO(suquark): cleanup these fields
         name = task_options["name"]
-        runtime_env = parse_runtime_env(task_options["runtime_env"])
         placement_group = task_options["placement_group"]
         placement_group_bundle_index = task_options["placement_group_bundle_index"]
         placement_group_capture_child_tasks = task_options[
@@ -403,14 +441,6 @@ class RemoteFunction:
                 )
             else:
                 scheduling_strategy = "DEFAULT"
-
-        serialized_runtime_env_info = None
-        if runtime_env is not None:
-            serialized_runtime_env_info = get_runtime_env_info(
-                runtime_env,
-                is_job_runtime_env=False,
-                serialize=True,
-            )
 
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
