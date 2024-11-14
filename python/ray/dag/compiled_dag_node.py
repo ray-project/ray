@@ -44,6 +44,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
     CompositeChannel,
+    IntraProcessChannel,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -2239,13 +2240,43 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
+    def get_channel_details(self, channel, downstream_actor_id):
+        """
+        Get details about outer and inner channel types and channel ids
+        based on the channel and the downstream actor ID.
+        Used for graph visualization.
+        Args:
+            channel: The channel to get details for.
+            downstream_actor_id: The downstream actor ID.
+        Returns:
+            A string with details about the channel based on its connection
+            to the actor provided.
+        """
+        channel_details = type(channel).__name__
+        # get outer channel
+        if channel in self._channel_dict and self._channel_dict[channel] != channel:
+            channel = self._channel_dict[channel]
+            channel_details += f"\n{type(channel).__name__}"
+            if type(channel) == CachedChannel:
+                channel_details += f", {channel._channel_id[:6]}..."
+        # get inner channel
+        if (
+            type(channel) == CompositeChannel
+            and downstream_actor_id.hex() in channel._channel_dict
+        ):
+            inner_channel = channel._channel_dict[downstream_actor_id.hex()]
+            channel_details += f"\n{type(inner_channel).__name__}"
+            if type(inner_channel) == IntraProcessChannel:
+                channel_details += f", {inner_channel._channel_id[:6]}..."
+        return channel_details
+
     def visualize(
         self,
         filename="compiled_graph",
         format="png",
         view=False,
         return_dot=False,
-        show_channel_details=False,
+        channel_details=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2362,43 +2393,22 @@ class CompiledDAG:
                 else "UnknownType"
             ) + "\n"
 
-            def get_channel_details(output_channel, downstream_actor_id):
-                if not show_channel_details:
-                    return ""
-                channel_details = type(output_channel).__name__
-                if (
-                    output_channel in self._channel_dict
-                    and self._channel_dict[output_channel] != output_channel
-                ):
-                    outer_channel = self._channel_dict[output_channel]
-                    channel_details += f"\n{type(outer_channel).__name__}"
-                    if type(outer_channel) == CachedChannel:
-                        channel_details += f", {outer_channel._channel_id[:6]}..."
-                if (
-                    type(output_channel) == CompositeChannel
-                    and downstream_actor_id.hex() in output_channel._channel_dict
-                ):
-                    inner_channel = output_channel._channel_dict[
-                        downstream_actor_id.hex()
-                    ]
-                    channel_details += f"\n{type(inner_channel).__name__}"
-                    channel_details += f", {inner_channel._channel_id[:6]}..."
-                return channel_details
-
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
             # case: task with one output
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    edge_label = channel_type_str + get_channel_details(
-                        task.output_channels[0],
-                        (
-                            downstream_node._get_actor_handle()._actor_id
-                            if type(downstream_node) == ClassMethodNode
-                            else self._proxy_actor._actor_id
-                        ),
-                    )
+                    edge_label = channel_type_str
+                    if channel_details:
+                        edge_label += self.get_channel_details(
+                            task.output_channels[0],
+                            (
+                                downstream_node._get_actor_handle()._actor_id
+                                if type(downstream_node) == ClassMethodNode
+                                else self._proxy_actor._actor_id
+                            ),
+                        )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
             # case: multi return, output channels connect to class method output nodes
             elif len(task.output_channels) > 1:
@@ -2406,9 +2416,11 @@ class CompiledDAG:
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    edge_label = channel_type_str + get_channel_details(
-                        output_channel, task.dag_node._get_actor_handle()._actor_id
-                    )
+                    edge_label = channel_type_str
+                    if channel_details:
+                        edge_label += self.get_channel_details(
+                            output_channel, task.dag_node._get_actor_handle()._actor_id
+                        )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)
             if type(task.dag_node) == InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
