@@ -33,6 +33,8 @@ RayTask::RayTask(TaskSpecification task_spec, std::string preferred_node_id)
 
 const TaskSpecification &RayTask::GetTaskSpecification() const { return task_spec_; }
 
+TaskSpecification& RayTask::MutableTaskSpec() { return task_spec_; }
+
 const std::vector<rpc::ObjectReference> &RayTask::GetDependencies() const {
   return dependencies_;
 }

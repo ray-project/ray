@@ -189,6 +189,10 @@ const std::string &TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
+void TaskSpecification::ClearRuntimeEnv() {
+  message_->mutable_runtime_env_info()->clear_serialized_runtime_env();
+}
+
 const rpc::RuntimeEnvConfig &TaskSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }

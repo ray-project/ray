@@ -50,6 +50,8 @@ class RayTask {
   /// \return The immutable specification for the task.
   const TaskSpecification &GetTaskSpecification() const;
 
+  TaskSpecification& MutableTaskSpec();
+
   /// Get the task's object dependencies. This comprises the immutable task
   /// arguments and the mutable execution dependencies.
   ///

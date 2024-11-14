@@ -84,6 +84,7 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   {
     const auto &spec = work->task.GetTaskSpecification();
     RAY_LOG(INFO) << "at WaitForTaskArgsRequests, serialized runtime env empty ? " << spec.SerializedRuntimeEnv().empty();
+    work->task.MutableTaskSpec().ClearRuntimeEnv();
   }
 
   const auto &task = work->task;
@@ -98,18 +99,18 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
         {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
-      tasks_to_dispatch_[scheduling_key].emplace_back(task);
+      tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), task);
+      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(work));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].emplace_back(task);
+    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
   return can_dispatch;
 }
