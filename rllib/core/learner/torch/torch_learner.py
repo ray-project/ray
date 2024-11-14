@@ -165,12 +165,17 @@ class TorchLearner(Learner):
                 off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
         self.metrics.log_dict(off_policyness, window=1)
 
-        fwd_out = self.module.forward_train(batch)
-        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
+        with self.metrics.log_time((ALL_MODULES, "_test_timer_forward_train")):
+            fwd_out = self.module.forward_train(batch)
+        with self.metrics.log_time((ALL_MODULES, "_test_timer_loss")):
+            loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 
-        gradients = self.compute_gradients(loss_per_module)
-        postprocessed_gradients = self.postprocess_gradients(gradients)
-        self.apply_gradients(postprocessed_gradients)
+        with self.metrics.log_time((ALL_MODULES, "_test_timer_comp_gradients")):
+            gradients = self.compute_gradients(loss_per_module)
+        with self.metrics.log_time((ALL_MODULES, "_test_timer_postproc_gradients")):
+            postprocessed_gradients = self.postprocess_gradients(gradients)
+        with self.metrics.log_time((ALL_MODULES, "_test_timer_apply_gradients")):
+            self.apply_gradients(postprocessed_gradients)
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.

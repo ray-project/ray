@@ -1322,6 +1322,7 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if episodes is not None:
             # Call the learner connector pipeline.
+            assert False
             with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
                 shared_data = {}
                 batch = self._learner_connector(
@@ -1345,19 +1346,11 @@ class Learner(Checkpointable):
                 )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
+            assert False
             assert len(self.module) == 1
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
-
-        # TODO (sven): Remove this leftover hack here for the situation in which we
-        #  did not go through the learner connector.
-        #  Options:
-        #  a) Either also pass given batches through the learner connector (even if
-        #     episodes is None). (preferred solution)
-        #  b) Get rid of the option to pass in a batch altogether.
-        # if episodes is None:
-        #    batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
@@ -1379,6 +1372,7 @@ class Learner(Checkpointable):
         self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
+            assert False
             if self._learner_connector is not None:
                 batch_iter = partial(
                     MiniBatchCyclicIterator, _uses_new_env_runners=True
@@ -1386,6 +1380,7 @@ class Learner(Checkpointable):
             else:
                 batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:
+            assert False
             # `minibatch_size` was not set but `num_epochs` > 1.
             # Under the old training stack, users could do multiple epochs
             # over a batch without specifying a minibatch size. We enable

@@ -110,9 +110,9 @@ class IMPALALearner(Learner):
             out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
             circular_buffer=self._circular_buffer,
-            num_epochs=self.config.num_epochs,
-            minibatch_size=self.config.minibatch_size,
-            shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+            #num_epochs=self.config.num_epochs,
+            #minibatch_size=self.config.minibatch_size,
+            #shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
         )
         self._learner_thread.start()
 
@@ -311,9 +311,9 @@ class _LearnerThread(threading.Thread):
         in_queue,
         out_queue,
         metrics_logger,
-        num_epochs,
-        minibatch_size,
-        shuffle_batch_per_epoch,
+        #num_epochs,
+        #minibatch_size,
+        #shuffle_batch_per_epoch,
         circular_buffer=None,
     ):
         super().__init__()
@@ -325,9 +325,9 @@ class _LearnerThread(threading.Thread):
         self._in_queue: deque = in_queue
         self._out_queue: Queue = out_queue
 
-        self._num_epochs = num_epochs
-        self._minibatch_size = minibatch_size
-        self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
+        #self._num_epochs = num_epochs
+        #self._minibatch_size = minibatch_size
+        #self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
 
         self._circular_buffer = circular_buffer
 
@@ -360,9 +360,9 @@ class _LearnerThread(threading.Thread):
                         (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     )
                 },
-                num_epochs=self._num_epochs,
-                minibatch_size=self._minibatch_size,
-                shuffle_batch_per_epoch=self._shuffle_batch_per_epoch,
+                #num_epochs=self._num_epochs,
+                #minibatch_size=self._minibatch_size,
+                #shuffle_batch_per_epoch=self._shuffle_batch_per_epoch,
             )
             # We have to deepcopy the results dict, b/c we must avoid having a returned
             # Stats object sit in the queue and getting a new (possibly even tensor)
