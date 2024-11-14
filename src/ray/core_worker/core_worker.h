@@ -795,6 +795,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
   /// for objects we do not own.
   ///
+  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
+  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
+  /// that calls this function in application code can properly retry when hitting the
+  /// IOError.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
@@ -1426,7 +1431,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
+  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
+                                           const std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1709,7 +1715,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CancelTaskOnExecutor(TaskID intended_task_id,
                             bool force_kill,
                             bool recursive,
-                            OnCanceledCallback on_canceled);
+                            const OnCanceledCallback &on_canceled);
 
   /// Cancel an actor task queued or running in the current worker.
   ///
