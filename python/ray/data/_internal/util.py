@@ -729,47 +729,6 @@ def unify_block_metadata_schema(
     return None
 
 
-def find_partition_index_arrow(
-    table: "pyarrow.Table",
-    boundary: List[Any],
-    sort_key: "SortKey",
-) -> int:
-    import pyarrow as pa
-
-    columns = sort_key.get_columns()
-    descending = sort_key.get_descending()
-
-    left, right = 0, len(table)
-    for col_name, boundary_val in zip(columns, boundary):
-        if left == right:
-            return right
-
-        col_array = table[col_name].slice(left, right - left)
-
-        prevleft = left
-
-        if pa.compute.sum(
-            pa.compute.is_null(col_array, nan_is_null=True)
-        ).as_py() == len(col_array):
-            # all values are null
-            continue
-        elif descending is True:
-            left_idx = pa.compute.sum(pa.compute.greater(col_array, boundary_val))
-            right_idx = pa.compute.sum(
-                pa.compute.greater_equal(col_array, boundary_val)
-            )
-
-            left = prevleft + left_idx.as_py()
-            right = prevleft + right_idx.as_py()
-        else:
-            left_idx = pa.compute.sum(pa.compute.less(col_array, boundary_val))
-            right_idx = pa.compute.sum(pa.compute.less_equal(col_array, boundary_val))
-            left = prevleft + left_idx.as_py()
-            right = prevleft + right_idx.as_py()
-
-    return right if descending is True else left
-
-
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
     desired: List[Any],
