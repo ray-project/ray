@@ -297,8 +297,7 @@ public class Serve {
         name,
         deploymentRoute.getDeploymentInfo().getDeploymentConfig(),
         deploymentRoute.getDeploymentInfo().getReplicaConfig(),
-        deploymentRoute.getDeploymentInfo().getVersion(),
-        deploymentRoute.getRoute());
+        deploymentRoute.getDeploymentInfo().getVersion());
   }
 
   /**
@@ -307,7 +306,7 @@ public class Serve {
    * @param target A Serve application returned by `Deployment.bind()`.
    * @return A handle that can be used to call the application.
    */
-  public static Optional<DeploymentHandle> run(Application target) {
+  public static DeploymentHandle run(Application target) {
     return run(target, true, Constants.SERVE_DEFAULT_APP_NAME, null, null);
   }
 
@@ -318,13 +317,11 @@ public class Serve {
    * @param blocking
    * @param name Application name. If not provided, this will be the only application running on the
    *     cluster (it will delete all others).
-   * @param routePrefix Route prefix for HTTP requests. If not provided, it will use route_prefix of
-   *     the ingress deployment. If specified neither as an argument nor in the ingress deployment,
-   *     the route prefix will default to '/'.
+   * @param routePrefix Route prefix for HTTP requests. Defaults to '/'.
    * @param config
    * @return A handle that can be used to call the application.
    */
-  public static Optional<DeploymentHandle> run(
+  public static DeploymentHandle run(
       Application target,
       boolean blocking,
       String name,
@@ -335,19 +332,20 @@ public class Serve {
       throw new RayServeException("Application name must a non-empty string.");
     }
 
+    if (StringUtils.isNotBlank(routePrefix)) {
+      Preconditions.checkArgument(
+          routePrefix.startsWith("/"), "The route_prefix must start with a forward slash ('/')");
+    } else {
+      routePrefix = "/";
+    }
+
     ServeControllerClient client = serveStart(config);
 
     List<Deployment> deployments = Graph.build(target.getInternalDagNode(), name);
-    Deployment ingress = Graph.getAndValidateIngressDeployment(deployments);
+    Deployment ingressDeployment = deployments.get(deployments.size() - 1);
 
     for (Deployment deployment : deployments) {
       // Overwrite route prefix
-      if (StringUtils.isNotBlank(deployment.getRoutePrefix())
-          && StringUtils.isNotBlank(routePrefix)) {
-        Preconditions.checkArgument(
-            routePrefix.startsWith("/"), "The route_prefix must start with a forward slash ('/')");
-        deployment.setRoutePrefix(routePrefix);
-      }
       deployment
           .getDeploymentConfig()
           .setVersion(
@@ -356,12 +354,8 @@ public class Serve {
                   : RandomStringUtils.randomAlphabetic(6));
     }
 
-    client.deployApplication(name, deployments, blocking);
-
-    return Optional.ofNullable(ingress)
-        .map(
-            ingressDeployment ->
-                client.getDeploymentHandle(ingressDeployment.getName(), name, true));
+    client.deployApplication(name, routePrefix, deployments, ingressDeployment.getName(), blocking);
+    return client.getDeploymentHandle(ingressDeployment.getName(), name, true);
   }
 
   private static void init() {

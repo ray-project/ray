@@ -182,3 +182,15 @@ cc_test(
         "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
+
+cc_test(
+    name = "size_literals_test",
+    srcs = ["size_literals_test.cc"],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:size_literals",
+        "@com_google_googletest//:gtest_main",
+    ],
+)

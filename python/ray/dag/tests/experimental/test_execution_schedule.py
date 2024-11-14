@@ -10,6 +10,7 @@ from ray.dag.dag_node_operation import (
     _DAGNodeOperationType,
     _DAGOperationGraphNode,
     _DAGNodeOperation,
+    _extract_execution_schedule,
     _select_next_nodes,
     _build_dag_node_operation_graph,
     _add_edge,
@@ -35,16 +36,47 @@ def mock_init(self):
     pass
 
 
-def generate_dag_graph_nodes(exec_task_idx, task_idx, actor_handle, requires_nccl):
+def generate_dag_graph_nodes(
+    exec_task_idx, task_idx, actor_handle, requires_nccl, requires_collective=False
+):
     graph_nodes = {}
     for op_type in _DAGNodeOperationType:
+        op_requires_nccl = (
+            op_type == _DAGNodeOperationType.WRITE and requires_nccl
+        ) or (op_type == _DAGNodeOperationType.COMPUTE and requires_collective)
         graph_nodes[op_type] = _DAGOperationGraphNode(
             _DAGNodeOperation(exec_task_idx, op_type),
             task_idx,
             actor_handle,
-            requires_nccl,
+            op_requires_nccl,
         )
     return graph_nodes
+
+
+def set_collective_idxs(
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+    dag_idxs: List[int],
+) -> None:
+    collective_idxs = {(dag_idx, _DAGNodeOperationType.COMPUTE) for dag_idx in dag_idxs}
+    for dag_idx in dag_idxs:
+        graph[dag_idx][_DAGNodeOperationType.COMPUTE].collective_idxs = collective_idxs
+
+
+def set_ready_collective_idxs(
+    graph: Dict[int, Dict[_DAGNodeOperationType, _DAGOperationGraphNode]],
+    dag_idxs: List[int],
+) -> None:
+    ready_collective_idxs = {
+        (dag_idx, _DAGNodeOperationType.COMPUTE) for dag_idx in dag_idxs
+    }
+    for dag_idx in dag_idxs:
+        graph[dag_idx][
+            _DAGNodeOperationType.COMPUTE
+        ].ready_collective_idxs = ready_collective_idxs
+
+
+def _generate_and_extract_execution_schedule(graph):
+    return _extract_execution_schedule(_generate_actor_to_execution_schedule(graph))
 
 
 class TestSelectNextNodes:
@@ -227,6 +259,94 @@ class TestSelectNextNodes:
                 next_nodes[0] == mock_graph[task_idx_1_0][_DAGNodeOperationType.WRITE]
             )
             assert next_nodes[1] == mock_graph[task_idx_2_1][_DAGNodeOperationType.READ]
+
+    def test_only_one_nccl_collective(self, monkeypatch):
+        """
+        Simulate the case where there is only one candidate which is a NCCL
+        collective operation. In this case, `_select_next_nodes` should return
+        all the NCCL collective nodes.
+
+        driver -> fake_actor_1.allreduce_1 -> driver
+               |                            |
+               -> fake_actor_2.allreduce_1 ->
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, dag_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, dag_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
+
+        mock_graph = {
+            dag_idx_1: generate_dag_graph_nodes(
+                local_idx_1, dag_idx_1, fake_actor_1, True, True
+            ),
+            dag_idx_2: generate_dag_graph_nodes(
+                local_idx_2, dag_idx_2, fake_actor_2, True, True
+            ),
+        }
+        set_collective_idxs(mock_graph, [dag_idx_1, dag_idx_2])
+        set_ready_collective_idxs(mock_graph, [dag_idx_1, dag_idx_2])
+
+        mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE]],
+        }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE],
+            mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE],
+        }
+
+    def test_two_nccl_collectives(self, monkeypatch):
+        """
+        Simulate the case where there are two candidates that are NCCL collective
+        operations. In this case, `_select_next_nodes` should return all the NCCL
+        collective nodes that are bond earlier.
+
+        driver -> fake_actor_1.allreduce_1 -> driver
+               |                            |
+               -> fake_actor_2.allreduce_1 ->
+               |                            |
+               -> fake_actor_3.allreduce_2 ->
+               |                            |
+               -> fake_actor_4.allreduce_2 ->
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+        fake_actor_1, dag_idx_1, local_idx_1 = ActorHandle("fake_actor_1"), 1, 0
+        fake_actor_2, dag_idx_2, local_idx_2 = ActorHandle("fake_actor_2"), 2, 0
+        fake_actor_3, dag_idx_3, local_idx_3 = ActorHandle("fake_actor_3"), 3, 0
+        fake_actor_4, dag_idx_4, local_idx_4 = ActorHandle("fake_actor_4"), 4, 0
+
+        mock_graph = {
+            dag_idx_1: generate_dag_graph_nodes(
+                local_idx_1, dag_idx_1, fake_actor_1, True, True
+            ),
+            dag_idx_2: generate_dag_graph_nodes(
+                local_idx_2, dag_idx_2, fake_actor_2, True, True
+            ),
+            dag_idx_3: generate_dag_graph_nodes(
+                local_idx_3, dag_idx_3, fake_actor_3, True, True
+            ),
+            dag_idx_4: generate_dag_graph_nodes(
+                local_idx_4, dag_idx_4, fake_actor_4, True, True
+            ),
+        }
+        set_collective_idxs(mock_graph, [dag_idx_1, dag_idx_2])
+        set_ready_collective_idxs(mock_graph, [dag_idx_1, dag_idx_2])
+        set_collective_idxs(mock_graph, [dag_idx_3, dag_idx_4])
+        set_ready_collective_idxs(mock_graph, [dag_idx_3, dag_idx_4])
+
+        mock_actor_to_candidates = {
+            fake_actor_2: [mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE]],
+            fake_actor_4: [mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE]],
+        }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_1][_DAGNodeOperationType.COMPUTE],
+            mock_graph[dag_idx_2][_DAGNodeOperationType.COMPUTE],
+        }
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        assert set(next_nodes) == {
+            mock_graph[dag_idx_3][_DAGNodeOperationType.COMPUTE],
+            mock_graph[dag_idx_4][_DAGNodeOperationType.COMPUTE],
+        }
 
 
 class TestBuildDAGNodeOperationGraph:
@@ -603,7 +723,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_data_dependeny(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 6
         assert actor_to_execution_schedule[fake_actor] == [
@@ -652,7 +772,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1], graph[task_idx_2])
         self.add_control_dependency(graph[task_idx_2], graph[task_idx_3])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 1
         assert len(actor_to_execution_schedule[fake_actor]) == 9
         assert actor_to_execution_schedule[fake_actor] == [
@@ -711,7 +831,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_control_dependency(graph[task_idx_2_1], graph[task_idx_2_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 6
         assert len(actor_to_execution_schedule[fake_actor_2]) == 6
@@ -776,7 +896,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_1_1], graph[task_idx_1_2])
         self.add_control_dependency(graph[task_idx_2_1], graph[task_idx_2_2])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[fake_actor_1]) == 6
         assert len(actor_to_execution_schedule[fake_actor_2]) == 6
@@ -869,7 +989,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_2_2], graph[task_idx_2_3])
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_4])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 12
         assert len(actor_to_execution_schedule[worker_2]) == 12
@@ -976,7 +1096,7 @@ class TestGenerateActorToExecutionSchedule:
         self.add_control_dependency(graph[task_idx_2_2], graph[task_idx_2_3])
         self.add_control_dependency(graph[task_idx_2_3], graph[task_idx_2_4])
 
-        actor_to_execution_schedule = _generate_actor_to_execution_schedule(graph)
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
         assert len(actor_to_execution_schedule) == 2
         assert len(actor_to_execution_schedule[worker_1]) == 12
         assert len(actor_to_execution_schedule[worker_2]) == 12

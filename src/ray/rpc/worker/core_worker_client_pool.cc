@@ -17,7 +17,7 @@
 namespace ray {
 namespace rpc {
 
-shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
+std::shared_ptr<CoreWorkerClientInterface> CoreWorkerClientPool::GetOrConnect(
     const Address &addr_proto) {
   RAY_CHECK_NE(addr_proto.worker_id(), "");
   absl::MutexLock lock(&mu_);

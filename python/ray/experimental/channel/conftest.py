@@ -6,6 +6,7 @@ from unittest import mock
 import torch
 
 import ray
+import ray.dag
 import ray.experimental.channel as ray_channel
 from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
 
@@ -68,11 +69,14 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         # We use the op index to synchronize the sender and receiver at the
         # barrier.
         self.num_ops = defaultdict(int)
+        self.barriers = set()
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         # "Send" the tensor to the barrier actor.
-        barrier_key = f"barrier-{self.get_self_rank()}-{peer_rank}"
+        barrier_key = sorted([self.get_self_rank(), peer_rank])
+        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
         barrier = ray.get_actor(name=barrier_key)
+        self.barriers.add(barrier)
         ray.get(barrier.wait.remote(self.num_ops[barrier_key], tensor))
         self.num_ops[barrier_key] += 1
 
@@ -84,8 +88,10 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         allocator: Optional[TorchTensorAllocator] = None,
     ):
         # "Receive" the tensor from the barrier actor.
-        barrier_key = f"barrier-{peer_rank}-{self.get_self_rank()}"
+        barrier_key = sorted([self.get_self_rank(), peer_rank])
+        barrier_key = f"barrier-{barrier_key[0]}-{barrier_key[1]}"
         barrier = ray.get_actor(name=barrier_key)
+        self.barriers.add(barrier)
         received_tensor = ray.get(barrier.wait.remote(self.num_ops[barrier_key]))
         assert (
             allocator is not None
@@ -94,6 +100,10 @@ class MockNcclGroup(ray_channel.nccl_group._NcclGroup):
         buf[:] = received_tensor[:]
         self.num_ops[barrier_key] += 1
         return buf
+
+    def destroy(self) -> None:
+        for barrier in self.barriers:
+            ray.kill(barrier)
 
 
 def start_nccl_mock():
@@ -121,10 +131,34 @@ def start_nccl_mock():
         "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
     )
     stream_patcher.start()
+    new_stream_patcher = mock.patch(
+        "torch.cuda.Stream", new_callable=lambda: MockCudaStream
+    )
+    new_stream_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
     tensor_patcher.start()
     tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
     tensor_patcher.start()
+    tensor_allocator_patcher = mock.patch(
+        "ray.experimental.channel.torch_tensor_nccl_channel._torch_zeros_allocator",
+        lambda shape, dtype: torch.zeros(shape, dtype=dtype),
+    )
+    tensor_allocator_patcher.start()
 
     ctx = ray_channel.ChannelContext.get_current()
     ctx.set_torch_device(torch.device("cuda"))
+
+
+class TracedChannel(ray_channel.shared_memory_channel.Channel):
+    """
+    Patched Channel that records all write ops for testing.
+    """
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.ops = []
+
+    def write(self, *args, **kwargs):
+        self.ops.append((args, kwargs))
+        return super().write(*args, **kwargs)

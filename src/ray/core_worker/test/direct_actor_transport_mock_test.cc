@@ -20,6 +20,8 @@
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
 #include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/memory_store.h"
+
 // clang-format on
 
 namespace ray {
@@ -36,7 +38,7 @@ class DirectTaskTransportTest : public ::testing::Test {
     task_finisher = std::make_shared<MockTaskFinisherInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
-    memory_store = std::make_unique<CoreWorkerMemoryStore>();
+    memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
     reference_counter = std::make_shared<MockReferenceCounter>();
     actor_task_submitter = std::make_unique<ActorTaskSubmitter>(*client_pool,
                                                                 *memory_store,
