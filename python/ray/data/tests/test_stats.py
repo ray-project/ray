@@ -1689,9 +1689,7 @@ def test_stats_manager(shutdown_only):
         dataset_tag = create_dataset_tag(dataset._name, dataset._uuid)
         assert dataset_tag in StatsManager._last_execution_stats
         assert dataset_tag in StatsManager._last_iteration_stats
-        StatsManager.clear_execution_metrics(
-            dataset_tag, ["Input0", "ReadRange->MapBatches(<lambda>)1"]
-        )
+        StatsManager.clear_last_execution_stats(dataset_tag)
         StatsManager.clear_iteration_metrics(dataset_tag)
 
     wait_for_condition(lambda: not StatsManager._update_thread.is_alive())
