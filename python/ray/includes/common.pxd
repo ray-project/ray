@@ -348,7 +348,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
             int32_t max_pending_calls,
-            c_bool enable_task_events)
+            c_bool enable_task_events,
+            const unordered_map[c_string, c_string] &labels)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":

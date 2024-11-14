@@ -30,6 +30,8 @@
 namespace ray {
 namespace core {
 
+class ActorManager;
+
 class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id,
@@ -601,7 +603,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Key is the lineage reconstruction task info.
   /// Value is the number of ongoing lineage reconstruction tasks of this type.
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-  GetOngoingLineageReconstructionTasks() const;
+  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.

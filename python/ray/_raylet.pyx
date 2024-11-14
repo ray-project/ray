@@ -4109,6 +4109,7 @@ cdef class CoreWorker:
                      int32_t max_pending_calls,
                      scheduling_strategy,
                      c_bool enable_task_events,
+                     labels,
                      ):
         cdef:
             CRayFunction ray_function
@@ -4121,6 +4122,7 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
+            unordered_map[c_string, c_string] c_labels
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4128,6 +4130,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4156,7 +4159,8 @@ cdef class CoreWorker:
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
-                        enable_task_events),
+                        enable_task_events,
+                        c_labels),
                     extension_data,
                     &c_actor_id)
 

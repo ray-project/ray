@@ -118,7 +118,8 @@ struct ActorCreationOptions {
                        const std::vector<ConcurrencyGroup> &concurrency_groups = {},
                        bool execute_out_of_order = false,
                        int32_t max_pending_calls = -1,
-                       bool enable_task_events = kDefaultTaskEventEnabled)
+                       bool enable_task_events = kDefaultTaskEventEnabled,
+                       const std::unordered_map<std::string, std::string> &labels = {})
       : max_restarts(max_restarts),
         max_task_retries(max_task_retries),
         max_concurrency(max_concurrency),
@@ -135,7 +136,8 @@ struct ActorCreationOptions {
         execute_out_of_order(execute_out_of_order),
         max_pending_calls(max_pending_calls),
         scheduling_strategy(scheduling_strategy),
-        enable_task_events(enable_task_events) {
+        enable_task_events(enable_task_events),
+        labels(labels) {
     // Check that resources is a subset of placement resources.
     for (auto &resource : resources) {
       auto it = this->placement_resources.find(resource.first);
@@ -190,6 +192,7 @@ struct ActorCreationOptions {
   /// True if task events (worker::TaskEvent) from this creation task should be reported
   /// default to true.
   const bool enable_task_events = kDefaultTaskEventEnabled;
+  const std::unordered_map<std::string, std::string> labels;
 };
 
 using PlacementStrategy = rpc::PlacementStrategy;

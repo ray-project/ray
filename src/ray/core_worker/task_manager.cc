@@ -16,6 +16,7 @@
 
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
+#include "ray/core_worker/actor_manager.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/exponential_backoff.h"
 #include "ray/util/util.h"
@@ -1475,7 +1476,8 @@ void TaskManager::SetTaskStatus(
 }
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-TaskManager::GetOngoingLineageReconstructionTasks() const {
+TaskManager::GetOngoingLineageReconstructionTasks(
+    const ActorManager &actor_manager) const {
   absl::MutexLock lock(&mu_);
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t> result;
   for (const auto &task_it : submissible_tasks_) {
@@ -1497,6 +1499,11 @@ TaskManager::GetOngoingLineageReconstructionTasks() const {
     if (task_entry.spec.IsNormalTask()) {
       task.mutable_labels()->insert(task_entry.spec.GetMessage().labels().begin(),
                                     task_entry.spec.GetMessage().labels().end());
+    } else if (task_entry.spec.IsActorTask()) {
+      auto actor_handle = actor_manager.GetActorHandle(task_entry.spec.ActorId());
+      RAY_CHECK(actor_handle) << "Actor task must be submitted via actor handle";
+      const auto &labels = actor_handle->GetLabels();
+      task.mutable_labels()->insert(labels.begin(), labels.end());
     }
 
     if (result.find(task) != result.end()) {
