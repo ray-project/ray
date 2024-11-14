@@ -116,6 +116,9 @@ class IMPALALearner(Learner):
         )
         self._learner_thread.start()
 
+        #TEST
+        self._dummy_batch = None
+
     @override(Learner)
     def update_from_episodes(
         self,
@@ -167,12 +170,14 @@ class IMPALALearner(Learner):
         if env_steps > 0:
             # Call the learner connector pipeline.
             with self.metrics.log_time((ALL_MODULES, EPISODES_TO_BATCH_TIMER)):
-                batch = self._learner_connector(
-                    rl_module=self.module,
-                    batch={},
-                    episodes=episodes_flat,
-                    shared_data={},
-                )
+                if self._dummy_batch is None:
+                    self._dummy_batch = self._learner_connector(
+                        rl_module=self.module,
+                        batch={},
+                        episodes=episodes_flat,
+                        shared_data={},
+                    )
+                batch = copy.deepcopy(self._dummy_batch)
 
             # Queue the CPU batch to the GPU-loader thread.
             if self.config.num_gpus_per_learner > 0:
@@ -268,6 +273,8 @@ class _GPULoaderThread(threading.Thread):
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_QUEUE_WAIT_TIMER)):
             # Get a new batch from the data (inqueue).
             batch_on_cpu, env_steps = self._in_queue.get()
+            #TEST
+            assert batch_on_cpu["default_policy"]["rewards"].device == "cpu"
 
         with self.metrics.log_time((ALL_MODULES, GPU_LOADER_LOAD_TO_GPU_TIMER)):
             # Load the batch onto the GPU device.
@@ -382,7 +389,9 @@ class _LearnerThread(threading.Thread):
         #  metrics (similarly: ENV_RUNNERS/NUM_ENV_STEPS_SAMPLED grows exponentially
         #  on the main algo's logger).
         # metrics_logger.log_value(
-        #    LEARNER_THREAD_ENV_STEPS_DROPPED, ts_dropped, reduce="sum"
+        #    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+        #    ts_dropped,
+        #    reduce="sum",
         # )
 
         # Log current queue size.
