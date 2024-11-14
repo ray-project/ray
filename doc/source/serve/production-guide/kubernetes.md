@@ -72,7 +72,7 @@ rayservice-sample   7s
 
 $ kubectl get pods
 NAME                                                      READY   STATUS    RESTARTS   AGE
-service-sample-raycluster-454c4-worker-small-group-b6mmg   1/1     Running   0          XXs
+service-sample-raycluster-454c4-worker-small-group-b6mmg  1/1     Running   0          XXs
 kuberay-operator-7fbdbf8c89-4lrnr                         1/1     Running   0          XXs
 rayservice-sample-raycluster-454c4-head-krk9d             1/1     Running   0          XXs
 
