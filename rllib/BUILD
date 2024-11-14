@@ -2973,15 +2973,15 @@ py_test(
 
 # subdirectory: ray_serve/
 # ....................................
-# TODO (sven): Uncomment once the problem with the path on BAZEL is solved.
-# py_test(
-#    name = "examples/ray_serve/ray_serve_with_rllib",
-#    main = "examples/ray_serve/ray_serve_with_rllib.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
-#    args = ["--train-iters=2", "--serve-episodes=2", "--no-render"]
-# )
+py_test(
+    name = "examples/ray_serve/ray_serve_with_rllib",
+    main = "examples/ray_serve/ray_serve_with_rllib.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
+    data = glob(["examples/ray_serve/classes/**"]),
+    args = ["--stop-iters=2", "--num-episodes-served=2", "--no-render", "--port=12345"]
+)
 
 # subdirectory: ray_tune/
 # ....................................
