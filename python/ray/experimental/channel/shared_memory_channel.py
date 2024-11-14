@@ -702,7 +702,7 @@ class CompositeChannel(ChannelInterface):
         creation of reader_and_node_list in CompiledDAGNode.
         """
         actor_id = ray.get_runtime_context().get_actor_id()
-        if self._read_by_adag_driver:
+        if actor_id is None and self._read_by_adag_driver:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
             assert len(self._reader_and_node_list) > 0
