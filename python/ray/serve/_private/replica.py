@@ -595,8 +595,10 @@ class ReplicaBase(ABC):
             servable_object=self._user_callable_wrapper.user_callable
         )
 
-    def get_metadata(self) -> ReplicaMetadata:
-        return ReplicaMetadata(
+    def get_metadata(
+        self,
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+        return (
             self._version.deployment_config,
             self._version,
             self._initialization_latency,
@@ -793,7 +795,7 @@ class ReplicaActor:
         self,
         deployment_config: DeploymentConfig = None,
         _after: Optional[Any] = None,
-    ) -> ReplicaMetadata:
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
@@ -813,7 +815,9 @@ class ReplicaActor:
     async def check_health(self):
         await self._replica_impl.check_health()
 
-    async def reconfigure(self, deployment_config) -> ReplicaMetadata:
+    async def reconfigure(
+        self, deployment_config
+    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
         try:
             await self._replica_impl.reconfigure(deployment_config)
         except Exception:

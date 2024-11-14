@@ -696,12 +696,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    replica_metadata = ray.get(self._ready_obj_ref)
-                    self._version = replica_metadata.version
-                    self._port = replica_metadata.port
-                    self._initialization_latency_s = (
-                        replica_metadata.initialization_latency
-                    )
+                    (
+                        _,
+                        self._version,
+                        self._initialization_latency_s,
+                        self._port,
+                    ) = ray.get(self._ready_obj_ref)
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
