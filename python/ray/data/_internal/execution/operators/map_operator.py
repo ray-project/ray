@@ -4,7 +4,18 @@ import itertools
 import logging
 from abc import ABC, abstractmethod
 from collections import defaultdict, deque
-from typing import Any, Callable, Deque, Dict, Iterator, List, Optional, Set, Union
+from typing import (
+    Any,
+    Callable,
+    Deque,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    Union,
+)
 
 import ray
 from ray import ObjectRef
@@ -233,15 +244,22 @@ class MapOperator(OneToOneOperator, ABC):
 
     def _add_input_inner(self, refs: RefBundle, input_index: int):
         assert input_index == 0, input_index
+
         # Add RefBundle to the bundler.
         self._block_ref_bundler.add_bundle(refs)
         self._metrics.on_input_queued(refs)
+
         if self._block_ref_bundler.has_bundle():
+            # The ref bundler combines one or more RefBundles into a new larger
+            # RefBundle. Rather than dequeuing the new RefBundle, which was never
+            # enqueued in the first place, we dequeue the original RefBundles.
+            input_refs, bundled_input = self._block_ref_bundler.get_next_bundle()
+            for bundle in input_refs:
+                self._metrics.on_input_dequeued(bundle)
+
             # If the bundler has a full bundle, add it to the operator's task submission
-            # queue.
-            bundle = self._block_ref_bundler.get_next_bundle()
-            self._metrics.on_input_dequeued(bundle)
-            self._add_bundled_input(bundle)
+            # queue
+            self._add_bundled_input(bundled_input)
 
     def _get_runtime_ray_remote_args(
         self, input_bundle: Optional[RefBundle] = None
@@ -375,8 +393,8 @@ class MapOperator(OneToOneOperator, ABC):
         self._block_ref_bundler.done_adding_bundles()
         if self._block_ref_bundler.has_bundle():
             # Handle any leftover bundles in the bundler.
-            bundle = self._block_ref_bundler.get_next_bundle()
-            self._add_bundled_input(bundle)
+            _, bundled_input = self._block_ref_bundler.get_next_bundle()
+            self._add_bundled_input(bundled_input)
         super().all_inputs_done()
 
     def has_next(self) -> bool:
@@ -501,8 +519,13 @@ class _BlockRefBundler:
             or (self._finalized and self._bundle_buffer_size > 0)
         )
 
-    def get_next_bundle(self) -> RefBundle:
-        """Gets the next bundle."""
+    def get_next_bundle(self) -> Tuple[List[RefBundle], RefBundle]:
+        """Gets the next bundle.
+
+        Returns:
+            A two-tuple. The first element is a list of bundles that were combined into
+            the output bundle. The second element is the output bundle.
+        """
         assert self.has_bundle()
         if self._min_rows_per_bundle is None:
             # Short-circuit if no bundle row target was defined.
@@ -510,7 +533,7 @@ class _BlockRefBundler:
             bundle = self._bundle_buffer[0]
             self._bundle_buffer = []
             self._bundle_buffer_size = 0
-            return bundle
+            return [bundle], bundle
         leftover = []
         output_buffer = []
         output_buffer_size = 0
@@ -538,7 +561,7 @@ class _BlockRefBundler:
         self._bundle_buffer_size = sum(
             self._get_bundle_size(bundle) for bundle in leftover
         )
-        return _merge_ref_bundles(*output_buffer)
+        return list(output_buffer), _merge_ref_bundles(*output_buffer)
 
     def done_adding_bundles(self):
         """Indicate that no more RefBundles will be added to this bundler."""
