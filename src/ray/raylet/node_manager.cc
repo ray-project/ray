@@ -1797,10 +1797,12 @@ void NodeManager::HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest requ
 void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest request,
                                            rpc::RequestWorkerLeaseReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
-  
   ////// debug???? problematic???
-  request.mutable_resource_spec()->mutable_runtime_env_info()->mutable_serialized_runtime_env()->clear();
-  
+  request.mutable_resource_spec()
+      ->mutable_runtime_env_info()
+      ->mutable_serialized_runtime_env()
+      ->clear();
+
   rpc::Task task_message;
   task_message.mutable_task_spec()->CopyFrom(request.resource_spec());
   RayTask task(task_message);

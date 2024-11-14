@@ -2173,10 +2173,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
     const TaskID current_task_id) {
-  
   RAY_LOG(INFO) << "CoreWorker::SubmitTask " << task_options.serialized_runtime_env_info;
-  
-  
+
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
 
@@ -2210,7 +2208,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       constrained_resources,
                       debugger_breakpoint,
                       depth,
-                      "",// task_options.serialized_runtime_env_info,
+                      "",  // task_options.serialized_runtime_env_info,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,

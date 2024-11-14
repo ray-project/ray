@@ -14,10 +14,10 @@
 
 #include "ray/core_worker/transport/normal_task_submitter.h"
 
+#include <chrono>
+
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
-
-#include <chrono>
 
 namespace ray {
 namespace core {
@@ -90,8 +90,8 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     }
 
     // auto end = std::chrono::steady_clock::now();
-    // auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
-    // RAY_LOG(INFO) << "elapse for resolution " << elapsed;
+    // auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end -
+    // start).count(); RAY_LOG(INFO) << "elapse for resolution " << elapsed;
 
     if (!keep_executing) {
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(

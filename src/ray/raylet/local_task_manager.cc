@@ -83,7 +83,8 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
 bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> work) {
   {
     const auto &spec = work->task.GetTaskSpecification();
-    RAY_LOG(INFO) << "at WaitForTaskArgsRequests, serialized runtime env empty ? " << spec.SerializedRuntimeEnv().empty();
+    RAY_LOG(INFO) << "at WaitForTaskArgsRequests, serialized runtime env empty ? "
+                  << spec.SerializedRuntimeEnv().empty();
     work->task.MutableTaskSpec().ClearRuntimeEnv();
   }
 
