@@ -318,6 +318,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                     total_size += (
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
+                elif isinstance(current, (bytes, bytearray)):
+                    total_size += len(current) - size  # Account for byte content
                 elif isinstance(current, (list, tuple, set)):
                     objects.extend(current)
                 elif isinstance(current, dict):
