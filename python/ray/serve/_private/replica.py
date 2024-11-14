@@ -792,10 +792,8 @@ class ReplicaActor:
         )
 
     async def initialize_and_get_metadata(
-        self,
-        deployment_config: DeploymentConfig = None,
-        _after: Optional[Any] = None,
-    ) -> Tuple[DeploymentConfig, DeploymentVersion, Optional[float], Optional[int]]:
+        self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
+    ):
         """Handles initializing the replica.
 
         Returns: 3-tuple containing
