@@ -339,9 +339,7 @@ class ReplicaBase(ABC):
     async def check_health(self):
         # If there's no user-defined health check, nothing runs on the user code event
         # loop and no future is returned.
-        f: Optional[
-            concurrent.futures.Future
-        ] = self._user_callable_wrapper.call_user_health_check()
+        f = self._user_callable_wrapper.call_user_health_check()
         if f is not None:
             await asyncio.wrap_future(f)
 
@@ -1095,7 +1093,7 @@ class UserCallableWrapper:
     def _raise_if_not_initialized(self, method_name: str):
         if self._callable is None:
             raise RuntimeError(
-                "`initialize_callable` must be called before `{method_name}`."
+                f"`initialize_callable` must be called before `{method_name}`."
             )
 
     def call_user_health_check(self) -> Optional[concurrent.futures.Future]:
