@@ -74,14 +74,6 @@ from ray.util.placement_group import PlacementGroup
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
-@dataclass
-class ReplicaMetadata:
-    deployment_config: DeploymentConfig
-    version: DeploymentVersion
-    initialization_latency: Optional[float]
-    port: Optional[int]
-
-
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
     PENDING_INITIALIZATION = 2

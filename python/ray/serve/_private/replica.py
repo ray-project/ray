@@ -44,7 +44,6 @@ from ray.serve._private.constants import (
     SERVE_NAMESPACE,
 )
 from ray.serve._private.default_impl import create_replica_impl
-from ray.serve._private.deployment_state import ReplicaMetadata
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     ASGIArgs,
@@ -547,6 +546,9 @@ class ReplicaBase(ABC):
                     )
                     await self._on_initialized()
                     self._user_callable_initialized = True
+                    self._set_internal_replica_context(
+                        servable_object=self._user_callable_wrapper.user_callable
+                    )
 
                 if deployment_config:
                     await asyncio.wrap_future(
@@ -677,7 +679,9 @@ class ReplicaBase(ABC):
     async def check_health(self):
         # If there's no user-defined health check, nothing runs on the user code event
         # loop and no future is returned.
-        f = self._user_callable_wrapper.call_user_health_check()
+        f: Optional[
+            concurrent.futures.Future
+        ] = self._user_callable_wrapper.call_user_health_check()
         if f is not None:
             await asyncio.wrap_future(f)
 
@@ -811,7 +815,6 @@ class ReplicaActor:
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         await self._replica_impl.initialize(deployment_config)
-
         return self._replica_impl.get_metadata()
 
     async def check_health(self):
