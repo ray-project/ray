@@ -2245,7 +2245,7 @@ class CompiledDAG:
         format="png",
         view=False,
         return_dot=False,
-        channel_details=False,
+        show_channel_details=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2259,7 +2259,7 @@ class CompiledDAG:
             format: The format of the output file (e.g., 'png', 'pdf').
             view: Whether to open the file with the default viewer.
             return_dot: If True, returns the DOT source as a string instead of figure.
-            channel_details: If True, adds output channel type information to edges.
+            show_channel_details: If True, adds channel details to edges.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -2298,7 +2298,8 @@ class CompiledDAG:
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
-        # Give every actor a unique color (Colors between 24k -> 40k seem readable)
+        # Give every actor a unique color, colors between 24k -> 40k tested as readable
+        # other colors may be too dark, especially when wrapping back around to 0
         actor_id_to_color = defaultdict(
             lambda: f"#{((len(actor_id_to_color) * 2000 + 24000) % 0xFFFFFF):06X}"
         )
@@ -2355,24 +2356,24 @@ class CompiledDAG:
 
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
-            type_hint_type = (
+            channel_type_str = (
                 type(dag_node.type_hint).__name__
                 if dag_node.type_hint
                 else "UnknownType"
             ) + "\n"
 
-            def get_output_channel_info(output_channel, downstream_actor_id):
-                if not channel_details:
+            def get_channel_details(output_channel, downstream_actor_id):
+                if not show_channel_details:
                     return ""
-                output_channel_info = type(output_channel).__name__
+                channel_details = type(output_channel).__name__
                 if (
                     output_channel in self._channel_dict
                     and self._channel_dict[output_channel] != output_channel
                 ):
                     outer_channel = self._channel_dict[output_channel]
-                    output_channel_info += f"\n{type(outer_channel).__name__}"
+                    channel_details += f"\n{type(outer_channel).__name__}"
                     if type(outer_channel) == CachedChannel:
-                        output_channel_info += f", {outer_channel._channel_id[:6]}..."
+                        channel_details += f", {outer_channel._channel_id[:6]}..."
                 if (
                     type(output_channel) == CompositeChannel
                     and downstream_actor_id.hex() in output_channel._channel_dict
@@ -2380,9 +2381,9 @@ class CompiledDAG:
                     inner_channel = output_channel._channel_dict[
                         downstream_actor_id.hex()
                     ]
-                    output_channel_info += f"\n{type(inner_channel).__name__}"
-                    output_channel_info += f", {inner_channel._channel_id[:6]}..."
-                return output_channel_info
+                    channel_details += f"\n{type(inner_channel).__name__}"
+                    channel_details += f", {inner_channel._channel_id[:6]}..."
+                return channel_details
 
             # This logic is built on the assumption that there will only be multiple
             # output channels if the task has multiple returns
@@ -2390,8 +2391,7 @@ class CompiledDAG:
             if len(task.output_channels) == 1:
                 for downstream_node in task.dag_node._downstream_nodes:
                     downstream_idx = self.dag_node_to_idx[downstream_node]
-                    edge_label = type_hint_type
-                    edge_label += get_output_channel_info(
+                    edge_label = channel_type_str + get_channel_details(
                         task.output_channels[0],
                         (
                             downstream_node._get_actor_handle()._actor_id
@@ -2406,8 +2406,7 @@ class CompiledDAG:
                 for output_channel, downstream_idx in zip(
                     task.output_channels, task.output_node_idxs
                 ):
-                    edge_label = type_hint_type
-                    edge_label += get_output_channel_info(
+                    edge_label = channel_type_str + get_channel_details(
                         output_channel, task.dag_node._get_actor_handle()._actor_id
                     )
                     dot.edge(str(idx), str(downstream_idx), label=edge_label)

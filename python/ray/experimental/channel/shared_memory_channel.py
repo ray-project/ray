@@ -1,7 +1,6 @@
 import io
 import logging
 import time
-import uuid
 from collections import defaultdict, namedtuple
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
@@ -549,7 +548,6 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
         typ: Optional[Union[int, SharedMemoryType]] = None,
-        _channel_id: Optional[str] = None,
     ):
         self._num_shm_buffers = num_shm_buffers
         self._buffers = [
@@ -558,12 +556,10 @@ class BufferedSharedMemoryChannel(ChannelInterface):
             Channel(writer, reader_and_node_list, typ)
             for _ in range(num_shm_buffers)
         ]
-        self._num_readers = len(reader_and_node_list)
         # The next index to write from self._buffers.
         self._next_write_index = 0
         # The next index to read from self._buffers.
         self._next_read_index = 0
-        self._channel_id = _channel_id if _channel_id else str(uuid.uuid4())
 
     def ensure_registered_as_writer(self):
         """
