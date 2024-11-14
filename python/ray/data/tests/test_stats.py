@@ -1663,9 +1663,7 @@ def test_stats_manager(shutdown_only):
     datasets = [None] * num_threads
     # Mock clear methods so that _last_execution_stats and _last_iteration_stats
     # are not cleared. We will assert on them afterwards.
-    with patch.object(StatsManager, "clear_execution_metrics"), patch.object(
-        StatsManager, "clear_iteration_metrics"
-    ):
+    with patch.object(StatsManager, "clear_iteration_metrics"):
 
         def update_stats_manager(i):
             datasets[i] = ray.data.range(10).map_batches(lambda x: x)
