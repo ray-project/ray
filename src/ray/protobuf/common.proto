@@ -988,7 +988,6 @@ message NamedActorInfo {
 
 message LineageReconstructionTask {
   string name = 1;
-  map<string, double> resources = 2;
-  TaskStatus status = 3;
-  map<string, string> labels = 4;
+  TaskStatus status = 2;
+  map<string, string> labels = 3;
 }

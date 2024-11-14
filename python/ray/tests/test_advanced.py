@@ -187,13 +187,7 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             lineage_reconstruction_tasks[1][0].name,
         } == {"task", "Actor.run"}
         assert (
-            lineage_reconstruction_tasks[0][0].resources
-            == (
-                {"worker": 1.0}
-                if lineage_reconstruction_tasks[0][0].name == "task"
-                else {}
-            )
-            and lineage_reconstruction_tasks[0][0].labels
+            lineage_reconstruction_tasks[0][0].labels
             == (
                 {"key1": "value1"}
                 if lineage_reconstruction_tasks[0][0].name == "task"
@@ -203,13 +197,7 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             and lineage_reconstruction_tasks[0][1] == 1
         )
         assert (
-            lineage_reconstruction_tasks[1][0].resources
-            == (
-                {"worker": 1.0}
-                if lineage_reconstruction_tasks[1][0].name == "task"
-                else {}
-            )
-            and lineage_reconstruction_tasks[1][0].labels
+            lineage_reconstruction_tasks[1][0].labels
             == (
                 {"key1": "value1"}
                 if lineage_reconstruction_tasks[1][0].name == "task"

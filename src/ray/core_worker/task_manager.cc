@@ -1493,8 +1493,6 @@ TaskManager::GetOngoingLineageReconstructionTasks(
 
     rpc::LineageReconstructionTask task;
     task.set_name(task_entry.spec.GetName());
-    auto resources = task_entry.spec.GetRequiredResources().GetResourceUnorderedMap();
-    task.mutable_resources()->insert(resources.begin(), resources.end());
     task.set_status(task_entry.GetStatus());
     if (task_entry.spec.IsNormalTask()) {
       task.mutable_labels()->insert(task_entry.spec.GetMessage().labels().begin(),
