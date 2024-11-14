@@ -536,6 +536,13 @@ class ReplicaBase(ABC):
         raise NotImplementedError
 
     async def initialize(self, deployment_config):
+        """Handles initializing the replica.
+
+        Returns: 3-tuple containing
+            1. DeploymentConfig of the replica
+            2. DeploymentVersion of the replica
+            3. Initialization duration in seconds
+        """
         # Ensure that initialization is only performed once.
         # When controller restarts, it will call this method again.
         async with self._user_callable_initialized_lock:
@@ -794,13 +801,6 @@ class ReplicaActor:
     async def initialize_and_get_metadata(
         self, deployment_config: DeploymentConfig = None, _after: Optional[Any] = None
     ):
-        """Handles initializing the replica.
-
-        Returns: 3-tuple containing
-            1. DeploymentConfig of the replica
-            2. DeploymentVersion of the replica
-            3. Initialization duration in seconds
-        """
         # Unused `_after` argument is for scheduling: passing an ObjectRef
         # allows delaying this call until after the `_after` call has returned.
         try:
