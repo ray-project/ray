@@ -544,13 +544,13 @@ class ReplicaBase(ABC):
         )
 
     @abstractmethod
-    async def _on_request_cancelled(
+    def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
     ):
         pass
 
     @abstractmethod
-    async def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
+    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
         pass
 
     @abstractmethod
@@ -677,7 +677,7 @@ class Replica(ReplicaBase):
     async def _on_initialized(self):
         pass
 
-    async def _on_request_cancelled(
+    def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
     ):
         """Recursively cancels child requests."""
@@ -689,7 +689,7 @@ class Replica(ReplicaBase):
         for task in requests_pending_assignment.values():
             task.cancel()
 
-    async def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
+    def _on_request_failed(self, request_metadata: RequestMetadata, e: Exception):
         if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
             ray.util.pdb._post_mortem()
 
