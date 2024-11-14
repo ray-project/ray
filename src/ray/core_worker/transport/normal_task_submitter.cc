@@ -17,6 +17,8 @@
 #include "ray/core_worker/transport/dependency_resolver.h"
 #include "ray/gcs/pb_util.h"
 
+#include <chrono>
+
 namespace ray {
 namespace core {
 
@@ -39,10 +41,14 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     RAY_LOG(DEBUG) << "Task dependencies resolved " << task_spec.TaskId();
 
     bool keep_executing = true;
+
+    // auto start = std::chrono::steady_clock::now();
+
     {
       absl::MutexLock lock(&mu_);
-      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_spec.TaskId());
+      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+      if (task_iter != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_iter);
         keep_executing = false;
       }
       if (keep_executing) {
@@ -82,6 +88,11 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         RequestNewWorkerIfNeeded(scheduling_key);
       }
     }
+
+    // auto end = std::chrono::steady_clock::now();
+    // auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(end - start).count();
+    // RAY_LOG(INFO) << "elapse for resolution " << elapsed;
+
     if (!keep_executing) {
       RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
           task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
