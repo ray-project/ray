@@ -4,6 +4,7 @@ import logging
 import platform
 import queue
 import random
+import time
 from typing import List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -641,6 +642,8 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
+
+        time.sleep(0.2)
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
