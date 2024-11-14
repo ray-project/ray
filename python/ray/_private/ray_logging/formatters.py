@@ -1,12 +1,35 @@
 import logging
+import os
 import json
 from ray._private.ray_logging.constants import (
     LogKey,
     LOGRECORD_STANDARD_ATTRS,
     LOGGER_FLATTEN_KEYS,
 )
-from ray._private.ray_constants import LOGGER_FORMAT
-from typing import Any, Dict
+from ray._private.ray_constants import (
+    LOGGER_FORMAT,
+    LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE,
+    LOGGER_FORMAT_STDERR_DEFAULT,
+)
+from typing import Any, Dict, Optional
+
+
+def _get_logging_redirect_stderr_format(component: Optional[str]) -> str:
+    """Get the format string for redirecting stderr.
+
+    Use the users format string if it is set, otherwise use the default format string.
+    Format with the component if it is provided and present in the format string.
+    """
+
+    desired_format = os.environ.get(
+        LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE, LOGGER_FORMAT_STDERR_DEFAULT
+    )
+
+    if component is not None:
+        # this is a no-op if `{component}` is not in the str
+        desired_format.format(component=component)
+
+    return desired_format
 
 
 def _append_flatten_attributes(formatted_attrs: Dict[str, Any], key: str, value: Any):

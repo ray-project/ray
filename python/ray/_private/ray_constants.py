@@ -232,11 +232,12 @@ LOGGING_ROTATE_BYTES = 512 * 1024 * 1024  # 512MB.
 LOGGING_ROTATE_BACKUP_COUNT = 5  # 5 Backup files at max.
 
 LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE = "RAY_LOG_TO_STDERR"
-# Logging format when logging stderr. This should be formatted with the
-# component before setting the formatter, e.g. via
-#   format = LOGGER_FORMAT_STDERR.format(component="dashboard")
-#   handler.setFormatter(logging.Formatter(format))
-LOGGER_FORMAT_STDERR = (
+
+LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE = "RAY_LOG_TO_STDERR_FORMAT"
+# Default logging format when logging stderr. Should not be used directly,
+# use `ray._private.ray_logging.formatters._get_logging_redirect_stderr_format()`
+# to resolve with the user-provided format string - `LOGGER_FORMAT_STDERR_ENVIRONMENTAL_VARIABLE` if it exists.
+LOGGER_FORMAT_STDERR_DEFAULT = (
     "%(asctime)s\t%(levelname)s ({component}) %(filename)s:%(lineno)s -- %(message)s"
 )
 
