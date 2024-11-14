@@ -74,6 +74,14 @@ from ray.util.placement_group import PlacementGroup
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
+@dataclass
+class ReplicaMetadata:
+    deployment_config: DeploymentConfig
+    version: DeploymentVersion
+    initialization_latency: Optional[float]
+    port: Optional[int]
+
+
 class ReplicaStartupStatus(Enum):
     PENDING_ALLOCATION = 1
     PENDING_INITIALIZATION = 2
@@ -688,12 +696,12 @@ class ActorReplicaWrapper:
                     # This should only update version if the replica is being recovered.
                     # If this is checking on a replica that is newly started, this
                     # should return a version that is identical to what's already stored
-                    (
-                        _,
-                        self._version,
-                        self._initialization_latency_s,
-                        self._port,
-                    ) = ray.get(self._ready_obj_ref)
+                    replica_metadata = ray.get(self._ready_obj_ref)
+                    self._version = replica_metadata.version
+                    self._port = replica_metadata.port
+                    self._initialization_latency_s = (
+                        replica_metadata.initialization_latency
+                    )
             except RayTaskError as e:
                 logger.exception(
                     f"Exception in {self._replica_id}, the replica will be stopped."
