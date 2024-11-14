@@ -32,7 +32,7 @@ from ray.data._internal.numpy_support import (
 )
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions
+from ray.data._internal.util import find_partitions, NULL_SENTINEL
 from ray.data.block import (
     Block,
     BlockAccessor,
@@ -500,7 +500,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         table = sort(self._table, sort_key)
         if len(boundaries) == 0:
             return [table]
-
         return find_partitions(table, boundaries, sort_key)
 
     def combine(self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
@@ -634,6 +633,10 @@ class ArrowBlockAccessor(TableBlockAccessor):
             else:
                 return (0,)
 
+        def key_fn_with_null_sentinel(r):
+            values = key_fn(r)
+            return [NULL_SENTINEL if v is None else v for v in values]
+
         # Handle blocks of different types.
         blocks = TableBlockAccessor.normalize_block_types(blocks, "arrow")
 
@@ -642,7 +645,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
                 ArrowBlockAccessor(block).iter_rows(public_row_format=False)
                 for block in blocks
             ],
-            key=key_fn,
+            key=key_fn_with_null_sentinel,
         )
         next_row = None
         builder = ArrowBlockBuilder()

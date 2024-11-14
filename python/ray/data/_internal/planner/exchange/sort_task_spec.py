@@ -23,7 +23,7 @@ class SortKey:
         self,
         key: Optional[Union[str, List[str]]] = None,
         descending: Union[bool, List[bool]] = False,
-        boundaries: Optional[list] = None,
+        boundaries: Optional[List[T]] = None,
     ):
         if key is None:
             key = []
@@ -195,8 +195,8 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_table = builder.build()
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
         # This zip does the transposition from list of column values to list of tuples.
-        samples_list = sorted(zip(*samples_dict.values()))
-
+        # Use np.sort to sort None/NaNs effectively
+        samples_list = np.sort(list(zip(*samples_dict.values())), axis=0)
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [
             int(q * (len(samples_list) - 1))

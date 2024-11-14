@@ -55,6 +55,28 @@ LazyModule = Union[None, bool, ModuleType]
 _pyarrow_dataset: LazyModule = None
 
 
+class _NullSentinel:
+    """Sentinel value that sorts greater than any other value."""
+
+    def __eq__(self, other):
+        return isinstance(other, _NullSentinel)
+
+    def __lt__(self, other):
+        return False
+
+    def __le__(self, other):
+        return isinstance(other, _NullSentinel)
+
+    def __gt__(self, other):
+        return True
+
+    def __ge__(self, other):
+        return True
+
+
+NULL_SENTINEL = _NullSentinel()
+
+
 def _lazy_import_pyarrow_dataset() -> LazyModule:
     global _pyarrow_dataset
     if _pyarrow_dataset is None:
@@ -707,6 +729,47 @@ def unify_block_metadata_schema(
     return None
 
 
+def find_partition_index_arrow(
+    table: "pyarrow.Table",
+    boundary: List[Any],
+    sort_key: "SortKey",
+) -> int:
+    import pyarrow as pa
+
+    columns = sort_key.get_columns()
+    descending = sort_key.get_descending()
+
+    left, right = 0, len(table)
+    for col_name, boundary_val in zip(columns, boundary):
+        if left == right:
+            return right
+
+        col_array = table[col_name].slice(left, right - left)
+
+        prevleft = left
+
+        if pa.compute.sum(
+            pa.compute.is_null(col_array, nan_is_null=True)
+        ).as_py() == len(col_array):
+            # all values are null
+            continue
+        elif descending is True:
+            left_idx = pa.compute.sum(pa.compute.greater(col_array, boundary_val))
+            right_idx = pa.compute.sum(
+                pa.compute.greater_equal(col_array, boundary_val)
+            )
+
+            left = prevleft + left_idx.as_py()
+            right = prevleft + right_idx.as_py()
+        else:
+            left_idx = pa.compute.sum(pa.compute.less(col_array, boundary_val))
+            right_idx = pa.compute.sum(pa.compute.less_equal(col_array, boundary_val))
+            left = prevleft + left_idx.as_py()
+            right = prevleft + right_idx.as_py()
+
+    return right if descending is True else left
+
+
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
     desired: List[Any],
@@ -722,6 +785,16 @@ def find_partition_index(
         col_name = columns[i]
         col_vals = table[col_name].to_numpy()[left:right]
         desired_val = desired[i]
+
+        # Handle null values - replace them with sentinel values
+        if desired_val is None:
+            desired_val = NULL_SENTINEL
+
+        # Replace None/NaN values in col_vals with sentinel
+        null_mask = col_vals == None  # Handles both None and np.nan
+        if null_mask.any():
+            col_vals = col_vals.copy()  # Make a copy to avoid modifying original
+            col_vals[null_mask] = NULL_SENTINEL
 
         prevleft = left
         if descending is True:
