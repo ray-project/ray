@@ -701,7 +701,7 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[[DataBatch], Union[pyarrow.Array, pandas.Series, np.ndarray]],
+        fn: Callable[[DataBatch], Union["pyarrow.Array", "pandas.Series", "np.ndarray"]],
         *,
         batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
@@ -718,8 +718,6 @@ class Dataset:
 
 
             >>> import ray
-            >>> import pyarrow as pa
-            >>> import pyarrow.compute as pc
             >>> ds = ray.data.range(100)
             >>> ds.schema()
             Column  Type
