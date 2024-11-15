@@ -166,7 +166,7 @@ def _convert_to_pyarrow_native_array(
         #       by int32 offsets used by Arrow internally)
         dtype = _infer_pyarrow_type(column_values)
 
-        logger.debug(f"Inferred dtype of '{dtype}' for column '{column_name}'")
+        logger.log(logging.getLevelName("TRACE"), f"Inferred dtype of '{dtype}' for column '{column_name}'")
 
         return pa.array(column_values, type=dtype)
     except Exception as e:
