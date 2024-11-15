@@ -58,7 +58,7 @@ AggType = TypeVar("AggType")
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI

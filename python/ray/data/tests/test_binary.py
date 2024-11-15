@@ -201,6 +201,8 @@ def test_read_binary_snappy_partitioned_with_filter(
 def _gen_chunked_binary(
     dir_path: str, total_size: int, max_file_size: Optional[int] = None
 ):
+    # NOTE: This util is primed to be writing even single large binary files
+    #       in chunks to reduce memory requirements while doing so
     chunk_size = max_file_size or 256 * MiB
     num_chunks = total_size // chunk_size
     remainder = total_size % chunk_size
