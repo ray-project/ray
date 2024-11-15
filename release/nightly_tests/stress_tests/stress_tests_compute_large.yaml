@@ -12,13 +12,13 @@ aws:
 
 head_node_type:
     name: head_node
-    instance_type: m5.16xlarge
+    instance_type: m6i.16xlarge
     resources:
       cpu: 64
 
 worker_node_types:
    - name: worker_node
-     instance_type: m5.16xlarge
+     instance_type: m6i.16xlarge
      min_workers: 6
      max_workers: 6
      use_spot: false
