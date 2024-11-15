@@ -9,7 +9,7 @@ import time
 from math import floor
 
 from packaging.version import Version
-from tzlocal import get_localzone
+from datetime import datetime, timedelta
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -140,14 +140,63 @@ class HttpServerDashboardHead:
             )
         )
 
+    def get_gmt_offset():
+        current_tz = datetime.now().astimezone().tzinfo
+        offset = current_tz.utcoffset(None)
+        hours, remainder = divmod(offset.total_seconds(), 3600)
+        minutes = remainder // 60
+        sign = '+' if hours >= 0 else '-'
+        return f"GMT{sign}{abs(int(hours)):02d}:{abs(int(minutes)):02d}"
+
     @routes.get("/timezone")
     async def get_timezone(self, req) -> aiohttp.web.Response:
+        timezones = [
+            {"utc": "GMT-12:00", "value": "Etc/GMT+12"},
+            {"utc": "GMT-11:00", "value": "Pacific/Pago_Pago"},
+            {"utc": "GMT-10:00", "value": "Pacific/Honolulu"},
+            {"utc": "GMT-09:00", "value": "America/Anchorage"},
+            {"utc": "GMT-08:00", "value": "America/Los_Angeles"},
+            {"utc": "GMT-07:00", "value": "America/Phoenix"},
+            {"utc": "GMT-06:00", "value": "America/Guatemala"},
+            {"utc": "GMT-05:00", "value": "America/Bogota"},
+            {"utc": "GMT-04:00", "value": "America/Halifax"},
+            {"utc": "GMT-03:30", "value": "America/St_Johns"},
+            {"utc": "GMT-03:00", "value": "America/Sao_Paulo"},
+            {"utc": "GMT-02:00", "value": "America/Godthab"},
+            {"utc": "GMT-01:00", "value": "Atlantic/Azores"},
+            {"utc": "GMT+00:00", "value": "Europe/London"},
+            {"utc": "GMT+01:00", "value": "Europe/Amsterdam"},
+            {"utc": "GMT+02:00", "value": "Asia/Amman"},
+            {"utc": "GMT+03:00", "value": "Asia/Baghdad"},
+            {"utc": "GMT+03:30", "value": "Asia/Tehran"},
+            {"utc": "GMT+04:00", "value": "Asia/Dubai"},
+            {"utc": "GMT+04:30", "value": "Asia/Kabul"},
+            {"utc": "GMT+05:00", "value": "Asia/Karachi"},
+            {"utc": "GMT+05:30", "value": "Asia/Kolkata"},
+            {"utc": "GMT+05:45", "value": "Asia/Kathmandu"},
+            {"utc": "GMT+06:00", "value": "Asia/Almaty"},
+            {"utc": "GMT+06:30", "value": "Asia/Yangon"},
+            {"utc": "GMT+07:00", "value": "Asia/Bangkok"},
+            {"utc": "GMT+08:00", "value": "Asia/Shanghai"},
+            {"utc": "GMT+09:00", "value": "Asia/Irkutsk"},
+            {"utc": "GMT+09:30", "value": "Australia/Adelaide"},
+            {"utc": "GMT+10:00", "value": "Australia/Brisbane"},
+            {"utc": "GMT+11:00", "value": "Asia/Magadan"},
+            {"utc": "GMT+12:00", "value": "Pacific/Auckland"},
+            {"utc": "GMT+13:00", "value": "Pacific/Tongatapu"}
+        ]
         try:
-            current_timezone = str(get_localzone())
-            return aiohttp.web.Response(text=current_timezone)
+            current_offset = get_gmt_offset()
+            current_timezone = next((tz for tz in timezones if tz["utc"] == current_offset), None)
+            
+            if current_timezone:
+                return aiohttp.web.Response(text=str(current_timezone))
+            else:
+                return aiohttp.web.Response(status=404, text="Timezone not found")
+        
         except Exception as e:
             logger.error(f"Error getting timezone: {e}")
-            return aiohttp.web.Response(status=500, text=e)
+            return aiohttp.web.Response(status=500, text="Internal Server Error")
 
     def get_address(self):
         assert self.http_host and self.http_port

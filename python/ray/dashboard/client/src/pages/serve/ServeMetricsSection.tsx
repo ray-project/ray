@@ -77,7 +77,7 @@ export const ServeMetricsSection = ({
   metricsConfig,
   sx,
 }: ServeMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource, serverTimeZone } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(

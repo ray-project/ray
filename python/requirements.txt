@@ -61,4 +61,3 @@ pydantic!=2.0.*,!=2.1.*,!=2.2.*,!=2.3.*,!=2.4.*,<3  # Serve users can use pydant
 py-spy>=0.2.0
 memray; sys_platform != "win32" # memray is not supported on Windows
 pyOpenSSL
-tzlocal

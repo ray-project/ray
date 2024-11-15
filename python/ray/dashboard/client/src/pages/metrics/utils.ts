@@ -74,7 +74,6 @@ export const getTimeZoneInfo = async () => {
   try {
     const resp = await get<string>(TIMEZONE_URL);
     if (resp.data) {
-      console.log("resp.data", resp.data);
       return String(resp.data);
     }
   } catch (e) {}

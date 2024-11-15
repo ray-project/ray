@@ -891,13 +891,7 @@ export const SearchTimezone = ({
     },
   ];
 
-  const [timezone, setTimezone] = useState<string>(() => {
-    return (
-      localStorage.getItem("timezone") ||
-      serverTimeZone ||
-      Intl.DateTimeFormat().resolvedOptions().timeZone
-    );
-  });
+  const [timezone, setTimezone] = useState<string>((''))
 
   useEffect(() => {
     if (serverTimeZoneLoaded) {
@@ -909,14 +903,8 @@ export const SearchTimezone = ({
     }
   }, [serverTimeZoneLoaded, serverTimeZone]);
 
-  useEffect(() => {
-    if (serverTimeZoneLoaded) {
-      localStorage.setItem("timezone", timezone);
-    }
-  }, [timezone, serverTimeZoneLoaded]);
-
   const handleTimezoneChange = (value: string) => {
-    setTimezone(value);
+    localStorage.setItem("timezone", value);
     window.location.reload();
   };
 

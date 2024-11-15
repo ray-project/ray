@@ -51,7 +51,7 @@ export const ServeReplicaMetricsSection = ({
   className,
   sx,
 }: ServeDeploymentMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource } =
+  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource, serverTimeZone } =
     useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -83,7 +83,7 @@ export const ServeReplicaMetricsSection = ({
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
   const currentTimezone =
-    localStorage.getItem("timezone") ||
+    localStorage.getItem("timezone") || serverTimeZone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(

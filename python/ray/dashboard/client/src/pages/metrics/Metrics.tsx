@@ -571,9 +571,9 @@ const MetricsSection = ({
   dashboardUid,
   dashboardDatasource,
 }: MetricsSectionProps) => {
-  const { grafanaHost, sessionName } = useContext(GlobalContext);
+  const { grafanaHost, sessionName, serverTimeZone} = useContext(GlobalContext);
   const currentTimezone =
-    localStorage.getItem("timezone") ||
+    localStorage.getItem("timezone") || serverTimeZone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
   return (
     <CollapsibleSection
