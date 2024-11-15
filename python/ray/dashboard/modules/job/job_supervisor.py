@@ -15,6 +15,7 @@ from ray._private.gcs_utils import GcsAioClient
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray._private.utils import remove_ray_internal_flags_from_env
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -147,7 +148,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -176,6 +177,7 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                env=env,
                 # Ray intentionally blocks SIGINT in all processes, so if the user wants
                 # to stop job through SIGINT, we need to unblock it in the child process
                 preexec_fn=(
@@ -349,16 +351,21 @@ class JobSupervisor:
         )
 
         try:
-            # Configure environment variables for the child process. These
-            # will *not* be set in the runtime_env, so they apply to the driver
+            # Configure environment variables for the child process.
+            env = os.environ.copy()
+            # Remove internal Ray flags. They present because JobSuperVisor itself is
+            # a Ray worker process but we don't want to pass them to the driver.
+            remove_ray_internal_flags_from_env(env)
+            # These will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars(resources_specified))
+            env.update(self._get_driver_env_vars(resources_specified))
+
             self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
-                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
+                f"{env[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = self._exec_entrypoint(log_path)
+            child_process = self._exec_entrypoint(env, log_path)
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))

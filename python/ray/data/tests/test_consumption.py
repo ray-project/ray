@@ -789,11 +789,6 @@ def test_iter_rows(ray_start_regular_shared):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
-
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -1257,6 +1252,14 @@ def test_union(ray_start_regular_shared):
     assert ds2.count() == 10
     ds2 = ds2.union(ds)
     assert ds2.count() == 210
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
+def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iter_tf_batches()
 
 
 @pytest.mark.skipif(

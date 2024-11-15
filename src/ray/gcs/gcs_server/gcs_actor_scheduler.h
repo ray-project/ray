@@ -133,7 +133,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
       std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      rpc::ClientFactoryFn client_factory = nullptr,
+      rpc::CoreWorkerClientFactoryFn client_factory = nullptr,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
   virtual ~GcsActorScheduler() = default;

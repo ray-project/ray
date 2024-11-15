@@ -19,7 +19,7 @@ from ray.rllib.execution.train_ops import (
     train_one_step,
 )
 from ray.rllib.policy.policy import Policy
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
@@ -27,10 +27,6 @@ from ray.rllib.utils.metrics import (
     LEARNER_UPDATE_TIMER,
     NUM_AGENT_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED,
-    NUM_ENV_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED_LIFETIME,
-    NUM_MODULE_STEPS_TRAINED,
-    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     OFFLINE_SAMPLING_TIMER,
     SAMPLE_TIMER,
     SYNCH_WORKER_WEIGHTS_TIMER,
@@ -137,6 +133,16 @@ class MARWILConfig(AlgorithmConfig):
 
     def __init__(self, algo_class=None):
         """Initializes a MARWILConfig instance."""
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or MARWIL)
 
         # fmt: off
@@ -165,18 +171,6 @@ class MARWILConfig(AlgorithmConfig):
         self.lr = 1e-4
         self.lambda_ = 1.0
         self.train_batch_size = 2000
-        # TODO (Artur): MARWIL should not need an exploration config as an offline
-        #  algorithm. However, the current implementation of the CRR algorithm
-        #  requires it. Investigate.
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
 
         # Materialize only the data in raw format, but not the mapped data b/c
         # MARWIL uses a connector to calculate values and therefore the module
@@ -428,13 +422,7 @@ class MARWIL(Algorithm):
             return MARWILTF2Policy
 
     @override(Algorithm)
-    def training_step(self) -> ResultDict:
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack()
-        else:
-            return self._training_step_old_api_stack()
-
-    def _training_step_new_api_stack(self) -> ResultDict:
+    def training_step(self) -> None:
         """Implements training logic for the new stack
 
         Note, this includes so far training with the `OfflineData`
@@ -442,7 +430,10 @@ class MARWIL(Algorithm):
         `EnvRunner`s. Note further, evaluation on the dataset itself
         using estimators is not implemented, yet.
         """
-        # Implement logic using RLModule and Learner API.
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_old_api_stack()
+
         # TODO (simon): Take care of sampler metrics: right
         #  now all rewards are `nan`, which possibly confuses
         #  the user that sth. is not right, although it is as
@@ -467,22 +458,7 @@ class MARWIL(Algorithm):
 
             # Log training results.
             self.metrics.merge_and_log_n_dicts(learner_results, key=LEARNER_RESULTS)
-            self.metrics.log_value(
-                NUM_ENV_STEPS_TRAINED_LIFETIME,
-                self.metrics.peek(
-                    (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED)
-                ),
-                reduce="sum",
-            )
-            self.metrics.log_dict(
-                {
-                    (LEARNER_RESULTS, mid, NUM_MODULE_STEPS_TRAINED_LIFETIME): (
-                        stats[NUM_MODULE_STEPS_TRAINED]
-                    )
-                    for mid, stats in self.metrics.peek(LEARNER_RESULTS).items()
-                },
-                reduce="sum",
-            )
+
         # Synchronize weights.
         # As the results contain for each policy the loss and in addition the
         # total loss over all policies is returned, this total loss has to be
@@ -499,8 +475,7 @@ class MARWIL(Algorithm):
                 inference_only=True,
             )
 
-        return self.metrics.reduce()
-
+    @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:
         """Implements training step for the old stack.
 
