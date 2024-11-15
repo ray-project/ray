@@ -124,9 +124,10 @@ class RemoteFunction:
         # invocation. When `remote` call has specified extra `option` field,
         # runtime env will be merged and re-serialized.
         #
-        # Caveat: for `func.option().remote()`, we have to recalculate serialized
-        # runtime env info upon every call. But it's acceptable since pre-calculation
-        # here only happens once at `RemoteFunction` initialization.
+        # Caveat: To support dynamic runtime envs in
+        # `func.option(runtime_env={...}).remote()`, we recalculate the serialized
+        # runtime env info in the `option` call. But it's acceptable since
+        # pre-calculation here only happens once at `RemoteFunction` initialization.
         self._serialized_base_runtime_env_info = ""
         if self._runtime_env:
             self._serialized_base_runtime_env_info = get_runtime_env_info(
