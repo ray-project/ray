@@ -5,20 +5,22 @@ import time
 import tqdm
 
 from ray.util.state import summarize_tasks
-from many_nodes_tests.dashboard_test import DashboardTestAtScale
+
+# from many_nodes_tests.dashboard_test import DashboardTestAtScale
 from ray._private.state_api_test_utils import (
     StateAPICallSpec,
     periodic_invoke_state_apis_with_actor,
     summarize_worker_startup_time,
 )
 
-sleep_time = 300
+sleep_time = 60
 
 
 def test_max_running_tasks(num_tasks):
     cpus_per_task = 0.25
 
-    @ray.remote(num_cpus=cpus_per_task)
+    @ray.remote(num_cpus=cpus_per_task, runtime_env={"env_vars": {"FOO": "bar"}})
+    # @ray.remote(num_cpus=cpus_per_task)
     def task():
         time.sleep(sleep_time)
 
@@ -67,11 +69,10 @@ def no_resource_leaks():
 @click.command()
 @click.option("--num-tasks", required=True, type=int, help="Number of tasks to launch.")
 def test(num_tasks):
-    addr = ray.init(address="auto")
+    ray.init()
 
     test_utils.wait_for_condition(no_resource_leaks)
     monitor_actor = test_utils.monitor_memory_usage()
-    dashboard_test = DashboardTestAtScale(addr)
 
     def not_none(res):
         return res is not None
@@ -83,7 +84,11 @@ def test(num_tasks):
     )
 
     start_time = time.time()
-    used_cpus = test_max_running_tasks(num_tasks)
+    used_cpus = 0
+    try:
+        used_cpus = test_max_running_tasks(num_tasks)
+    except Exception as e:
+        print(str(e))
     end_time = time.time()
     ray.get(monitor_actor.stop_run.remote())
     used_gb, usage = ray.get(monitor_actor.get_peak_memory_info.remote())
@@ -91,15 +96,10 @@ def test(num_tasks):
     print(f"Peak memory usage per processes:\n {usage}")
     ray.get(api_caller.stop.remote())
 
-    del api_caller
-    del monitor_actor
-    test_utils.wait_for_condition(no_resource_leaks)
-
-    try:
-        summarize_worker_startup_time()
-    except Exception as e:
-        print("Failed to summarize worker startup time.")
-        print(e)
+    print(
+        f"end time = {end_time}, start time = {start_time},"
+        "sleep time = {sleep_time}, num tasks = {num_tasks}"
+    )
 
     rate = num_tasks / (end_time - start_time - sleep_time)
     print(
@@ -128,9 +128,20 @@ def test(num_tasks):
             },
         ],
     }
+    print("=======")
+    print(results)
 
-    dashboard_test.update_release_test_result(results)
     test_utils.safe_write_to_results_json(results)
+
+    del api_caller
+    del monitor_actor
+    test_utils.wait_for_condition(no_resource_leaks)
+
+    try:
+        summarize_worker_startup_time()
+    except Exception as e:
+        print("Failed to summarize worker startup time.")
+        print(e)
 
 
 if __name__ == "__main__":

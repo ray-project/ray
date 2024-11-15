@@ -153,9 +153,9 @@ class RemoteFunction:
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(
+                serialized_runtime_env=self._serialized_base_runtime_env_info,
                 args=args,
                 kwargs=kwargs,
-                serialized_runtime_env=self._serialized_base_runtime_env_info,
                 **self._default_options,
             )
 
@@ -277,9 +277,9 @@ class RemoteFunction:
         class FuncWrapper:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(
+                    serialized_runtime_env_info=serialized_runtime_env_info,
                     args=args,
                     kwargs=kwargs,
-                    serialized_runtime_env_info=serialized_runtime_env_info,
                     **updated_options,
                 )
 
@@ -299,9 +299,9 @@ class RemoteFunction:
     @_tracing_task_invocation
     def _remote(
         self,
+        serialized_runtime_env_info: str,
         args=None,
         kwargs=None,
-        serialized_runtime_env_info: str = "",
         **task_options,
     ):
         """Submit the remote function for execution."""
