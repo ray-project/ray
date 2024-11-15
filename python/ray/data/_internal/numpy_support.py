@@ -144,7 +144,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
             raise ValueError(
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(column_values)}): {e}."
-            )
+            ) from e
 
     elif is_array_like(column_values):
         # Converts other array-like objects such as torch.Tensor.
@@ -161,7 +161,7 @@ def convert_to_numpy(column_values: Any) -> np.ndarray:
             raise ValueError(
                 "Failed to convert column values to numpy array: "
                 f"({_truncated_repr(column_values)}): {e}."
-            )
+            ) from e
 
     else:
         return column_values
