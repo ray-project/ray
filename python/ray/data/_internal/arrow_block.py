@@ -218,7 +218,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            view = _copy_table(view)
+            view = transform_pyarrow.combine_chunks(view)
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
@@ -656,8 +656,3 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
-
-
-def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
-    """Copy the provided Arrow table."""
-    return transform_pyarrow.combine_chunks(table)
