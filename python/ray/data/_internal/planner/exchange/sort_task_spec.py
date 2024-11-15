@@ -201,10 +201,12 @@ class SortTaskSpec(ExchangeTaskSpec):
         def is_na(x):
             # Check if x is None or NaN. Type casting to np.array first to avoid
             # isnan failing on strings and other types.
+            if x is None:
+                return True
             x = np.asarray(x)
             if np.issubdtype(x.dtype, np.number):
                 return np.isnan(x)
-            return x == None
+            return False
 
         def key_fn_with_nones(sample):
             return tuple(NULL_SENTINEL if is_na(x) else x for x in sample)

@@ -750,7 +750,7 @@ def find_partition_index(
             desired_val = NULL_SENTINEL
 
         # Replace None/NaN values in col_vals with sentinel
-        null_mask = col_vals == None  # Handles both None and np.nan
+        null_mask = col_vals == None  # noqa: E711
         if null_mask.any():
             col_vals = col_vals.copy()  # Make a copy to avoid modifying original
             col_vals[null_mask] = NULL_SENTINEL
