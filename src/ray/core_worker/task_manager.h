@@ -66,6 +66,8 @@ class TaskFinisherInterface {
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
+  virtual bool IsTaskPending(const TaskID &task_id) const = 0;
+
   virtual ~TaskFinisherInterface() = default;
 };
 
@@ -551,7 +553,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
+  bool IsTaskPending(const TaskID &task_id) const override;
 
   /// Return whether the task is scheduled adn waiting for execution.
   ///
