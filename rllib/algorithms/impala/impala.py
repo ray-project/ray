@@ -49,6 +49,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
+    NUM_TRAINING_STEP_CALLS_PER_ITERATION,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
     SYNCH_WORKER_WEIGHTS_TIMER,
     SAMPLE_TIMER,
@@ -597,7 +598,7 @@ class IMPALA(Algorithm):
         if self.config.enable_rl_module_and_learner:
             self._current_sleep_time = 0.2
             self._sleep_time_lr = 0.01
-            self._best_sample_throughput = float("-inf")
+            self._best_train_throughput = float("-inf")
             self._sleep_time_lr_direction = self._sleep_time_lr
         else:
             # Create and start the learner thread.
@@ -643,20 +644,6 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
-
-        # Sleep for n seconds to balance backpressure.
-        time.sleep(self._current_sleep_time)
-        # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
-        # samples).
-        self._current_sleep_time += self._sleep_time_lr_direction
-        self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
-        sample_throughput = self.metrics.peek(NUM_ENV_STEPS_SAMPLED_THROUGHPUT)
-        if sample_throughput > self._best_sample_throughput:
-            self._best_sample_throughput = sample_throughput
-        # No improvement; reverse direction and reduce learning rate
-        else:
-            self._sleep_time_lr *= 0.9
-            self._sleep_time_lr_direction = np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -749,6 +736,9 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
+
+        with self.metrics.log_time((TIMERS, "_balance_backpressure")):
+            self.balance_backpressure()
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -888,6 +878,25 @@ class IMPALA(Algorithm):
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
+
+    def balance_backpressure(self):
+        # Sleep for n seconds to balance backpressure.
+        time.sleep(self._current_sleep_time)
+
+        #if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) % 1000:
+        #    # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
+        #    # samples).
+        #    self._current_sleep_time += self._sleep_time_lr_direction
+        #    self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
+        #    train_throughput = self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME)
+        #    if train_throughput > self._best_train_throughput:
+        #        self._best_train_throughput = train_throughput
+        #    # No improvement; reverse direction and reduce learning rate
+        #    else:
+        #        self._sleep_time_lr *= 0.9
+        #        self._sleep_time_lr_direction = (
+        #            np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
+        #        )
 
     @classmethod
     @override(Algorithm)

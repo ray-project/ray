@@ -355,10 +355,8 @@ class Stats:
             # - Thereby always reducing across the different Stats objects' at the
             #   current index.
             # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND
-            #   added to the new merged-values list n times (where n is the number of
-            #   Stats, across
-            #   which we merge).
+            #   repeated AND added to the new merged-values list n times (where n is
+            #   the number of Stats, across which we merge).
             # - The merged-values list is reversed.
             # Here:
             # index -1: [3, 6] -> [4.5, 4.5]
@@ -381,13 +379,11 @@ class Stats:
             stats.merge_in_parallel(stats1, stats2)
             # Same here: Fill new merged-values list:
             # - Start with index -1, moving to the start.
-            # - Thereby always reducing across the different Stats objects' at the
+            # - Thereby always reduce across the different Stats objects' at the
             #   current index.
             # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND
-            #   added to the new merged-values list n times (where n is the number of
-            #   Stats, across
-            #   which we merge).
+            #   repeated AND added to the new merged-values list n times (where n is the
+            #   number of Stats, across which we merge).
             # - The merged-values list is reversed.
             # Here:
             # index -1: [3, 6] -> [6, 6]
@@ -420,7 +416,7 @@ class Stats:
 
             # Parallel-merge two (reduce=sum) stats with no window.
             # Note that when reduce="sum", we do NOT reduce across the indices of the
-            # parallel
+            # parallel values.
             stats = Stats(reduce="sum")
             stats1 = Stats(reduce="sum")
             stats1.push(1)
@@ -435,7 +431,6 @@ class Stats:
             # index -2: [0, 5] -> [3, 6, 0, 5]
             # index -3: [2, 4] -> [3, 6, 0, 5, 2, 4]
             # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
-            # STOP after merged list contains >= 4 items (window size)
             # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
             check(stats.values, [1, 4, 2, 5, 0, 6, 3])
@@ -443,7 +438,7 @@ class Stats:
 
             # Parallel-merge two "concat" (reduce=None) stats with no window.
             # Note that when reduce=None, we do NOT reduce across the indices of the
-            # parallel
+            # parallel values.
             stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1.push(1)
@@ -657,6 +652,7 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
+
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.

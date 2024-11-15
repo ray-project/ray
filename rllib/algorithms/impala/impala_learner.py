@@ -3,11 +3,12 @@ import copy
 from queue import Empty, Queue
 import threading
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Union
 
 import tree  # pip install dm_tree
 
 import ray
+from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala import LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner
@@ -80,22 +81,18 @@ class IMPALALearner(Learner):
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
         self._gpu_loader_in_queue = Queue()
-        self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
+        if not hasattr(self, "_learner_thread_in_queue"):
+            self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
         self._learner_thread_out_queue = Queue()
-
-        #TODO
-        from ray.rllib.algorithms.appo.utils import CircularBuffer
-        self._circular_buffer = CircularBuffer(capacity=4, max_picks_per_batch=2)#TODO
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
             self._gpu_loader_threads = [
                 _GPULoaderThread(
                     in_queue=self._gpu_loader_in_queue,
-                    out_queue=None,#self._learner_thread_in_queue,
+                    out_queue=self._learner_thread_in_queue,
                     device=self._device,
                     metrics_logger=self.metrics,
-                    circular_buffer=self._circular_buffer,
                 )
                 for _ in range(self.config.num_gpu_loader_threads)
             ]
@@ -103,16 +100,11 @@ class IMPALALearner(Learner):
                 t.start()
 
         # Create and start the Learner thread.
-        #TODO
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
-            in_queue=None,#self._learner_thread_in_queue,
+            in_queue=self._learner_thread_in_queue,
             out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
-            circular_buffer=self._circular_buffer,
-            #num_epochs=self.config.num_epochs,
-            #minibatch_size=self.config.minibatch_size,
-            #shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
         )
         self._learner_thread.start()
 
@@ -122,13 +114,6 @@ class IMPALALearner(Learner):
         episodes: List[EpisodeType],
         *,
         timesteps: Dict[str, Any],
-        # TODO (sven): Deprecate these in favor of config attributes for only those
-        #  algos that actually need (and know how) to do minibatching.
-        minibatch_size: Optional[int] = None,
-        num_epochs: int = 1,
-        shuffle_batch_per_epoch: bool = False,
-        num_total_minibatches: int = 0,
-        reduce_fn=None,  # Deprecated args.
         **kwargs,
     ) -> ResultDict:
         self.metrics.set_value(
@@ -187,8 +172,8 @@ class IMPALALearner(Learner):
                     env_steps=env_steps,
                 )
                 # Add the batch directly to the circular buffer.
-                if self._circular_buffer:
-                    ts_dropped = self._circular_buffer.add(ma_batch)
+                if isinstance(self._learner_thread_in_queue, CircularBuffer):
+                    ts_dropped = self._learner_thread_in_queue.add(ma_batch)
                     self.metrics.log_value(
                         (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                         ts_dropped,
@@ -246,7 +231,6 @@ class _GPULoaderThread(threading.Thread):
         out_queue: deque = None,
         device: torch.device,
         metrics_logger: MetricsLogger,
-        circular_buffer=None
     ):
         super().__init__()
         self.daemon = True
@@ -256,8 +240,6 @@ class _GPULoaderThread(threading.Thread):
         self._ts_dropped = 0
         self._device = device
         self.metrics = metrics_logger
-
-        self._circular_buffer = circular_buffer
 
     def run(self) -> None:
         while True:
@@ -284,8 +266,8 @@ class _GPULoaderThread(threading.Thread):
                 env_steps=env_steps,
             )
 
-            if self._circular_buffer:
-                ts_dropped = self._circular_buffer.add(ma_batch_on_gpu)
+            if isinstance(self._out_queue, CircularBuffer):
+                ts_dropped = self._out_queue.add(ma_batch_on_gpu)
                 self.metrics.log_value(
                     (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                     ts_dropped,
@@ -304,10 +286,6 @@ class _LearnerThread(threading.Thread):
         in_queue,
         out_queue,
         metrics_logger,
-        #num_epochs,
-        #minibatch_size,
-        #shuffle_batch_per_epoch,
-        circular_buffer=None,
     ):
         super().__init__()
         self.daemon = True
@@ -315,25 +293,20 @@ class _LearnerThread(threading.Thread):
         self.stopped = False
 
         self._update_method = update_method
-        self._in_queue: deque = in_queue
+        self._in_queue: Union[deque, CircularBuffer] = in_queue
         self._out_queue: Queue = out_queue
-
-        #self._num_epochs = num_epochs
-        #self._minibatch_size = minibatch_size
-        #self._shuffle_batch_per_epoch = shuffle_batch_per_epoch
-
-        self._circular_buffer = circular_buffer
 
     def run(self) -> None:
         while not self.stopped:
             self.step()
 
     def step(self):
-        # Get a new batch from the GPU-data (deque.pop -> newest item first).
-        if self._circular_buffer:
-            ma_batch_on_gpu = self._circular_buffer.sample()
-        else:
-            with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+
+        with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+            if isinstance(self._in_queue, CircularBuffer):
+                ma_batch_on_gpu = self._in_queue.sample()
+            # Get a new batch from the GPU-data (deque.pop -> newest item first).
+            else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
                 if not self._in_queue:
                     time.sleep(0.001)
@@ -353,9 +326,6 @@ class _LearnerThread(threading.Thread):
                         (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     )
                 },
-                #num_epochs=self._num_epochs,
-                #minibatch_size=self._minibatch_size,
-                #shuffle_batch_per_epoch=self._shuffle_batch_per_epoch,
             )
             # We have to deepcopy the results dict, b/c we must avoid having a returned
             # Stats object sit in the queue and getting a new (possibly even tensor)

@@ -108,8 +108,8 @@ class APPOConfig(IMPALAConfig):
         self.kl_target = 0.01
 
         # Circular replay buffer settings.
-        self.circular_buffer_num_train_batches_N = 4
-        self.circular_buffer_iterations_per_train_batch_K = 2
+        self.circular_buffer_num_batches_N = 4
+        self.circular_buffer_iterations_per_batch_K = 2
         # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
         #  If we switch this on right now, the shuffling would destroy the rollout
         #  sequences (non-zero-padded!) needed in the batch for v-trace.
@@ -162,8 +162,8 @@ class APPOConfig(IMPALAConfig):
         kl_target: Optional[float] = NotProvided,
         tau: Optional[float] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
-        circular_buffer_num_train_batches_N: Optional[int] = NotProvided,
-        circular_buffer_iterations_per_train_batch_K: Optional[int] = NotProvided,
+        circular_buffer_num_batches_N: Optional[int] = NotProvided,
+        circular_buffer_iterations_per_batch_K: Optional[int] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
         use_critic=DEPRECATED_VALUE,
@@ -191,10 +191,10 @@ class APPOConfig(IMPALAConfig):
                 on before updating the target networks and tune the kl loss
                 coefficients. NOTE: This parameter is only applicable when using the
                 Learner API (enable_rl_module_and_learner=True).
-            circular_buffer_num_train_batches_N: The number of train batches that fit
+            circular_buffer_num_batches_N: The number of train batches that fit
                 into the circular buffer. Each such train batch can be sampled for
-                training max. `circular_buffer_iterations_per_train_batch_K` times.
-            circular_buffer_iterations_per_train_batch_K: The number of times any train
+                training max. `circular_buffer_iterations_per_batch_K` times.
+            circular_buffer_iterations_per_batch_K: The number of times any train
                 batch in the circular buffer can be sampled for training. A batch gets
                 evicted from the buffer either if it's the oldest batch in the buffer
                 and a new batch is added OR if the batch reaches this max. number of
@@ -242,13 +242,13 @@ class APPOConfig(IMPALAConfig):
             self.tau = tau
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
-        if circular_buffer_num_train_batches_N is not NotProvided:
-            self.circular_buffer_num_train_batches_N = (
-                circular_buffer_num_train_batches_N
+        if circular_buffer_num_batches_N is not NotProvided:
+            self.circular_buffer_num_batches_N = (
+                circular_buffer_num_batches_N
             )
-        if circular_buffer_iterations_per_train_batch_K is not NotProvided:
-            self.circular_buffer_iterations_per_train_batch_K = (
-                circular_buffer_iterations_per_train_batch_K
+        if circular_buffer_iterations_per_batch_K is not NotProvided:
+            self.circular_buffer_iterations_per_batch_K = (
+                circular_buffer_iterations_per_batch_K
             )
 
         return self

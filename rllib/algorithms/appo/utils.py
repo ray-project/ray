@@ -13,13 +13,13 @@ TARGET_POLICY_SCOPE = "target_func"
 
 
 class CircularBuffer:
-    def __init__(self, capacity: int, max_picks_per_batch: int):
+    def __init__(self, num_batches: int, iterations_per_batch: int):
         # N from the paper (buffer size).
-        self.capacity = capacity
+        self.num_batches = num_batches
         # K ("replay coefficient") from the paper.
-        self.max_picks_per_batch = max_picks_per_batch
+        self.iterations_per_batch = iterations_per_batch
 
-        self._buffer = deque(maxlen=self.capacity)
+        self._buffer = deque(maxlen=self.num_batches)
         self._lock = threading.Lock()
 
     def add(self, batch):
@@ -28,12 +28,12 @@ class CircularBuffer:
         # Add buffer and k=0 information to the deque.
         with self._lock:
             len_ = len(self._buffer)
-            if len_ == self._buffer.maxlen:
+            if len_ == self.num_batches:
                 dropped_batch = self._buffer[0][0]
                 if dropped_batch is not None:
                     dropped_ts += (
                         dropped_batch.env_steps()
-                        * (self.max_picks_per_batch - self._buffer[0][1])
+                        * (self.iterations_per_batch - self._buffer[0][1])
                     )
             self._buffer.append([batch, 0])
 
@@ -60,7 +60,7 @@ class CircularBuffer:
         entry[1] += 1
 
         # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
-        if k == self.max_picks_per_batch:
+        if k == self.iterations_per_batch:
             entry[0] = None
             entry[1] = None
 

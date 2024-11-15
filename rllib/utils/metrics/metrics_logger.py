@@ -109,6 +109,9 @@ class MetricsLogger:
         self._tensor_mode = False
         self._tensor_keys = set()
 
+        ## Experimental throughput ([some count] per second) logging.
+        #self._throughput_prev_values_and_times = {}
+
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
 
@@ -213,7 +216,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        throughput: Optional[Union[str, Tuple[str, ...]]] = None,
+        #_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -309,7 +312,7 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
-            throughput: TODO (sven):
+            #_throughput: TODO (sven):
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.
