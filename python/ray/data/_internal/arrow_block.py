@@ -266,23 +266,22 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     f"{column_names_set}"
                 )
 
-        arrays = []
-        for column in columns:
-            array = self._table[column]
-            if _is_column_extension_type(array):
-                array = _concatenate_extension_column(array)
-            elif array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            else:
-                array = array.combine_chunks()
-            arrays.append(array.to_numpy(zero_copy_only=False))
+        projected_table = self._table.select(columns)
+
+        # Combine columnar values arrays to make these contiguous
+        # (making them compatible with numpy format)
+        contiguous_columns_table = transform_pyarrow.combine_chunks(projected_table)
+
+        column_values_arrays = [
+            col.to_numpy(zero_copy_only=False)
+            for col in contiguous_columns_table.columns
+        ]
 
         if should_be_single_ndarray:
             assert len(columns) == 1
-            arrays = arrays[0]
+            return column_values_arrays[0]
         else:
-            arrays = dict(zip(columns, arrays))
-        return arrays
+            return dict(zip(columns, column_values_arrays))
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
