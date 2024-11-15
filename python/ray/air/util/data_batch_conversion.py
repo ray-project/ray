@@ -219,7 +219,7 @@ def _convert_batch_type_to_numpy(
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
 
-        contiguous_columns_table = transform_pyarrow.combine_chunks(data)
+        contiguous_columns_table = transform_pyarrow.combine_chunks(data, strict=True)
 
         column_values_ndarrays = [
             col.to_numpy(zero_copy_only=False)
