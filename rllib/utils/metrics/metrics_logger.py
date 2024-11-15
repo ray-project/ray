@@ -213,6 +213,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        throughput: Optional[Union[str, Tuple[str, ...]]] = None,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -308,6 +309,7 @@ class MetricsLogger:
                 `self.reduce()` is called. Setting this to True is useful for cases,
                 in which the internal values list would otherwise grow indefinitely,
                 for example if reduce is None and there is no `window` provided.
+            throughput: TODO (sven):
         """
         # No reduction (continue appending to list) AND no window.
         # -> We'll force-reset our values upon `reduce()`.

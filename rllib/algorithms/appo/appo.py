@@ -101,13 +101,15 @@ class APPOConfig(IMPALAConfig):
         # __sphinx_doc_begin__
         # APPO specific settings:
         self.vtrace = True
-        self.use_critic = True
-        self.use_gae = True
         self.lambda_ = 1.0
         self.clip_param = 0.4
         self.use_kl_loss = False
         self.kl_coeff = 1.0
         self.kl_target = 0.01
+
+        # Circular replay buffer settings.
+        self.circular_buffer_num_train_batches_N = 4
+        self.circular_buffer_iterations_per_train_batch_K = 2
         # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
         #  If we switch this on right now, the shuffling would destroy the rollout
         #  sequences (non-zero-padded!) needed in the batch for v-trace.
@@ -145,14 +147,14 @@ class APPOConfig(IMPALAConfig):
 
         # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
+        self.use_critic = DEPRECATED_VALUE
+        self.use_gae = DEPRECATED_VALUE
 
     @override(IMPALAConfig)
     def training(
         self,
         *,
         vtrace: Optional[bool] = NotProvided,
-        use_critic: Optional[bool] = NotProvided,
-        use_gae: Optional[bool] = NotProvided,
         lambda_: Optional[float] = NotProvided,
         clip_param: Optional[float] = NotProvided,
         use_kl_loss: Optional[bool] = NotProvided,
@@ -160,8 +162,12 @@ class APPOConfig(IMPALAConfig):
         kl_target: Optional[float] = NotProvided,
         tau: Optional[float] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
+        circular_buffer_num_train_batches_N: Optional[int] = NotProvided,
+        circular_buffer_iterations_per_train_batch_K: Optional[int] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
+        use_critic=DEPRECATED_VALUE,
+        use_gae=DEPRECATED_VALUE,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -169,11 +175,6 @@ class APPOConfig(IMPALAConfig):
         Args:
             vtrace: Whether to use V-trace weighted advantages. If false, PPO GAE
                 advantages will be used instead.
-            use_critic: Should use a critic as a baseline (otherwise don't use value
-                baseline; required for using GAE). Only applies if vtrace=False.
-            use_gae: If true, use the Generalized Advantage Estimator (GAE)
-                with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
-                Only applies if vtrace=False.
             lambda_: GAE (lambda) parameter.
             clip_param: PPO surrogate slipping parameter.
             use_kl_loss: Whether to use the KL-term in the loss function.
@@ -190,6 +191,14 @@ class APPOConfig(IMPALAConfig):
                 on before updating the target networks and tune the kl loss
                 coefficients. NOTE: This parameter is only applicable when using the
                 Learner API (enable_rl_module_and_learner=True).
+            circular_buffer_num_train_batches_N: The number of train batches that fit
+                into the circular buffer. Each such train batch can be sampled for
+                training max. `circular_buffer_iterations_per_train_batch_K` times.
+            circular_buffer_iterations_per_train_batch_K: The number of times any train
+                batch in the circular buffer can be sampled for training. A batch gets
+                evicted from the buffer either if it's the oldest batch in the buffer
+                and a new batch is added OR if the batch reaches this max. number of
+                being sampled.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -200,16 +209,25 @@ class APPOConfig(IMPALAConfig):
                 new="target_network_update_freq",
                 error=True,
             )
+        if use_critic != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="use_critic",
+                help="`use_critic` no longer supported! APPO always uses a value "
+                "function (critic).",
+                error=True,
+            )
+        if use_gae != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="use_gae",
+                help="`use_gae` no longer supported! APPO uses v-trace instead.",
+                error=True,
+            )
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
         if vtrace is not NotProvided:
             self.vtrace = vtrace
-        if use_critic is not NotProvided:
-            self.use_critic = use_critic
-        if use_gae is not NotProvided:
-            self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
         if clip_param is not NotProvided:
@@ -224,6 +242,14 @@ class APPOConfig(IMPALAConfig):
             self.tau = tau
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
+        if circular_buffer_num_train_batches_N is not NotProvided:
+            self.circular_buffer_num_train_batches_N = (
+                circular_buffer_num_train_batches_N
+            )
+        if circular_buffer_iterations_per_train_batch_K is not NotProvided:
+            self.circular_buffer_iterations_per_train_batch_K = (
+                circular_buffer_iterations_per_train_batch_K
+            )
 
         return self
 

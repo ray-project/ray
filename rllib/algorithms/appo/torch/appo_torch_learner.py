@@ -128,6 +128,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             target_action_log_probs=old_actions_logp_time_major,
             behaviour_action_log_probs=behaviour_actions_logp_time_major,
             discounts=discounts_time_major,
+            #lambda_=config.lambda_,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_values=bootstrap_values,

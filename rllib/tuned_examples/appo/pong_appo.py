@@ -40,6 +40,12 @@ register_env("env", _env_creator)
 
 config = (
     APPOConfig()
+    # Use torch.compile on the learner.
+    .framework(
+        torch_compile_learner=True,
+        torch_compile_learner_dynamo_backend="inductor",
+        torch_compile_learner_what_to_compile="complete_update",
+    )
     .environment(
         "env",
         env_config={
@@ -52,7 +58,7 @@ config = (
     )
     .env_runners(
         env_to_module_connector=_make_env_to_module_connector,
-        num_envs_per_env_runner=2,
+        num_envs_per_env_runner=3,
         max_requests_in_flight_per_env_runner=1,
     )
     .training(
