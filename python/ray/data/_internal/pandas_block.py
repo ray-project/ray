@@ -303,40 +303,52 @@ class PandasBlockAccessor(TableBlockAccessor):
             seen = set()
             total_size = 0
             objects = collections.deque([obj])
-
             while objects:
                 current = objects.pop()
+
+                # Skip interning-eligible immutable objects
+                if isinstance(current, (str, bytes, int, float)):
+                    size = sys.getsizeof(current)
+                    total_size += size
+                    continue
+
+                # Check if the object has been seen before
                 if id(current) in seen:
                     continue
                 seen.add(id(current))
-                size = sys.getsizeof(current)
+
+                try:
+                    size = sys.getsizeof(current)
+                except TypeError:
+                    size = 0
                 total_size += size
 
+                # Handle specific cases
                 if isinstance(current, np.ndarray):
                     total_size += current.nbytes - size  # Avoid double counting
                 elif isinstance(current, pd.DataFrame):
                     total_size += (
                         current.memory_usage(index=True, deep=True).sum() - size
                     )
-                elif isinstance(current, (bytes, bytearray)):
-                    total_size += len(current) - size 
                 elif isinstance(current, (list, tuple, set)):
                     objects.extend(current)
                 elif isinstance(current, dict):
                     objects.extend(current.keys())
                     objects.extend(current.values())
-
             return total_size
 
         # Get initial memory usage including deep introspection
         memory_usage = self._table.memory_usage(index=True, deep=True)
 
+        # python_object() for arrow of bytes
+        object_need_check = ["object", "python_object()"]
         # Handle object columns separately
-        for column in self._table.select_dtypes(include=["object"]).columns:
-            column_memory = 0
-            for element in self._table[column]:
-                column_memory += get_deep_size(element)
-            memory_usage[column] = column_memory
+        for column in self._table.columns:
+            if str(self._table[column].dtype) in object_need_check:
+                column_memory = 0
+                for element in self._table[column]:
+                    column_memory += get_deep_size(element)
+                memory_usage[column] = column_memory
 
         # Sum up total memory usage
         total_memory_usage = memory_usage.sum()
