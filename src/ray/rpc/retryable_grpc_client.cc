@@ -25,12 +25,10 @@ void RetryableGrpcClient::Shutdown() {
     // Fail the pending requests.
     while (!pending_requests_.empty()) {
       auto iter = pending_requests_.begin();
-      Executor *executor = iter->second.first;
       // Make sure the callback is executed in the io context thread.
       io_context_.post(
-          [executor]() {
-            executor->Abort(Status::Disconnected("GRPC client is shut down."));
-            delete executor;
+          [request = std::move(iter->second)]() {
+            request->Fail(Status::Disconnected("GRPC client is shut down."));
           },
           "RetryableGrpcClient.Shutdown");
       pending_requests_.erase(iter);
@@ -70,11 +68,9 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       if (iter->first > now) {
         break;
       }
-      auto [executor, request_bytes] = iter->second;
-      executor->Abort(ray::Status::TimedOut(absl::StrFormat(
+      iter->second->Fail(ray::Status::TimedOut(absl::StrFormat(
           "Timed out while waiting for %s to become available.", server_name_)));
-      pending_requests_bytes_ -= request_bytes;
-      delete executor;
+      pending_requests_bytes_ -= iter->second->GetRequestBytes();
       pending_requests_.erase(iter);
     }
 
@@ -98,6 +94,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
                        << server_unavailable_timeout_seconds_ << " seconds";
       server_unavailable_timeout_callback_();
+      // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
           absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
     }
@@ -119,7 +116,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
       absl::MutexLock lock(&mu_);
       // Retry the ones queued.
       while (!pending_requests_.empty()) {
-        pending_requests_.begin()->second.first->Retry();
+        pending_requests_.begin()->second->CallMethod();
         pending_requests_.erase(pending_requests_.begin());
       }
       pending_requests_bytes_ = 0;
@@ -129,6 +126,53 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   default: {
     RAY_LOG(FATAL) << "Not covered status: " << status;
   }
+  }
+}
+
+void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
+  // In case of transient network error, we queue the request and these requests
+  // will be executed once network is recovered.
+  auto request_bytes = request->GetRequestBytes();
+  if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
+    RAY_LOG(WARNING) << "Pending queue for failed request has reached the "
+                     << "limit. Blocking the current thread until network is recovered";
+    if (!server_unavailable_timeout_time_.has_value()) {
+      server_unavailable_timeout_time_ =
+          absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
+    }
+    while (server_unavailable_timeout_time_.has_value() && !shutdown_) {
+      CheckChannelStatus(false);
+      std::this_thread::sleep_for(
+          std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
+    }
+    if (shutdown_) {
+      request->Fail(Status::Disconnected("GRPC client has been shutdown."));
+    } else {
+      request->CallMethod();
+    }
+    return;
+  }
+
+  bool shutdown = false;
+  {
+    absl::MutexLock lock(&mu_);
+    if (!shutdown_) {
+      pending_requests_bytes_ += request_bytes;
+      auto timeout = request->GetTimeoutMs() == -1
+                         ? absl::InfiniteFuture()
+                         : absl::Now() + absl::Milliseconds(request->GetTimeoutMs());
+      pending_requests_.emplace(timeout, request);
+    } else {
+      shutdown = true;
+    }
+  }
+  if (shutdown) {
+    // Run the callback outside of the lock.
+    request->Fail(Status::Disconnected("GRPC client has been shutdown."));
+  } else if (!server_unavailable_timeout_time_.has_value()) {
+    server_unavailable_timeout_time_ =
+        absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
+    SetupCheckTimer();
   }
 }
 }  // namespace rpc
