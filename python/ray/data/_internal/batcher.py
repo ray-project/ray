@@ -133,7 +133,7 @@ class Batcher(BatcherInterface):
                 # We need this entire block to fill out a batch.
                 # We need to call `accessor.slice()` to ensure
                 # the subsequent block's type are the same.
-                output.add_block(accessor.slice(0, accessor.num_rows(), copy=False))
+                output.add_block(accessor.to_block())
                 needed -= accessor.num_rows()
             else:
                 if (
