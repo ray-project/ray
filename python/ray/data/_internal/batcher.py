@@ -11,7 +11,7 @@ from ray.data.block import Block, BlockAccessor
 # See https://github.com/ray-project/ray/issues/31108 for more details.
 # TODO(jjyao): remove this once
 # https://github.com/apache/arrow/issues/35126 is resolved.
-MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 2
+MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS = 10
 
 # Delay compaction until the shuffle buffer has reached this ratio over the min
 # shuffle buffer size. Setting this to 1 minimizes memory usage, at the cost of
