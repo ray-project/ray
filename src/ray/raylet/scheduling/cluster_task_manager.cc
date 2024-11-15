@@ -62,7 +62,7 @@ void ClusterTaskManager::QueueAndScheduleTask(
   // directly.
   auto infeasible_tasks_iter = infeasible_tasks_.find(scheduling_class);
   if (infeasible_tasks_iter != infeasible_tasks_.end()) {
-    iter->second.emplace_back(std::move(work));
+    infeasible_tasks_iter->second.emplace_back(std::move(work));
   } else {
     tasks_to_schedule_[scheduling_class].emplace_back(std::move(work));
   }
