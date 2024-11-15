@@ -956,7 +956,7 @@ class LocalIterator(Generic[T]):
             self.shared_metrics,
             self.local_transforms + [apply_shuffle],
             name=self.name
-                 + ".shuffle(shuffle_buffer_size={}, seed={})".format(
+            + ".shuffle(shuffle_buffer_size={}, seed={})".format(
                 shuffle_buffer_size, str(seed) if seed is not None else "None"
             ),
         )

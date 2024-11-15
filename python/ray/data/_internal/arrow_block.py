@@ -244,11 +244,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        from ray.air.util.transform_pyarrow import (
-            _concatenate_extension_column,
-            _is_column_extension_type,
-        )
-
         if columns is None:
             columns = self._table.column_names
             should_be_single_ndarray = False
@@ -270,7 +265,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Combine columnar values arrays to make these contiguous
         # (making them compatible with numpy format)
-        contiguous_columns_table = transform_pyarrow.combine_chunks(projected_table, strict=True)
+        contiguous_columns_table = transform_pyarrow.combine_chunks(
+            projected_table, strict=True
+        )
 
         column_values_ndarrays = [
             col.to_numpy(zero_copy_only=False)
