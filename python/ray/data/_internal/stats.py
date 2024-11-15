@@ -587,17 +587,14 @@ class _StatsManager:
         self._start_thread_if_not_running()
 
     def clear_iteration_metrics(self, dataset_tag: str):
+        # Delete the last iteration stats so that update thread will have
+        # a chance to terminate.
+        # Note we don't reset the actual metric values through the StatsActor
+        # since the value is essentially a counter value. See
+        # https://github.com/ray-project/ray/pull/48618 for more context.
         with self._stats_lock:
             if dataset_tag in self._last_iteration_stats:
                 del self._last_iteration_stats[dataset_tag]
-
-        try:
-            self._stats_actor(
-                create_if_not_exists=False
-            ).clear_iteration_metrics.remote(dataset_tag)
-        except Exception:
-            # Cluster may be shut down.
-            pass
 
     # Other methods
 
