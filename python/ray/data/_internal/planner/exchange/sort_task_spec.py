@@ -199,6 +199,8 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_list = list(zip(*samples_dict.values()))
 
         def is_na(x):
+            # Check if x is None or NaN. Type casting to np.array first to avoid
+            # isnan failing on strings and other types.
             x = np.asarray(x)
             if np.issubdtype(x.dtype, np.number):
                 return np.isnan(x)
