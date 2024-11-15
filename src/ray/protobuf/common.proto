@@ -989,5 +989,9 @@ message NamedActorInfo {
 message LineageReconstructionTask {
   string name = 1;
   TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
   map<string, string> labels = 3;
 }
