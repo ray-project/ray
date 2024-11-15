@@ -7,6 +7,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.util import NULL_SENTINEL
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -195,8 +196,20 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_table = builder.build()
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
         # This zip does the transposition from list of column values to list of tuples.
-        # Use np.sort to sort None/NaNs effectively
-        samples_list = np.sort(list(zip(*samples_dict.values())), axis=0)
+        samples_list = list(zip(*samples_dict.values()))
+
+        def is_na(x):
+            x = np.asarray(x)
+            if np.issubdtype(x.dtype, np.number):
+                return np.isnan(x)
+            return x == None
+
+        def key_fn_with_nones(sample):
+            return tuple(NULL_SENTINEL if is_na(x) else x for x in sample)
+
+        # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
+        samples_list = sorted(samples_list, key=key_fn_with_nones)
+
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [
             int(q * (len(samples_list) - 1))

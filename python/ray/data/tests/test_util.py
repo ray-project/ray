@@ -17,6 +17,7 @@ from ray.data._internal.util import (
     _check_pyarrow_version,
     _split_list,
     iterate_with_retry,
+    NULL_SENTINEL,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
@@ -33,6 +34,21 @@ def test_cached_remote_fn():
     gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
 
     assert cpu_only_foo != gpu_only_foo
+
+
+def test_null_sentinel():
+    """Check that NULL_SENTINEL sorts greater than any other value."""
+    assert NULL_SENTINEL > 1000
+    assert NULL_SENTINEL > "abc"
+    assert NULL_SENTINEL == NULL_SENTINEL
+    assert NULL_SENTINEL != 1000
+    assert NULL_SENTINEL != "abc"
+    assert not NULL_SENTINEL < 1000
+    assert not NULL_SENTINEL < "abc"
+    assert not NULL_SENTINEL <= 1000
+    assert not NULL_SENTINEL <= "abc"
+    assert NULL_SENTINEL >= 1000
+    assert NULL_SENTINEL >= "abc"
 
 
 def test_make_hashable():
