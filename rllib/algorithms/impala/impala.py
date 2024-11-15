@@ -892,6 +892,11 @@ class IMPALA(Algorithm):
                 self._current_sleep_time,
                 window=1,
             )
+            self.metrics.log_value(
+                "_current_sleep_time_lr",
+                self._sleep_time_lr,
+                window=1,
+            )
             # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
             # samples).
             self._current_sleep_time += self._sleep_time_lr_direction
@@ -904,9 +909,10 @@ class IMPALA(Algorithm):
                 ),
                 default=0.0,
             )
+            # Improvement: Keep moving in the same direction with the same speed.
             if train_throughput > self._best_train_throughput:
                 self._best_train_throughput = train_throughput
-            # No improvement; reverse direction and reduce learning rate
+            # No improvement; reverse direction and reduce learning rate.
             else:
                 self._sleep_time_lr *= 0.9
                 self._sleep_time_lr_direction = (
