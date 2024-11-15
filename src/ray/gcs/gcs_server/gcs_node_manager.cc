@@ -393,8 +393,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
 

@@ -89,10 +89,10 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       const std::string &native_library_path,
+                       std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       const std::function<double()> get_time)
+                       std::function<double()> get_time_millisecond)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -105,15 +105,15 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
-      native_library_path_(native_library_path),
-      starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      native_library_path_(std::move(native_library_path)),
+      starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
-      get_time_(get_time) {
+      get_time_millisecond_(std::move(get_time_millisecond)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -1024,15 +1024,15 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
     }
   } else {
     state.idle.insert(worker);
-    auto now = get_time_();
+    auto now_millisec = get_time_millisecond_();
     if (worker->GetAssignedTaskTime() == absl::Time()) {
       // If the worker never held any tasks, then we should consider it first when
       // choosing which idle workers to kill because it is not warmed up and is slower
       // than those workers who served tasks before.
       // See https://github.com/ray-project/ray/pull/36766
-      idle_of_all_languages_.emplace_front(worker, now);
+      idle_of_all_languages_.emplace_front(worker, now_millisec);
     } else {
-      idle_of_all_languages_.emplace_back(worker, now);
+      idle_of_all_languages_.emplace_back(worker, now_millisec);
     }
   }
   // We either have an idle worker or a slot to start a new worker.
@@ -1042,7 +1042,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  int64_t now = get_time_();
+  const int64_t now_millisec = get_time_millisecond_();
 
   // Filter out all idle workers that are already dead and/or associated with
   // jobs that have already finished.
@@ -1061,7 +1061,7 @@ void WorkerPool::TryKillingIdleWorkers() {
       it = idle_of_all_languages_.erase(it);
     } else {
       if (it->second == -1 ||
-          now - it->second >
+          now_millisec - it->second >
               RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
         // The job has not yet finished and the worker has been idle for longer
         // than the timeout.
@@ -1085,7 +1085,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   while (num_killable_idle_workers > num_desired_idle_workers &&
          it != idle_of_all_languages_.end()) {
     if (it->second == -1 ||
-        now - it->second >
+        now_millisec - it->second >
             RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
@@ -1543,8 +1543,11 @@ void WorkerPool::WarnAboutSize() {
           << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
-      auto error_data_ptr = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message_str, get_time_());
+
+      auto error_data_ptr =
+          gcs::CreateErrorTableData("worker_pool_large",
+                                    warning_message_str,
+                                    absl::FromUnixMillis(get_time_millisecond_()));
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }

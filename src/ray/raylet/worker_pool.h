@@ -200,7 +200,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time.
+  /// \param get_time A callback to get the current time in milliseconds.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
@@ -212,10 +212,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::string &native_library_path,
+             std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<double()> get_time);
+             std::function<double()> get_time_millisecond);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool() override;
@@ -792,7 +792,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   PeriodicalRunner periodical_runner_;
 
   /// A callback to get the current time.
-  const std::function<double()> get_time_;
+  const std::function<double()> get_time_millisecond_;
   /// Runtime env manager client.
   std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats
