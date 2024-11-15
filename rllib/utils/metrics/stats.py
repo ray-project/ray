@@ -137,6 +137,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
+        _throughput=False,
     ):
         """Initializes a Stats instance.
 
@@ -216,8 +217,16 @@ class Stats:
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
 
-        # On each `.reduce()` call, we store the result of this call in
+        # On each `.reduce()` call, we store the result of this call in hist[0] and the
+        # previous `reduce()` result in hist[1].
         self._hist = (0, 0)
+
+        self._throughput = _throughput
+        if self._throughput:
+            assert self._reduce_method == "sum"
+            assert self._window in [None, float("inf")]
+            self._current_throughput = 0.0
+            self._throughput_last_time = time.perf_counter()
 
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
@@ -259,7 +268,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: bool = False) -> Any:
+    def peek(self, *, previous: bool = False, throughput: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -274,8 +283,12 @@ class Stats:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
+        # Return previously reduced value.
         if previous:
             return self._hist[1]
+        # Return the last measured throughput.
+        elif throughput:
+            return self._current_throughput if self._throughput else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -292,6 +305,14 @@ class Stats:
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
         reduced, values = self._reduced_values()
+
+        # Keep track and update underlying throughput metric.
+        if self._throughput:
+            delta_sum = reduced - self._hist[0]
+            time_now = time.perf_counter()
+            delta_time = time_now - self._throughput_last_time
+            self._throughput_last_time = time_now
+            self._current_throughput = delta_sum / delta_time
 
         # Reduce everything to a single (init) value.
         self.values = values
@@ -312,6 +333,7 @@ class Stats:
         assert self._reduce_method == other._reduce_method
         assert self._window == other._window
         assert self._ema_coeff == other._ema_coeff
+        assert self._throughput == other._throughput
 
         # Extend `self`'s values by `other`'s.
         self.values.extend(other.values)
@@ -319,6 +341,10 @@ class Stats:
         # Slice by window size, if provided.
         if self._window not in [None, float("inf")]:
             self.values = self.values[-self._window :]
+
+        # Adopt `other`'s current throughput estimate (it's the newer one).
+        if self._throughput:
+            self._current_throughput = other._current_throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
@@ -456,10 +482,13 @@ class Stats:
                 `self`.
         """
         # Make sure `others` have same reduction settings.
-        assert all(self._reduce_method == o._reduce_method for o in others)
-        assert all(self._window == o._window for o in others)
-        assert all(self._ema_coeff == o._ema_coeff for o in others)
-
+        assert all(
+            self._reduce_method == o._reduce_method
+            and self._window == o._window
+            and self._ema_coeff == o._ema_coeff
+            and self._throughput == o._throughput
+            for o in others
+        )
         win = self._window or float("inf")
 
         # Take turns stepping through `self` and `*others` values, thereby moving
@@ -493,6 +522,10 @@ class Stats:
                 break
 
         self.values = list(reversed(new_values))
+
+        # Update our throughput as the sum over all others' current throughputs.
+        if self._throughput:
+            self._current_throughput = sum(o._current_throughput for o in others)
 
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
@@ -581,7 +614,6 @@ class Stats:
     def similar_to(
         other: "Stats",
         init_value: Optional[Any] = None,
-        prev_values: Optional[Tuple[Any, Any]] = None,
     ) -> "Stats":
         """Returns a new Stats object that's similar to `other`.
 
@@ -604,6 +636,7 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
+            _throughput=other._throughput,
         )
         stats._hist = other._hist
         return stats

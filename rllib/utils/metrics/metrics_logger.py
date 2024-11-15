@@ -216,7 +216,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
-        #_throughput: Optional[Union[str, Tuple[str, ...]]] = None,
+        _throughput: bool = False,
     ) -> None:
         """Logs a new value under a (possibly nested) key to the logger.
 
@@ -334,6 +334,7 @@ class MetricsLogger:
                         window=window,
                         ema_coeff=ema_coeff,
                         clear_on_reduce=clear_on_reduce,
+                        _throughput=_throughput,
                     )
                 ),
             )
@@ -966,6 +967,7 @@ class MetricsLogger:
         window: Optional[Union[int, float]] = None,
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
+        _throughput: bool = False,
     ) -> None:
         """Overrides the logged values under `key` with `value`.
 
@@ -1015,6 +1017,7 @@ class MetricsLogger:
                 window=window,
                 ema_coeff=ema_coeff,
                 clear_on_reduce=clear_on_reduce,
+                _throughput=_throughput,
             )
 
     def reset(self) -> None:

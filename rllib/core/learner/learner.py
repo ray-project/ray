@@ -1322,7 +1322,6 @@ class Learner(Checkpointable):
         # Call the learner connector.
         if episodes is not None:
             # Call the learner connector pipeline.
-            assert False
             with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
                 shared_data = {}
                 batch = self._learner_connector(
@@ -1346,7 +1345,6 @@ class Learner(Checkpointable):
                 )
         # Single-agent SampleBatch: Have to convert to MultiAgentBatch.
         elif isinstance(batch, SampleBatch):
-            assert False
             assert len(self.module) == 1
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
@@ -1372,7 +1370,6 @@ class Learner(Checkpointable):
         self._log_steps_trained_metrics(batch)
 
         if minibatch_size:
-            assert False
             if self._learner_connector is not None:
                 batch_iter = partial(
                     MiniBatchCyclicIterator, _uses_new_env_runners=True
@@ -1380,7 +1377,6 @@ class Learner(Checkpointable):
             else:
                 batch_iter = MiniBatchCyclicIterator
         elif num_epochs > 1:
-            assert False
             # `minibatch_size` was not set but `num_epochs` > 1.
             # Under the old training stack, users could do multiple epochs
             # over a batch without specifying a minibatch size. We enable
@@ -1699,7 +1695,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
             reduce="sum",
-            #_throughput=(ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+            _throughput=True,
         )
 
     @Deprecated(
