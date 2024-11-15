@@ -58,15 +58,13 @@ class TestSizeBytes:
     def test_size_bytes_small(ray_start_regular_shared):
         animals = ["Flamingo", "Centipede"]
         block = pd.DataFrame({"animals": animals})
-        block["animals"] = block["animals"].astype("string")
 
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        # generally strings are hard, so let's use what Pandas gives us.
-        # get memory usage from pandas
-        memory_usage = block.memory_usage(index=True, deep=True).sum()
         # check that memory usage is within 10% of the size_bytes
+        # For strings, Pandas seems to be fairly accurate, so let's use that.
+        memory_usage = block.memory_usage(index=True, deep=True).sum()
         assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
             bytes_size,
             memory_usage,
@@ -78,14 +76,13 @@ class TestSizeBytes:
             for i in range(100_000)
         ]
         block = pd.DataFrame({"animals": animals})
+        # if you remove this line it breaks
         block["animals"] = block["animals"].astype("string")
 
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        # String disk usage is wildly different from in-process memory usage
         memory_usage = block.memory_usage(index=True, deep=True).sum()
-        # check that memory usage is within 10% of the size_bytes
         assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
             bytes_size,
             memory_usage,
@@ -123,24 +120,28 @@ class TestSizeBytes:
             assert true_value * 0.9 <= size <= true_value * 1.1, (true_value, size)
 
     def test_size_bytes_unowned_numpy(ray_start_regular_shared):
+        size = 1024
+        rows = 1_000
         df = pd.DataFrame(
             {
                 "data": [
-                    np.random.randint(size=1024, low=0, high=100, dtype=np.int8)
-                    for _ in range(1_000)
+                    np.random.randint(size=size, low=0, high=100, dtype=np.int8)
+                    for _ in range(rows)
                 ],
             }
         )
 
         block_accessor = PandasBlockAccessor.for_block(df)
         block_size = block_accessor.size_bytes()
-        true_value = 1024 * 1000
+        true_value = rows * size
         assert true_value * 0.9 <= block_size <= true_value * 1.1
 
     def test_size_bytes_nested_objects(ray_start_regular_shared):
+        size = 10
+        rows = 10_000
         data = {
             "lists": [
-                [random.randint(0, 100) for _ in range(10)] for _ in range(10_000)
+                [random.randint(0, 100) for _ in range(size)] for _ in range(rows)
             ],
         }
         block = pd.DataFrame(data)
@@ -148,8 +149,8 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        true_size = 10_000 * (
-            sys.getsizeof([random.randint(0, 100) for _ in range(10)]) + 10 * 28
+        true_size = rows * (
+            sys.getsizeof([random.randint(0, 100) for _ in range(size)]) + size * 28
         )
         # List overhead + 10 integers per list
 
@@ -159,32 +160,38 @@ class TestSizeBytes:
         )
 
     def test_size_bytes_mixed_types(ray_start_regular_shared):
+        rows = 10_000
+
         data = {
-            "integers": [random.randint(0, 100) for _ in range(10_000)],
-            "floats": [random.random() for _ in range(10_000)],
+            "integers": [random.randint(0, 100) for _ in range(rows)],
+            "floats": [random.random() for _ in range(rows)],
             "strings": [
-                random.choice(["apple", "banana", "cherry"]) for _ in range(10_000)
+                random.choice(["apple", "banana", "cherry"]) for _ in range(rows)
             ],
+            "object": [b"\x00" * 128 for _ in range(rows)],
         }
         block = pd.DataFrame(data)
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
         # Manually calculate the size
-        int_size = 10_000 * 8
-        float_size = 10_000 * 8
+        int_size = rows * 8
+        float_size = rows * 8
         str_size = (
-            10_000 * sum([sys.getsizeof(s) for s in ["apple", "banana", "cherry"]]) // 3
+            rows * sum([sys.getsizeof(s) for s in ["apple", "banana", "cherry"]]) // 3
         )
+        object_size = rows * sys.getsizeof(b"\x00" * 128)
 
-        true_size = int_size + float_size + str_size
+        true_size = int_size + float_size + str_size + object_size
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
     def test_size_bytes_nested_lists_strings(ray_start_regular_shared):
+        rows = 5_000
+        size = 10
         data = {
             "nested_lists": [
-                [random.choice(["a", "bb", "ccc"]) for _ in range(10)]
-                for _ in range(5_000)
+                [random.choice(["a", "bb", "ccc"]) for _ in range(size)]
+                for _ in range(rows)
             ],
         }
         block = pd.DataFrame(data)
@@ -194,15 +201,17 @@ class TestSizeBytes:
         # Manually calculate the size
         list_overhead = sys.getsizeof(
             block["nested_lists"].iloc[0]
-        ) + 10 * sys.getsizeof("bb")
-        true_size = 5_000 * list_overhead
+        ) + size * sys.getsizeof("bb")
+        true_size = rows * list_overhead
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
     def test_size_bytes_multi_level_nesting(ray_start_regular_shared):
+        rows = 1_000
+        size = 10  # if you change this to 1024 it breaks
         data = {
             "complex": [
-                {"list": [np.random.rand(10)], "value": {"key": "val"}}
-                for _ in range(1_000)
+                {"list": [np.random.rand(size)], "value": {"key": "val"}}
+                for _ in range(rows)
             ],
         }
         block = pd.DataFrame(data)
@@ -210,11 +219,11 @@ class TestSizeBytes:
         bytes_size = block_accessor.size_bytes()
 
         # Manually calculate the size
-        list_overhead = sys.getsizeof([0] * 10) + 10 * 28
+        list_overhead = sys.getsizeof([0] * size) + size * 28
         dict_size = (
             sys.getsizeof({"key": "val"}) + sys.getsizeof("key") + sys.getsizeof("val")
         )
-        true_size = 1_000 * (list_overhead + dict_size)
+        true_size = rows * (list_overhead + dict_size)
         assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
             bytes_size,
             true_size,
