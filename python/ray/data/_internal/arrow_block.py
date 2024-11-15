@@ -273,16 +273,16 @@ class ArrowBlockAccessor(TableBlockAccessor):
         # (making them compatible with numpy format)
         contiguous_columns_table = transform_pyarrow.combine_chunks(projected_table)
 
-        column_values_arrays = [
+        column_values_ndarrays = [
             col.to_numpy(zero_copy_only=False)
             for col in contiguous_columns_table.columns
         ]
 
         if should_be_single_ndarray:
             assert len(columns) == 1
-            return column_values_arrays[0]
+            return column_values_ndarrays[0]
         else:
-            return dict(zip(columns, column_values_arrays))
+            return dict(zip(columns, column_values_ndarrays))
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table

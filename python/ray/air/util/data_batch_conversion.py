@@ -219,12 +219,14 @@ def _convert_batch_type_to_numpy(
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
 
-        combined_chunks_table = transform_pyarrow.combine_chunks(data)
+        contiguous_columns_table = transform_pyarrow.combine_chunks(data)
 
-        return {
-            col_name: combined_chunks_table[col_name].to_numpy(zero_copy_only=False)
-            for col_name in combined_chunks_table.column_names
-        }
+        column_values_ndarrays = [
+            col.to_numpy(zero_copy_only=False)
+            for col in contiguous_columns_table.columns
+        ]
+
+        return dict(zip(contiguous_columns_table.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
