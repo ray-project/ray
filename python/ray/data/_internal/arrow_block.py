@@ -32,7 +32,7 @@ from ray.data._internal.numpy_support import (
 )
 from ray.data._internal.row import TableRow
 from ray.data._internal.table_block import TableBlockAccessor, TableBlockBuilder
-from ray.data._internal.util import find_partitions, NULL_SENTINEL
+from ray.data._internal.util import NULL_SENTINEL, find_partitions
 from ray.data.block import (
     Block,
     BlockAccessor,

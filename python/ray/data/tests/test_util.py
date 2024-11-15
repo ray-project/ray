@@ -14,10 +14,10 @@ from ray.data._internal.memory_tracing import (
 )
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
+    NULL_SENTINEL,
     _check_pyarrow_version,
     _split_list,
     iterate_with_retry,
-    NULL_SENTINEL,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
 
