@@ -417,6 +417,8 @@ class ObjectRefGenerator:
                     return False
                 else:
                     return True
+        else:
+            return False
 
     """
     Private APIs
@@ -3831,8 +3833,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only))
+            check_status(CCoreWorkerProcess.GetCoreWorker().
+                         Delete(free_ids, local_only))
 
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
