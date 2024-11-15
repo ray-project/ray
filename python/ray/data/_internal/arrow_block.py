@@ -633,6 +633,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             else:
                 return (0,)
 
+        # Replace Nones with NULL_SENTINEL to ensure safe sorting.
         def key_fn_with_null_sentinel(r):
             values = key_fn(r)
             return [NULL_SENTINEL if v is None else v for v in values]
