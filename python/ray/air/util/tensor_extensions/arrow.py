@@ -120,7 +120,8 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             should_serialize_as_object_ext_type = False
             object_ext_type_detail = (
                 "skipping fallback to serialize as pickled python"
-                f" objects (due to unsupported Arrow version {PYARROW_VERSION})"
+                f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
+                f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
             )
         else:
             from ray.data import DataContext
@@ -146,7 +147,7 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
 
         # If `ArrowPythonObjectType` is not supported raise original exception
         if not should_serialize_as_object_ext_type:
-            raise ace
+            raise
 
         # Otherwise, attempt to fall back to serialize as python objects
         return ArrowPythonObjectArray.from_objects(column_values)
@@ -200,7 +201,7 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _gt_2gb(obj: Any) -> bool:
+    def _len_gt_2gb(obj: Any) -> bool:
         # NOTE: This utility could be seeing objects other than strings or bytes in
         #       cases when column contains non-scalar non-homogeneous object types as
         #       column values, therefore making Arrow unable to infer corresponding
@@ -214,11 +215,11 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         return False
 
     if pa.types.is_binary(inferred_pa_dtype) and any(
-        [_gt_2gb(v) for v in column_values]
+        [_len_gt_2gb(v) for v in column_values]
     ):
         return pa.large_binary()
     elif pa.types.is_string(inferred_pa_dtype) and any(
-        [_gt_2gb(v) for v in column_values]
+        [_len_gt_2gb(v) for v in column_values]
     ):
         return pa.large_string()
 
