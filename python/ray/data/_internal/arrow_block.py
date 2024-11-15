@@ -218,7 +218,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            view = transform_pyarrow.combine_chunks(view)
+            view = transform_pyarrow.combine_chunks(view, strict=False)
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
@@ -270,7 +270,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
         # Combine columnar values arrays to make these contiguous
         # (making them compatible with numpy format)
-        contiguous_columns_table = transform_pyarrow.combine_chunks(projected_table)
+        contiguous_columns_table = transform_pyarrow.combine_chunks(projected_table, strict=True)
 
         column_values_ndarrays = [
             col.to_numpy(zero_copy_only=False)

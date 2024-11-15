@@ -143,7 +143,7 @@ class Batcher(BatcherInterface):
                     >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
                 ):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.combine_chunks(block)
+                        transform_pyarrow.combine_chunks(block, strict=False)
                     )
                 # We only need part of the block to fill out a batch.
                 output.add_block(accessor.slice(0, needed, copy=False))
@@ -310,7 +310,8 @@ class ShufflingBatcher(BatcherInterface):
                 >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
             ):
                 self._shuffle_buffer = transform_pyarrow.combine_chunks(
-                    self._shuffle_buffer
+                    self._shuffle_buffer,
+                    strict=False,
                 )
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
