@@ -77,8 +77,13 @@ export const ServeMetricsSection = ({
   metricsConfig,
   sx,
 }: ServeMetricsSectionProps) => {
-  const { grafanaHost, prometheusHealth, dashboardUids, dashboardDatasource, serverTimeZone } =
-    useContext(GlobalContext);
+  const {
+    grafanaHost,
+    prometheusHealth,
+    dashboardUids,
+    dashboardDatasource,
+    serverTimeZone,
+  } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
     RefreshOptions.FIVE_SECONDS,
@@ -105,6 +110,7 @@ export const ServeMetricsSection = ({
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
   const currentTimezone =
     localStorage.getItem("timezone") ||
+    serverTimeZone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return grafanaHost === undefined || !prometheusHealth ? null : (

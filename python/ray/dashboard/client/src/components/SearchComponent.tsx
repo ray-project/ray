@@ -6,6 +6,7 @@ import {
   TextField,
 } from "@mui/material";
 import React, { useEffect, useState } from "react";
+import { formatTimeZone } from "../common/formatUtils";
 
 export const SearchInput = ({
   label,
@@ -330,12 +331,6 @@ export const SearchTimezone = ({
       value: "Africa/Monrovia",
       group: "Africa",
       country: "Monrovia",
-    },
-    {
-      utc: "GMT+00:00",
-      value: "Etc/UTC",
-      group: "UTC",
-      country: "UTC",
     },
     {
       utc: "GMT+01:00",
@@ -891,7 +886,7 @@ export const SearchTimezone = ({
     },
   ];
 
-  const [timezone, setTimezone] = useState<string>((''))
+  const [timezone, setTimezone] = useState<string>("");
 
   useEffect(() => {
     if (serverTimeZoneLoaded) {
@@ -899,6 +894,7 @@ export const SearchTimezone = ({
         localStorage.getItem("timezone") ||
         serverTimeZone ||
         Intl.DateTimeFormat().resolvedOptions().timeZone;
+      formatTimeZone(currentTimezone);
       setTimezone(currentTimezone);
     }
   }, [serverTimeZoneLoaded, serverTimeZone]);
@@ -920,7 +916,7 @@ export const SearchTimezone = ({
       country: "Browser Time",
     },
     {
-      value: "Coordinated Universal Time",
+      value: "Etc/UTC",
       utc: "GMT+00:00",
       group: "System",
       country: "Coordinated Universal Time",

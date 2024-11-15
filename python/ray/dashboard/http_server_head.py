@@ -6,10 +6,10 @@ import os
 import pathlib
 import sys
 import time
+from datetime import datetime
 from math import floor
 
 from packaging.version import Version
-from datetime import datetime, timedelta
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
@@ -140,12 +140,12 @@ class HttpServerDashboardHead:
             )
         )
 
-    def get_gmt_offset():
+    def get_gmt_offset(self):
         current_tz = datetime.now().astimezone().tzinfo
         offset = current_tz.utcoffset(None)
         hours, remainder = divmod(offset.total_seconds(), 3600)
         minutes = remainder // 60
-        sign = '+' if hours >= 0 else '-'
+        sign = "+" if hours >= 0 else "-"
         return f"GMT{sign}{abs(int(hours)):02d}:{abs(int(minutes)):02d}"
 
     @routes.get("/timezone")
@@ -183,20 +183,24 @@ class HttpServerDashboardHead:
             {"utc": "GMT+10:00", "value": "Australia/Brisbane"},
             {"utc": "GMT+11:00", "value": "Asia/Magadan"},
             {"utc": "GMT+12:00", "value": "Pacific/Auckland"},
-            {"utc": "GMT+13:00", "value": "Pacific/Tongatapu"}
+            {"utc": "GMT+13:00", "value": "Pacific/Tongatapu"},
         ]
         try:
-            current_offset = get_gmt_offset()
-            current_timezone = next((tz for tz in timezones if tz["utc"] == current_offset), None)
-            
+            current_offset = self.get_gmt_offset()
+            current_timezone = next(
+                (tz["value"] for tz in timezones if tz["utc"] == current_offset), None
+            )
+
             if current_timezone:
                 return aiohttp.web.Response(text=str(current_timezone))
             else:
                 return aiohttp.web.Response(status=404, text="Timezone not found")
-        
+
         except Exception as e:
             logger.error(f"Error getting timezone: {e}")
-            return aiohttp.web.Response(status=500, text="Internal Server Error")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error:" + str(e)
+            )
 
     def get_address(self):
         assert self.http_host and self.http_port

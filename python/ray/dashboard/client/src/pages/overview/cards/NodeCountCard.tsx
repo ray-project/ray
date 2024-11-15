@@ -24,7 +24,8 @@ export const NodeCountCard = ({ className, sx }: NodeCountCardProps) => {
   const path = `/d-solo/${grafanaDefaultDashboardUid}/default-dashboard?orgId=1&theme=light&panelId=24&var-datasource=${dashboardDatasource}`;
   const timeRangeParams = "&from=now-30m&to=now";
   const currentTimezone =
-    localStorage.getItem("timezone") || serverTimeZone ||
+    localStorage.getItem("timezone") ||
+    serverTimeZone ||
     Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
