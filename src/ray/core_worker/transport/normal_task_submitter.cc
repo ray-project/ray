@@ -41,8 +41,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     bool keep_executing = true;
     {
       absl::MutexLock lock(&mu_);
-      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_spec.TaskId());
+      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+      if (task_iter != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_iter);
         keep_executing = false;
       }
       if (keep_executing) {
@@ -81,10 +82,6 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
         }
         RequestNewWorkerIfNeeded(scheduling_key);
       }
-    }
-    if (!keep_executing) {
-      RAY_UNUSED(task_finisher_->FailOrRetryPendingTask(
-          task_spec.TaskId(), rpc::ErrorType::TASK_CANCELLED, nullptr));
     }
   });
   return Status::OK();
@@ -333,7 +330,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const TaskSpecification resource_spec = TaskSpecification(std::move(resource_spec_msg));
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
@@ -709,7 +706,8 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
   {
     absl::MutexLock lock(&mu_);
     if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end() ||
-        !task_finisher_->MarkTaskCanceled(task_spec.TaskId())) {
+        !task_finisher_->MarkTaskCanceled(task_spec.TaskId()) ||
+        !task_finisher_->IsTaskPending(task_spec.TaskId())) {
       return Status::OK();
     }
 
@@ -736,7 +734,9 @@ Status NormalTaskSubmitter::CancelTask(TaskSpecification task_spec,
 
     if (rpc_client == executing_tasks_.end()) {
       // This case is reached for tasks that have unresolved dependencies.
-      // No executing tasks, so cancelling is a noop.
+      resolver_.CancelDependencyResolution(task_spec.TaskId());
+      RAY_UNUSED(task_finisher_->FailPendingTask(task_spec.TaskId(),
+                                                 rpc::ErrorType::TASK_CANCELLED));
       if (scheduling_key_entry.CanDelete()) {
         // We can safely remove the entry keyed by scheduling_key from the
         // scheduling_key_entries_ hashmap.
