@@ -597,9 +597,9 @@ class IMPALA(Algorithm):
         self._results = {}
 
         if self.config.enable_rl_module_and_learner:
-            self._current_sleep_time = 0.1
+            self._current_sleep_time = 0.2
             self._sleep_time_lr = 0.01
-            self._best_train_throughput = float("-inf")
+            self._last_train_throughput = float("-inf")
             self._sleep_time_lr_direction = self._sleep_time_lr
         else:
             # Create and start the learner thread.
@@ -897,28 +897,50 @@ class IMPALA(Algorithm):
                 self._sleep_time_lr,
                 window=1,
             )
-            # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
-            # samples).
-            self._current_sleep_time += self._sleep_time_lr_direction
-            self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
             train_throughput = self.metrics.peek(
                 (
                     LEARNER_RESULTS,
                     ALL_MODULES,
-                    NUM_ENV_STEPS_TRAINED_LIFETIME + "_throughput",
+                    NUM_ENV_STEPS_TRAINED_LIFETIME,
                 ),
                 default=0.0,
+                throughput=True,
+            )
+            self.metrics.log_value(
+                "_measured_train_throughput",
+                train_throughput,
+                window=1,
+            )
+            print(train_throughput)
+            self.metrics.log_value(
+                "_measured_last_train_throughput",
+                self._last_train_throughput,
+                window=1,
             )
             # Improvement: Keep moving in the same direction with the same speed.
-            if train_throughput > self._best_train_throughput:
-                self._best_train_throughput = train_throughput
-            # No improvement; reverse direction and reduce learning rate.
+            if train_throughput > self._last_train_throughput:
+                pass
+            # Got worse: Reverse direction and reduce learning rate.
             else:
-                self._sleep_time_lr *= 0.9
+                self._sleep_time_lr *= 0.95
                 self._sleep_time_lr_direction = (
                     np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
                 )
-
+            self._last_train_throughput = train_throughput
+            # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
+            # samples).
+            self._current_sleep_time += self._sleep_time_lr_direction
+            self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
+            self.metrics.log_value(
+                "_current_sleep_time",
+                self._current_sleep_time,
+                window=1,
+            )
+            self.metrics.log_value(
+                "_current_sleep_time_lr_direction",
+                self._sleep_time_lr_direction,
+                window=1,
+            )
     @classmethod
     @override(Algorithm)
     def default_resource_request(

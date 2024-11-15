@@ -129,6 +129,7 @@ class MetricsLogger:
         key: Union[str, Tuple[str, ...]],
         *,
         default: Optional[Any] = None,
+        throughput: bool = False,
     ) -> Any:
         """Returns the (reduced) value(s) found under the given key or key sequence.
 
@@ -189,7 +190,10 @@ class MetricsLogger:
         # Otherwise, return the reduced Stats' (peek) value.
 
         # Create a reduced view of the requested sub-structure or leaf (Stats object).
-        ret = tree.map_structure(lambda s: s.peek(), self._get_key(key))
+        ret = tree.map_structure(
+            lambda s: s.peek(throughput=throughput),
+            self._get_key(key),
+        )
         return ret
 
     @staticmethod
