@@ -636,6 +636,26 @@ def test_recursive_cancel_actor_task(shutdown_only):
     wait_for_condition(verify)
 
 
+@pytest.mark.parametrize("use_force", [True, False])
+def test_cancel_with_dependency(shutdown_only, use_force):
+    ray.init(num_cpus=4)
+
+    @ray.remote(num_cpus=1)
+    def wait_forever_task():
+        while True:
+            time.sleep(1000)
+
+    @ray.remote(num_cpus=1)
+    def square(x):
+        return x * x
+
+    wait_forever_obj = wait_forever_task.remote()
+    wait_forever_as_dep = square.remote(wait_forever_obj)
+    ray.cancel(wait_forever_as_dep, force=use_force)
+    with pytest.raises(valid_exceptions(use_force)):
+        ray.get(wait_forever_as_dep)
+
+
 @pytest.mark.skip("Actor cancelation works now.")
 def test_recursive_cancel_error_messages(shutdown_only, capsys):
     """
