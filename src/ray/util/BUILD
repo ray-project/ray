@@ -49,3 +49,11 @@ cc_library(
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
 )
+
+cc_binary(
+    name = "cgroup_utils",
+    srcs = ["cgroup_utils.cc"],
+    deps = [
+        "@com_google_absl//absl/strings:str_format",
+    ],
+)
