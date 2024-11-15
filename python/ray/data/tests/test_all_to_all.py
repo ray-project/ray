@@ -123,7 +123,8 @@ def test_unique(ray_start_regular_shared):
         assert mock_validate.call_args_list[0].args[0].names == ["b"]
 
 
-def test_unique_with_nulls(ray_start_regular_shared):
+@pytest.mark.parametrize("batch_format", ["pandas", "pyarrow"])
+def test_unique_with_nulls(ray_start_regular_shared, batch_format):
     ds = ray.data.from_items([3, 2, 3, 1, 2, 3, None])
     assert set(ds.unique("item")) == {1, 2, 3, None}
 
@@ -131,13 +132,19 @@ def test_unique_with_nulls(ray_start_regular_shared):
         [
             {"a": 1, "b": 1},
             {"a": 1, "b": 2},
+            {"a": 1, "b": None},
             {"a": None, "b": 3},
             {"a": None, "b": 4},
-            {"a": 1, "b": None},
         ]
     )
     assert set(ds.unique("a")) == {1, None}
     assert set(ds.unique("b")) == {1, 2, 3, 4, None}
+
+    df = pd.DataFrame({"col": [1, 2, 2, 3, None, 3, 2]}, dtype="Int64")
+    # df["col"].unique() works fine, as expected
+    ds2 = ray.data.from_pandas(df)
+    ds2 = ds2.map_batches(lambda x: x, batch_format=batch_format)
+    assert set(ds2.unique("col")) == {1, 2, 3, None}
 
 
 def test_grouped_dataset_repr(ray_start_regular_shared):
