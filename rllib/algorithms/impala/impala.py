@@ -47,6 +47,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_PER_ITERATION,
@@ -883,20 +884,34 @@ class IMPALA(Algorithm):
         # Sleep for n seconds to balance backpressure.
         time.sleep(self._current_sleep_time)
 
-        #if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) % 1000:
-        #    # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
-        #    # samples).
-        #    self._current_sleep_time += self._sleep_time_lr_direction
-        #    self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
-        #    train_throughput = self.metrics.peek(NUM_ENV_STEPS_TRAINED_LIFETIME)
-        #    if train_throughput > self._best_train_throughput:
-        #        self._best_train_throughput = train_throughput
-        #    # No improvement; reverse direction and reduce learning rate
-        #    else:
-        #        self._sleep_time_lr *= 0.9
-        #        self._sleep_time_lr_direction = (
-        #            np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
-        #        )
+        # Adjust the sleep time once every iteration (on the first `training_step()`
+        # call in each iteration).
+        if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
+            self.metrics.log_value(
+                "_current_sleep_time",
+                self._current_sleep_time,
+                window=1,
+            )
+            # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
+            # samples).
+            self._current_sleep_time += self._sleep_time_lr_direction
+            self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
+            train_throughput = self.metrics.peek(
+                (
+                    LEARNER_RESULTS,
+                    ALL_MODULES,
+                    NUM_ENV_STEPS_TRAINED_LIFETIME + "_throughput",
+                ),
+                default=0.0,
+            )
+            if train_throughput > self._best_train_throughput:
+                self._best_train_throughput = train_throughput
+            # No improvement; reverse direction and reduce learning rate
+            else:
+                self._sleep_time_lr *= 0.9
+                self._sleep_time_lr_direction = (
+                    np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
+                )
 
     @classmethod
     @override(Algorithm)
