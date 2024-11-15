@@ -270,7 +270,7 @@ class RemoteFunction:
             # Re-calculate runtime env info based on updated runtime env.
             serialized_runtime_env_info = get_runtime_env_info(
                 updated_options["runtime_env"],
-                is_job_runtime_env=True,
+                is_job_runtime_env=False,
                 serialize=True,
             )
 
