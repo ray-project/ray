@@ -61,6 +61,7 @@ class MockTaskFinisherInterface : public TaskFinisherInterface {
               MarkTaskWaitingForExecution,
               (const TaskID &task_id, const NodeID &node_id, const WorkerID &worker_id),
               (override));
+  MOCK_METHOD(bool, IsTaskPending, (const TaskID &task_id), (const, override));
 };
 
 }  // namespace core

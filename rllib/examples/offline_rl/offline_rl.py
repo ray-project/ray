@@ -57,6 +57,10 @@ if __name__ == "__main__":
     # See rllib/tuned_examples/cql/pendulum-cql.yaml for comparison.
     config = (
         cql.CQLConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .framework(framework="torch")
         .env_runners(num_env_runners=0)
         .training(

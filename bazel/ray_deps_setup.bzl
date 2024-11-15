@@ -212,12 +212,14 @@ def ray_deps_setup():
 
     # OpenCensus depends on Abseil so we have to explicitly pull it in.
     # This is how diamond dependencies are prevented.
+    #
+    # TODO(owner): Upgrade abseil to latest version after protobuf updated, which requires to upgrade `rules_cc` first.
     auto_http_archive(
         name = "com_google_absl",
-        sha256 = "5366d7e7fa7ba0d915014d387b66d0d002c03236448e1ba9ef98122c13b35c36",
-        strip_prefix = "abseil-cpp-20230125.3",
+        sha256 = "987ce98f02eefbaf930d6e38ab16aa05737234d7afbab2d5c4ea7adbe50c28ed",
+        strip_prefix = "abseil-cpp-20230802.1",
         urls = [
-            "https://github.com/abseil/abseil-cpp/archive/20230125.3.tar.gz",
+            "https://github.com/abseil/abseil-cpp/archive/refs/tags/20230802.1.tar.gz",
         ],
     )
 

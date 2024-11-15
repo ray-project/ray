@@ -526,8 +526,13 @@ class TestAlgorithm(unittest.TestCase):
 
         offline_rl_config = (
             BCConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(
-                observation_space=env.observation_space, action_space=env.action_space
+                observation_space=env.observation_space,
+                action_space=env.action_space,
             )
             .evaluation(
                 evaluation_interval=1,

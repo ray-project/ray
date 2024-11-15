@@ -83,7 +83,7 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -735,6 +735,7 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
     if meta_provider is None:
@@ -848,10 +849,10 @@ def read_images(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -897,6 +898,8 @@ def read_images(
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = ImageFileMetadataProvider()
 
@@ -923,7 +926,7 @@ def read_images(
     )
 
 
-@PublicAPI
+@Deprecated
 def read_parquet_bulk(
     paths: Union[str, List[str]],
     *,
@@ -993,10 +996,10 @@ def read_parquet_bulk(
             assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
@@ -1023,6 +1026,14 @@ def read_parquet_bulk(
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    warnings.warn(
+        "`read_parquet_bulk` is deprecated and will be removed after May 2025. Use "
+        "`read_parquet` instead.",
+        DeprecationWarning,
+    )
+
     if meta_provider is None:
         meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
@@ -1132,10 +1143,10 @@ def read_json(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1168,6 +1179,8 @@ def read_json(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1299,10 +1312,10 @@ def read_csv(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1334,6 +1347,8 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1415,10 +1430,10 @@ def read_text(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1445,6 +1460,8 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1524,10 +1541,10 @@ def read_avro(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1553,6 +1570,8 @@ def read_avro(
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1648,6 +1667,8 @@ def read_numpy(
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1747,10 +1768,10 @@ def read_tfrecords(
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
             use ``arrow_open_stream_args={'compression': 'gzip'}``).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1782,6 +1803,8 @@ def read_tfrecords(
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
     import platform
+
+    _emit_meta_provider_deprecation_warning(meta_provider)
 
     tfx_read = False
 
@@ -1901,6 +1924,8 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1989,10 +2014,10 @@ def read_binary_files(
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -2017,6 +2042,8 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -3251,4 +3278,15 @@ def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
             "Valid values are None, 'files'."
+        )
+
+
+def _emit_meta_provider_deprecation_warning(
+    meta_provider: Optional[BaseFileMetadataProvider],
+) -> None:
+    if meta_provider is not None:
+        warnings.warn(
+            "The `meta_provider` argument is deprecated and will be removed after May "
+            "2025.",
+            DeprecationWarning,
         )

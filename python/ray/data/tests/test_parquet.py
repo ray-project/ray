@@ -12,7 +12,10 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.air.util.tensor_extensions.arrow import ArrowTensorType, ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data import Schema
 from ray.data._internal.datasource.parquet_bulk_datasource import ParquetBulkDatasource
 from ray.data._internal.datasource.parquet_datasource import (
@@ -1043,8 +1046,10 @@ def test_parquet_read_empty_file(ray_start_regular_shared, tmp_path):
     path = os.path.join(tmp_path, "data.parquet")
     table = pa.table({})
     pq.write_table(table, path)
+
     ds = ray.data.read_parquet(path)
-    pd.testing.assert_frame_equal(ds.to_pandas(), table.to_pandas())
+
+    assert ds.take_all() == []
 
 
 def test_parquet_reader_batch_size(ray_start_regular_shared, tmp_path):
@@ -1243,7 +1248,8 @@ def test_tensors_in_tables_parquet(
     )
 
     assert isinstance(
-        ds.schema().base_schema.field_by_name(tensor_col_name).type, ArrowTensorType
+        ds.schema().base_schema.field_by_name(tensor_col_name).type,
+        get_arrow_extension_fixed_shape_tensor_types(),
     )
 
     expected_tuples = list(zip(id_vals, group_vals, arr))
@@ -1314,6 +1320,39 @@ def test_count_with_filter(ray_start_regular_shared):
     )
     assert ds.count() == 0
     assert isinstance(ds.count(), int)
+
+
+def test_write_with_schema(ray_start_regular_shared, tmp_path):
+    ds = ray.data.range(1)
+    schema = pa.schema({"id": pa.float32()})
+
+    ds.write_parquet(tmp_path, schema=schema)
+
+    assert pq.read_table(tmp_path).schema == schema
+
+
+@pytest.mark.parametrize(
+    "row_data",
+    [
+        [{"a": 1, "b": None}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 3}, {"a": 1, "b": 2}],
+        [{"a": None, "b": 1}, {"a": 1, "b": None}],
+    ],
+    ids=["row1_b_null", "row1_a_null", "row_each_null"],
+)
+def test_write_auto_infer_nullable_fields(
+    tmp_path, ray_start_regular_shared, row_data, restore_data_context
+):
+    """
+    Test that when writing multiple blocks, we can automatically infer nullable
+    fields.
+    """
+    ctx = DataContext.get_current()
+    # So that we force multiple blocks on mapping.
+    ctx.target_max_block_size = 1
+    ds = ray.data.range(len(row_data)).map(lambda row: row_data[row["id"]])
+    # So we force writing to a single file.
+    ds.write_parquet(tmp_path, num_rows_per_file=2)
 
 
 if __name__ == "__main__":

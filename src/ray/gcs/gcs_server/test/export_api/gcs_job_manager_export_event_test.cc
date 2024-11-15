@@ -85,7 +85,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;

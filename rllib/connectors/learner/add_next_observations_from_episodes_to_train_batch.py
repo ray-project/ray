@@ -1,7 +1,5 @@
 from typing import Any, Dict, List, Optional
 
-import gymnasium as gym
-
 from ray.rllib.core.columns import Columns
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -74,19 +72,6 @@ class AddNextObservationsFromEpisodesToTrainBatch(ConnectorV2):
             },
         )
     """
-
-    def __init__(
-        self,
-        input_observation_space: Optional[gym.Space] = None,
-        input_action_space: Optional[gym.Space] = None,
-        **kwargs,
-    ):
-        """Initializes a AddNextObservationsFromEpisodesToTrainBatch instance."""
-        super().__init__(
-            input_observation_space=input_observation_space,
-            input_action_space=input_action_space,
-            **kwargs,
-        )
 
     @override(ConnectorV2)
     def __call__(

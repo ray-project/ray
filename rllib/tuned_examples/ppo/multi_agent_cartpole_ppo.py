@@ -15,7 +15,7 @@ parser.set_defaults(
     num_agents=2,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))

@@ -1,6 +1,5 @@
 import abc
 import time
-import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -188,9 +187,7 @@ class DataIterator(abc.ABC):
     def _get_dataset_tag(self) -> str:
         return "unknown_dataset"
 
-    def iter_rows(
-        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
-    ) -> Iterable[Dict[str, Any]]:
+    def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
         If the dataset is a tabular dataset (Arrow/Pandas blocks), dicts
@@ -205,34 +202,12 @@ class DataIterator(abc.ABC):
 
         Time complexity: O(1)
 
-        Args:
-            prefetch_batches: The number of batches to prefetch ahead of the current
-                batch during the scan.
-            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
-                instead.
-
         Returns:
             An iterable over rows of the dataset.
         """
-        iter_batch_args = {
-            "batch_size": None,
-            "batch_format": None,
-            "prefetch_batches": prefetch_batches,
-        }
-        if prefetch_blocks > 0:
-            warnings.warn(
-                "`prefetch_blocks` is deprecated in Ray 2.10. Use "
-                "the `prefetch_batches` parameter to specify the amount of prefetching "
-                "in terms of batches instead of blocks.",
-                DeprecationWarning,
-            )
-            iter_batch_args["prefetch_batches"] = prefetch_blocks
-        if prefetch_batches != 1:
-            warnings.warn(
-                "`prefetch_batches` is deprecated in Ray 2.12.", DeprecationWarning
-            )
-
-        batch_iterable = self.iter_batches(**iter_batch_args)
+        batch_iterable = self.iter_batches(
+            batch_size=None, batch_format=None, prefetch_batches=1
+        )
 
         def _wrapped_iterator():
             for batch in batch_iterable:

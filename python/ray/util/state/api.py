@@ -553,7 +553,7 @@ def get_actor(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[ActorState]:
     """Get an actor by id.
 
     Args:

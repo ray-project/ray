@@ -10,7 +10,7 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
@@ -21,7 +21,7 @@ config = (
         train_batch_size_per_learner=256,
         grad_clip=40.0,
         grad_clip_by="global_norm",
-        lr=0.0003 * ((args.num_gpus or 1) ** 0.5),
+        lr=0.0003 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=0.05,
         entropy_coeff=[[0, 0.1], [2000000, 0.0]],
     )

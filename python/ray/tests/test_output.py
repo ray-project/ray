@@ -575,14 +575,20 @@ ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 @ray.remote
 def f():
     while True:
-        time.sleep(1)
+        start_time = time.time()
+        while time.time() - start_time < 1:
+            time.sleep(0.1)
         print("hello there")
         sys.stdout.flush()
 
 def kill():
-    time.sleep(5)
+    start_time = time.time()
+    while time.time() - start_time < 5:
+        time.sleep(0.1)
     sys.stdout.flush()
-    time.sleep(1)
+    start_time = time.time()
+    while time.time() - start_time < 1:
+        time.sleep(0.1)
     os._exit(0)
 
 t = threading.Thread(target=kill)

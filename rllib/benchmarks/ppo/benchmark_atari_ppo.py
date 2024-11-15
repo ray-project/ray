@@ -3,7 +3,7 @@
 How to run this script
 ----------------------
 `python [script-name].py --enable-new-api-stack --stop-timesteps 12000000
---num-gpus=4 --num-env-runners=95`
+--num-learners=4 --num-gpus-per-learner --num-env-runners=95`
 
 In order to only run individual or lists of envs, you can provide a list of env-strings
 under the `--env` arg, such as `--env=ale_py:ALE/Pong-v5,ale_py:ALE/Breakout-v5`.
@@ -100,7 +100,8 @@ if __name__ == "__main__":
         "../../tuned_examples/ppo/atari_ppo.py",
         "--enable-new-api-stack",
         f"--num-env-runners={args.num_env_runners}" if args.num_env_runners else "",
-        f"--num-gpus={args.num_gpus}",
+        f"--num-learners={args.num_learners}",
+        f"--num-gpus-per-learner={args.num_gpus_per_learner}",
         f"--wandb-key={args.wandb_key}" if args.wandb_key else "",
         f"--wandb-project={args.wandb_project}" if args.wandb_project else "",
         f"--wandb-run-name={args.wandb_run_name}" if args.wandb_run_name else "",
