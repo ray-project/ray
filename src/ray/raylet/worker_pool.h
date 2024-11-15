@@ -255,7 +255,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::string &native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<double()> get_time);
+             const std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool() override;
@@ -533,8 +533,6 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
-
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
   /// state.worker_processes.
@@ -610,9 +608,17 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   absl::flat_hash_map<Language, State, std::hash<int>> states_by_lang_;
 
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
-  /// workers in FIFO order. The second element of std::pair is the time a worker becomes
-  /// idle.
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+  /// workers in FIFO order.
+  struct IdleWorkerEntry {
+    std::shared_ptr<WorkerInterface> worker;
+    // The time when the worker was last released by a task or freshly registered.
+    absl::Time idle_since;
+    // Don't kill this worker until this time. Clears on task assignment by setting to
+    // absl::InfinitePast();
+    absl::Time keep_alive_until;
+  };
+  void KillIdleWorker(const IdleWorkerEntry &node);
+  std::list<IdleWorkerEntry> idle_of_all_languages_;
 
  private:
   /// A helper function that returns the reference of the pool state
@@ -818,7 +824,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   PeriodicalRunner periodical_runner_;
 
   /// A callback to get the current time.
-  const std::function<double()> get_time_;
+  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
   std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats

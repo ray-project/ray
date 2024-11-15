@@ -94,7 +94,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const std::string &native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       const std::function<double()> get_time)
+                       const std::function<absl::Time()> get_time)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
@@ -766,12 +766,6 @@ Status WorkerPool::RegisterWorker(const std::shared_ptr<WorkerInterface> &worker
     return status;
   }
 
-  if (it->second.idle_worker_keep_alive_duration.has_value()) {
-    auto deadline = absl::FromUnixMillis(get_time_()) +
-                    it->second.idle_worker_keep_alive_duration.value();
-    worker->SetIdleKeepAliveDeadline(deadline);
-  }
-
   auto process = Process::FromPid(pid);
   worker->SetProcess(process);
 
@@ -1043,14 +1037,26 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
   } else {
     state.idle.insert(worker);
     auto now = get_time_();
+    absl::Time keep_alive_until = absl::InfinitePast();
     if (worker->GetAssignedTaskTime() == absl::Time()) {
+      const auto &keep_alive_duration =
+          state.worker_processes.at(worker->GetStartupToken())
+              .idle_worker_keep_alive_duration;
+      if (keep_alive_duration.has_value()) {
+        keep_alive_until = now + *keep_alive_duration;
+      }
+
       // If the worker never held any tasks, then we should consider it first when
       // choosing which idle workers to kill because it is not warmed up and is slower
       // than those workers who served tasks before.
       // See https://github.com/ray-project/ray/pull/36766
-      idle_of_all_languages_.emplace_front(worker, now);
+      //
+      // Also, we set keep_alive_until w.r.t. idle_worker_keep_alive_duration.
+      idle_of_all_languages_.emplace_front(
+          IdleWorkerEntry{worker, /*idle_since=*/now, keep_alive_until});
     } else {
-      idle_of_all_languages_.emplace_back(worker, now);
+      idle_of_all_languages_.emplace_back(
+          IdleWorkerEntry{worker, /*idle_since=*/now, keep_alive_until});
     }
   }
   // We either have an idle worker or a slot to start a new worker.
@@ -1060,33 +1066,32 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  int64_t now = get_time_();
+  absl::Time now = get_time_();
 
   // Filter out all idle workers that are already dead and/or associated with
   // jobs that have already finished.
   int64_t num_killable_idle_workers = 0;
-  auto worker_killable =
-      [now](const std::pair<std::shared_ptr<WorkerInterface>, int64_t> &entry) -> bool {
-    const auto &[idle_worker, last_time_used_ms] = entry;
-    if (!idle_worker->IsIdleKillable(absl::FromUnixMillis(now))) {
+  auto worker_killable = [now](const IdleWorkerEntry &entry) -> bool {
+    if (entry.keep_alive_until > now) {
       return false;
     }
-    return last_time_used_ms == -1 ||
-           now - last_time_used_ms >
-               RayConfig::instance().idle_worker_killing_time_threshold_ms();
+    return now - entry.idle_since >
+           absl::Milliseconds(
+               RayConfig::instance().idle_worker_killing_time_threshold_ms());
   };
 
+  // First, kill must-kill workers: dead ones, job finished ones. Also calculate killable
+  // worker count.
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();) {
-    const auto &idle_worker = it->first;
-    if (idle_worker->IsDead()) {
+    if (it->worker->IsDead()) {
       it = idle_of_all_languages_.erase(it);
       continue;
     }
 
-    const auto &job_id = idle_worker->GetAssignedJobId();
+    const auto &job_id = it->worker->GetAssignedJobId();
     if (finished_jobs_.count(job_id) > 0) {
       // The job has finished, so we should kill the worker immediately.
-      KillIdleWorker(idle_worker, it->second);
+      KillIdleWorker(*it);
       it = idle_of_all_languages_.erase(it);
     } else {
       if (worker_killable(*it)) {
@@ -1115,8 +1120,8 @@ void WorkerPool::TryKillingIdleWorkers() {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
                      << num_desired_idle_workers << " killing idle worker with PID "
-                     << it->first->GetProcess().GetId();
-      KillIdleWorker(it->first, it->second);
+                     << it->worker->GetProcess().GetId();
+      KillIdleWorker(*it);
       it = idle_of_all_languages_.erase(it);
       num_killable_idle_workers--;
     } else {
@@ -1125,8 +1130,8 @@ void WorkerPool::TryKillingIdleWorkers() {
   }
 }
 
-void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
-                                int64_t last_time_used_ms) {
+void WorkerPool::KillIdleWorker(const IdleWorkerEntry &entry) {
+  const auto &idle_worker = entry.worker;
   // To avoid object lost issue caused by forcibly killing, send an RPC request to the
   // worker to allow it to do cleanup before exiting. We kill it anyway if the driver
   // is already exited.
@@ -1145,9 +1150,9 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
     request.set_force_exit(true);
   }
   rpc_client->Exit(
-      request,
-      [this, idle_worker, last_time_used_ms](const ray::Status &status,
-                                             const rpc::ExitReply &r) {
+      request, [this, entry](const ray::Status &status, const rpc::ExitReply &r) {
+        const auto &idle_worker = entry.worker;
+
         RAY_CHECK(pending_exit_idle_workers_.erase(idle_worker->WorkerId()));
         if (!status.ok()) {
           RAY_LOG(ERROR) << "Failed to send exit request: " << status.ToString();
@@ -1173,8 +1178,7 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
           // kill the worker (e.g., when the worker owns the object). Without this,
           // if the first N workers own objects, it can't kill idle workers that are
           // >= N+1.
-          idle_of_all_languages_.push_back(
-              std::make_pair(idle_worker, last_time_used_ms));
+          idle_of_all_languages_.push_back(entry);
         }
       });
 }
@@ -1343,11 +1347,10 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
     const PopWorkerRequest &pop_worker_request) {
   absl::flat_hash_map<WorkerUnfitForTaskReason, size_t> skip_reason_count;
 
-  auto worker_fits_for_task_fn =
-      [this, &pop_worker_request, &skip_reason_count](
-          const std::pair<std::shared_ptr<WorkerInterface>, int64_t> &pair) -> bool {
-    const auto &worker = pair.first;
-    WorkerUnfitForTaskReason reason = WorkerFitsForTask(*worker, pop_worker_request);
+  auto worker_fits_for_task_fn = [this, &pop_worker_request, &skip_reason_count](
+                                     const IdleWorkerEntry &entry) -> bool {
+    WorkerUnfitForTaskReason reason =
+        WorkerFitsForTask(*entry.worker, pop_worker_request);
     if (reason == WorkerUnfitForTaskReason::NONE) {
       return true;
     }
@@ -1366,11 +1369,11 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
                                      idle_of_all_languages_.rend(),
                                      worker_fits_for_task_fn);
   if (good_worker_it != idle_of_all_languages_.rend()) {
-    state.idle.erase(good_worker_it->first);
+    state.idle.erase(good_worker_it->worker);
     // We can't erase a reverse_iterator.
     auto lit = good_worker_it.base();
     lit--;
-    std::shared_ptr<WorkerInterface> worker = std::move(lit->first);
+    std::shared_ptr<WorkerInterface> worker = std::move(lit->worker);
     idle_of_all_languages_.erase(lit);
     return worker;
   }
@@ -1482,7 +1485,7 @@ void WorkerPool::DisconnectWorker(const std::shared_ptr<WorkerInterface> &worker
 
   for (auto it = idle_of_all_languages_.begin(); it != idle_of_all_languages_.end();
        it++) {
-    if (it->first == worker) {
+    if (it->worker == worker) {
       idle_of_all_languages_.erase(it);
       break;
     }
@@ -1582,7 +1585,7 @@ void WorkerPool::WarnAboutSize() {
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
       auto error_data_ptr = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message_str, get_time_());
+          "worker_pool_large", warning_message_str, absl::ToUnixMillis(get_time_()));
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }

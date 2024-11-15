@@ -15,7 +15,6 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
-#include <optional>
 #include <utility>
 
 #include "ray/raylet/format/node_manager_generated.h"
