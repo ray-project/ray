@@ -539,16 +539,13 @@ class ReplicaBase(ABC):
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
             async with self._user_callable_initialized_lock:
-                initialization_start_time = time.time()
+                self._initialization_start_time = time.time()
                 if not self._user_callable_initialized:
                     self._user_callable_asgi_app = await asyncio.wrap_future(
                         self._user_callable_wrapper.initialize_callable()
                     )
                     await self._on_initialized()
                     self._user_callable_initialized = True
-                    self._set_internal_replica_context(
-                        servable_object=self._user_callable_wrapper.user_callable
-                    )
 
                 if deployment_config:
                     await asyncio.wrap_future(
@@ -561,11 +558,6 @@ class ReplicaBase(ABC):
             # an initial health check. If an initial health check fails,
             # consider it an initialization failure.
             await self.check_health()
-
-            # Save the initialization latency if the replica is initializing
-            # for the first time.
-            if self._initialization_latency is None:
-                self._initialization_latency = time.time() - initialization_start_time
         except Exception:
             raise RuntimeError(traceback.format_exc()) from None
 
@@ -688,7 +680,14 @@ class ReplicaBase(ABC):
 
 class Replica(ReplicaBase):
     async def _on_initialized(self):
-        pass
+        self._set_internal_replica_context(
+            servable_object=self._user_callable_wrapper.user_callable
+        )
+
+        # Save the initialization latency if the replica is initializing
+        # for the first time.
+        if self._initialization_latency is None:
+            self._initialization_latency = time.time() - self._initialization_start_time
 
     def _on_request_cancelled(
         self, request_metadata: RequestMetadata, e: asyncio.CancelledError
