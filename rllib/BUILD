@@ -508,21 +508,21 @@ py_test(
     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentStatelessCartPole
+py_test(
+    name = "learning_tests_multi_agent_stateless_cartpole_impala",
+    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    size = "large",
+    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
+)
 # py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_impala",
-#     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-#     size = "large",
-#     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
-# )
-# py_test(
-#     name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
-#     main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-#     size = "large",
-#     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
+#    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
+#    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+#    size = "large",
+#    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+#    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 # )
 
 # MARWIL
