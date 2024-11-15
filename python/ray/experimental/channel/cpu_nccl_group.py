@@ -130,20 +130,13 @@ class CPUNcclGroup(GPUCommunicator):
         self.num_ops = defaultdict(int)
         self.communicators = set()
 
-    def get_communicator(self, comm_key: str, is_p2p: bool = False):
-        """Ensure the necessary communicator actor is created."""
-        try:
-            return ray.get_actor(name=comm_key)
-        except ValueError:
-            return CPUCommunicator.options(name=comm_key).remote(2 if is_p2p else self._world_size)
-
     def send(self, tensor: torch.Tensor, peer_rank: int):
         """Send the tensor to the communicator actor."""
         comm_key = f"communicator-p2p-{self.get_self_rank()}-{peer_rank}"
-        communicator = self.get_communicator(comm_key, is_p2p=True)
+        comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(2)
 
-        self.communicators.add(communicator)
-        ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key], tensor))
+        self.communicators.add(comm)
+        ray.get(comm.wait_p2p.remote(self.num_ops[comm_key], tensor))
         self.num_ops[comm_key] += 1
 
     def recv(
@@ -154,10 +147,10 @@ class CPUNcclGroup(GPUCommunicator):
         allocator: Optional[TorchTensorAllocator] = None,
     ):
         """Receive the tensor from the communicator actor."""
-        comm_key = f"communicator-{peer_rank}-{self.get_self_rank()}"
-        communicator = self.get_communicator(comm_key, is_p2p=True)
-        self.communicators.add(communicator)
-        received_tensor = ray.get(communicator.wait_p2p.remote(self.num_ops[comm_key]))
+        comm_key = f"communicator-p2p-{peer_rank}-{self.get_self_rank()}"
+        comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(2)
+        self.communicators.add(comm)
+        received_tensor = ray.get(comm.wait_p2p.remote(self.num_ops[comm_key]))
 
         assert allocator is not None, "torch tensor allocator is required for CPUNcclGroup"
         buf = allocator(shape, dtype)
@@ -173,8 +166,6 @@ class CPUNcclGroup(GPUCommunicator):
     ):
         all_ranks = [self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()]
         comm_key = "communicator-collective-"+"-".join(map(str, sorted(all_ranks)))
-        # comm = self.get_communicator(comm_key)
-        # (puyuan) TODO: get_if_exists=True maybe can replace self.get_communicator
         comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(self._world_size)
         self.communicators.add(comm)
 

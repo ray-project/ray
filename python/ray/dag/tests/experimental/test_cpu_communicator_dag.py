@@ -65,53 +65,50 @@ class Worker:
             print(f"Allreduce error: {e}")
             return None
 
-# @pytest.mark.parametrize(
-#     "ray_start_cluster",
-#     [
-#         {
-#             "num_cpus": 2,
-#             "num_gpus": 0,
-#             "num_nodes": 1,
-#         }
-#     ],
-#     indirect=True,
-# )
-# def test_cpu_p2p(ray_start_cluster):
-#     sender = Worker.remote(rank=0)
-#     receiver = Worker.remote(rank=1)
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_cpu_p2p(ray_start_cluster):
+    sender = Worker.remote(rank=0)
+    receiver = Worker.remote(rank=1)
 
-#     nccl_group = CPUNcclGroup(
-#         world_size=2,
-#         rank=0,
-#         actor_handles=[sender, receiver]
-#     )
-#     r_nccl_group = CPUNcclGroup(
-#         world_size=2,
-#         rank=1,
-#         actor_handles=[sender, receiver]
-#     )
+    nccl_group = CPUNcclGroup(
+        world_size=2,
+        rank=0,
+        actor_handles=[sender, receiver]
+    )
+    r_nccl_group = CPUNcclGroup(
+        world_size=2,
+        rank=1,
+        actor_handles=[sender, receiver]
+    )
 
-#     ray.get([
-#         sender.set_nccl_channel.remote(nccl_group),
-#         receiver.set_nccl_channel.remote(r_nccl_group)
-#     ])
+    ray.get([
+        sender.set_nccl_channel.remote(nccl_group),
+        receiver.set_nccl_channel.remote(r_nccl_group)
+    ])
 
-#     shape = (3,)
-#     dtype = torch.float32
-#     test_value = 2.0
-
-#     send_future = sender.send.remote(test_value, shape, dtype, peer_rank=1)
-#     time.sleep(1)
-#     receive_future = receiver.receive.remote(shape, dtype, peer_rank=0)
+    shape = (3,)
+    dtype = torch.float32
+    test_value = 2.0
     
-#     send_result = ray.get(send_future)
-#     receive_result = ray.get(receive_future)
+    send_future = sender.send.remote(test_value, shape, dtype, peer_rank=1)
+    time.sleep(1)
+    receive_future = receiver.receive.remote(shape, dtype, peer_rank=0)
     
-#     received_value, received_shape, received_dtype = receive_result
-#     assert received_value == test_value, f"Expected value {test_value}, got {received_value}"
+    send_result = ray.get(send_future)
+    receive_result = ray.get(receive_future)
 
-#     nccl_group.destroy()
-#     r_nccl_group.destroy()
+    received_value, received_shape, received_dtype = receive_result
+    assert received_value == test_value, f"Expected value {test_value}, got {received_value}"
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
