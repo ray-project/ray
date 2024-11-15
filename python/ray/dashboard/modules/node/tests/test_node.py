@@ -189,6 +189,7 @@ def test_multi_nodes_info(
                     assert detail["raylet"]["state"] == "ALIVE"
                 else:
                     assert detail["raylet"]["state"] == "DEAD"
+                    assert detail["raylet"].get("objectStoreAvailableMemory", 0) == 0
             response = requests.get(webui_url + "/test/dump?key=agents")
             response.raise_for_status()
             agents = response.json()
