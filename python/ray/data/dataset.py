@@ -28,7 +28,10 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -3811,9 +3814,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
-    def iter_rows(
-        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
-    ) -> Iterable[Dict[str, Any]]:
+    def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
         Examples:
@@ -3826,18 +3827,10 @@ class Dataset:
 
         Time complexity: O(1)
 
-        Args:
-            prefetch_batches: The number of batches to prefetch ahead of the current
-                batch during the scan.
-            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
-                instead.
-
         Returns:
             An iterable over the rows in this dataset.
         """
-        return self.iterator().iter_rows(
-            prefetch_batches=prefetch_batches, prefetch_blocks=prefetch_blocks
-        )
+        return self.iterator().iter_rows()
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
@@ -4018,7 +4011,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(api_group=CD_API_GROUP)
+    @Deprecated
     def iter_tf_batches(
         self,
         *,
@@ -4091,6 +4084,11 @@ class Dataset:
             :meth:`Dataset.iter_batches`
                 Call this method to manually convert your data to TensorFlow tensors.
         """  # noqa: E501
+        warnings.warn(
+            "`iter_tf_batches` is deprecated and will be removed after May 2025. Use "
+            "`to_tf` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -4101,7 +4099,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    @PublicAPI(api_group=IOC_API_GROUP)
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -4212,7 +4210,11 @@ class Dataset:
         Returns:
             A `Torch IterableDataset`_.
         """  # noqa: E501
-
+        warnings.warn(
+            "`to_torch` is deprecated and will be removed after May 2025. Use "
+            "`iter_torch_batches` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().to_torch(
             label_column=label_column,
             feature_columns=feature_columns,
@@ -4479,15 +4481,17 @@ class Dataset:
                     }
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
-                from ray.data.extensions import ArrowTensorType
+                arrow_tensor_ext_types = get_arrow_extension_fixed_shape_tensor_types()
 
-                if any(isinstance(type_, ArrowTensorType) for type_ in schema.types):
+                if any(
+                    isinstance(type_, arrow_tensor_ext_types) for type_ in schema.types
+                ):
                     meta = pd.DataFrame(
                         {
                             col: pd.Series(
                                 dtype=(
                                     dtype.to_pandas_dtype()
-                                    if not isinstance(dtype, ArrowTensorType)
+                                    if not isinstance(dtype, arrow_tensor_ext_types)
                                     else np.object_
                                 )
                             )

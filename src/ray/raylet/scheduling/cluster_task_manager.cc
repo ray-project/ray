@@ -50,16 +50,21 @@ void ClusterTaskManager::QueueAndScheduleTask(
   RAY_LOG(DEBUG) << "Queuing and scheduling task "
                  << task.GetTaskSpecification().TaskId();
   auto work = std::make_shared<internal::Work>(
-      task, grant_or_reject, is_selected_based_on_locality, reply, [send_reply_callback] {
+      task,
+      grant_or_reject,
+      is_selected_based_on_locality,
+      reply,
+      [send_reply_callback = std::move(send_reply_callback)] {
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
   const auto &scheduling_class = task.GetTaskSpecification().GetSchedulingClass();
   // If the scheduling class is infeasible, just add the work to the infeasible queue
   // directly.
-  if (infeasible_tasks_.count(scheduling_class) > 0) {
-    infeasible_tasks_[scheduling_class].push_back(work);
+  auto infeasible_tasks_iter = infeasible_tasks_.find(scheduling_class);
+  if (infeasible_tasks_iter != infeasible_tasks_.end()) {
+    infeasible_tasks_iter->second.emplace_back(std::move(work));
   } else {
-    tasks_to_schedule_[scheduling_class].push_back(work);
+    tasks_to_schedule_[scheduling_class].emplace_back(std::move(work));
   }
   ScheduleAndDispatchTasks();
 }
