@@ -378,12 +378,6 @@ class _StatsActor:
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
 
-    def clear_iteration_metrics(self, dataset_tag: str):
-        tags = self._create_tags(dataset_tag)
-        self.iter_total_blocked_s.set(0, tags)
-        self.iter_user_s.set(0, tags)
-        self.iter_initialize_s.set(0, tags)
-
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
             "job_id": job_id,
