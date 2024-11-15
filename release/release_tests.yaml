@@ -3318,7 +3318,7 @@
     cluster_compute: stress_tests/stress_tests_compute.yaml
 
   run:
-    timeout: 14400
+    timeout: 7200
     wait_for_nodes:
       num_nodes: 101
 
