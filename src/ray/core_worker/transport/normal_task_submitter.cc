@@ -41,8 +41,9 @@ Status NormalTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     bool keep_executing = true;
     {
       absl::MutexLock lock(&mu_);
-      if (cancelled_tasks_.find(task_spec.TaskId()) != cancelled_tasks_.end()) {
-        cancelled_tasks_.erase(task_spec.TaskId());
+      auto task_iter = cancelled_tasks_.find(task_spec.TaskId());
+      if (task_iter != cancelled_tasks_.end()) {
+        cancelled_tasks_.erase(task_iter);
         keep_executing = false;
       }
       if (keep_executing) {
@@ -329,7 +330,7 @@ void NormalTaskSubmitter::RequestNewWorkerIfNeeded(const SchedulingKey &scheduli
   // same TaskID to request a worker
   auto resource_spec_msg = scheduling_key_entry.resource_spec.GetMutableMessage();
   resource_spec_msg.set_task_id(TaskID::FromRandom(job_id_).Binary());
-  const TaskSpecification resource_spec = TaskSpecification(resource_spec_msg);
+  const TaskSpecification resource_spec = TaskSpecification(std::move(resource_spec_msg));
   rpc::Address best_node_address;
   const bool is_spillback = (raylet_address != nullptr);
   bool is_selected_based_on_locality = false;
