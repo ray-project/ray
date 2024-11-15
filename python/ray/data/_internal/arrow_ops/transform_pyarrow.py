@@ -3,6 +3,8 @@ from typing import TYPE_CHECKING, List, Union
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data._internal.util import GiB
 
 try:
     import pyarrow
@@ -339,13 +341,63 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
         _is_column_extension_type,
     )
 
-    cols = table.columns
-    new_cols = []
-    for col in cols:
+    new_column_values_arrays = []
+    for col in table.columns:
         if _is_column_extension_type(col):
             # Extension arrays don't support concatenation.
             arr = _concatenate_extension_column(col)
         else:
-            arr = col.combine_chunks()
-        new_cols.append(arr)
-    return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
+            arr = _combine_chunks_safe(col)
+
+        new_column_values_arrays.append(arr)
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def _combine_chunks_safe(ca: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
+    import pyarrow as pa
+    from ray.air.util.transform_pyarrow import (
+        _is_column_extension_type,
+    )
+
+    assert not _is_column_extension_type(ca), f"Arrow `ExtensionType`s are not accepted (got {ca.type})"
+
+    large_type_predicates = [
+        pa.types.is_large_list,
+        pa.types.is_large_string,
+        pa.types.is_large_binary,
+        pa.types.is_large_unicode,
+    ]
+
+    # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+    #   - It's cumulative size is < 2 GiB
+    #   - It's of 'large' kind (ie one using int64 offsets internally)
+    if ca.nbytes < 2 * GiB or any(p(ca.type) for p in large_type_predicates):
+        return ca.combine_chunks()
+
+    # In case cumulative size exceeds 2 GiB and it's type is using int32
+    # offsets, we then proceed to
+    #   - Slice provided list of chunks into slices no larger than 2 GiB
+    #   - Combine provided slices (to make sure int32 offsets are not overflowing)
+    slices = []
+
+    cur_slice_start = 0
+    cur_slice_size_bytes = 0
+
+    for i, chunk in enumerate(ca.chunks):
+        chunk_size = chunk.nbytes
+
+        if cur_slice_size_bytes + chunk_size > 2 * GiB:
+            slices.append(ca.chunks[cur_slice_start : i])
+
+            cur_slice_start = i
+            cur_slice_size_bytes = 0
+
+        cur_slice_size_bytes += chunk_size
+
+    # Add remaining chunks as last slice
+    slices.append(ca.chunks[cur_slice_start:])
+
+    return pa.chunked_array(
+        [pa.concat_arrays(s) for s in slices]
+    )
