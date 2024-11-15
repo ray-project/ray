@@ -4,7 +4,6 @@ import os
 import platform
 from abc import ABCMeta, abstractmethod
 from typing import (
-    TYPE_CHECKING,
     Any,
     Callable,
     Collection,
@@ -76,9 +75,6 @@ from ray.rllib.utils.typing import (
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
-
-if TYPE_CHECKING:
-    from ray.rllib.evaluation import Episode
 
 
 logger = logging.getLogger(__name__)
@@ -455,7 +451,7 @@ class Policy(metaclass=ABCMeta):
         prev_reward: Optional[TensorStructType] = None,
         info: dict = None,
         input_dict: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         # Kwars placeholder for future compatibility.
@@ -558,7 +554,7 @@ class Policy(metaclass=ABCMeta):
         input_dict: Union[SampleBatch, Dict[str, TensorStructType]],
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         """Computes actions from collected samples (across multiple-agents).
@@ -615,7 +611,7 @@ class Policy(metaclass=ABCMeta):
         prev_action_batch: Union[List[TensorStructType], TensorStructType] = None,
         prev_reward_batch: Union[List[TensorStructType], TensorStructType] = None,
         info_batch: Optional[Dict[str, list]] = None,
-        episodes: Optional[List["Episode"]] = None,
+        episodes: Optional[List] = None,
         explore: Optional[bool] = None,
         timestep: Optional[int] = None,
         **kwargs,
@@ -692,7 +688,7 @@ class Policy(metaclass=ABCMeta):
         other_agent_batches: Optional[
             Dict[AgentID, Tuple["Policy", SampleBatch]]
         ] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ) -> SampleBatch:
         """Implements algorithm-specific trajectory postprocessing.
 
@@ -967,14 +963,13 @@ class Policy(metaclass=ABCMeta):
         )
         state["policy_spec"] = policy_spec.serialize()
 
-        if self.config.get("enable_connectors", False):
-            # Checkpoint connectors state as well if enabled.
-            connector_configs = {}
-            if self.agent_connectors:
-                connector_configs["agent"] = self.agent_connectors.to_state()
-            if self.action_connectors:
-                connector_configs["action"] = self.action_connectors.to_state()
-            state["connector_configs"] = connector_configs
+        # Checkpoint connectors state as well if enabled.
+        connector_configs = {}
+        if self.agent_connectors:
+            connector_configs["agent"] = self.agent_connectors.to_state()
+        if self.action_connectors:
+            connector_configs["action"] = self.action_connectors.to_state()
+        state["connector_configs"] = connector_configs
 
         return state
 
@@ -987,10 +982,6 @@ class Policy(metaclass=ABCMeta):
         """
         # To avoid a circular dependency problem cause by SampleBatch.
         from ray.rllib.connectors.util import restore_connectors_for_policy
-
-        # No-op if connector is not enabled.
-        if not self.config.get("enable_connectors", False):
-            return
 
         connector_configs = state.get("connector_configs", {})
         if "agent" in connector_configs:

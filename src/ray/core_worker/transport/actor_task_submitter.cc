@@ -14,13 +14,7 @@
 
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
-#include <thread>
-
-#include "ray/common/task/task.h"
 #include "ray/gcs/pb_util.h"
-
-using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
@@ -138,7 +132,6 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
             rpc::RayErrorInfo ray_error_info;
             if (status.IsSchedulingCancelled()) {
               RAY_LOG(DEBUG).WithField(actor_id) << "Actor creation cancelled";
-              RAY_LOG(ERROR).WithField(actor_id) << "SANG-TODO Actor creation cancelled";
               task_finisher_.MarkTaskCanceled(task_id);
               if (reply.has_death_cause()) {
                 ray_error_info.mutable_actor_died_error()->CopyFrom(reply.death_cause());
@@ -236,7 +229,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       absl::MutexLock lock(&mu_);
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       const auto &death_cause = queue_it->second.death_cause;
-      error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
       error_type = error_info.error_type();
     }
     auto status = Status::IOError("cancelling task of dead actor");
@@ -367,7 +360,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                          const rpc::ActorDeathCause &death_cause,
                                          bool is_restartable) {
   RAY_LOG(DEBUG).WithField(actor_id) << "Disconnecting from actor, death context type="
-                                     << GetActorDeathCauseString(death_cause);
+                                     << gcs::GetActorDeathCauseString(death_cause);
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
@@ -433,7 +426,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     // Failing tasks has to be done without mu_ hold because the callback
     // might require holding mu_ which will lead to a deadlock.
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
-    const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+    const auto error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
     const auto error_type = error_info.error_type();
 
     for (auto &task_id : task_ids_to_fail) {
@@ -640,7 +633,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   task_finisher_.MarkTaskWaitingForExecution(task_id,
                                              NodeID::FromBinary(addr.raylet_id()),
                                              WorkerID::FromBinary(addr.worker_id()));
-  queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
+  queue.rpc_client->PushActorTask(
+      std::move(request), skip_queue, std::move(wrapped_callback));
 }
 
 void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
@@ -705,7 +699,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       if (is_actor_dead) {
         const auto &death_cause = queue.death_cause;
-        error_info = GetErrorInfoFromActorDeathCause(death_cause);
+        error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
         fail_immediately = error_info.has_actor_died_error() &&
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
@@ -882,7 +876,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
-  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id) ||
+      !GetTaskFinisherWithoutMu().IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return Status::OK();
   }
@@ -954,7 +949,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
     request.set_recursive(recursive);
     request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
     client->CancelTask(request,
-                       [this, task_spec, recursive, task_id](
+                       [this, task_spec = std::move(task_spec), recursive, task_id](
                            const Status &status, const rpc::CancelTaskReply &reply) {
                          RAY_LOG(DEBUG).WithField(task_spec.TaskId())
                              << "CancelTask RPC response received with status "

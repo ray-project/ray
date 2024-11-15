@@ -874,12 +874,17 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs = self.core_worker.get_objects(
+        timeout_ms = (
+            int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        )
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.get_objects(
             object_refs,
             self.current_task_id,
             timeout_ms,
         )
+
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
             if metadata:
@@ -2767,9 +2772,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
