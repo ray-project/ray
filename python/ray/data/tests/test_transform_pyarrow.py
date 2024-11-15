@@ -511,7 +511,7 @@ def test_pyarrow_conversion_error_handling(
     # These tests simulate following scenarios
     #   1. (Case A) Type of the value of the first block is deduced as Arrow scalar
     #      type, but second block carries value that overflows pa.int64 representation,
-    #      abd column henceforth will be serialized as `ArrowPythonObjectExtensionType`
+    #      and column henceforth will be serialized as `ArrowPythonObjectExtensionType`
     #      coercing first block to it as well
     #
     #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have

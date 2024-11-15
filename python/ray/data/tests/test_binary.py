@@ -234,7 +234,7 @@ def _gen_chunked_binary(
         # "text",
     ],
 )
-def test_single_row_lt_2gb(ray_start_regular_shared, col_name):
+def test_single_row_gt_2gb(ray_start_regular_shared, col_name):
     with TemporaryDirectory() as tmp_dir:
         target_binary_size_gb = 2.1
 
