@@ -12,18 +12,17 @@ aws:
 
 head_node_type:
     name: head_node
-    instance_type: m4.16xlarge
+    instance_type: m5.16xlarge
     resources:
       cpu: 64
 
 worker_node_types:
    - name: worker_node
-     instance_type: m4.large
+     instance_type: m5.large
      min_workers: 5
      max_workers: 5
      use_spot: false
      resources:
-      cpu: 2 
+      cpu: 2
       custom_resources:
         pg_custom: 666
-
