@@ -22,6 +22,7 @@ cc_library(
     strip_include_prefix = "//src",
     visibility = ["//visibility:public"],
     deps = [
+        ":thread_checker",
         "//:aligned_alloc",
         "//:sha256",
         "//src/ray/protobuf:event_cc_proto",
@@ -40,4 +41,17 @@ cc_library(
         "@com_google_protobuf//:protobuf",
         "@nlohmann_json",
     ],
+)
+
+cc_library(
+    name = "size_literals",
+    hdrs = ["size_literals.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "thread_checker",
+    hdrs = ["thread_checker.h"],
+    srcs = ["thread_checker.cc"],
+    visibility = ["//visibility:public"],
 )

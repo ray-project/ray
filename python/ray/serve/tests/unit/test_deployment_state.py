@@ -5,6 +5,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+from ray._private.ray_constants import DEFAULT_MAX_CONCURRENCY_ASYNC
 from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
     DeploymentHandleSource,
@@ -91,8 +92,10 @@ class MockReplicaActorWrapper:
         self._is_cross_language = False
         self._actor_handle = MockActorHandle()
         self._node_id = None
+        self._node_ip = None
         self._node_id_is_set = False
         self._actor_id = None
+        self._port = None
         self._pg_bundles = None
         self._initialization_latency_s = -1
 
@@ -158,6 +161,10 @@ class MockReplicaActorWrapper:
 
     @property
     def log_file_path(self) -> Optional[str]:
+        return None
+
+    @property
+    def grpc_port(self) -> Optional[int]:
         return None
 
     @property
@@ -278,6 +285,7 @@ def deployment_info(
     info = DeploymentInfo(
         version=version,
         start_time_ms=0,
+        actor_name="abc",
         deployment_config=DeploymentConfig(
             num_replicas=num_replicas, user_config=user_config, **config_opts
         ),
@@ -2907,6 +2915,23 @@ class TestActorReplicaWrapper:
         assert actor_replica.max_ongoing_requests == DEFAULT_MAX_ONGOING_REQUESTS
         assert actor_replica.health_check_period_s == DEFAULT_HEALTH_CHECK_PERIOD_S
         assert actor_replica.health_check_timeout_s == DEFAULT_HEALTH_CHECK_TIMEOUT_S
+
+    def test_max_concurrency_override(self):
+        actor_replica = ActorReplicaWrapper(
+            version=deployment_version("1"),
+            replica_id=ReplicaID(
+                "abc123",
+                deployment_id=DeploymentID(name="test_deployment", app_name="test_app"),
+            ),
+        )
+        max_ongoing_requests = DEFAULT_MAX_CONCURRENCY_ASYNC + 1
+        d_info, _ = deployment_info(max_ongoing_requests=max_ongoing_requests)
+        replica_scheduling_request = actor_replica.start(d_info)
+        assert (
+            "max_concurrency" in replica_scheduling_request.actor_options
+            and replica_scheduling_request.actor_options["max_concurrency"]
+            == max_ongoing_requests
+        )
 
 
 def test_get_active_node_ids(mock_deployment_state_manager):

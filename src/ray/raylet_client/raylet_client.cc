@@ -183,6 +183,12 @@ Status raylet::RayletClient::Disconnect(
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
+  // TODO (myan): In the current implementation, if raylet is already terminated in the
+  // "WriteMessage" function above, the worker process will exit early in the function
+  // and will not reach here. However, the code path here is shared between graceful
+  // shutdown and force termination. We need to make sure the above early exit
+  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
+  // leak if early exit is triggered
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << status.ToString()
@@ -426,7 +432,7 @@ void raylet::RayletClient::PushMutableObject(
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
   // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
   // slightly lower value to allow extra padding just in case.
-  static constexpr uint64_t kMaxGrpcPayloadSize = 1024 * 1024 * 500;  // 500 MiB.
+  uint64_t kMaxGrpcPayloadSize = RayConfig::instance().max_grpc_message_size() * 0.98;
   uint64_t total_size = data_size + metadata_size;
   uint64_t total_num_chunks = total_size / kMaxGrpcPayloadSize;
   // If `total_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an

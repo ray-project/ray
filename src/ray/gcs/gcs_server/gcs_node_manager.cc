@@ -39,6 +39,36 @@ GcsNodeManager::GcsNodeManager(
       raylet_client_pool_(std::move(raylet_client_pool)),
       cluster_id_(cluster_id) {}
 
+void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
+  /// Write node_info as a export node event if
+  /// enable_export_api_write() is enabled.
+  if (!RayConfig::instance().enable_export_api_write()) {
+    return;
+  }
+  std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =
+      std::make_shared<rpc::ExportNodeData>();
+  export_node_data_ptr->set_node_id(node_info.node_id());
+  export_node_data_ptr->set_node_manager_address(node_info.node_manager_address());
+  export_node_data_ptr->mutable_resources_total()->insert(
+      node_info.resources_total().begin(), node_info.resources_total().end());
+  export_node_data_ptr->set_node_name(node_info.node_name());
+  export_node_data_ptr->set_start_time_ms(node_info.start_time_ms());
+  export_node_data_ptr->set_end_time_ms(node_info.end_time_ms());
+  export_node_data_ptr->set_is_head_node(node_info.is_head_node());
+  export_node_data_ptr->mutable_labels()->insert(node_info.labels().begin(),
+                                                 node_info.labels().end());
+  export_node_data_ptr->set_state(ConvertGCSNodeStateToExport(node_info.state()));
+  if (!node_info.death_info().reason_message().empty() ||
+      node_info.death_info().reason() !=
+          rpc::NodeDeathInfo_Reason::NodeDeathInfo_Reason_UNSPECIFIED) {
+    export_node_data_ptr->mutable_death_info()->set_reason_message(
+        node_info.death_info().reason_message());
+    export_node_data_ptr->mutable_death_info()->set_reason(
+        ConvertNodeDeathReasonToExport(node_info.death_info().reason()));
+  }
+  RayExportEvent(export_node_data_ptr).SendEvent();
+}
+
 // Note: ServerCall will populate the cluster_id.
 void GcsNodeManager::HandleGetClusterId(rpc::GetClusterIdRequest request,
                                         rpc::GetClusterIdReply *reply,
@@ -52,17 +82,20 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
                                         rpc::RegisterNodeReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_info().node_id());
-  RAY_LOG(INFO) << "Registering node info, node id = " << node_id
-                << ", address = " << request.node_info().node_manager_address()
-                << ", node name = " << request.node_info().node_name();
+  RAY_LOG(INFO).WithField(node_id)
+      << "Registering node info, address = " << request.node_info().node_manager_address()
+      << ", node name = " << request.node_info().node_name();
   auto on_done = [this, node_id, request, reply, send_reply_callback](
                      const Status &status) {
     RAY_CHECK_OK(status);
-    RAY_LOG(INFO) << "Finished registering node info, node id = " << node_id
-                  << ", address = " << request.node_info().node_manager_address()
-                  << ", node name = " << request.node_info().node_name();
+    RAY_LOG(INFO).WithField(node_id)
+        << "Finished registering node info, address = "
+        << request.node_info().node_manager_address()
+        << ", node name = " << request.node_info().node_name()
+        << ", is_head_node = " << request.node_info().is_head_node();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
+    WriteNodeExportEvent(request.node_info());
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
   if (request.node_info().is_head_node()) {
@@ -112,10 +145,10 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
                                           rpc::UnregisterNodeReply *reply,
                                           rpc::SendReplyCallback send_reply_callback) {
   NodeID node_id = NodeID::FromBinary(request.node_id());
-  RAY_LOG(DEBUG) << "HandleUnregisterNode() for node id = " << node_id;
+  RAY_LOG(DEBUG).WithField(node_id) << "HandleUnregisterNode() for node";
   auto node = RemoveNode(node_id, request.node_death_info());
   if (!node) {
-    RAY_LOG(INFO) << "Node " << node_id << " is already removed";
+    RAY_LOG(INFO).WithField(node_id) << "Node is already removed";
     return;
   }
 
@@ -132,6 +165,7 @@ void GcsNodeManager::HandleUnregisterNode(rpc::UnregisterNodeRequest request,
 
   auto on_put_done = [=](const Status &status) {
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, *node_info_delta, nullptr));
+    WriteNodeExportEvent(*node);
   };
   RAY_CHECK_OK(gcs_table_storage_->NodeTable().Put(node_id, *node, on_put_done));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
@@ -154,10 +188,10 @@ void GcsNodeManager::HandleDrainNode(rpc::DrainNodeRequest request,
 }
 
 void GcsNodeManager::DrainNode(const NodeID &node_id) {
-  RAY_LOG(INFO) << "DrainNode() for node id = " << node_id;
+  RAY_LOG(INFO).WithField(node_id) << "DrainNode() for node";
   auto maybe_node = GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    RAY_LOG(WARNING) << "Skip draining node " << node_id << " which is already removed";
+    RAY_LOG(WARNING).WithField(node_id) << "Skip draining node which is already removed";
     return;
   }
   auto node = maybe_node.value();
@@ -176,7 +210,7 @@ void GcsNodeManager::DrainNode(const NodeID &node_id) {
       node_id,
       /*graceful*/ true,
       [node_id](const Status &status, const rpc::ShutdownRayletReply &reply) {
-        RAY_LOG(INFO) << "Raylet " << node_id << " is drained. Status " << status;
+        RAY_LOG(INFO).WithField(node_id) << "Raylet is drained. Status " << status;
       });
 }
 
@@ -242,22 +276,6 @@ void GcsNodeManager::HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
   ++counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
 }
 
-void GcsNodeManager::HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
-                                             rpc::GetInternalConfigReply *reply,
-                                             rpc::SendReplyCallback send_reply_callback) {
-  auto get_system_config = [reply, send_reply_callback](
-                               const ray::Status &status,
-                               const std::optional<rpc::StoredConfig> &config) {
-    if (config.has_value()) {
-      reply->set_config(config->config());
-    }
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
-  };
-  RAY_CHECK_OK(
-      gcs_table_storage_->InternalConfigTable().Get(UniqueID::Nil(), get_system_config));
-  ++counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
-}
-
 absl::optional<std::shared_ptr<rpc::GcsNodeInfo>> GcsNodeManager::GetAliveNode(
     const ray::NodeID &node_id) const {
   auto iter = alive_nodes_.find(node_id);
@@ -287,7 +305,7 @@ rpc::NodeDeathInfo GcsNodeManager::InferDeathInfo(const NodeID &node_id) {
   if (expect_force_termination) {
     death_info.set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
     death_info.set_reason_message(iter->second->reason_message());
-    RAY_LOG(INFO) << "Node " << node_id << " was forcibly preempted";
+    RAY_LOG(INFO).WithField(node_id) << "Node was forcibly preempted";
   } else {
     death_info.set_reason(rpc::NodeDeathInfo::UNEXPECTED_TERMINATION);
     death_info.set_reason_message(
@@ -316,19 +334,20 @@ void GcsNodeManager::SetNodeDraining(
     std::shared_ptr<rpc::autoscaler::DrainNodeRequest> drain_request) {
   auto maybe_node = GetAliveNode(node_id);
   if (!maybe_node.has_value()) {
-    RAY_LOG(INFO) << "Skip setting node " << node_id << " to be draining, "
-                  << "which is already removed";
+    RAY_LOG(INFO).WithField(node_id)
+        << "Skip setting node to be draining, which is already removed";
     return;
   }
   auto iter = draining_nodes_.find(node_id);
   if (iter == draining_nodes_.end()) {
     draining_nodes_.emplace(node_id, drain_request);
-    RAY_LOG(INFO) << "Set node " << node_id
-                  << " to be draining, request = " << drain_request->DebugString();
+    RAY_LOG(INFO).WithField(node_id)
+        << "Set node to be draining, request = " << drain_request->DebugString();
   } else {
-    RAY_LOG(INFO) << "Drain request for node " << node_id << " already exists. "
-                  << "Overwriting the existing request " << iter->second->DebugString()
-                  << " with the new request " << drain_request->DebugString();
+    RAY_LOG(INFO).WithField(node_id)
+        << "Drain request for node already exists. Overwriting the existing request "
+        << iter->second->DebugString() << " with the new request "
+        << drain_request->DebugString();
     iter->second = drain_request;
   }
 }
@@ -344,10 +363,10 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
     auto death_info = removed_node->mutable_death_info();
     death_info->CopyFrom(node_death_info);
 
-    RAY_LOG(INFO) << "Removing node, node id = " << node_id
-                  << ", node name = " << removed_node->node_name() << ", death reason = "
-                  << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
-                  << ", death message = " << death_info->reason_message();
+    RAY_LOG(INFO).WithField(node_id)
+        << "Removing node, node name = " << removed_node->node_name()
+        << ", death reason = " << rpc::NodeDeathInfo_Reason_Name(death_info->reason())
+        << ", death message = " << death_info->reason_message();
     // Record stats that there's a new removed node.
     stats::NodeFailureTotal.Record(1);
     // Remove from alive nodes.
@@ -403,8 +422,9 @@ void GcsNodeManager::OnNodeFailure(const NodeID &node_id,
     node_info_delta->set_end_time_ms(node->end_time_ms());
     node_info_delta->mutable_death_info()->CopyFrom(node->death_info());
 
-    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta](
+    auto on_done = [this, node_id, node_table_updated_callback, node_info_delta, node](
                        const Status &status) {
+      WriteNodeExportEvent(*node);
       if (node_table_updated_callback != nullptr) {
         node_table_updated_callback(Status::OK());
       }
@@ -463,9 +483,7 @@ std::string GcsNodeManager::DebugString() const {
          << counts_[CountType::REGISTER_NODE_REQUEST]
          << "\n- DrainNode request count: " << counts_[CountType::DRAIN_NODE_REQUEST]
          << "\n- GetAllNodeInfo request count: "
-         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST]
-         << "\n- GetInternalConfig request count: "
-         << counts_[CountType::GET_INTERNAL_CONFIG_REQUEST];
+         << counts_[CountType::GET_ALL_NODE_INFO_REQUEST];
   return stream.str();
 }
 

@@ -493,7 +493,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_http_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == "/fake_route"
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "GET"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == "404"
@@ -501,7 +501,7 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_requests = get_metric_dictionaries("serve_num_grpc_requests")
     assert len(num_requests) == 1
-    assert num_requests[0]["route"] == fake_app_name
+    assert num_requests[0]["route"] == ""
     assert num_requests[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     assert num_requests[0]["application"] == ""
     assert num_requests[0]["status_code"] == str(grpc.StatusCode.NOT_FOUND)
@@ -509,14 +509,14 @@ def test_proxy_metrics_fields_not_found(serve_start_shutdown):
 
     num_errors = get_metric_dictionaries("serve_num_http_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == "/fake_route"
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == "404"
     assert num_errors[0]["method"] == "GET"
     print("serve_num_http_error_requests working as expected.")
 
     num_errors = get_metric_dictionaries("serve_num_grpc_error_requests")
     assert len(num_errors) == 1
-    assert num_errors[0]["route"] == fake_app_name
+    assert num_errors[0]["route"] == ""
     assert num_errors[0]["error_code"] == str(grpc.StatusCode.NOT_FOUND)
     assert num_errors[0]["method"] == "/ray.serve.UserDefinedService/__call__"
     print("serve_num_grpc_error_requests working as expected.")
@@ -602,26 +602,34 @@ def test_replica_metrics_fields(serve_start_shutdown):
     assert "hello" == requests.get(url_f).text
     assert "world" == requests.get(url_g).text
 
-    def verify_metrics(metric, expected_output):
-        for key in expected_output:
-            assert metric[key] == expected_output[key]
-
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_request_counter")) == 2,
+        lambda: len(get_metric_dictionaries("serve_deployment_request_counter_total"))
+        == 2,
         timeout=40,
     )
 
-    num_requests = get_metric_dictionaries("serve_deployment_request_counter")
-    assert len(num_requests) == 2
-    expected_output = {"route": "/f", "deployment": "f", "application": "app1"}
-    verify_metrics(num_requests[0], expected_output)
+    metrics = get_metric_dictionaries("serve_deployment_request_counter_total")
+    assert len(metrics) == 2
+    expected_output = {
+        ("/f", "f", "app1"),
+        ("/g", "g", "app2"),
+    }
+    assert {
+        (
+            metric["route"],
+            metric["deployment"],
+            metric["application"],
+        )
+        for metric in metrics
+    } == expected_output
 
-    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts")
+    start_metrics = get_metric_dictionaries("serve_deployment_replica_starts_total")
     assert len(start_metrics) == 2
-    expected_output = {"deployment": "f", "application": "app1"}
-    verify_metrics(start_metrics[0], expected_output)
-    expected_output = {"deployment": "g", "application": "app2"}
-    verify_metrics(start_metrics[1], expected_output)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (start_metric["deployment"], start_metric["application"])
+        for start_metric in start_metrics
+    } == expected_output
 
     # Latency metrics
     wait_for_condition(
@@ -638,19 +646,21 @@ def test_replica_metrics_fields(serve_start_shutdown):
         latency_metrics = get_metric_dictionaries(metric_name)
         print(f"checking metric {metric_name}, {latency_metrics}")
         assert len(latency_metrics) == 2
-        expected_output1 = {"deployment": "f", "application": "app1"}
-        expected_output2 = {"deployment": "g", "application": "app2"}
-        verify_metrics(latency_metrics[0], expected_output1)
-        verify_metrics(latency_metrics[1], expected_output2)
+        expected_output = {("f", "app1"), ("g", "app2")}
+        assert {
+            (latency_metric["deployment"], latency_metric["application"])
+            for latency_metric in latency_metrics
+        } == expected_output
 
     wait_for_condition(
         lambda: len(get_metric_dictionaries("serve_replica_processing_queries")) == 2
     )
     processing_queries = get_metric_dictionaries("serve_replica_processing_queries")
-    expected_output1 = {"deployment": "f", "application": "app1"}
-    expected_output2 = {"deployment": "g", "application": "app2"}
-    verify_metrics(processing_queries[0], expected_output1)
-    verify_metrics(processing_queries[1], expected_output2)
+    expected_output = {("f", "app1"), ("g", "app2")}
+    assert {
+        (processing_query["deployment"], processing_query["application"])
+        for processing_query in processing_queries
+    } == expected_output
 
     @serve.deployment
     def h():
@@ -659,23 +669,30 @@ def test_replica_metrics_fields(serve_start_shutdown):
     serve.run(h.bind(), name="app3", route_prefix="/h")
     assert 500 == requests.get("http://127.0.0.1:8000/h").status_code
     wait_for_condition(
-        lambda: len(get_metric_dictionaries("serve_deployment_error_counter")) == 1,
+        lambda: len(get_metric_dictionaries("serve_deployment_error_counter_total"))
+        == 1,
         timeout=40,
     )
-    err_requests = get_metric_dictionaries("serve_deployment_error_counter")
+    err_requests = get_metric_dictionaries("serve_deployment_error_counter_total")
     assert len(err_requests) == 1
-    expected_output = {"route": "/h", "deployment": "h", "application": "app3"}
-    verify_metrics(err_requests[0], expected_output)
+    expected_output = ("/h", "h", "app3")
+    assert (
+        err_requests[0]["route"],
+        err_requests[0]["deployment"],
+        err_requests[0]["application"],
+    ) == expected_output
 
     health_metrics = get_metric_dictionaries("serve_deployment_replica_healthy")
     assert len(health_metrics) == 3, health_metrics
-    expected_outputs = [
-        {"deployment": "f", "application": "app1"},
-        {"deployment": "g", "application": "app2"},
-        {"deployment": "h", "application": "app3"},
-    ]
-    for i in range(len(health_metrics)):
-        verify_metrics(health_metrics[i], expected_outputs[i])
+    expected_output = {
+        ("f", "app1"),
+        ("g", "app2"),
+        ("h", "app3"),
+    }
+    assert {
+        (health_metric["deployment"], health_metric["application"])
+        for health_metric in health_metrics
+    } == expected_output
 
 
 class TestRequestContextMetrics:
@@ -952,6 +969,48 @@ class TestRequestContextMetrics:
         assert requests_metrics_app_name["G"] == "app"
         assert requests_metrics_app_name["g1"] == "app"
         assert requests_metrics_app_name["g2"] == "app"
+
+    @pytest.mark.parametrize("route_prefix", ["", "/prefix"])
+    def test_fastapi_route_metrics(self, serve_start_shutdown, route_prefix: str):
+        app = FastAPI()
+
+        @serve.deployment
+        @serve.ingress(app)
+        class A:
+            @app.get("/api")
+            def route1(self):
+                return "ok1"
+
+            @app.get("/api2/{user_id}")
+            def route2(self):
+                return "ok2"
+
+        if route_prefix:
+            serve.run(A.bind(), route_prefix=route_prefix)
+        else:
+            serve.run(A.bind())
+
+        base_url = "http://127.0.0.1:8000" + route_prefix
+        resp = requests.get(base_url + "/api")
+        assert resp.text == '"ok1"'
+        resp = requests.get(base_url + "/api2/abc123")
+        assert resp.text == '"ok2"'
+
+        wait_for_condition(
+            lambda: len(get_metric_dictionaries("serve_deployment_request_counter"))
+            == 2,
+            timeout=40,
+        )
+        (
+            requests_metrics_route,
+            requests_metrics_app_name,
+        ) = self._generate_metrics_summary(
+            get_metric_dictionaries("serve_deployment_request_counter")
+        )
+        assert requests_metrics_route["A"] == {
+            route_prefix + "/api",
+            route_prefix + "/api2/{user_id}",
+        }
 
     def test_customer_metrics_with_context(self, serve_start_shutdown):
         @serve.deployment

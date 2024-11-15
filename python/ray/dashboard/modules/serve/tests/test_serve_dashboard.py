@@ -1,6 +1,8 @@
 import copy
 import os
+import subprocess
 import sys
+from pathlib import Path
 from typing import Dict
 
 import pytest
@@ -8,14 +10,12 @@ import requests
 
 from ray._private.test_utils import wait_for_condition
 from ray.serve._private.common import (
-    ApplicationStatus,
     DeploymentStatus,
     DeploymentStatusTrigger,
-    ProxyStatus,
     ReplicaState,
 )
 from ray.serve._private.constants import SERVE_NAMESPACE
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ProxyStatus, ServeInstanceDetails
 from ray.serve.tests.conftest import *  # noqa: F401 F403
 from ray.tests.conftest import *  # noqa: F401 F403
 from ray.util.state import list_actors
@@ -357,11 +357,13 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
             "route_prefix": "/apple",
             "docs_path": None,
             "deployments": {"f", "BasicDriver"},
+            "source": "declarative",
         },
         "app2": {
             "route_prefix": "/banana",
             "docs_path": "/my_docs",
             "deployments": {"FastAPIDeployment"},
+            "source": "declarative",
         },
     }
 
@@ -418,6 +420,104 @@ def test_get_serve_instance_details(ray_start_stop, f_deployment_options, url):
         assert app_details[app].last_deployed_time_s > 0
         assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
         assert app_details[app].docs_path == expected_values[app]["docs_path"]
+        assert app_details[app].source == expected_values[app]["source"]
+
+        # CHECK: all deployments are present
+        assert (
+            app_details[app].deployments.keys() == expected_values[app]["deployments"]
+        )
+
+        for deployment in app_details[app].deployments.values():
+            assert deployment.status == DeploymentStatus.HEALTHY
+            assert (
+                deployment.status_trigger
+                == DeploymentStatusTrigger.CONFIG_UPDATE_COMPLETED
+            )
+            # Route prefix should be app level options eventually
+            assert "route_prefix" not in deployment.deployment_config.dict(
+                exclude_unset=True
+            )
+            if isinstance(deployment.deployment_config.num_replicas, int):
+                assert (
+                    len(deployment.replicas)
+                    == deployment.deployment_config.num_replicas
+                )
+                assert len(deployment.replicas) == deployment.target_num_replicas
+
+            for replica in deployment.replicas:
+                assert replica.replica_id
+                assert replica.state == ReplicaState.RUNNING
+                assert deployment.name in replica.actor_name
+                assert replica.actor_id and replica.node_id and replica.node_ip
+                assert replica.start_time_s > app_details[app].last_deployed_time_s
+                file_path = "/tmp/ray/session_latest/logs" + replica.log_file_path
+                assert os.path.exists(file_path)
+
+    print("Finished checking application details.")
+
+
+@pytest.mark.skipif(
+    sys.platform == "darwin" and not TEST_ON_DARWIN, reason="Flaky on OSX."
+)
+@pytest.mark.parametrize("url", [SERVE_AGENT_URL, SERVE_HEAD_URL])
+def test_get_serve_instance_details_for_imperative_apps(ray_start_stop, url):
+    """
+    Most behavior is checked by test_get_serve_instance_details.
+    This test mostly checks for the different behavior of
+    imperatively-deployed apps, with some crossover.
+    """
+    # Submit the apps in a subprocess, since doing it from the main process
+    # seems to make Serve stop unexpectedly
+    # https://github.com/ray-project/ray/pull/45522#discussion_r1720479757
+    deploy = subprocess.run(
+        [
+            sys.executable,
+            str(Path(__file__).parent / "deploy_imperative_serve_apps.py"),
+        ],
+        capture_output=True,
+        universal_newlines=True,
+    )
+    print(deploy.stdout)
+    assert deploy.returncode == 0
+
+    def applications_running():
+        response = requests.get(url, timeout=15)
+        assert response.status_code == 200
+
+        serve_details = ServeInstanceDetails(**response.json())
+        return (
+            serve_details.applications["app1"].status == ApplicationStatus.RUNNING
+            and serve_details.applications["app2"].status == ApplicationStatus.RUNNING
+        )
+
+    wait_for_condition(applications_running, timeout=15)
+    print("All applications are in a RUNNING state.")
+
+    expected_values = {
+        "app1": {
+            "route_prefix": "/apple",
+            "docs_path": None,
+            "deployments": {"f", "BasicDriver"},
+            "source": "imperative",
+        },
+        "app2": {
+            "route_prefix": "/banana",
+            "docs_path": None,
+            "deployments": {"f", "BasicDriver"},
+            "source": "imperative",
+        },
+    }
+
+    serve_details = ServeInstanceDetails(**requests.get(url).json())
+
+    app_details = serve_details.applications
+    # CHECK: application details
+    for i, app in enumerate(["app1", "app2"]):
+        assert app_details[app].deployed_app_config is None
+        assert app_details[app].last_deployed_time_s > 0
+        assert app_details[app].route_prefix == expected_values[app]["route_prefix"]
+        assert app_details[app].docs_path == expected_values[app]["docs_path"]
+        assert app_details[app].source == expected_values[app]["source"]
 
         # CHECK: all deployments are present
         assert (

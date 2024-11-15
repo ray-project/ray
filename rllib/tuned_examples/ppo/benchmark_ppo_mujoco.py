@@ -85,11 +85,6 @@ class BenchmarkStopper(Stopper):
 config = (
     PPOConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Following the paper.
         num_env_runners=32,
@@ -106,9 +101,9 @@ config = (
         # Following the paper.
         lambda_=0.95,
         lr=0.0003,
-        num_sgd_iter=15,
+        num_epochs=15,
         train_batch_size=32 * 512,
-        sgd_minibatch_size=4096,
+        minibatch_size=4096,
         vf_loss_coeff=0.01,
         model={
             "fcnet_hiddens": [64, 64],
