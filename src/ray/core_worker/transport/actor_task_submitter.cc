@@ -876,7 +876,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
-  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id) ||
+      !GetTaskFinisherWithoutMu().IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return Status::OK();
   }

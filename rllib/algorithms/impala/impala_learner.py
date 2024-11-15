@@ -1,6 +1,6 @@
 from collections import deque
 import copy
-from queue import Empty, Queue
+import queue
 import threading
 import time
 from typing import Any, Dict, List, Union
@@ -80,10 +80,10 @@ class IMPALALearner(Learner):
         # the "GPU-loader queue" and loads them to the GPU, then places the GPU batches
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
-        self._gpu_loader_in_queue = Queue()
+        self._gpu_loader_in_queue = queue.Queue()
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
-        self._learner_thread_out_queue = Queue()
+        self._learner_thread_out_queue = queue.Queue()
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -194,7 +194,7 @@ class IMPALALearner(Learner):
             while True:
                 results = self._learner_thread_out_queue.get(block=False)
                 ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
-        except Empty:
+        except queue.Empty:
             if ts_trained:
                 results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
             return results
@@ -227,8 +227,8 @@ class _GPULoaderThread(threading.Thread):
     def __init__(
         self,
         *,
-        in_queue: Queue,
-        out_queue: deque = None,
+        in_queue: queue.Queue,
+        out_queue: deque,
         device: torch.device,
         metrics_logger: MetricsLogger,
     ):
@@ -283,8 +283,8 @@ class _LearnerThread(threading.Thread):
         self,
         *,
         update_method,
-        in_queue,
-        out_queue,
+        in_queue: deque,
+        out_queue: queue.Queue,
         metrics_logger,
     ):
         super().__init__()
@@ -294,24 +294,28 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
-        self._out_queue: Queue = out_queue
+        self._out_queue: queue.Queue = out_queue
 
     def run(self) -> None:
         while not self.stopped:
             self.step()
 
     def step(self):
-
+        # Get a new batch from the GPU-data (deque.pop -> newest item first).
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
+            # Get a new batch from the GPU-data (learner queue OR circular buffer).
             if isinstance(self._in_queue, CircularBuffer):
                 ma_batch_on_gpu = self._in_queue.sample()
-            # Get a new batch from the GPU-data (deque.pop -> newest item first).
             else:
                 # Queue is empty: Sleep a tiny bit to avoid CPU-thrashing.
                 if not self._in_queue:
                     time.sleep(0.001)
                     return
-                ma_batch_on_gpu = self._in_queue.pop()
+                # Consume from the left (oldest batches first).
+                # If we consumed from the right, we would run into the danger of learning
+                # from newer batches (left side) most times, BUT sometimes grabbing a
+                # really old batches (right area of deque).
+                ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_UPDATE_TIMER)):
@@ -338,24 +342,22 @@ class _LearnerThread(threading.Thread):
             )
 
     @staticmethod
-    def enqueue(learner_queue, batch, metrics_logger):
+    def enqueue(learner_queue: deque, batch, metrics_logger):
         # Right-append to learner queue (a deque). If full, drops the leftmost
-        # (oldest) item in the deque. Note that we consume from the right
-        # (newest first), which is why the queue size should probably always be 1,
-        # otherwise we run into the danger of training with very old samples.
-        # ts_dropped = 0
-        # if len(learner_queue) == learner_queue.maxlen:
-        #     ts_dropped = learner_queue.popleft().env_steps()
+        # (oldest) item in the deque.
+        # Note that we consume from the left (oldest first), which is why the queue size
+        # should probably always be small'ish (<< 10), otherwise we run into the danger
+        # of training with very old samples.
+        # If we consumed from the right, we would run into the danger of learning
+        # from newer batches (left side) most times, BUT sometimes grabbing a
+        # really old batches (right area of deque).
+        if len(learner_queue) == learner_queue.maxlen:
+            metrics_logger.log_value(
+                (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
+                learner_queue.popleft().env_steps(),
+                reduce="sum",
+            )
         learner_queue.append(batch)
-        # TODO (sven): This metric will not show correctly on the Algo side (main
-        #  logger), b/c of the bug in the metrics not properly "upstreaming" reduce=sum
-        #  metrics (similarly: ENV_RUNNERS/NUM_ENV_STEPS_SAMPLED grows exponentially
-        #  on the main algo's logger).
-        # metrics_logger.log_value(
-        #    (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
-        #    ts_dropped,
-        #    reduce="sum",
-        # )
 
         # Log current queue size.
         metrics_logger.log_value(
