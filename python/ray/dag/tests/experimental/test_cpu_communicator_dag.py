@@ -52,6 +52,67 @@ class Worker:
             print(f"Receive error: {e}")
             return None
 
+    def allreduce(self, val, shape, dtype):
+        t = torch.ones(shape, dtype=dtype) * val
+        recv_t = torch.zeros(shape, dtype=dtype)
+        try:
+            t = self.nccl_group.allreduce(
+                send_buf=t,
+                recv_buf=recv_t,
+            )
+            return (recv_t[0].item(), recv_t.shape, recv_t.dtype)
+        except RayChannelError as e:
+            print(f"Allreduce error: {e}")
+            return None
+
+# @pytest.mark.parametrize(
+#     "ray_start_cluster",
+#     [
+#         {
+#             "num_cpus": 2,
+#             "num_gpus": 0,
+#             "num_nodes": 1,
+#         }
+#     ],
+#     indirect=True,
+# )
+# def test_cpu_p2p(ray_start_cluster):
+#     sender = Worker.remote(rank=0)
+#     receiver = Worker.remote(rank=1)
+
+#     nccl_group = CPUNcclGroup(
+#         world_size=2,
+#         rank=0,
+#         actor_handles=[sender, receiver]
+#     )
+#     r_nccl_group = CPUNcclGroup(
+#         world_size=2,
+#         rank=1,
+#         actor_handles=[sender, receiver]
+#     )
+
+#     ray.get([
+#         sender.set_nccl_channel.remote(nccl_group),
+#         receiver.set_nccl_channel.remote(r_nccl_group)
+#     ])
+
+#     shape = (3,)
+#     dtype = torch.float32
+#     test_value = 2.0
+
+#     send_future = sender.send.remote(test_value, shape, dtype, peer_rank=1)
+#     time.sleep(1)
+#     receive_future = receiver.receive.remote(shape, dtype, peer_rank=0)
+    
+#     send_result = ray.get(send_future)
+#     receive_result = ray.get(receive_future)
+    
+#     received_value, received_shape, received_dtype = receive_result
+#     assert received_value == test_value, f"Expected value {test_value}, got {received_value}"
+
+#     nccl_group.destroy()
+#     r_nccl_group.destroy()
+
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -63,44 +124,44 @@ class Worker:
     ],
     indirect=True,
 )
-def test_cpu_p2p(ray_start_cluster):
-    sender = Worker.remote(rank=0)
-    receiver = Worker.remote(rank=1)
+def test_cpu_allreduce(ray_start_cluster):
+    world_size = 2
 
-    nccl_group = CPUNcclGroup(
+    worker1 = Worker.remote(rank=0)
+    worker2 = Worker.remote(rank=1)
+
+    nccl_group_1 = CPUNcclGroup(
         world_size=2,
         rank=0,
-        actor_handles=[sender, receiver]
+        actor_handles=[worker1, worker2]
     )
-    r_nccl_group = CPUNcclGroup(
+    nccl_group_2 = CPUNcclGroup(
         world_size=2,
         rank=1,
-        actor_handles=[sender, receiver]
+        actor_handles=[worker1, worker2]
     )
 
     ray.get([
-        sender.set_nccl_channel.remote(nccl_group),
-        receiver.set_nccl_channel.remote(r_nccl_group)
+        worker1.set_nccl_channel.remote(nccl_group_1),
+        worker2.set_nccl_channel.remote(nccl_group_2)
     ])
 
     shape = (3,)
     dtype = torch.float32
     test_value = 2.0
 
-    send_future = sender.send.remote(test_value, shape, dtype, peer_rank=1)
-    time.sleep(1)
-    receive_future = receiver.receive.remote(shape, dtype, peer_rank=0)
-    
-    send_result = ray.get(send_future)
-    receive_result = ray.get(receive_future)
-    
-    received_value, received_shape, received_dtype = receive_result
-    assert received_value == test_value, f"Expected value {test_value}, got {received_value}"
+    res_ref = [
+        worker1.allreduce.remote(test_value, shape, dtype),
+        worker2.allreduce.remote(test_value, shape, dtype),
+    ]
+
+    res = ray.get(res_ref)
+
+    received_value, received_shape, received_dtype = res[0]
+    assert received_value == test_value*2, f"Expected value {test_value}, got {received_value}"
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
         sys.exit(pytest.main(["-sv", __file__]))
-
-

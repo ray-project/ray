@@ -139,7 +139,7 @@ class CPUNcclGroup(GPUCommunicator):
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         """Send the tensor to the communicator actor."""
-        comm_key = f"communicator-{self.get_self_rank()}-{peer_rank}"
+        comm_key = f"communicator-p2p-{self.get_self_rank()}-{peer_rank}"
         communicator = self.get_communicator(comm_key, is_p2p=True)
 
         self.communicators.add(communicator)
@@ -171,11 +171,11 @@ class CPUNcclGroup(GPUCommunicator):
         recv_buf: torch.Tensor,
         op: ReduceOp = ReduceOp.SUM
     ):
-        # TODO(wyao) Temporarily using sorted rank of all participants in the group because user
-        # can't know id(self) without creating a CPUNcclGroup as a custom group
         all_ranks = [self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()]
-        comm_key = "communicator-"+"-".join(map(str, sorted(all_ranks)))
-        comm = self.get_communicator(comm_key)
+        comm_key = "communicator-collective-"+"-".join(map(str, sorted(all_ranks)))
+        # comm = self.get_communicator(comm_key)
+        # (puyuan) TODO: get_if_exists=True maybe can replace self.get_communicator
+        comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(self._world_size)
         self.communicators.add(comm)
 
         result = ray.get(comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op))
