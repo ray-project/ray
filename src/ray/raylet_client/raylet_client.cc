@@ -383,10 +383,10 @@ Status raylet::RayletClient::ReturnWorker(
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
-  grpc_client_->ReturnWorker(request,
-                             [](const Status &status, rpc::ReturnWorkerReply &&reply /*unused*/) {
-                                RAY_LOG_IF_ERROR(INFO, status) << "Error returning worker: " << status;
-                             });
+  grpc_client_->ReturnWorker(
+      request, [](const Status &status, rpc::ReturnWorkerReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status) << "Error returning worker: " << status;
+      });
   return Status::OK();
 }
 
