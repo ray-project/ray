@@ -41,11 +41,11 @@ register_env("env", _env_creator)
 config = (
     APPOConfig()
     # Use torch.compile on the learner.
-    .framework(
-        torch_compile_learner=True,
-        torch_compile_learner_dynamo_backend="inductor",
-        torch_compile_learner_what_to_compile="complete_update",
-    )
+    #.framework(
+    #    torch_compile_learner=True,
+    #    torch_compile_learner_dynamo_backend="inductor",
+    #    torch_compile_learner_what_to_compile="complete_update",
+    #)
     .environment(
         "env",
         env_config={
@@ -72,7 +72,7 @@ config = (
         grad_clip_by="global_norm",
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
-        entropy_coeff=[[0, 0.05], [3000000, 0.0]],  # <- crucial parameter to finetune
+        entropy_coeff=[[0, 0.03], [3000000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
         # broadcast_interval=5,
         # learner_queue_size=1,
