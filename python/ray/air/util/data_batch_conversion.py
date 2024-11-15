@@ -6,9 +6,6 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.data_batch_type import DataBatchType
-from ray.air.util.tensor_extensions.arrow import (
-    get_arrow_extension_fixed_shape_tensor_types,
-)
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 if TYPE_CHECKING:
@@ -220,37 +217,14 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        from ray.air.util.transform_pyarrow import (
-            _concatenate_extension_column,
-            _is_column_extension_type,
-        )
+        from ray.data._internal.arrow_ops import transform_pyarrow
 
-        if data.column_names == [TENSOR_COLUMN_NAME] and (
-            isinstance(
-                data.schema.types[0], get_arrow_extension_fixed_shape_tensor_types()
-            )
-        ):
-            # If representing a tensor dataset, return as a single numpy array.
-            # Example: ray.data.from_numpy(np.arange(12).reshape((3, 2, 2)))
-            # Arrow’s incorrect concatenation of extension arrays:
-            # https://issues.apache.org/jira/browse/ARROW-16503
-            return _concatenate_extension_column(data[TENSOR_COLUMN_NAME]).to_numpy(
-                zero_copy_only=False
-            )
-        else:
-            output_dict = {}
-            for col_name in data.column_names:
-                col = data[col_name]
-                if col.num_chunks == 0:
-                    col = pyarrow.array([], type=col.type)
-                elif _is_column_extension_type(col):
-                    # Arrow’s incorrect concatenation of extension arrays:
-                    # https://issues.apache.org/jira/browse/ARROW-16503
-                    col = _concatenate_extension_column(col)
-                else:
-                    col = col.combine_chunks()
-                output_dict[col_name] = col.to_numpy(zero_copy_only=False)
-            return output_dict
+        combined_chunks_table = transform_pyarrow.combine_chunks(data)
+
+        return {
+            col_name: combined_chunks_table[col_name].to_numpy(zero_copy_only=False)
+            for col_name in combined_chunks_table.column_names
+        }
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
