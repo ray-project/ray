@@ -270,9 +270,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
             # (making them compatible with numpy format)
             combined_array = transform_pyarrow.combine_chunked_array(col)
 
-            column_values_ndarrays.append(
-                combined_array.to_numpy(zero_copy_only=False)
-            )
+            column_values_ndarrays.append(combined_array.to_numpy(zero_copy_only=False))
 
         if should_be_single_ndarray:
             assert len(columns) == 1

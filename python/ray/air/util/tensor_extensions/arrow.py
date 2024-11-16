@@ -541,7 +541,8 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             except ValueError as ve:
                 logger.warning(
                     f"Failed to stack lists due to: {ve}; "
-                    f"falling back to using np.array(..., dtype=object)", exc_info=ve
+                    f"falling back to using np.array(..., dtype=object)",
+                    exc_info=ve,
                 )
 
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
