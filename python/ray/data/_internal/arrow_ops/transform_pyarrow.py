@@ -330,7 +330,7 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
-def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
+def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     """This is pyarrow.Table.combine_chunks()
     with support for extension types.
 
@@ -344,19 +344,7 @@ def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
     new_column_values_arrays = []
 
     for col in table.columns:
-        if strict or _is_column_extension_type(col):
-            combined_array = combine_chunked_array(col)
-        else:
-            # Otherwise (in non-strict mode), we need to handle the case of
-            # `ChunkedArray` exceeding 2 GiB in size, making it impossible to directly
-            # combine it into single contiguous array (unless using "large" types)
-            # instead slicing chunked array into slices that are no larger than
-            # 2 GiB each.
-            #
-            # NOTE: ChunkedArray is returned from this method
-            combined_array = _try_combine_chunks_safe(col)
-
-        new_column_values_arrays.append(combined_array)
+        new_column_values_arrays.append(combine_chunked_array(col))
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
