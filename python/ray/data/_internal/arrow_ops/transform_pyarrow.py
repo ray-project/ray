@@ -385,6 +385,11 @@ def combine_chunked_array(array: "pyarrow.ChunkedArray") -> Union["pyarrow.Array
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
         return _concatenate_extension_column(array)
+    elif len(array.chunks) == 0:
+        # NOTE: In case there's no chunks, we need to explicitly create
+        #       an empty array since calling into `combine_chunks` would fail
+        #       due to it expecting at least 1 chunk to be present
+        return pa.array([], type=array.type)
     elif array.nbytes < INT32_OVERFLOW_THRESHOLD or any(p(array.type) for p in int64_type_predicates):
         # It's safe to combine provided `ChunkedArray` in either of 2 cases:
         #   - It's cumulative size is < 2 GiB
