@@ -358,10 +358,14 @@ def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
     This will create a new table by combining the chunks the input table has.
     """
 
+    from ray.air.util.transform_pyarrow import (
+        _is_column_extension_type,
+    )
+
     new_column_values_arrays = []
 
     for col in table.columns:
-        if strict:
+        if strict or _is_column_extension_type(col):
             combined_array = combine_chunked_array(col)
         else:
             # Otherwise (in non-strict mode), we need to handle the case of
