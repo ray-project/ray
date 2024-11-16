@@ -118,8 +118,8 @@ def test_simulate_pp_2workers_2batches_1f1b(
     This test simulates a simple 1F1B pipeline parallelism for training with
     2 workers and 2 batches.
 
-    w1: fwd_b1  fwd_b2          bwd_b1          bwd_b2
-    w2:         fwd_b1  bwd_b1  fwd_b2  bwd_b2
+    w1: fwd_b1  send  fwd_b2          recv  send  bwd_b1          send  bwd_b2
+    w2:         recv  fwd_b1  bwd_b1  send  recv  fwd_b2  bwd_b2  recv
 
     The communication between workers is done using NCCL. The communication
     within the worker actor is done using IntraProcessChannel.
@@ -224,6 +224,10 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     Driver -> a.no_op -> b.no_op -> a.no_op_two -> Driver
                       |          |
                       -> c.no_op -
+
+    a: no_op  send         recv  recv  no_op_two
+    b:        recv  no_op  send
+    c:        recv  no_op        send
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -285,6 +289,17 @@ def test_three_actors_with_nccl_1(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
+    """
+    Driver --> a.no_op -> b.no_op --> Driver
+            |                     |
+            -> b.no_op -> c.no_op -
+            |                     |
+            -> c.no_op -> a.no_op -
+
+    a: no_op  send        recv  no_op
+    b: no_op  recv  send        no_op
+    c: no_op        recv  send  no_op
+    """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
@@ -360,6 +375,23 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
 @pytest.mark.parametrize("overlap_gpu_communication", [True, False])
 def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication):
+    """
+    Driver --> sender1.send -> receiver.recv --> Driver
+            |                                |
+            -> sender2.send -> receiver.recv -
+
+    Schedule with no overlap:
+
+    sender1: send  send
+    sender2: send              send
+    receiver:      recv  recv  recv  recv
+
+    Schedule with overlap:
+
+    sender1: send  send
+    sender2: send        send
+    receiver:      recv  recv  recv  recv
+    """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 

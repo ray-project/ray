@@ -183,7 +183,7 @@ def do_profile_tasks(
     """
     try:
         for task in tasks:
-            task.prepare()
+            task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         if not hasattr(self, "__ray_adag_events"):
             self.__ray_adag_events = []
