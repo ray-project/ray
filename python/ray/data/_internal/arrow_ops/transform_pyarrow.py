@@ -389,7 +389,19 @@ def combine_chunked_array(array: "pyarrow.ChunkedArray") -> Union["pyarrow.Array
 
 
 def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
-    """TODO add tests"""
+    """This method handles the case of `ChunkedArray` exceeding 2 GiB in size,
+    making it impossible to directly combine it into single contiguous array
+    (unless using "large" types).
+
+    Instead, this method is "clumping" chunks of the provided `ChunkedArray` into
+    new chunks that are no larger than 2 GiB each (combining them into a single,
+    contiguous `Array`), returning `ChunkedArray` consisting of these newly clumped
+    chunks.
+
+    NOTE: ChunkedArray is returned from this method
+
+    TODO add tests
+    """
 
     import pyarrow as pa
 
