@@ -334,12 +334,15 @@ def combine_chunked_array(array: "pyarrow.ChunkedArray") -> "pyarrow.Array":
     """TODO add"""
 
     import pyarrow as pa
+
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
     )
 
-    assert isinstance(array, pa.ChunkedArray), f"Expected `ChunkedArray`, got {type(array)}"
+    assert isinstance(
+        array, pa.ChunkedArray
+    ), f"Expected `ChunkedArray`, got {type(array)}"
 
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
@@ -360,9 +363,7 @@ def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
     This will create a new table by combining the chunks the input table has.
     """
 
-    from ray.air.util.transform_pyarrow import (
-        _is_column_extension_type,
-    )
+    from ray.air.util.transform_pyarrow import _is_column_extension_type
 
     new_column_values_arrays = []
 
