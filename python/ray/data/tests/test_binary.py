@@ -229,7 +229,7 @@ def _gen_chunked_binary(
 
 
 @pytest.mark.parametrize(
-    "col_name,max_file_size",
+    "col_name",
     [
         "bytes",
         # TODO fix numpy conversion
