@@ -2484,6 +2484,27 @@ def test_multi_arg_exception_async(shutdown_only):
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
 
+def test_execute_on_actor_thread(shutdown_only):
+    import threading
+    @ray.remote
+    class ThreadLocalActor:
+        def __init__(self):
+            # data local to actor default executor thread
+            self.local_data = threading.local()
+            self.local_data.value = 42
+            self.local_data.thread_id = threading.get_ident()
+
+        def compute(self, value):
+            assert threading.get_ident() == self.local_data.thread_id
+            return value + self.local_data.value
+
+    actor = ThreadLocalActor.remote()
+
+    with InputNode() as inp:
+        dag = actor.compute.bind(inp)
+
+    compiled_dag = dag.experimental_compile()
+    assert ray.get(compiled_dag.execute(1)) == 43
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
