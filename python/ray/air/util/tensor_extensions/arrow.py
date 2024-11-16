@@ -32,6 +32,10 @@ MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
+# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
+#       its offsets
+INT32_OVERFLOW_THRESHOLD = 2 * GiB
+
 logger = logging.getLogger(__name__)
 
 
@@ -221,7 +225,7 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > 2 * GiB
+            return len(obj) > INT32_OVERFLOW_THRESHOLD
 
         return False
 
