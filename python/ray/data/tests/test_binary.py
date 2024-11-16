@@ -10,7 +10,7 @@ import requests
 import snappy
 
 import ray
-from ray.data import Schema
+from ray.data import Schema, DataContext
 from ray.data._internal.util import GiB, MiB
 from ray.data.datasource import (
     BaseFileMetadataProvider,
@@ -198,25 +198,22 @@ def test_read_binary_snappy_partitioned_with_filter(
     )
 
 
-def _gen_chunked_binary(
-    dir_path: str, total_size: int, max_file_size: Optional[int] = None
-):
+@pytest.fixture(scope="module")
+def binary_dataset_gt_2gb_single_file():
+    total_size = int(2.1 * GiB)
     # NOTE: This util is primed to be writing even single large binary files
     #       in chunks to reduce memory requirements while doing so
-    chunk_size = max_file_size or 256 * MiB
+    chunk_size = 256 * MiB
     num_chunks = total_size // chunk_size
     remainder = total_size % chunk_size
 
-    if max_file_size is not None and max_file_size < total_size:
-        for i in range(num_chunks):
-            filename = f"part_{i}.bin"
-            with open(f"{dir_path}/{filename}", "wb") as f:
-                f.write(b"a" * chunk_size)
+    with TemporaryDirectory() as tmp_dir:
+        dataset_path = f"{tmp_dir}/binary_dataset_gt_2gb_single_file"
 
-                print(f">>> Written file: {filename}")
+        # Create directory
+        os.mkdir(dataset_path)
 
-    else:
-        with open(f"{dir_path}/chunk.bin", "wb") as f:
+        with open(f"{dataset_path}/chunk.bin", "wb") as f:
             for i in range(num_chunks):
                 f.write(b"a" * chunk_size)
 
@@ -225,7 +222,11 @@ def _gen_chunked_binary(
             if remainder:
                 f.write(b"a" * remainder)
 
-    print(f">>> Wrote chunked dataset at: {dir_path}")
+        print(f">>> Wrote chunked dataset at: {dataset_path}")
+
+        yield dataset_path
+
+        print(f">>> Cleaning up dataset: {dataset_path}")
 
 
 @pytest.mark.parametrize(
@@ -236,26 +237,30 @@ def _gen_chunked_binary(
         # "text",
     ],
 )
-def test_single_row_gt_2gb(ray_start_regular_shared, col_name):
-    with TemporaryDirectory() as tmp_dir:
-        target_binary_size_gb = 2.1
+def test_single_row_gt_2gb(
+    ray_start_regular_shared,
+    restore_data_context,
+    binary_dataset_gt_2gb_single_file,
+    col_name
+):
+    # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
-        # Write out single file > 2Gb
-        _gen_chunked_binary(tmp_dir, total_size=int(target_binary_size_gb * GiB))
+    target_binary_size_gb = 2.1
 
-        def _id(row):
-            bs = row[col_name]
-            assert round(len(bs) / GiB, 1) == target_binary_size_gb
-            return row
+    def _id(row):
+        bs = row[col_name]
+        assert round(len(bs) / GiB, 1) == target_binary_size_gb
+        return row
 
-        if col_name == "text":
-            ds = ray.data.read_text(tmp_dir)
-        elif col_name == "bytes":
-            ds = ray.data.read_binary_files(tmp_dir)
+    if col_name == "text":
+        ds = ray.data.read_text(binary_dataset_gt_2gb_single_file)
+    elif col_name == "bytes":
+        ds = ray.data.read_binary_files(binary_dataset_gt_2gb_single_file)
 
-        total = ds.map(_id).count()
+    total = ds.map(_id).count()
 
-        assert total == 1
+    assert total == 1
 
 
 if __name__ == "__main__":
