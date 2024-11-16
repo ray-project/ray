@@ -49,6 +49,69 @@ def parquet_dataset_single_column_gt_2gb():
         print(f">>> Cleaning up dataset at {dataset_path}")
 
 
+@pytest.fixture(scope="module")
+def binary_dataset_gt_2gb_single_file():
+    total_size = int(2.1 * GiB)
+    chunk_size = 256 * MiB
+    num_chunks = total_size // chunk_size
+    remainder = total_size % chunk_size
+
+    with TemporaryDirectory() as tmp_dir:
+        dataset_path = f"{tmp_dir}/binary_dataset_gt_2gb_single_file"
+
+        # Create directory
+        os.mkdir(dataset_path)
+
+        with open(f"{dataset_path}/chunk.bin", "wb") as f:
+            for i in range(num_chunks):
+                f.write(b"a" * chunk_size)
+
+                print(f">>> Written chunk #{i}")
+
+            if remainder:
+                f.write(b"a" * remainder)
+
+        print(f">>> Wrote chunked dataset at: {dataset_path}")
+
+        yield dataset_path, total_size
+
+        print(f">>> Cleaning up dataset: {dataset_path}")
+
+
+@pytest.mark.parametrize(
+    "col_name",
+    [
+        "bytes",
+        # TODO fix numpy conversion
+        # "text",
+    ],
+)
+def test_single_row_gt_2gb(
+    ray_start_regular_shared,
+    restore_data_context,
+    binary_dataset_gt_2gb_single_file,
+    col_name
+):
+    # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
+    DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
+
+    dataset_path, target_binary_size = binary_dataset_gt_2gb_single_file
+
+    def _id(row):
+        bs = row[col_name]
+        assert round(len(bs) / GiB, 1) == round(target_binary_size / GiB, 1)
+        return row
+
+    if col_name == "text":
+        ds = ray.data.read_text(dataset_path)
+    elif col_name == "bytes":
+        ds = ray.data.read_binary_files(dataset_path)
+
+    total = ds.map(_id).count()
+
+    assert total == 1
+
+
 @pytest.mark.parametrize(
     "op", ["map", "map_batches"]
 )
