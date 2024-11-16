@@ -354,7 +354,7 @@ def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
             # 2 GiB each.
             #
             # NOTE: ChunkedArray is returned from this method
-            combined_array = _combine_chunks_safe(col)
+            combined_array = _try_combine_chunks_safe(col)
 
         new_column_values_arrays.append(combined_array)
 
@@ -392,10 +392,12 @@ def combine_chunked_array(array: "pyarrow.ChunkedArray") -> Union["pyarrow.Array
         return array.combine_chunks()
     else:
         # NOTE: In this case PyArrow's `ChunkedArray` is actually returned
-        return _combine_chunks_safe(array)
+        return _try_combine_chunks_safe(array)
 
 
-def _combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
+def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
+    """TODO add tests"""
+
     import pyarrow as pa
 
     from ray.air.util.transform_pyarrow import _is_column_extension_type
