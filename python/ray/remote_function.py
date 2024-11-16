@@ -4,6 +4,7 @@ import os
 import uuid
 from functools import wraps
 from threading import Lock
+from typing import Optional
 
 import ray._private.signature
 from ray import Language, cross_language
@@ -277,9 +278,9 @@ class RemoteFunction:
         class FuncWrapper:
             def remote(self, *args, **kwargs):
                 return func_cls._remote(
-                    serialized_runtime_env_info=serialized_runtime_env_info,
                     args=args,
                     kwargs=kwargs,
+                    serialized_runtime_env_info=serialized_runtime_env_info,
                     **updated_options,
                 )
 
@@ -299,9 +300,9 @@ class RemoteFunction:
     @_tracing_task_invocation
     def _remote(
         self,
-        serialized_runtime_env_info: str,
         args=None,
         kwargs=None,
+        serialized_runtime_env_info: Optional[str] = None,
         **task_options,
     ):
         """Submit the remote function for execution."""
