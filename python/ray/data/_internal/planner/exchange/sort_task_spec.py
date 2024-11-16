@@ -7,6 +7,7 @@ from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.util import NULL_SENTINEL
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -23,7 +24,7 @@ class SortKey:
         self,
         key: Optional[Union[str, List[str]]] = None,
         descending: Union[bool, List[bool]] = False,
-        boundaries: Optional[list] = None,
+        boundaries: Optional[List[T]] = None,
     ):
         if key is None:
             key = []
@@ -195,7 +196,23 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_table = builder.build()
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
         # This zip does the transposition from list of column values to list of tuples.
-        samples_list = sorted(zip(*samples_dict.values()))
+        samples_list = list(zip(*samples_dict.values()))
+
+        def is_na(x):
+            # Check if x is None or NaN. Type casting to np.array first to avoid
+            # isnan failing on strings and other types.
+            if x is None:
+                return True
+            x = np.asarray(x)
+            if np.issubdtype(x.dtype, np.number):
+                return np.isnan(x)
+            return False
+
+        def key_fn_with_nones(sample):
+            return tuple(NULL_SENTINEL if is_na(x) else x for x in sample)
+
+        # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
+        samples_list = sorted(samples_list, key=key_fn_with_nones)
 
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [
