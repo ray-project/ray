@@ -330,6 +330,27 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
+def combine_chunked_array(array: "pyarrow.ChunkedArray") -> "pyarrow.Array":
+    """TODO add"""
+
+    import pyarrow as pa
+    from ray.air.util.transform_pyarrow import (
+        _concatenate_extension_column,
+        _is_column_extension_type,
+    )
+
+    assert isinstance(array, pa.ChunkedArray), f"Expected `ChunkedArray`, got {type(array)}"
+
+    if _is_column_extension_type(array):
+        # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
+        # hence require manual concatenation
+        return _concatenate_extension_column(array)
+    else:
+        # Strict mode requires *all* of the chunks to be combined into a single
+        # contiguous array
+        return array.combine_chunks()
+
+
 def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
     """This is pyarrow.Table.combine_chunks()
     with support for extension types.
@@ -338,30 +359,23 @@ def combine_chunks(table: "pyarrow.Table", *, strict: bool) -> "pyarrow.Table":
 
     This will create a new table by combining the chunks the input table has.
     """
-    from ray.air.util.transform_pyarrow import (
-        _concatenate_extension_column,
-        _is_column_extension_type,
-    )
 
     new_column_values_arrays = []
+
     for col in table.columns:
-        if _is_column_extension_type(col):
-            # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
-            # hence require manual concatenation
-            arr = _concatenate_extension_column(col)
-        elif strict:
-            # Strict mode requires *all* of the chunks to be combined into a single
-            # contiguous array
-            arr = col.combine_chunks()
+        if strict:
+            combined_array = combine_chunked_array(col)
         else:
             # Otherwise (in non-strict mode), we need to handle the case of
             # `ChunkedArray` exceeding 2 GiB in size, making it impossible to directly
             # combine it into single contiguous array (unless using "large" types)
             # instead slicing chunked array into slices that are no larger than
             # 2 GiB each.
-            arr = _combine_chunks_safe(col)
+            #
+            # NOTE: ChunkedArray is returned from this method
+            combined_array = _combine_chunks_safe(col)
 
-        new_column_values_arrays.append(arr)
+        new_column_values_arrays.append(combined_array)
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
