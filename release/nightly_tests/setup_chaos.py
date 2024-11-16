@@ -126,7 +126,7 @@ def main():
         kill_filter_fn=kill_filter_fn,
     )
     print(
-        f"Successfully deployed a {'worker' if args.kill_workers else 'node'} killer."
+        f"Successfully deployed a {resource_killer_cls} killer."
     )
 
 
