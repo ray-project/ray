@@ -261,18 +261,18 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     f"{column_names_set}"
                 )
 
-        projected_table = self._table.select(columns)
+        column_values_ndarrays = []
 
-        # Combine columnar values arrays to make these contiguous
-        # (making them compatible with numpy format)
-        contiguous_columns_table = transform_pyarrow.combine_chunks(
-            projected_table, strict=True
-        )
+        for col_name in columns:
+            col = self._table[col_name]
 
-        column_values_ndarrays = [
-            col.to_numpy(zero_copy_only=False)
-            for col in contiguous_columns_table.columns
-        ]
+            # Combine columnar values arrays to make these contiguous
+            # (making them compatible with numpy format)
+            combined_array = transform_pyarrow.combine_chunked_array(col)
+
+            column_values_ndarrays.append(
+                combined_array.to_numpy(zero_copy_only=False)
+            )
 
         if should_be_single_ndarray:
             assert len(columns) == 1
