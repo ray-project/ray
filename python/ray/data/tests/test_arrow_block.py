@@ -50,7 +50,7 @@ def parquet_dataset_single_column_gt_2gb():
 
 
 @pytest.fixture(scope="module")
-def binary_dataset_gt_2gb_single_file():
+def binary_dataset_single_file_gt_2gb():
     total_size = int(2.1 * GiB)
     chunk_size = 256 * MiB
     num_chunks = total_size // chunk_size
@@ -89,13 +89,13 @@ def binary_dataset_gt_2gb_single_file():
 def test_single_row_gt_2gb(
     ray_start_regular_shared,
     restore_data_context,
-    binary_dataset_gt_2gb_single_file,
+    binary_dataset_single_file_gt_2gb,
     col_name
 ):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
-    dataset_path, target_binary_size = binary_dataset_gt_2gb_single_file
+    dataset_path, target_binary_size = binary_dataset_single_file_gt_2gb
 
     def _id(row):
         bs = row[col_name]
