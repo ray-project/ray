@@ -224,7 +224,7 @@ def binary_dataset_gt_2gb_single_file():
 
         print(f">>> Wrote chunked dataset at: {dataset_path}")
 
-        yield dataset_path
+        yield dataset_path, total_size
 
         print(f">>> Cleaning up dataset: {dataset_path}")
 
@@ -246,17 +246,17 @@ def test_single_row_gt_2gb(
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
-    target_binary_size_gb = 2.1
+    dataset_path, target_binary_size = binary_dataset_gt_2gb_single_file
 
     def _id(row):
         bs = row[col_name]
-        assert round(len(bs) / GiB, 1) == target_binary_size_gb
+        assert round(len(bs) / GiB, 1) == round(target_binary_size / GiB, 1)
         return row
 
     if col_name == "text":
-        ds = ray.data.read_text(binary_dataset_gt_2gb_single_file)
+        ds = ray.data.read_text(dataset_path)
     elif col_name == "bytes":
-        ds = ray.data.read_binary_files(binary_dataset_gt_2gb_single_file)
+        ds = ray.data.read_binary_files(dataset_path)
 
     total = ds.map(_id).count()
 
