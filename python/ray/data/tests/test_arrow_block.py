@@ -1,18 +1,18 @@
 import os
+import sys
 import types
 from tempfile import TemporaryDirectory
 
 import numpy as np
 import pyarrow as pa
 import pytest
-import ray
-import sys
-
 from pyarrow import parquet as pq
+
+import ray
 from ray._private.test_utils import run_string_as_driver
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data._internal.util import MiB, GiB
+from ray.data._internal.util import GiB, MiB
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
@@ -21,7 +21,7 @@ def parquet_dataset_single_column_gt_2gb():
     chunk_size = 256 * MiB
     num_chunks = 10
 
-    total_column_size = chunk_size * 10 # ~2.5 GiB
+    total_column_size = chunk_size * 10  # ~2.5 GiB
 
     with TemporaryDirectory() as tmp_dir:
         dataset_path = f"{tmp_dir}/large_parquet_chunk_{chunk_size}"
@@ -90,7 +90,7 @@ def test_single_row_gt_2gb(
     ray_start_regular_shared,
     restore_data_context,
     binary_dataset_single_file_gt_2gb,
-    col_name
+    col_name,
 ):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
@@ -112,10 +112,10 @@ def test_single_row_gt_2gb(
     assert total == 1
 
 
-@pytest.mark.parametrize(
-    "op", ["map", "map_batches"]
-)
-def test_arrow_batch_gt_2gb(parquet_dataset_single_column_gt_2gb, restore_data_context, op):
+@pytest.mark.parametrize("op", ["map", "map_batches"])
+def test_arrow_batch_gt_2gb(
+    parquet_dataset_single_column_gt_2gb, restore_data_context, op
+):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
 
@@ -141,7 +141,7 @@ def test_arrow_batch_gt_2gb(parquet_dataset_single_column_gt_2gb, restore_data_c
 
     batch = ds.take_batch()
 
-    total_binary_column_size = sum([len(b) for b in batch['bin']])
+    total_binary_column_size = sum([len(b) for b in batch["bin"]])
 
     print(
         f">>> Batch:\n"
@@ -228,6 +228,4 @@ def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__]))

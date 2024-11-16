@@ -1,7 +1,5 @@
 import os
 from io import BytesIO
-from tempfile import TemporaryDirectory
-from typing import Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -10,8 +8,7 @@ import requests
 import snappy
 
 import ray
-from ray.data import Schema, DataContext
-from ray.data._internal.util import GiB, MiB
+from ray.data import Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,

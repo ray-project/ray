@@ -309,7 +309,9 @@ class ShufflingBatcher(BatcherInterface):
                 and self._shuffle_buffer.column(0).num_chunks
                 >= MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS
             ):
-                self._shuffle_buffer = transform_pyarrow.combine_chunks(self._shuffle_buffer)
+                self._shuffle_buffer = transform_pyarrow.combine_chunks(
+                    self._shuffle_buffer
+                )
             # Reset the builder.
             self._builder = DelegatingBlockBuilder()
             self._batch_head = 0

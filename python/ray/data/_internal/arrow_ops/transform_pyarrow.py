@@ -3,7 +3,10 @@ from typing import TYPE_CHECKING, List, Union
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2, INT32_OVERFLOW_THRESHOLD
+from ray.air.util.tensor_extensions.arrow import (
+    INT32_OVERFLOW_THRESHOLD,
+    ArrowTensorTypeV2,
+)
 from ray.data._internal.util import GiB
 
 try:
@@ -339,8 +342,6 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     This will create a new table by combining the chunks the input table has.
     """
 
-    from ray.air.util.transform_pyarrow import _is_column_extension_type
-
     new_column_values_arrays = []
 
     for col in table.columns:
@@ -348,7 +349,10 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
 
     return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
 
-def combine_chunked_array(array: "pyarrow.ChunkedArray") -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
+
+def combine_chunked_array(
+    array: "pyarrow.ChunkedArray",
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """TODO add"""
 
     import pyarrow as pa
@@ -378,7 +382,9 @@ def combine_chunked_array(array: "pyarrow.ChunkedArray") -> Union["pyarrow.Array
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
-    elif array.nbytes < INT32_OVERFLOW_THRESHOLD or any(p(array.type) for p in int64_type_predicates):
+    elif array.nbytes < INT32_OVERFLOW_THRESHOLD or any(
+        p(array.type) for p in int64_type_predicates
+    ):
         # It's safe to combine provided `ChunkedArray` in either of 2 cases:
         #   - It's cumulative size is < 2 GiB
         #   - It's of 'large' kind (ie one using int64 offsets internally)
