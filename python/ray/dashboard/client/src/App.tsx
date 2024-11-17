@@ -98,7 +98,7 @@ export type GlobalContextType = {
   /**
    * The name of the current server-side timezone.
    */
-  serverTimeZone: string | undefined;
+  serverTimeZone: string | null | undefined;
 
   serverTimeZoneLoaded: boolean | undefined;
 };
@@ -174,10 +174,10 @@ const App = () => {
 
   useEffect(() => {
     const updateTimezone = async () => {
-      const serverTimeZone = await getTimeZoneInfo();
+      const { value } = await getTimeZoneInfo();
       setContext((existingContext) => ({
         ...existingContext,
-        serverTimeZone,
+        serverTimeZone: value,
         serverTimeZoneLoaded: true,
       }));
     };

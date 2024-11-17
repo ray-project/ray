@@ -144,11 +144,7 @@ class HttpServerDashboardHead:
     async def get_timezone(self, req) -> aiohttp.web.Response:
         try:
             current_timezone = timezone_utils.get_current_timezone_info()
-
-            if current_timezone:
-                return aiohttp.web.json_response(current_timezone)
-            else:
-                return aiohttp.web.Response(status=404, text="Timezone not found.")
+            return aiohttp.web.json_response(current_timezone)
 
         except Exception as e:
             logger.error(f"Error getting timezone: {e}")
