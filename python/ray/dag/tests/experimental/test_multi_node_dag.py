@@ -102,8 +102,6 @@ def test_readers_on_different_nodes(ray_start_cluster):
     for i in range(1, 10):
         assert ray.get(adag.execute(1)) == [i, i, i]
 
-    adag.teardown()
-
 
 def test_bunch_readers_on_different_nodes(ray_start_cluster):
     cluster = ray_start_cluster
@@ -143,10 +141,9 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
             i for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))
         ]
 
-    adag.teardown()
 
-
-def test_pp(ray_start_cluster):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_pp(ray_start_cluster, single_fetch):
     cluster = ray_start_cluster
     # This node is for the driver.
     cluster.add_node(num_cpus=0)
@@ -179,13 +176,15 @@ def test_pp(ray_start_cluster):
         dag = MultiOutputNode(outputs)
 
     compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(1)
-    assert ray.get(ref) == [1] * TP
+    refs = compiled_dag.execute(1)
+    if single_fetch:
+        for i in range(TP):
+            assert ray.get(refs[i]) == 1
+    else:
+        assert ray.get(refs) == [1] * TP
 
     # So that raylets' error messages are printed to the driver
     time.sleep(2)
-
-    compiled_dag.teardown()
 
 
 def test_payload_large(ray_start_cluster, monkeypatch):
@@ -235,10 +234,6 @@ def test_payload_large(ray_start_cluster, monkeypatch):
         ref = compiled_dag.execute(val)
         result = ray.get(ref)
         assert result == val
-
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
@@ -290,7 +285,49 @@ def test_multi_node_multi_reader_large_payload(
         result = ray.get(ref)
         assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
 
-    compiled_dag.teardown()
+
+def test_multi_node_dag_from_actor(ray_start_cluster):
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=1)
+    ray.init()
+    cluster.add_node(num_cpus=1)
+
+    @ray.remote(num_cpus=0)
+    class SameNodeActor:
+        def predict(self, x: str):
+            return x
+
+    @ray.remote(num_cpus=1)
+    class RemoteNodeActor:
+        def predict(self, x: str, y: str):
+            return y
+
+    @ray.remote(num_cpus=1)
+    class DriverActor:
+        def __init__(self):
+            self._base_actor = SameNodeActor.options(
+                scheduling_strategy=NodeAffinitySchedulingStrategy(
+                    ray.get_runtime_context().get_node_id(), soft=False
+                )
+            ).remote()
+            self._refiner_actor = RemoteNodeActor.remote()
+
+            with InputNode() as inp:
+                x = self._base_actor.predict.bind(inp)
+                dag = self._refiner_actor.predict.bind(
+                    inp,
+                    x,
+                )
+
+            self._adag = dag.experimental_compile(
+                _execution_timeout=120,
+            )
+
+        def call(self, prompt: str) -> bytes:
+            return ray.get(self._adag.execute(prompt))
+
+    parallel = DriverActor.remote()
+    assert ray.get(parallel.call.remote("abc")) == "abc"
 
 
 if __name__ == "__main__":

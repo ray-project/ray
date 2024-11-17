@@ -177,18 +177,11 @@ if __name__ == "__main__":
             num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
-        .learners(
-            num_learners=args.num_gpus,
-            num_gpus_per_learner=1 if args.num_gpus else 0,
-        )
         .resources(
             num_cpus_for_main_process=1,
         )
         .training(
-            num_sgd_iter=20,
-            model=dict(
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
+            num_epochs=20,
         )
         .multi_agent(
             # Initial policy map: All PPO. This will be expanded
@@ -205,7 +198,9 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            rl_module_spec=MultiRLModuleSpec(module_specs=_get_multi_agent()["spec"]),
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs=_get_multi_agent()["spec"]
+            ),
         )
     )
 

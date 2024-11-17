@@ -111,7 +111,12 @@ def get_step(
 
     step = copy.deepcopy(DEFAULT_STEP_TEMPLATE)
 
-    cmd = ["./release/run_release_test.sh", test["name"]]
+    cmd = [
+        "./release/run_release_test.sh",
+        test["name"],
+        "--log-streaming-limit",
+        "100",
+    ]
 
     for file in test_collection_file or []:
         cmd += ["--test-collection-file", file]

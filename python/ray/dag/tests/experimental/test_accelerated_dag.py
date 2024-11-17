@@ -13,6 +13,8 @@ import torch
 
 import pytest
 
+
+from ray._private.test_utils import run_string_as_driver
 from ray.exceptions import RayChannelError, RayChannelTimeoutError
 import ray
 import ray._private
@@ -114,6 +116,11 @@ class Actor:
     def return_two_from_three(self, x):
         return x, x + 1, x + 2
 
+    @ray.method(num_returns=2)
+    def return_two_but_raise_exception(self, x):
+        raise RuntimeError
+        return 1, 2
+
     def get_events(self):
         return getattr(self, "__ray_adag_events", [])
 
@@ -153,46 +160,18 @@ def test_basic(ray_start_regular):
         # the first iteration will succeed.
         val = np.ones(100) * i
         ref = compiled_dag.execute(val)
-        assert str(ref) == f"CompiledDAGRef({dag_id}, execution_index={i})"
+        assert (
+            str(ref)
+            == f"CompiledDAGRef({dag_id}, execution_index={i}, channel_index={None})"
+        )
         result = ray.get(ref)
         assert (result == val).all()
         # Delete the buffer so that the next DAG output can be written.
         del result
 
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
-
-def test_two_returns_first(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o1
-
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 1
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_second(ray_start_regular):
-    a = Actor.remote(0)
-    with InputNode() as i:
-        o1, o2 = a.return_two.bind(i)
-        dag = o2
-
-    compiled_dag = dag.experimental_compile()
-    for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == 2
-
-    compiled_dag.teardown()
-
-
-def test_two_returns_one_reader(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_two_returns_one_reader(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     with InputNode() as i:
@@ -203,13 +182,18 @@ def test_two_returns_one_reader(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [1, 2]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for i, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + 1
+        else:
+            res = ray.get(refs)
+            assert res == [1, 2]
 
-    compiled_dag.teardown()
 
-
-def test_two_returns_two_readers(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_two_returns_two_readers(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     b = Actor.remote(0)
     c = Actor.remote(0)
@@ -221,13 +205,18 @@ def test_two_returns_two_readers(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for _ in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [1, 2]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for i, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + 1
+        else:
+            res = ray.get(refs)
+            assert res == [1, 2]
 
-    compiled_dag.teardown()
 
-
-def test_inc_two_returns(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_inc_two_returns(ray_start_regular, single_fetch):
     a = Actor.remote(0)
     with InputNode() as i:
         o1, o2 = a.inc_and_return_two.bind(i)
@@ -235,10 +224,14 @@ def test_inc_two_returns(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(3):
-        res = ray.get(compiled_dag.execute(1))
-        assert res == [i + 1, i + 2]
-
-    compiled_dag.teardown()
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j, ref in enumerate(refs):
+                res = ray.get(ref)
+                assert res == i + j + 1
+        else:
+            res = ray.get(refs)
+            assert res == [i + 1, i + 2]
 
 
 def test_two_as_one_return(ray_start_regular):
@@ -252,7 +245,26 @@ def test_two_as_one_return(ray_start_regular):
         res = ray.get(compiled_dag.execute(1))
         assert res == (1, 2)
 
-    compiled_dag.teardown()
+
+def test_multi_output_get_exception(ray_start_regular):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two.bind(i)
+        o3 = b.echo.bind(o1)
+        o4 = b.echo.bind(o2)
+        dag = MultiOutputNode([o3, o4])
+
+    compiled_dag = dag.experimental_compile()
+    refs = compiled_dag.execute(1)
+    refs.append(None)
+
+    with pytest.raises(
+        ValueError,
+        match="Invalid type of object refs. 'object_refs' must be a list of "
+        "CompiledDAGRefs if there is any CompiledDAGRef within it.",
+    ):
+        ray.get(refs)
 
 
 # TODO(wxdeng): Fix segfault. If this test is run, the following tests
@@ -310,8 +322,6 @@ def test_kwargs_not_supported(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     assert ray.get(compiled_dag.execute(2)) == 3
 
-    compiled_dag.teardown()
-
 
 def test_out_of_order_get(ray_start_regular):
     c = Collector.remote()
@@ -328,8 +338,6 @@ def test_out_of_order_get(ray_start_regular):
     result_a = ray.get(ref_a)
     assert result_a == ["a"]
 
-    compiled_dag.teardown()
-
 
 def test_actor_multi_methods(ray_start_regular):
     a = Actor.remote(0)
@@ -342,10 +350,9 @@ def test_actor_multi_methods(ray_start_regular):
     result = ray.get(ref)
     assert result == 1
 
-    compiled_dag.teardown()
 
-
-def test_actor_methods_execution_order(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_actor_methods_execution_order(ray_start_regular, single_fetch):
     actor1 = Actor.remote(0)
     actor2 = Actor.remote(0)
     with InputNode() as inp:
@@ -356,12 +363,13 @@ def test_actor_methods_execution_order(ray_start_regular):
         dag = MultiOutputNode([branch2, branch1])
 
     compiled_dag = dag.experimental_compile()
-    ref = compiled_dag.execute(1)
-    result = ray.get(ref)
+    refs = compiled_dag.execute(1)
     # test that double_and_inc() is called after inc() on actor1
-    assert result == [4, 1]
-
-    compiled_dag.teardown()
+    if single_fetch:
+        assert ray.get(refs[0]) == 4
+        assert ray.get(refs[1]) == 1
+    else:
+        assert ray.get(refs) == [4, 1]
 
 
 def test_actor_method_multi_binds(ray_start_regular):
@@ -374,8 +382,6 @@ def test_actor_method_multi_binds(ray_start_regular):
     ref = compiled_dag.execute(1)
     result = ray.get(ref)
     assert result == 2
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_constant(ray_start_regular):
@@ -390,8 +396,6 @@ def test_actor_method_bind_same_constant(ray_start_regular):
     ref = compiled_dag.execute(1)
     result = ray.get(ref)
     assert result == 5
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_input(ray_start_regular):
@@ -409,7 +413,6 @@ def test_actor_method_bind_same_input(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_same_input_attr(ray_start_regular):
@@ -427,7 +430,6 @@ def test_actor_method_bind_same_input_attr(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
@@ -448,8 +450,6 @@ def test_actor_method_bind_diff_input_attr_1(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
@@ -473,8 +473,6 @@ def test_actor_method_bind_diff_input_attr_2(ray_start_regular):
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == [0, 0, 1, 2, 3, 5, 7, 9, 12]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
     actor = Actor.remote(0)
@@ -492,7 +490,55 @@ def test_actor_method_bind_diff_input_attr_3(ray_start_regular):
     ref = compiled_dag.execute(2, 3)
     assert ray.get(ref) == 9
 
-    compiled_dag.teardown()
+
+class TestDAGNodeInsideContainer:
+    regex = r"Found \d+ DAGNodes from the arg .*? in .*?\.\s*"
+    r"Please ensure that the argument is a single DAGNode and that a "
+    r"DAGNode is not allowed to be placed inside any type of container\."
+
+    def test_dag_node_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind([inp])
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_tuple(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind((inp,))
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_dict(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind({"inp": inp})
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_two_dag_nodes_in_list(self, ray_start_regular):
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind([inp, inp])
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
+
+    def test_dag_node_in_class(self, ray_start_regular):
+        class OuterClass:
+            def __init__(self, ref):
+                self.ref = ref
+
+        actor = Actor.remote(0)
+        with pytest.raises(ValueError) as exc_info:
+            with InputNode() as inp:
+                dag = actor.echo.bind(OuterClass(inp))
+            dag.experimental_compile()
+        assert re.search(self.regex, str(exc_info.value), re.DOTALL)
 
 
 def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
@@ -512,8 +558,6 @@ def test_actor_method_bind_diff_input_attr_4(ray_start_regular):
     ref = compiled_dag.execute(2, 3, 4)
     assert ray.get(ref) == [1, 3, 6, 9, 14, 18]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
     actor = Actor.remote(0)
@@ -531,8 +575,6 @@ def test_actor_method_bind_diff_input_attr_5(ray_start_regular):
 
     ref = compiled_dag.execute(2, 3, 4)
     assert ray.get(ref) == [1, 3, 6, 10, 15, 21]
-
-    compiled_dag.teardown()
 
 
 def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
@@ -554,8 +596,6 @@ def test_actor_method_bind_diff_kwargs_input_attr(ray_start_regular):
     ref = compiled_dag.execute(x=2, y=3)
     assert ray.get(ref) == [0, 1, 2, 4, 6, 9]
 
-    compiled_dag.teardown()
-
 
 def test_actor_method_bind_same_arg(ray_start_regular):
     a1 = Actor.remote(0)
@@ -574,7 +614,6 @@ def test_actor_method_bind_same_arg(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_mixed_bind_same_input(ray_start_regular):
@@ -594,7 +633,6 @@ def test_mixed_bind_same_input(ray_start_regular):
         ref = compiled_dag.execute(i)
         result = ray.get(ref)
         assert result == expected[i]
-    compiled_dag.teardown()
 
 
 def test_regular_args(ray_start_regular):
@@ -610,167 +648,295 @@ def test_regular_args(ray_start_regular):
         result = ray.get(ref)
         assert result == (i + 1) * 3
 
-    compiled_dag.teardown()
 
+class TestMultiArgs:
+    def test_multi_args_basic(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i[1])
+            dag = c.collect_two.bind(branch2, branch1)
 
-def test_multi_args_basic(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i[0])
-        branch2 = a2.inc.bind(i[1])
-        dag = c.collect_two.bind(branch2, branch1)
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag = dag.experimental_compile()
-
-    ref = compiled_dag.execute(2, 3)
-    result = ray.get(ref)
-    assert result == [3, 2]
-
-    compiled_dag.teardown()
-
-
-def test_multi_args_single_actor(ray_start_regular):
-    c = Collector.remote()
-    with InputNode() as i:
-        dag = c.collect_three.bind(i[0], i[1], i[0])
-
-    compiled_dag = dag.experimental_compile()
-
-    expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
-    for i in range(3):
-        ref = compiled_dag.execute(i, i + 1)
+        ref = compiled_dag.execute(2, 3)
         result = ray.get(ref)
-        assert result == expected[i]
+        assert result == [3, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 1",
-    ):
-        compiled_dag.execute((2, 3))
+    def test_multi_args_single_actor(self, ray_start_regular):
+        c = Collector.remote()
+        with InputNode() as i:
+            dag = c.collect_three.bind(i[0], i[1], i[0])
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 0",
-    ):
-        compiled_dag.execute()
+        compiled_dag = dag.experimental_compile()
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
-        "positional args, got 0",
-    ):
-        compiled_dag.execute(args=(2, 3))
+        expected = [[0, 1, 0], [0, 1, 0, 1, 2, 1], [0, 1, 0, 1, 2, 1, 2, 3, 2]]
+        for i in range(3):
+            ref = compiled_dag.execute(i, i + 1)
+            result = ray.get(ref)
+            assert result == expected[i]
 
-    compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 1",
+        ):
+            compiled_dag.execute((2, 3))
 
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 0",
+        ):
+            compiled_dag.execute()
 
-def test_multi_args_branch(ray_start_regular):
-    a = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch = a.inc.bind(i[0])
-        dag = c.collect_two.bind(branch, i[1])
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with 2 "
+            "positional args, got 0",
+        ):
+            compiled_dag.execute(args=(2, 3))
 
-    compiled_dag = dag.experimental_compile()
+    def test_multi_args_branch(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i[0])
+            dag = c.collect_two.bind(branch, i[1])
 
-    ref = compiled_dag.execute(2, 3)
-    result = ray.get(ref)
-    assert result == [2, 3]
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag.teardown()
+        ref = compiled_dag.execute(2, 3)
+        result = ray.get(ref)
+        assert result == [2, 3]
 
+    def test_kwargs_basic(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i.x)
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_two.bind(branch2, branch1)
 
-def test_kwargs_basic(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i.x)
-        branch2 = a2.inc.bind(i.y)
-        dag = c.collect_two.bind(branch2, branch1)
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag = dag.experimental_compile()
-
-    ref = compiled_dag.execute(x=2, y=3)
-    result = ray.get(ref)
-    assert result == [3, 2]
-
-    compiled_dag.teardown()
-
-
-def test_kwargs_single_actor(ray_start_regular):
-    c = Collector.remote()
-    with InputNode() as i:
-        dag = c.collect_two.bind(i.y, i.x)
-
-    compiled_dag = dag.experimental_compile()
-
-    for i in range(3):
         ref = compiled_dag.execute(x=2, y=3)
         result = ray.get(ref)
-        assert result == [3, 2] * (i + 1)
+        assert result == [3, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
-    ):
-        compiled_dag.execute()
+    def test_kwargs_single_actor(self, ray_start_regular):
+        c = Collector.remote()
+        with InputNode() as i:
+            dag = c.collect_two.bind(i.y, i.x)
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `x`",
-    ):
-        compiled_dag.execute(y=3)
+        compiled_dag = dag.experimental_compile()
 
-    with pytest.raises(
-        ValueError,
-        match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg `y`",
-    ):
-        compiled_dag.execute(x=3)
+        for i in range(3):
+            ref = compiled_dag.execute(x=2, y=3)
+            result = ray.get(ref)
+            assert result == [3, 2] * (i + 1)
 
-    compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) must be called with kwarg",
+        ):
+            compiled_dag.execute()
 
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) "
+            "must be called with kwarg `x`",
+        ):
+            compiled_dag.execute(y=3)
 
-def test_kwargs_branch(ray_start_regular):
-    a = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch = a.inc.bind(i.x)
-        dag = c.collect_two.bind(i.y, branch)
+        with pytest.raises(
+            ValueError,
+            match=r"dag.execute\(\) or dag.execute_async\(\) "
+            "must be called with kwarg `y`",
+        ):
+            compiled_dag.execute(x=3)
 
-    compiled_dag = dag.experimental_compile()
+    def test_kwargs_branch(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i.x)
+            dag = c.collect_two.bind(i.y, branch)
 
-    ref = compiled_dag.execute(x=2, y=3)
-    result = ray.get(ref)
-    assert result == [3, 2]
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag.teardown()
+        ref = compiled_dag.execute(x=2, y=3)
+        result = ray.get(ref)
+        assert result == [3, 2]
 
+    def test_multi_args_and_kwargs(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_three.bind(branch2, i.z, branch1)
 
-def test_multi_args_and_kwargs(ray_start_regular):
-    a1 = Actor.remote(0)
-    a2 = Actor.remote(0)
-    c = Collector.remote()
-    with InputNode() as i:
-        branch1 = a1.inc.bind(i[0])
-        branch2 = a2.inc.bind(i.y)
-        dag = c.collect_three.bind(branch2, i.z, branch1)
+        compiled_dag = dag.experimental_compile()
 
-    compiled_dag = dag.experimental_compile()
+        ref = compiled_dag.execute(2, y=3, z=4)
+        result = ray.get(ref)
+        assert result == [3, 4, 2]
 
-    ref = compiled_dag.execute(2, y=3, z=4)
-    result = ray.get(ref)
-    assert result == [3, 4, 2]
+    def test_multi_args_and_torch_type(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            i.with_type_hint(TorchTensorType())
+            branch1 = a1.echo.bind(i[0])
+            branch1.with_type_hint(TorchTensorType())
+            branch2 = a2.echo.bind(i[1])
+            branch2.with_type_hint(TorchTensorType())
+            dag = c.collect_two.bind(branch2, branch1)
+            dag.with_type_hint(TorchTensorType())
 
-    compiled_dag.teardown()
+        compiled_dag = dag.experimental_compile()
+
+        cpu_tensors = [torch.tensor([0, 0, 0, 0, 0]), torch.tensor([1, 1, 1, 1, 1])]
+        ref = compiled_dag.execute(cpu_tensors[0], cpu_tensors[1])
+
+        tensors = ray.get(ref)
+        assert len(tensors) == len(cpu_tensors)
+        assert torch.equal(tensors[0], cpu_tensors[1])
+        assert torch.equal(tensors[1], cpu_tensors[0])
+
+    def test_mix_entire_input_and_args(self, ray_start_regular):
+        """
+        It is not allowed to consume both the entire input and a partial
+        input (i.e., an InputAttributeNode) as arguments.
+        """
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc_two.bind(i[0], i[1])
+            dag = c.collect_two.bind(i, branch)
+
+        with pytest.raises(
+            ValueError,
+            match=re.escape(
+                "All tasks must either use InputNode() directly, "
+                "or they must index to specific args or kwargs."
+            ),
+        ):
+            dag.experimental_compile()
+
+    def test_multi_args_same_actor(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a1.inc.bind(i[1])
+            dag = MultiOutputNode([branch1, branch2])
+
+        compiled_dag = dag.experimental_compile()
+
+        ref = compiled_dag.execute(1, 2)
+        result = ray.get(ref)
+        assert result == [1, 3]
+
+    def test_multi_args_basic_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i[1])
+            dag = c.collect_two.bind(branch2, branch1)
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, 3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+
+    def test_multi_args_branch_asyncio(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i[0])
+            dag = c.collect_two.bind(branch, i[1])
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, 3)
+            result = await fut
+            assert result == [2, 3]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+
+    def test_kwargs_basic_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i.x)
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_two.bind(branch2, branch1)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(x=2, y=3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+
+    def test_kwargs_branch_asyncio(self, ray_start_regular):
+        a = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch = a.inc.bind(i.x)
+            dag = c.collect_two.bind(i.y, branch)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(x=2, y=3)
+            result = await fut
+            assert result == [3, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
+
+    def test_multi_args_and_kwargs_asyncio(self, ray_start_regular):
+        a1 = Actor.remote(0)
+        a2 = Actor.remote(0)
+        c = Collector.remote()
+        with InputNode() as i:
+            branch1 = a1.inc.bind(i[0])
+            branch2 = a2.inc.bind(i.y)
+            dag = c.collect_three.bind(branch2, i.z, branch1)
+
+        compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+        async def main():
+            fut = await compiled_dag.execute_async(2, y=3, z=4)
+            result = await fut
+            assert result == [3, 4, 2]
+
+        loop = get_or_create_event_loop()
+        loop.run_until_complete(asyncio.gather(main()))
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
-def test_scatter_gather_dag(ray_start_regular, num_actors):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_scatter_gather_dag(ray_start_regular, num_actors, single_fetch):
     actors = [Actor.remote(0) for _ in range(num_actors)]
     with InputNode() as i:
         out = [a.inc.bind(i) for a in actors]
@@ -779,11 +945,15 @@ def test_scatter_gather_dag(ray_start_regular, num_actors):
     compiled_dag = dag.experimental_compile()
 
     for i in range(3):
-        ref = compiled_dag.execute(1)
-        results = ray.get(ref)
-        assert results == [i + 1] * num_actors
-
-    compiled_dag.teardown()
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            assert isinstance(refs, list)
+            for j in range(num_actors):
+                result = ray.get(refs[j])
+                assert result == i + 1
+        else:
+            results = ray.get(refs)
+            assert results == [i + 1] * num_actors
 
 
 @pytest.mark.parametrize("num_actors", [1, 4])
@@ -800,8 +970,6 @@ def test_chain_dag(ray_start_regular, num_actors):
         ref = compiled_dag.execute([])
         result = ray.get(ref)
         assert result == list(range(num_actors))
-
-    compiled_dag.teardown()
 
 
 def test_get_timeout(ray_start_regular):
@@ -824,8 +992,6 @@ def test_get_timeout(ray_start_regular):
         timed_out = True
     assert timed_out
 
-    compiled_dag.teardown()
-
 
 def test_buffered_get_timeout(ray_start_regular):
     a = Actor.remote(0)
@@ -846,8 +1012,6 @@ def test_buffered_get_timeout(ray_start_regular):
         # be raised.
         ray.get(refs[-1], timeout=3.5)
 
-    compiled_dag.teardown()
-
 
 def test_get_with_zero_timeout(ray_start_regular):
     a = Actor.remote(0)
@@ -861,8 +1025,6 @@ def test_get_with_zero_timeout(ray_start_regular):
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
-
-    compiled_dag.teardown()
 
 
 def test_dag_exception_basic(ray_start_regular, capsys):
@@ -888,8 +1050,6 @@ def test_dag_exception_basic(ray_start_regular, capsys):
 
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 1
-
-    compiled_dag.teardown()
 
 
 def test_dag_exception_chained(ray_start_regular, capsys):
@@ -918,10 +1078,9 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
 
-    compiled_dag.teardown()
 
-
-def test_dag_exception_multi_output(ray_start_regular, capsys):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_dag_exception_multi_output(ray_start_regular, single_fetch, capsys):
     # Test application throwing exceptions with a DAG with multiple outputs.
     a = Actor.remote(0)
     b = Actor.remote(0)
@@ -931,23 +1090,40 @@ def test_dag_exception_multi_output(ray_start_regular, capsys):
     compiled_dag = dag.experimental_compile()
 
     # Can throw an error.
-    ref = compiled_dag.execute("hello")
-    with pytest.raises(TypeError) as exc_info:
-        ray.get(ref)
-    # Traceback should match the original actor class definition.
-    assert "self.i += x" in str(exc_info.value)
+    refs = compiled_dag.execute("hello")
+    if single_fetch:
+        for ref in refs:
+            with pytest.raises(TypeError) as exc_info:
+                ray.get(ref)
+            # Traceback should match the original actor class definition.
+            assert "self.i += x" in str(exc_info.value)
+    else:
+        with pytest.raises(TypeError) as exc_info:
+            ray.get(refs)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
 
     # Can throw an error multiple times.
-    ref = compiled_dag.execute("hello")
-    with pytest.raises(TypeError) as exc_info:
-        ray.get(ref)
-    # Traceback should match the original actor class definition.
-    assert "self.i += x" in str(exc_info.value)
+    refs = compiled_dag.execute("hello")
+    if single_fetch:
+        for ref in refs:
+            with pytest.raises(TypeError) as exc_info:
+                ray.get(ref)
+            # Traceback should match the original actor class definition.
+            assert "self.i += x" in str(exc_info.value)
+    else:
+        with pytest.raises(TypeError) as exc_info:
+            ray.get(refs)
+        # Traceback should match the original actor class definition.
+        assert "self.i += x" in str(exc_info.value)
 
     # Can use the DAG after exceptions are thrown.
-    assert ray.get(compiled_dag.execute(1)) == [1, 1]
-
-    compiled_dag.teardown()
+    refs = compiled_dag.execute(1)
+    if single_fetch:
+        assert ray.get(refs[0]) == 1
+        assert ray.get(refs[1]) == 1
+    else:
+        assert ray.get(refs) == [1, 1]
 
 
 def test_dag_errors(ray_start_regular):
@@ -1042,7 +1218,6 @@ def test_dag_errors(ray_start_regular):
         ),
     ):
         ray.get(ref)
-    compiled_dag.teardown()
 
 
 class TestDAGExceptionCompileMultipleTimes:
@@ -1101,8 +1276,7 @@ class TestDAGExceptionCompileMultipleTimes:
             "object multiple times no matter whether `teardown` is called or not. "
             "Please reuse the existing compiled DAG or create a new one.",
         ):
-            compiled_dag = dag.experimental_compile()
-        compiled_dag.teardown()
+            compiled_dag = dag.experimental_compile()  # noqa
 
     def test_compile_twice_with_different_nodes(self, ray_start_regular):
         a = Actor.remote(0)
@@ -1110,7 +1284,7 @@ class TestDAGExceptionCompileMultipleTimes:
         with InputNode() as i:
             branch1 = a.echo.bind(i)
             branch2 = b.echo.bind(i)
-            dag = MultiOutputNode([branch1])
+            dag = MultiOutputNode([branch1, branch2])
         compiled_dag = dag.experimental_compile()
         compiled_dag.teardown()
         with pytest.raises(
@@ -1118,7 +1292,7 @@ class TestDAGExceptionCompileMultipleTimes:
             match="The DAG was compiled more than once. The following two "
             "nodes call `experimental_compile`: ",
         ):
-            compiled_dag = branch2.experimental_compile()
+            branch2.experimental_compile()
 
 
 def test_exceed_max_buffered_results(ray_start_regular):
@@ -1129,13 +1303,13 @@ def test_exceed_max_buffered_results(ray_start_regular):
     compiled_dag = dag.experimental_compile(_max_buffered_results=1)
 
     refs = []
-    for i in range(3):
+    for i in range(2):
         ref = compiled_dag.execute(1)
         # Hold the refs to avoid get() being called on the ref
         # when it goes out of scope
         refs.append(ref)
 
-    # ray.get() on the 3rd ref fails because the DAG cannot buffer 2 results.
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
     with pytest.raises(
         ValueError,
         match=(
@@ -1147,7 +1321,44 @@ def test_exceed_max_buffered_results(ray_start_regular):
         ray.get(ref)
 
     del refs
-    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_exceed_max_buffered_results_multi_output(ray_start_regular, single_fetch):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as inp:
+        dag = MultiOutputNode([a.inc.bind(inp), b.inc.bind(inp)])
+
+    compiled_dag = dag.experimental_compile(_max_buffered_results=1)
+
+    refs = []
+    for i in range(2):
+        ref = compiled_dag.execute(1)
+        # Hold the refs to avoid get() being called on the ref
+        # when it goes out of scope
+        refs.append(ref)
+
+    if single_fetch:
+        # If there are results not fetched from an execution, that execution
+        # still counts towards the number of buffered results.
+        ray.get(refs[0][0])
+
+    # ray.get() on the 2nd ref fails because the DAG cannot buffer 2 results.
+    with pytest.raises(
+        ValueError,
+        match=(
+            "Too many buffered results: the allowed max count for buffered "
+            "results is 1; call ray.get\(\) on previous CompiledDAGRefs to "
+            "free them up from buffer"
+        ),
+    ):
+        if single_fetch:
+            ray.get(ref[0])
+        else:
+            ray.get(ref)
+
+    del refs
 
 
 def test_compiled_dag_ref_del(ray_start_regular):
@@ -1162,8 +1373,6 @@ def test_compiled_dag_ref_del(ray_start_regular):
     for _ in range(10):
         ref = compiled_dag.execute(1)
         del ref
-
-    compiled_dag.teardown()
 
 
 def test_dag_fault_tolerance_chain(ray_start_regular):
@@ -1206,10 +1415,9 @@ def test_dag_fault_tolerance_chain(ray_start_regular):
         results = ray.get(ref)
         assert results == i
 
-    compiled_dag.teardown()
 
-
-def test_dag_fault_tolerance(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_dag_fault_tolerance(ray_start_regular, single_fetch):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=False)
         for i in range(4)
@@ -1221,15 +1429,21 @@ def test_dag_fault_tolerance(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     for i in range(99):
-        ref = compiled_dag.execute(1)
-        results = ray.get(ref)
-        assert results == [i + 1] * 4
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j in range(len(actors)):
+                assert ray.get(refs[j]) == i + 1
+        else:
+            assert ray.get(refs) == [i + 1] * len(actors)
 
     with pytest.raises(RuntimeError):
         for i in range(99, 200):
-            ref = compiled_dag.execute(1)
-            results = ray.get(ref)
-            assert results == [i + 1] * 4
+            refs = compiled_dag.execute(1)
+            if single_fetch:
+                for j in range(len(actors)):
+                    assert ray.get(refs[j]) == i + 1
+            else:
+                assert ray.get(refs) == [i + 1] * len(actors)
 
     compiled_dag.teardown()
 
@@ -1244,13 +1458,16 @@ def test_dag_fault_tolerance(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(100):
-        ref = compiled_dag.execute(1)
-        ray.get(ref)
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j in range(len(actors)):
+                ray.get(refs[j])
+        else:
+            ray.get(refs)
 
-    compiled_dag.teardown()
 
-
-def test_dag_fault_tolerance_sys_exit(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_dag_fault_tolerance_sys_exit(ray_start_regular, single_fetch):
     actors = [
         Actor.remote(0, fail_after=100 if i == 0 else None, sys_exit=True)
         for i in range(4)
@@ -1262,14 +1479,21 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     for i in range(99):
-        ref = compiled_dag.execute(1)
-        results = ray.get(ref)
-        assert results == [i + 1] * 4
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j in range(len(actors)):
+                assert ray.get(refs[j]) == i + 1
+        else:
+            assert ray.get(refs) == [i + 1] * len(actors)
 
     with pytest.raises(RayChannelError, match="Channel closed."):
         for i in range(99):
-            ref = compiled_dag.execute(1)
-            ray.get(ref)
+            refs = compiled_dag.execute(1)
+            if single_fetch:
+                for j in range(len(actors)):
+                    ray.get(refs[j])
+            else:
+                ray.get(refs)
 
     # Remaining actors are still alive.
     with pytest.raises(ray.exceptions.RayActorError):
@@ -1284,10 +1508,12 @@ def test_dag_fault_tolerance_sys_exit(ray_start_regular):
 
     compiled_dag = dag.experimental_compile()
     for i in range(100):
-        ref = compiled_dag.execute(1)
-        ray.get(ref)
-
-    compiled_dag.teardown()
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            for j in range(len(actors)):
+                ray.get(refs[j])
+        else:
+            ray.get(refs)
 
 
 def test_dag_teardown_while_running(ray_start_regular):
@@ -1313,8 +1539,6 @@ def test_dag_teardown_while_running(ray_start_regular):
     result = ray.get(ref)
     assert result == 0.1
 
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
 def test_asyncio(ray_start_regular, max_queue_size):
@@ -1337,9 +1561,63 @@ def test_asyncio(ray_start_regular, max_queue_size):
         assert (result == val).all()
 
     loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+def test_asyncio_out_of_order_get(ray_start_regular, max_queue_size):
+    c = Collector.remote()
+    with InputNode() as i:
+        dag = c.collect.bind(i)
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
+    )
+
+    async def main():
+        fut_a = await compiled_dag.execute_async("a")
+        fut_b = await compiled_dag.execute_async("b")
+
+        result_b = await fut_b
+        assert result_b == ["a", "b"]
+        result_a = await fut_a
+        assert result_a == ["a"]
+
+    loop.run_until_complete(main())
+
+
+@pytest.mark.parametrize("max_queue_size", [None, 2])
+@pytest.mark.parametrize("gather_futs", [True, False])
+def test_asyncio_multi_output(ray_start_regular, max_queue_size, gather_futs):
+    a = Actor.remote(0)
+    b = Actor.remote(0)
+    with InputNode() as i:
+        dag = MultiOutputNode([a.echo.bind(i), b.echo.bind(i)])
+
+    loop = get_or_create_event_loop()
+    compiled_dag = dag.experimental_compile(
+        enable_asyncio=True, _asyncio_max_queue_size=max_queue_size
+    )
+
+    async def main(i):
+        # Use numpy so that the return value will be zero-copy deserialized. If
+        # there is a memory leak in the DAG backend, then only the first task
+        # will succeed.
+        val = np.ones(100) * i
+        futs = await compiled_dag.execute_async(val)
+        assert len(futs) == 2
+
+        if gather_futs:
+            results = await asyncio.gather(*futs)
+            assert len(results) == 2
+            for result in results:
+                assert (result == val).all()
+        else:
+            for fut in futs:
+                result = await fut
+                assert (result == val).all()
+
+    loop.run_until_complete(asyncio.gather(*[main(i) for i in range(10)]))
 
 
 @pytest.mark.parametrize("max_queue_size", [None, 2])
@@ -1377,9 +1655,6 @@ def test_asyncio_exceptions(ray_start_regular, max_queue_size):
         assert result == 2
 
     loop.run_until_complete(main())
-    # Note: must teardown before starting a new Ray session, otherwise you'll get
-    # a segfault from the dangling monitor thread upon the new Ray init.
-    compiled_dag.teardown()
 
 
 class TestCompositeChannel:
@@ -1415,8 +1690,6 @@ class TestCompositeChannel:
         ref = compiled_dag.execute(3)
         assert ray.get(ref) == 108
 
-        compiled_dag.teardown()
-
     def test_composite_channel_two_actors(self, ray_start_regular):
         """
         In this test, there are three 'inc' tasks on the two Ray actors, chained
@@ -1449,9 +1722,8 @@ class TestCompositeChannel:
         ref = compiled_dag.execute(3)
         assert ray.get(ref) == 829
 
-        compiled_dag.teardown()
-
-    def test_composite_channel_multi_output(self, ray_start_regular):
+    @pytest.mark.parametrize("single_fetch", [True, False])
+    def test_composite_channel_multi_output(self, ray_start_regular, single_fetch):
         """
         Driver -> a.inc -> a.inc ---> Driver
                         |         |
@@ -1470,15 +1742,24 @@ class TestCompositeChannel:
             dag = MultiOutputNode([a.inc.bind(dag), b.inc.bind(dag)])
 
         compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(1)
-        assert ray.get(ref) == [2, 101]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            assert ray.get(refs[0]) == 2
+            assert ray.get(refs[1]) == 101
+        else:
+            assert ray.get(refs) == [2, 101]
 
-        ref = compiled_dag.execute(3)
-        assert ray.get(ref) == [10, 106]
+        refs = compiled_dag.execute(3)
+        if single_fetch:
+            assert ray.get(refs[0]) == 10
+            assert ray.get(refs[1]) == 106
+        else:
+            assert ray.get(refs) == [10, 106]
 
-        compiled_dag.teardown()
-
-    def test_intra_process_channel_with_multi_readers(self, ray_start_regular):
+    @pytest.mark.parametrize("single_fetch", [True, False])
+    def test_intra_process_channel_with_multi_readers(
+        self, ray_start_regular, single_fetch
+    ):
         """
         In this test, there are three 'echo' tasks on the same Ray actor.
         The DAG will look like this:
@@ -1500,28 +1781,45 @@ class TestCompositeChannel:
             dag = MultiOutputNode([x, y])
 
         compiled_dag = dag.experimental_compile()
-        ref = compiled_dag.execute(1)
-        assert ray.get(ref) == [1, 1]
+        refs = compiled_dag.execute(1)
+        if single_fetch:
+            assert ray.get(refs[0]) == 1
+            assert ray.get(refs[1]) == 1
+        else:
+            assert ray.get(refs) == [1, 1]
 
-        ref = compiled_dag.execute(2)
-        assert ray.get(ref) == [2, 2]
+        refs = compiled_dag.execute(2)
+        if single_fetch:
+            assert ray.get(refs[0]) == 2
+            assert ray.get(refs[1]) == 2
+        else:
+            assert ray.get(refs) == [2, 2]
 
-        ref = compiled_dag.execute(3)
-        assert ray.get(ref) == [3, 3]
-
-        compiled_dag.teardown()
+        refs = compiled_dag.execute(3)
+        if single_fetch:
+            assert ray.get(refs[0]) == 3
+            assert ray.get(refs[1]) == 3
+        else:
+            assert ray.get(refs) == [3, 3]
 
 
 class TestLeafNode:
+    """
+    Leaf nodes are not allowed right now because the exception thrown by the leaf
+    node will not be propagated to the driver and silently ignored, which is undesired.
+    """
+
+    LEAF_NODE_EXCEPTION_TEMPLATE = (
+        "Compiled DAG doesn't support leaf nodes, i.e., nodes that don't have "
+        "downstream nodes and are not output nodes. There are {num_leaf_nodes} "
+        "leaf nodes in the DAG. Please add the outputs of"
+    )
+
     def test_leaf_node_one_actor(self, ray_start_regular):
         """
         driver -> a.inc
                |
                -> a.inc -> driver
-
-        The upper branch (branch 1) is a leaf node, and it will be executed
-        before the lower `a.inc` task because of the control dependency. Hence,
-        the result will be [20] because `a.inc` will be executed twice.
         """
         a = Actor.remote(0)
         with InputNode() as i:
@@ -1530,11 +1828,11 @@ class TestLeafNode:
             branch2 = a.inc.bind(input_data)
             dag = MultiOutputNode([branch2])
 
-        compiled_dag = dag.experimental_compile()
-
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [20]
-        compiled_dag.teardown()
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
     def test_leaf_node_two_actors(self, ray_start_regular):
         """
@@ -1543,9 +1841,6 @@ class TestLeafNode:
                |        -> b.inc ----> driver
                |
                -> a.inc (branch 1)
-
-        The lower branch (branch 1) is a leaf node, and it will be executed
-        before the upper `a.inc` task because of the control dependency.
         """
         a = Actor.remote(0)
         b = Actor.remote(100)
@@ -1553,11 +1848,55 @@ class TestLeafNode:
             a.inc.bind(i)  # branch1: leaf node
             branch2 = b.inc.bind(i)
             dag = MultiOutputNode([a.inc.bind(branch2), b.inc.bind(branch2)])
-        compiled_dag = dag.experimental_compile()
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
-        ref = compiled_dag.execute(10)
-        assert ray.get(ref) == [120, 220]
-        compiled_dag.teardown()
+    def test_multi_leaf_nodes(self, ray_start_regular):
+        """
+        driver -> a.inc -> a.inc (branch 1, leaf node)
+               |        |
+               |        -> a.inc -> driver
+               |
+               -> a.inc (branch 2, leaf node)
+        """
+        a = Actor.remote(0)
+        with InputNode() as i:
+            dag = a.inc.bind(i)
+            a.inc.bind(dag)  # branch1: leaf node
+            a.inc.bind(i)  # branch2: leaf node
+            dag = MultiOutputNode([a.inc.bind(dag)])
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=2),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_first(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o1
+
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
+
+    def test_two_returns_second(self, ray_start_regular):
+        a = Actor.remote(0)
+        with InputNode() as i:
+            o1, o2 = a.return_two.bind(i)
+            dag = o2
+        with pytest.raises(
+            ValueError,
+            match=TestLeafNode.LEAF_NODE_EXCEPTION_TEMPLATE.format(num_leaf_nodes=1),
+        ):
+            dag.experimental_compile()
 
 
 def test_output_node(ray_start_regular):
@@ -1611,10 +1950,10 @@ def test_output_node(ray_start_regular):
 
     ref = compiled_dag.execute(x=1, y=2)
     assert ray.get(ref) == [1, 2, 1]
-    compiled_dag.teardown()
 
 
-def test_simulate_pipeline_parallelism(ray_start_regular):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_simulate_pipeline_parallelism(ray_start_regular, single_fetch):
     """
     This pattern simulates the case of pipeline parallelism training, where `w0_input`
     reads data from the driver, and the fan-out tasks, `d00`, `d01`, and `d02`, use
@@ -1670,7 +2009,13 @@ def test_simulate_pipeline_parallelism(ray_start_regular):
     output_dag = output_dag.experimental_compile()
     res = output_dag.execute([0, 1, 2])
 
-    assert ray.get(res) == [0, 1, 2]
+    if single_fetch:
+        assert ray.get(res[0]) == 0
+        assert ray.get(res[1]) == 1
+        assert ray.get(res[2]) == 2
+    else:
+        assert ray.get(res) == [0, 1, 2]
+
     # Worker 0: FFFBBB
     assert ray.get(worker_0.get_logs.remote()) == [
         "FWD rank-0, batch-0",
@@ -1686,7 +2031,6 @@ def test_simulate_pipeline_parallelism(ray_start_regular):
         "BWD rank-1, batch-1",
         "BWD rank-1, batch-2",
     ]
-    output_dag.teardown()
 
 
 def test_channel_read_after_close(ray_start_regular):
@@ -1745,6 +2089,7 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         dag.experimental_compile()
 
 
+@pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
     ray.init()
@@ -1818,7 +2163,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
         for i, ref in enumerate(output_refs):
             assert await ref == i
 
-        # Test there are more items than max bufcfered inputs.
+        # Test there are more items than max buffered inputs.
         output_refs = []
         for i in range(MAX_INFLIGHT_EXECUTIONS):
             output_refs.append(await async_dag.execute_async(i))
@@ -1837,7 +2182,6 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
-    async_dag.teardown()
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
@@ -1866,8 +2210,6 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.actor_name in ["a", "b"]
         assert event.method_name == "inc"
         assert event.operation in ["READ", "COMPUTE", "WRITE"]
-
-    adag.teardown()
 
 
 @ray.remote
@@ -1949,7 +2291,8 @@ def test_intra_process_channel(shutdown_only):
     assert ray.get(ref) == 3
 
 
-def test_multiple_readers_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_multiple_readers_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Replica
             |          |
@@ -1968,8 +2311,10 @@ def test_multiple_readers_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            ref = self.compiled_dag.execute(value)
-            return ray.get(ref)
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
@@ -2005,7 +2350,8 @@ def test_multiple_readers_single_writer(shutdown_only):
     assert ray.get(ref) == 4
 
 
-def test_single_reader_multiple_writers(shutdown_only):
+@pytest.mark.parametrize("single_fetch", [True, False])
+def test_single_reader_multiple_writers(shutdown_only, single_fetch):
     """
     Replica -> Worker1 -> Worker1 -> Replica
                         |          |
@@ -2026,7 +2372,10 @@ def test_single_reader_multiple_writers(shutdown_only):
             self.compiled_dag = dag.experimental_compile()
 
         def call(self, value):
-            return ray.get(self.compiled_dag.execute(value))
+            if single_fetch:
+                return [ray.get(ref) for ref in self.compiled_dag.execute(value)]
+            else:
+                return ray.get(self.compiled_dag.execute(value))
 
     replica = Replica.remote()
     ref = replica.call.remote(1)
@@ -2062,6 +2411,78 @@ def test_torch_tensor_type(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(5)
     assert torch.equal(ray.get(ref), torch.tensor([5, 5, 5, 5, 5]))
+
+
+def test_async_shutdown(shutdown_only):
+    """Verify that when async API is used, shutdown doesn't hang
+    because of threads joining at exit.
+    """
+
+    script = """
+import asyncio
+import ray
+from ray.dag import InputNode, MultiOutputNode
+
+async def main():
+    @ray.remote
+    class A:
+        def f(self, i):
+            return i
+
+    a = A.remote()
+    b = A.remote()
+
+    with InputNode() as inp:
+        x = a.f.bind(inp)
+        y = b.f.bind(inp)
+        dag =  MultiOutputNode([x, y])
+
+    adag = dag.experimental_compile(enable_asyncio=True)
+    refs = await adag.execute_async(1)
+    outputs = []
+    for ref in refs:
+        outputs.append(await ref)
+    print(outputs)
+
+asyncio.run(main())
+    """
+
+    print(run_string_as_driver(script))
+
+
+def test_multi_arg_exception(shutdown_only):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_but_raise_exception.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile()
+    for _ in range(3):
+        x, y = compiled_dag.execute(1)
+        with pytest.raises(RuntimeError):
+            ray.get(x)
+        with pytest.raises(RuntimeError):
+            ray.get(y)
+
+
+def test_multi_arg_exception_async(shutdown_only):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        o1, o2 = a.return_two_but_raise_exception.bind(i)
+        dag = MultiOutputNode([o1, o2])
+
+    compiled_dag = dag.experimental_compile(enable_asyncio=True)
+
+    async def main():
+        for _ in range(3):
+            x, y = await compiled_dag.execute_async(1)
+            with pytest.raises(RuntimeError):
+                await x
+            with pytest.raises(RuntimeError):
+                await y
+
+    loop = get_or_create_event_loop()
+    loop.run_until_complete(main())
 
 
 if __name__ == "__main__":

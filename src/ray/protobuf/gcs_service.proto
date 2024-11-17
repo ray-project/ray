@@ -42,6 +42,8 @@ message GetAllJobInfoRequest {
   // If set, only return the job with that job id in hex, or the job with that
   // job_submission_id.
   optional string job_or_submission_id = 2;
+  optional bool skip_submission_job_info_field = 3;
+  optional bool skip_is_running_tasks_field = 4;
 }
 
 message GetAllJobInfoReply {
@@ -600,6 +602,7 @@ service InternalKVGcsService {
   rpc InternalKVDel(InternalKVDelRequest) returns (InternalKVDelReply);
   rpc InternalKVExists(InternalKVExistsRequest) returns (InternalKVExistsReply);
   rpc InternalKVKeys(InternalKVKeysRequest) returns (InternalKVKeysReply);
+  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
 }
 
 message PinRuntimeEnvURIRequest {
@@ -748,8 +751,6 @@ service NodeInfoGcsService {
   rpc DrainNode(DrainNodeRequest) returns (DrainNodeReply);
   // Get information of all nodes from GCS Service.
   rpc GetAllNodeInfo(GetAllNodeInfoRequest) returns (GetAllNodeInfoReply);
-  // Get cluster internal config.
-  rpc GetInternalConfig(GetInternalConfigRequest) returns (GetInternalConfigReply);
   // Check alive.
   rpc CheckAlive(CheckAliveRequest) returns (CheckAliveReply);
 }

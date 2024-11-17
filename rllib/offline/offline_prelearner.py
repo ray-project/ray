@@ -1,7 +1,8 @@
 import gymnasium as gym
+import logging
 import numpy as np
 import random
-from typing import Any, Dict, List, Optional, Union, Tuple, TYPE_CHECKING
+from typing import Any, Dict, List, Optional, Union, Set, Tuple, TYPE_CHECKING
 
 import ray
 from ray.actor import ActorHandle
@@ -16,6 +17,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.compression import unpack_if_needed
+from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
 
@@ -45,6 +47,8 @@ SCHEMA = {
     "dones": "dones",
     "unroll_id": "unroll_id",
 }
+
+logger = logging.getLogger(__name__)
 
 
 @ExperimentalAPI
@@ -139,9 +143,39 @@ class OfflinePreLearner:
         self.iter_since_last_module_update = 0
         # self._future = None
 
+        # Set up an episode buffer, if the module is stateful or we sample from
+        # `SampleBatch` types.
+        if (
+            self.input_read_sample_batches
+            or self._module.is_stateful()
+            or self.input_read_episodes
+        ):
+            # Either the user defined a buffer class or we fall back to the default.
+            prelearner_buffer_class = (
+                self.config.prelearner_buffer_class
+                or self.default_prelearner_buffer_class
+            )
+            prelearner_buffer_kwargs = (
+                self.default_prelearner_buffer_kwargs
+                | self.config.prelearner_buffer_kwargs
+            )
+            # Initialize the buffer.
+            self.episode_buffer = prelearner_buffer_class(
+                **prelearner_buffer_kwargs,
+            )
+
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+        """Prepares plain data batches for training with `Learner`s.
 
+        Args:
+            batch: A dictionary of numpy arrays containing either column data
+                with `self.config.input_read_schema`, `EpisodeType` data, or
+                `BatchType` data.
+
+        Returns:
+            A `MultiAgentBatch` that can be passed to `Learner.update` methods.
+        """
         # If we directly read in episodes we just convert to list.
         if self.input_read_episodes:
             # Import `msgpack` for decoding.
@@ -155,6 +189,17 @@ class OfflinePreLearner:
                 )
                 for state in batch["item"]
             ]
+            # Ensure that all episodes are done and no duplicates are in the batch.
+            episodes = self._validate_episodes(episodes)
+            # Add the episodes to the buffer.
+            self.episode_buffer.add(episodes)
+            episodes = self.episode_buffer.sample(
+                num_items=self.config.train_batch_size_per_learner,
+                # TODO (simon): This can be removed as soon as DreamerV3 has been
+                # cleaned up, i.e. can use episode samples for training.
+                sample_episodes=True,
+                finalize=True,
+            )
         # Else, if we have old stack `SampleBatch`es.
         elif self.input_read_sample_batches:
             episodes = OfflinePreLearner._map_sample_batch_to_episode(
@@ -164,6 +209,18 @@ class OfflinePreLearner:
                 schema=SCHEMA | self.config.input_read_schema,
                 input_compress_columns=self.config.input_compress_columns,
             )["episodes"]
+            # Ensure that all episodes are done and no duplicates are in the batch.
+            episodes = self._validate_episodes(episodes)
+            # Add the episodes to the buffer.
+            self.episode_buffer.add(episodes)
+            # Sample steps from the buffer.
+            episodes = self.episode_buffer.sample(
+                num_items=self.config.train_batch_size_per_learner,
+                # TODO (simon): This can be removed as soon as DreamerV3 has been
+                # cleaned up, i.e. can use episode samples for training.
+                sample_episodes=True,
+                finalize=True,
+            )
         # Otherwise we map the batch to episodes.
         else:
             episodes = self._map_to_episodes(
@@ -233,7 +290,67 @@ class OfflinePreLearner:
         # TODO (simon): episodes are only needed for logging here.
         return {"batch": [batch]}
 
-    def _should_module_be_updated(self, module_id, multi_agent_batch=None):
+    @property
+    def default_prelearner_buffer_class(self) -> ReplayBuffer:
+        """Sets the default replay buffer."""
+        from ray.rllib.utils.replay_buffers.episode_replay_buffer import (
+            EpisodeReplayBuffer,
+        )
+
+        # Return the buffer.
+        return EpisodeReplayBuffer
+
+    @property
+    def default_prelearner_buffer_kwargs(self) -> Dict[str, Any]:
+        """Sets the default arguments for the replay buffer.
+
+        Note, the `capacity` might vary with the size of the episodes or
+        sample batches in the offline dataset.
+        """
+        return {
+            "capacity": self.config.train_batch_size_per_learner * 10,
+            "batch_size_B": self.config.train_batch_size_per_learner,
+        }
+
+    def _validate_episodes(
+        self, episodes: List[SingleAgentEpisode]
+    ) -> Set[SingleAgentEpisode]:
+        """Validate episodes sampled from the dataset.
+
+        Note, our episode buffers cannot handle either duplicates nor
+        non-ordered fragmentations, i.e. fragments from episodes that do
+        not arrive in timestep order.
+
+        Args:
+            episodes: A list of `SingleAgentEpisode` instances sampled
+                from a dataset.
+
+        Returns:
+            A set of `SingleAgentEpisode` instances.
+
+        Raises:
+            ValueError: If not all episodes are `done`.
+        """
+        # Ensure that episodes are all done.
+        if not all(eps.is_done for eps in episodes):
+            raise ValueError(
+                "When sampling from episodes (`input_read_episodes=True`) all "
+                "recorded episodes must be done (i.e. either `terminated=True`) "
+                "or `truncated=True`)."
+            )
+        # Ensure that episodes do not contain duplicates. Note, this can happen
+        # if the dataset is small and pulled batches contain multiple episodes.
+        unique_episode_ids = set()
+        episodes = {
+            eps
+            for eps in episodes
+            if eps.id_ not in unique_episode_ids
+            and not unique_episode_ids.add(eps.id_)
+            and eps.id_ not in self.episode_buffer.episode_id_to_index.keys()
+        }
+        return episodes
+
+    def _should_module_be_updated(self, module_id, multi_agent_batch=None) -> bool:
         """Checks which modules in a MultiRLModule should be updated."""
         if not self._policies_to_train:
             # In case of no update information, the module is updated.
@@ -363,9 +480,9 @@ class OfflinePreLearner:
                     len_lookback_buffer=0,
                 )
 
-            if finalize:
-                episode.finalize()
-            episodes.append(episode)
+                if finalize:
+                    episode.finalize()
+                episodes.append(episode)
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 

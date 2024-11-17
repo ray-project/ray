@@ -9,7 +9,6 @@ import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
-from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -21,6 +20,9 @@ DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 # The min buffer size must be large enough to at least fit an instance of the
 # _ResizeChannel class along with any metadata.
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
+# For shared memory channels, the default number of buffers per channel to
+# allocate.
+DEFAULT_NUM_SHM_BUFFERS = 1
 
 
 def _create_channel_ref(
@@ -103,7 +105,12 @@ class _ResizeChannel:
 
 
 class SharedMemoryType(ChannelOutputType):
-    def __init__(self, buffer_size_bytes: int, *, num_shm_buffers: int):
+    def __init__(
+        self,
+        *,
+        buffer_size_bytes: Optional[int] = None,
+        num_shm_buffers: Optional[int] = None,
+    ):
         """
         Args:
             buffer_size_bytes: The number of bytes to allocate for the object data and
@@ -112,13 +119,18 @@ class SharedMemoryType(ChannelOutputType):
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
+        if buffer_size_bytes is None:
+            buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         self.buffer_size_bytes = buffer_size_bytes
+        if num_shm_buffers is None:
+            num_shm_buffers = DEFAULT_NUM_SHM_BUFFERS
         self._num_shm_buffers = num_shm_buffers
 
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        read_by_adag_driver: bool,
     ) -> "Channel":
         """
         Instantiate a ChannelInterface class that can be used
@@ -128,39 +140,19 @@ class SharedMemoryType(ChannelOutputType):
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+        read_by_adag_driver: True if the channel will be read by an aDAG driver
+            (Ray driver or actor and task that creates an aDAG).
+
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
         """
-        if self._contains_type is not None:
-            assert isinstance(
-                self._contains_type, TorchTensorType
-            ), "_contains_type must be of type TorchTensorType"
-
-            from ray.experimental.channel.torch_tensor_nccl_channel import (
-                NestedTorchTensorNcclChannel,
-            )
-
-            if self._contains_type.requires_nccl():
-                cpu_data_typ = SharedMemoryType(
-                    buffer_size_bytes=self.buffer_size_bytes,
-                    num_shm_buffers=1,
-                )
-                return NestedTorchTensorNcclChannel(
-                    writer,
-                    reader_and_node_list,
-                    gpu_data_typ=self._contains_type,
-                    cpu_data_typ=cpu_data_typ,
-                )
-
-        return CompositeChannel(writer, reader_and_node_list, self._num_shm_buffers)
-
-    def set_nccl_group_id(self, group_id: str) -> None:
-        assert self.requires_nccl()
-
-        # Shared memory channels don't need NCCL but they can
-        # contain objects that use NCCL.
-        self._contains_type.set_nccl_group_id(group_id)
+        return CompositeChannel(
+            writer,
+            reader_and_node_list,
+            self._num_shm_buffers,
+            read_by_adag_driver,
+        )
 
 
 @PublicAPI(stability="alpha")
@@ -203,9 +195,9 @@ class Channel(ChannelInterface):
             assert isinstance(reader, ray.actor.ActorHandle)
 
         if typ is None:
-            typ = SharedMemoryType(DEFAULT_MAX_BUFFER_SIZE, num_shm_buffers=1)
+            typ = SharedMemoryType()
         elif isinstance(typ, int):
-            typ = SharedMemoryType(typ, num_shm_buffers=1)
+            typ = SharedMemoryType(buffer_size_bytes=typ)
 
         if typ.buffer_size_bytes < MIN_BUFFER_SIZE:
             raise ValueError(
@@ -639,6 +631,8 @@ class CompositeChannel(ChannelInterface):
         writer: The actor that may write to the channel. None signifies the driver.
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
+        read_by_adag_driver: True if the channel will be read by a driver (Ray driver or
+            actor and task that creates an aDAG.
     """
 
     def __init__(
@@ -646,6 +640,7 @@ class CompositeChannel(ChannelInterface):
         writer: Optional[ray.actor.ActorHandle],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         num_shm_buffers: int,
+        read_by_adag_driver: bool,
         _channel_dict: Optional[Dict[ray.ActorID, ChannelInterface]] = None,
         _channels: Optional[Set[ChannelInterface]] = None,
         _writer_registered: bool = False,
@@ -660,6 +655,7 @@ class CompositeChannel(ChannelInterface):
         self._channel_dict = _channel_dict or {}
         # The set of channels is a deduplicated version of the _channel_dict values.
         self._channels = _channels or set()
+        self._read_by_adag_driver = read_by_adag_driver
         if self._channels:
             # This CompositeChannel object is created by deserialization.
             # We don't need to create channels again.
@@ -699,11 +695,12 @@ class CompositeChannel(ChannelInterface):
 
     def _get_self_actor_id(self) -> str:
         """
-        Get the actor ID of the current process. If the current process is the driver,
+        Get the actor ID of the current process. If the current process is the
+        aDAG owner (e.g., driver or an actor/task that creates aDAG),
         use the actor ID of the DAGDriverProxyActor.
         """
         actor_id = ray.get_runtime_context().get_actor_id()
-        if actor_id is None:
+        if self._read_by_adag_driver:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
             assert len(self._reader_and_node_list) == 1
@@ -730,6 +727,7 @@ class CompositeChannel(ChannelInterface):
             self._writer,
             self._reader_and_node_list,
             self._num_shm_buffers,
+            self._read_by_adag_driver,
             self._channel_dict,
             self._channels,
             self._writer_registered,

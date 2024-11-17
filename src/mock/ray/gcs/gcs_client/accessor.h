@@ -106,6 +106,8 @@ class MockJobInfoAccessor : public JobInfoAccessor {
   MOCK_METHOD(Status,
               AsyncGetAll,
               (const std::optional<std::string> &job_or_submission_id,
+               bool skip_submission_job_info_field,
+               bool skip_is_running_tasks_field,
                const MultiItemCallback<rpc::JobTableData> &callback,
                int64_t timeout_ms),
               (override));
@@ -173,10 +175,6 @@ class MockNodeInfoAccessor : public NodeInfoAccessor {
               (override));
   MOCK_METHOD(bool, IsRemoved, (const NodeID &node_id), (const, override));
   MOCK_METHOD(void, AsyncResubscribe, (), (override));
-  MOCK_METHOD(Status,
-              AsyncGetInternalConfig,
-              (const OptionalItemCallback<std::string> &callback),
-              (override));
 };
 
 }  // namespace gcs
@@ -345,6 +343,10 @@ class MockInternalKVAccessor : public InternalKVAccessor {
                bool del_by_prefix,
                const int64_t timeout_ms,
                const OptionalItemCallback<int> &callback),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncGetInternalConfig,
+              (const OptionalItemCallback<std::string> &callback),
               (override));
 };
 

@@ -1,6 +1,7 @@
 from torch import nn
 
 from ray.rllib.algorithms.sac import SACConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -26,17 +27,13 @@ register_env("multi_agent_pendulum", lambda cfg: MultiAgentPendulum(config=cfg))
 
 config = (
     SACConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("multi_agent_pendulum", env_config={"num_agents": args.num_agents})
     .training(
         initial_alpha=1.001,
         # Use a smaller learning rate for the policy.
-        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
         lr=None,
         target_entropy="auto",
         n_step=(2, 5),
@@ -52,15 +49,15 @@ config = (
         num_steps_sampled_before_learning_starts=256,
     )
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": nn.init.orthogonal_,
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
+            fcnet_activation="relu",
+            fcnet_kernel_initializer=nn.init.xavier_uniform_,
+            head_fcnet_hiddens=[],
+            head_fcnet_activation=None,
+            head_fcnet_kernel_initializer=nn.init.orthogonal_,
+            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+        ),
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,

@@ -162,7 +162,7 @@ class BatchIndividualItems(ConnectorV2):
 
             # Single-agent case: There is a dict under `column` mapping
             # `eps_id` to lists of items:
-            # Sort by eps_id, concat all these lists, then batch.
+            # Concat all these lists, then batch.
             elif not self._multi_agent:
                 # TODO: only really need this in non-Learner connector pipeline
                 memorized_map_structure = []
@@ -190,12 +190,9 @@ class BatchIndividualItems(ConnectorV2):
                 # Only record structure for OBS column.
                 if column == Columns.OBS:
                     shared_data["memorized_map_structure"] = memorized_map_structure
-            # Multi-agent case: This should already be covered above.
-            # This connector piece should only be used after(!)
-            # the AgentToModuleMapping connector has already been applied, leading
-            # to a batch structure of:
-            # [module_id] -> [col0] -> [list of items]
-            else:
-                raise NotImplementedError
+            # Multi-agent case: But Module ID not found in our RLModule -> Ignore this
+            # `module_id` entirely.
+            # else:
+            #    pass
 
         return batch

@@ -11,7 +11,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.zero_padding import (
     create_mask_and_seq_lens,
@@ -79,12 +78,10 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         from ray.rllib.utils.test_utils import check
 
         # Create a simple dummy class, pretending to be an RLModule with
-        # `get_initial_state`, `is_stateful` and its `config` property defined:
+        # `get_initial_state`, `is_stateful` and `model_config` property defined:
         class MyStateModule:
-            # dummy config class
-            class Cfg(dict):
-                model_config_dict = {"max_seq_len": 2}
-            config = Cfg()
+            # dummy config
+            model_config = {"max_seq_len": 2}
 
             def is_stateful(self):
                 return True
@@ -186,7 +183,6 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         input_observation_space: Optional[gym.Space] = None,
         input_action_space: Optional[gym.Space] = None,
         *,
-        max_seq_len: Optional[int] = None,
         as_learner_connector: bool = False,
         **kwargs,
     ):
@@ -266,6 +262,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                         item_list,
                         max_seq_len=self._get_max_seq_len(rl_module, module_id=mid),
                     )
+                    # TODO (sven): Remove this hint/hack once we are not relying on
+                    #  SampleBatch anymore (which has to set its property
+                    #  zero_padded=True when shuffling).
+                    shared_data[
+                        (
+                            "_zero_padded_for_mid="
+                            f"{mid if mid is not None else DEFAULT_MODULE_ID}"
+                        )
+                    ] = True
 
         for sa_episode in self.single_agent_episode_iterator(
             episodes,
@@ -292,7 +297,7 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 if not sa_module.is_stateful():
                     continue
 
-                max_seq_len = sa_module.config.model_config_dict["max_seq_len"]
+                max_seq_len = sa_module.model_config["max_seq_len"]
 
                 # look_back_state.shape=([state-dim],)
                 look_back_state = (
@@ -314,14 +319,15 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
                 self.add_n_batch_items(
                     batch=batch,
                     column=Columns.STATE_IN,
-                    # items_to_add.shape=(B,[state-dim])  # B=episode len // max_seq_len
+                    # items_to_add.shape=(B,[state-dim])
+                    # B=episode len // max_seq_len
                     items_to_add=tree.map_structure(
                         # Explanation:
                         # [::max_seq_len]: only keep every Tth state.
                         # [:-1]: Shift state outs by one, ignore very last
                         # STATE_OUT (but therefore add the lookback/init state at
                         # the beginning).
-                        lambda i, o: np.concatenate([[i], o[:-1]])[::max_seq_len],
+                        lambda i, o, m=max_seq_len: np.concatenate([[i], o[:-1]])[::m],
                         look_back_state,
                         state_outs,
                     ),
@@ -381,19 +387,11 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
             mod = rl_module[module_id]
         else:
             mod = next(iter(rl_module.values()))
-        if "max_seq_len" not in mod.config.model_config_dict:
+        if "max_seq_len" not in mod.model_config:
             raise ValueError(
                 "You are using a stateful RLModule and are not providing a "
-                "'max_seq_len' key inside your model config dict. You can set this "
+                "'max_seq_len' key inside your `model_config`. You can set this "
                 "dict and/or override keys in it via `config.rl_module("
-                "model_config_dict={'max_seq_len': [some int]})`."
+                "model_config={'max_seq_len': [some int]})`."
             )
-        return mod.config.model_config_dict["max_seq_len"]
-
-
-@Deprecated(
-    new="ray.rllib.utils.postprocessing.zero_padding.split_and_zero_pad()",
-    error=True,
-)
-def split_and_zero_pad_list(*args, **kwargs):
-    pass
+        return mod.model_config["max_seq_len"]

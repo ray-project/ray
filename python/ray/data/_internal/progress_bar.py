@@ -5,7 +5,6 @@ from typing import Any, List, Optional
 import ray
 from ray.experimental import tqdm_ray
 from ray.types import ObjectRef
-from ray.util.annotations import Deprecated
 from ray.util.debug import log_once
 
 logger = logging.getLogger(__name__)
@@ -21,24 +20,6 @@ except ImportError:
 # Used a signal to cancel execution.
 _canceled_threads = set()
 _canceled_threads_lock = threading.Lock()
-
-
-@Deprecated
-def set_progress_bars(enabled: bool) -> bool:
-    """Set whether progress bars are enabled.
-
-    The default behavior is controlled by the
-    ``RAY_DATA_DISABLE_PROGRESS_BARS`` environment variable. By default,
-    it is set to "0". Setting it to "1" will disable progress bars, unless
-    they are reenabled by this method.
-
-    Returns:
-        Whether progress bars were previously enabled.
-    """
-    raise DeprecationWarning(
-        "`set_progress_bars` is deprecated. Set "
-        "`ray.data.DataContext.get_current().enable_progress_bars` instead.",
-    )
 
 
 def extract_num_rows(result: Any) -> int:
@@ -118,12 +99,6 @@ class ProgressBar:
         ):
             return name
 
-        if log_once("ray_data_truncate_operator_name"):
-            logger.warning(
-                f"Truncating long operator name to {self.MAX_NAME_LENGTH} characters."
-                "To disable this behavior, set `ray.data.DataContext.get_current()."
-                "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
-            )
         op_names = name.split("->")
         if len(op_names) == 1:
             return op_names[0]
@@ -141,6 +116,13 @@ class ProgressBar:
                 + len(op_names[-1])
             ) > self.MAX_NAME_LENGTH:
                 truncated_op_names.append("...")
+                if log_once("ray_data_truncate_operator_name"):
+                    logger.warning(
+                        f"Truncating long operator name to {self.MAX_NAME_LENGTH} "
+                        "characters. To disable this behavior, set "
+                        "`ray.data.DataContext.get_current()."
+                        "DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = False`."
+                    )
                 break
             truncated_op_names.append(op_name)
         truncated_op_names.append(op_names[-1])
@@ -198,6 +180,9 @@ class ProgressBar:
         if self._bar and name != self._desc:
             self._desc = name
             self._bar.set_description(self._desc)
+
+    def get_description(self) -> str:
+        return self._desc
 
     def refresh(self):
         if self._bar:

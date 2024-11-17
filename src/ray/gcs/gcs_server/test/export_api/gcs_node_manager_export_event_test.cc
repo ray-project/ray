@@ -26,6 +26,8 @@
 #include "ray/util/event.h"
 // clang-format on
 
+using json = nlohmann::json;
+
 namespace ray {
 
 std::string GenerateLogDir() {
@@ -92,7 +94,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "ALIVE");
@@ -120,7 +122,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "DEAD");
