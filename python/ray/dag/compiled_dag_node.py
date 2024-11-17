@@ -375,6 +375,8 @@ class ExecutableTask:
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
+        # The synchronous group this task belongs to that is used for scheduling.
+        # If None, the task is not part of a synchronous group.
         self.sync_group: Optional[_SynchronousGroup] = task.dag_node.sync_group
 
         self.input_channels: List[ChannelInterface] = []
@@ -420,10 +422,10 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
-        # The intermediate future for a READ or COMPUTE operation,
+        # The intermediate future for a read or compute operation,
         # and `wait()` must be called to get the actual result of the operation.
-        # The result of a READ operation will be used by a COMPUTE operation,
-        # and the result of a COMPUTE operation will be used by a WRITE operation.
+        # The result of a read operation will be used by a compute operation,
+        # and the result of a compute operation will be used by a write operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
     @property
@@ -489,7 +491,7 @@ class ExecutableTask:
     ) -> None:
         """
         Wrap the value in a `DAGOperationFuture` and store to the intermediate future.
-        The value corresponds to result of a READ or COMPUTE operation.
+        The value corresponds to result of a read or compute operation.
 
         If wrap_in_gpu_future is True, the value will be wrapped in a GPUFuture,
         Otherwise, the future will be a ResolvedFuture.
@@ -516,7 +518,7 @@ class ExecutableTask:
             CUDA stream, and the CPU is not blocked.
 
         Returns:
-            The result of a READ or COMPUTE operation from the intermediate future.
+            The result of a read or compute operation from the intermediate future.
         """
         future = self._intermediate_future
         self._intermediate_future = None
@@ -554,9 +556,9 @@ class ExecutableTask:
         class_handle,
     ) -> bool:
         """
-        Retrieve the intermediate result from the READ operation and perform the
+        Retrieve the intermediate result from the read operation and perform the
         computation. Then, cache the new intermediate result. The caller must ensure
-        that the last operation executed is READ so that the function retrieves the
+        that the last operation executed is read so that the function retrieves the
         correct intermediate result.
 
         Args:
@@ -605,9 +607,9 @@ class ExecutableTask:
 
     def _write(self) -> bool:
         """
-        Retrieve the intermediate result from the COMPUTE operation and write to its
+        Retrieve the intermediate result from the compute operation and write to its
         downstream DAG nodes. The caller must ensure that the last operation executed
-        is COMPUTE so that the function retrieves the correct intermediate result.
+        is compute so that the function retrieves the correct intermediate result.
 
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
@@ -640,13 +642,11 @@ class ExecutableTask:
     ) -> bool:
         """
         An ExecutableTask corresponds to a DAGNode. It consists of three
-        operations: READ, COMPUTE, and WRITE, which should be executed in
+        operations: read, compute, and write, which should be executed in
         order to ensure that each operation can read the correct intermediate
         result.
         Args:
             class_handle: The handle of the class to which the actor belongs.
-            op_type: The type of the operation. Possible types are READ,
-                COMPUTE, and WRITE.
             overlap_gpu_communication: Whether to overlap GPU communication with
                 computation during DAG execution to improve performance.
         Returns:
@@ -1780,21 +1780,20 @@ class CompiledDAG:
         self,
     ) -> Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]]:
         """
-        Generate READ, COMPUTE, and WRITE operations for each DAG node.
+        Generate a _DAGOperationGraphNode for each DAG node.
 
         Returns:
-            A dictionary that maps an actor handle to a list of lists of
+            A dictionary that maps an actor handle to a list of
             _DAGOperationGraphNode. For the same actor, the index of the
-            outer list corresponds to the index of the ExecutableTask in
+            list corresponds to the index of the ExecutableTask in
             the list of `executable_tasks` in `actor_to_executable_tasks`,
-            i.e. `exec_task_idx`. In the inner list, the order of operations
-            is READ, COMPUTE, and WRITE.
+            i.e. `exec_task_idx`.
 
             Example:
             {
                 actor1: [
-                    [READ COMPUTE WRITE] # exec_task_idx 0
-                    [READ COMPUTE WRITE] # exec_task_idx 1
+                    # exec_task_idx 0
+                    # exec_task_idx 1
                 ]
             }
         """
@@ -1814,8 +1813,6 @@ class CompiledDAG:
 
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             for exec_task_idx, exec_task in enumerate(executable_tasks):
-                # Divide a DAG node into three _DAGOperationGraphNodes: READ, COMPUTE,
-                # and WRITE. Each _DAGOperationGraphNode has a _DAGNodeOperation.
                 task_idx = exec_task.task_idx
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name

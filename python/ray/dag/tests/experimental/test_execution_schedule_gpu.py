@@ -228,13 +228,7 @@ def test_three_actors_with_nccl_1(ray_start_regular, monkeypatch):
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.no_op_two.bind(branch1, branch2)
 
-    # compiled_dag = dag.experimental_compile()
-    compiled_dag, mock_nccl_group_set = check_nccl_group_init(
-        monkeypatch,
-        dag,
-        {(frozenset([a, b, c]), None)},
-        (frozenset([a, b, c]), None),
-    )
+    compiled_dag = dag.experimental_compile()
 
     a_expected_schedule = [0, 1, 2, 3, 4]
     b_expected_schedule = [0, 1, 2]
@@ -251,15 +245,14 @@ def test_three_actors_with_nccl_1(ray_start_regular, monkeypatch):
         for i, operation in enumerate(schedule):
             assert operation.exec_task_idx == expected_schedule[i]
 
-    check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
-    # tensor_cpu = torch.zeros(10, 10)
-    # tensor_cuda = tensor_cpu.to("cuda:0")
-    # ref = compiled_dag.execute(tensor_cuda)
-    # tensors = ray.get(ref)
+    tensor_cpu = torch.zeros(10, 10)
+    tensor_cuda = tensor_cpu.to("cuda:0")
+    ref = compiled_dag.execute(tensor_cuda)
+    tensors = ray.get(ref)
 
-    # assert len(tensors) == 2
-    # for t in tensors:
-    #     assert torch.equal(t, tensor_cpu)
+    assert len(tensors) == 2
+    for t in tensors:
+        assert torch.equal(t, tensor_cpu)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -298,13 +291,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
             ]
         )
 
-    compiled_dag, mock_nccl_group_set = check_nccl_group_init(
-        monkeypatch,
-        dag,
-        {(frozenset([a, b, c]), None)},
-        (frozenset([a, b, c]), None),
-    )
-    # compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile()
     a_expected_schedule = [0, 1, 2, 3]
     b_expected_schedule = [0, 2, 1, 3]
     c_expected_schedule = [0, 2, 1, 3]
@@ -321,21 +308,20 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         for i, operation in enumerate(schedule):
             assert operation.exec_task_idx == expected_schedule[i]
 
-    check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
-    # tensor_cpu = torch.zeros(10, 10)
-    # tensor_cuda = tensor_cpu.to("cuda:0")
-    # refs = compiled_dag.execute(tensor_cuda)
+    tensor_cpu = torch.zeros(10, 10)
+    tensor_cuda = tensor_cpu.to("cuda:0")
+    refs = compiled_dag.execute(tensor_cuda)
 
-    # if single_fetch:
-    #     assert len(refs) == 3
-    #     for ref in refs:
-    #         tensor = ray.get(ref)
-    #         assert torch.equal(tensor, tensor_cpu)
-    # else:
-    #     tensors = ray.get(refs)
-    #     assert len(tensors) == 3
-    #     for tensor in tensors:
-    #         assert torch.equal(tensor, tensor_cpu)
+    if single_fetch:
+        assert len(refs) == 3
+        for ref in refs:
+            tensor = ray.get(ref)
+            assert torch.equal(tensor, tensor_cpu)
+    else:
+        tensors = ray.get(refs)
+        assert len(tensors) == 3
+        for tensor in tensors:
+            assert torch.equal(tensor, tensor_cpu)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
@@ -386,15 +372,8 @@ def test_overlap_gpu_communication(
         dag = MultiOutputNode([branch1, branch2])
 
     # Test normal execution.
-    # compiled_dag = dag.experimental_compile(
-    #     _overlap_gpu_communication=overlap_gpu_communication
-    # )
-    compiled_dag, mock_nccl_group_set = check_nccl_group_init(
-        monkeypatch,
-        dag,
-        {(frozenset([sender1, sender2, receiver]), None)},
-        (frozenset([sender1, sender2, receiver]), None),
-        overlap_gpu_communication=overlap_gpu_communication,
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
     )
 
     # Check receiver schedule
@@ -412,8 +391,7 @@ def test_overlap_gpu_communication(
     for i, operation in enumerate(receiver_schedule):
         assert operation.exec_task_idx == expected_receiver_schedule[i]
 
-    check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
-    # compiled_dag.teardown()
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":
