@@ -76,7 +76,7 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // guarantee that the local node is not selected for scheduling.
   ASSERT_FALSE(
       cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
-  WaitForTaskArgsRequests(work);
+  WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
 
@@ -86,25 +86,25 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
-  if (object_ids.size() > 0) {
+  if (!object_ids.empty()) {
     bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task_id,
         task.GetDependencies(),
         {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), work);
+      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(work));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].push_back(work);
+    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
   return can_dispatch;
 }
@@ -130,13 +130,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
 
-    if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
+    auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
+    if (sched_cls_iter == info_by_sched_cls_.end()) {
       // Initialize the class info.
-      info_by_sched_cls_.emplace(
-          scheduling_class,
-          SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(scheduling_class)));
+      sched_cls_iter = info_by_sched_cls_
+                           .emplace(scheduling_class,
+                                    SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(
+                                        scheduling_class)))
+                           .first;
     }
-    auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
+    auto &sched_cls_info = sched_cls_iter->second;
 
     // Fair scheduling is applied only when the total CPU requests exceed the node's
     // capacity. This skips scheduling classes whose number of running tasks exceeds the
@@ -980,16 +983,12 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
-  worker->SetJobId(task_spec.JobId());
-  worker->SetBundleId(task_spec.PlacementGroupBundleId());
-  worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
-  worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
 
   // Pass the contact info of the worker to use.
@@ -1258,6 +1257,16 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
+  for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
+      buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
+    }
+    buffer << "\t}\n";
+  }
+  buffer << "\n";
   buffer << "Running tasks by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {

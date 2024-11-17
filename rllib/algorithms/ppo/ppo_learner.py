@@ -3,6 +3,7 @@ from typing import Any, Dict
 
 from ray.rllib.algorithms.ppo.ppo import (
     LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY,
+    LEARNER_RESULTS_KL_KEY,
     PPOConfig,
 )
 from ray.rllib.connectors.learner import (
@@ -19,6 +20,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
 )
+from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import ModuleID, TensorType
 
@@ -106,8 +108,16 @@ class PPOLearner(Learner):
                 config.use_kl_loss
                 and self.metrics.peek((module_id, NUM_MODULE_STEPS_TRAINED), default=0)
                 > 0
+                and (module_id, LEARNER_RESULTS_KL_KEY) in self.metrics
             ):
-                self._update_module_kl_coeff(module_id=module_id, config=config)
+                kl_loss = convert_to_numpy(
+                    self.metrics.peek((module_id, LEARNER_RESULTS_KL_KEY))
+                )
+                self._update_module_kl_coeff(
+                    module_id=module_id,
+                    config=config,
+                    kl_loss=kl_loss,
+                )
 
     @abc.abstractmethod
     def _update_module_kl_coeff(
@@ -115,8 +125,9 @@ class PPOLearner(Learner):
         *,
         module_id: ModuleID,
         config: PPOConfig,
+        kl_loss: float,
     ) -> None:
-        """Dynamically update the KL loss coefficients of each module with.
+        """Dynamically update the KL loss coefficients of each module.
 
         The update is completed using the mean KL divergence between the action
         distributions current policy and old policy of each module. That action
@@ -125,4 +136,6 @@ class PPOLearner(Learner):
         Args:
             module_id: The module whose KL loss coefficient to update.
             config: The AlgorithmConfig specific to the given `module_id`.
+            kl_loss: The mean KL loss of the module, computed inside
+                `compute_loss_for_module()`.
         """

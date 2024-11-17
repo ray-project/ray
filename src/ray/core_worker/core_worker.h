@@ -223,30 +223,6 @@ class TaskCounter {
     }
   }
 
-  std::unordered_map<std::string, std::vector<int64_t>> AsMap() const {
-    absl::MutexLock l(&mu_);
-    std::unordered_map<std::string, std::vector<int64_t>> total_counts;
-
-    counter_.ForEachEntry(
-        [&total_counts](const std::tuple<std::string, TaskStatusType, bool> &key,
-                        int64_t value) mutable {
-          auto func_name = std::get<0>(key);
-          auto status = std::get<1>(key);
-          total_counts[func_name].resize(3, 0);
-          if (status == kPending) {
-            total_counts[func_name][0] = value;
-          } else if (status == kRunning) {
-            total_counts[func_name][1] = value;
-          } else if (status == kFinished) {
-            total_counts[func_name][2] = value;
-          } else {
-            RAY_CHECK(false) << "Invalid task status type " << status;
-          }
-        });
-
-    return total_counts;
-  }
-
  private:
   mutable absl::Mutex mu_;
   // Tracks all tasks submitted to this worker by state, is_retry.
@@ -736,29 +712,31 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   /// Experimental method for mutable objects. Registers a writer channel.
   ///
-  /// \param[in] object_id The ID of the object.
-  /// \param[in] node_id If non-NULL, sends each write to the readers on node `node_id`.
-  Status ExperimentalRegisterMutableObjectWriter(const ObjectID &object_id,
-                                                 const NodeID *node_id);
+  /// The API is not idempotent.
+  ///
+  /// \param[in] writer_object_id The ID of the object.
+  /// \param[in] remote_reader_node_ids The list of remote reader's node ids.
+  Status ExperimentalRegisterMutableObjectWriter(
+      const ObjectID &writer_object_id,
+      const std::vector<NodeID> &remote_reader_node_ids);
 
   /// Experimental method for mutable objects. Registers a reader channel.
+  ///
+  /// The API is not idempotent.
   ///
   /// \param[in] object_id The ID of the object.
   Status ExperimentalRegisterMutableObjectReader(const ObjectID &object_id);
 
   /// Experimental method for mutable objects. Registers a mapping from a mutable object
   /// that is written to on this node to the corresponding mutable object that is read on
-  /// the node that `reader_actor` is on.
+  /// the node that `remote_reader_actors` is on.
   ///
   /// \param[in] writer_object_id The ID of the object that is written on this node.
-  /// \param[in] reader_actor The actor that reads the object.
-  /// \param[in] num_readers The total number of readers.
-  /// \param[in] reader_object_id The ID of the corresponding object that is read on the
-  /// remote node.
-  Status ExperimentalRegisterMutableObjectReaderRemote(const ObjectID &writer_object_id,
-                                                       const ActorID &reader_actor,
-                                                       int64_t num_readers,
-                                                       const ObjectID &reader_object_id);
+  /// \param[in] remote_reader_ref_info The remote reader reference info. There's
+  /// 1 reader reference per node.
+  Status ExperimentalRegisterMutableObjectReaderRemote(
+      const ObjectID &writer_object_id,
+      const std::vector<ray::experimental::ReaderRefInfo> &remote_reader_ref_info);
 
   /// Get a list of objects from the object store. Objects that failed to be retrieved
   /// will be returned as nullptrs.
@@ -816,6 +794,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
   /// for objects we do not own.
+  ///
+  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
+  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
+  /// that calls this function in application code can properly retry when hitting the
+  /// IOError.
   ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
@@ -1276,8 +1259,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                              rpc::SendReplyCallback send_reply_callback) override;
 
   /// Implements gRPC server handler.
-  void HandleWaitForActorOutOfScope(rpc::WaitForActorOutOfScopeRequest request,
-                                    rpc::WaitForActorOutOfScopeReply *reply,
+  void HandleWaitForActorRefDeleted(rpc::WaitForActorRefDeletedRequest request,
+                                    rpc::WaitForActorRefDeletedReply *reply,
                                     rpc::SendReplyCallback send_reply_callback) override;
 
   // Implements gRPC server handler.
@@ -1448,7 +1431,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static json OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent);
+  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
+                                           const std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1731,7 +1715,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CancelTaskOnExecutor(TaskID intended_task_id,
                             bool force_kill,
                             bool recursive,
-                            OnCanceledCallback on_canceled);
+                            const OnCanceledCallback &on_canceled);
 
   /// Cancel an actor task queued or running in the current worker.
   ///

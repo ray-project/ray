@@ -65,6 +65,7 @@ With --lr-vf=0.0005 and --lr-policy=0.001
 """
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.learners.classes.separate_vf_lr_and_optimizer_learner import (
     PPOTorchLearnerWithSeparateVfOptimizer,
 )
@@ -117,7 +118,7 @@ if __name__ == "__main__":
             # `self.config.learner_config_dict['lr_vf']`
             learner_config_dict={"lr_vf": args.lr_vf},
             # Some settings to make this example learn better.
-            num_sgd_iter=6,
+            num_epochs=6,
             # Since we are using separate optimizers for the two NN components, the
             # value of `vf_loss_coeff` does not matter anymore. We set this to 1.0 here.
             vf_loss_coeff=1.0,
@@ -125,12 +126,9 @@ if __name__ == "__main__":
             lr=args.lr_policy,
         )
         .rl_module(
-            model_config_dict={
-                # Another very important setting is this here. Make sure you use
-                # completely separate NNs for policy and value-functions.
-                "vf_share_layers": False,
-                "uses_new_env_runners": True,
-            },
+            # Another very important setting is this here. Make sure you use
+            # completely separate NNs for policy and value-functions.
+            model_config=DefaultModelConfig(vf_share_layers=False),
         )
     )
 
