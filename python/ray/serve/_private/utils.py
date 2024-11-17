@@ -12,7 +12,7 @@ from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
 from enum import Enum
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Tuple, TypeVar, Union
+from typing import Any, Callable, Dict, List, Optional, TypeVar, Union
 
 import requests
 
@@ -594,52 +594,15 @@ def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
         )
 
 
-async def resolve_request_args(
-    request_args: Tuple[Any], request_kwargs: Dict[str, Any]
-) -> Tuple[Tuple[Any], Dict[str, Any]]:
-    """Replaces top-level `DeploymentResponse` objects with resolved object refs.
+async def resolve_deployment_response(obj: Any):
+    """Resolve `DeploymentResponse` objects to underlying object references.
 
     This enables composition without explicitly calling `_to_object_ref`.
     """
     from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
 
-    new_args = [None for _ in range(len(request_args))]
-    new_kwargs = {}
-
-    arg_tasks = []
-    response_indices = []
-    for i, obj in enumerate(request_args):
-        if isinstance(obj, DeploymentResponseGenerator):
-            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
-        elif isinstance(obj, DeploymentResponse):
-            # Launch async task to convert DeploymentResponse to an object ref, and
-            # keep track of the argument index in the original `request_args`
-            response_indices.append(i)
-            arg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-        else:
-            new_args[i] = obj
-
-    kwarg_tasks = []
-    response_keys = []
-    for k, obj in request_kwargs.items():
-        if isinstance(obj, DeploymentResponseGenerator):
-            raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
-        elif isinstance(obj, DeploymentResponse):
-            # Launch async task to convert DeploymentResponse to an object ref, and
-            # keep track of the corresponding key in the original `request_kwargs`
-            response_keys.append(k)
-            kwarg_tasks.append(asyncio.create_task(obj._to_object_ref()))
-        else:
-            new_kwargs[k] = obj
-
-    # Gather `DeploymentResponse` object refs concurrently.
-    arg_obj_refs = await asyncio.gather(*arg_tasks)
-    kwarg_obj_refs = await asyncio.gather(*kwarg_tasks)
-
-    # Update new args and new kwargs with resolved object refs
-    for index, obj_ref in zip(response_indices, arg_obj_refs):
-        new_args[index] = obj_ref
-    new_kwargs.update((zip(response_keys, kwarg_obj_refs)))
-
-    # Return new args and new kwargs
-    return new_args, new_kwargs
+    if isinstance(obj, DeploymentResponseGenerator):
+        raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
+    elif isinstance(obj, DeploymentResponse):
+        # Launch async task to convert DeploymentResponse to an object ref
+        return asyncio.create_task(obj._to_object_ref())
