@@ -3,19 +3,22 @@
 import time
 from functools import wraps
 
-_RAY_DEFAULT_MAX_RETRY_COUNT = 10
-_RAY_DEFAULT_INIT_DELAY_SEC = 1
-_RAY_DEFAULT_MAX_DELAY_SEC = 30
-_RAY_DEFAULT_BACKOFF = 2
-_RAT_DEFAULT_JITTER_SEC = 1
+# Default configuration for retry.
+_DEFAULT_MAX_RETRY_COUNT = 10
+_DEFAULT_INIT_DELAY_SEC = 1
+_DEFAULT_MAX_DELAY_SEC = 30
+_DEFAULT_BACKOFF = 2
+_DEFAULT_JITTER_SEC = 1
+_DEFAULT_EXCEPTIONS = (Exception,)
 
 
 def retry(
-    max_retry_count=_RAY_DEFAULT_MAX_RETRY_COUNT,
-    init_delay_sec=_RAY_DEFAULT_INIT_DELAY_SEC,
-    max_delay_sec=_RAY_DEFAULT_MAX_DELAY_SEC,
-    backoff=_RAY_DEFAULT_BACKOFF,
-    jitter_sec=_RAT_DEFAULT_JITTER_SEC,
+    max_retry_count=_DEFAULT_MAX_RETRY_COUNT,
+    init_delay_sec=_DEFAULT_INIT_DELAY_SEC,
+    max_delay_sec=_DEFAULT_MAX_DELAY_SEC,
+    backoff=_DEFAULT_BACKOFF,
+    jitter_sec=_DEFAULT_JITTER_SEC,
+    exceptions=_DEFAULT_EXCEPTIONS,
 ):
     def wrapper(fn):
         @wraps(fn)
@@ -23,7 +26,7 @@ def retry(
             for cur_retry_count in range(max_retry_count):
                 try:
                     return fn(*args, **kwargs)
-                except Exception:
+                except exceptions:
                     if cur_retry_count + 1 == max_retry_count:
                         raise
 
