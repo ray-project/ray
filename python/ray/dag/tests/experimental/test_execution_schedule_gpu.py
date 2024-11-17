@@ -12,10 +12,7 @@ from ray.dag import InputNode, MultiOutputNode
 import torch
 from typing import Optional
 from ray.dag.compiled_dag_node import CompiledDAG
-from ray.experimental.collective.conftest import (
-    check_nccl_group_init,
-    check_nccl_group_teardown,
-)
+
 
 if sys.platform != "linux" and sys.platform != "darwin":
     pytest.skip("Skipping, requires Linux or Mac.", allow_module_level=True)

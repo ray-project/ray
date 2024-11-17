@@ -378,6 +378,8 @@ class ExecutableTask:
         # The synchronous group this task belongs to that is used for scheduling.
         # If None, the task is not part of a synchronous group.
         self.sync_group: Optional[_SynchronousGroup] = task.dag_node.sync_group
+        if self.sync_group is not None:
+            self.sync_group.task_idxs.append(task.idx)
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
@@ -960,6 +962,11 @@ class CompiledDAG:
                 raise ValueError(
                     "NCCL P2P send/recv is only supported with ClassMethodNodes"
                 )
+            elif task.dag_node.is_adag_output_node:
+                raise ValueError(
+                    "Outputs cannot be transferred via NCCL because the driver "
+                    "cannot participate in the NCCL group"
+                )
 
             send_actor_handle: "ray.actor.ActorHandle" = (
                 task.dag_node._get_actor_handle()
@@ -1158,17 +1165,12 @@ class CompiledDAG:
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     nccl_collective_ops.add(dag_node.collective_group)
-                    assert not self._overlap_gpu_communication, (
-                        "Currently, the overlap_gpu_communication option is not "
-                        "supported for NCCL collective operations. Please set "
-                        "overlap_gpu_communication=False."
-                    )
-            elif isinstance(dag_node, InputNode):
-                if dag_node.type_hint.requires_nccl():
-                    raise ValueError(
-                        "DAG inputs cannot be transferred via NCCL because "
-                        "the driver cannot participate in the NCCL group"
-                    )
+                    if self._overlap_gpu_communication:
+                        raise ValueError(
+                            "Currently, the overlap_gpu_communication option is not "
+                            "supported for NCCL collective operations. Please set "
+                            "overlap_gpu_communication=False."
+                        )
 
             if type(dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
@@ -1258,11 +1260,7 @@ class CompiledDAG:
             )
 
         nccl_actors_p2p = list(nccl_actors_p2p)
-        if None in nccl_actors_p2p:
-            raise ValueError(
-                "Outputs cannot be transferred via NCCL because the driver "
-                "cannot participate in the NCCL group"
-            )
+        assert None not in nccl_actors_p2p
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
@@ -1410,7 +1408,6 @@ class CompiledDAG:
             type_hint = task.dag_node.type_hint
             if type_hint.requires_nccl():
                 type_hint.set_nccl_group_id(self._nccl_group_id_p2p)
-                task.dag_node.set_requires_nccl_write(True)
 
             if (
                 isinstance(task.dag_node, ClassMethodNode)
@@ -1442,8 +1439,6 @@ class CompiledDAG:
                         if task not in output_to_readers:
                             output_to_readers[task] = []
                         output_to_readers[task].append(downstream_task)
-                    if task.dag_node.requires_nccl_write:
-                        downstream_node.set_requires_nccl_read(True)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
                     dag_nodes = [reader.dag_node for reader in readers]
@@ -1800,12 +1795,6 @@ class CompiledDAG:
 
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
-
-        for exec_tasks in self.actor_to_executable_tasks.values():
-            for exec_task in exec_tasks:
-                sync_group = exec_task.sync_group
-                if sync_group is not None:
-                    sync_group.task_idxs.append(exec_task.task_idx)
 
         actor_to_operation_nodes: Dict[
             "ray.actor.ActorHandle", List[_DAGOperationGraphNode]

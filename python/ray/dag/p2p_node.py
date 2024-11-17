@@ -1,4 +1,4 @@
-from typing import Any, Dict, List, Union, Tuple
+from typing import Any, Dict, List, Tuple
 
 from ray.dag import (
     DAGNode,

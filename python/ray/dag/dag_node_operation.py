@@ -1,5 +1,4 @@
 from functools import total_ordering
-from enum import Enum
 from typing import Set, Tuple, List, Dict, Optional
 import copy
 import logging

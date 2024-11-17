@@ -16,7 +16,7 @@ from ray.dag.dag_node_operation import (
     _generate_actor_to_execution_schedule,
 )
 from ray.dag.compiled_dag_node import CompiledTask
-from typing import List, Dict
+from typing import Dict
 from ray.actor import ActorHandle
 
 if sys.platform != "linux" and sys.platform != "darwin":
@@ -124,7 +124,7 @@ class TestSelectNextNodes:
         visited.add(next_nodes[0])
 
         next_nodes = _select_next_nodes(mock_actor_to_candidates, dict(), visited)
-        assert next_nodes == None
+        assert next_nodes is None
 
     def test_only_one_nccl_write(self, monkeypatch):
         """
@@ -175,7 +175,7 @@ class TestSelectNextNodes:
             visited.add(node)
 
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
-        assert next_nodes == None
+        assert next_nodes is None
 
     def test_two_nccl_writes(self, monkeypatch):
         """
@@ -269,7 +269,7 @@ class TestSelectNextNodes:
             next_nodes = _select_next_nodes(
                 mock_actor_to_candidates, mock_graph, visited
             )
-            assert next_nodes == None
+            assert next_nodes is None
 
     def test_only_one_nccl_collective(self, monkeypatch):
         """
@@ -317,7 +317,7 @@ class TestSelectNextNodes:
             visited.add(node)
 
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
-        assert next_nodes == None
+        assert next_nodes is None
 
     def test_two_nccl_collectives(self, monkeypatch):
         """
@@ -395,7 +395,7 @@ class TestSelectNextNodes:
             visited.add(node)
 
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
-        assert next_nodes == None
+        assert next_nodes is None
 
 
 class TestBuildDAGNodeOperationGraph:
