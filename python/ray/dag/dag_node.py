@@ -90,6 +90,14 @@ class DAGNode(DAGNodeBase):
 
     @property
     def sync_group(self) -> Optional[_SynchronousGroup]:
+        """
+        Return the synchronous group that this node belongs to. If this node is not
+        in any synchronous group, return None.
+
+        Some operations (e.g., synchronous NCCL operations) in the DAG are synchronous.
+        During DAG compilation, when scheduling synchronous operations, all nodes in
+        the same synchronous group must be ready.
+        """
         return None
 
     @property

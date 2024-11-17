@@ -899,119 +899,11 @@ class CompiledDAG:
         return f"CompiledDAG({self._dag_id})"
 
     def _add_node(self, node: "ray.dag.DAGNode") -> None:
-    # def _map_node(self, node: "ray.dag.DAGNode") -> None:
         idx = self.counter
         self.idx_to_task[idx] = CompiledTask(idx, node)
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    # # b.bind(inp, a.bind(inp).with_type_hint(...))
-    # def _add_node(self, node: "ray.dag.DAGNode") -> None:
-    #     from ray.dag import (
-    #         DAGNode,
-    #         InputNode,
-    #         MultiOutputNode,
-    #         ClassMethodNode,
-    #     )
-    #     from ray.dag.p2p_node import (
-    #         _P2PGroup,
-    #         _NcclRecvNode,
-    #         _NcclSendNode,
-    #     )
-    #     from ray.dag.constants import (
-    #         PARENT_CLASS_NODE_KEY,
-    #         P2P_GROUP_KEY,
-    #         BIND_INDEX_KEY,
-    #         NO_CONTROL_EDGE_BIND_INDEX_VALUE,
-    #     )
-    #     from ray.experimental.channel import ChannelOutputType
-
-    #     def get_send_node(arg: Any) -> Optional[_NcclSendNode]:
-    #         if not isinstance(arg, DAGNode):
-    #             return None
-    #         send_idx = self.dag_node_to_idx[arg] + 1
-    #         if send_idx not in self.idx_to_task:
-    #             return None
-    #         send_node = self.idx_to_task[send_idx].dag_node
-    #         if isinstance(send_node, _NcclSendNode):
-    #             return send_node
-    #         else:
-    #             return None
-
-    #     if isinstance(node, _NcclSendNode) or isinstance(node, _NcclRecvNode):
-    #         raise ValueError(
-    #             "Please use type hints to specify NCCL transport instead of "
-    #             "adding NcclSendNode or NcclRecvNode to the DAG"
-    #         )
-
-    #     idx_to_recv_node: Dict[int, _NcclRecvNode] = dict()
-    #     for arg_idx, arg in enumerate(node._bound_args):
-    #         send_node = get_send_node(arg)
-    #         if send_node is None:
-    #             continue
-
-    #         if isinstance(node, MultiOutputNode):
-    #             raise ValueError(
-    #                 "Outputs cannot be transferred via NCCL because the driver "
-    #                 "cannot participate in the NCCL group"
-    #             )
-    #         elif not isinstance(node, ClassMethodNode):
-    #             raise ValueError(
-    #                 "NCCL P2P send/recv is only supported with ClassMethodNodes"
-    #             )
-
-    #         recv_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
-    #         assert recv_actor_handle is not None, "Expected an actor handle"
-    #         recv_node = _NcclRecvNode(
-    #             method_args=(send_node,),
-    #             other_args_to_resolve={
-    #                 PARENT_CLASS_NODE_KEY: recv_actor_handle,
-    #                 P2P_GROUP_KEY: send_node.sync_group,
-    #                 # [TODO:andyub] What should the bind index be here?
-    #                 BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
-    #             },
-    #         )
-    #         idx_to_recv_node[arg_idx] = recv_node
-
-    #     if idx_to_recv_node:
-    #         new_args: List[Any] = list(node._bound_args)
-    #         for arg_idx, recv_node in idx_to_recv_node.items():
-    #             new_args[arg_idx] = recv_node
-    #             self._map_node(recv_node)
-    #         node._bound_args = tuple(new_args)
-
-    #     self._map_node(node)
-
-    #     if node.type_hint.requires_nccl():
-    #         if isinstance(node, InputNode):
-    #             raise ValueError(
-    #                 "DAG inputs cannot be transferred via NCCL because "
-    #                 "the driver cannot participate in the NCCL group"
-    #             )
-    #         elif not isinstance(node, ClassMethodNode):
-    #             raise ValueError(
-    #                 "NCCL P2P send/recv is only supported with ClassMethodNodes"
-    #             )
-
-    #         send_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
-    #         assert send_actor_handle is not None, "Expected an actor handle"
-    #         send_node = _NcclSendNode(
-    #             method_args=(node,),
-    #             other_args_to_resolve={
-    #                 PARENT_CLASS_NODE_KEY: send_actor_handle,
-    #                 P2P_GROUP_KEY: _P2PGroup(),
-    #                 # [TODO:andyub] What should the bind index be here?
-    #                 BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
-    #             },
-    #         )
-    #         type_hint = node.type_hint
-    #         node.with_type_hint(ChannelOutputType())
-    #         send_node.with_type_hint(type_hint)
-    #         if node.is_adag_output_node:
-    #             node.is_adag_output_node = False
-    #             send_node.is_adag_output_node = True
-
-    #         self._map_node(send_node)
 
     def _add_nccl_p2p_nodes(self) -> None:
         """
@@ -1025,6 +917,7 @@ class CompiledDAG:
         )
         from ray.dag.p2p_node import (
             _P2PGroup,
+            _NcclP2PNode,
             _NcclRecvNode,
             _NcclSendNode,
         )
@@ -1041,9 +934,7 @@ class CompiledDAG:
 
         # Gather NCCL P2P send nodes.
         for _, task in self.idx_to_task.items():
-            if isinstance(task.dag_node, _NcclSendNode) or isinstance(
-                task.dag_node, _NcclRecvNode
-            ):
+            if isinstance(task.dag_node, _NcclP2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
                     "adding NCCLSendNode or NCCLRecvNode to the DAG"

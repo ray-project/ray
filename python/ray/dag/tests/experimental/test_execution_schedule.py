@@ -111,9 +111,20 @@ class TestSelectNextNodes:
                 dag_node_2,
             ],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, None)
+        visited = set()
+        # The graph is not accessed because there are no synchronous groups.
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict(), visited)
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_1
+        visited.add(next_nodes[0])
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict(), visited)
+        assert len(next_nodes) == 1
+        assert next_nodes[0] == dag_node_2
+        visited.add(next_nodes[0])
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, dict(), visited)
+        assert next_nodes == None
 
     def test_only_one_nccl_write(self, monkeypatch):
         """
@@ -151,13 +162,20 @@ class TestSelectNextNodes:
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[task_idx_1]],
+            fake_actor_2: [mock_graph[task_idx_2]],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        visited = set()
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
         assert len(next_nodes) == 2
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
         }
+        for node in next_nodes:
+            visited.add(node)
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
+        assert next_nodes == None
 
     def test_two_nccl_writes(self, monkeypatch):
         """
@@ -221,16 +239,37 @@ class TestSelectNextNodes:
             }
 
             mock_actor_to_candidates = {
-                fake_actor_1: [mock_graph[task_idx_1_0]],
-                fake_actor_2: [mock_graph[task_idx_2_0]],
+                fake_actor_1: [mock_graph[task_idx_1_0], mock_graph[task_idx_1_1]],
+                fake_actor_2: [mock_graph[task_idx_2_0], mock_graph[task_idx_2_1]],
             }
 
-            next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+            visited = set()
+            next_nodes = _select_next_nodes(
+                mock_actor_to_candidates, mock_graph, visited
+            )
             assert len(next_nodes) == 2
             assert set(next_nodes) == {
                 mock_graph[task_idx_1_0],
                 mock_graph[task_idx_2_1],
             }
+            for node in next_nodes:
+                visited.add(node)
+
+            next_nodes = _select_next_nodes(
+                mock_actor_to_candidates, mock_graph, visited
+            )
+            assert len(next_nodes) == 2
+            assert set(next_nodes) == {
+                mock_graph[task_idx_2_0],
+                mock_graph[task_idx_1_1],
+            }
+            for node in next_nodes:
+                visited.add(node)
+
+            next_nodes = _select_next_nodes(
+                mock_actor_to_candidates, mock_graph, visited
+            )
+            assert next_nodes == None
 
     def test_only_one_nccl_collective(self, monkeypatch):
         """
@@ -266,18 +305,25 @@ class TestSelectNextNodes:
 
         mock_actor_to_candidates = {
             fake_actor_1: [mock_graph[task_idx_1]],
+            fake_actor_2: [mock_graph[task_idx_2]],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        visited = set()
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
         }
+        for node in next_nodes:
+            visited.add(node)
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
+        assert next_nodes == None
 
     def test_two_nccl_collectives(self, monkeypatch):
         """
         Simulate the case where there are two candidates that are NCCL collective
         operations. In this case, `_select_next_nodes` should return all the NCCL
-        collective nodes that are bond earlier.
+        collective nodes that are bound earlier.
 
         driver -> fake_actor_1.allreduce_1 -> driver
                |                            |
@@ -324,21 +370,32 @@ class TestSelectNextNodes:
                 requires_nccl_collective=True,
             ),
         }
-
         mock_actor_to_candidates = {
+            fake_actor_1: [mock_graph[task_idx_1]],
             fake_actor_2: [mock_graph[task_idx_2]],
+            fake_actor_3: [mock_graph[task_idx_3]],
             fake_actor_4: [mock_graph[task_idx_4]],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+
+        visited = set()
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
         assert set(next_nodes) == {
             mock_graph[task_idx_1],
             mock_graph[task_idx_2],
         }
-        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
+        for node in next_nodes:
+            visited.add(node)
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
         assert set(next_nodes) == {
             mock_graph[task_idx_3],
             mock_graph[task_idx_4],
         }
+        for node in next_nodes:
+            visited.add(node)
+
+        next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph, visited)
+        assert next_nodes == None
 
 
 class TestBuildDAGNodeOperationGraph:
@@ -969,6 +1026,66 @@ class TestGenerateActorToExecutionSchedule:
             graph[task_idx_2_6].op,
             graph[task_idx_2_7].op,
             graph[task_idx_2_8].op,
+        ]
+
+    def test_two_nccl_collectives(self, monkeypatch):
+        """
+        Simulate the case where there are two NCCL collective operations, one after
+        the another.
+
+        driver -> fake_actor_1.allreduce_1 -> fake_actor_1.allreduce_2 -> driver
+               |                            |                           |
+               -> fake_actor_2.allreduce_1 -> fake_actor_2.allreduce_2 ->
+        """
+        monkeypatch.setattr(ActorHandle, "__init__", mock_actor_handle_init)
+
+        fake_actor_1 = ActorHandle("fake_actor_1")
+        task_idx_1, exec_task_idx_1 = 1, 0
+        task_idx_3, exec_task_idx_3 = 3, 1
+        fake_actor_2 = ActorHandle("fake_actor_2")
+        task_idx_2, exec_task_idx_2 = 2, 0
+        task_idx_4, exec_task_idx_4 = 4, 1
+
+        graph = {
+            task_idx_1: generate_dag_graph_nodes(
+                exec_task_idx_1,
+                task_idx_1,
+                fake_actor_1,
+                [task_idx_1, task_idx_2],
+                requires_nccl_collective=True,
+            ),
+            task_idx_2: generate_dag_graph_nodes(
+                exec_task_idx_2,
+                task_idx_2,
+                fake_actor_2,
+                [task_idx_1, task_idx_2],
+                requires_nccl_collective=True,
+            ),
+            task_idx_3: generate_dag_graph_nodes(
+                exec_task_idx_3,
+                task_idx_3,
+                fake_actor_1,
+                [task_idx_3, task_idx_4],
+                requires_nccl_collective=True,
+            ),
+            task_idx_4: generate_dag_graph_nodes(
+                exec_task_idx_4,
+                task_idx_4,
+                fake_actor_2,
+                [task_idx_3, task_idx_4],
+                requires_nccl_collective=True,
+            ),
+        }
+
+        actor_to_execution_schedule = _generate_and_extract_execution_schedule(graph)
+        assert len(actor_to_execution_schedule) == 2
+        assert actor_to_execution_schedule[fake_actor_1] == [
+            graph[task_idx_1].op,
+            graph[task_idx_3].op,
+        ]
+        assert actor_to_execution_schedule[fake_actor_2] == [
+            graph[task_idx_2].op,
+            graph[task_idx_4].op,
         ]
 
 

@@ -13,5 +13,10 @@ class _SynchronousGroup(ABC):
         self.task_idxs: List[int] = []
 
     @abstractmethod
-    def execute(self) -> None:
+    def execute(self, *args, **kwargs) -> None:
+        """
+        Execute the synchronous operation.
+
+        This method is used in `ExecutableTask._compute`.
+        """
         raise NotImplementedError

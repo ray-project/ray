@@ -23,7 +23,6 @@ class _DAGNodeOperation:
                 in the actor's ExecutableTask list. The index is not the same
                 as bind_index because there may be more tasks bound to an actor
                 than tasks that appear in the current compiled DAG.
-            operation_type: The type of operation to perform.
             method_name: The name of the method that this operation originates
                 from. This is only for visualization and debugging purposes.
         """
@@ -56,6 +55,7 @@ class _DAGOperationGraphNode:
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         sync_task_idxs: List[int],
+        # [TODO:andyub] only 1 requires_nccl?
         requires_nccl_read: bool = False,
         requires_nccl_write: bool = False,
         requires_nccl_collective: bool = False,
@@ -65,10 +65,8 @@ class _DAGOperationGraphNode:
         It contains information about the node's in-degree, out-degree, edges,
         and the operation it performs.
 
-        [CL]
         Args:
-            operation: The operation that this node performs. The operation
-                can be a READ, COMPUTE, or WRITE operation.
+            operation: The operation that this node performs.
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
@@ -85,15 +83,16 @@ class _DAGOperationGraphNode:
         self.requires_nccl_read = requires_nccl_read
         self.requires_nccl_write = requires_nccl_write
         self.requires_nccl_collective = requires_nccl_collective
-        # The in_edges and out_edges are dicts of tuples to strings.
-        # Each tuple (the key) contains an integer `task_idx`, which can be
-        # used to index into `idx_to_task` to get the corresponding task,
-        # and a `_DAGNodeOperationType`, which can be READ, COMPUTE, or WRITE.
+        # The in_edges and out_edges are dicts of ints to strings.
+        # Each int (the key) is an integer `task_idx`, which can be
+        # used to index into `idx_to_task` to get the corresponding task.
         # The string (the value) is the visualization information of the edge,
         # it is a tuple of a label of the edge and a boolean indicating whether
         # the edge is a control dependency.
         self.in_edges: Dict[int, Tuple[str, bool]] = {}
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
+        # Indices of tasks that run synchronously with the task represented
+        # by this node.
         self.sync_task_idxs: List[int] = sync_task_idxs
 
     def __repr__(self):
@@ -158,9 +157,9 @@ class _DAGOperationGraphNode:
 
     def is_ready(self, graph: Dict[int, "_DAGOperationGraphNode"]) -> bool:
         """
-        If a node is not a NCCL collective, it is ready when it has a zero
-        in-degree. If it is a NCCL collective, it is ready when all the nodes
-        in its collective operation have zero in-degrees.
+        If this node is not part of a synchronous group of tasks, it is ready
+        when it has a zero in-degree. If it is part of a synchronous group, it
+        is ready when all nodes in the group have zero in-degrees.
         """
         return self.in_degree == 0 and all(
             graph[idx].in_degree == 0 for idx in self.sync_task_idxs
@@ -199,6 +198,7 @@ def _add_edge(
         to_node: The node to which the edge points.
         label: The label of the edge. This will be used to annotate the edge
             in the visualization of the execution schedule.
+        control_dependency: Whether the edge represents a control dependency.
     """
     from_node.out_edges[to_node.task_idx] = (
         label,
@@ -215,8 +215,6 @@ def _push_candidate_node_if_ready(
     graph: Dict[int, _DAGOperationGraphNode],
     node: _DAGOperationGraphNode,
 ) -> None:
-    # Collective operations are ready when all the collective nodes have zero
-    # in-degrees. Only one node per collective will be added as ready.
     if node.is_ready(graph):
         heapq.heappush(
             actor_to_candidates[node.actor_handle._actor_id],
@@ -227,6 +225,7 @@ def _push_candidate_node_if_ready(
 def _select_next_nodes(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, _DAGOperationGraphNode],
+    visited: Set[_DAGOperationGraphNode],
 ) -> Optional[List[_DAGOperationGraphNode]]:
     """
     This function selects the next nodes for the topological sort to generate
@@ -236,35 +235,28 @@ def _select_next_nodes(
 
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
-    When a node has a zero in-degree, it is added to the corresponding actor's
-    priority queue. For a node other than a NCCL collective node, it is ready to be
-    executed if it has a zero in-degree. For a NCCL collective node, it is ready to
-    be executed when all the nodes in its collective operation have zero in-degrees.
-
-    If a node is a NCCL collective node, it updates the `ready_collective_nodes` of
-    all the nodes in its collective operation. Unless all the nodes in its collective
-    group have zero in-degrees, this node is removed from the candidate list.
-    Eventually, exactly one NCCL collective node from its collective operation is
-    selected from the candidate list.
-
-    If the selected node is a NCCL write node, select all the downstream NCCL
-    read nodes. If the selected node is a NCCL collective node, select all the NCCL
-    compute nodes in its collective operation.
+    When a node is ready, it is added to the corresponding actor's priority queue.
+    For a node that is not a member of a synchronous group, it is ready to be executed
+    if it has a zero in-degree. For a node that is part of a synchronous group, it is
+    ready to be executed when all the nodes in the group have zero in-degrees.
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
             candidate nodes. The list is maintained as a priority queue, so
-            the head of the queue, i.e., `candidates[0]`, is the node with
-            the smallest `bind_index`.
+            the head of the queue, i.e., `candidates[0]`, is the "smallest" node.
         graph: A dictionary mapping the index of a task to a dictionary of its
             _DAGOperationGraphNodes for different operations.
+        visited: A set of _DAGOperationGraphNodes that have already been added to the
+            execution schedule.
 
     Returns:
         A list of _DAGOperationGraphNodes to be placed into the corresponding
         execution schedules.
     """
     top_priority_node = None
-    for _, candidates in actor_to_candidates.items():
+    for candidates in actor_to_candidates.values():
+        while candidates and candidates[0] in visited:
+            heapq.heappop(candidates)
         if len(candidates) == 0:
             continue
         if top_priority_node is None or candidates[0] < top_priority_node:
@@ -276,17 +268,10 @@ def _select_next_nodes(
         heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     }
 
-    if not top_priority_node.requires_nccl_op:
-        # A non-NCCL operation node is picked.
-        assert len(next_nodes) == 1
-    else:
-        for peer_idx in top_priority_node.sync_task_idxs:
-            peer_node = graph[peer_idx]
-            assert peer_node.is_ready(graph)
-            next_nodes.add(peer_node)
-        assert len(next_nodes) == len(
-            set(top_priority_node.sync_task_idxs + [top_priority_node.task_idx])
-        )
+    for peer_idx in top_priority_node.sync_task_idxs:
+        peer_node = graph[peer_idx]
+        assert peer_node.is_ready(graph)
+        next_nodes.add(peer_node)
 
     return list(next_nodes)
 
@@ -301,11 +286,9 @@ def _build_dag_node_operation_graph(
     Generate a DAG node operation graph by adding edges based on the
     following rules:
 
-    #1  Add edges from READ to COMPUTE, and from COMPUTE to WRITE, which
-        belong to the same task.
-    #2  Add an edge from COMPUTE with bind_index i to COMPUTE with bind_index
+    #1  Add a control edge from task with bind_index i to task with bind_index
         i+1 if they belong to the same actor.
-    #3  Add an edge from WRITE of the writer task to READ of the reader task.
+    #2  Add data edges from a task to its downstream tasks.
 
     This is the step one of building an execution schedule for each actor.
 
@@ -315,16 +298,14 @@ def _build_dag_node_operation_graph(
             nodes.
 
         actor_to_operation_nodes: A dictionary that maps an actor handle to
-            a list of lists of _DAGOperationGraphNode. For the same actor, the
-            index of the outer list corresponds to the index of the ExecutableTask
-            in the list of `executable_tasks` in `actor_to_executable_tasks`. In
-            the inner list, the order of operations is READ, COMPUTE, and WRITE.
+            a list of _DAGOperationGraphNodes. For the same actor, the index
+            in the list corresponds to the index of the ExecutableTask
+            in the list of `executable_tasks` in `actor_to_executable_tasks`.
 
     Returns:
         A graph where each node is a _DAGOperationGraphNode. The key is `task_idx`,
-        the index to retrieve its task from `idx_to_task`, and the value is a
-        dictionary that maps the _DAGNodeOperationType (READ, COMPUTE, or WRITE)
-        to the corresponding _DAGOperationGraphNode
+        the index to retrieve its task from `idx_to_task`, and the value is the
+        corresponding _DAGOperationGraphNode
     """
     # Import `ray.dag` here to avoid circular import.
     from ray.dag import ClassMethodNode, MultiOutputNode
@@ -335,17 +316,18 @@ def _build_dag_node_operation_graph(
     for operation_nodes in actor_to_operation_nodes.values():
         prev_node = None
         for node in operation_nodes:
-            # Add an edge from COMPUTE with `bind_index` i to COMPUTE with
+            # Add an edge from task with `bind_index` i to task with
             # `bind_index` i+1 if they belong to the same actor.
             if (
                 not node.requires_nccl_read and not node.requires_nccl_write
             ) and prev_node is not None:
-                _add_edge(prev_node, node, "", True)
+                _add_edge(prev_node, node, control_dependency=True)
                 prev_node = node
             task_idx = node.task_idx
             assert task_idx not in graph
             graph[task_idx] = node
-    # Add an edge from a task to its downstream tasks.
+
+    # Add edges from a task to its downstream tasks.
     for task_idx, task in idx_to_task.items():
         if not (isinstance(task.dag_node, ClassMethodNode)):
             # The graph is used to generate an execution schedule for each actor.
@@ -374,7 +356,6 @@ def _build_dag_node_operation_graph(
             if graph[task_idx].requires_nccl_write:
                 assert graph[downstream_task_idx].requires_nccl_read
             else:
-                # Add an edge from COMPUTE to COMPUTE.
                 _add_edge(
                     graph[task_idx],
                     graph[downstream_task_idx],
@@ -546,8 +527,7 @@ def _generate_actor_to_execution_schedule(
     Args:
         graph: A graph where each node is a _DAGOperationGraphNode. The key is
             `task_idx`, the index to retrieve its task from `idx_to_task`, and
-            the value is a dictionary that maps the _DAGNodeOperationType (READ,
-            COMPUTE, or WRITE) to the corresponding _DAGOperationGraphNode. It is
+            the value is the corresponding _DAGOperationGraphNode. It is
             generated by `_build_dag_node_operation_graph`.
 
     Returns:
@@ -564,35 +544,28 @@ def _generate_actor_to_execution_schedule(
 
     # A dictionary mapping an actor id to a list of candidate nodes. The list
     # is maintained as a priority queue, so the head of the queue, i.e.,
-    # `candidates[0]`, is the node with the smallest `bind_index`.
-    actor_to_candidates: Dict[
-        "ray._raylet.ActorID", List[_DAGOperationGraphNode]
-    ] = defaultdict(list)
+    # `candidates[0]`, is the "smallest" node.
+    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]] = (
+        defaultdict(list)
+    )
     for node in graph.values():
-        # A node with a zero in-degree edge means all of its dependencies
-        # have been satisfied, including both data and control dependencies.
-        # Therefore, it is a candidate for execution.
-        if node.in_degree == 0:
-            _push_candidate_node_if_ready(actor_to_candidates, graph, node)
+        _push_candidate_node_if_ready(actor_to_candidates, graph, node)
 
     visited_nodes: Set[_DAGOperationGraphNode] = set()
 
     # Use topological sort algorithm to generate the execution schedule.
     while True:
-        # Select a list of nodes to be executed. There are three cases:
-        # 1. If a selected node is not a NCCL operation, only itself is returned.
-        # 2. If a selected node is a NCCL write operation, the corresponding NCCL
-        #    read operations are also returned.
-        # 3. If a selected node is a NCCL collective operation, all the nodes in
-        #    its collective operation are returned.
-        # In cases 1 and 3, all the selected nodes are ready. In case 2, the NCCL
-        # write node is ready, while the NCCL read nodes are not ready until their
-        # in-degrees are updated.
-        nodes = _select_next_nodes(actor_to_candidates, graph)
+        # Select a list of nodes to be executed. There are two cases:
+        # 1. If a selected node is not in a synchronous group, only itself is returned.
+        # 2. If a selected node is part of a synchronous group, all nodes in the group
+        #    are returned.
+        nodes = _select_next_nodes(actor_to_candidates, graph, visited_nodes)
+        print(
+            f"selected next nodes: {[node.task_idx for node in nodes] if nodes else None}"
+        )
         if nodes is None:
             break
-        # Filter out the visited nodes.
-        nodes = [node for node in nodes if node not in visited_nodes]
+        assert all(node not in visited_nodes for node in nodes)
         # Add the selected nodes to the execution schedule.
         for node in nodes:
             actor_to_execution_schedule[node.actor_handle].append(node)
@@ -602,11 +575,7 @@ def _generate_actor_to_execution_schedule(
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
                 out_node.in_edges.pop(node.task_idx)
-                if out_node.in_degree == 0 and out_node not in visited_nodes:
-                    # If the downstream node is already visited, it has been added
-                    # to the execution schedule. They are the NCCL read nodes in
-                    # case 2.
-                    _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
+                _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
     num_nodes = len(graph)
     assert len(visited_nodes) == num_nodes, "Expected all nodes to be visited"
     for node in visited_nodes:
@@ -636,7 +605,7 @@ def _generate_overlapped_execution_schedule(
     Args:
         actor_to_execution_schedule: A dictionary that maps an actor handle to
             the existing execution schedule for the actor. The schedule is a list
-            is a list of operations to be executed.
+            of operations to be executed.
 
     Returns:
         A dictionary that maps an actor handle to the overlapped execution schedule

@@ -17,8 +17,18 @@ class _P2PGroup(_SynchronousGroup):
     def __init__(self):
         super().__init__()
 
-    def execute(self, arg):
-        return arg
+    def execute(self, data):
+        """
+        Execute the NCCL P2P operation.
+
+        This method is an identity function.
+
+        Args:
+            data: The data involved in the P2P operation. If the operation is a
+                NCCL send, this is the data to send. If the operation is a NCCL
+                recv, this is the data received.
+        """
+        return data
 
 
 class _NcclP2PNode(ClassMethodNode):
@@ -40,7 +50,7 @@ class _NcclP2PNode(ClassMethodNode):
             other_args_to_resolve,
         )
 
-        # Parse the P2P operation.
+        # Parse the P2P group.
         self._p2p_group: _P2PGroup = other_args_to_resolve.get(P2P_GROUP_KEY, None)
         if self._p2p_group is None:
             raise ValueError("Expected a P2P group")
