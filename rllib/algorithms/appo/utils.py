@@ -23,19 +23,22 @@ class CircularBuffer:
         self._lock = threading.Lock()
 
     def add(self, batch):
+        dropped_entry = None
         dropped_ts = 0
 
         # Add buffer and k=0 information to the deque.
         with self._lock:
             len_ = len(self._buffer)
             if len_ == self.num_batches:
-                dropped_batch = self._buffer[0][0]
-                if dropped_batch is not None:
-                    dropped_ts += (
-                        dropped_batch.env_steps()
-                        * (self.iterations_per_batch - self._buffer[0][1])
-                    )
+                dropped_entry = self._buffer[0]
             self._buffer.append([batch, 0])
+
+        # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
+        if dropped_entry is not None and dropped_entry[0] is not None:
+            dropped_ts += (
+                    dropped_entry[0].env_steps()
+                    * (self.iterations_per_batch - dropped_entry[1])
+            )
 
         return dropped_ts
 
@@ -60,7 +63,7 @@ class CircularBuffer:
         entry[1] += 1
 
         # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
-        if k == self.iterations_per_batch:
+        if k == self.iterations_per_batch - 1:
             entry[0] = None
             entry[1] = None
 

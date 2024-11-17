@@ -187,17 +187,17 @@ class IMPALALearner(Learner):
                         self.metrics,
                     )
 
-        # Return all queued result dicts thus far (after reducing over them).
-        results = {}
-        ts_trained = 0
+        # Empty out the queue (which contains one `True` for each successful update
+        # call).
         try:
             while True:
-                results = self._learner_thread_out_queue.get(block=False)
-                ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
+                self._learner_thread_out_queue.get(block=False)
         except queue.Empty:
-            if ts_trained:
-                results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
-            return results
+            # We have to deepcopy the results dict, b/c we must avoid having a returned
+            # Stats object sit in the queue and getting a new (possibly even tensor)
+            # value added to it, which would falsify this result.
+            with self.metrics._tensor_mode_lock:
+                return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -313,8 +313,8 @@ class _LearnerThread(threading.Thread):
                     return
                 # Consume from the left (oldest batches first).
                 # If we consumed from the right, we would run into the danger of learning
-                # from newer batches (left side) most times, BUT sometimes grabbing a
-                # really old batches (right area of deque).
+                # from newer batches (left side) most times, BUT sometimes grabbing
+                # older batches (right area of deque).
                 ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.
@@ -323,7 +323,7 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            results = self._update_method(
+            self._update_method(
                 batch=ma_batch_on_gpu,
                 timesteps={
                     NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
@@ -331,10 +331,8 @@ class _LearnerThread(threading.Thread):
                     )
                 },
             )
-            # We have to deepcopy the results dict, b/c we must avoid having a returned
-            # Stats object sit in the queue and getting a new (possibly even tensor)
-            # value added to it, which would falsify this result.
-            self._out_queue.put(copy.deepcopy(results))
+            # Signal to the out queue, that (some) results are ready.
+            self._out_queue.put(True)
 
             self.metrics.log_value(
                 (ALL_MODULES, QUEUE_SIZE_RESULTS_QUEUE),

@@ -1,4 +1,5 @@
 import logging
+import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
@@ -107,6 +108,7 @@ class MetricsLogger:
         """Initializes a MetricsLogger instance."""
         self.stats = {}
         self._tensor_mode = False
+        self._tensor_mode_lock = threading.Lock()
         self._tensor_keys = set()
 
         ## Experimental throughput ([some count] per second) logging.
@@ -939,6 +941,7 @@ class MetricsLogger:
         them TODO (sven) continue docstring
 
         """
+        self._tensor_mode_lock.acquire()
         assert not self.tensor_mode
         self._tensor_mode = True
 
@@ -947,10 +950,14 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        ret = {key: self._get_key(key).peek() for key in self._tensor_keys}
+        logged_tensors = {
+            key: self._get_key(key).peek()
+            for key in self._tensor_keys
+        }
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
-        return ret
+        self._tensor_mode_lock.release()
+        return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""

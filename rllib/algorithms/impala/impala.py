@@ -911,7 +911,6 @@ class IMPALA(Algorithm):
                 train_throughput,
                 window=1,
             )
-            print(train_throughput)
             self.metrics.log_value(
                 "_measured_last_train_throughput",
                 self._last_train_throughput,
