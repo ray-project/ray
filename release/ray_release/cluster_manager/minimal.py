@@ -9,7 +9,7 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.util import format_link, anyscale_cluster_env_build_url
-from ray.util import retry
+from ray_release import retry
 
 REPORT_S = 30.0
 

@@ -1,4 +1,4 @@
-from ray.util import retry
+from ray_release import retry
 
 import sys
 import pytest
