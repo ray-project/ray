@@ -6,3 +6,8 @@ doctest(
     files = glob(["*.py"], exclude=["client_connect.py", "iter.py", "iter_metrics.py"]),
     tags = ["team:core"]
 )
+
+py_library(
+    name = "retry",
+    srcs = ["retry.py"],
+)

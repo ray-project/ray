@@ -20,7 +20,7 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    @retry(init_delay_sec=10, jitter_sec=5, max_retry_count=2)
+    @retry.retry(init_delay_sec=10, jitter_sec=5, max_retry_count=2)
     def create_cluster_env(self):
         assert self.cluster_env_id is None
 

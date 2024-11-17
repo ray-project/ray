@@ -26,12 +26,12 @@ def retry(
                 except Exception:
                     if cur_retry_count + 1 == max_retry_count:
                         raise
-                    else:
-                        sleep_sec = min(
-                            init_delay_sec * (backoff**cur_retry_count) + jitter_sec,
-                            max_delay_sec,
-                        )
-                        time.sleep(sleep_sec)
+
+                    sleep_sec = min(
+                        init_delay_sec * (backoff**cur_retry_count) + jitter_sec,
+                        max_delay_sec,
+                    )
+                    time.sleep(sleep_sec)
 
         return wrapped
 
