@@ -7,12 +7,15 @@ from ray.rllib.utils.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
+
+@DeveloperAPI
 def is_package_installed(package_name):
     try:
         importlib.metadata.version(package_name)
         return True
     except importlib.metadata.PackageNotFoundError:
         return False
+
 
 try:
     import cv2
