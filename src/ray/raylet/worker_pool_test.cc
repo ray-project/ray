@@ -242,7 +242,7 @@ class WorkerPoolMock : public WorkerPool {
 
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
 
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> &GetIdleWorkers() {
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, absl::Time>> &GetIdleWorkers() {
     return idle_of_all_languages_;
   }
 
@@ -2140,8 +2140,6 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
 }
 
 }  // namespace ray::raylet
-
-}  // namespace
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(
