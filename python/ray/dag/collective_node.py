@@ -8,7 +8,8 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import COLLECTIVE_OPERATION_KEY
+from ray.dag.constants import COLLECTIVE_GROUP_KEY
+from ray.dag.sync_group import _SynchronousGroup
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
@@ -16,9 +17,9 @@ from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 
-class _CollectiveOperation:
+class _CollectiveGroup(_SynchronousGroup):
     """
-    Represent metadata for a NCCL collective operation.
+    Represent metadata for a group of actors in a NCCL collective operation.
 
     Args:
         input_nodes: A list of input nodes to the collective operation.
@@ -37,6 +38,8 @@ class _CollectiveOperation:
         op: _CollectiveOp,
         transport: Optional[Union[str, GPUCommunicator]] = None,
     ):
+        super().__init__()
+
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
         if len(set(input_nodes)) != len(input_nodes):
@@ -88,13 +91,6 @@ class _CollectiveOperation:
     @property
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
-
-    def _add_output_node(self, output_node: "CollectiveOutputNode"):
-        self._output_nodes.append(output_node)
-
-    @property
-    def output_nodes(self) -> List["CollectiveOutputNode"]:
-        return self._output_nodes
 
     def init_nccl_group(self, nccl_group_id: Optional[str] = None) -> str:
         """
@@ -167,12 +163,11 @@ class CollectiveOutputNode(ClassMethodNode):
             raise ValueError("Expected a single input node")
         self._input_node = method_args[0]
         # Parse the collective operation.
-        self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
-            COLLECTIVE_OPERATION_KEY, None
+        self._collective_group: _CollectiveGroup = other_args_to_resolve.get(
+            COLLECTIVE_GROUP_KEY, None
         )
-        if self._collective_op is None:
-            raise ValueError("Expected a collective operation")
-        self.collective_op._add_output_node(self)
+        if self._collective_group is None:
+            raise ValueError("Expected a collective group")
         self.set_requires_nccl_collective(True)
 
     def _copy_impl(
@@ -196,9 +191,9 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_op(self) -> _CollectiveOperation:
-        return self._collective_op
+    def collective_group(self) -> _CollectiveGroup:
+        return self._collective_group
 
     @property
-    def synchronous_peers(self) -> List["CollectiveOutputNode"]:
-        return self._collective_op.output_nodes
+    def sync_group(self) -> _CollectiveGroup:
+        return self._collective_group

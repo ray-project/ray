@@ -8,10 +8,10 @@ NO_CONTROL_EDGE_BIND_INDEX_VALUE = -1
 IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
 # Reserved keys used to handle NCCL P2P send/recv nodes in Ray DAG building.
-P2P_OPERATION_KEY = "p2p_operation"
+P2P_GROUP_KEY = "p2p_group"
 
 # Reserved keys used to handle CollectiveOutputNode in Ray DAG building.
-COLLECTIVE_OPERATION_KEY = "collective_operation"
+COLLECTIVE_GROUP_KEY = "collective_operation"
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
 DAGNODE_TYPE_KEY = "__dag_node_type__"

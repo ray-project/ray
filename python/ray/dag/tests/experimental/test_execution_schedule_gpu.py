@@ -9,7 +9,6 @@ import ray.cluster_utils
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 from ray.dag import InputNode, MultiOutputNode
-from ray.dag.dag_node_operation import _DAGNodeOperationType
 import torch
 from typing import Optional
 from ray.dag.compiled_dag_node import CompiledDAG

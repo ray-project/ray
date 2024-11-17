@@ -2207,7 +2207,6 @@ def test_event_profiling(ray_start_regular, monkeypatch):
         assert event.actor_classname == "Actor"
         assert event.actor_name in ["a", "b"]
         assert event.method_name == "inc"
-        assert event.operation in ["READ", "COMPUTE", "WRITE"]
 
 
 @ray.remote

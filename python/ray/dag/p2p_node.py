@@ -4,33 +4,24 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import P2P_OPERATION_KEY
+from ray.dag.sync_group import _SynchronousGroup
+from ray.dag.constants import P2P_GROUP_KEY
 from ray.util.annotations import DeveloperAPI
 
 
-class _P2POperation:
+class _P2PGroup(_SynchronousGroup):
     """
-    Represent metadata for a NCCL P2P operation.
+    Represent a group of actors in a NCCL P2P operation.
     """
 
     def __init__(self):
-        self._send_node: "_NCCLSendNode" = None
-        self._recv_nodes: List["_NCCLRecvNode"] = []
+        super().__init__()
 
-    def set_send_node(self, send_node: "_NCCLSendNode"):
-        if self._send_node is not None:
-            raise ValueError("Expected a single send node")
-        self._send_node = send_node
-
-    def add_recv_node(self, recv_node: "_NCCLRecvNode"):
-        self._recv_nodes.append(recv_node)
-
-    @property
-    def p2p_nodes(self) -> List["_NCCLP2PNode"]:
-        return [self._send_node] + self._recv_nodes
+    def execute(self, arg):
+        return arg
 
 
-class _NCCLP2PNode(ClassMethodNode):
+class _NcclP2PNode(ClassMethodNode):
     """Represents a NCCL P2P operation in a Ray DAG."""
 
     def __init__(
@@ -50,17 +41,13 @@ class _NCCLP2PNode(ClassMethodNode):
         )
 
         # Parse the P2P operation.
-        self._p2p_op: _P2POperation = other_args_to_resolve.get(P2P_OPERATION_KEY, None)
-        if self._p2p_op is None:
-            raise ValueError("Expected a P2P operation")
+        self._p2p_group: _P2PGroup = other_args_to_resolve.get(P2P_GROUP_KEY, None)
+        if self._p2p_group is None:
+            raise ValueError("Expected a P2P group")
 
     @property
-    def p2p_op(self) -> _P2POperation:
-        return self._p2p_op
-
-    @property
-    def synchronous_peers(self) -> List["_NCCLP2PNode"]:
-        return self._p2p_op.p2p_nodes
+    def sync_group(self) -> _P2PGroup:
+        return self._p2p_group
 
     def _copy_impl(
         self,
@@ -78,7 +65,7 @@ class _NCCLP2PNode(ClassMethodNode):
 
 
 @DeveloperAPI
-class _NCCLSendNode(_NCCLP2PNode):
+class _NcclSendNode(_NcclP2PNode):
     """Represents a NCCL P2P send operation in a Ray DAG."""
 
     def __init__(
@@ -101,10 +88,8 @@ class _NCCLSendNode(_NCCLP2PNode):
             and isinstance(method_args[0], ClassMethodNode)
         ):
             raise ValueError("Expected a single input node that is a ClassMethodNode")
-        elif isinstance(method_args[0], _NCCLP2PNode):
+        elif isinstance(method_args[0], _NcclP2PNode):
             raise ValueError("NCCL send node cannot bind to another NCCL P2P node")
-        self._input_node = method_args[0]
-        self._p2p_op.set_send_node(self)
         self.set_requires_nccl_write(True)
 
     def _copy_impl(
@@ -114,7 +99,7 @@ class _NCCLSendNode(_NCCLP2PNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return _NCCLSendNode(
+        return _NcclSendNode(
             self._method_name,
             new_args,
             new_kwargs,
@@ -124,12 +109,12 @@ class _NCCLSendNode(_NCCLP2PNode):
 
 
 @DeveloperAPI
-class _NCCLRecvNode(_NCCLP2PNode):
+class _NcclRecvNode(_NcclP2PNode):
     """Represents a NCCL P2P recv operation in a Ray DAG."""
 
     def __init__(
         self,
-        method_args: Tuple[_NCCLSendNode],
+        method_args: Tuple[_NcclSendNode],
         other_args_to_resolve: Dict[str, Any],
     ):
         super().__init__(
@@ -144,10 +129,9 @@ class _NCCLRecvNode(_NCCLP2PNode):
         if not (
             isinstance(method_args, tuple)
             and len(method_args) == 1
-            and isinstance(method_args[0], _NCCLSendNode)
+            and isinstance(method_args[0], _NcclSendNode)
         ):
-            raise ValueError("Expected a single input node that is a _NCCLSendNode")
-        self._p2p_op.add_recv_node(self)
+            raise ValueError("Expected a single input node that is a _NcclSendNode")
         self.set_requires_nccl_read(True)
 
     def _copy_impl(
@@ -157,7 +141,7 @@ class _NCCLRecvNode(_NCCLP2PNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return _NCCLRecvNode(
+        return _NcclRecvNode(
             self._method_name,
             new_args,
             new_kwargs,

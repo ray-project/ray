@@ -268,8 +268,7 @@ def _torch_zeros_allocator(
     import torch
 
     ctx = ChannelContext.get_current()
-    # [TODO:andyub] Revert after debugging.
-    return torch.ones(shape, dtype=dtype, device=ctx.torch_device) * 100
+    return torch.zeros(shape, dtype=dtype, device=ctx.torch_device)
 
 
 class _TorchTensorNcclChannel(ChannelInterface):

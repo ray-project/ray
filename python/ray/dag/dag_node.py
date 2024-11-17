@@ -19,6 +19,7 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.dag.sync_group import _SynchronousGroup
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 
@@ -88,8 +89,8 @@ class DAGNode(DAGNodeBase):
         self._requires_nccl_collective = False
 
     @property
-    def synchronous_peers(self) -> List["DAGNode"]:
-        return list()
+    def sync_group(self) -> Optional[_SynchronousGroup]:
+        return None
 
     @property
     def requires_nccl_read(self) -> bool:
