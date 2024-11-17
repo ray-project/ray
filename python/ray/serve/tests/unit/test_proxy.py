@@ -20,7 +20,6 @@ from ray.serve._private.proxy_request_response import ProxyRequest
 from ray.serve._private.proxy_router import (
     NO_REPLICAS_MESSAGE,
     NO_ROUTES_MESSAGE,
-    EndpointRouter,
     ProxyRouter,
 )
 from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
@@ -108,7 +107,7 @@ class FakeProxyRouter(ProxyRouter):
         self._ready_for_traffic = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        pass
+        self.endpoints = endpoints
 
     def get_handle_for_endpoint(self, *args, **kwargs):
         if (
@@ -254,14 +253,14 @@ class TestgRPCProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=FakeProxyRouter,
+            proxy_router=FakeProxyRouter(),
         )
 
     @pytest.mark.asyncio
     async def test_not_found_response(self):
         """Test gRPCProxy returns the correct not found response."""
         grpc_proxy = self.create_grpc_proxy()
-        grpc_proxy.update_routes({})
+        grpc_proxy.proxy_router.update_routes({})
 
         # Application name not provided.
         status, _ = await _consume_proxy_generator(
@@ -298,7 +297,7 @@ class TestgRPCProxy:
             - the proxy is draining.
         """
         grpc_proxy = self.create_grpc_proxy()
-        grpc_proxy.update_routes(
+        grpc_proxy.proxy_router.update_routes(
             {DeploymentID(name="deployment", app_name="app"): EndpointInfo("/route")},
         )
         if is_draining:
@@ -447,7 +446,7 @@ class TestHTTPProxy:
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=FakeProxyRouter,
+            proxy_router=FakeProxyRouter(),
             proxy_actor=FakeActorHandle(),
         )
 
@@ -455,7 +454,7 @@ class TestHTTPProxy:
     async def test_not_found_response(self):
         """Test the response returned when a route is not found."""
         http_proxy = self.create_http_proxy()
-        http_proxy.update_routes({})
+        http_proxy.proxy_router.update_routes({})
 
         status, messages = await _consume_proxy_generator(
             http_proxy.proxy_request(
@@ -486,7 +485,7 @@ class TestHTTPProxy:
             - the proxy is draining.
         """
         http_proxy = self.create_http_proxy()
-        http_proxy.update_routes(
+        http_proxy.proxy_router.update_routes(
             {DeploymentID(name="deployment", app_name="app"): EndpointInfo("/route")},
         )
         if is_draining:
@@ -705,14 +704,16 @@ class TestHTTPProxy:
 async def test_head_http_unhealthy_until_route_table_updated():
     """Health endpoint should error until `update_routes` has been called."""
 
+    def get_handle_override(endpoint, info):
+        return MockDeploymentHandle(endpoint.name, endpoint.app_name)
+
     http_proxy = HTTPProxy(
         node_id="fake-node-id",
         node_ip_address="fake-node-ip-address",
         # proxy is on head node
         is_head=True,
-        proxy_router_class=EndpointRouter,
+        proxy_router=ProxyRouter(get_handle_override),
         proxy_actor=FakeActorHandle(),
-        get_handle_override=lambda d, a: MockDeploymentHandle(d, a),
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -730,7 +731,9 @@ async def test_head_http_unhealthy_until_route_table_updated():
     assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
 
     # Update route table, response should no longer error
-    http_proxy.update_routes({DeploymentID("a", "b"): EndpointInfo("/route")})
+    http_proxy.proxy_router.update_routes(
+        {DeploymentID("a", "b"): EndpointInfo("/route")}
+    )
 
     status, messages = await _consume_proxy_generator(
         http_proxy.proxy_request(proxy_request)
@@ -748,15 +751,13 @@ async def test_worker_http_unhealthy_until_replicas_populated():
     """Health endpoint should error until handle's running replicas is populated."""
 
     handle = MockDeploymentHandle("a", "b")
-
     http_proxy = HTTPProxy(
         node_id="fake-node-id",
         node_ip_address="fake-node-ip-address",
         # proxy is on worker node
         is_head=False,
-        proxy_router_class=EndpointRouter,
+        proxy_router=ProxyRouter(lambda *args: handle),
         proxy_actor=FakeActorHandle(),
-        get_handle_override=lambda *args: handle,
     )
     proxy_request = FakeProxyRequest(
         request_type="http",
@@ -775,7 +776,9 @@ async def test_worker_http_unhealthy_until_replicas_populated():
 
     # Update route table, response should still error because running
     # replicas is not yet populated.
-    http_proxy.update_routes({DeploymentID("a", "b"): EndpointInfo("/route")})
+    http_proxy.proxy_router.update_routes(
+        {DeploymentID("a", "b"): EndpointInfo("/route")}
+    )
 
     status, messages = await _consume_proxy_generator(
         http_proxy.proxy_request(proxy_request)
