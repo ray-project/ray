@@ -35,11 +35,12 @@
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 
+namespace {
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
 /// \return The scanned prefix of the string, if any.
-static std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
   int i = 0;
   std::string result;
   format += "%n";
@@ -48,6 +49,20 @@ static std::string ScanToken(std::string::const_iterator &c_str, std::string for
     c_str += i;
   }
   return result;
+}
+}  // namespace
+
+void SetThreadName(const std::string &thread_name) {
+  int ret = 0;
+#if defined(__APPLE__)
+  ret = pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
+  if (ret < 0) {
+    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
+                   << strerror(errno);
+  }
 }
 
 std::string EndpointToUrl(
@@ -58,7 +73,7 @@ std::string EndpointToUrl(
   case AF_INET: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
@@ -70,7 +85,7 @@ std::string EndpointToUrl(
   case AF_INET6: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);

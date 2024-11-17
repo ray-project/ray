@@ -62,22 +62,13 @@
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
-namespace boost {
-
-namespace asio {
-
-namespace generic {
+namespace boost::asio::generic {
 
 template <class Protocol>
 class basic_endpoint;
-
 class stream_protocol;
 
-}  // namespace generic
-
-}  // namespace asio
-
-}  // namespace boost
+}  // namespace boost::asio::generic
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
@@ -302,13 +293,8 @@ inline void unsetEnv(const std::string &name) {
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
-inline void SetThreadName(const std::string &thread_name) {
-#if defined(__APPLE__)
-  pthread_setname_np(thread_name.c_str());
-#elif defined(__linux__)
-  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
-#endif
-}
+// Set [thread_name] to current thread; if it fails, error will be logged.
+void SetThreadName(const std::string &thread_name);
 
 inline std::string GetThreadName() {
 #if defined(__linux__) || defined(__APPLE__)
