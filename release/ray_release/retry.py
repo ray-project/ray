@@ -2,23 +2,24 @@
 
 import time
 from functools import wraps
+from typing import Tuple
 
 # Default configuration for retry.
-_DEFAULT_MAX_RETRY_COUNT = 10
-_DEFAULT_INIT_DELAY_SEC = 1
-_DEFAULT_MAX_DELAY_SEC = 30
-_DEFAULT_BACKOFF = 2
-_DEFAULT_JITTER_SEC = 1
-_DEFAULT_EXCEPTIONS = (Exception,)
+_DEFAULT_MAX_RETRY_COUNT: int = 10
+_DEFAULT_INIT_DELAY_SEC: int = 1
+_DEFAULT_MAX_DELAY_SEC: int = 30
+_DEFAULT_BACKOFF: int = 2
+_DEFAULT_JITTER_SEC: int = 1
+_DEFAULT_EXCEPTIONS: Tuple[Exception] = (Exception,)
 
 
 def retry(
-    max_retry_count=_DEFAULT_MAX_RETRY_COUNT,
-    init_delay_sec=_DEFAULT_INIT_DELAY_SEC,
-    max_delay_sec=_DEFAULT_MAX_DELAY_SEC,
-    backoff=_DEFAULT_BACKOFF,
-    jitter_sec=_DEFAULT_JITTER_SEC,
-    exceptions=_DEFAULT_EXCEPTIONS,
+    max_retry_count: int = _DEFAULT_MAX_RETRY_COUNT,
+    init_delay_sec: int = _DEFAULT_INIT_DELAY_SEC,
+    max_delay_sec: int = _DEFAULT_MAX_DELAY_SEC,
+    backoff: int = _DEFAULT_BACKOFF,
+    jitter_sec: int = _DEFAULT_JITTER_SEC,
+    exceptions: Tuple[Exception] = _DEFAULT_EXCEPTIONS,
 ):
     def wrapper(fn):
         @wraps(fn)
