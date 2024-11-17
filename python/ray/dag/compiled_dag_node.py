@@ -904,7 +904,6 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-
     def _add_nccl_p2p_nodes(self) -> None:
         """
         Add NCCL P2P send/recv nodes to the DAG.
@@ -925,15 +924,24 @@ class CompiledDAG:
             PARENT_CLASS_NODE_KEY,
             P2P_GROUP_KEY,
             BIND_INDEX_KEY,
-            NO_CONTROL_EDGE_BIND_INDEX_VALUE,
+            WRITE_BIND_INDEX_INCREMENT,
+            READ_BIND_INDEX_DECREMENT,
         )
         from ray.experimental.channel import ChannelOutputType
+
+        def get_class_method_node_bind_index(node: ClassMethodNode) -> int:
+            bind_index = node._get_bind_index()
+            if bind_index is None:
+                assert node.is_class_method_output
+                bind_index = node.class_method_call._get_bind_index()
+            assert isinstance(bind_index, int)
+            return bind_index
 
         nccl_send_nodes: Dict[DAGNode, _NcclSendNode] = dict()
         nccl_recv_nodes: Dict[DAGNode, Dict[int, _NcclRecvNode]] = defaultdict(dict)
 
         # Gather NCCL P2P send nodes.
-        for _, task in self.idx_to_task.items():
+        for task in self.idx_to_task.values():
             if isinstance(task.dag_node, _NcclP2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
@@ -963,12 +971,13 @@ class CompiledDAG:
                     PARENT_CLASS_NODE_KEY: send_actor_handle,
                     P2P_GROUP_KEY: _P2PGroup(),
                     # [TODO:andyub] What should the bind index be here?
-                    BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
+                    BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
+                    + WRITE_BIND_INDEX_INCREMENT,
                 },
             )
 
         # Gather NCCL P2P recv nodes.
-        for _, task in self.idx_to_task.items():
+        for task in self.idx_to_task.values():
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode) or not arg.type_hint.requires_nccl():
                     continue
@@ -994,7 +1003,8 @@ class CompiledDAG:
                         PARENT_CLASS_NODE_KEY: recv_actor_handle,
                         P2P_GROUP_KEY: send_node.sync_group,
                         # [TODO:andyub] What should the bind index be here?
-                        BIND_INDEX_KEY: NO_CONTROL_EDGE_BIND_INDEX_VALUE,
+                        BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
+                        - READ_BIND_INDEX_DECREMENT,
                     },
                 )
                 nccl_recv_nodes[task.dag_node][arg_idx] = recv_node

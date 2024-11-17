@@ -180,7 +180,7 @@ class ClassMethodNode(DAGNode):
             ClassMethodNode
         ] = other_args_to_resolve.get(PREV_CLASS_METHOD_CALL_KEY, None)
         # The index/order when bind() is called on this class method
-        self._bind_index: Optional[int] = other_args_to_resolve.get(
+        self._bind_index: Optional[Union[int, float]] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )
         # Represent if the ClassMethodNode is a class method output. If True,
@@ -252,7 +252,7 @@ class ClassMethodNode(DAGNode):
     def get_method_name(self) -> str:
         return self._method_name
 
-    def _get_bind_index(self) -> int:
+    def _get_bind_index(self) -> Union[int, float]:
         return self._bind_index
 
     def _get_remote_method(self, method_name):

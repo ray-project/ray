@@ -545,9 +545,9 @@ def _generate_actor_to_execution_schedule(
     # A dictionary mapping an actor id to a list of candidate nodes. The list
     # is maintained as a priority queue, so the head of the queue, i.e.,
     # `candidates[0]`, is the "smallest" node.
-    actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]] = (
-        defaultdict(list)
-    )
+    actor_to_candidates: Dict[
+        "ray._raylet.ActorID", List[_DAGOperationGraphNode]
+    ] = defaultdict(list)
     for node in graph.values():
         _push_candidate_node_if_ready(actor_to_candidates, graph, node)
 
@@ -560,9 +560,6 @@ def _generate_actor_to_execution_schedule(
         # 2. If a selected node is part of a synchronous group, all nodes in the group
         #    are returned.
         nodes = _select_next_nodes(actor_to_candidates, graph, visited_nodes)
-        print(
-            f"selected next nodes: {[node.task_idx for node in nodes] if nodes else None}"
-        )
         if nodes is None:
             break
         assert all(node not in visited_nodes for node in nodes)

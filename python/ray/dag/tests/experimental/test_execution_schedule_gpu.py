@@ -117,8 +117,8 @@ def test_simulate_pp_2workers_2batches_1f1b(
     This test simulates a simple 1F1B pipeline parallelism for training with
     2 workers and 2 batches.
 
-    w1: fwd_b1  send  fwd_b2          recv  send  bwd_b1          send  bwd_b2
-    w2:         recv  fwd_b1  bwd_b1  send  recv  fwd_b2  bwd_b2  recv
+    w1: fwd_b1  send  fwd_b2          recv  send  bwd_b1          recv  bwd_b2
+    w2:         recv  fwd_b1  bwd_b1  send  recv  fwd_b2  bwd_b2  send
 
     The communication between workers is done using NCCL. The communication
     within the worker actor is done using IntraProcessChannel.
@@ -146,27 +146,8 @@ def test_simulate_pp_2workers_2batches_1f1b(
         dag = MultiOutputNode([batch_1, batch_2])
     compiled_dag = dag.experimental_compile()
 
-    w1_expected_schedule = [
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.NCCL_WRITE),
-        (2, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.NCCL_READ),
-        (2, _DAGNodeOperationType.NCCL_WRITE),
-        (3, _DAGNodeOperationType.COMPUTE),
-        (4, _DAGNodeOperationType.NCCL_READ),
-        (4, _DAGNodeOperationType.COMPUTE),
-    ]
-    w2_expected_schedule = [
-        (0, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.NCCL_WRITE),
-        (2, _DAGNodeOperationType.NCCL_READ),
-        (2, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.COMPUTE),
-        (3, _DAGNodeOperationType.NCCL_WRITE),
-    ]
+    w1_expected_schedule = [0, 1, 2, 3, 5, 4, 6, 7, 8]
+    w2_expected_schedule = [0, 1, 2, 3, 4, 5, 6, 7]
     w1_schedule = compiled_dag.actor_to_execution_schedule[w1]
     w2_schedule = compiled_dag.actor_to_execution_schedule[w2]
 
@@ -175,8 +156,7 @@ def test_simulate_pp_2workers_2batches_1f1b(
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.exec_task_idx == expected_schedule[i][0]
-            assert operation.type == expected_schedule[i][1]
+            assert operation.exec_task_idx == expected_schedule[i]
 
     tensor_cpu = torch.zeros(10, 10)
     tensor_cuda = tensor_cpu.to("cuda:0")
@@ -245,23 +225,9 @@ def test_three_actors_with_nccl_1(ray_start_regular):
         dag = a.no_op_two.bind(branch1, branch2)
 
     compiled_dag = dag.experimental_compile()
-
-    a_expected_schedule = [
-        (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
-    b_expected_schedule = [
-        (0, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-    ]
-    c_expected_schedule = [
-        (0, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-    ]
+    a_expected_schedule = [0, 1, 2, 3, 4]
+    b_expected_schedule = [0, 1, 2]
+    c_expected_schedule = [0, 1, 2]
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
     b_schedule = compiled_dag.actor_to_execution_schedule[b]
     c_schedule = compiled_dag.actor_to_execution_schedule[c]
@@ -272,8 +238,7 @@ def test_three_actors_with_nccl_1(ray_start_regular):
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.exec_task_idx == expected_schedule[i][0]
-            assert operation.type == expected_schedule[i][1]
+            assert operation.exec_task_idx == expected_schedule[i]
 
     tensor_cpu = torch.zeros(10, 10)
     tensor_cuda = tensor_cpu.to("cuda:0")
@@ -322,25 +287,9 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
         )
 
     compiled_dag = dag.experimental_compile()
-
-    a_expected_schedule = [
-        (0, _DAGNodeOperationType.COMPUTE),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
-    b_expected_schedule = [
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
-    c_expected_schedule = [
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.NCCL_WRITE),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
+    a_expected_schedule = [0, 1, 2, 3]
+    b_expected_schedule = [0, 2, 1, 3]
+    c_expected_schedule = [0, 2, 1, 3]
 
     a_schedule = compiled_dag.actor_to_execution_schedule[a]
     b_schedule = compiled_dag.actor_to_execution_schedule[b]
@@ -352,8 +301,7 @@ def test_three_actors_with_nccl_2(ray_start_regular, single_fetch, monkeypatch):
     ):
         assert len(schedule) == len(expected_schedule)
         for i, operation in enumerate(schedule):
-            assert operation.exec_task_idx == expected_schedule[i][0]
-            assert operation.type == expected_schedule[i][1]
+            assert operation.exec_task_idx == expected_schedule[i]
 
     tensor_cpu = torch.zeros(10, 10)
     tensor_cuda = tensor_cpu.to("cuda:0")
@@ -422,18 +370,9 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
     )
 
     # Check receiver schedule
-    expected_no_overlap_schedule = [
-        (0, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
-    expected_overlap_schedule = [
-        (0, _DAGNodeOperationType.NCCL_READ),
-        (1, _DAGNodeOperationType.NCCL_READ),
-        (0, _DAGNodeOperationType.COMPUTE),
-        (1, _DAGNodeOperationType.COMPUTE),
-    ]
+    expected_no_overlap_schedule = [0, 1, 2, 3]
+    expected_overlap_schedule = [0, 2, 1, 3]
+
     if overlap_gpu_communication:
         expected_receiver_schedule = expected_overlap_schedule
     else:
@@ -443,8 +382,7 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
 
     assert len(receiver_schedule) == len(expected_receiver_schedule)
     for i, operation in enumerate(receiver_schedule):
-        assert operation.exec_task_idx == expected_receiver_schedule[i][0]
-        assert operation.type == expected_receiver_schedule[i][1]
+        assert operation.exec_task_idx == expected_receiver_schedule[i]
 
     compiled_dag.teardown()
 
