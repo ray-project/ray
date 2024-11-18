@@ -1,5 +1,6 @@
 import io
 import logging
+import os
 import uuid
 from dataclasses import dataclass
 from types import ModuleType
@@ -10,7 +11,6 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.util.annotations import DeveloperAPI
@@ -25,6 +25,20 @@ if TYPE_CHECKING:
 # into the program using Ray. Ray provides a default configuration at
 # entry/init points.
 logger = logging.getLogger(__name__)
+USE_GPU = True
+USE_NPU = False
+if os.getenv("ASCEND_RT_VISIBLE_DEVICES"):
+    try:
+        from ray.experimental.channel.hccl_group import _HcclGroup as _NcclGroup
+
+        USE_GPU = False
+        USE_NPU = True
+    except Exception:
+        logger.warning("Failed in import hccl_group, use nccl_group instead")
+        from ray.experimental.channel.nccl_group import _NcclGroup
+
+else:
+    from ray.experimental.channel.nccl_group import _NcclGroup
 
 
 @dataclass
@@ -187,10 +201,16 @@ class TorchTensorNcclChannel(ChannelInterface):
                     "return a CUDA torch.Tensor, instead found value "
                     f"`{value}`. DAG will shut down."
                 )
-            elif not value.is_cuda:
+            if USE_GPU and (not value.is_cuda):
                 raise ValueError(
                     "Task annotated with _direct_return=True must "
                     "return a CUDA torch.Tensor, instead found CPU tensor. "
+                    "DAG will shut down."
+                )
+            elif USE_NPU and (not value.is_npu):
+                raise ValueError(
+                    "Task annotated with _direct_return=True must "
+                    "return a NPU torch.Tensor, instead found CPU tensor. "
                     "DAG will shut down."
                 )
             self._gpu_data_channel.write([value], timeout=timeout)
@@ -361,13 +381,13 @@ class _TorchTensorNcclChannel(ChannelInterface):
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._writer_registered
         ctx = ChannelContext.get_current()
-        assert ctx.torch_device.type == "cuda"
+        assert ctx.torch_device.type in ["cuda", "npu"]
 
     def ensure_registered_as_reader(self) -> bool:
         assert self._nccl_group is not None, "Actor is not part of a NCCL group"
         assert self._reader_registered
         ctx = ChannelContext.get_current()
-        assert ctx.torch_device.type == "cuda"
+        assert ctx.torch_device.type in ["cuda", "npu"]
 
     def __reduce__(self):
         return (
@@ -553,15 +573,15 @@ def _do_init_nccl_group(
 ):
     import torch
 
-    assert (
-        ray.get_gpu_ids()
-    ), "Actors participating in NCCL group must have at least one GPU assigned"
+    assert bool(ray.get_gpu_ids()) or bool(
+        "NPU" in ray.cluster_resources()
+    ), "Actors participating in Communicator group must have at least one XPU assigned"
 
     ctx = ChannelContext.get_current()
     if custom_nccl_group is not None:
         custom_nccl_group.initialize(rank)
         ctx.nccl_groups[group_id] = custom_nccl_group
-    else:
+    elif USE_GPU:
         ctx.nccl_groups[group_id] = _NcclGroup(
             world_size,
             comm_id,
@@ -569,6 +589,14 @@ def _do_init_nccl_group(
             actor_handles,
             torch.cuda.current_stream().cuda_stream,
             use_communication_streams,
+        )
+    else:
+        ctx.nccl_groups[group_id] = _NcclGroup(
+            world_size,
+            comm_id,
+            rank,
+            actor_handles,
+            None,
         )
 
 
@@ -584,13 +612,20 @@ def _do_destroy_nccl_group(self, group_id):
 
 
 def _do_check_has_gpu(self) -> bool:
-    return bool(ray.get_gpu_ids())
+    # Check for GPU or NPU
+    return bool(ray.get_gpu_ids()) or bool("NPU" in ray.cluster_resources())
 
 
 def _do_get_unique_nccl_id(self) -> bool:
-    from cupy.cuda import nccl
+    if "NPU" in ray.cluster_resources():
+        import uuid
 
-    return nccl.get_unique_id()
+        # NPU doesn't have get_unique_id
+        return uuid.uuid4()
+    else:
+        from cupy.cuda import nccl
+
+        return nccl.get_unique_id()
 
 
 def _get_ranks(

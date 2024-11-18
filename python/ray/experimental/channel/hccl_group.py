@@ -7,13 +7,12 @@ import torch.distributed as dist
 import torch_npu  # The torch_npu for communicate
 
 import ray
-from ray.experimental.util.types import ReduceOp
-
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
 )
+from ray.experimental.util.types import ReduceOp
 
 # Set ASCEND_RT_VISIBLE_DEVICES environment variable to ensure all NPUs are visible
 # This enables NPU to NPU communication across devices.
@@ -77,9 +76,11 @@ class _HcclGroup(GPUCommunicator):
                 in the communication.
         """
         # Set environment variables if not already set
-        os.environ['MASTER_ADDR'] = os.environ.get('MASTER_ADDR', "127.0.0.1")
-        os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', "29500")
-        os.environ['HCCL_WHITELIST_DISABLE'] = os.environ.get('HCCL_WHITELIST_DISABLE', '1')
+        os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
+        os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
+        os.environ["HCCL_WHITELIST_DISABLE"] = os.environ.get(
+            "HCCL_WHITELIST_DISABLE", "1"
+        )
 
         torch_npu.npu.set_device(rank)  # Set the NPU device according to the rank
         self.ctx = dist.init_process_group(
@@ -174,19 +175,15 @@ class _HcclGroup(GPUCommunicator):
         torch_npu.npu.set_device(f"npu:{self._rank}")
         tensor = torch.zeros(*shape, dtype=dtype).to(f"npu:{self._rank}")
         dist.recv(tensor, src=peer_rank)
-        #torch.npu.synchronize(self._rank)
+        # torch.npu.synchronize(self._rank)
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
         return tensor
 
-
-    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-
+    def recv_stream(self):
         pass
 
-
-    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
-
+    def send_stream(self):
         pass
 
     def allreduce(
@@ -195,7 +192,6 @@ class _HcclGroup(GPUCommunicator):
         recv_buf: "torch.Tensor",
         op: ReduceOp,
     ) -> None:
-
         pass
 
     def destroy(self) -> None:
