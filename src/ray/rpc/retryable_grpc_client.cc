@@ -46,10 +46,8 @@ void RetryableGrpcClient::SetupCheckTimer() {
   timer_->expires_from_now(duration);
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_->async_wait([weak_self](boost::system::error_code error) {
-    if (auto self = weak_self.lock()) {
-      if (error == boost::system::errc::success) {
-        self->CheckChannelStatus();
-      }
+    if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
+      self->CheckChannelStatus();
     }
   });
 }
