@@ -758,7 +758,7 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def add_column(batch: "pyarrow.Table") -> "pyarrow.Table":
+        def add_column(batch: DataBatch) -> Union["pyarrow.Array", "pandas.Series", "np.ndarray"]:
             column = fn(batch)
             # Historically, this method was written with pandas batch format in mind.
             # To resolve https://github.com/ray-project/ray/issues/48090, we also allow
@@ -780,15 +780,6 @@ class Dataset:
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
-
-        if batch_format not in [
-            "pandas",
-            "pyarrow",
-        ]:
-            raise ValueError(
-                f"batch_format argument must be 'pandas' or 'pyarrow', "
-                f"got: {batch_format}"
-            )
 
         return self.map_batches(
             add_column,
