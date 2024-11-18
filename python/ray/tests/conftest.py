@@ -65,7 +65,7 @@ def wait_for_redis_to_start(
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        username: The username of the redis server.
+        username: The username of the Redis server.
         password: The password of the redis server.
 
     Raises:
