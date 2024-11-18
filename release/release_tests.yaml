@@ -3907,35 +3907,6 @@
       run:
         script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
 
-- name: dataset_random_access
-  group: data-tests
-  working_dir: nightly_tests/dataset
-  stable: false
-
-  frequency: manual
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      pip:
-        - git+https://github.com/ray-project/ray_shuffling_data_loader.git@add-embedding-model
-    cluster_compute: pipelined_training_compute.yaml
-
-  run:
-    timeout: 1200
-    script: python dataset_random_access.py
-    wait_for_nodes:
-      num_nodes: 15
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: pipelined_training_compute_gce.yaml
-
 - name: stable_diffusion_benchmark
   group: data-tests
   working_dir: nightly_tests/dataset
@@ -4985,7 +4956,7 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}
@@ -5000,7 +4971,7 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}

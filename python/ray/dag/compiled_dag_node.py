@@ -43,6 +43,8 @@ from ray.experimental.channel import (
     AwaitableBackgroundReader,
     AwaitableBackgroundWriter,
     RayDAGArgs,
+    CompositeChannel,
+    IntraProcessChannel,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -287,6 +289,8 @@ class CompiledTask:
         self.output_channels: List[ChannelInterface] = []
         self.output_idxs: List[Optional[Union[int, str]]] = []
         self.arg_type_hints: List["ChannelOutputType"] = []
+        # idxs of possible ClassMethodOutputNodes if they exist, used for visualization
+        self.output_node_idxs: List[int] = []
 
     @property
     def args(self) -> Tuple[Any]:
@@ -843,6 +847,8 @@ class CompiledDAG:
         self._max_finished_execution_index: int = -1
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
+        # channel to possible inner channel
+        self._channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
 
         def _create_proxy_actor() -> "ray.actor.ActorHandle":
             # Creates the driver actor on the same node as the driver.
@@ -1384,6 +1390,7 @@ class CompiledDAG:
                         output_idx = downstream_node.output_idx
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(output_idx)
+                    task.output_node_idxs.append(self.dag_node_to_idx[downstream_node])
                 actor_handle = task.dag_node._get_actor_handle()
                 assert actor_handle is not None
                 self.actor_refs.add(actor_handle)
@@ -1530,7 +1537,6 @@ class CompiledDAG:
             # Dict from original channel to the channel to be used in execution.
             # The value of this dict is either the original channel or a newly
             # created CachedChannel (if the original channel is read more than once).
-            channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
             for arg, consumers in arg_to_consumers.items():
                 arg_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[arg_idx]
@@ -1538,12 +1544,12 @@ class CompiledDAG:
                 arg_channel = upstream_task.output_channels[0]
                 assert arg_channel is not None
                 if len(consumers) > 1:
-                    channel_dict[arg_channel] = CachedChannel(
+                    self._channel_dict[arg_channel] = CachedChannel(
                         len(consumers),
                         arg_channel,
                     )
                 else:
-                    channel_dict[arg_channel] = arg_channel
+                    self._channel_dict[arg_channel] = arg_channel
 
             # Step 3: create executable tasks for the actor
             executable_tasks = []
@@ -1556,7 +1562,7 @@ class CompiledDAG:
                         assert len(upstream_task.output_channels) == 1
                         arg_channel = upstream_task.output_channels[0]
                         assert arg_channel is not None
-                        arg_channel = channel_dict[arg_channel]
+                        arg_channel = self._channel_dict[arg_channel]
                         resolved_args.append(arg_channel)
                     else:
                         # Constant arg
@@ -2554,9 +2560,45 @@ class CompiledDAG:
         ascii_visualization += "\n".join("".join(row) for row in grid)
 
         return ascii_visualization
+    def get_channel_details(
+        self, channel: ChannelInterface, downstream_actor_id: str
+    ) -> str:
+        """
+        Get details about outer and inner channel types and channel ids
+        based on the channel and the downstream actor ID.
+        Used for graph visualization.
+        Args:
+            channel: The channel to get details for.
+            downstream_actor_id: The downstream actor ID.
+        Returns:
+            A string with details about the channel based on its connection
+            to the actor provided.
+        """
+        channel_details = type(channel).__name__
+        # get outer channel
+        if channel in self._channel_dict and self._channel_dict[channel] != channel:
+            channel = self._channel_dict[channel]
+            channel_details += f"\n{type(channel).__name__}"
+            if type(channel) == CachedChannel:
+                channel_details += f", {channel._channel_id[:6]}..."
+        # get inner channel
+        if (
+            type(channel) == CompositeChannel
+            and downstream_actor_id in channel._channel_dict
+        ):
+            inner_channel = channel._channel_dict[downstream_actor_id]
+            channel_details += f"\n{type(inner_channel).__name__}"
+            if type(inner_channel) == IntraProcessChannel:
+                channel_details += f", {inner_channel._channel_id[:6]}..."
+        return channel_details
 
     def visualize(
-        self, filename="compiled_graph", format="png", view=False, return_dot=False
+        self,
+        filename="compiled_graph",
+        format="png",
+        view=False,
+        return_dot=False,
+        channel_details=False,
     ):
         """
         Visualize the compiled graph using Graphviz.
@@ -2570,13 +2612,20 @@ class CompiledDAG:
             format: The format of the output file (e.g., 'png', 'pdf').
             view: Whether to open the file with the default viewer.
             return_dot: If True, returns the DOT source as a string instead of figure.
+            show_channel_details: If True, adds channel details to edges.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
             ImportError: If the `graphviz` package is not installed.
 
         """
-        import graphviz
+        try:
+            import graphviz
+        except ImportError:
+            raise ImportError(
+                "Please install graphviz to visualize the compiled graph. "
+                "You can install it by running `pip install graphviz`."
+            )
         from ray.dag import (
             InputAttributeNode,
             InputNode,
@@ -2602,11 +2651,14 @@ class CompiledDAG:
 
         # Dot file for debuging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
-
+        # Give every actor a unique color, colors between 24k -> 40k tested as readable
+        # other colors may be too dark, especially when wrapping back around to 0
+        actor_id_to_color = defaultdict(
+            lambda: f"#{((len(actor_id_to_color) * 2000 + 24000) % 0xFFFFFF):06X}"
+        )
         # Add nodes with task information
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
-
             # Initialize the label and attributes
             label = f"Task {idx}\n"
             shape = "oval"  # Default shape
@@ -2634,10 +2686,11 @@ class CompiledDAG:
                     if actor_handle:
                         actor_id = actor_handle._actor_id.hex()
                         label += f"Actor: {actor_id[:6]}...\nMethod: {method_name}"
+                        fillcolor = actor_id_to_color[actor_id]
                     else:
                         label += f"Method: {method_name}"
+                        fillcolor = "lightgreen"
                     shape = "oval"
-                    fillcolor = "lightgreen"
                 elif dag_node.is_class_method_output:
                     # Class Method Output Node
                     label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
@@ -2656,28 +2709,45 @@ class CompiledDAG:
 
             # Add the node to the graph with attributes
             dot.node(str(idx), label, shape=shape, style=style, fillcolor=fillcolor)
+            channel_type_str = (
+                type(dag_node.type_hint).__name__
+                if dag_node.type_hint
+                else "UnknownType"
+            ) + "\n"
 
-        # Add edges with type hints based on argument mappings
-        for idx, task in self.idx_to_task.items():
-            current_task_idx = idx
-
-            for arg_index, arg in enumerate(task.dag_node.get_args()):
-                if isinstance(arg, DAGNode):
-                    # Get the upstream task index
-                    upstream_task_idx = self.dag_node_to_idx[arg]
-
-                    # Get the type hint for this argument
-                    if arg_index < len(task.arg_type_hints):
-                        type_hint = type(task.arg_type_hints[arg_index]).__name__
-                    else:
-                        type_hint = "UnknownType"
-
-                    # Draw an edge from the upstream task to the
-                    # current task with the type hint
-                    dot.edge(
-                        str(upstream_task_idx), str(current_task_idx), label=type_hint
-                    )
-
+            # This logic is built on the assumption that there will only be multiple
+            # output channels if the task has multiple returns
+            # case: task with one output
+            if len(task.output_channels) == 1:
+                for downstream_node in task.dag_node._downstream_nodes:
+                    downstream_idx = self.dag_node_to_idx[downstream_node]
+                    edge_label = channel_type_str
+                    if channel_details:
+                        edge_label += self.get_channel_details(
+                            task.output_channels[0],
+                            (
+                                downstream_node._get_actor_handle()._actor_id.hex()
+                                if type(downstream_node) == ClassMethodNode
+                                else self._proxy_actor._actor_id.hex()
+                            ),
+                        )
+                    dot.edge(str(idx), str(downstream_idx), label=edge_label)
+            # case: multi return, output channels connect to class method output nodes
+            elif len(task.output_channels) > 1:
+                assert len(task.output_idxs) == len(task.output_channels)
+                for output_channel, downstream_idx in zip(
+                    task.output_channels, task.output_node_idxs
+                ):
+                    edge_label = channel_type_str
+                    if channel_details:
+                        edge_label += self.get_channel_details(
+                            output_channel,
+                            task.dag_node._get_actor_handle()._actor_id.hex(),
+                        )
+                    dot.edge(str(idx), str(downstream_idx), label=edge_label)
+            if type(task.dag_node) == InputAttributeNode:
+                # Add an edge from the InputAttributeNode to the InputNode
+                dot.edge(str(self.input_task_idx), str(idx))
         if return_dot:
             return dot.source
         else:
