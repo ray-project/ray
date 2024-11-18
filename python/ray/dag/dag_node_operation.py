@@ -609,24 +609,18 @@ def _generate_overlapped_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
     for overlapped_schedule in actor_to_overlapped_schedule.values():
-        for i in range(len(overlapped_schedule)):
-            if overlapped_schedule[i].requires_nccl_read:
-                # For each NCCL read operation (i.e., recv), scan backwards
-                # to find the nearest compute node to swap with so that
-                # the NCCL read operation can be overlapped with computation.
-                for j in range(i - 1, -1, -1):
-                    if (
-                        overlapped_schedule[j].requires_nccl_write
-                        or overlapped_schedule[j].requires_nccl_read
-                    ):
-                        break
-                    else:
-                        # Found a desired compute operation, make the swap
-                        nccl_read_op = overlapped_schedule[i]
-                        prev_ops = overlapped_schedule[j:i]
-                        overlapped_schedule[j + 1 : i + 1] = prev_ops
-                        overlapped_schedule[j] = nccl_read_op
-                        break
+        for i in range(1, len(overlapped_schedule)):
+            if (
+                overlapped_schedule[i].requires_nccl_read
+                and not overlapped_schedule[i - 1].requires_nccl_op
+            ):
+                # For each NCCL read operation (i.e., recv), find the nearest
+                # compute node to swap with so that the NCCL read operation
+                # can be overlapped with computation.
+                overlapped_schedule[i], overlapped_schedule[i - 1] = (
+                    overlapped_schedule[i - 1],
+                    overlapped_schedule[i],
+                )
     return actor_to_overlapped_schedule
 
 

@@ -22,9 +22,17 @@ import traceback
 
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
+from ray.dag.sync_group import _SynchronousGroup
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+from ray.dag.constants import (
+    RAY_ADAG_VISUALIZE_SCHEDULE,
+    PARENT_CLASS_NODE_KEY,
+    P2P_GROUP_KEY,
+    BIND_INDEX_KEY,
+    WRITE_BIND_INDEX_INCREMENT,
+    READ_BIND_INDEX_DECREMENT,
+)
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -362,7 +370,6 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag.sync_group import _SynchronousGroup
 
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -371,7 +378,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # [CL]
+        # [TODO:andyub] One requires_nccl instead of three.
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
@@ -432,6 +439,11 @@ class ExecutableTask:
 
     @property
     def sync_task_idxs(self) -> List[int]:
+        """
+        If this task is part of a synchronous group, return indices of all tasks
+        in the group. If not, return an empty list to indicate there are no
+        synchronous peer tasks.
+        """
         if self.sync_group is None:
             return []
         else:
@@ -625,18 +637,6 @@ class ExecutableTask:
             exit = True
         return exit
 
-    # [CL]
-    def _compute_aio(self, overlap_gpu_communication, class_handle) -> bool:
-        with self._recv_stream:
-            if self._read(overlap_gpu_communication):
-                return True
-        if self._compute(overlap_gpu_communication, class_handle):
-            return True
-        with self._send_stream:
-            if self._write():
-                return True
-        return False
-
     def exec_operation(
         self,
         class_handle,
@@ -654,7 +654,15 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
-        return self._compute_aio(overlap_gpu_communication, class_handle)
+        with self._recv_stream:
+            if self._read(overlap_gpu_communication):
+                return True
+        if self._compute(overlap_gpu_communication, class_handle):
+            return True
+        with self._send_stream:
+            if self._write():
+                return True
+        return False
 
 
 @dataclass
@@ -922,14 +930,6 @@ class CompiledDAG:
             _NcclRecvNode,
             _NcclSendNode,
         )
-        from ray.dag.constants import (
-            PARENT_CLASS_NODE_KEY,
-            P2P_GROUP_KEY,
-            BIND_INDEX_KEY,
-            WRITE_BIND_INDEX_INCREMENT,
-            READ_BIND_INDEX_DECREMENT,
-        )
-        from ray.experimental.channel import ChannelOutputType
 
         def get_class_method_node_bind_index(node: ClassMethodNode) -> int:
             bind_index = node._get_bind_index()

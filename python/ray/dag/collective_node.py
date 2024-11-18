@@ -74,7 +74,6 @@ class _CollectiveGroup(_SynchronousGroup):
                 raise ValueError(
                     "Expected actor handles to match the custom NCCL group"
                 )
-        self._output_nodes: List[DAGNode] = []
 
     def __str__(self) -> str:
         return (
