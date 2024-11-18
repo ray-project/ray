@@ -524,7 +524,7 @@ Status ConnectRedisSentinel(RedisContext &context,
   }
   freeReplyObject(redis_reply);
   if (actual_ip.empty() || actual_port.empty()) {
-    RAY_LOG(FATAL)
+    RAY_LOG(ERROR)
         << "failed to get the ip and port of the primary node from redis sentinel";
     return Status::RedisError(
         "failed to get the ip and port of the primary node from redis sentinel");
