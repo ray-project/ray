@@ -522,25 +522,6 @@ class KubeRayNodeProvider(BatchingNodeProvider):  # type: ignore
         path = "rayclusters/{}".format(self.cluster_name)
         self._patch(path, patch_payload)
 
-    def _url(self, path: str) -> str:
-        """Convert resource path to REST URL for Kubernetes API server."""
-        if path.startswith("pods"):
-            api_group = "/api/v1"
-        elif path.startswith("rayclusters"):
-            api_group = "/apis/ray.io/" + KUBERAY_CRD_VER
-        else:
-            raise NotImplementedError(
-                "Tried to access unknown entity at {}".format(path)
-            )
-        return (
-            "https://kubernetes.default:443"
-            + api_group
-            + "/namespaces/"
-            + self.namespace
-            + "/"
-            + path
-        )
-
     def _get(self, path: str) -> Dict[str, Any]:
         """Wrapper for REST GET of resource with proper headers."""
         return self.k8s_api_client.get(path)

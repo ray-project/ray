@@ -13,7 +13,7 @@ ENV LANG=C.UTF-8
 # TODO(ilr) $HOME seems to point to result in "" instead of "/home/ray"
 ENV PATH "/home/ray/anaconda3/bin:$PATH"
 ARG DEBIAN_FRONTEND=noninteractive
-ARG PYTHON_VERSION=3.8.16
+ARG PYTHON_VERSION=3.9
 ARG HOSTTYPE=${HOSTTYPE:-x86_64}
 
 ARG RAY_UID=1000
@@ -39,7 +39,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         cmake \
         g++ \ 
         zlib1g-dev \
-        $(if [ "$AUTOSCALER" = "autoscaler" ]; then echo \
+        $(if [[ "$AUTOSCALER" == "autoscaler" ]]; then echo \
         tmux \
         screen \
         rsync \
@@ -74,7 +74,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         g++; fi) \
     && sudo rm -rf /var/lib/apt/lists/* \
     && sudo apt-get clean \
-    && (if [ "$AUTOSCALER" = "autoscaler" ]; \
+    && (if [[ "$AUTOSCALER" == "autoscaler" ]]; \
         then $HOME/anaconda3/bin/pip --no-cache-dir install \
         "redis>=3.5.0,<4.0.0" \
         "six==1.13.0" \
@@ -83,12 +83,7 @@ RUN sudo apt-get update -y && sudo apt-get upgrade -y \
         "cryptography==38.0.1" \
         "google-api-python-client==1.7.8" \
         "google-oauth" \
-        "azure-cli-core==2.40.0" \
-        "azure-identity==1.10.0" \
-        "azure-mgmt-compute==23.1.0" \
-        "azure-mgmt-network==19.0.0" \
-        "azure-mgmt-resource==20.0.0" \
-        "msrestazure==0.6.4"; \
+        ; \
     fi;)
 
 WORKDIR $HOME

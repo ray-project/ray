@@ -14,7 +14,6 @@ pyyaml
 pybuildkite
 PyGithub
 requests
-retry
 twine == 5.0.0
 docker >= 7.1.0
 
