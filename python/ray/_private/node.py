@@ -495,6 +495,15 @@ class Node:
         )
         try_to_create_directory(self._runtime_env_dir)
 
+        # Create a file named created_by_head to indicate that this session
+        # directory was created by the head node.
+        if self.head:
+            created_by_head = os.path.join(
+                self._logs_dir, ray_constants.CREATED_BY_HEAD_FILE_NAME
+            )
+            with open(created_by_head, "w") as f:
+                f.write("This session directory was created by the head node.")
+
     def _get_node_labels(self):
         def merge_labels(env_override_labels, params_labels):
             """Merges two dictionaries, picking from the
@@ -1078,17 +1087,19 @@ class Node:
 
     def start_log_monitor(self):
         """Start the log monitor."""
-        filename = ray_constants.LOG_MONITOR_LOG_FILE_NAME
-        file_path = os.path.join(self._logs_dir, filename)
-        # Avoid launching multiple log monitors on a single host.
-        # This can happen if the user starts multiple Ray nodes on the same host.
-        if os.path.isfile(file_path):
-            logger.debug(
-                f"File {file_path} exists, not starting log monitor again. "
-                "This can happen if the user starts multiple Ray nodes on "
-                "the same host."
-            )
-            return
+        if not self.head:
+            filename = ray_constants.CREATED_BY_HEAD_FILE_NAME
+            file_path = os.path.join(self._logs_dir, filename)
+            # Avoid launching multiple log monitors on a single host.
+            # This can happen if the user starts multiple Ray nodes on the same host.
+            if os.path.isfile(file_path):
+                logger.debug(
+                    f"File {file_path} exists, indicating that the session directory "
+                    "was created by the head node. This worker node is colocated with "
+                    "the head node, so the log monitor should not be launched again to "
+                    "avoid duplicate log entries."
+                )
+                return
 
         # Only redirect logs to .err. .err file is only useful when the
         # component has an unexpected output to stdout/stderr.

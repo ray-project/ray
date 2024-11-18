@@ -1059,7 +1059,14 @@ def test_print_worker_logs_multi_color() -> None:
     )
 
 
-def test_multiple_ray_nodes_on_same_host(shutdown_only):
+@pytest.mark.parametrize(
+    "override_env",
+    (
+        {"RAY_LOG_TO_STDERR": "0"},
+        {"RAY_LOG_TO_STDERR": "1"},
+    ),
+)
+def test_multiple_ray_nodes_on_same_host(shutdown_only, override_env):
     # Test that launching multiple Ray nodes on the same host will
     # not produce redundant logs. Use `AutoScalingCluster` to launch
     # the cluster instead of `ray_start_cluster`, as the latter only
@@ -1078,7 +1085,7 @@ def test_multiple_ray_nodes_on_same_host(shutdown_only):
         autoscaler_v2=True,
     )
     try:
-        cluster.start()
+        cluster.start(override_env=override_env)
         script = """
 import ray
 ray.init()
@@ -1088,7 +1095,11 @@ def f():
 ray.get(f.remote())
 """
         stderr = run_string_as_driver(script)
-        assert stderr.count("hello world") == 1
+        assert "RAY_LOG_TO_STDERR" in override_env
+        if override_env["RAY_LOG_TO_STDERR"] == "1":
+            assert stderr.count("hello world") == 0
+        else:
+            assert stderr.count("hello world") == 1
     finally:
         ray.shutdown()
         cluster.shutdown()

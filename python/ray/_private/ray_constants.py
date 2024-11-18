@@ -262,6 +262,9 @@ PROCESS_TYPE_PYTHON_CORE_WORKER = "python-core-worker"
 MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_MONITOR}.log"
 LOG_MONITOR_LOG_FILE_NAME = f"{PROCESS_TYPE_LOG_MONITOR}.log"
 
+# If the file exists, the session directory was created by the head node.
+CREATED_BY_HEAD_FILE_NAME = "created_by_head"
+
 # Enable log deduplication.
 RAY_DEDUP_LOGS = env_bool("RAY_DEDUP_LOGS", True)
 
