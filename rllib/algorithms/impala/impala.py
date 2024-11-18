@@ -597,7 +597,7 @@ class IMPALA(Algorithm):
         self._results = {}
 
         if self.config.enable_rl_module_and_learner:
-            self._current_sleep_time = 0.2
+            self._current_sleep_time = 0.1
             self._sleep_time_lr = 0.01
             self._last_train_throughput = float("-inf")
             self._sleep_time_lr_direction = self._sleep_time_lr

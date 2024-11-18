@@ -959,7 +959,6 @@ class MetricsLogger:
         }
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
-        self._tensor_mode_lock.release()
         return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
@@ -967,6 +966,7 @@ class MetricsLogger:
         for key, values in tensor_metrics.items():
             assert self._key_in_stats(key)
             self._get_key(key).set_to_numpy_values(values)
+        self._tensor_mode_lock.release()
 
     @property
     def tensor_mode(self):
