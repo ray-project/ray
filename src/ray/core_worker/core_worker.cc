@@ -781,14 +781,6 @@ void CoreWorker::Shutdown() {
 
   task_event_buffer_->Stop();
 
-  if (gcs_client_) {
-    // We should disconnect gcs client first otherwise because it contains
-    // a blocking logic that can block the io service upon
-    // gcs shutdown.
-    // TODO(sang): Refactor GCS client to be more robust.
-    RAY_LOG(INFO) << "Disconnecting a GCS client.";
-    gcs_client_->Disconnect();
-  }
   io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";
@@ -801,7 +793,11 @@ void CoreWorker::Shutdown() {
 
   // Now that gcs_client is not used within io service, we can reset the pointer and clean
   // it up.
-  gcs_client_.reset();
+  if (gcs_client_) {
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    gcs_client_->Disconnect();
+    gcs_client_.reset();
+  }
 
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }

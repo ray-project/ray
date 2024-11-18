@@ -219,6 +219,7 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
     const ClientCallback<Reply> &callback,
     const int64_t timeout_ms) {
   RAY_CHECK(callback != nullptr);
+  RAY_CHECK(grpc_client.get() != nullptr);
 
   auto executor = [weak_retryable_grpc_client,
                    prepare_async_function,

@@ -116,6 +116,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   // In case of transient network error, we queue the request and these requests
   // will be executed once network is recovered.
   auto request_bytes = request->GetRequestBytes();
+  auto self = shared_from_this();
   if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
     RAY_LOG(WARNING) << "Pending queue for failed request has reached the "
                      << "limit. Blocking the current thread until network is recovered";
@@ -126,6 +127,14 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
     while (server_unavailable_timeout_time_.has_value()) {
       std::this_thread::sleep_for(
           std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
+
+      if (self.use_count() == 2) {
+        // This means there are no external owners of this client
+        // and the client is considered shut down.
+        // The only two internal owners are caller of Retry and self.
+        break;
+      }
+
       CheckChannelStatus(false);
     }
     request->CallMethod();
