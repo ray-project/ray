@@ -18,7 +18,7 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 @DeveloperAPI
 class GPUCommunicator(ABC):
     """
-    Communicator for a group of aDAG actors on Nvidia GPU or other XPUs.
+    Communicator for a group of aDAG actors on Nvidia GPU.
 
     The aDAG execution leverages this internally to support communication
     between actors in the group.
