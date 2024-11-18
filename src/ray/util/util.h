@@ -294,6 +294,7 @@ inline void unsetEnv(const std::string &name) {
 }
 
 // Set [thread_name] to current thread; if it fails, error will be logged.
+// NOTICE: It only works for macos and linux.
 void SetThreadName(const std::string &thread_name);
 
 inline std::string GetThreadName() {
