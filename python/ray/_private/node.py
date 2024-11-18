@@ -630,7 +630,7 @@ class Node:
 
     @property
     def redis_password(self):
-        """Get the cluster Redis password"""
+        """Get the cluster Redis password."""
         return self._ray_params.redis_password
 
     @property
