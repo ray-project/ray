@@ -3414,7 +3414,7 @@ cdef class CoreWorker:
         """
         # We can only obtain the correct task name within asyncio task
         # via async_task_name contextvar. We try this first.
-        # It is needed because the core Worker's GetCurrentTask API
+        # It is needed because the core worker's GetCurrentTask API
         # doesn't have asyncio context, thus it cannot return the
         # correct task name.
         task_name = async_task_name.get()
