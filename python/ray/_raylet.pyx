@@ -5196,7 +5196,7 @@ def get_session_key_from_storage(host, port, username, password, use_ssl, config
             generator task.
         port: The task ID of the generator task.
         username: The Redis username.
-        password: The redis password.
+        password: The Redis password.
         use_ssl: Whether to use SSL.
         config: The Ray config. Used to get storage namespace.
         key: The key to retrieve.
