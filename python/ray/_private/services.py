@@ -1894,7 +1894,7 @@ def build_java_worker_command(
            to.
         raylet_name: The name of the raylet socket to create.
         redis_username: The username to connect to Redis.
-        redis_password: The password of connect to redis.
+        redis_password: The password to connect to Redis.
         session_dir: The path of this session.
         node_ip_address: The ip address for this node.
         setup_worker_path: The path of the Python file that will set up
