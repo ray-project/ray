@@ -24,9 +24,6 @@ from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
 
-from ray.experimental.channel.torch_tensor_type import (
-    TorchTensorType,
-)
 from ray.air._internal.device_manager.npu import NPU_TORCH_PACKAGE_AVAILABLE
 
 from ray.experimental.util.types import ReduceOp
