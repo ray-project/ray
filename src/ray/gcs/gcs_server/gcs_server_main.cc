@@ -33,7 +33,7 @@ DEFINE_string(config_list, "", "The config list of raylet.");
 DEFINE_string(redis_username, "", "The username of redis.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
-DEFINE_string(node_ip_address, "", "The ip address of the node.");
+DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
