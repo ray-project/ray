@@ -1893,7 +1893,7 @@ def build_java_worker_command(
         plasma_store_name: The name of the plasma store socket to connect
            to.
         raylet_name: The name of the raylet socket to create.
-        redis_username: The username of connect to redis.
+        redis_username: The username to connect to Redis.
         redis_password: The password of connect to redis.
         session_dir: The path of this session.
         node_ip_address: The ip address for this node.
