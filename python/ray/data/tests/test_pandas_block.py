@@ -76,13 +76,38 @@ class TestSizeBytes:
             for i in range(100_000)
         ]
         block = pd.DataFrame({"animals": animals})
-        # if you remove this line it breaks
         block["animals"] = block["animals"].astype("string")
 
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
         memory_usage = block.memory_usage(index=True, deep=True).sum()
+        assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
+            bytes_size,
+            memory_usage,
+        )
+
+    def test_size_bytes_large_str_object(ray_start_regular_shared):
+        num = 100_000
+        animals = [
+            random.choice(["alligator", "crocodile", "centipede", "flamingo"])
+            for i in range(num)
+        ]
+        block = pd.DataFrame({"animals": animals})
+
+        block_accessor = PandasBlockAccessor.for_block(block)
+        bytes_size = block_accessor.size_bytes()
+
+        mean_size = (
+            sum(
+                [
+                    sys.getsizeof(animal)
+                    for animal in ["alligator", "crocodile", "centipede", "flamingo"]
+                ]
+            )
+            / 4
+        )
+        memory_usage = mean_size * num
         assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
             bytes_size,
             memory_usage,
@@ -205,9 +230,9 @@ class TestSizeBytes:
         true_size = rows * list_overhead
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
-    def test_size_bytes_multi_level_nesting(ray_start_regular_shared):
+    def test_size_bytes_multi_level_nesting_small(ray_start_regular_shared):
         rows = 1_000
-        size = 10  # if you change this to 1024 it breaks
+        size = 1024  # if you change this to 1024 it breaks
         data = {
             "complex": [
                 {"list": [np.random.rand(size)], "value": {"key": "val"}}
@@ -218,12 +243,76 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        # Manually calculate the size
-        list_overhead = sys.getsizeof([0] * size) + size * 28
-        dict_size = (
-            sys.getsizeof({"key": "val"}) + sys.getsizeof("key") + sys.getsizeof("val")
+        numpy_size = np.random.rand(size).nbytes * rows
+
+        str_size = (
+            sys.getsizeof("list")
+            + sys.getsizeof("value")
+            + sys.getsizeof("key")
+            + sys.getsizeof("val")
+        ) * rows
+        print(f"str_size: {str_size}")
+
+        list_ref_overhead = sys.getsizeof([np.random.rand(size)]) * rows
+
+        dict_over_head1 = sys.getsizeof({"key": "val"}) * rows
+
+        dict_over_head3 = (
+            sys.getsizeof({"list": [np.random.rand(size)], "value": {"key": "val"}})
+            * rows
         )
-        true_size = rows * (list_overhead + dict_size)
+
+        true_size = (
+            numpy_size
+            + str_size
+            + list_ref_overhead
+            + dict_over_head1
+            + dict_over_head3
+        )
+        assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
+            bytes_size,
+            true_size,
+        )
+
+    def test_size_bytes_multi_level_nesting_large(ray_start_regular_shared):
+        rows = 1_000
+        size = 1024  # if you change this to 1024 it breaks
+        data = {
+            "complex": [
+                {"list": [np.random.rand(size)], "value": {"key": "val"}}
+                for _ in range(rows)
+            ],
+        }
+        block = pd.DataFrame(data)
+        block_accessor = PandasBlockAccessor.for_block(block)
+        bytes_size = block_accessor.size_bytes()
+
+        numpy_size = np.random.rand(size).nbytes * rows
+
+        str_size = (
+            sys.getsizeof("list")
+            + sys.getsizeof("value")
+            + sys.getsizeof("key")
+            + sys.getsizeof("val")
+        ) * rows
+        print(f"str_size: {str_size}")
+
+        list_ref_overhead = sys.getsizeof([np.random.rand(size)]) * rows
+
+        dict_over_head1 = sys.getsizeof({"key": "val"}) * rows
+
+        dict_over_head3 = (
+            sys.getsizeof({"list": [np.random.rand(size)], "value": {"key": "val"}})
+            * rows
+        )
+
+        true_size = (
+            numpy_size
+            + str_size
+            + list_ref_overhead
+            + dict_over_head1
+            + dict_over_head3
+        )
         assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
             bytes_size,
             true_size,
