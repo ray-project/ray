@@ -70,7 +70,6 @@ from ray.tests.test_batch_node_provider_unit import (
 )
 from ray.exceptions import RpcError
 
-from ray.core.generated import autoscaler_pb2
 
 WORKER_FILTER = {TAG_RAY_NODE_KIND: NODE_KIND_WORKER}
 
@@ -111,8 +110,6 @@ class MockGcsClient:
         # Tracks how many times DrainNode returned a successful RPC response.
         self.drain_node_reply_success = 0
 
-        self.custom_cluster_state = None
-
     def drain_nodes(self, raylet_ids_to_drain, timeout: int):
         """Simulate NodeInfo stub's DrainNode call.
 
@@ -145,17 +142,6 @@ class MockGcsClient:
         else:
             # Shouldn't land here.
             assert False, "Possible drain node outcomes exhausted."
-
-    def get_cluster_resource_state(self):
-        """Mock get_cluster_resource_state to return a ClusterResourceState.
-
-        Returns an empty state by default or custom state if provided.
-        """
-        if self.custom_cluster_state is not None:
-            return self.custom_cluster_state.SerializeToString()
-
-        # Default empty ClusterResourceState
-        return autoscaler_pb2.ClusterResourceState().SerializeToString()
 
 
 def mock_raylet_id() -> bytes:

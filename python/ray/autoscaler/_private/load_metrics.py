@@ -70,7 +70,6 @@ class LoadMetrics:
     """
 
     def __init__(self):
-        self.last_used_time_by_ip = {}
         self.last_heartbeat_time_by_ip = {}
         self.static_resources_by_ip = {}
         self.dynamic_resources_by_ip = {}
@@ -80,6 +79,7 @@ class LoadMetrics:
         self.pending_placement_groups = []
         self.resource_requests = []
         self.cluster_full_of_actors_detected = False
+        self.ray_nodes_idle_duration_ms_by_ip = {}
 
     def __bool__(self):
         """A load metrics instance is Falsey iff the autoscaler process
@@ -97,10 +97,12 @@ class LoadMetrics:
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
+        idle_duration_ms: int = 0,
     ):
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
+        self.ray_nodes_idle_duration_ms_by_ip[ip] = idle_duration_ms
 
         if not waiting_bundles:
             waiting_bundles = []
@@ -120,11 +122,6 @@ class LoadMetrics:
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
-        if (
-            ip not in self.last_used_time_by_ip
-            or self.static_resources_by_ip[ip] != self.dynamic_resources_by_ip[ip]
-        ):
-            self.last_used_time_by_ip[ip] = now
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
@@ -167,7 +164,7 @@ class LoadMetrics:
                 )
             assert not (unwanted_ips & set(mapping))
 
-        prune(self.last_used_time_by_ip, should_log=True)
+        prune(self.ray_nodes_idle_duration_ms_by_ip, should_log=True)
         prune(self.static_resources_by_ip, should_log=False)
         prune(self.raylet_id_by_ip, should_log=False)
         prune(self.dynamic_resources_by_ip, should_log=False)
@@ -337,7 +334,7 @@ class LoadMetrics:
         resources_used, resources_total = self._get_resource_usage()
 
         now = time.time()
-        idle_times = [now - t for t in self.last_used_time_by_ip.values()]
+        idle_times = self.ray_nodes_idle_duration_ms_by_ip.values()
         heartbeat_times = [now - t for t in self.last_heartbeat_time_by_ip.values()]
         most_delayed_heartbeats = sorted(
             self.last_heartbeat_time_by_ip.items(), key=lambda pair: pair[1]

@@ -490,22 +490,13 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-
-        # local import to avoid circular dependencies
-        from ray.autoscaler.v2.sdk import get_cluster_resource_state
-
-        # Note: The `last_used` metric only considers resource occupation,
-        # which can misreport nodes as idle when:
-        # 1. Tasks without assigned resources run on the node.
-        # 2. All tasks are blocked on `get` or `wait` operations.
-        # Using idle_duration_ms reported by ralyet instead
-        # ref: https://github.com/ray-project/ray/pull/39582
-        # Use get_cluster_resource_state from autocaler v2 sdk
-        # to get idle_duration_ms from raylet
-        ray_state = get_cluster_resource_state(self.gcs_client)
-        ray_nodes_idle_duration_ms_by_id = {
-            node.node_id: node.idle_duration_ms for node in ray_state.node_states
+        ray_nodes_idle_duration_ms_by_ip = (
+            self.load_metrics.ray_nodes_idle_duration_ms_by_ip
+        )
+        now = time.time()
+        last_used = {
+            ip: now - duration
+            for ip, duration in ray_nodes_idle_duration_ms_by_ip.items()
         }
 
         idle_timeout_ms = 60 * 1000 * self.config["idle_timeout_minutes"]
@@ -557,16 +548,9 @@ class StandardAutoscaler:
 
             node_ip = self.provider.internal_ip(node_id)
 
-            # Only attempt to drain connected nodes, i.e. nodes with ips in
-            # LoadMetrics.
-            internal_node_id = None
-            if node_ip in self.load_metrics.raylet_id_by_ip:
-                internal_node_id = self.load_metrics.raylet_id_by_ip[node_ip]
-
             if (
-                internal_node_id
-                and internal_node_id in ray_nodes_idle_duration_ms_by_id
-                and ray_nodes_idle_duration_ms_by_id[internal_node_id] > idle_timeout_ms
+                node_ip in ray_nodes_idle_duration_ms_by_ip
+                and ray_nodes_idle_duration_ms_by_ip[node_ip] > idle_timeout_ms
             ):
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
