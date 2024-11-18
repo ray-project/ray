@@ -242,7 +242,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         directly return the data received in (1).
         """
         # First, read the tensor data.
-        tensors = self._gpu_data_channel.read(timeout)
+        tensors = self._gpu_data_channel.read(timeout=timeout)
 
         if self._cpu_data_channel is None:
             # Handle _direct_return=True. In this case, we expect to receive
@@ -496,7 +496,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
         if self._static_tensor_metadata is not None:
             return self._static_tensor_metadata
 
-        meta = self._meta_channel.read(timeout)
+        meta = self._meta_channel.read(timeout=timeout)
 
         if self._static_shape:
             self._static_tensor_metadata = meta

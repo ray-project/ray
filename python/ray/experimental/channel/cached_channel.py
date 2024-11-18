@@ -87,7 +87,7 @@ class CachedChannel(ChannelInterface):
         assert (
             self._inner_channel is not None
         ), "Cannot read from the serialization context while inner channel is None."
-        value = self._inner_channel.read(timeout)
+        value = self._inner_channel.read(timeout=timeout)
         ctx.set_data(self._channel_id, value, self._num_reads)
         # NOTE: Currently we make a contract with aDAG users that the
         # channel results should not be mutated by the actor methods.

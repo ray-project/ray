@@ -1033,12 +1033,6 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # are the same actor. Note that reading the channel multiple
         # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
-    """
-    TODO (kevin85421): Add tests for the following cases:
-    (1) actor1 writes data to CompositeChannel and two Ray tasks on actor2 read it.
-    (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
-    Currently, (1) is not supported, and (2) is blocked by the reference count issue.
-    """
 
 
 @pytest.mark.skipif(

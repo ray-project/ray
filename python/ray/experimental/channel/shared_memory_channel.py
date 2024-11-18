@@ -603,7 +603,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         """
         # A single channel is not supposed to read and write at the same time.
         assert self._next_write_index == 0
-        output = self._buffers[self._next_read_index].read(timeout)
+        output = self._buffers[self._next_read_index].read(timeout=timeout)
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
@@ -757,7 +757,7 @@ class CompositeChannel(ChannelInterface):
         self.ensure_registered_as_reader()
         if actor_id is None:
             actor_id = self._get_self_actor_id()
-        return self._channel_dict[actor_id].read(timeout)
+        return self._channel_dict[actor_id].read(timeout=timeout)
 
     def close(self) -> None:
         for channel in self._channels:

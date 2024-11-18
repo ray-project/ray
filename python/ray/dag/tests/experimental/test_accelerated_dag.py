@@ -2072,6 +2072,19 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
+def test_multiple_reads_from_same_actor(ray_start_cluster):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        z = b.inc.bind(x)
+        dag = MultiOutputNode([y, z])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 1]
+    dag.teardown()
+
+
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
