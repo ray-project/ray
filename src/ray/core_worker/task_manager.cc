@@ -14,6 +14,7 @@
 
 #include "ray/core_worker/task_manager.h"
 
+#include "absl/strings/match.h"
 #include "ray/common/buffer.h"
 #include "ray/common/common_protocol.h"
 #include "ray/gcs/pb_util.h"
@@ -88,7 +89,7 @@ std::vector<ObjectID> ObjectRefStream::PopUnconsumedItems() {
   return unconsumed_ids;
 }
 
-bool ObjectRefStream::IsObjectConsumed(int64_t item_index) {
+bool ObjectRefStream::IsObjectConsumed(int64_t item_index) const {
   return item_index < next_index_;
 }
 
@@ -193,7 +194,6 @@ void ObjectRefStream::MarkEndOfStream(int64_t item_index,
 
   auto end_of_stream_id = GetObjectRefAtIndex(end_of_stream_index_);
   *object_id_in_last_index = end_of_stream_id;
-  return;
 }
 
 ObjectID ObjectRefStream::GetObjectRefAtIndex(int64_t generator_index) const {
@@ -377,7 +377,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   return true;
 }
 
-void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
+void TaskManager::DrainAndShutdown(const std::function<void()> &shutdown) {
   bool has_pending_tasks = false;
   {
     absl::MutexLock lock(&mu_);
@@ -455,14 +455,14 @@ bool TaskManager::HandleTaskReturn(const ObjectID &object_id,
     // this is okay because the pinned copy is on the local node, so we will
     // fate-share with the object if the local node fails.
     std::shared_ptr<LocalMemoryBuffer> data_buffer;
-    if (return_object.data().size() > 0) {
+    if (!return_object.data().empty()) {
       data_buffer = std::make_shared<LocalMemoryBuffer>(
           const_cast<uint8_t *>(
               reinterpret_cast<const uint8_t *>(return_object.data().data())),
           return_object.data().size());
     }
     std::shared_ptr<LocalMemoryBuffer> metadata_buffer;
-    if (return_object.metadata().size() > 0) {
+    if (!return_object.metadata().empty()) {
       metadata_buffer = std::make_shared<LocalMemoryBuffer>(
           const_cast<uint8_t *>(
               reinterpret_cast<const uint8_t *>(return_object.metadata().data())),
@@ -647,7 +647,7 @@ void TaskManager::MarkEndOfStream(const ObjectID &generator_id,
 
 bool TaskManager::HandleReportGeneratorItemReturns(
     const rpc::ReportGeneratorItemReturnsRequest &request,
-    ExecutionSignalCallback execution_signal_callback) {
+    const ExecutionSignalCallback &execution_signal_callback) {
   const auto &generator_id = ObjectID::FromBinary(request.generator_id());
   const auto &task_id = generator_id.TaskId();
   int64_t item_index = request.item_index();
@@ -1065,7 +1065,7 @@ void TaskManager::FailPendingTask(const TaskID &task_id,
 
     // Throttled logging of task failure errors.
     auto debug_str = spec.DebugString();
-    if (debug_str.find("__ray_terminate__") == std::string::npos &&
+    if (!absl::StrContains(debug_str, "__ray_terminate__") &&
         (num_failure_logs_ < kTaskFailureThrottlingThreshold ||
          (current_time_ms() - last_log_time_ms_) > kTaskFailureLoggingFrequencyMillis)) {
       if (num_failure_logs_++ == kTaskFailureThrottlingThreshold) {
@@ -1177,6 +1177,7 @@ void TaskManager::RemoveFinishedTaskReferences(
 
   std::vector<ObjectID> return_ids;
   size_t num_returns = spec.NumReturns();
+  return_ids.reserve(num_returns);
   for (size_t i = 0; i < num_returns; i++) {
     return_ids.push_back(spec.ReturnId(i));
   }
@@ -1276,7 +1277,7 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
 
 absl::flat_hash_set<ObjectID> TaskManager::GetTaskReturnObjectsToStoreInPlasma(
     const TaskID &task_id, bool *first_execution_out) const {
-  bool first_execution;
+  bool first_execution = false;
   absl::flat_hash_set<ObjectID> store_in_plasma_ids = {};
   absl::MutexLock lock(&mu_);
   auto it = submissible_tasks_.find(task_id);
@@ -1363,7 +1364,7 @@ std::vector<TaskID> TaskManager::GetPendingChildrenTasks(
     const TaskID &parent_task_id) const {
   std::vector<TaskID> ret_vec;
   absl::MutexLock lock(&mu_);
-  for (auto it : submissible_tasks_) {
+  for (const auto &it : submissible_tasks_) {
     if (it.second.IsPending() && (it.second.spec.ParentTaskId() == parent_task_id)) {
       ret_vec.push_back(it.first);
     }
