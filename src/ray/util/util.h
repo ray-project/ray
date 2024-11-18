@@ -295,7 +295,18 @@ inline void unsetEnv(const std::string &name) {
 
 // Set [thread_name] to current thread; if it fails, error will be logged.
 // NOTICE: It only works for macos and linux.
-void SetThreadName(const std::string &thread_name);
+inline void SetThreadName(const std::string &thread_name) {
+  int ret = 0;
+#if defined(__APPLE__)
+  ret = pthread_setname_np(thread_name.c_str());
+#elif defined(__linux__)
+  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+#endif
+  if (ret < 0) {
+    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
+                   << strerror(errno);
+  }
+}
 
 inline std::string GetThreadName() {
 #if defined(__linux__) || defined(__APPLE__)

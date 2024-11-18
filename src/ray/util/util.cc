@@ -52,19 +52,6 @@ std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
 }
 }  // namespace
 
-void SetThreadName(const std::string &thread_name) {
-  int ret = 0;
-#if defined(__APPLE__)
-  ret = pthread_setname_np(thread_name.c_str());
-#elif defined(__linux__)
-  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
-#endif
-  if (ret < 0) {
-    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
-                   << strerror(errno);
-  }
-}
-
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
     bool include_scheme) {
