@@ -4889,7 +4889,7 @@ cdef class CoreWorker:
             try:
                 if task_id:
                     async_task_id.set(task_id)
-                if task_name:
+                if task_name is not None:
                     async_task_name.set(task_name)
                 async_task_function.set(function_descriptor.repr)
 
