@@ -702,7 +702,8 @@ class Dataset:
         self,
         col: str,
         fn: Callable[
-            [DataBatch], Union["pyarrow.Array", "pandas.Series", "np.ndarray"]
+            [DataBatch],
+            Union["pyarrow.Array", "pandas.Series", Dict[str, "np.ndarray"]],
         ],
         *,
         batch_format: Optional[str] = "pandas",
@@ -749,7 +750,8 @@ class Dataset:
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
                 ``pandas.DataFrame``. If ``"pyarrow"``, batches are
-                ``pyarrow.Table``.
+                ``pyarrow.Table``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
@@ -759,16 +761,19 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
 
-        def add_column(batch: DataBatch) -> Union["pyarrow.Array", "pandas.Series", "np.ndarray"]:
+        def add_column(
+            batch: DataBatch,
+        ) -> Union["pyarrow.Array", "pandas.Series", Dict[str, "np.ndarray"]]:
             column = fn(batch)
-            # Historically, this method was written with pandas batch format in mind.
-            # To resolve https://github.com/ray-project/ray/issues/48090, we also allow
-            # pyarrow batch format which is preferred but would be a breaking change
-            # to enforce.
             if batch_format == "pandas":
                 batch.loc[:, col] = column
                 return batch
-            else:
+            elif batch_format == "pyarrow":
+                # Historically, this method was written for pandas batch format.
+                # To resolve https://github.com/ray-project/ray/issues/48090,
+                # we also allow pyarrow batch format which is preferred but would be
+                # a breaking change to enforce.
+
                 # For pyarrow, the index of the column will be -1 if it is missing in
                 # which case we'll want to append it
                 column_idx = batch.schema.get_field_index(col)
@@ -778,6 +783,10 @@ class Dataset:
                 else:
                     # Create a new table with the updated column
                     return batch.set_column(column_idx, col, column)
+            else:
+                # batch format is assumed to be numpy
+                batch[col] = column
+                return batch
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
