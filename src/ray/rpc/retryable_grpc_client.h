@@ -127,15 +127,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
 
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
 
-  void Shutdown();
-
   // Return the number of pending requests waiting for retry.
-  size_t NumPendingRequests() const {
-    absl::MutexLock lock(&mu_);
-    return pending_requests_.size();
-  }
+  size_t NumPendingRequests() const { return pending_requests_.size(); }
 
-  ~RetryableGrpcClient() { Shutdown(); }
+  ~RetryableGrpcClient();
 
  private:
   RetryableGrpcClient(std::shared_ptr<grpc::Channel> channel,
@@ -161,10 +156,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   void CheckChannelStatus(bool reset_timer = true);
 
   instrumented_io_context &io_context_;
-  mutable absl::Mutex mu_;
-  // Timer can be called from either the io_context_ thread, or the application's
-  // main thread. It needs to be protected by a mutex.
-  const std::unique_ptr<boost::asio::deadline_timer> timer_ ABSL_GUARDED_BY(mu_);
+  const std::unique_ptr<boost::asio::deadline_timer> timer_;
 
   std::shared_ptr<grpc::Channel> channel_;
 
@@ -182,12 +174,11 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // will be called.
   std::optional<absl::Time> server_unavailable_timeout_time_;
 
-  std::atomic<bool> shutdown_ = false;
-  // Pending requests can be accessed from either the io_context_ thread, or the
-  // application's main thread (e.g. Shutdown()). It needs to be protected by a mutex.
   // Key is when the request will timeout and value is the request.
+  // This is only accessed in the io context thread and the destructor so
+  // no mutex is needed.
   absl::btree_multimap<absl::Time, std::shared_ptr<RetryableGrpcRequest>>
-      pending_requests_ ABSL_GUARDED_BY(mu_);
+      pending_requests_;
   size_t pending_requests_bytes_ = 0;
 };
 

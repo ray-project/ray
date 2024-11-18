@@ -549,8 +549,6 @@ class GcsRpcClient {
                              runtime_env_grpc_client_,
                              /*method_timeout_ms*/ -1, )
 
-  void Shutdown() { retryable_grpc_client_->Shutdown(); }
-
   std::pair<std::string, int64_t> GetAddress() const {
     return std::make_pair(gcs_address_, gcs_port_);
   }

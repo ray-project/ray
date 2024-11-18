@@ -16,33 +16,27 @@
 
 namespace ray {
 namespace rpc {
-void RetryableGrpcClient::Shutdown() {
-  absl::MutexLock lock(&mu_);
-  if (!shutdown_.exchange(true)) {
-    // First call to shut down this GRPC client.
-    timer_->cancel();
+RetryableGrpcClient::~RetryableGrpcClient() {
+  // First call to shut down this GRPC client.
+  timer_->cancel();
 
-    // Fail the pending requests.
-    while (!pending_requests_.empty()) {
-      auto iter = pending_requests_.begin();
-      // Make sure the callback is executed in the io context thread.
-      io_context_.post(
-          [request = std::move(iter->second)]() {
-            request->Fail(Status::Disconnected("GRPC client is shut down."));
-          },
-          "RetryableGrpcClient.Shutdown");
-      pending_requests_.erase(iter);
-    }
-    pending_requests_bytes_ = 0;
-  } else {
-    RAY_LOG(DEBUG) << "GRPC client has already been shut down.";
+  // Fail the pending requests.
+  while (!pending_requests_.empty()) {
+    auto iter = pending_requests_.begin();
+    // Make sure the callback is executed in the io context thread.
+    io_context_.post(
+        [request = std::move(iter->second)]() {
+          request->Fail(Status::Disconnected("GRPC client is shut down."));
+        },
+        "~RetryableGrpcClient");
+    pending_requests_.erase(iter);
   }
+  pending_requests_bytes_ = 0;
 }
 
 void RetryableGrpcClient::SetupCheckTimer() {
   auto duration =
       boost::posix_time::milliseconds(check_channel_status_interval_milliseconds_);
-  absl::MutexLock lock(&mu_);
   timer_->expires_from_now(duration);
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_->async_wait([weak_self](boost::system::error_code error) {
@@ -53,29 +47,22 @@ void RetryableGrpcClient::SetupCheckTimer() {
 }
 
 void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
-  if (shutdown_) {
-    return;
+  // We need to cleanup all the pending requests which are timeout.
+  const auto now = absl::Now();
+  while (!pending_requests_.empty()) {
+    auto iter = pending_requests_.begin();
+    if (iter->first > now) {
+      break;
+    }
+    iter->second->Fail(ray::Status::TimedOut(absl::StrFormat(
+        "Timed out while waiting for %s to become available.", server_name_)));
+    pending_requests_bytes_ -= iter->second->GetRequestBytes();
+    pending_requests_.erase(iter);
   }
 
-  {
-    absl::MutexLock lock(&mu_);
-    // We need to cleanup all the pending requests which are timeout.
-    const auto now = absl::Now();
-    while (!pending_requests_.empty()) {
-      auto iter = pending_requests_.begin();
-      if (iter->first > now) {
-        break;
-      }
-      iter->second->Fail(ray::Status::TimedOut(absl::StrFormat(
-          "Timed out while waiting for %s to become available.", server_name_)));
-      pending_requests_bytes_ -= iter->second->GetRequestBytes();
-      pending_requests_.erase(iter);
-    }
-
-    if (pending_requests_.empty()) {
-      server_unavailable_timeout_time_ = std::nullopt;
-      return;
-    }
+  if (pending_requests_.empty()) {
+    server_unavailable_timeout_time_ = std::nullopt;
+    return;
   }
 
   auto status = channel_->GetState(false);
@@ -104,21 +91,18 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     break;
   }
   case GRPC_CHANNEL_SHUTDOWN: {
-    RAY_CHECK(shutdown_) << "Channel shoud never go to this status.";
+    RAY_LOG(FATAL) << "Channel shoud never go to this status.";
     break;
   }
   case GRPC_CHANNEL_READY:
   case GRPC_CHANNEL_IDLE: {
     server_unavailable_timeout_time_ = std::nullopt;
-    {
-      absl::MutexLock lock(&mu_);
-      // Retry the ones queued.
-      while (!pending_requests_.empty()) {
-        pending_requests_.begin()->second->CallMethod();
-        pending_requests_.erase(pending_requests_.begin());
-      }
-      pending_requests_bytes_ = 0;
+    // Retry the ones queued.
+    while (!pending_requests_.empty()) {
+      pending_requests_.begin()->second->CallMethod();
+      pending_requests_.erase(pending_requests_.begin());
     }
+    pending_requests_bytes_ = 0;
     break;
   }
   default: {
@@ -138,36 +122,21 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
       server_unavailable_timeout_time_ =
           absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
     }
-    while (server_unavailable_timeout_time_.has_value() && !shutdown_) {
+    while (server_unavailable_timeout_time_.has_value()) {
       CheckChannelStatus(false);
       std::this_thread::sleep_for(
           std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
     }
-    if (shutdown_) {
-      request->Fail(Status::Disconnected("GRPC client has been shutdown."));
-    } else {
-      request->CallMethod();
-    }
+    request->CallMethod();
     return;
   }
 
-  bool shutdown = false;
-  {
-    absl::MutexLock lock(&mu_);
-    if (!shutdown_) {
-      pending_requests_bytes_ += request_bytes;
-      auto timeout = request->GetTimeoutMs() == -1
-                         ? absl::InfiniteFuture()
-                         : absl::Now() + absl::Milliseconds(request->GetTimeoutMs());
-      pending_requests_.emplace(timeout, request);
-    } else {
-      shutdown = true;
-    }
-  }
-  if (shutdown) {
-    // Run the callback outside of the lock.
-    request->Fail(Status::Disconnected("GRPC client has been shutdown."));
-  } else if (!server_unavailable_timeout_time_.has_value()) {
+  pending_requests_bytes_ += request_bytes;
+  auto timeout = request->GetTimeoutMs() == -1
+                     ? absl::InfiniteFuture()
+                     : absl::Now() + absl::Milliseconds(request->GetTimeoutMs());
+  pending_requests_.emplace(timeout, request);
+  if (!server_unavailable_timeout_time_.has_value()) {
     server_unavailable_timeout_time_ =
         absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
     SetupCheckTimer();
