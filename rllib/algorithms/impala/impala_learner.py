@@ -196,8 +196,7 @@ class IMPALALearner(Learner):
             # We have to deepcopy the results dict, b/c we must avoid having a returned
             # Stats object sit in the queue and getting a new (possibly even tensor)
             # value added to it, which would falsify this result.
-            with self.metrics._tensor_mode_lock:
-                return self.metrics.reduce()
+            return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:

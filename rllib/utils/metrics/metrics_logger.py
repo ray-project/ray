@@ -1,3 +1,4 @@
+import copy
 import logging
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -903,14 +904,16 @@ class MetricsLogger:
         # existing one and can now re-assign it to `self.stats[key]` (while we return
         # from this method the properly reduced, but not cleared/emptied new `Stats`).
         try:
-            if key is not None:
-                stats_to_return = self._get_key(key, key_error=False).copy()
-                self._set_key(
-                    key, tree.map_structure_with_path(_reduce, stats_to_return)
-                )
-            else:
-                stats_to_return = self.stats.copy()
-                self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
+            with self._tensor_mode_lock:
+                assert not self.tensor_mode
+                if key is not None:
+                    stats_to_return = copy.deepcopy(self._get_key(key, key_error=False))
+                    self._set_key(
+                        key, tree.map_structure_with_path(_reduce, stats_to_return)
+                    )
+                else:
+                    stats_to_return = copy.deepcopy(self.stats)
+                    self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:
             raise ValueError(
