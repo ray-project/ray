@@ -625,7 +625,7 @@ class Node:
 
     @property
     def redis_username(self):
-        """Get the cluster Redis username"""
+        """Get the cluster Redis username."""
         return self._ray_params.redis_username
 
     @property
