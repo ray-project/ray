@@ -2560,6 +2560,7 @@ class CompiledDAG:
         ascii_visualization += "\n".join("".join(row) for row in grid)
 
         return ascii_visualization
+
     def get_channel_details(
         self, channel: ChannelInterface, downstream_actor_id: str
     ) -> str:

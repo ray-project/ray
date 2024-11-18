@@ -228,6 +228,7 @@ def test_visualize_multi_input_nodes(ray_start_regular):
 
     compiled_dag.teardown()
 
+
 class TestVisualizationAscii:
 
     """Tests for the visualize_ascii method of compiled DAGs."""
@@ -681,6 +682,7 @@ class TestVisualizationAscii:
         ), f"Expected edges {expected_edges} not found."
 
         compiled_dag.teardown()
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
