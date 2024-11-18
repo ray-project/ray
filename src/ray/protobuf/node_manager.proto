@@ -378,10 +378,12 @@ message PushMutableObjectReply {
 }
 
 message IsLocalWorkerDeadRequest {
+  // Binary worker id of the target worker.
   bytes worker_id = 1;
 }
 
 message IsLocalWorkerDeadReply {
+  // Whether the target worker is dead or not.
   bool is_dead = 1;
 }
 

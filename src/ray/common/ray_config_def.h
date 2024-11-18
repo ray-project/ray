@@ -693,6 +693,7 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
 
+/// Timeout for core worker grpc server reconnection in seconds.
 RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.

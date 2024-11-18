@@ -17,7 +17,6 @@
 namespace ray {
 namespace rpc {
 RetryableGrpcClient::~RetryableGrpcClient() {
-  // First call to shut down this GRPC client.
   timer_->cancel();
 
   // Fail the pending requests.
@@ -64,6 +63,8 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     server_unavailable_timeout_time_ = std::nullopt;
     return;
   }
+
+  RAY_CHECK(server_unavailable_timeout_time_.has_value());
 
   auto status = channel_->GetState(false);
   // https://grpc.github.io/grpc/core/md_doc_connectivity-semantics-and-api.html
@@ -123,9 +124,9 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
           absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
     }
     while (server_unavailable_timeout_time_.has_value()) {
-      CheckChannelStatus(false);
       std::this_thread::sleep_for(
           std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
+      CheckChannelStatus(false);
     }
     request->CallMethod();
     return;
@@ -137,6 +138,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
                      : absl::Now() + absl::Milliseconds(request->GetTimeoutMs());
   pending_requests_.emplace(timeout, request);
   if (!server_unavailable_timeout_time_.has_value()) {
+    // First request to retry.
     server_unavailable_timeout_time_ =
         absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
     SetupCheckTimer();

@@ -147,7 +147,7 @@ NodeManager::NodeManager(
       client_call_manager_(io_service),
       worker_rpc_pool_([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
-          // Keep retrying.
+          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
         });
       }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(

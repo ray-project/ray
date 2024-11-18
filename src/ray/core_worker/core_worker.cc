@@ -296,7 +296,9 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
   core_worker_client_pool_ =
       std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(
-            addr, *client_call_manager_, [this, addr]() {
+            addr,
+            *client_call_manager_,
+            /*core_worker_unavailable_timeout_callback=*/[this, addr]() {
               const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
               const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
               const rpc::GcsNodeInfo *node_info =

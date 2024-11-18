@@ -412,7 +412,7 @@ void GcsServer::InitClusterTaskManager() {
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
-      // Keep retrying
+      RAY_LOG(FATAL) << "GCS doesn't call any retryable core worker grpc methods.";
     });
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
@@ -450,7 +450,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
   };
   auto client_factory = [this](const rpc::Address &address) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
-      // Keep retrying
+      RAY_LOG(FATAL) << "GCS doesn't call any retryable core worker grpc methods.";
     });
   };
 
@@ -468,21 +468,24 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const NodeID &node_id, const rpc::ResourcesData &resources) {
         gcs_resource_manager_->UpdateNodeNormalTaskResources(node_id, resources);
       });
-  gcs_actor_manager_ = std::make_shared<GcsActorManager>(
-      std::move(scheduler),
-      gcs_table_storage_,
-      gcs_publisher_,
-      *runtime_env_manager_,
-      *function_manager_,
-      [this](const ActorID &actor_id) {
-        gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
-      },
-      [this](const rpc::Address &address) {
-        return std::make_shared<rpc::CoreWorkerClient>(
-            address, client_call_manager_, []() {
-              // Keep retrying.
-            });
-      });
+  gcs_actor_manager_ =
+      std::make_shared<GcsActorManager>(
+          std::move(scheduler),
+          gcs_table_storage_,
+          gcs_publisher_,
+          *runtime_env_manager_,
+          *function_manager_,
+          [this](const ActorID &actor_id) {
+            gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(
+                actor_id);
+          },
+          [this](const rpc::Address &address) {
+            return std::make_shared<rpc::CoreWorkerClient>(
+                address, client_call_manager_, []() {
+                  RAY_LOG(FATAL)
+                      << "GCS doesn't call any retryable core worker grpc methods.";
+                });
+          });
 
   // Initialize by gcs tables data.
   gcs_actor_manager_->Initialize(gcs_init_data);

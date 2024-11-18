@@ -294,6 +294,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const std::shared_ptr<ClientConnection> &connection) const;
 
+  /// Get the registered worker by worker id or nullptr if not found.
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
 
   /// Get the client connection's registered driver.

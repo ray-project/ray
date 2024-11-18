@@ -45,15 +45,24 @@ namespace rpc {
  * If the call fails due to transient network error, it is added to a retry queue.
  * The client waits for the grpc channel reconnection to resend the requests.
  * If the total number of request bytes in the queue exceeds max_pending_requests_bytes,
- * the thread is blocked until some requests are resent.
+ * the io context thread is blocked until some requests are resent.
  * If a call's timeout_ms reaches during retry, its callback is called with
  * Status::TimedOut. If the whole client does not reconnect within
  * server_unavailable_timeout_seconds, server_unavailable_timeout_callback is invoked.
+ *
  * When all callers of the client release the shared_ptr of the client, the client
  * destructor is called and the client is shut down.
  */
 class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcClient> {
  private:
+  /**
+   * Represents a single retryable grpc request.
+   * The lifecycle is managed by shared_ptr and it's either in the callback of an ongoing
+   * call or the RetryableGrpcClient retry queue.
+   *
+   * Implementation wise, it uses std::function for type erasure so that it can represent
+   * any underlying grpc request without making this class a template.
+   */
   class RetryableGrpcRequest : public std::enable_shared_from_this<RetryableGrpcRequest> {
    public:
     template <typename Service, typename Request, typename Reply>
@@ -166,7 +175,6 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   std::function<void()> server_unavailable_timeout_callback_;
   const std::string server_name_;
 
-  // Only accessed by the io_context_ thread, no mutext needed.
   // This is only set when there are pending requests and
   // we need to check channel status.
   // This is the time when the server will timeout for
