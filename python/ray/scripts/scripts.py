@@ -821,7 +821,7 @@ def start(
             if redis_username == ray_constants.REDIS_DEFAULT_USERNAME:
                 cli_logger.warning(
                     "`{}` should not be specified as empty string if "
-                    "external redis server(s) `{}` points to requires "
+                    "external Redis server(s) `{}` points to requires "
                     "username.",
                     cf.bold("--redis-username"),
                     cf.bold("--address"),
