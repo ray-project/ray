@@ -7,6 +7,8 @@ import torch.distributed as dist
 import torch_npu  # The torch_npu for communicate
 
 import ray
+from ray.experimental.util.types import ReduceOp
+
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
@@ -26,7 +28,7 @@ class _HcclGroup(GPUCommunicator):
     """
     Represents an actor's HCCL communicator using NPUs.
 
-    This is the default HCCL communicator to be used in Compiled Graphs if a
+    This is the default HCCL communicator to be used in aDAG if a
     custom communicator is not provided.
 
     This class is not thread-safe.
@@ -54,13 +56,13 @@ class _HcclGroup(GPUCommunicator):
             rank: The rank of this actor. If None, then the caller is not a
                 participant of the HCCL group.
             actor_handles: A list of actor handles, in rank order.
-            cuda_stream: Consistency with GPUCommunicator API. Hccl does not use cuda.
+            cuda_stream: Not used here but to keep same agrs with nccl_group.
         """
-        self._world_size: int = world_size
-        self._comm_id: int = comm_id
-        self._rank: int = rank
-        self._actor_handles: list = actor_handles
-        self._closed: bool = False
+        self._world_size = world_size
+        self._comm_id = comm_id
+        self._rank = rank
+        self._actor_handles = actor_handles
+        self._closed = False
         # Initialize distributed HCCL communication if rank is provided
         if rank is not None:
             self._init_dist_hccl(rank, world_size)
@@ -75,11 +77,9 @@ class _HcclGroup(GPUCommunicator):
                 in the communication.
         """
         # Set environment variables if not already set
-        os.environ["MASTER_ADDR"] = os.environ.get("MASTER_ADDR", "127.0.0.1")
-        os.environ["MASTER_PORT"] = os.environ.get("MASTER_PORT", "29500")
-        os.environ["HCCL_WHITELIST_DISABLE"] = os.environ.get(
-            "HCCL_WHITELIST_DISABLE", "1"
-        )
+        os.environ['MASTER_ADDR'] = os.environ.get('MASTER_ADDR', "127.0.0.1")
+        os.environ['MASTER_PORT'] = os.environ.get('MASTER_PORT', "29500")
+        os.environ['HCCL_WHITELIST_DISABLE'] = os.environ.get('HCCL_WHITELIST_DISABLE', '1')
 
         torch_npu.npu.set_device(rank)  # Set the NPU device according to the rank
         self.ctx = dist.init_process_group(
@@ -141,6 +141,7 @@ class _HcclGroup(GPUCommunicator):
             tensor: The tensor to be sent.
             peer_rank: The rank of the peer to send the tensor to.
         """
+        print("send")
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
         logger.info(f"start to send to:{peer_rank},self._rank : {self._rank} ")
@@ -173,7 +174,29 @@ class _HcclGroup(GPUCommunicator):
         torch_npu.npu.set_device(f"npu:{self._rank}")
         tensor = torch.zeros(*shape, dtype=dtype).to(f"npu:{self._rank}")
         dist.recv(tensor, src=peer_rank)
+        #torch.npu.synchronize(self._rank)
+        if self._closed:
+            raise RayChannelError("HCCL group has been destroyed.")
         return tensor
+
+
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+
+        pass
+
+
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+
+        pass
+
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+
+        pass
 
     def destroy(self) -> None:
         """
@@ -185,6 +208,6 @@ class _HcclGroup(GPUCommunicator):
         dist.destroy_process_group()
         if self._rank is not None:
             logger.info(
-                "Destructing NCCL group on actor: "
+                "Destructing HCCL group on actor: "
                 f"{ray.get_runtime_context().current_actor}"
             )

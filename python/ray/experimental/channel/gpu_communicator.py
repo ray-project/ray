@@ -2,9 +2,11 @@ from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Callable, List, Optional, Tuple
 
 import ray
+from ray.experimental.util.types import ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
+    import cupy as cp
     import torch
 
 
@@ -101,6 +103,40 @@ class GPUCommunicator(ABC):
             dtype: The dtype of the tensor to receive.
             peer_rank: The rank of the actor to receive from.
             allocator: A function to allocate the tensor to receive into.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for receiving tensors.
+        """
+        raise NotImplementedError
+
+    @property
+    @abstractmethod
+    def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for sending tensors.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def allreduce(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        """
+        Collectively allreduce the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to allreduce. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the allreduce result.
+            op: The reduce operation.
         """
         raise NotImplementedError
 

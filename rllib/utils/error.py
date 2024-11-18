@@ -67,7 +67,7 @@ In order to fix this problem, do the following:
 1) Run `pip install gymnasium` on your command line.
 2) Change all your import statements in your code from
    `import gym` -> `import gymnasium as gym` OR
-   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`
+   `from gym.spaces import Discrete` -> `from gymnasium.spaces import Discrete`
 
 For your custom (single agent) gym.Env classes:
 3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import

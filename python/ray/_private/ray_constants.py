@@ -445,6 +445,12 @@ RAY_WORKER_NICENESS = "RAY_worker_niceness"
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
 
+# Default max_concurrency option in @ray.remote for threaded actors.
+DEFAULT_MAX_CONCURRENCY_THREADED = 1
+
+# Default max_concurrency option in @ray.remote for async actors.
+DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
+
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
@@ -452,6 +458,15 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
 
 
 def gcs_actor_scheduling_enabled():
