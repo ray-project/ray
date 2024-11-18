@@ -154,7 +154,7 @@ class RemoteFunction:
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
             return self._remote(
-                serialized_runtime_env=self._serialized_base_runtime_env_info,
+                serialized_runtime_env_info=self._serialized_base_runtime_env_info,
                 args=args,
                 kwargs=kwargs,
                 **self._default_options,
