@@ -120,7 +120,7 @@ class JobAgentSubmissionClient:
         """Get an iterator that follows the logs of a job."""
         ws = await self._session.ws_connect(
             f"{self._agent_address}/api/job_agent/jobs/{job_id}/logs/tail",
-            max_msg_size=0
+            max_msg_size=0,
         )
 
         while True:
