@@ -1,11 +1,12 @@
 import os
 import zipfile
 
-import pyarrow as pa
 import pytest
+from packaging.version import parse as parse_version
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray._private.utils import _get_pyarrow_version
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -14,15 +15,16 @@ from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
 
-PYARROW_LE_11_0_0 = tuple(
-    int(s) for s in pa.__version__.split(".") if s.isnumeric()
-) < (
-    11,
-    0,
-    0,
+MIN_PYARROW_VERSION_FOR_HUDI = parse_version("11.0.0")
+_VER = _get_pyarrow_version()
+PYARROW_VERSION = None if _VER is None else parse_version(_VER)
+PYARROW_VERSION_MEETS_REQUIREMENT = (
+    PYARROW_VERSION is not None and PYARROW_VERSION >= MIN_PYARROW_VERSION_FOR_HUDI
 )
+
 pytestmark = pytest.mark.skipif(
-    PYARROW_LE_11_0_0, reason="hudi only supported if pyarrow >= 11.0.0"
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=f"Hudi only supported if pyarrow >= {MIN_PYARROW_VERSION_FOR_HUDI}",
 )
 
 
@@ -67,22 +69,10 @@ def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
     assert ds.count() == 5
     rows = (
         ds.select_columns(["_hoodie_commit_time", "ts", "uuid", "fare"])
-        .sort("ts")
+        .sort("fare")
         .take_all()
     )
     assert rows == [
-        {
-            "_hoodie_commit_time": "20240402144910683",
-            "ts": 1695046462179,
-            "uuid": "9909a8b1-2d15-4d3d-8ec9-efc48c536a00",
-            "fare": 339.0,
-        },
-        {
-            "_hoodie_commit_time": "20240402123035233",
-            "ts": 1695091554788,
-            "uuid": "e96c4396-3fad-413a-a942-4cb36106d721",
-            "fare": 27.7,
-        },
         {
             "_hoodie_commit_time": "20240402123035233",
             "ts": 1695115999911,
@@ -97,9 +87,21 @@ def test_read_hudi_simple_cow_table(ray_start_regular_shared, fs, data_path):
         },
         {
             "_hoodie_commit_time": "20240402123035233",
+            "ts": 1695091554788,
+            "uuid": "e96c4396-3fad-413a-a942-4cb36106d721",
+            "fare": 27.7,
+        },
+        {
+            "_hoodie_commit_time": "20240402123035233",
             "ts": 1695516137016,
             "uuid": "e3cf430c-889d-4015-bc98-59bdce1e530c",
             "fare": 34.15,
+        },
+        {
+            "_hoodie_commit_time": "20240402144910683",
+            "ts": 1695046462179,
+            "uuid": "9909a8b1-2d15-4d3d-8ec9-efc48c536a00",
+            "fare": 339.0,
         },
     ]
 

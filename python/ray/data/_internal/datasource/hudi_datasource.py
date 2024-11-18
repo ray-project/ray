@@ -1,7 +1,6 @@
 import logging
-from pathlib import PurePosixPath
+import os
 from typing import Dict, Iterator, List, Optional
-from urllib.parse import urljoin
 
 from ray.data._internal.util import _check_import
 from ray.data.block import BlockMetadata
@@ -35,35 +34,38 @@ class HudiDatasource(Datasource):
             from hudi import HudiFileGroupReader
 
             for p in base_file_paths:
-                fg_reader = HudiFileGroupReader(table_uri, options)
-                batch = fg_reader.read_file_slice_by_base_file_path(p)
+                file_group_reader = HudiFileGroupReader(table_uri, options)
+                batch = file_group_reader.read_file_slice_by_base_file_path(p)
                 yield pyarrow.Table.from_batches([batch])
 
         hudi_table = HudiTable(self._table_uri, self._storage_options)
 
-        reader_options = {}
-        reader_options.update(hudi_table.storage_options())
-        reader_options.update(hudi_table.hudi_options())
+        reader_options = {
+            **hudi_table.storage_options(),
+            **hudi_table.hudi_options(),
+        }
 
         schema = hudi_table.get_schema()
         read_tasks = []
-        for file_slices in hudi_table.split_file_slices(parallelism):
-            if len(file_slices) <= 0:
+        for file_slices_split in hudi_table.split_file_slices(parallelism):
+            if len(file_slices_split) == 0:
                 continue
 
             num_rows = 0
             relative_paths = []
             input_files = []
             size_bytes = 0
-            for f in file_slices:
-                num_rows += f.num_records
-                relative_path = f.base_file_relative_path()
+            for file_slice in file_slices_split:
+                # A file slice in a Hudi table is a logical group of data files
+                # within a physical partition. Records stored in a file slice
+                # are associated with a commit on the Hudi table's timeline.
+                # For more info, see https://hudi.apache.org/docs/file_layouts
+                num_rows += file_slice.num_records
+                relative_path = file_slice.base_file_relative_path()
                 relative_paths.append(relative_path)
-                full_path = urljoin(
-                    self._table_uri, PurePosixPath(relative_path).as_posix()
-                )
+                full_path = os.path.join(self._table_uri, relative_path)
                 input_files.append(full_path)
-                size_bytes += f.base_file_size
+                size_bytes += file_slice.base_file_size
 
             metadata = BlockMetadata(
                 num_rows=num_rows,
