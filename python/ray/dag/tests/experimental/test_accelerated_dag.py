@@ -2084,6 +2084,23 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
     dag.teardown()
 
 
+def test_driver_and_intraprocess_read(ray_start_cluster):
+    """
+    This test is similar to the `test_driver_and_actor_as_readers` test, but now for x,
+    there is IntraProcessChannel to Actor a and a BufferedSharedMemoryChannel to the
+    driver and the CompositeChannel has to choose the correct channel to read from in
+    both situations.
+    """
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = a.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 2]
+    dag.teardown()
+
+
 @pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
 @pytest.mark.parametrize("temporary_change_timeout", [1], indirect=True)
 def test_buffered_inputs(shutdown_only, temporary_change_timeout):
