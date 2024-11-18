@@ -74,7 +74,6 @@ def vtrace_torch(
     target_action_log_probs: "torch.Tensor",
     behaviour_action_log_probs: "torch.Tensor",
     discounts: "torch.Tensor",
-    #lambda_=None,
     rewards: "torch.Tensor",
     values: "torch.Tensor",
     bootstrap_values: "torch.Tensor",

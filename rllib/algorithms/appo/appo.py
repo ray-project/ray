@@ -243,9 +243,7 @@ class APPOConfig(IMPALAConfig):
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
         if circular_buffer_num_batches_N is not NotProvided:
-            self.circular_buffer_num_batches_N = (
-                circular_buffer_num_batches_N
-            )
+            self.circular_buffer_num_batches_N = circular_buffer_num_batches_N
         if circular_buffer_iterations_per_batch_K is not NotProvided:
             self.circular_buffer_iterations_per_batch_K = (
                 circular_buffer_iterations_per_batch_K

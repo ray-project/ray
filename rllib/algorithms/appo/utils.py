@@ -1,3 +1,8 @@
+"""
+[1] IMPACT: Importance Weighted Asynchronous Architectures with Clipped Target Networks.
+Luo et al. 2020
+https://arxiv.org/pdf/1912.00167
+"""
 from collections import deque
 import random
 import threading
@@ -13,6 +18,14 @@ TARGET_POLICY_SCOPE = "target_func"
 
 
 class CircularBuffer:
+    """A circular batch-wise buffer as described in [1] for APPO.
+
+    The buffer holds at most N batches, which are sampled at random (uniformly).
+    If full and a new batch is added, the oldest batch is discarded. Also, each batch
+    currently in the buffer can be sampled at most K times (after which it is also
+    discrded).
+    """
+
     def __init__(self, num_batches: int, iterations_per_batch: int):
         # N from the paper (buffer size).
         self.num_batches = num_batches
@@ -35,9 +48,8 @@ class CircularBuffer:
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
         if dropped_entry is not None and dropped_entry[0] is not None:
-            dropped_ts += (
-                    dropped_entry[0].env_steps()
-                    * (self.iterations_per_batch - dropped_entry[1])
+            dropped_ts += dropped_entry[0].env_steps() * (
+                self.iterations_per_batch - dropped_entry[1]
             )
 
         return dropped_ts
@@ -69,6 +81,7 @@ class CircularBuffer:
 
         # Return the sampled batch.
         return batch
+
 
 @OldAPIStack
 def make_appo_models(policy) -> ModelV2:

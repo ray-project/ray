@@ -251,7 +251,7 @@ class Stats:
         # In case another thread already is measuring this Stats (timing), simply ignore
         # the "enter request" and return a clone of `self`.
         thread_id = threading.get_ident()
-        #assert self._start_times[thread_id] is None
+        # assert self._start_times[thread_id] is None
         self._start_times[thread_id] = time.perf_counter()
         return self
 
@@ -685,7 +685,6 @@ class Stats:
                 return mean_value, [mean_value]
             else:
                 return mean_value, values
-
         # Do non-EMA reduction (possibly using a window).
         else:
             # Use the numpy/torch "nan"-prefix to ignore NaN's in our value lists.

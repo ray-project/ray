@@ -1,7 +1,4 @@
-import gymnasium as gym
-
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -46,13 +43,7 @@ config = (
         use_kl_loss=True,
         kl_coeff=1.0,
         kl_target=0.04,
-        # learner_queue_size=1,
     )
-    #.framework(
-    #    torch_compile_learner=True,
-    #    torch_compile_learner_dynamo_backend="inductor",
-    #    torch_compile_learner_what_to_compile="complete_update",
-    #)
 )
 
 

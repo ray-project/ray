@@ -1,5 +1,4 @@
 from collections import deque
-import copy
 import queue
 import threading
 import time
@@ -24,7 +23,6 @@ from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -81,6 +79,7 @@ class IMPALALearner(Learner):
         # on the "update queue" for the actual RLModule forward pass and loss
         # computations.
         self._gpu_loader_in_queue = queue.Queue()
+        # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
         self._learner_thread_out_queue = queue.Queue()
@@ -311,9 +310,9 @@ class _LearnerThread(threading.Thread):
                     time.sleep(0.001)
                     return
                 # Consume from the left (oldest batches first).
-                # If we consumed from the right, we would run into the danger of learning
-                # from newer batches (left side) most times, BUT sometimes grabbing
-                # older batches (right area of deque).
+                # If we consumed from the right, we would run into the danger of
+                # learning from newer batches (left side) most times, BUT sometimes
+                # grabbing older batches (right area of deque).
                 ma_batch_on_gpu = self._in_queue.popleft()
 
         # Call the update method on the batch.

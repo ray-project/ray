@@ -41,11 +41,11 @@ register_env("env", _env_creator)
 config = (
     APPOConfig()
     # Use torch.compile on the learner.
-    #.framework(
+    # .framework(
     #    torch_compile_learner=True,
     #    torch_compile_learner_dynamo_backend="inductor",
     #    torch_compile_learner_what_to_compile="complete_update",
-    #)
+    # )
     .environment(
         "env",
         env_config={

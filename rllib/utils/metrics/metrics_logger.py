@@ -112,9 +112,6 @@ class MetricsLogger:
         self._tensor_mode_lock = threading.Lock()
         self._tensor_keys = set()
 
-        ## Experimental throughput ([some count] per second) logging.
-        #self._throughput_prev_values_and_times = {}
-
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
 
@@ -953,10 +950,7 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        logged_tensors = {
-            key: self._get_key(key).peek()
-            for key in self._tensor_keys
-        }
+        logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
         return logged_tensors

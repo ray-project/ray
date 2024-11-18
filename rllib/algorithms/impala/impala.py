@@ -68,7 +68,6 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.annotations import DeveloperAPI
 
 
 logger = logging.getLogger(__name__)
@@ -597,6 +596,10 @@ class IMPALA(Algorithm):
         self._results = {}
 
         if self.config.enable_rl_module_and_learner:
+            # Set up auto-sleep time adjustment procedure. It is absolutely critical for
+            # this Algorithm's learning success that we sleep the correct amount of time
+            # in each training_step to establish a healthy balance between sample
+            # collection and training.
             self._current_sleep_time = 0.1
             self._sleep_time_lr = 0.01
             self._last_train_throughput = float("-inf")
@@ -738,6 +741,9 @@ class IMPALA(Algorithm):
                     rl_module_state=rl_module_state,
                 )
 
+        # Balance the backpressures: Sampling vs training through sleeping a small
+        # amount of time. The sleep time is adjusted automatically based on trying
+        # to reach a maximum training throughput.
         with self.metrics.log_time((TIMERS, "_balance_backpressure")):
             self.balance_backpressure()
 
@@ -940,6 +946,7 @@ class IMPALA(Algorithm):
                 self._sleep_time_lr_direction,
                 window=1,
             )
+
     @classmethod
     @override(Algorithm)
     def default_resource_request(

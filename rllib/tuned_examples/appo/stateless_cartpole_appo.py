@@ -29,7 +29,7 @@ config = (
         circular_buffer_iterations_per_batch_K=2,
         train_batch_size_per_learner=500,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
-        target_network_update_freq=2*4*2*500,
+        target_network_update_freq=2 * 4 * 2 * 500,
         vf_loss_coeff=0.05,
         entropy_coeff=0.005,
     )
