@@ -4956,7 +4956,7 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}
@@ -4971,7 +4971,7 @@
   group: cluster-launcher-test
   working_dir: ../python/ray/autoscaler/
 
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}
