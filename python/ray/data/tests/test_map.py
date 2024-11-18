@@ -349,6 +349,22 @@ def test_add_column(ray_start_regular_shared):
     )
     assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
+    # Test with numpy batch format
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: np.array([1] * len(list(x.keys())[0])), batch_format="numpy"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: np.add(x["id"], 1), batch_format="numpy"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column(
+        "id", lambda x: np.add(x["id"], 1), batch_format="numpy"
+    )
+    assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
     # Test with pandas batch format
 
     ds = ray.data.range(5).add_column("foo", lambda x: pd.Series([1] * x.shape[0]))
@@ -362,6 +378,10 @@ def test_add_column(ray_start_regular_shared):
 
     with pytest.raises(ValueError):
         ds = ray.data.range(5).add_column("id", 0)
+
+    # Test that an invalid batch_format raises an error
+    with pytest.raises(ValueError):
+        ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
 
 
 @pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
