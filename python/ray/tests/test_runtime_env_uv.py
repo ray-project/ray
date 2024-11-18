@@ -1,14 +1,28 @@
 # TODO(hjiang): A few unit tests to add after full functionality implemented.
 # 1. Install specialized version of `uv`.
 # 2. Options for `uv install`.
-# 3. Use requirement files for packages.
 
 import os
 import pytest
 import sys
+import tempfile
+from pathlib import Path
 
 from ray._private.runtime_env import virtualenv_utils
 import ray
+
+
+@pytest.fixture(scope="function")
+def tmp_working_dir():
+    """A test fixture which writes a requirements file."""
+    with tempfile.TemporaryDirectory() as tmp_dir:
+        path = Path(tmp_dir)
+
+        requirements_file = path / "requirements.txt"
+        with requirements_file.open(mode="w") as f:
+            f.write("requests==2.3.0")
+
+        yield str(requirements_file)
 
 
 def test_uv_install_in_virtualenv(shutdown_only):
@@ -40,6 +54,17 @@ def test_package_install_with_uv(shutdown_only):
     assert ray.get(f.remote()) == "2.3.0"
 
 
+# Package installation succeeds, with compatibility enabled.
+def test_package_install_with_uv_and_validation(shutdown_only):
+    @ray.remote(runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_check": True}})
+    def f():
+        import requests
+
+        return requests.__version__
+
+    assert ray.get(f.remote()) == "2.3.0"
+
+
 # Package installation fails due to conflict versions.
 def test_package_install_has_conflict_with_uv(shutdown_only):
     # moto require requests>=2.5
@@ -53,6 +78,34 @@ def test_package_install_has_conflict_with_uv(shutdown_only):
 
     with pytest.raises(ray.exceptions.RuntimeEnvSetupError):
         ray.get(f.remote())
+
+
+# Specify uv version and check.
+def test_uv_with_version_and_check(shutdown_only):
+    @ray.remote(
+        runtime_env={"uv": {"packages": ["requests==2.3.0"], "uv_version": "==0.4.0"}}
+    )
+    def f():
+        import pkg_resources
+        import requests
+
+        assert pkg_resources.get_distribution("uv").version == "0.4.0"
+        assert requests.__version__ == "2.3.0"
+
+    ray.get(f.remote())
+
+
+# Package installation via requirements file.
+def test_package_install_with_requirements(shutdown_only, tmp_working_dir):
+    requirements_file = tmp_working_dir
+
+    @ray.remote(runtime_env={"uv": requirements_file})
+    def f():
+        import requests
+
+        return requests.__version__
+
+    assert ray.get(f.remote()) == "2.3.0"
 
 
 if __name__ == "__main__":

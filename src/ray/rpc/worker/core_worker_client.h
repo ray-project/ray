@@ -47,10 +47,10 @@ namespace ray {
 namespace rpc {
 
 /// The maximum number of requests in flight per client.
-const int64_t kMaxBytesInFlight = 16 * 1024 * 1024;
+inline constexpr int64_t kMaxBytesInFlight = 16L * 1024 * 1024;
 
 /// The base size in bytes per request.
-const int64_t kBaseRequestSize = 1024;
+inline constexpr int64_t kBaseRequestSize = 1024;
 
 /// Get the estimated size in bytes of the given task.
 const static int64_t RequestSizeInBytes(const PushTaskRequest &request) {
@@ -89,7 +89,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// \return if the rpc call succeeds
   virtual void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                              bool skip_queue,
-                             const ClientCallback<PushTaskReply> &callback) {}
+                             ClientCallback<PushTaskReply> &&callback) {}
 
   /// Similar to PushActorTask, but sets no ordering constraint. This is used to
   /// push non-actor tasks directly to a worker.
@@ -198,7 +198,7 @@ class CoreWorkerClientInterface : public pubsub::SubscriberClientInterface {
   /// Returns the max acked sequence number, useful for checking on progress.
   virtual int64_t ClientProcessedUpToSeqno() { return -1; }
 
-  virtual ~CoreWorkerClientInterface(){};
+  virtual ~CoreWorkerClientInterface() = default;
 };
 
 /// Client used for communicating with a remote worker server.
@@ -370,7 +370,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
   void PushActorTask(std::unique_ptr<PushTaskRequest> request,
                      bool skip_queue,
-                     const ClientCallback<PushTaskReply> &callback) override {
+                     ClientCallback<PushTaskReply> &&callback) override {
     if (skip_queue) {
       // Set this value so that the actor does not skip any tasks when
       // processing this request. We could also set it to max_finished_seq_no_,
@@ -387,9 +387,7 @@ class CoreWorkerClient : public std::enable_shared_from_this<CoreWorkerClient>,
 
     {
       absl::MutexLock lock(&mutex_);
-      send_queue_.push_back(std::make_pair(
-          std::move(request),
-          std::move(const_cast<ClientCallback<PushTaskReply> &>(callback))));
+      send_queue_.emplace_back(std::move(request), std::move(callback));
     }
     SendRequests();
   }
