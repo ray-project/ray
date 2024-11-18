@@ -30,7 +30,7 @@ DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
-DEFINE_string(redis_username, "", "The username of redis.");
+DEFINE_string(redis_username, "", "The username of Redis.");
 DEFINE_string(redis_password, "", "The password of redis.");
 DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
 DEFINE_string(node_ip_address, "", "The IP address of the node.");
