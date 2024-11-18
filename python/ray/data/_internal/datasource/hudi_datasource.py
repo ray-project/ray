@@ -49,6 +49,7 @@ class HudiDatasource(Datasource):
         read_tasks = []
         for file_slices_split in hudi_table.split_file_slices(parallelism):
             if len(file_slices_split) == 0:
+                # when the table is empty, this will be an empty split
                 continue
 
             num_rows = 0

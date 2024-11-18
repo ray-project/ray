@@ -17,14 +17,12 @@ from ray.tests.conftest import *  # noqa
 
 MIN_PYARROW_VERSION_FOR_HUDI = parse_version("11.0.0")
 _VER = _get_pyarrow_version()
-PYARROW_VERSION = None if _VER is None else parse_version(_VER)
+PYARROW_VERSION = parse_version(_VER) if _VER else None
 PYARROW_VERSION_MEETS_REQUIREMENT = (
-    PYARROW_VERSION is not None and PYARROW_VERSION >= MIN_PYARROW_VERSION_FOR_HUDI
+    PYARROW_VERSION and PYARROW_VERSION >= MIN_PYARROW_VERSION_FOR_HUDI
 )
-
-pytestmark = pytest.mark.skipif(
-    not PYARROW_VERSION_MEETS_REQUIREMENT,
-    reason=f"Hudi only supported if pyarrow >= {MIN_PYARROW_VERSION_FOR_HUDI}",
+PYARROW_HUDI_TEST_SKIP_REASON = (
+    f"Hudi only supported if pyarrow >= {MIN_PYARROW_VERSION_FOR_HUDI}"
 )
 
 
@@ -34,6 +32,10 @@ def _extract_testing_table(fixture_path: str, table_dir: str, target_dir: str) -
     return os.path.join(target_dir, table_dir)
 
 
+@pytest.mark.skipif(
+    not PYARROW_VERSION_MEETS_REQUIREMENT,
+    reason=PYARROW_HUDI_TEST_SKIP_REASON,
+)
 @pytest.mark.parametrize(
     "fs,data_path",
     [
