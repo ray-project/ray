@@ -225,7 +225,9 @@ class TorchTensorNcclChannel(ChannelInterface):
 
         return data
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         """
         Read a value that may contain torch.Tensors sent via external
         transport.
@@ -503,6 +505,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
     def read(
         self,
+        actor_id: Optional[str] = None,
         timeout: Optional[float] = None,
     ) -> Union["torch.Tensor", List["torch.Tensor"]]:
         """

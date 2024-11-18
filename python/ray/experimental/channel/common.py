@@ -217,7 +217,9 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         """
         Read the latest value from the channel. This call will block until a
         value is available to read.
@@ -226,6 +228,8 @@ class ChannelInterface:
         zero-copy (e.g., bytes or a numpy array) *and* the object is still in scope.
 
         Args:
+            actor_id: The actor ID of the reader. This is used to determine
+                which channel to read from for CompositeChannel.
             timeout: The maximum time in seconds to wait to read the value.
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
@@ -252,6 +256,7 @@ class ReaderInterface:
     def __init__(
         self,
         input_channels: List[ChannelInterface],
+        actor_handle: Optional["ray.actor.ActorHandle"],
     ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
@@ -260,6 +265,7 @@ class ReaderInterface:
         self._input_channels = input_channels
         self._closed = False
         self._num_reads = 0
+        self._actor_id = actor_handle._actor_id.hex() if actor_handle else None
 
     def get_num_reads(self) -> int:
         return self._num_reads
@@ -308,8 +314,9 @@ class SynchronousReader(ReaderInterface):
     def __init__(
         self,
         input_channels: List[ChannelInterface],
+        actor_handle: Optional["ray.actor.ActorHandle"],
     ):
-        super().__init__(input_channels)
+        super().__init__(input_channels, actor_handle)
 
     def start(self):
         pass
@@ -318,7 +325,7 @@ class SynchronousReader(ReaderInterface):
         results = []
         for c in self._input_channels:
             start_time = time.monotonic()
-            results.append(c.read(timeout))
+            results.append(c.read(self._actor_id, timeout))
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
@@ -339,8 +346,9 @@ class AwaitableBackgroundReader(ReaderInterface):
         self,
         input_channels: List[ChannelInterface],
         fut_queue: asyncio.Queue,
+        actor_handle: Optional["ray.actor.ActorHandle"],
     ):
-        super().__init__(input_channels)
+        super().__init__(input_channels, actor_handle)
         self._fut_queue = fut_queue
         self._background_task = None
         self._background_task_executor = concurrent.futures.ThreadPoolExecutor(
@@ -354,7 +362,7 @@ class AwaitableBackgroundReader(ReaderInterface):
         results = []
         for c in self._input_channels:
             exiting = retry_and_check_interpreter_exit(
-                lambda: results.append(c.read(timeout=1))
+                lambda: results.append(c.read(actor_id=self._actor_id, timeout=1))
             )
             if exiting:
                 break

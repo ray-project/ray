@@ -420,7 +420,9 @@ class ExecutableTask:
             assert not isinstance(val, ChannelInterface)
 
         # Input reader to read input data from upstream DAG nodes.
-        self.input_reader: ReaderInterface = SynchronousReader(self.input_channels)
+        self.input_reader: ReaderInterface = SynchronousReader(
+            self.input_channels, task.dag_node._get_actor_handle()
+        )
         # Output writer to write output data to downstream DAG nodes.
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
@@ -847,7 +849,7 @@ class CompiledDAG:
         self._max_finished_execution_index: int = -1
         # execution_index -> {channel_index -> result}
         self._result_buffer: Dict[int, Dict[int, Any]] = defaultdict(dict)
-        # channel to possible inner channel
+        # channel to possible outer channel
         self._channel_dict: Dict[ChannelInterface, ChannelInterface] = {}
 
         def _create_proxy_actor() -> "ray.actor.ActorHandle":
@@ -1599,12 +1601,16 @@ class CompiledDAG:
             self._dag_output_fetcher = AwaitableBackgroundReader(
                 self.dag_output_channels,
                 self._fut_queue,
+                self._proxy_actor,
             )
         else:
             self._dag_submitter = SynchronousWriter(
                 self.dag_input_channels, input_task.output_idxs, is_input=True
             )
-            self._dag_output_fetcher = SynchronousReader(self.dag_output_channels)
+            self._dag_output_fetcher = SynchronousReader(
+                self.dag_output_channels,
+                self._proxy_actor,
+            )
 
         self._dag_submitter.start()
         self._dag_output_fetcher.start()

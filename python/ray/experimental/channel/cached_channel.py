@@ -73,7 +73,9 @@ class CachedChannel(ChannelInterface):
         ctx = ChannelContext.get_current().serialization_context
         ctx.set_data(self._channel_id, value, self._num_reads)
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         # TODO: beter organize the imports
         from ray.experimental.channel import ChannelContext
 

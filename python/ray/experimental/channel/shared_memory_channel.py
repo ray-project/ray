@@ -475,7 +475,9 @@ class Channel(ChannelInterface):
             timeout_ms,
         )
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
         ), "Timeout must be non-negative or -1."
@@ -589,7 +591,9 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_write_index += 1
         self._next_write_index %= self._num_shm_buffers
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         """Read a value from a channel.
 
         If the next buffer is available, it returns immediately. If the next
@@ -702,7 +706,7 @@ class CompositeChannel(ChannelInterface):
         creation of reader_and_node_list in CompiledDAGNode.
         """
         actor_id = ray.get_runtime_context().get_actor_id()
-        if actor_id is None and self._read_by_adag_driver:
+        if self._read_by_adag_driver:
             # The reader is the driver process.
             # Use the actor ID of the DAGDriverProxyActor.
             assert len(self._reader_and_node_list) > 0
@@ -747,9 +751,12 @@ class CompositeChannel(ChannelInterface):
         for channel in self._channels:
             channel.write(value, timeout)
 
-    def read(self, timeout: Optional[float] = None) -> Any:
+    def read(
+        self, actor_id: Optional[str] = None, timeout: Optional[float] = None
+    ) -> Any:
         self.ensure_registered_as_reader()
-        actor_id = self._get_self_actor_id()
+        if actor_id is None:
+            actor_id = self._get_self_actor_id()
         return self._channel_dict[actor_id].read(timeout)
 
     def close(self) -> None:
