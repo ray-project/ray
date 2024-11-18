@@ -1896,7 +1896,7 @@ def build_java_worker_command(
         redis_username: The username to connect to Redis.
         redis_password: The password to connect to Redis.
         session_dir: The path of this session.
-        node_ip_address: The ip address for this node.
+        node_ip_address: The IP address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
     Returns:
