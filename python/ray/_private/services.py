@@ -1467,7 +1467,7 @@ def start_gcs_server(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         redis_username: The username of the Redis server.
-        redis_password: The password of the redis server.
+        redis_password: The password of the Redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
