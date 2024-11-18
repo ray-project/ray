@@ -26,7 +26,7 @@
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
-/// value to support empty redis username.
+/// value to support an empty Redis username.
 ABSL_FLAG(std::string,
           ray_redis_username,
           "absl::flags dummy default value",
