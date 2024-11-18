@@ -2210,7 +2210,7 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_username: The username of the redis server.
+        redis_username: The username of the Redis server.
         redis_password: The password of the redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
