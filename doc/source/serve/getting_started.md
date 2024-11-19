@@ -101,6 +101,7 @@ parameters in the `@serve.deployment` decorator. The example configures a few co
 * `ray_actor_options`: a dictionary containing configuration options for each replica.
     * `num_cpus`: a float representing the logical number of CPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer CPUs than replicas.
     * `num_gpus`: a float representing the logical number of GPUs each replica should reserve. You can make this a fraction to pack multiple replicas together on a machine with fewer GPUs than replicas.
+    * `resources`: if you want to reserve HPUs resources for each replica, please set this parameter in ray_actor_options, like `ray_actor_options={"resources": {"HPU": 1}}`. The value of `HPU` needs to be an integer which represents the logical number of HPUs each replica should reserve.
 
 All these parameters are optional, so feel free to omit them:
 
