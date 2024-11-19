@@ -581,7 +581,7 @@ def test_options():
     # TODO(suquark): The current implementation of `.options()` is so bad that we
     # cannot even access its options from outside. Here we hack the closures to
     # achieve our goal. Need futher efforts to clean up the tech debt.
-    assert f2.remote.__closure__[1].cell_contents == {
+    assert f2.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 11, "b": 2, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,

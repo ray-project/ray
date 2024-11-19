@@ -269,11 +269,12 @@ class RemoteFunction:
                 updated_options["runtime_env"]
             )
             # Re-calculate runtime env info based on updated runtime env.
-            serialized_runtime_env_info = get_runtime_env_info(
-                updated_options["runtime_env"],
-                is_job_runtime_env=False,
-                serialize=True,
-            )
+            if updated_options["runtime_env"]:
+                serialized_runtime_env_info = get_runtime_env_info(
+                    updated_options["runtime_env"],
+                    is_job_runtime_env=False,
+                    serialize=True,
+                )
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
