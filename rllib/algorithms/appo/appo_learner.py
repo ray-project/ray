@@ -11,6 +11,7 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
+    ALL_MODULES,
     LAST_TARGET_UPDATE_TS,
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
@@ -82,12 +83,11 @@ class APPOLearner(IMPALALearner):
 
         # TODO (sven): Maybe we should have a `after_gradient_based_update`
         #  method per module?
+        curr_timestep = self.metrics.peek(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME)
+        )
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
-
-            curr_timestep = self.metrics.peek(
-                (module_id, NUM_ENV_STEPS_TRAINED_LIFETIME)
-            )
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
             if isinstance(module.unwrapped(), TargetNetworkAPI) and (
