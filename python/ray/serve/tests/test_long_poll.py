@@ -240,7 +240,7 @@ def test_listen_for_change_java(serve_instance):
     ]
     ray.get(
         host.notify_changed.remote(
-            (LongPollNamespace.RUNNING_REPLICAS, "deployment_name"), replicas
+            {(LongPollNamespace.RUNNING_REPLICAS, "deployment_name"): replicas}
         )
     )
     object_ref_3 = host.listen_for_change_java.remote(
