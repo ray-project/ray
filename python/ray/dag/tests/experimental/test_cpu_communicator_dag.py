@@ -8,7 +8,6 @@ import pytest
 import ray
 import ray.cluster_utils
 import ray.experimental.collective as collective
-import time
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.conftest import start_nccl_mock
@@ -101,7 +100,6 @@ def test_cpu_p2p(ray_start_cluster):
     test_value = 2.0
     
     send_future = sender.send.remote(test_value, shape, dtype, peer_rank=1)
-    time.sleep(1)
     receive_future = receiver.receive.remote(shape, dtype, peer_rank=0)
     
     send_result = ray.get(send_future)
