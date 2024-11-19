@@ -101,7 +101,6 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
-    read_by_adag_driver: bool,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -109,8 +108,6 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
-        read_by_adag_driver: True if the channel will be read by an aDAG driver
-            (Ray driver or actor and task that creates an aDAG).
 
     Returns:
         The allocated channel.
@@ -126,7 +123,6 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         writer,
         reader_and_node_list,
-        read_by_adag_driver,
     )
     return output_channel
 
@@ -1319,27 +1315,17 @@ class CompiledDAG:
                     # same actor, because with CachedChannel each actor will
                     # only read from the upstream channel once.
                     reader_handles_set = set()
-                    read_by_multi_output_node = False
                     for reader in readers:
-                        if isinstance(reader.dag_node, MultiOutputNode):
-                            assert self._proxy_actor is not None
-                            # inserting at 0 because CompositeChannel
-                            # _get_self_actor_id() reads first element for proxy actor
-                            reader_and_node_list.insert(
-                                0,
-                                (
-                                    self._proxy_actor,
-                                    self._get_node_id(self._proxy_actor),
-                                ),
+                        reader_handle = (
+                            self._proxy_actor
+                            if isinstance(reader.dag_node, MultiOutputNode)
+                            else reader.dag_node._get_actor_handle()
+                        )
+                        if reader_handle not in reader_handles_set:
+                            reader_and_node_list.append(
+                                (reader_handle, self._get_node_id(reader_handle))
                             )
-                            read_by_multi_output_node = True
-                        else:
-                            reader_handle = reader.dag_node._get_actor_handle()
-                            if reader_handle not in reader_handles_set:
-                                reader_and_node_list.append(
-                                    (reader_handle, self._get_node_id(reader_handle))
-                                )
-                                reader_handles_set.add(reader_handle)
+                        reader_handles_set.add(reader_handle)
 
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(
@@ -1347,7 +1333,6 @@ class CompiledDAG:
                             do_allocate_channel,
                             reader_and_node_list,
                             type_hint,
-                            read_by_multi_output_node,
                         )
                     )
                     output_idx = None
@@ -1413,7 +1398,6 @@ class CompiledDAG:
                         self,
                         reader_and_node_list,
                         type_hint,
-                        False,
                     )
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(
