@@ -32,8 +32,7 @@ logger = logging.getLogger(__name__)
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-OLD_ACTION_DIST_KEY = "old_action_dist"
-OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
+TARGET_ACTION_DIST_LOGITS_KEY = "target_action_dist_logits"
 
 
 class APPOConfig(IMPALAConfig):
@@ -108,6 +107,7 @@ class APPOConfig(IMPALAConfig):
         self.use_kl_loss = False
         self.kl_coeff = 1.0
         self.kl_target = 0.01
+        self.target_worker_clipping = 2.0
         # TODO (sven): Activate once v-trace sequences in non-RNN batch are solved.
         #  If we switch this on right now, the shuffling would destroy the rollout
         #  sequences (non-zero-padded!) needed in the batch for v-trace.
@@ -163,6 +163,7 @@ class APPOConfig(IMPALAConfig):
         kl_target: Optional[float] = NotProvided,
         tau: Optional[float] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
+        target_worker_clipping: Optional[float] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
         **kwargs,
@@ -193,6 +194,9 @@ class APPOConfig(IMPALAConfig):
                 on before updating the target networks and tune the kl loss
                 coefficients. NOTE: This parameter is only applicable when using the
                 Learner API (enable_rl_module_and_learner=True).
+            target_worker_clipping: The maximum value for the target-worker-clipping
+                used for computing the IS ratio, described in [1]
+                IS = min(π(i) / π(target), ρ) * (π / π(i))
 
         Returns:
             This updated AlgorithmConfig object.
@@ -227,6 +231,8 @@ class APPOConfig(IMPALAConfig):
             self.tau = tau
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
+        if target_worker_clipping is not NotProvided:
+            self.target_worker_clipping = target_worker_clipping
 
         return self
 
