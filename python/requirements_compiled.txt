@@ -334,7 +334,7 @@ crc32c==2.3
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==38.0.1
+cryptography==42.0.5
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   adal
@@ -1605,7 +1605,7 @@ pyopengl==3.1.7
     # via
     #   dm-control
     #   mujoco
-pyopenssl==23.0.0
+pyopenssl==24.2.1
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
