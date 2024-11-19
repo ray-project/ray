@@ -4,6 +4,7 @@ import os
 import random
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
@@ -179,12 +180,12 @@ class LongPollHost:
 
     The desired use case is to embed this in an Ray actor. Client will be
     expected to call actor.listen_for_change.remote(...). On the host side,
-    you can call host.notify_changed(key, object) to update the state and
+    you can call host.notify_changed({key: object}) to update the state and
     potentially notify whoever is polling for these values.
 
     Internally, we use snapshot_ids for each object to identify client with
     outdated object and immediately return the result. If the client has the
-    up-to-date verison, then the listen_for_change call will only return when
+    up-to-date version, then the listen_for_change call will only return when
     the object is updated.
     """
 
@@ -306,15 +307,15 @@ class LongPollHost:
             self._count_send(LongPollState.TIME_OUT)
             return LongPollState.TIME_OUT
         else:
-            updated_object_key: str = async_task_to_watched_keys[done.pop()]
-            updated_object = {
-                updated_object_key: UpdatedObject(
+            updated_objects = {}
+            for task in done:
+                updated_object_key = async_task_to_watched_keys[task]
+                updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
                 )
-            }
-            self._count_send(updated_object)
-            return updated_object
+            self._count_send(updated_objects)
+            return updated_objects
 
     async def listen_for_change_java(
         self,
@@ -403,21 +404,22 @@ class LongPollHost:
         proto = LongPollResult(**data)
         return proto.SerializeToString()
 
-    def notify_changed(
-        self,
-        object_key: KeyType,
-        updated_object: Any,
-    ):
-        try:
-            self.snapshot_ids[object_key] += 1
-        except KeyError:
-            # Initial snapshot id must be >= 0, so that the long poll client
-            # can send a negative initial snapshot id to get a fast update.
-            # They should also be randomized;
-            # see https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
-            self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
-        self.object_snapshots[object_key] = updated_object
-        logger.debug(f"LongPollHost: Notify change for key {object_key}.")
+    def notify_changed(self, updates: Mapping[KeyType, Any]) -> None:
+        """
+        Update the current snapshot of some objects
+        and notify any long poll clients.
+        """
+        for object_key, updated_object in updates.items():
+            try:
+                self.snapshot_ids[object_key] += 1
+            except KeyError:
+                # Initial snapshot id must be >= 0, so that the long poll client
+                # can send a negative initial snapshot id to get a fast update.
+                # They should also be randomized; see
+                # https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
+                self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
+            self.object_snapshots[object_key] = updated_object
+            logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
-        for event in self.notifier_events.pop(object_key, set()):
-            event.set()
+            for event in self.notifier_events.pop(object_key, set()):
+                event.set()
