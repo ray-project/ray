@@ -434,7 +434,6 @@ void ValidateRedisDB(RedisContext &context) {
 bool isRedisSentinel(RedisContext &context) {
   auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
   if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
-    RAY_LOG(INFO) << "failed to get redis sentinel info, continue as a regular redis.";
     return false;
   } else {
     return true;
@@ -445,6 +444,7 @@ Status ConnectRedisCluster(RedisContext &context,
                            const std::string &password,
                            bool enable_ssl,
                            const std::string &redis_address) {
+  RAY_LOG(INFO) << "Connect to Redis Cluster";
   // Ray has some restrictions for RedisDB. Validate it here.
   ValidateRedisDB(context);
 
@@ -485,6 +485,8 @@ Status ConnectRedisCluster(RedisContext &context,
 Status ConnectRedisSentinel(RedisContext &context,
                             const std::string &password,
                             bool enable_ssl) {
+  RAY_LOG(INFO) << "Connect to Redis sentinel";
+
   std::vector<const char *> argv;
   std::vector<size_t> argc;
   std::vector<std::string> cmds = {"SENTINEL", "MASTERS"};
@@ -507,10 +509,10 @@ Status ConnectRedisSentinel(RedisContext &context,
       ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
   RAY_CHECK(redis_reply) << "Failed to get redis sentinel masters info";
-  RAY_CHECK(redis_reply->type == REDIS_REPLY_ARRAY)
+  RAY_CHECK_EQ(redis_reply->type, REDIS_REPLY_ARRAY)
       << "Redis sentinel master info should be REDIS_REPLY_ARRAY but got "
       << redis_reply->type;
-  RAY_CHECK_EQ(redis_reply->elements, 1)
+  RAY_CHECK_EQ(redis_reply->elements, 1UL)
       << "expecting only one primary behind the redis sentinel";
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
