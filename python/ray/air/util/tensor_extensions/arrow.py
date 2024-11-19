@@ -144,7 +144,9 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
         #       only going to be logged in following cases
         #           - When fallback is disabled, or
         #           - It's being logged for the first time
-        if not should_serialize_as_object_ext_type or log_once("_fallback_to_arrow_object_extension_type_warning"):
+        if not should_serialize_as_object_ext_type or log_once(
+            "_fallback_to_arrow_object_extension_type_warning"
+        ):
             logger.warning(
                 f"Failed to convert column '{column_name}' into pyarrow "
                 f"array due to: {ace}; {object_ext_type_detail}",
