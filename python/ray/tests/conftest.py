@@ -21,7 +21,7 @@ import pytest
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.conftest_utils import set_override_dashboard_url  # noqa: F401
-from ray._private.runtime_env.pip import PipProcessor
+from ray._private.runtime_env import virtualenv_utils
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
 
 from ray._private.test_utils import (
@@ -688,6 +688,11 @@ def tmp_working_dir():
         with hello_file.open(mode="w") as f:
             f.write("world")
 
+        test_file_module = path / "file_module.py"
+        with test_file_module.open(mode="w") as f:
+            f.write("def hello():\n")
+            f.write("    return 'hello'\n")
+
         module_path = path / "test_module"
         module_path.mkdir(parents=True)
 
@@ -975,7 +980,7 @@ def cloned_virtualenv():
     # aviod import `pytest_virtualenv` in test case `Minimal install`
     from pytest_virtualenv import VirtualEnv
 
-    if PipProcessor._is_in_virtualenv():
+    if virtualenv_utils.is_in_virtualenv():
         raise RuntimeError("Forbid the use of this fixture in virtualenv")
 
     venv = VirtualEnv(

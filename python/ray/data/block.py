@@ -1,4 +1,5 @@
 import collections
+import logging
 import os
 import time
 from dataclasses import dataclass
@@ -25,6 +26,7 @@ from ray import DynamicObjectRefGenerator
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -55,6 +57,9 @@ AggType = TypeVar("AggType")
 # Block data can be accessed in a uniform way via ``BlockAccessors`` like`
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
+
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -374,6 +379,12 @@ class BlockAccessor:
                 try:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
+                    if log_once("_fallback_to_pandas_block_warning"):
+                        logger.warning(
+                            f"Failed to convert batch to Arrow due to: {e}; "
+                            f"falling back to Pandas block"
+                        )
+
                     if block_type is None:
                         return cls.batch_to_pandas_block(batch)
                     else:
@@ -386,9 +397,9 @@ class BlockAccessor:
     @classmethod
     def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
         """Create an Arrow block from user-facing data formats."""
-        from ray.data._internal.arrow_block import ArrowBlockAccessor
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
 
-        return ArrowBlockAccessor.numpy_to_block(batch)
+        return ArrowBlockBuilder._table_from_pydict(batch)
 
     @classmethod
     def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
@@ -437,7 +448,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
+    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -450,7 +461,7 @@ class BlockAccessor:
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
         raise NotImplementedError

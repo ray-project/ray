@@ -1,9 +1,9 @@
 import click
-from typing import Dict, Set
 
 from ci.ray_ci.doc.module import Module
 from ci.ray_ci.doc.autodoc import Autodoc
 from ci.ray_ci.doc.api import API
+from ci.ray_ci.utils import logger
 
 TEAM_API_CONFIGS = {
     "data": {
@@ -42,6 +42,26 @@ TEAM_API_CONFIGS = {
             "ray.remote_function.RemoteFunction",
         },
     },
+    "train": {
+        "head_modules": {"ray.train"},
+        "head_doc_file": "doc/source/train/api/api.rst",
+        "white_list_apis": {},
+    },
+    "tune": {
+        "head_modules": {"ray.tune"},
+        "head_doc_file": "doc/source/tune/api/api.rst",
+        "white_list_apis": {
+            # Already documented as ray.tune.search.ConcurrencyLimiter
+            "ray.tune.search.searcher.ConcurrencyLimiter",
+            # TODO(ml-team): deprecate these APIs
+            "ray.tune.utils.log.Verbosity",
+        },
+    },
+    "rllib": {
+        "head_modules": {"ray.rllib"},
+        "head_doc_file": "doc/source/rllib/package_ref/index.rst",
+        "white_list_apis": {},
+    },
 }
 
 
@@ -70,27 +90,22 @@ def main(ray_checkout_dir: str, team: str) -> None:
     white_list_apis = TEAM_API_CONFIGS[team]["white_list_apis"]
 
     # Policy 01: all public APIs should be documented
-    print("Validating that public APIs should be documented...")
-    _validate_documented_public_apis(api_in_codes, api_in_docs, white_list_apis)
+    logger.info("Validating that public APIs should be documented...")
+    good_apis, bad_apis = API.split_good_and_bad_apis(
+        api_in_codes, api_in_docs, white_list_apis
+    )
+
+    logger.info("Public APIs that are documented:")
+    for api in good_apis:
+        logger.info(f"\t{api}")
+
+    logger.info("Public APIs that are NOT documented:")
+    for api in bad_apis:
+        logger.info(f"\t{api}")
+
+    assert not bad_apis, "Some public APIs are not documented. Please document them."
 
     return
-
-
-def _validate_documented_public_apis(
-    api_in_codes: Dict[str, API], api_in_docs: Set[str], white_list_apis: Set[str]
-) -> None:
-    """
-    Validate APIs that are public and documented.
-    """
-    for name, api in api_in_codes.items():
-        if not api.is_public():
-            continue
-
-        if name in white_list_apis:
-            continue
-
-        assert name in api_in_docs, f"\tAPI {api.name} is public but not documented."
-        print(f"\tAPI {api.name} is public and documented.")
 
 
 if __name__ == "__main__":

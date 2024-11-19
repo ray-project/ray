@@ -101,7 +101,7 @@ TFRecords
 
    read_tfrecords
    Dataset.write_tfrecords
-   datasource.tfrecords_datasource.TFXReadOptions
+   TFXReadOptions
 
 Pandas
 ------
@@ -185,6 +185,24 @@ Delta Sharing
    :toctree: doc/
 
    read_delta_sharing_tables
+
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
 
 Lance
 -----

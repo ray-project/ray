@@ -101,16 +101,18 @@ x = []
 
 for _ in range(10):
     x.append(ray.put(bytes(100 * 1024 * 1024)))
-"""
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "1"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+"""
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "1"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " in out_str
 
-    proc = run_string_as_driver_nonblocking(script, env={"RAY_verbose_spill_logs": "0"})
-    out_str = proc.stdout.read().decode("ascii") + proc.stderr.read().decode("ascii")
-    print(out_str)
+    stdout_str, stderr_str = run_string_as_driver_stdout_stderr(
+        script, env={"RAY_verbose_spill_logs": "0"}
+    )
+    out_str = stdout_str + stderr_str
     assert "Spilled " not in out_str
 
 
@@ -567,27 +569,33 @@ import ray
 import sys
 import threading
 
-ray.init(num_cpus=2)
+os.environ["RAY_DEBUG"] = "legacy"
+ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
 @ray.remote
 def f():
     while True:
-        time.sleep(1)
+        start_time = time.time()
+        while time.time() - start_time < 1:
+            time.sleep(0.1)
         print("hello there")
         sys.stdout.flush()
 
 def kill():
-    time.sleep(5)
+    start_time = time.time()
+    while time.time() - start_time < 5:
+        time.sleep(0.1)
     sys.stdout.flush()
-    time.sleep(1)
+    start_time = time.time()
+    while time.time() - start_time < 1:
+        time.sleep(0.1)
     os._exit(0)
 
 t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
 time.sleep(2)  # Enough time to print one hello.
-ray.util.rpdb._driver_set_trace()  # This should disable worker logs.
-# breakpoint()  # Only works in Py3.7+
+breakpoint()  # This should disable worker logs.
     """
 
     proc = run_string_as_driver_nonblocking(script)

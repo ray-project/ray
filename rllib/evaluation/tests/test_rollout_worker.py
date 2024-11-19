@@ -1,10 +1,8 @@
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
-import json
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
@@ -25,8 +23,6 @@ from ray.rllib.examples.envs.classes.mock_env import (
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
-from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -40,7 +36,7 @@ from ray.rllib.utils.metrics import (
     NUM_AGENT_STEPS_TRAINED,
     EPISODE_RETURN_MEAN,
 )
-from ray.rllib.utils.test_utils import check, framework_iterator
+from ray.rllib.utils.test_utils import check
 from ray.tune.registry import register_env
 
 
@@ -172,66 +168,66 @@ class TestRolloutWorker(unittest.TestCase):
     def test_global_vars_update(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_envs_per_env_runner=1)
             # lr = 0.1 - [(0.1 - 0.000001) / 100000] * ts
             .training(lr_schedule=[[0, 0.1], [100000, 0.000001]])
         )
-        for fw in framework_iterator(config, frameworks=("tf2", "tf")):
-            algo = config.build()
-            policy = algo.get_policy()
-            for i in range(3):
-                result = algo.train()
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
-                    )
+        algo = config.build()
+        policy = algo.get_policy()
+        for i in range(3):
+            result = algo.train()
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_TRAINED, result["info"][NUM_AGENT_STEPS_TRAINED]
                 )
-                print(
-                    "{}={}".format(
-                        NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
-                    )
+            )
+            print(
+                "{}={}".format(
+                    NUM_AGENT_STEPS_SAMPLED, result["info"][NUM_AGENT_STEPS_SAMPLED]
                 )
-                global_timesteps = (
-                    policy.global_timestep
-                    if fw == "tf"
-                    else policy.global_timestep.numpy()
-                )
-                print("global_timesteps={}".format(global_timesteps))
-                expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
-                lr = policy.cur_lr
-                if fw == "tf":
-                    lr = policy.get_session().run(lr)
-                check(lr, expected_lr, rtol=0.05)
-            algo.stop()
+            )
+            global_timesteps = policy.global_timestep
+            print("global_timesteps={}".format(global_timesteps))
+            expected_lr = 0.1 - ((0.1 - 0.000001) / 100000) * global_timesteps
+            lr = policy.cur_lr
+            check(lr, expected_lr, rtol=0.05)
+        algo.stop()
 
     def test_query_evaluators(self):
         register_env("test", lambda _: gym.make("CartPole-v1"))
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("test")
             .env_runners(
                 num_env_runners=2,
                 num_envs_per_env_runner=2,
                 create_env_on_local_worker=True,
             )
-            .training(train_batch_size=20, sgd_minibatch_size=5, num_sgd_iter=1)
+            .training(train_batch_size=20, minibatch_size=5, num_epochs=1)
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build()
-            results = algo.env_runner_group.foreach_worker(
-                lambda w: w.total_rollout_fragment_length
-            )
-            results2 = algo.env_runner_group.foreach_worker_with_id(
-                lambda i, w: (i, w.total_rollout_fragment_length)
-            )
-            results3 = algo.env_runner_group.foreach_worker(
-                lambda w: w.foreach_env(lambda env: 1)
-            )
-            self.assertEqual(results, [10, 10, 10])
-            self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
-            self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
-            algo.stop()
+        algo = config.build()
+        results = algo.env_runner_group.foreach_worker(
+            lambda w: w.total_rollout_fragment_length
+        )
+        results2 = algo.env_runner_group.foreach_worker_with_id(
+            lambda i, w: (i, w.total_rollout_fragment_length)
+        )
+        results3 = algo.env_runner_group.foreach_worker(
+            lambda w: w.foreach_env(lambda env: 1)
+        )
+        self.assertEqual(results, [10, 10, 10])
+        self.assertEqual(results2, [(0, 10), (1, 10), (2, 10)])
+        self.assertEqual(results3, [[1, 1], [1, 1], [1, 1]])
+        algo.stop()
 
     def test_action_clipping(self):
         action_space = gym.spaces.Box(-2.0, 1.0, (3,))
@@ -360,87 +356,6 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
         ev.stop()
 
-    def test_action_normalization_offline_dataset(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # create environment
-            env = gym.make("Pendulum-v1")
-
-            # create temp data with actions at min and max
-            data = {
-                "type": "SampleBatch",
-                "actions": [[2.0], [-2.0]],
-                "terminateds": [0.0, 0.0],
-                "truncateds": [0.0, 0.0],
-                "rewards": [0.0, 0.0],
-                "obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                "new_obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            }
-
-            data_file = os.path.join(tmp_dir, "data.json")
-
-            with open(data_file, "w") as f:
-                json.dump(data, f)
-
-            # create input reader functions
-            def dataset_reader_creator(ioctx):
-                config = AlgorithmConfig().offline_data(
-                    input_="dataset",
-                    input_config={"format": "json", "paths": data_file},
-                )
-                _, shards = get_dataset_and_shards(config, num_workers=0)
-                return DatasetReader(shards[0], ioctx)
-
-            def json_reader_creator(ioctx):
-                return JsonReader(data_file, ioctx)
-
-            input_creators = [dataset_reader_creator, json_reader_creator]
-
-            # actions_in_input_normalized, normalize_actions
-            parameters = [
-                (True, True),
-                (True, False),
-                (False, True),
-                (False, False),
-            ]
-
-            # check that samples from dataset will be normalized if and only if
-            # actions_in_input_normalized == False and
-            # normalize_actions == True
-            for input_creator in input_creators:
-                for actions_in_input_normalized, normalize_actions in parameters:
-                    ev = RolloutWorker(
-                        env_creator=lambda _: env,
-                        default_policy_class=MockPolicy,
-                        config=AlgorithmConfig()
-                        .env_runners(
-                            num_env_runners=0,
-                            rollout_fragment_length=1,
-                        )
-                        .environment(
-                            normalize_actions=normalize_actions,
-                            clip_actions=False,
-                        )
-                        .training(train_batch_size=1)
-                        .offline_data(
-                            offline_sampling=True,
-                            actions_in_input_normalized=actions_in_input_normalized,
-                            input_=input_creator,
-                        ),
-                    )
-
-                    sample = ev.sample()
-
-                    if normalize_actions and not actions_in_input_normalized:
-                        # check if the samples from dataset are normalized properly
-                        self.assertLessEqual(np.max(sample["actions"]), 1.0)
-                        self.assertGreaterEqual(np.min(sample["actions"]), -1.0)
-                    else:
-                        # check if the samples from dataset are not normalized
-                        self.assertGreater(np.max(sample["actions"]), 1.5)
-                        self.assertLess(np.min(sample["actions"]), -1.5)
-
-                    ev.stop()
-
     def test_action_immutability(self):
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))
 
@@ -501,14 +416,8 @@ class TestRolloutWorker(unittest.TestCase):
         )
         self.assertEqual(max(sample["rewards"]), 1)
         result = collect_metrics(ws, [])
-        # Shows different behavior when connector is on/off.
-        if config.enable_connectors:
-            # episode_return_mean shows the correct clipped value.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
-        else:
-            # episode_return_mean shows the unclipped raw value
-            # when connector is off, and old env_runner v1 is used.
-            self.assertEqual(result[EPISODE_RETURN_MEAN], 1000)
+        # episode_return_mean shows the correct clipped value.
+        self.assertEqual(result[EPISODE_RETURN_MEAN], 10)
         ev.stop()
 
         # Clipping in certain range (-2.0, 2.0).
@@ -905,9 +814,6 @@ class TestRolloutWorker(unittest.TestCase):
             """A mock testing MultiAgentEnv that doesn't call super.__init__()."""
 
             def __init__(self):
-                # Intentinoally don't call super().__init__(),
-                # so this env doesn't have
-                # `self._[action|observation]_space_in_preferred_format`attributes.
                 self.observation_space = gym.spaces.Discrete(2)
                 self.action_space = gym.spaces.Discrete(2)
 

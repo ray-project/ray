@@ -288,39 +288,6 @@ class TestDeploymentSchema:
         with pytest.raises(ValidationError):
             DeploymentSchema.parse_obj(deployment_schema)
 
-    def test_route_prefix(self):
-        # Ensure that route_prefix is validated
-
-        deployment_schema = self.get_minimal_deployment_schema()
-
-        # route_prefix must start with a "/"
-        deployment_schema["route_prefix"] = "hello/world"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # route_prefix must end with a "/"
-        deployment_schema["route_prefix"] = "/hello/world/"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # route_prefix cannot contain wildcards, meaning it can't have
-        # "{" or "}"
-        deployment_schema["route_prefix"] = "/hello/{adjective}/world/"
-        with pytest.raises(ValueError):
-            DeploymentSchema.parse_obj(deployment_schema)
-
-        # Ensure a valid route_prefix works
-        deployment_schema["route_prefix"] = "/hello/wonderful/world"
-        DeploymentSchema.parse_obj(deployment_schema)
-
-        # Ensure route_prefix of "/" works
-        deployment_schema["route_prefix"] = "/"
-        DeploymentSchema.parse_obj(deployment_schema)
-
-        # Ensure route_prefix of None works
-        deployment_schema["route_prefix"] = None
-        DeploymentSchema.parse_obj(deployment_schema)
-
     def test_mutually_exclusive_num_replicas_and_autoscaling_config(self):
         # num_replicas and autoscaling_config cannot be set at the same time
         deployment_schema = self.get_minimal_deployment_schema()
@@ -757,7 +724,6 @@ def global_f():
 def test_deployment_to_schema_to_deployment():
     @serve.deployment(
         num_replicas=3,
-        route_prefix="/hello",
         ray_actor_options={
             "runtime_env": {
                 "working_dir": TEST_MODULE_PINNED_URI,
@@ -778,7 +744,6 @@ def test_deployment_to_schema_to_deployment():
     )
 
     assert deployment.num_replicas == 3
-    assert deployment.route_prefix == "/hello"
     assert (
         deployment.ray_actor_options["runtime_env"]["working_dir"]
         == TEST_MODULE_PINNED_URI
@@ -794,7 +759,6 @@ def test_unset_fields_schema_to_deployment_ray_actor_options():
 
     @serve.deployment(
         num_replicas=3,
-        route_prefix="/hello",
         ray_actor_options={},
     )
     def f():
@@ -829,6 +793,7 @@ def test_serve_instance_details_is_json_serializable():
                 "status": "RUNNING",
                 "message": "fake_message",
                 "last_deployed_time_s": 123,
+                "source": "imperative",
                 "deployments": {
                     "deployment1": {
                         "name": "deployment1",
@@ -864,6 +829,7 @@ def test_serve_instance_details_is_json_serializable():
                     "status": "RUNNING",
                     "message": "fake_message",
                     "last_deployed_time_s": 123.0,
+                    "source": "imperative",
                     "deployments": {
                         "deployment1": {
                             "name": "deployment1",

@@ -302,11 +302,6 @@ config = (
         },
         clip_rewards=True,
     )
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Every 4 agent steps a training update is performed.
         rollout_fragment_length=4,
@@ -318,7 +313,6 @@ config = (
         # Note, the paper uses also an Adam epsilon of 0.00015.
         lr=0.0000625,
         n_step=3,
-        gamma=0.99,
         tau=1.0,
         train_batch_size=32,
         target_network_update_freq=32000,

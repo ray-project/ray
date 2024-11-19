@@ -100,6 +100,20 @@ def test_kv_timeout(ray_start_regular):
             gcs_client.internal_kv_del(b"A", True, b"NS", timeout=2)
 
 
+def test_kv_transient_network_error(shutdown_only, monkeypatch):
+    monkeypatch.setenv(
+        "RAY_testing_rpc_failure",
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVGet=5,"
+        "ray::rpc::InternalKVGcsService.grpc_client.InternalKVPut=5",
+    )
+    ray.init()
+    gcs_address = ray._private.worker.global_worker.gcs_client.address
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=0)
+
+    gcs_client.internal_kv_put(b"A", b"Hello", True, b"")
+    assert gcs_client.internal_kv_get(b"A", b"") == b"Hello"
+
+
 @pytest.mark.asyncio
 async def test_kv_basic_aio(ray_start_regular):
     gcs_client = gcs_utils.GcsAioClient(
@@ -295,9 +309,12 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     else:
         cli = redis.Redis(host, int(port))
 
-    assert set(cli.keys()) == {b"c1", b"c2"}
+    table_names = ["KV", "INTERNAL_CONFIG", "WORKERS", "JobCounter", "NODE", "JOB"]
+    c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
+    c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
+    assert set(cli.keys()) == set(c1_keys + c2_keys)
     gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c1")
-    assert set(cli.keys()) == {b"c2"}
+    assert set(cli.keys()) == set(c2_keys)
     gcs_utils.cleanup_redis_storage(host, int(port), "", False, "c2")
     assert len(cli.keys()) == 0
 

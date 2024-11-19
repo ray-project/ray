@@ -9,6 +9,7 @@ from pytest_lazyfixture import lazy_fixture
 import ray
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import _get_pyarrow_version
+from ray.data import Schema
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -28,7 +29,11 @@ from ray.data.datasource.path_util import _unwrap_protocol
         ),
     ],
 )
-def test_lance_read_basic(fs, data_path):
+@pytest.mark.parametrize(
+    "batch_size",
+    [None, 100],
+)
+def test_lance_read_basic(fs, data_path, batch_size):
     # NOTE: Lance only works with PyArrow 12 or above.
     pyarrow_version = _get_pyarrow_version()
     if pyarrow_version is not None:
@@ -51,20 +56,23 @@ def test_lance_read_basic(fs, data_path):
     )
     ds_lance.merge(df2, "one")
 
-    ds = ray.data.read_lance(path)
+    if batch_size is None:
+        ds = ray.data.read_lance(path)
+    else:
+        ds = ray.data.read_lance(path, scanner_options={"batch_size": batch_size})
 
     # Test metadata-only ops.
     assert ds.count() == 6
-    assert ds.schema() is not None
-
-    assert (
-        " ".join(str(ds).split())
-        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"  # noqa: E501
-    ), ds
-    assert (
-        " ".join(repr(ds).split())
-        == "Dataset( num_rows=6, schema={one: int64, two: string, three: int64, four: string} )"  # noqa: E501
-    ), ds
+    assert ds.schema() == Schema(
+        pa.schema(
+            {
+                "one": pa.int64(),
+                "two": pa.string(),
+                "three": pa.int64(),
+                "four": pa.string(),
+            }
+        )
+    )
 
     # Test read.
     values = [[s["one"], s["two"]] for s in ds.take_all()]

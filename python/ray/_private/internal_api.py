@@ -1,11 +1,13 @@
+from typing import List, Tuple
+
 import ray
 import ray._private.profiling as profiling
 import ray._private.services as services
 import ray._private.utils as utils
 import ray._private.worker
-from ray._private import ray_constants
 from ray._private.state import GlobalState
 from ray._raylet import GcsClientOptions
+from ray.core.generated import common_pb2
 
 __all__ = ["free", "global_gc"]
 MAX_MESSAGE_LENGTH = ray._config.max_grpc_message_size()
@@ -31,7 +33,6 @@ def get_state_from_address(address=None):
 
 def memory_summary(
     address=None,
-    redis_password=ray_constants.REDIS_DEFAULT_PASSWORD,
     group_by="NODE_ADDRESS",
     sort_by="OBJECT_SIZE",
     units="B",
@@ -232,3 +233,23 @@ def free(object_refs: list, local_only: bool = False):
             return
 
         worker.core_worker.free_objects(object_refs, local_only)
+
+
+def get_local_ongoing_lineage_reconstruction_tasks() -> List[
+    Tuple[common_pb2.LineageReconstructionTask, int]
+]:
+    """Return the locally submitted ongoing retry tasks
+       triggered by lineage reconstruction.
+
+    NOTE: for the lineage reconstruction task status,
+    this method only returns the status known to the submitter
+    (i.e. it returns SUBMITTED_TO_WORKER instead of RUNNING).
+
+    The return type is a list of pairs where pair.first is the
+    lineage reconstruction task info and pair.second is the number
+    of ongoing lineage reconstruction tasks of this type.
+    """
+
+    worker = ray._private.worker.global_worker
+    worker.check_connected()
+    return worker.core_worker.get_local_ongoing_lineage_reconstruction_tasks()

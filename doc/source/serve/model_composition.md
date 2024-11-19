@@ -128,24 +128,14 @@ Example:
 :language: python
 ```
 
-## Advanced: Pass a DeploymentResponse "by reference"
+## Advanced: Pass a DeploymentResponse in a nested object [FULLY DEPRECATED]
 
-By default, when you pass a `DeploymentResponse` to another `DeploymentHandle` call, Ray Serve passes the result of the `DeploymentResponse` directly to the downstream method once it's ready.
-However, in some cases you might want to start executing the downstream call before the result is ready. For example, to do some preprocessing or fetch a file from remote storage.
-To accomplish this behavior, pass the `DeploymentResponse` "by reference" by embedding it in another Python object, such as a list or dictionary.
-When you pass responses by reference, Ray Serve replaces them with Ray `ObjectRef`s instead of the resulting value and they can start executing before the result is ready.
+:::{warning}
+Passing a `DeploymentResponse` to downstream handle calls in nested objects is fully deprecated and no longer supported.
+Please manually use `DeploymentResponse._to_object_ref()` instead to pass the corresponding object reference in nested objects.
 
-The example below has two deployments: a preprocessor and a downstream model that takes the output of the preprocessor.
-The downstream model has two methods:
-
-- `pass_by_value` takes the output of the preprocessor "by value," so it doesn't execute until the preprocessor finishes.
-- `pass_by_reference` takes the output "by reference," so it gets an `ObjectRef` and executes eagerly.
-
-```{literalinclude} doc_code/model_composition/response_by_reference_example.py
-:start-after: __response_by_reference_example_start__
-:end-before: __response_by_reference_example_end__
-:language: python
-```
+Passing a `DeploymentResponse` object as a top-level argument or keyword argument is still supported.
+:::
 
 ## Advanced: Convert a DeploymentResponse to a Ray ObjectRef
 

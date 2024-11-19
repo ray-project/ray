@@ -1,5 +1,7 @@
 import os
 from io import BytesIO
+from tempfile import TemporaryDirectory
+from typing import Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -8,6 +10,8 @@ import requests
 import snappy
 
 import ray
+from ray.data import Schema
+from ray.data._internal.util import GiB, MiB
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -18,7 +22,7 @@ from ray.data.datasource import (
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter, extract_values, gen_bin_files
+from ray.data.tests.util import extract_values, gen_bin_files
 from ray.tests.conftest import *  # noqa
 
 
@@ -41,7 +45,7 @@ def test_read_binary_files_partitioning(ray_start_regular_shared, tmp_path):
 
 def test_read_binary_files(ray_start_regular_shared):
     with gen_bin_files(10) as (_, paths):
-        ds = ray.data.read_binary_files(paths, override_num_blocks=10)
+        ds = ray.data.read_binary_files(paths)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item["bytes"]
@@ -66,14 +70,14 @@ def test_read_binary_files_ignore_missing_paths(
             with pytest.raises(FileNotFoundError):
                 ds = ray.data.read_binary_files(
                     paths, ignore_missing_paths=ignore_missing_paths
-                )
+                ).materialize()
 
 
 def test_read_binary_files_with_fs(ray_start_regular_shared):
     with gen_bin_files(10) as (tempdir, paths):
         # All the paths are absolute, so we want the root file system.
         fs, _ = pa.fs.FileSystem.from_uri("/")
-        ds = ray.data.read_binary_files(paths, filesystem=fs, override_num_blocks=10)
+        ds = ray.data.read_binary_files(paths, filesystem=fs)
         for i, item in enumerate(ds.iter_rows()):
             expected = open(paths[i], "rb").read()
             assert expected == item["bytes"]
@@ -141,7 +145,9 @@ def test_read_binary_meta_provider(
         )
 
 
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_read_binary_snappy_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     tmp_path,
     write_base_partitioned_df,
@@ -155,51 +161,101 @@ def test_read_binary_snappy_partitioned_with_filter(
             snappy.stream_compress(bytes, f)
 
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_base_partitioned_df(
-            partition_keys,
-            partition_path_encoder,
-            df_to_binary,
-        )
-        df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_binary_files(
-            base_dir,
-            partition_filter=partition_path_filter,
-            arrow_open_stream_args=dict(compression="snappy"),
-        )
-        assert_base_partitioned_ds(
-            ds,
-            count=2,
-            num_rows=2,
-            schema="{bytes: binary}",
-            sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
-            ds_take_transform_fn=lambda t: extract_values("bytes", t),
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    base_dir = os.path.join(tmp_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+    )
+    write_base_partitioned_df(
+        partition_keys,
+        partition_path_encoder,
+        df_to_binary,
+    )
+    df_to_binary(pd.DataFrame({"1": [1]}), os.path.join(base_dir, "test.snappy"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+    )
+    ds = ray.data.read_binary_files(
+        base_dir,
+        partition_filter=partition_path_filter,
+        arrow_open_stream_args=dict(compression="snappy"),
+    )
+    assert_base_partitioned_ds(
+        ds,
+        count=2,
+        num_rows=2,
+        schema=Schema(pa.schema([("bytes", pa.binary())])),
+        sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
+        ds_take_transform_fn=lambda t: extract_values("bytes", t),
+    )
+
+
+def _gen_chunked_binary(
+    dir_path: str, total_size: int, max_file_size: Optional[int] = None
+):
+    # NOTE: This util is primed to be writing even single large binary files
+    #       in chunks to reduce memory requirements while doing so
+    chunk_size = max_file_size or 256 * MiB
+    num_chunks = total_size // chunk_size
+    remainder = total_size % chunk_size
+
+    if max_file_size is not None and max_file_size < total_size:
+        for i in range(num_chunks):
+            filename = f"part_{i}.bin"
+            with open(f"{dir_path}/{filename}", "wb") as f:
+                f.write(b"a" * chunk_size)
+
+                print(f">>> Written file: {filename}")
+
+    else:
+        with open(f"{dir_path}/chunk.bin", "wb") as f:
+            for i in range(num_chunks):
+                f.write(b"a" * chunk_size)
+
+                print(f">>> Written chunk #{i}")
+
+            if remainder:
+                f.write(b"a" * remainder)
+
+    print(f">>> Wrote chunked dataset at: {dir_path}")
+
+
+@pytest.mark.parametrize(
+    "col_name",
+    [
+        "bytes",
+        # TODO fix numpy conversion
+        # "text",
+    ],
+)
+def test_single_row_gt_2gb(ray_start_regular_shared, col_name):
+    with TemporaryDirectory() as tmp_dir:
+        target_binary_size_gb = 2.1
+
+        # Write out single file > 2Gb
+        _gen_chunked_binary(tmp_dir, total_size=int(target_binary_size_gb * GiB))
+
+        def _id(row):
+            bs = row[col_name]
+            assert round(len(bs) / GiB, 1) == target_binary_size_gb
+            return row
+
+        if col_name == "text":
+            ds = ray.data.read_text(tmp_dir)
+        elif col_name == "bytes":
+            ds = ray.data.read_binary_files(tmp_dir)
+
+        total = ds.map(_id).count()
+
+        assert total == 1
 
 
 if __name__ == "__main__":

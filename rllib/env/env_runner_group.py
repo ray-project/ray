@@ -30,13 +30,11 @@ from ray.rllib.core.learner import LearnerGroup
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.evaluation.rollout_worker import RolloutWorker
-from ray.rllib.utils.actor_manager import RemoteCallResults
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.offline import get_dataset_and_shards
 from ray.rllib.policy.policy import Policy, PolicyState
-from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
 from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.deprecation import (
     Deprecated,
@@ -44,7 +42,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
 )
 from ray.rllib.utils.framework import try_import_tf
-from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME
+from ray.rllib.utils.metrics import NUM_ENV_STEPS_SAMPLED_LIFETIME, WEIGHTS_SEQ_NO
 from ray.rllib.utils.typing import (
     AgentID,
     EnvCreator,
@@ -113,8 +111,8 @@ class EnvRunnerGroup:
         """
         if num_workers != DEPRECATED_VALUE or local_worker != DEPRECATED_VALUE:
             deprecation_warning(
-                old="WorkerSet(num_workers=... OR local_worker=...)",
-                new="EnvRunnerGroup(num_env_runners=... AND local_env_runner=...)",
+                old="WorkerSet(num_workers=..., local_worker=...)",
+                new="EnvRunnerGroup(num_env_runners=..., local_env_runner=...)",
                 error=True,
             )
 
@@ -133,7 +131,11 @@ class EnvRunnerGroup:
             "num_cpus": self._remote_config.num_cpus_per_env_runner,
             "num_gpus": self._remote_config.num_gpus_per_env_runner,
             "resources": self._remote_config.custom_resources_per_env_runner,
-            "max_restarts": config.max_num_env_runner_restarts,
+            "max_restarts": (
+                config.max_num_env_runner_restarts
+                if config.restart_failed_env_runners
+                else 0
+            ),
         }
         self._tune_trial_id = tune_trial_id
 
@@ -173,14 +175,16 @@ class EnvRunnerGroup:
         self._cls = ray.remote(**self._remote_args)(self.env_runner_cls).remote
 
         self._logdir = logdir
-        self._ignore_env_runner_failures = config.ignore_env_runner_failures
+        self._ignore_ray_errors_on_env_runners = (
+            config.ignore_env_runner_failures or config.restart_failed_env_runners
+        )
 
         # Create remote worker manager.
-        # Note(jungong) : ID 0 is used by the local worker.
-        # Starting remote workers from ID 1 to avoid conflicts.
+        # ID=0 is used by the local worker.
+        # Starting remote workers from ID=1 to avoid conflicts.
         self._worker_manager = FaultTolerantActorManager(
             max_remote_requests_in_flight_per_actor=(
-                config["max_requests_in_flight_per_sampler_worker"]
+                config.max_requests_in_flight_per_env_runner
             ),
             init_id=1,
         )
@@ -272,7 +276,7 @@ class EnvRunnerGroup:
             and not config.create_env_on_local_worker
             and (not config.observation_space or not config.action_space)
         ):
-            spaces = self._get_spaces_from_remote_worker()
+            spaces = self.get_spaces()
         else:
             spaces = None
 
@@ -288,68 +292,24 @@ class EnvRunnerGroup:
                 spaces=spaces,
             )
 
-    def _get_spaces_from_remote_worker(self):
-        """Infer observation and action spaces from a remote worker.
+    def get_spaces(self):
+        """Infer observation and action spaces from one (local or remote) EnvRunner.
 
         Returns:
-            A dict mapping from policy ids to spaces.
+            A dict mapping from ModuleID to a 2-tuple containing obs- and action-space.
         """
         # Get ID of the first remote worker.
-        worker_id = self._worker_manager.actor_ids()[0]
+        remote_worker_ids = (
+            [self._worker_manager.actor_ids()[0]]
+            if self._worker_manager.actor_ids()
+            else []
+        )
 
-        # Try to figure out spaces from the first remote worker.
-        # Traditional RolloutWorker.
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_policy(
-                    lambda p, pid: (pid, p.observation_space, p.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-        # Generic EnvRunner.
-        else:
-            remote_spaces = self.foreach_worker(
-                lambda worker: worker.multi_rl_module.foreach_module(
-                    lambda mid, m: (
-                        mid,
-                        m.config.observation_space,
-                        m.config.action_space,
-                    ),
-                )
-                if hasattr(worker, "multi_rl_module")
-                else [
-                    (
-                        DEFAULT_POLICY_ID,
-                        worker.module.config.observation_space,
-                        worker.module.config.action_space,
-                    ),
-                ]
-            )
-
-        if not remote_spaces:
-            raise ValueError(
-                "Could not get observation and action spaces from remote "
-                "worker. Maybe specify them manually in the config?"
-            )
-        spaces = {
-            e[0]: (getattr(e[1], "original_space", e[1]), e[2])
-            for e in remote_spaces[0]
-        }
-
-        if issubclass(self.env_runner_cls, RolloutWorker):
-            # Try to add the actual env's obs/action spaces.
-            env_spaces = self.foreach_worker(
-                lambda worker: worker.foreach_env(
-                    lambda env: (env.observation_space, env.action_space)
-                ),
-                remote_worker_ids=[worker_id],
-                local_env_runner=False,
-            )
-            if env_spaces:
-                # env_spaces group spaces by environment then worker.
-                # So need to unpack thing twice.
-                spaces["__env__"] = env_spaces[0][0]
+        spaces = self.foreach_worker(
+            lambda env_runner: env_runner.get_spaces(),
+            remote_worker_ids=remote_worker_ids,
+            local_env_runner=not remote_worker_ids,
+        )[0]
 
         logger.info(
             "Inferred observation/action spaces from remote "
@@ -444,11 +404,7 @@ class EnvRunnerGroup:
                         if env_steps_sampled is not None
                         else {}
                     ),
-                    **(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                        if rl_module_state is not None
-                        else {}
-                    ),
+                    **(rl_module_state if rl_module_state is not None else {}),
                 }
             )
             return
@@ -507,12 +463,17 @@ class EnvRunnerGroup:
             )
 
         # Update the global number of environment steps, if necessary.
+        # Make sure to divide by the number of env runners (such that each EnvRunner
+        # knows (roughly) its own(!) lifetime count and can infer the global lifetime
+        # count from it).
         if env_steps_sampled is not None:
-            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled
+            env_runner_states[NUM_ENV_STEPS_SAMPLED_LIFETIME] = env_steps_sampled // (
+                config.num_env_runners or 1
+            )
 
         # Update the rl_module component of the EnvRunner states, if necessary:
         if rl_module_state:
-            env_runner_states[COMPONENT_RL_MODULE] = rl_module_state
+            env_runner_states.update(rl_module_state)
 
         # If we do NOT want remote EnvRunners to get their Connector states updated,
         # only update the local worker here (with all state components) and then remove
@@ -602,34 +563,41 @@ class EnvRunnerGroup:
                 rl_module_state = weights_src.get_state(
                     components=[COMPONENT_LEARNER + "/" + m for m in modules],
                     inference_only=inference_only,
-                )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+                )[COMPONENT_LEARNER]
             # EnvRunner has-a RLModule.
             elif self._remote_config.enable_env_runner_and_connector_v2:
                 rl_module_state = weights_src.get_state(
                     components=modules,
                     inference_only=inference_only,
-                )[COMPONENT_RL_MODULE]
+                )
             else:
                 rl_module_state = weights_src.get_weights(
                     policies=policies,
                     inference_only=inference_only,
                 )
 
-            # Move weights to the object store to avoid having to make n pickled copies
-            # of the weights dict for each worker.
-            rl_module_state_ref = ray.put(rl_module_state)
-
             if self._remote_config.enable_env_runner_and_connector_v2:
 
+                # Make sure `rl_module_state` only contains the weights and the
+                # weight seq no, nothing else.
+                rl_module_state = {
+                    k: v
+                    for k, v in rl_module_state.items()
+                    if k in [COMPONENT_RL_MODULE, WEIGHTS_SEQ_NO]
+                }
+
+                # Move weights to the object store to avoid having to make n pickled
+                # copies of the weights dict for each worker.
+                rl_module_state_ref = ray.put(rl_module_state)
+
                 def _set_weights(env_runner):
-                    _rl_module_state = ray.get(rl_module_state_ref)
-                    env_runner.set_state({COMPONENT_RL_MODULE: _rl_module_state})
+                    env_runner.set_state(ray.get(rl_module_state_ref))
 
             else:
+                rl_module_state_ref = ray.put(rl_module_state)
 
                 def _set_weights(env_runner):
-                    _weights = ray.get(rl_module_state_ref)
-                    env_runner.set_weights(_weights, global_vars)
+                    env_runner.set_weights(ray.get(rl_module_state_ref), global_vars)
 
             # Sync to specified remote workers in this EnvRunnerGroup.
             self.foreach_worker(
@@ -644,9 +612,7 @@ class EnvRunnerGroup:
         if self.local_env_runner is not None:
             if from_worker_or_learner_group is not None:
                 if self._remote_config.enable_env_runner_and_connector_v2:
-                    self.local_env_runner.set_state(
-                        {COMPONENT_RL_MODULE: rl_module_state}
-                    )
+                    self.local_env_runner.set_state(rl_module_state)
                 else:
                     self.local_env_runner.set_weights(rl_module_state)
             # If `global_vars` is provided and local worker exists  -> Update its
@@ -834,15 +800,19 @@ class EnvRunnerGroup:
                 # Simiply raise the error, which will get handled by the try-except
                 # clause around the _setup().
                 if not result.ok:
-                    raise result.get()
+                    e = result.get()
+                    if self._ignore_ray_errors_on_env_runners:
+                        logger.error(f"Validation of EnvRunner failed! Error={str(e)}")
+                    else:
+                        raise e
 
     @DeveloperAPI
     def reset(self, new_remote_workers: List[ActorHandle]) -> None:
-        """Hard overrides the remote workers in this set with the given one.
+        """Hard overrides the remote EnvRunners in this set with the provided ones.
 
         Args:
-            new_remote_workers: A list of new EnvRunners
-                (as `ActorHandles`) to use as remote workers.
+            new_remote_workers: A list of new EnvRunners (as `ActorHandles`) to use as
+                new remote workers.
         """
         self._worker_manager.clear()
         self._worker_manager.add_actors(new_remote_workers)
@@ -884,7 +854,8 @@ class EnvRunnerGroup:
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
-        mark_healthy: bool = True,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner as its argument.
@@ -901,14 +872,15 @@ class EnvRunnerGroup:
                 synchronous execution).
             return_obj_refs: whether to return ObjectRef instead of actual results.
                 Note, for fault tolerance reasons, these returned ObjectRefs should
-                never be resolved with ray.get() outside of this WorkerSet.
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
             mark_healthy: Whether to mark all those workers healthy again that are
                 currently marked unhealthy AND that returned results from the remote
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` (b/c this
-                setting only affects workers that are currently tagged as unhealthy).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker])`.
@@ -940,8 +912,8 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results, ignore_ray_errors=self._ignore_ray_errors_on_env_runners
         )
 
         # With application errors handled, return good results.
@@ -958,6 +930,9 @@ class EnvRunnerGroup:
         healthy_only: bool = True,
         remote_worker_ids: List[int] = None,
         timeout_seconds: Optional[float] = None,
+        return_obj_refs: bool = False,
+        mark_healthy: bool = False,
+        # Deprecated args.
         local_worker=DEPRECATED_VALUE,
     ) -> List[T]:
         """Calls the given function with each EnvRunner and its ID as its arguments.
@@ -969,6 +944,17 @@ class EnvRunnerGroup:
             healthy_only: Apply `func` on known-to-be healthy workers only.
             remote_worker_ids: Apply `func` on a selected set of remote workers.
             timeout_seconds: Time to wait for results. Default is None.
+            return_obj_refs: whether to return ObjectRef instead of actual results.
+                Note, for fault tolerance reasons, these returned ObjectRefs should
+                never be resolved with ray.get() outside of this EnvRunnerGroup.
+            mark_healthy: Whether to mark all those workers healthy again that are
+                currently marked unhealthy AND that returned results from the remote
+                call (within the given `timeout_seconds`).
+                Note that workers are NOT set unhealthy, if they simply time out
+                (only if they return a RayActorError).
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
              The list of return values of all calls to `func([worker, id])`.
@@ -993,10 +979,13 @@ class EnvRunnerGroup:
             healthy_only=healthy_only,
             remote_actor_ids=remote_worker_ids,
             timeout_seconds=timeout_seconds,
+            return_obj_refs=return_obj_refs,
+            mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
         remote_results = [r.get() for r in remote_results.ignore_errors()]
@@ -1054,10 +1043,9 @@ class EnvRunnerGroup:
                 call (within the given `timeout_seconds`).
                 Note that workers are NOT set unhealthy, if they simply time out
                 (only if they return a RayActorError).
-                Also not that this setting is ignored if `healthy_only=True` was set
-                in the preceding `self.foreach_worker_asyn()` call, b/c the
-                `mark_healthy` setting only affects workers that are currently tagged as
-                unhealthy.
+                Also note that this setting is ignored if `healthy_only=True` (b/c
+                `mark_healthy` only affects workers that are currently tagged as
+                unhealthy).
 
         Returns:
             A list of results successfully returned from outstanding remote calls,
@@ -1069,8 +1057,9 @@ class EnvRunnerGroup:
             mark_healthy=mark_healthy,
         )
 
-        _handle_remote_call_result_errors(
-            remote_results, self._ignore_env_runner_failures
+        FaultTolerantActorManager.handle_remote_call_result_errors(
+            remote_results,
+            ignore_ray_errors=self._ignore_ray_errors_on_env_runners,
         )
 
         return [(r.actor_id, r.get()) for r in remote_results.ignore_errors()]
@@ -1181,6 +1170,7 @@ class EnvRunnerGroup:
         """
         return self._worker_manager.probe_unhealthy_actors(
             timeout_seconds=self._remote_config.env_runner_health_probe_timeout_s,
+            mark_healthy=True,
         )
 
     def _make_worker(
@@ -1261,21 +1251,3 @@ class EnvRunnerGroup:
     )
     def remote_workers(self) -> List[ActorHandle]:
         return list(self._worker_manager.actors().values())
-
-
-def _handle_remote_call_result_errors(
-    results: RemoteCallResults,
-    ignore_env_runner_failures: bool,
-) -> None:
-    """Checks given results for application errors and raises them if necessary.
-
-    Args:
-        results: The results to check.
-    """
-    for r in results.ignore_ray_errors():
-        if r.ok:
-            continue
-        if ignore_env_runner_failures:
-            logger.exception(r.get())
-        else:
-            raise r.get()

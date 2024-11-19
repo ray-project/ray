@@ -46,13 +46,16 @@ class Read(AbstractMap):
         """
         return self._detected_parallelism
 
-    @functools.cache
     def aggregate_output_metadata(self) -> BlockMetadata:
         """A ``BlockMetadata`` that represents the aggregate metadata of the outputs.
 
         This method gets metadata from the read tasks. It doesn't trigger any actual
         execution.
         """
+        return self._cached_output_metadata
+
+    @functools.cached_property
+    def _cached_output_metadata(self) -> BlockMetadata:
         # Legacy datasources might not implement `get_read_tasks`.
         if self._datasource.should_create_reader:
             return BlockMetadata(None, None, None, None, None)
@@ -64,7 +67,7 @@ class Read(AbstractMap):
             return BlockMetadata(None, None, None, None, None)
 
         # `get_read_tasks` isn't guaranteed to return exactly one read task.
-        metadata = [read_task.get_metadata() for read_task in read_tasks]
+        metadata = [read_task.metadata for read_task in read_tasks]
 
         if all(meta.num_rows is not None for meta in metadata):
             num_rows = sum(meta.num_rows for meta in metadata)

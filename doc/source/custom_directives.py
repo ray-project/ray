@@ -1,6 +1,7 @@
 import copy
 import logging
 import logging.handlers
+import os
 import pathlib
 import random
 import re
@@ -28,6 +29,9 @@ from sphinx.util.console import red  # type: ignore
 from sphinx.util.nodes import make_refnode
 
 from preprocess_github_markdown import preprocess_github_markdown_file
+
+import json
+from packaging.version import Version
 
 logger = logging.getLogger(__name__)
 
@@ -772,8 +776,8 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for group, examples in examples.items():
-            if not examples:
+        for group, group_examples in examples.items():
+            if not group_examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
@@ -806,7 +810,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                 table.append(thead)
 
             tbody = soup.new_tag("tbody")
-            for example in examples:
+            for example in group_examples:
                 tr = soup.new_tag("tr")
 
                 # The columns specify which attributes of each example to show;
@@ -1250,6 +1254,63 @@ def pregenerate_example_rsts(
                 "  .. this file is pregenerated; please edit ./examples.yml to "
                 "modify examples for this library."
             )
+
+
+def generate_version_url(version):
+    return f"https://docs.ray.io/en/{version}/"
+
+
+def generate_versions_json():
+    """Gets the releases from the remote repo, sorts them in semver order,
+    and generates the JSON needed for the version switcher
+    """
+
+    ray_prefix = "ray-"
+    min_version = "1.11.0"
+    repo_url = "https://github.com/ray-project/ray.git"
+    static_dir_name = "_static"
+    version_json_filename = "versions.json"
+    dereference_suffix = "^{}"
+
+    version_json_data = []
+
+    # Versions that should always appear at the top
+    for version in ["latest", "master"]:
+        version_json_data.append(
+            {"version": version, "url": generate_version_url(version)}
+        )
+
+    git_versions = []
+    # Fetch release tags from repo
+    output = subprocess.check_output(["git", "ls-remote", "--tags", repo_url]).decode(
+        "utf-8"
+    )
+    # Extract release versions from tags
+    tags = re.findall(r"refs/tags/(.+)", output)
+    for tag in tags:
+        if ray_prefix in tag and dereference_suffix not in tag:
+            version = tag.split(ray_prefix)[1]
+            if version not in git_versions and Version(version) >= Version(min_version):
+                git_versions.append(version)
+    git_versions.sort(key=Version, reverse=True)
+
+    for version in git_versions:
+        version_json_data.append(
+            {
+                "version": f"releases/{version}",
+                "url": generate_version_url(f"releases-{version}"),
+            }
+        )
+
+    # Ensure static path exists
+    static_dir = os.path.join(os.path.dirname(__file__), static_dir_name)
+    if not os.path.exists(static_dir):
+        os.makedirs(static_dir)
+
+    # Write JSON output
+    output_path = os.path.join(static_dir, version_json_filename)
+    with open(output_path, "w") as f:
+        json.dump(version_json_data, f, indent=4)
 
 
 REMIX_ICONS = [
