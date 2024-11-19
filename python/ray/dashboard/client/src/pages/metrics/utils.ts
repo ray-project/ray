@@ -79,17 +79,16 @@ export type TimezoneInfo = {
   offset: string;
   value: string;
 };
+
 export const getTimeZoneInfo = async () => {
-  const info: TimezoneInfo = {
-    offset: "",
-    value: "",
-  };
   try {
     const resp = await get<TimezoneRsp>(TIMEZONE_URL);
     if (resp.data) {
-      info.offset = resp.data.offset;
-      info.value = resp.data.value;
+      return {
+        offset: resp.data.offset,
+        value: resp.data.value,
+      };
     }
   } catch (e) {}
-  return info;
+  return null;
 };

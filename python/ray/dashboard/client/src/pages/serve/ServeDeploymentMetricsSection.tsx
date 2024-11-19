@@ -57,6 +57,7 @@ export const ServeReplicaMetricsSection = ({
     dashboardUids,
     dashboardDatasource,
     serverTimeZone,
+    currentTimeZone,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
     dashboardUids?.serveDeployment ?? "rayServeDashboard";
@@ -87,10 +88,6 @@ export const ServeReplicaMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
-  const currentTimezone =
-    localStorage.getItem("timezone") ||
-    serverTimeZone ||
-    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const replicaButtonUrl = useViewServeDeploymentMetricsButtonUrl(
     deploymentName,
@@ -188,7 +185,7 @@ export const ServeReplicaMetricsSection = ({
           {METRICS_CONFIG.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-Deployment=${encodeURIComponent(
                 deploymentName,
               )}&var-Replica=${encodeURIComponent(
                 replicaId,

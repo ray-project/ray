@@ -107,7 +107,7 @@ const NAV_ITEMS = [
 const MainNavBar = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
-  const { metricsContextLoaded, grafanaHost, serverTimeZone } =
+  const { metricsContextLoaded, grafanaHost, serverTimeZone, currentTimeZone } =
     useContext(GlobalContext);
 
   let navItems = NAV_ITEMS;
@@ -183,10 +183,13 @@ const MainNavBar = () => {
       </Box>
       <Tooltip
         placement="left-start"
-        title="The timezone of logs may not match this selection."
+        title="The timezone of logs are not impacted by this selection."
       >
         <Box sx={{ marginRight: 3 }}>
-          <SearchTimezone serverTimeZone={serverTimeZone} />
+          <SearchTimezone
+            currentTimeZone={currentTimeZone}
+            serverTimeZone={serverTimeZone}
+          />
         </Box>
       </Tooltip>
     </Box>

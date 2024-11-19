@@ -97,9 +97,13 @@ export type GlobalContextType = {
    */
   dashboardDatasource: string | undefined;
   /**
-   * The name of the current server-side timezone.
+   * The timezone set on the ray cluster.
    */
-  serverTimeZone: TimezoneInfo | undefined;
+  serverTimeZone: TimezoneInfo | null | undefined;
+  /**
+   * The globally selected current time zone.
+   */
+  currentTimeZone: string | undefined;
 };
 export const GlobalContext = React.createContext<GlobalContextType>({
   nodeMap: {},
@@ -111,11 +115,15 @@ export const GlobalContext = React.createContext<GlobalContextType>({
   prometheusHealth: undefined,
   sessionName: undefined,
   dashboardDatasource: undefined,
-  serverTimeZone: { offset: "", value: "" },
+  serverTimeZone: undefined,
+  currentTimeZone: undefined,
 });
 
 const App = () => {
-  const [context, setContext] = useState<GlobalContextType>({
+  const [currentTimeZone, setCurrentTimeZone] = useState<string>();
+  const [context, setContext] = useState<
+    Omit<GlobalContextType, "currentTimeZone">
+  >({
     nodeMap: {},
     nodeMapByIp: {},
     namespaceMap: {},
@@ -125,7 +133,7 @@ const App = () => {
     prometheusHealth: undefined,
     sessionName: undefined,
     dashboardDatasource: undefined,
-    serverTimeZone: { offset: "", value: "" },
+    serverTimeZone: undefined,
   });
   useEffect(() => {
     getNodeList().then((res) => {
@@ -171,7 +179,21 @@ const App = () => {
 
   useEffect(() => {
     const updateTimezone = async () => {
+      // Sets the intial timezone to localStorage value if it exists
+      const storedTimeZone = localStorage.getItem("timezone");
+      if (storedTimeZone) {
+        setCurrentTimeZone(storedTimeZone);
+      }
+
+      // Fetch the server time zone.
       const tzInfo = await getTimeZoneInfo();
+
+      const timeZone =
+        storedTimeZone ||
+        tzInfo?.value ||
+        Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+      setCurrentTimeZone(timeZone);
       setContext((existingContext) => ({
         ...existingContext,
         serverTimeZone: tzInfo,
@@ -184,7 +206,7 @@ const App = () => {
     <StyledEngineProvider injectFirst>
       <ThemeProvider theme={lightTheme}>
         <Suspense fallback={Loading}>
-          <GlobalContext.Provider value={context}>
+          <GlobalContext.Provider value={{ ...context, currentTimeZone }}>
             <CssBaseline />
             <HashRouter>
               <Routes>

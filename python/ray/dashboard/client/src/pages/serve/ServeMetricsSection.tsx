@@ -82,7 +82,7 @@ export const ServeMetricsSection = ({
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
-    serverTimeZone,
+    currentTimeZone,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid = dashboardUids?.serve ?? "rayServeDashboard";
   const [refreshOption, setRefreshOption] = useState<RefreshOptions>(
@@ -108,10 +108,6 @@ export const ServeMetricsSection = ({
   const toParam = to !== null ? `&to=${to}` : "";
   const timeRangeParams = `${fromParam}${toParam}`;
   const refreshParams = refresh ? `&refresh=${refresh}` : "";
-  const currentTimezone =
-    localStorage.getItem("timezone") ||
-    serverTimeZone ||
-    Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   return grafanaHost === undefined || !prometheusHealth ? null : (
     <CollapsibleSection
@@ -205,7 +201,7 @@ export const ServeMetricsSection = ({
           {metricsConfig.map(({ title, pathParams }) => {
             const path =
               `/d-solo/${grafanaServeDashboardUid}?${pathParams}` +
-              `${refreshParams}&timezone=${currentTimezone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
+              `${refreshParams}&timezone=${currentTimeZone}${timeRangeParams}&var-datasource=${dashboardDatasource}`;
             return (
               <Paper
                 key={pathParams}

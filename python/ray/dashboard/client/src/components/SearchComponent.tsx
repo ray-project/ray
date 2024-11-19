@@ -1,9 +1,12 @@
 import { SearchOutlined } from "@mui/icons-material";
 import {
   Autocomplete,
+  Box,
+  Divider,
   InputAdornment,
   MenuItem,
   TextField,
+  Typography,
 } from "@mui/material";
 
 import React, { useEffect, useState } from "react";
@@ -89,28 +92,28 @@ export const SearchSelect = ({
 
 export const SearchTimezone = ({
   serverTimeZone,
+  currentTimeZone,
 }: {
-  serverTimeZone?: TimezoneInfo;
+  serverTimeZone?: TimezoneInfo | null;
+  currentTimeZone?: string;
 }) => {
   const [timezone, setTimezone] = useState<string>("");
 
   useEffect(() => {
-    if (serverTimeZone) {
-      const currentTimezone =
-        localStorage.getItem("timezone") ||
-        serverTimeZone.value ||
-        Intl.DateTimeFormat().resolvedOptions().timeZone;
-      formatTimeZone(currentTimezone);
-      setTimezone(currentTimezone);
+    if (currentTimeZone !== undefined) {
+      formatTimeZone(currentTimeZone);
+      setTimezone(currentTimeZone);
     }
-  }, [serverTimeZone]);
+  }, [currentTimeZone]);
 
   const handleTimezoneChange = (value: string) => {
     localStorage.setItem("timezone", value);
     window.location.reload();
   };
 
-  const options = timezones.sort((a, b) => a.group.localeCompare(b.group));
+  const options = timezones
+    .map((x) => x) // Create a copy
+    .sort((a, b) => a.group.localeCompare(b.group));
   options.unshift({
     value: "Etc/UTC",
     utc: "GMT+00:00",
@@ -121,12 +124,15 @@ export const SearchTimezone = ({
   const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
   const browserOffset = (() => {
-    const match = new Date().toString().match(/([A-Z]+)([+-])(\d{2}):?(\d{2})/);
-    if (match) {
-      const [, , sign, hours, minutes] = match;
-      return `GMT${sign}${hours}:${minutes}`;
-    }
-    return null;
+    const offset = new Date().getTimezoneOffset();
+    const sign = offset < 0 ? "+" : "-";
+    const hours = Math.abs(Math.floor(offset / 60))
+      .toString()
+      .padStart(2, "0");
+    const minutes = Math.abs(offset % 60)
+      .toString()
+      .padStart(2, "0");
+    return `GMT${sign}${hours}:${minutes}`;
   })();
 
   if (browserOffset) {
@@ -172,20 +178,58 @@ export const SearchTimezone = ({
         )
       }
       renderOption={(props, option) => (
-        <li
+        <Box
+          component="li"
           {...props}
-          style={{
+          sx={{
             display: "flex",
             justifyContent: "space-between",
           }}
         >
-          <span style={{ marginRight: "10px" }}>{option.country}</span>
-          <span style={{ color: "gray" }}>{option.value}</span>
-          <span style={{ marginLeft: "auto" }}>{option.utc}</span>
-        </li>
+          <Typography component="span" sx={{ marginRight: 1 }}>
+            {option.country}
+          </Typography>
+          <Typography sx={{ color: "#8C9196" }} component="span">
+            {option.value}
+          </Typography>
+          <Box sx={{ flexGrow: 1 }} />
+          <Typography component="span" sx={{ marginLeft: 1 }}>
+            {option.utc}
+          </Typography>
+        </Box>
       )}
       renderInput={(params) => (
-        <TextField {...params} sx={{ width: 120 }} placeholder={curUtc} />
+        <TextField
+          {...params}
+          sx={{
+            width: 120,
+            "& .MuiOutlinedInput-notchedOutline": {
+              borderColor: "#D2DCE6",
+            },
+          }}
+          placeholder={curUtc}
+        />
+      )}
+      renderGroup={(params) => (
+        <li>
+          <Typography sx={{ color: "#5F6469", paddingX: 2, paddingY: "6px" }}>
+            {params.group}
+          </Typography>
+          <Box
+            component="ul"
+            sx={{
+              padding: 0,
+            }}
+          >
+            {params.children}
+          </Box>
+          <Divider
+            sx={{
+              marginX: 2,
+              marginY: 1,
+            }}
+          />
+        </li>
       )}
       slotProps={{
         paper: {
