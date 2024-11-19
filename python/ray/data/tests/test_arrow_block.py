@@ -2,6 +2,7 @@ import os
 import sys
 import types
 from tempfile import TemporaryDirectory
+from typing import Union
 
 import numpy as np
 import pyarrow as pa
@@ -10,8 +11,10 @@ from pyarrow import parquet as pq
 
 import ray
 from ray._private.test_utils import run_string_as_driver
+from ray.air.util.tensor_extensions.arrow import ArrowTensorArray
 from ray.data import DataContext
 from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_ops.transform_pyarrow import combine_chunked_array
 from ray.data._internal.util import GiB, MiB
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
@@ -155,6 +158,56 @@ def test_arrow_batch_gt_2gb(
     )
 
     assert total_binary_column_size == total_column_size
+
+
+@pytest.mark.parametrize(
+    "input_,expected_output",
+    [
+        # Empty chunked array
+        (pa.chunked_array([], type=pa.int8()), pa.array([], type=pa.int8())),
+
+        # Fixed-shape tensors
+        (
+            pa.chunked_array([
+                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+            ]),
+            ArrowTensorArray.from_numpy(
+                np.concatenate([
+                    np.arange(3).reshape(3, 1),
+                    np.arange(3).reshape(3, 1),
+                ])
+            )
+        ),
+
+        # Ragged (variable-shaped) tensors
+        (
+            pa.chunked_array([
+                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+                ArrowTensorArray.from_numpy(np.arange(5).reshape(5, 1)),
+            ]),
+            ArrowTensorArray.from_numpy(
+                np.concatenate([
+                    np.arange(3).reshape(3, 1),
+                    np.arange(5).reshape(5, 1),
+                ])
+            )
+        ),
+
+        # Small (< 2 GiB) arrays
+        (
+            pa.chunked_array([
+                pa.array([1, 2, 3], type=pa.int16()),
+                pa.array([4, 5, 6], type=pa.int16())
+            ]),
+            pa.array([1, 2, 3, 4, 5, 6], type=pa.int16()),
+        ),
+    ]
+)
+def test_combine_chunked_array_small(input_, expected_output: Union[pa.Array, pa.ChunkedArray]):
+    result = combine_chunked_array(input_)
+
+    expected_output.equals(result)
 
 
 def test_append_column(ray_start_regular_shared):
