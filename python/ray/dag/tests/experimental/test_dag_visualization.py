@@ -248,7 +248,7 @@ class TestVisualizationAscii:
 
         # Extract nodes from "Nodes Information" section
         node_pattern = re.compile(r'^(\d+) \[label="Task \d+')
-        edge_pattern = re.compile(r"^(\d+) (--->|\+\+\+>) (\d+) \[label=.*\]")
+        edge_pattern = re.compile(r"^(\d+) (--->|\+\+\+>) (\d+)")
 
         lines = ascii_visualization.splitlines()
         in_nodes_section = False
