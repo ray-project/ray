@@ -35,9 +35,17 @@ class CircularBuffer:
         self._buffer = deque(maxlen=self.num_batches)
         self._lock = threading.Lock()
 
+        #TEST
+        self._ids = 0
+
     def add(self, batch):
         dropped_entry = None
         dropped_ts = 0
+
+        #TEST
+        batch._id = self._ids
+        self._ids += 1
+        #END: TEST
 
         # Add buffer and k=0 information to the deque.
         with self._lock:
@@ -51,6 +59,8 @@ class CircularBuffer:
             dropped_ts += dropped_entry[0].env_steps() * (
                 self.iterations_per_batch - dropped_entry[1]
             )
+
+        print(f"Added batch {batch._id} (k=0); buffer size={len_} ({dropped_ts} dropped)")
 
         return dropped_ts
 
@@ -74,8 +84,11 @@ class CircularBuffer:
         assert k is not None
         entry[1] += 1
 
+        print(f"picked batch {batch._id} k={k}")
+
         # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
         if k == self.iterations_per_batch - 1:
+            print(f" .. evicting (reached K)")
             entry[0] = None
             entry[1] = None
 

@@ -655,6 +655,7 @@ class IMPALA(Algorithm):
                 key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
                 value=len(data_packages_for_learner_group),
             )
+            print(f"Putting {len(data_packages_for_learner_group)} new batches into buffer.")
             rl_module_state = None
             num_learner_group_results_received = 0
 
