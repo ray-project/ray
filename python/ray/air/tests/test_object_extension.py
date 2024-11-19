@@ -7,13 +7,13 @@ import pytest
 from ray.air.util.object_extensions.arrow import (
     ArrowPythonObjectArray,
     ArrowPythonObjectType,
-    object_extension_type_allowed,
+    _object_extension_type_allowed,
 )
 from ray.air.util.object_extensions.pandas import PythonObjectArray
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension not supported."
+    not _object_extension_type_allowed(), reason="Object extension not supported."
 )
 def test_object_array_validation():
     # Test unknown input type raises TypeError.
@@ -25,7 +25,7 @@ def test_object_array_validation():
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension not supported."
+    not _object_extension_type_allowed(), reason="Object extension not supported."
 )
 def test_arrow_scalar_object_array_roundtrip():
     arr = np.array(
@@ -41,7 +41,7 @@ def test_arrow_scalar_object_array_roundtrip():
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension not supported."
+    not _object_extension_type_allowed(), reason="Object extension not supported."
 )
 def test_arrow_python_object_array_slice():
     arr = np.array(["test", 20, "test2", 40, "test3", 60], dtype=object)
@@ -51,7 +51,7 @@ def test_arrow_python_object_array_slice():
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension not supported."
+    not _object_extension_type_allowed(), reason="Object extension not supported."
 )
 def test_arrow_pandas_roundtrip():
     obj = types.SimpleNamespace(a=1, b="test")

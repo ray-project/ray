@@ -163,7 +163,7 @@ py_test(
 
 py_test(
     name = "test_binary",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_binary.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
