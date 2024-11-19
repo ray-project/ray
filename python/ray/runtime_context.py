@@ -232,12 +232,20 @@ class RuntimeContext(object):
                         return ray.get_runtime_context().get_task_name()
 
                 @ray.remote
+                class AsyncActor:
+                    async def get_task_name(self):
+                        return ray.get_runtime_context().get_task_name()
+
+                @ray.remote
                 def get_task_name():
                     return ray.get_runtime_context().get_task_name()
 
                 a = Actor.remote()
+                b = AsyncActor.remote()
                 # Task names are available for actor tasks.
                 print(ray.get(a.get_task_name.remote()))
+                # Task names are avaiable for async actor tasks.
+                print(ray.get(b.get_task_name.remote()))
                 # Task names are available for normal tasks.
                 # Get default task name
                 print(ray.get(get_task_name.remote()))
@@ -248,6 +256,7 @@ class RuntimeContext(object):
                 :options: +MOCK
 
                 Actor.get_task_name
+                AsyncActor.get_task_name
                 get_task_name
                 task_nams
 
@@ -278,20 +287,29 @@ class RuntimeContext(object):
                         return ray.get_runtime_context().get_task_function()
 
                 @ray.remote
+                class AsyncActor:
+                    async def get_task_function(self):
+                        return ray.get_runtime_context().get_task_function()
+
+                @ray.remote
                 def get_task_function():
                     return ray.get_runtime_context().get_task_function()
 
                 a = Actor.remote()
+                b = AsyncActor.remote()
                 # Task functions are available for actor tasks.
                 print(ray.get(a.get_task_function.remote()))
+                # Task functions are available for async actor tasks.
+                print(ray.get(b.get_task_function.remote()))
                 # Task functions are available for normal tasks.
                 print(ray.get(get_task_function.remote()))
 
             .. testoutput::
                 :options: +MOCK
 
-                [python modual name].Actor.get_task_name
-                [python modual name].get_task_name
+                [python modual name].Actor.get_task_function
+                [python modual name].AsyncActor.get_task_function
+                [python modual name].get_task_function
 
         Returns:
             The current worker's task function call string
