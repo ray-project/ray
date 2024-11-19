@@ -366,13 +366,6 @@ def combine_chunked_array(
         array, pa.ChunkedArray
     ), f"Expected `ChunkedArray`, got {type(array)}"
 
-    int64_type_predicates = [
-        pa.types.is_large_list,
-        pa.types.is_large_string,
-        pa.types.is_large_binary,
-        pa.types.is_large_unicode,
-    ]
-
     if _is_column_extension_type(array):
         # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
         # hence require manual concatenation
@@ -382,30 +375,14 @@ def combine_chunked_array(
         #       an empty array since calling into `combine_chunks` would fail
         #       due to it expecting at least 1 chunk to be present
         return pa.array([], type=array.type)
-    elif array.nbytes < INT32_OVERFLOW_THRESHOLD or any(
-        p(array.type) for p in int64_type_predicates
-    ):
-        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
-        #   - It's cumulative size is < 2 GiB
-        #   - It's of 'large' kind (ie one using int64 offsets internally)
-        return array.combine_chunks()
     else:
-        # NOTE: In this case it's actually *NOT* safe to try to directly combine
-        #       Arrow's `ChunkedArray` and is impossible to produce single, contiguous
-        #       `Array` since
-        #           - It's estimated to hold > 2 GiB
-        #           - It's type is not of the "large" kind (and hence is using int32
-        #             offsets internally, which would overflow)
-        #
-        #       In this case instead of combining into single contiguous array, we
-        #       instead just "clump" existing chunks into bigger ones, but no bigger
-        #       than 2 GiB each.
-        #
-        # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
         return _try_combine_chunks_safe(array)
 
 
-def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedArray":
+def _try_combine_chunks_safe(
+    array: "pyarrow.ChunkedArray",
+    max_chunk_size = INT32_OVERFLOW_THRESHOLD
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method handles the case of `ChunkedArray` exceeding 2 GiB in size,
     making it impossible to directly combine it into single contiguous array
     (unless using "large" types).
@@ -415,9 +392,11 @@ def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedA
     contiguous `Array`), returning `ChunkedArray` consisting of these newly clumped
     chunks.
 
-    NOTE: ChunkedArray is returned from this method
-
-    TODO add tests
+    Returns:
+        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
+        contiguous array
+        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        produce single pa.Array
     """
 
     import pyarrow as pa
@@ -428,10 +407,36 @@ def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedA
         array
     ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
 
-    # In case cumulative size exceeds 2 GiB and it's type is using int32
-    # offsets, we then proceed to
-    #   - Slice provided list of chunks into slices no larger than 2 GiB
-    #   - Combine provided slices (to make sure int32 offsets are not overflowing)
+    int64_type_predicates = [
+        pa.types.is_large_list,
+        pa.types.is_large_string,
+        pa.types.is_large_binary,
+        pa.types.is_large_unicode,
+    ]
+
+    if array.nbytes < max_chunk_size or any(
+        p(array.type) for p in int64_type_predicates
+    ):
+        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+        #   - It's cumulative size is < 2 GiB
+        #   - It's of 'large' kind (ie one using int64 offsets internally)
+        return array.combine_chunks()
+
+    # In this case it's actually *NOT* safe to try to directly combine
+    # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
+    # `Array` since
+    #     - It's estimated to hold > 2 GiB
+    #     - It's type is not of the "large" kind (and hence is using int32
+    #       offsets internally, which would overflow)
+    #
+    # In this case instead of combining into single contiguous array, we
+    # instead just "clump" existing chunks into bigger ones, but no bigger
+    # than 2 GiB each.
+    #
+    # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
+
+    # To stay under 2 GiB limit we are slicing provided list of chunks into
+    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
     slices = []
 
     cur_slice_start = 0
@@ -440,7 +445,7 @@ def _try_combine_chunks_safe(array: "pyarrow.ChunkedArray") -> "pyarrow.ChunkedA
     for i, chunk in enumerate(array.chunks):
         chunk_size = chunk.nbytes
 
-        if cur_slice_size_bytes + chunk_size > 2 * GiB:
+        if cur_slice_size_bytes + chunk_size > max_chunk_size:
             slices.append(array.chunks[cur_slice_start:i])
 
             cur_slice_start = i
