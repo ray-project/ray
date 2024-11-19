@@ -77,8 +77,8 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
+        only_once: bool = False,
     ) -> None:
-        assert len(key_listeners) > 0
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
         # See https://github.com/ray-project/ray/issues/20971
@@ -87,6 +87,8 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
+        self.only_once = only_once
+
         self.snapshot_ids: Dict[KeyType, int] = {
             # The initial snapshot id for each key is < 0,
             # but real snapshot keys in the long poll host are always >= 0,
@@ -98,6 +100,23 @@ class LongPollClient:
 
         self._poll_next()
 
+    def add_key_listeners(
+        self, key_listeners: Dict[KeyType, UpdateStateCallable]
+    ) -> None:
+        """Add more key listeners to the client.
+        The new listeners will only be included in the *next* long poll request;
+        the current request will continue with the existing listeners.
+
+        If a key is already in the client, the new listener will replace the old one,
+        but the snapshot ID will be preserved, so the new listener will only be called
+        on the *next* update to that key.
+        """
+        # Only initialize snapshot ids for *new* keys.
+        self.snapshot_ids.update(
+            {key: -1 for key in key_listeners.keys() if key not in self.key_listeners}
+        )
+        self.key_listeners.update(key_listeners)
+
     def _on_callback_completed(self, trigger_at: int):
         """Called after a single callback is completed.
 
@@ -107,7 +126,7 @@ class LongPollClient:
         way to serialize the callback invocations between object versions.
         """
         self._callbacks_processed_count += 1
-        if self._callbacks_processed_count == trigger_at:
+        if not self.only_once and self._callbacks_processed_count == trigger_at:
             self._poll_next()
 
     def _poll_next(self):
@@ -306,15 +325,15 @@ class LongPollHost:
             self._count_send(LongPollState.TIME_OUT)
             return LongPollState.TIME_OUT
         else:
-            updated_object_key: str = async_task_to_watched_keys[done.pop()]
-            updated_object = {
-                updated_object_key: UpdatedObject(
+            updated_objects = {}
+            for task in done:
+                updated_object_key = async_task_to_watched_keys[task]
+                updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
                 )
-            }
-            self._count_send(updated_object)
-            return updated_object
+            self._count_send(updated_objects)
+            return updated_objects
 
     async def listen_for_change_java(
         self,
