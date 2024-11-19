@@ -51,9 +51,15 @@ helm repo update
 helm install fluent-bit fluent/fluent-bit -f fluent-bit-config.yaml
 ```
 
-### Install the KubeRay Operator and Deploy a RayCluster
+### Install the KubeRay Operator
 
-Follow [this document](kuberay-operator-deploy) to install the KubeRay operator and deploy a RayCluster.
+Follow [this document](kuberay-operator-deploy) to install the KubeRay operator.
+
+
+### Deploy a RayCluster
+
+Follow [this document](raycluster-deploy) to deploy a RayCluster.
+
 
 ### Deploy Grafana
 
@@ -74,13 +80,6 @@ helm install grafana grafana/grafana -f datasource-config.yaml
 
 ### Check the Grafana Dashboard
 
-Get the admin user password by running the following command:
-
-```shell
-kubectl get secret --namespace default grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
-```
-
-
 ```shell
 # Verify that the Grafana pod is running in the `default` namespace.
 kubectl get pods --namespace default -l "app.kubernetes.io/name=grafana"
@@ -96,15 +95,22 @@ kubectl --namespace default port-forward $POD_NAME 3000
 
 This will make Grafana available locally at `http://localhost:3000`.
 
+* Username: "admin"
+* Password: Get the password using the following command:
+
+```shell
+kubectl get secret --namespace default grafana -o jsonpath="{.data.admin-password}" | base64 --decode ; echo
+```
+
 Finally, use a LogQL query to view logs for a specific pod, such as the KubeRay Operator, and filter logs by the `RayCluster_name`:
 
 ```
-{pod="kuberay-operator-xxxxxxxx-xxxxx" | json | RayCluster_name = `raycluster-kuberay`}
+{pod="kuberay-operator-xxxxxxxx-xxxxx"} | json | RayCluster_name = `raycluster-kuberay`
 ```
 
 ![Loki Logs](images/loki-logs.png)
 
-You can specify filters based on pod name, namespace, container, etc. Learn how to write filters in this [Log query language doc](https://grafana.com/docs/loki/latest/query/).
+You can use LogQL's json syntax to filter logs based on specific fields, such as `RayCluster_name`. Learn more about LogQL filtering in the [Log query language doc](https://grafana.com/docs/loki/latest/query/).
 
 [GrafanaLoki]: https://grafana.com/oss/loki/
 [FluentBit]: https://docs.fluentbit.io/manual
