@@ -134,7 +134,7 @@ const ActorDetailPage = () => {
               : { value: "-" },
           },
           {
-            label: "Actor PID",
+            label: "PID",
             content: actorDetail.pid
               ? {
                   value: `${actorDetail.pid}`,
