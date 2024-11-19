@@ -1061,8 +1061,9 @@ void WorkerPool::TryKillingIdleWorkers() {
       it = idle_of_all_languages_.erase(it);
     } else {
       if (it->second == absl::Time{} ||
-          absl::ToUnixMillis(now) - absl::ToUnixMillis(it->second) >
-              RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+          now - it->second >
+              absl::Milliseconds(
+                  RayConfig::instance().idle_worker_killing_time_threshold_ms())) {
         // The job has not yet finished and the worker has been idle for longer
         // than the timeout.
         num_killable_idle_workers++;
@@ -1085,8 +1086,9 @@ void WorkerPool::TryKillingIdleWorkers() {
   while (num_killable_idle_workers > num_desired_idle_workers &&
          it != idle_of_all_languages_.end()) {
     if (it->second == absl::Time{} ||
-        absl::ToUnixMillis(now) - absl::ToUnixMillis(it->second) >
-            RayConfig::instance().idle_worker_killing_time_threshold_ms()) {
+        now - it->second >
+            absl::Milliseconds(
+                RayConfig::instance().idle_worker_killing_time_threshold_ms())) {
       RAY_LOG(DEBUG) << "Number of idle workers " << num_killable_idle_workers
                      << " is larger than the number of desired workers "
                      << num_desired_idle_workers << " killing idle worker with PID "
