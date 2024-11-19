@@ -217,6 +217,7 @@ class RemoteFunction:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
+            _labels: The key-value labels of a task.
 
         Examples:
 
@@ -417,6 +418,7 @@ class RemoteFunction:
 
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
+        labels = task_options.get("_labels")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -447,6 +449,7 @@ class RemoteFunction:
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
                 enable_task_events,
+                labels,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

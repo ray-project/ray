@@ -1467,7 +1467,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
-      bool enable_task_events = true);
+      bool enable_task_events = true,
+      const std::unordered_map<std::string, std::string> &labels = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);

@@ -70,6 +70,9 @@ message ActorHandle {
 
   // Whether task events will be reported from this actor.
   bool enable_task_events = 14;
+
+  // The key-value labels for actor.
+  map<string, string> labels = 15;
 }
 
 message PushTaskRequest {
