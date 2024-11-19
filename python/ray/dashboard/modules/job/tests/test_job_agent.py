@@ -68,8 +68,8 @@ def get_node_ip_by_id(node_id: str) -> str:
 class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
 
     def __init__(self, *args, **kwargs):
-        super().__init__(self, *args, **kwargs)
-        self._session.headers.append("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+        super().__init__(*args, **kwargs)
+        self._session.headers["User-Agent"] = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
 
 
 
@@ -305,34 +305,11 @@ async def test_submit_job_rejects_browsers(job_sdk_client, runtime_env_option, m
         {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
         JobSubmitRequest,
     )
-    submit_result = await agent_client.submit_job_internal(request)
-    job_id = submit_result.submission_id
 
-    try:
-        job_start_time = time.time()
-        wait_for_condition(
-            partial(
-                _check_job,
-                client=head_client,
-                job_id=job_id,
-                status=JobStatus.SUCCEEDED,
-            ),
-            timeout=300,
-        )
-        job_duration = time.time() - job_start_time
-        print(f"The job took {job_duration}s to succeed.")
-    except RuntimeError as e:
-        # If the job is still pending, include job logs and info in error.
-        if head_client.get_job_status(job_id) == JobStatus.PENDING:
-            logs = head_client.get_job_logs(job_id)
-            info = head_client.get_job_info(job_id)
-            raise RuntimeError(
-                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
-            ) from e
+    with pytest.raises(RuntimeError) as exc:
+        submit_result = await agent_client.submit_job_internal(request)
 
-    # There is only one node, so there is no need to replace the client of the JobAgent
-    resp = await agent_client.get_job_logs_internal(job_id)
-    assert runtime_env_option["expected_logs"] in resp.logs
+    assert "status code 405" in str(exc.value)
 
 
 @pytest.mark.asyncio

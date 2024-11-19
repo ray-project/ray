@@ -269,7 +269,7 @@ def deny_browser_requests() -> Callable:
             if is_browser_request(req):
                 return Response(
                     text="Browser requests not allowed",
-                    status=aiohttp.web.HTTPNotAllowed.status_code,
+                    status=aiohttp.web.HTTPMethodNotAllowed.status_code,
                 )
             return await f(self, req)
 
