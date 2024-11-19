@@ -114,15 +114,13 @@ class APPOConfig(IMPALAConfig):
         # `circular_buffer_num_batches=4` and `circular_buffer_iterations_per_batch=2`
         # For cont. action tasks:
         # `circular_buffer_num_batches=16` and `circular_buffer_iterations_per_batch=20`
-        self.circular_buffer_num_batches = 1
-        self.circular_buffer_iterations_per_batch = 1
+        self.circular_buffer_num_batches = 4
+        self.circular_buffer_iterations_per_batch = 2
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
         self.min_time_s_per_iteration = 10
         self.target_network_update_freq = 1
-        self.learner_queue_size = 16
-        self.learner_queue_timeout = 300
         self.broadcast_interval = 1
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
@@ -148,6 +146,8 @@ class APPOConfig(IMPALAConfig):
         self.minibatch_buffer_size = 1  # @OldAPIStack
         self.replay_proportion = 0.0  # @OldAPIStack
         self.replay_buffer_num_slots = 100  # @OldAPIStack
+        self.learner_queue_size = 16  # @OldAPIStack
+        self.learner_queue_timeout = 300  # @OldAPIStack
 
         # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
@@ -252,6 +252,7 @@ class APPOConfig(IMPALAConfig):
     @override(IMPALAConfig)
     def validate(self) -> None:
         super().validate()
+
         # On new API stack, circular buffer should be used, not `minibatch_buffer_size`.
         if self.enable_rl_module_and_learner:
             if self.minibatch_buffer_size != 1 or self.replay_proportion != 0.0:
@@ -272,6 +273,15 @@ class APPOConfig(IMPALAConfig):
                     "pre-loading on each of your `Learners`, set "
                     "`num_gpu_loader_threads` to a higher number (recommended values: "
                     "1-8)."
+                )
+            if self.learner_queue_size != 16:
+                raise ValueError(
+                    "`learner_queue_size` not supported on new API stack with "
+                    "APPO! In order set the size of the circular buffer (which acts as "
+                    "a 'learner queue'), use "
+                    "`config.training(circular_buffer_num_batches=..)`. To change the "
+                    "maximum number of times any batch may be sampled, set "
+                    "`config.training(circular_buffer_iterations_per_batch=..)`."
                 )
 
     @override(IMPALAConfig)
