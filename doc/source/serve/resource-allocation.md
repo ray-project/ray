@@ -27,7 +27,7 @@ def func(*args):
     return do_something_with_my_gpu()
 ```
 
-Or if you want to create a deployment where each replica uses a single HPU, follow the code below:
+Or if you want to create a deployment where each replica uses a single HPU, follow the example below:
 
 ```python
 @serve.deployment(ray_actor_options={"resources": {"HPU": 1}})
