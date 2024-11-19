@@ -55,7 +55,7 @@ def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
 
 
 class TestSizeBytes:
-    def test_size_bytes_small(ray_start_regular_shared):
+    def test_small(ray_start_regular_shared):
         animals = ["Flamingo", "Centipede"]
         block = pd.DataFrame({"animals": animals})
 
@@ -70,7 +70,7 @@ class TestSizeBytes:
             memory_usage,
         )
 
-    def test_size_bytes_large_str(ray_start_regular_shared):
+    def test_large_str(ray_start_regular_shared):
         animals = [
             random.choice(["alligator", "crocodile", "centipede", "flamingo"])
             for i in range(100_000)
@@ -87,7 +87,8 @@ class TestSizeBytes:
             memory_usage,
         )
 
-    def test_size_bytes_large_str_object(ray_start_regular_shared):
+    def test_large_str_object(ray_start_regular_shared):
+        """Note - this test breaks if you refactor/move the list of animals."""
         num = 100_000
         animals = [
             random.choice(["alligator", "crocodile", "centipede", "flamingo"])
@@ -113,7 +114,7 @@ class TestSizeBytes:
             memory_usage,
         )
 
-    def test_size_bytes_large_floats(ray_start_regular_shared):
+    def test_large_floats(ray_start_regular_shared):
         animals = [random.random() for i in range(100_000)]
         block = pd.DataFrame({"animals": animals})
 
@@ -127,7 +128,7 @@ class TestSizeBytes:
             memory_usage,
         )
 
-    def test_size_bytes_bytes_object(ray_start_regular_shared):
+    def test_bytes_object(ray_start_regular_shared):
         def generate_data(batch):
             for _ in range(8):
                 yield {"data": [[b"\x00" * 128 * 1024 * 128]]}
@@ -144,47 +145,41 @@ class TestSizeBytes:
             # assert that true_value is within 10% of bundle.size_bytes()
             assert true_value * 0.9 <= size <= true_value * 1.1, (true_value, size)
 
-    def test_size_bytes_unowned_numpy(ray_start_regular_shared):
+    def test_unowned_numpy(ray_start_regular_shared):
         size = 1024
         rows = 1_000
-        df = pd.DataFrame(
-            {
-                "data": [
-                    np.random.randint(size=size, low=0, high=100, dtype=np.int8)
-                    for _ in range(rows)
-                ],
-            }
-        )
+        data = [
+            np.random.randint(size=size, low=0, high=100, dtype=np.int8)
+            for _ in range(rows)
+        ]
+        df = pd.DataFrame({"data": data})
 
         block_accessor = PandasBlockAccessor.for_block(df)
         block_size = block_accessor.size_bytes()
         true_value = rows * size
         assert true_value * 0.9 <= block_size <= true_value * 1.1
 
-    def test_size_bytes_nested_objects(ray_start_regular_shared):
+    def test_nested_objects(ray_start_regular_shared):
         size = 10
         rows = 10_000
-        data = {
-            "lists": [
-                [random.randint(0, 100) for _ in range(size)] for _ in range(rows)
-            ],
-        }
+        lists = [[random.randint(0, 100) for _ in range(size)] for _ in range(rows)]
+        data = {"lists": lists}
         block = pd.DataFrame(data)
 
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
+        # List overhead + 10 integers per list
         true_size = rows * (
             sys.getsizeof([random.randint(0, 100) for _ in range(size)]) + size * 28
         )
-        # List overhead + 10 integers per list
 
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (
             bytes_size,
             true_size,
         )
 
-    def test_size_bytes_mixed_types(ray_start_regular_shared):
+    def test_mixed_types(ray_start_regular_shared):
         rows = 10_000
 
         data = {
@@ -210,7 +205,7 @@ class TestSizeBytes:
         true_size = int_size + float_size + str_size + object_size
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
-    def test_size_bytes_nested_lists_strings(ray_start_regular_shared):
+    def test_nested_lists_strings(ray_start_regular_shared):
         rows = 5_000
         size = 10
         data = {
@@ -230,9 +225,9 @@ class TestSizeBytes:
         true_size = rows * list_overhead
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
-    def test_size_bytes_multi_level_nesting_small(ray_start_regular_shared):
+    @pytest.mark.parametrize("size", [10, 1024])
+    def test_multi_level_nesting(ray_start_regular_shared, size):
         rows = 1_000
-        size = 1024  # if you change this to 1024 it breaks
         data = {
             "complex": [
                 {"list": [np.random.rand(size)], "value": {"key": "val"}}
@@ -243,82 +238,28 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        numpy_size = np.random.rand(size).nbytes * rows
+        numpy_size = np.random.rand(size).nbytes
 
-        str_size = (
-            sys.getsizeof("list")
-            + sys.getsizeof("value")
-            + sys.getsizeof("key")
-            + sys.getsizeof("val")
-        ) * rows
-        print(f"str_size: {str_size}")
+        values = ["list", "value", "key", "val"]
+        str_size = sum([sys.getsizeof(v) for v in values])
 
-        list_ref_overhead = sys.getsizeof([np.random.rand(size)]) * rows
+        list_ref_overhead = sys.getsizeof([np.random.rand(size)])
 
-        dict_over_head1 = sys.getsizeof({"key": "val"}) * rows
+        dict_overhead1 = sys.getsizeof({"key": "val"})
 
-        dict_over_head3 = (
-            sys.getsizeof({"list": [np.random.rand(size)], "value": {"key": "val"}})
-            * rows
+        dict_overhead3 = sys.getsizeof(
+            {"list": [np.random.rand(size)], "value": {"key": "val"}}
         )
 
         true_size = (
-            numpy_size
-            + str_size
-            + list_ref_overhead
-            + dict_over_head1
-            + dict_over_head3
-        )
+            numpy_size + str_size + list_ref_overhead + dict_overhead1 + dict_overhead3
+        ) * rows
         assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
             bytes_size,
             true_size,
         )
 
-    def test_size_bytes_multi_level_nesting_large(ray_start_regular_shared):
-        rows = 1_000
-        size = 1024  # if you change this to 1024 it breaks
-        data = {
-            "complex": [
-                {"list": [np.random.rand(size)], "value": {"key": "val"}}
-                for _ in range(rows)
-            ],
-        }
-        block = pd.DataFrame(data)
-        block_accessor = PandasBlockAccessor.for_block(block)
-        bytes_size = block_accessor.size_bytes()
-
-        numpy_size = np.random.rand(size).nbytes * rows
-
-        str_size = (
-            sys.getsizeof("list")
-            + sys.getsizeof("value")
-            + sys.getsizeof("key")
-            + sys.getsizeof("val")
-        ) * rows
-        print(f"str_size: {str_size}")
-
-        list_ref_overhead = sys.getsizeof([np.random.rand(size)]) * rows
-
-        dict_over_head1 = sys.getsizeof({"key": "val"}) * rows
-
-        dict_over_head3 = (
-            sys.getsizeof({"list": [np.random.rand(size)], "value": {"key": "val"}})
-            * rows
-        )
-
-        true_size = (
-            numpy_size
-            + str_size
-            + list_ref_overhead
-            + dict_over_head1
-            + dict_over_head3
-        )
-        assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
-            bytes_size,
-            true_size,
-        )
-
-    def test_size_bytes_boolean(ray_start_regular_shared):
+    def test_boolean(ray_start_regular_shared):
         data = [random.choice([True, False, None]) for _ in range(100_000)]
         block = pd.DataFrame({"flags": pd.Series(data, dtype="boolean")})
         block_accessor = PandasBlockAccessor.for_block(block)
@@ -328,7 +269,7 @@ class TestSizeBytes:
         true_size = block.memory_usage(index=True, deep=True).sum()
         assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
 
-    def test_size_bytes_arrow(ray_start_regular_shared):
+    def test_arrow(ray_start_regular_shared):
         data = [
             random.choice(["alligator", "crocodile", "flamingo"]) for _ in range(50_000)
         ]
