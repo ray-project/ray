@@ -210,6 +210,30 @@ def test_combine_chunked_array_small(input_, expected_output: Union[pa.Array, pa
     expected_output.equals(result)
 
 
+def test_combine_chunked_array_large():
+    """Verifies `combine_chunked_array` on arrays > 2 GiB"""
+
+    # 144 MiB
+    ones_1gb = np.ones(shape=(550, 128, 128, 4), dtype=np.int32()).ravel()
+
+    # Total ~2.15 GiB
+    input_ = pa.chunked_array([
+        pa.array(ones_1gb),
+    ] * 16)
+
+    assert round(input_.nbytes / GiB, 2) == 2.15
+
+    result = combine_chunked_array(input_)
+
+    assert isinstance(result, pa.ChunkedArray)
+    assert len(result.chunks) == 2
+
+    # Should re-combine first provided 14 chunks into 1
+    assert result.chunks[0].nbytes == sum([c.nbytes for c in input_.chunks[:14]])
+    # Remaining 2 go into teh second one
+    assert result.chunks[1].nbytes == sum([c.nbytes for c in input_.chunks[14:]])
+
+
 def test_append_column(ray_start_regular_shared):
     animals = ["Flamingo", "Centipede"]
     num_legs = [2, 100]
