@@ -217,10 +217,10 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        from ray.data._internal.arrow_ops import transform_pyarrow
         from ray.air.util.tensor_extensions.arrow import (
-            get_arrow_extension_fixed_shape_tensor_types
+            get_arrow_extension_fixed_shape_tensor_types,
         )
+        from ray.data._internal.arrow_ops import transform_pyarrow
 
         column_values_ndarrays = []
 

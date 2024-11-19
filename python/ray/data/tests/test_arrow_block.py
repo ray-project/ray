@@ -120,7 +120,7 @@ def test_arrow_batch_gt_2gb(
     ray_start_regular_shared,
     parquet_dataset_single_column_gt_2gb,
     restore_data_context,
-    op
+    op,
 ):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
