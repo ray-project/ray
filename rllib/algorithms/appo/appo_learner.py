@@ -90,16 +90,13 @@ class APPOLearner(IMPALALearner):
             )
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            if (
-                isinstance(module.unwrapped(), TargetNetworkAPI)
-                and (
-                    curr_timestep - self.metrics.peek(last_update_ts_key, default=0)
-                    >= (
-                        config.target_network_update_freq
-                        * config.circular_buffer_num_batches
-                        * config.circular_buffer_iterations_per_batch
-                        * config.train_batch_size_per_learner
-                    )
+            if isinstance(module.unwrapped(), TargetNetworkAPI) and (
+                curr_timestep - self.metrics.peek(last_update_ts_key, default=0)
+                >= (
+                    config.target_network_update_freq
+                    * config.circular_buffer_num_batches
+                    * config.circular_buffer_iterations_per_batch
+                    * config.train_batch_size_per_learner
                 )
             ):
                 for (
