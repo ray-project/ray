@@ -12,7 +12,7 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_TARGET_UPDATES,
 )
@@ -80,30 +80,27 @@ class APPOLearner(IMPALALearner):
         """Updates the target Q Networks."""
         super().after_gradient_based_update(timesteps=timesteps)
 
-        timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
-
         # TODO (sven): Maybe we should have a `after_gradient_based_update`
         #  method per module?
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
-            # TODO (avnish) Using steps trained here instead of sampled ... I'm not sure
-            #  why the other implementation uses sampled.
-            #  The difference in steps sampled/trained is pretty
-            #  much always going to be larger than self.config.num_epochs *
-            #  self.config.minibatch_buffer_size unless the number of steps collected
-            #  is really small. The thing is that the default rollout fragment length
-            #  is 50, so the minibatch buffer size * num_epochs is going to be
-            #  have to be 50 to even meet the threshold of having delayed target
-            #  updates.
-            #  We should instead have the target / kl threshold update be based off
-            #  of the train_batch_size * some target update frequency * num_epochs.
+            curr_timestep = self.metrics.peek(
+                (module_id, NUM_ENV_STEPS_TRAINED_LIFETIME)
+            )
 
             last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-            if timestep - self.metrics.peek(
-                last_update_ts_key, default=0
-            ) >= config.target_network_update_freq and isinstance(
-                module.unwrapped(), TargetNetworkAPI
+            if (
+                isinstance(module.unwrapped(), TargetNetworkAPI)
+                and (
+                    curr_timestep - self.metrics.peek(last_update_ts_key, default=0)
+                    >= (
+                        config.target_network_update_freq
+                        * config.circular_buffer_num_batches
+                        * config.circular_buffer_iterations_per_batch
+                        * config.train_batch_size_per_learner
+                    )
+                )
             ):
                 for (
                     main_net,
@@ -117,7 +114,7 @@ class APPOLearner(IMPALALearner):
                 # Increase lifetime target network update counter by one.
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
-                self.metrics.log_value(last_update_ts_key, timestep, window=1)
+                self.metrics.log_value(last_update_ts_key, curr_timestep, window=1)
 
             if (
                 config.use_kl_loss
