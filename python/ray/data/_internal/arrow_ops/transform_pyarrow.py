@@ -5,7 +5,6 @@ from packaging.version import parse as parse_version
 from ray._private.utils import _get_pyarrow_version
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
-    ArrowTensorTypeV2,
 )
 
 try:
