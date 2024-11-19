@@ -134,6 +134,15 @@ const ActorDetailPage = () => {
               : { value: "-" },
           },
           {
+            label: "PID",
+            content: actorDetail.pid
+              ? {
+                  value: `${actorDetail.pid}`,
+                  copyableValue: `${actorDetail.pid}`,
+                }
+              : { value: "-" },
+          },
+          {
             label: "Started at",
             content: {
               value: actorDetail.startTime
