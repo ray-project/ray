@@ -27,9 +27,9 @@ type PrometheusHealthcheckRsp = {
   msg: string;
 };
 
-type TimezonekRsp = {
-  offset: string | null;
-  value: string | null;
+type TimezoneRsp = {
+  offset: string;
+  value: string;
 };
 
 const fetchGrafanaHealthcheck = async () => {
@@ -75,17 +75,17 @@ export const getMetricsInfo = async () => {
   return info;
 };
 
-type TimezoneInfo = {
-  offset?: string | null;
-  value?: string | null;
+export type TimezoneInfo = {
+  offset: string;
+  value: string;
 };
 export const getTimeZoneInfo = async () => {
   const info: TimezoneInfo = {
-    offset: undefined,
-    value: undefined,
+    offset: "",
+    value: "",
   };
   try {
-    const resp = await get<TimezonekRsp>(TIMEZONE_URL);
+    const resp = await get<TimezoneRsp>(TIMEZONE_URL);
     if (resp.data) {
       info.offset = resp.data.offset;
       info.value = resp.data.value;

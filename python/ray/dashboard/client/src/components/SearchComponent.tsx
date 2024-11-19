@@ -5,9 +5,11 @@ import {
   MenuItem,
   TextField,
 } from "@mui/material";
+
 import React, { useEffect, useState } from "react";
 import { formatTimeZone } from "../common/formatUtils";
 import { timezones } from "../common/timezone";
+import { TimezoneInfo } from "../pages/metrics/utils";
 
 export const SearchInput = ({
   label,
@@ -87,23 +89,21 @@ export const SearchSelect = ({
 
 export const SearchTimezone = ({
   serverTimeZone,
-  serverTimeZoneLoaded,
 }: {
-  serverTimeZone?: string | null;
-  serverTimeZoneLoaded?: boolean;
+  serverTimeZone?: TimezoneInfo;
 }) => {
   const [timezone, setTimezone] = useState<string>("");
 
   useEffect(() => {
-    if (serverTimeZoneLoaded) {
+    if (serverTimeZone) {
       const currentTimezone =
         localStorage.getItem("timezone") ||
-        serverTimeZone ||
+        serverTimeZone.value ||
         Intl.DateTimeFormat().resolvedOptions().timeZone;
       formatTimeZone(currentTimezone);
       setTimezone(currentTimezone);
     }
-  }, [serverTimeZoneLoaded, serverTimeZone]);
+  }, [serverTimeZone]);
 
   const handleTimezoneChange = (value: string) => {
     localStorage.setItem("timezone", value);
@@ -111,32 +111,39 @@ export const SearchTimezone = ({
   };
 
   const options = timezones.sort((a, b) => a.group.localeCompare(b.group));
-  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-  const browerUtc =
-    timezones.find((t) => t.value === browserTimezone)?.utc || "";
-  const specificValue = [
-    {
-      value: browserTimezone,
-      utc: browerUtc,
-      group: "System",
-      country: "Browser Time",
-    },
-    {
-      value: "Etc/UTC",
-      utc: "GMT+00:00",
-      group: "System",
-      country: "Coordinated Universal Time",
-    },
-  ];
-  specificValue.forEach((val) => {
-    options.unshift(val);
+  options.unshift({
+    value: "Etc/UTC",
+    utc: "GMT+00:00",
+    group: "System",
+    country: "Coordinated Universal Time",
   });
 
-  if (serverTimeZone) {
-    const serverUtc =
-      timezones.find((t) => t.value === serverTimeZone)?.utc || "";
+  const browserTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  const browserOffset = (() => {
+    const match = new Date().toString().match(/([A-Z]+)([+-])(\d{2}):?(\d{2})/);
+    if (match) {
+      const [, , sign, hours, minutes] = match;
+      return `GMT${sign}${hours}:${minutes}`;
+    }
+    return null;
+  })();
+
+  if (browserOffset) {
     options.unshift({
-      value: serverTimeZone,
+      value: browserTimezone,
+      utc: browserOffset,
+      group: "System",
+      country: "Browser Time",
+    });
+  }
+
+  const serverUtc =
+    serverTimeZone?.value &&
+    timezones.find((t) => t.value === serverTimeZone.value)?.utc;
+  if (serverUtc) {
+    options.unshift({
+      value: serverTimeZone.value,
       utc: serverUtc,
       group: "System",
       country: "Dashboard Server Timezone",

@@ -84,8 +84,7 @@ const Wrapper =
               nodeMapByIp: {},
               namespaceMap: {},
               dashboardDatasource: "Prometheus",
-              serverTimeZone: undefined,
-              serverTimeZoneLoaded: false,
+              serverTimeZone: { offset: "", value: "" },
             }}
           >
             {children}
