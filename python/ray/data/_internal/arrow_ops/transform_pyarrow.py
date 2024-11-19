@@ -7,7 +7,6 @@ from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     ArrowTensorTypeV2,
 )
-from ray.data._internal.util import GiB
 
 try:
     import pyarrow
@@ -380,8 +379,7 @@ def combine_chunked_array(
 
 
 def _try_combine_chunks_safe(
-    array: "pyarrow.ChunkedArray",
-    max_chunk_size = INT32_OVERFLOW_THRESHOLD
+    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
     """This method handles the case of `ChunkedArray` exceeding 2 GiB in size,
     making it impossible to directly combine it into single contiguous array

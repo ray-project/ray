@@ -165,46 +165,55 @@ def test_arrow_batch_gt_2gb(
     [
         # Empty chunked array
         (pa.chunked_array([], type=pa.int8()), pa.array([], type=pa.int8())),
-
         # Fixed-shape tensors
         (
-            pa.chunked_array([
-                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-            ]),
+            pa.chunked_array(
+                [
+                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+                ]
+            ),
             ArrowTensorArray.from_numpy(
-                np.concatenate([
-                    np.arange(3).reshape(3, 1),
-                    np.arange(3).reshape(3, 1),
-                ])
-            )
+                np.concatenate(
+                    [
+                        np.arange(3).reshape(3, 1),
+                        np.arange(3).reshape(3, 1),
+                    ]
+                )
+            ),
         ),
-
         # Ragged (variable-shaped) tensors
         (
-            pa.chunked_array([
-                ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
-                ArrowTensorArray.from_numpy(np.arange(5).reshape(5, 1)),
-            ]),
+            pa.chunked_array(
+                [
+                    ArrowTensorArray.from_numpy(np.arange(3).reshape(3, 1)),
+                    ArrowTensorArray.from_numpy(np.arange(5).reshape(5, 1)),
+                ]
+            ),
             ArrowTensorArray.from_numpy(
-                np.concatenate([
-                    np.arange(3).reshape(3, 1),
-                    np.arange(5).reshape(5, 1),
-                ])
-            )
+                np.concatenate(
+                    [
+                        np.arange(3).reshape(3, 1),
+                        np.arange(5).reshape(5, 1),
+                    ]
+                )
+            ),
         ),
-
         # Small (< 2 GiB) arrays
         (
-            pa.chunked_array([
-                pa.array([1, 2, 3], type=pa.int16()),
-                pa.array([4, 5, 6], type=pa.int16())
-            ]),
+            pa.chunked_array(
+                [
+                    pa.array([1, 2, 3], type=pa.int16()),
+                    pa.array([4, 5, 6], type=pa.int16()),
+                ]
+            ),
             pa.array([1, 2, 3, 4, 5, 6], type=pa.int16()),
         ),
-    ]
+    ],
 )
-def test_combine_chunked_array_small(input_, expected_output: Union[pa.Array, pa.ChunkedArray]):
+def test_combine_chunked_array_small(
+    input_, expected_output: Union[pa.Array, pa.ChunkedArray]
+):
     result = combine_chunked_array(input_)
 
     expected_output.equals(result)
@@ -217,9 +226,12 @@ def test_combine_chunked_array_large():
     ones_1gb = np.ones(shape=(550, 128, 128, 4), dtype=np.int32()).ravel()
 
     # Total ~2.15 GiB
-    input_ = pa.chunked_array([
-        pa.array(ones_1gb),
-    ] * 16)
+    input_ = pa.chunked_array(
+        [
+            pa.array(ones_1gb),
+        ]
+        * 16
+    )
 
     assert round(input_.nbytes / GiB, 2) == 2.15
 

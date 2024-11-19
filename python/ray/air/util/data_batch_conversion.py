@@ -217,11 +217,11 @@ def _convert_batch_type_to_numpy(
                 )
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
-        from ray.data._internal.arrow_ops import transform_pyarrow
         from ray.air.util.tensor_extensions.arrow import (
             ArrowTensorType,
             ArrowTensorTypeV2,
         )
+        from ray.data._internal.arrow_ops import transform_pyarrow
 
         column_values_ndarrays = []
 
@@ -231,7 +231,6 @@ def _convert_batch_type_to_numpy(
             combined_array = transform_pyarrow.combine_chunked_array(col)
 
             column_values_ndarrays.append(combined_array.to_numpy(zero_copy_only=False))
-
 
         # NOTE: This branch is here for backwards-compatibility
         if data.column_names == [TENSOR_COLUMN_NAME] and (
