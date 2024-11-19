@@ -117,7 +117,10 @@ def test_single_row_gt_2gb(
 
 @pytest.mark.parametrize("op", ["map", "map_batches"])
 def test_arrow_batch_gt_2gb(
-    parquet_dataset_single_column_gt_2gb, restore_data_context, op
+    ray_start_regular_shared,
+    parquet_dataset_single_column_gt_2gb,
+    restore_data_context,
+    op
 ):
     # Disable (automatic) fallback to `ArrowPythonObjectType` extension type
     DataContext.get_current().enable_fallback_to_arrow_object_ext_type = False
