@@ -1,4 +1,4 @@
-from typing import List, Optional, Tuple, Union
+from typing import List, Tuple, Union
 
 from ray.data._internal.aggregate import Count, _AggregateOnKeyBase
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
@@ -27,7 +27,7 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     def __init__(
         self,
         boundaries: List[KeyType],
-        key: Optional[str],
+        key: SortKey,
         aggs: List[AggregateFn],
         batch_format: str,
     ):
@@ -42,26 +42,26 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
         block: Block,
         output_num_blocks: int,
         boundaries: List[KeyType],
-        key: Union[str, List[str], None],
+        sort_key: SortKey,
         aggs: List[AggregateFn],
     ) -> List[Union[BlockMetadata, Block]]:
         stats = BlockExecStats.builder()
 
-        block = SortAggregateTaskSpec._prune_unused_columns(block, key, aggs)
-        if key is None:
-            partitions = [block]
-        else:
+        block = SortAggregateTaskSpec._prune_unused_columns(block, sort_key, aggs)
+        if sort_key.get_columns():
             partitions = BlockAccessor.for_block(block).sort_and_partition(
                 boundaries,
-                SortKey(key),
+                sort_key,
             )
-        parts = [BlockAccessor.for_block(p).combine(key, aggs) for p in partitions]
+        else:
+            partitions = [block]
+        parts = [BlockAccessor.for_block(p).combine(sort_key, aggs) for p in partitions]
         meta = BlockAccessor.for_block(block).get_metadata(exec_stats=stats.build())
         return parts + [meta]
 
     @staticmethod
     def reduce(
-        key: Optional[str],
+        key: SortKey,
         aggs: List[AggregateFn],
         batch_format: str,
         *mapper_outputs: List[Block],
@@ -77,12 +77,13 @@ class SortAggregateTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def _prune_unused_columns(
         block: Block,
-        key: Union[str, List[str]],
+        sort_key: SortKey,
         aggs: Tuple[AggregateFn],
     ) -> Block:
         """Prune unused columns from block before aggregate."""
         prune_columns = True
         columns = set()
+        key = sort_key.get_columns()
 
         if isinstance(key, str):
             columns.add(key)
