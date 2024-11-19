@@ -2240,7 +2240,7 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def visualize_ascii(self):
+    def _visualize_ascii(self):
         """
         Visualize the compiled graph in
         ASCII format with directional markers.
@@ -2251,8 +2251,7 @@ class CompiledDAG:
 
         High-Level Algorithm:
         - Topological Sorting: Sort nodes topologically to organize
-            them into layers based on dependencies,
-            ensuring nodes appear in a logical order.
+            them into layers based on dependencies.
         - Grid Initialization: Set up a 2D grid canvas with dimensions based
             on the number of layers and the maximum number of nodes per layer.
         - Node Placement: Position each node on the grid according to its
@@ -2265,19 +2264,18 @@ class CompiledDAG:
 
         Returns:
             ASCII representation of the CG with Nodes Information,
-            Edges Information and Experimental Graph Built.
+            Edges Information and Graph Built.
 
+        Limitations:
+        - Note: This is only used for quick visualization for small graphs.
+            For complex graph (i.e. more than 20 tasks), please use graphviz.
 
-        Supported CG:
         - Scale: Works best for smaller CGs (typically fewer than 20 tasks).
             Larger CGs may result in dense, less readable ASCII
             outputs due to limited space for node and edge rendering.
         - Shape: Ideal for relatively shallow CGs with clear dependency paths.
             For deep, highly branched or densely connected CGs,
             readability may suffer.
-
-
-        Limitations:
         - Edge Overlap: In cases with high fan-out (i.e., nodes with many children)
             or fan-in (nodes with many parents), edge lines may intersect or overlap
             in the ASCII visualization, potentially obscuring some connections.
@@ -2289,7 +2287,7 @@ class CompiledDAG:
             Basic Visualization:
             ```python
             # Print the CG structure in ASCII format
-            print(compiled_dag.visualize_ascii())
+            print(compiled_dag.visualize(format="ascii"))
             ```
 
             Example of Ordered Visualization (to reduce line intersection):
@@ -2302,7 +2300,7 @@ class CompiledDAG:
                 dag = MultiOutputNode([o4, o5, o6, o7])
 
             compiled_dag = dag.experimental_compile()
-            print(compiled_dag.visualize_ascii())
+            compiled_dag.visualize(format="ascii",view=True)
 
 
             # Output:
@@ -2328,7 +2326,7 @@ class CompiledDAG:
                 o6, o7 = b.return_two.bind(o2)
                 dag = MultiOutputNode([o4, o5, o6, o7])
             compiled_dag = dag.experimental_compile()
-            print(compiled_dag.visualize_ascii())
+            compiled_dag.visualize(format="ascii",view=True)
 
             # Output (Nodes 5, 7, 9, 10 should connect to Node 8):
             # 0:InputNode
@@ -2371,14 +2369,20 @@ class CompiledDAG:
         from collections import defaultdict, deque
 
         # Create adjacency list representation of the DAG
-        adj_list = defaultdict(list)
-        indegree = defaultdict(int)
+        # Adjacency list for DAG; maps a node index to its downstream nodes.
+        adj_list: Dict[int, List[int]] = defaultdict(list)
+        # Indegree count for topological sorting; maps a node index to its indegree.
+        indegree: Dict[int, int] = defaultdict(int)
 
-        is_multi_output = defaultdict(bool)
-        child2parent = defaultdict(int)
+        # Tracks whether a node is a multi-output node.
+        is_multi_output: Dict[int, bool] = defaultdict(bool)
+        # Maps child node indices to their parent node indices.
+        child2parent: Dict[int, int] = defaultdict(int)
         ascii_visualization = ""
-        node_info = {}
-        edge_info = []
+        # Node information; maps a node index to its descriptive label.
+        node_info: Dict[int, str] = {}
+        # Edge information; tuples of (upstream_index, downstream_index, edge_label).
+        edge_info: List[Tuple[int, int, str]] = []
 
         for idx, task in self.idx_to_task.items():
             dag_node = task.dag_node
@@ -2464,9 +2468,13 @@ class CompiledDAG:
             else:
                 edgs_channel = "---"
             ascii_visualization += (
-                f"{upstream_task} {edgs_channel}>"
-                f" {downstream_task} [label={type_hint}]\n"
+                f"{upstream_task} {edgs_channel}>" f" {downstream_task}\n"
             )
+
+        # Add the legend to the output
+        ascii_visualization += "\nLegend:\n"
+        ascii_visualization += "+++> : Represents Nccl-type data channels\n"
+        ascii_visualization += "---> : Represents Shared Memory data channels\n"
 
         # Find the maximum width (number of nodes in any layer)
         max_width = max(len(layer) for layer in layers.values()) + width_adjust
@@ -2556,7 +2564,7 @@ class CompiledDAG:
                             grid[output_y - 1][output_x] = "|"
 
         # Convert grid to string for printing
-        ascii_visualization += "\nExperimental Graph Built:\n"
+        ascii_visualization += "\nGraph Built:\n"
         ascii_visualization += "\n".join("".join(row) for row in grid)
 
         return ascii_visualization
@@ -2610,16 +2618,29 @@ class CompiledDAG:
 
         Args:
             filename: The name of the output file (without extension).
-            format: The format of the output file (e.g., 'png', 'pdf').
-            view: Whether to open the file with the default viewer.
+            format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
+            view: For non-ascii: Whether to open the file with the default viewer.
+                For ascii: Whether to print the visualization or return the string.
             return_dot: If True, returns the DOT source as a string instead of figure.
-            show_channel_details: If True, adds channel details to edges.
+            channel_details: If True, adds channel details to edges.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
             ImportError: If the `graphviz` package is not installed.
 
         """
+        if format == "ascii":
+            if any([return_dot, channel_details]):
+                raise ValueError(
+                    "Parameters 'return_dot' and 'channel_details' are"
+                    " not compatible with 'ascii' format."
+                )
+            ascii_visualiztion_str = self._visualize_ascii()
+            if view:
+                print(ascii_visualiztion_str)
+                return
+            else:
+                return ascii_visualiztion_str
         try:
             import graphviz
         except ImportError:

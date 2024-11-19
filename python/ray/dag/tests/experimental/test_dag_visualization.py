@@ -12,8 +12,8 @@ def test_visualize_basic(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1 [label=SharedMemoryType]
-            1 -> 2 [label=SharedMemoryType]
+            0 -> 1
+            1 -> 2
     """
 
     @ray.remote
@@ -49,18 +49,16 @@ def test_visualize_basic(ray_start_regular):
         edge_pairs
     ), f"Expected edges {expected_edges} not found."
 
-    compiled_dag.teardown()
-
 
 def test_visualize_multi_return(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1 [label=SharedMemoryType]
-            1 -> 2 [label=SharedMemoryType]
-            1 -> 3 [label=SharedMemoryType]
-            2 -> 4 [label=SharedMemoryType]
-            3 -> 4 [label=SharedMemoryType]
+            0 -> 1
+            1 -> 2
+            1 -> 3
+            2 -> 4
+            3 -> 4
     """
 
     @ray.remote
@@ -98,20 +96,18 @@ def test_visualize_multi_return(ray_start_regular):
         edge_pairs
     ), f"Expected edges {expected_edges} not found."
 
-    compiled_dag.teardown()
-
 
 def test_visualize_multi_return2(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1 [label=SharedMemoryType]
-            1 -> 2 [label=SharedMemoryType]
-            1 -> 3 [label=SharedMemoryType]
-            2 -> 4 [label=SharedMemoryType]
-            3 -> 5 [label=SharedMemoryType]
-            4 -> 6 [label=SharedMemoryType]
-            5 -> 6 [label=SharedMemoryType]
+            0 -> 1
+            1 -> 2
+            1 -> 3
+            2 -> 4
+            3 -> 5
+            4 -> 6
+            5 -> 6
     """
 
     @ray.remote
@@ -161,8 +157,6 @@ def test_visualize_multi_return2(ray_start_regular):
     assert expected_edges.issubset(
         edge_pairs
     ), f"Expected edges {expected_edges} not found."
-
-    compiled_dag.teardown()
 
 
 def test_visualize_multi_input_nodes(ray_start_regular):
@@ -225,8 +219,6 @@ def test_visualize_multi_input_nodes(ray_start_regular):
     assert expected_edges.issubset(
         edge_pairs
     ), f"Expected edges {expected_edges} not found."
-
-    compiled_dag.teardown()
 
 
 class TestVisualizationAscii:
@@ -298,17 +290,21 @@ class TestVisualizationAscii:
         Expect output:
             Nodes Information:
             0 [label="Task 0  InputNode"]
-            1 [label="Task 1  Actor: d1d677... Method: echo"]
+            1 [label="Task 1  Actor: d6c5c4... Method: echo"]
             2 [label="Task 2  MultiOutputNode"]
 
             Edges Information:
-            0 --->1[label=SharedMemoryType]
-            1 --->2[label=SharedMemoryType]
+            0 ---> 1
+            1 ---> 2
 
-            Experimental Graph Built:
+            Legend:
+            +++> : Represents Nccl-type data channels
+            ---> : Represents Shared Memory data channels
+
+            Experimental Graph:
             0:InputNode
             |
-            1:Actor_d1d677:echo
+            1:Actor_d6c5c4:echo
             |
             2:MultiOutputNode
         """
@@ -326,7 +322,7 @@ class TestVisualizationAscii:
         compiled_dag = dag.experimental_compile()
 
         # Call the visualize method
-        ascii_visualization = compiled_dag.visualize_ascii()
+        ascii_visualization = compiled_dag.visualize(format="ascii")
 
         node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
@@ -342,8 +338,6 @@ class TestVisualizationAscii:
             edge_pairs
         ), f"Expected edges {expected_edges} not found."
 
-        compiled_dag.teardown()
-
     def test_visualize_ascii_multi_return(self, ray_start_regular):
         """
         Expect output:
@@ -355,13 +349,17 @@ class TestVisualizationAscii:
             4 [label="Task 4  MultiOutputNode"]
 
             Edges Information:
-            0 ---> 1 [label=SharedMemoryType]
-            1 ---> 2 [label=SharedMemoryType]
-            1 ---> 3 [label=SharedMemoryType]
-            2 ---> 4 [label=SharedMemoryType]
-            3 ---> 4 [label=SharedMemoryType]
+            0 ---> 1
+            1 ---> 2
+            1 ---> 3
+            2 ---> 4
+            3 ---> 4
 
-            Experimental Graph Built:
+            Legend:
+            +++> : Represents Nccl-type data channels
+            ---> : Represents Shared Memory data channels
+
+            Graph Built:
             0:InputNode
             |
             1:Actor_885f1d:return_two
@@ -385,7 +383,7 @@ class TestVisualizationAscii:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize_ascii()
+        ascii_visualization = compiled_dag.visualize(format="ascii")
 
         node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
@@ -401,8 +399,6 @@ class TestVisualizationAscii:
             edge_pairs
         ), f"Expected edges {expected_edges} not found."
 
-        compiled_dag.teardown()
-
     def test_visualize_ascii_multi_return2(self, ray_start_regular):
         """
         Expect output:
@@ -416,15 +412,19 @@ class TestVisualizationAscii:
             6 [label="Task 6  MultiOutputNode"]
 
             Edges Information:
-            0 ---> 1 [label=SharedMemoryType]
-            1 ---> 2 [label=SharedMemoryType]
-            1 ---> 3 [label=SharedMemoryType]
-            2 ---> 4 [label=SharedMemoryType]
-            3 ---> 5 [label=SharedMemoryType]
-            4 ---> 6 [label=SharedMemoryType]
-            5 ---> 6 [label=SharedMemoryType]
+            0 ---> 1
+            1 ---> 2
+            1 ---> 3
+            2 ---> 4
+            3 ---> 5
+            4 ---> 6
+            5 ---> 6
 
-            Experimental Graph Built:
+            Legend:
+            +++> : Represents Nccl-type data channels
+            ---> : Represents Shared Memory data channels
+
+            Graph Built:
             0:InputNode
             |
             1:Actor_f3e919:return_two
@@ -455,7 +455,7 @@ class TestVisualizationAscii:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize_ascii()
+        ascii_visualization = compiled_dag.visualize(format="ascii")
 
         node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
@@ -479,8 +479,6 @@ class TestVisualizationAscii:
             edge_pairs
         ), f"Expected edges {expected_edges} not found."
 
-        compiled_dag.teardown()
-
     def test_visualize_ascii_complicate(self, ray_start_regular):
         """
         Expect output:
@@ -498,21 +496,25 @@ class TestVisualizationAscii:
             10 [label="Task 10  ClassMethodOutputNode[1]"]
 
             Edges Information:
-            0 ---> 1 [label=SharedMemoryType]
-            1 ---> 2 [label=SharedMemoryType]
-            1 ---> 3 [label=SharedMemoryType]
-            1 ---> 4 [label=SharedMemoryType]
-            2 ---> 5 [label=SharedMemoryType]
-            3 ---> 6 [label=SharedMemoryType]
-            4 ---> 7 [label=SharedMemoryType]
-            5 ---> 8 [label=SharedMemoryType]
-            6 ---> 8 [label=SharedMemoryType]
-            9 ---> 8 [label=ChannelOutputType]
-            10 ---> 8 [label=ChannelOutputType]
-            7 ---> 9 [label=SharedMemoryType]
-            7 ---> 10 [label=SharedMemoryType]
+            0 ---> 1
+            1 ---> 2
+            1 ---> 3
+            1 ---> 4
+            2 ---> 5
+            3 ---> 6
+            4 ---> 7
+            5 ---> 8
+            6 ---> 8
+            9 ---> 8
+            10 ---> 8
+            7 ---> 9
+            7 ---> 10
 
-            Experimental Graph Built:
+            Legend:
+            +++> : Represents Nccl-type data channels
+            ---> : Represents Shared Memory data channels
+
+            Graph Built:
             0:InputNode
             |
             1:Actor_54777d:return_three
@@ -550,7 +552,7 @@ class TestVisualizationAscii:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize_ascii()
+        ascii_visualization = compiled_dag.visualize(format="ascii")
 
         node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
@@ -580,8 +582,6 @@ class TestVisualizationAscii:
             edge_pairs
         ), f"Expected edges {expected_edges} not found."
 
-        compiled_dag.teardown()
-
     def test_visualize_ascii_cross_line(self, ray_start_regular):
         """
         Expect output:
@@ -599,21 +599,25 @@ class TestVisualizationAscii:
             10 [label="Task 10  ClassMethodOutputNode[1]"]
 
             Edges Information:
-            0 ---> 1 [label=SharedMemoryType]
-            1 ---> 2 [label=SharedMemoryType]
-            1 ---> 3 [label=SharedMemoryType]
-            1 ---> 4 [label=SharedMemoryType]
-            2 ---> 5 [label=SharedMemoryType]
-            3 ---> 6 [label=SharedMemoryType]
-            4 ---> 7 [label=SharedMemoryType]
-            5 ---> 8 [label=SharedMemoryType]
-            7 ---> 8 [label=SharedMemoryType]
-            9 ---> 8 [label=ChannelOutputType]
-            10 ---> 8 [label=ChannelOutputType]
-            6 ---> 9 [label=SharedMemoryType]
-            6 ---> 10 [label=SharedMemoryType]
+            0 ---> 1
+            1 ---> 2
+            1 ---> 3
+            1 ---> 4
+            2 ---> 5
+            3 ---> 6
+            4 ---> 7
+            5 ---> 8
+            7 ---> 8
+            9 ---> 8
+            10 ---> 8
+            6 ---> 9
+            6 ---> 10
 
-            Experimental Graph Built:
+            Legend:
+            +++> : Represents Nccl-type data channels
+            ---> : Represents Shared Memory data channels
+
+            Graph Built:
             0:InputNode
             |
             1:Actor_84835a:return_three
@@ -651,7 +655,7 @@ class TestVisualizationAscii:
 
         compiled_dag = dag.experimental_compile()
 
-        ascii_visualization = compiled_dag.visualize_ascii()
+        ascii_visualization = compiled_dag.visualize(format="ascii")
 
         node_names, edge_pairs = TestVisualizationAscii.parse_ascii_visualization(
             ascii_visualization
@@ -680,8 +684,6 @@ class TestVisualizationAscii:
         assert expected_edges.issubset(
             edge_pairs
         ), f"Expected edges {expected_edges} not found."
-
-        compiled_dag.teardown()
 
 
 if __name__ == "__main__":
