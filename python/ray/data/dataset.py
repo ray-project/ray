@@ -835,7 +835,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised.
+                an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -844,12 +844,13 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
-        # Historically, we have also accepted lists with duplicate column names.
-        # This is not tolerated by the underlying pyarrow.Table.drop_columns method.
-        cols_without_duplicates = list(set(cols))
+        if len(cols) != len(set(cols)):
+            raise ValueError(
+                f"drop_columns expects unique column names, got: {cols}"
+            )
 
         def drop_columns(batch):
-            return batch.drop(cols_without_duplicates)
+            return batch.drop(cols)
 
         return self.map_batches(
             drop_columns,
