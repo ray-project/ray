@@ -17,6 +17,7 @@ from ray.air.util.tensor_extensions.utils import (
     create_ragged_ndarray,
 )
 from ray.data._internal.util import GiB
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -139,11 +140,16 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
                     "falling back to serialize as pickled python objects"
                 )
 
-        logger.warning(
-            f"Failed to convert column '{column_name}' into pyarrow "
-            f"array due to: {ace}; {object_ext_type_detail}",
-            exc_info=ace,
-        )
+        # NOTE: To avoid logging following warning for every block it's
+        #       only going to be logged in following cases
+        #           - When fallback is disabled, or
+        #           - It's being logged for the first time
+        if not should_serialize_as_object_ext_type or log_once("_fallback_to_arrow_object_extension_type_warning"):
+            logger.warning(
+                f"Failed to convert column '{column_name}' into pyarrow "
+                f"array due to: {ace}; {object_ext_type_detail}",
+                exc_info=ace,
+            )
 
         # If `ArrowPythonObjectType` is not supported raise original exception
         if not should_serialize_as_object_ext_type:
