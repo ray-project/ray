@@ -73,8 +73,24 @@ def do_link(package, force=False, skip_list=None, local_path=None):
             print("You don't have write permission " f"to {package_home}, using sudo:")
             sudo = ["sudo"]
         print(f"Creating symbolic link from \n {local_home} to \n {package_home}")
+
+        # Preserve ray/serve/generated
+        if package == "serve":
+            # Copy generated folder to a temp dir
+            generated_folder = os.path.join(package_home, "generated")
+            temp_dir = "/tmp/ray/"
+            if not os.path.exists(temp_dir):
+                os.makedirs(temp_dir)
+            subprocess.check_call(["cp", "-r", generated_folder, temp_dir])
+
         subprocess.check_call(sudo + ["rm", "-rf", package_home])
         subprocess.check_call(sudo + ["ln", "-s", local_home, package_home])
+
+        # Move generated folder to local_home
+        if package == "serve":
+            tmp_generated_folder = "/tmp/ray/generated"
+            local_generated_folder = os.path.join(local_home, "generated")
+            subprocess.check_call(["mv", tmp_generated_folder, local_generated_folder])
 
 
 if __name__ == "__main__":
