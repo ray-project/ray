@@ -218,15 +218,28 @@ def _convert_batch_type_to_numpy(
         return data
     elif pyarrow is not None and isinstance(data, pyarrow.Table):
         from ray.data._internal.arrow_ops import transform_pyarrow
+        from ray.air.util.tensor_extensions.arrow import (
+            ArrowTensorType,
+            ArrowTensorTypeV2,
+        )
 
-        contiguous_columns_table = transform_pyarrow.combine_chunks(data)
+        column_values_ndarrays = []
 
-        column_values_ndarrays = [
-            col.to_numpy(zero_copy_only=False)
-            for col in contiguous_columns_table.columns
-        ]
+        for col in data.columns:
+            # Combine columnar values arrays to make these contiguous
+            # (making them compatible with numpy format)
+            combined_array = transform_pyarrow.combine_chunked_array(col)
 
-        return dict(zip(contiguous_columns_table.column_names, column_values_ndarrays))
+            column_values_ndarrays.append(combined_array.to_numpy(zero_copy_only=False))
+
+
+        # NOTE: This branch is here for backwards-compatibility
+        if data.column_names == [TENSOR_COLUMN_NAME] and (
+            isinstance(data.schema.types[0], (ArrowTensorType, ArrowTensorTypeV2))
+        ):
+            return column_values_ndarrays[0]
+
+        return dict(zip(data.column_names, column_values_ndarrays))
     elif isinstance(data, pd.DataFrame):
         return _convert_pandas_to_batch_type(data, BatchFormat.NUMPY)
     else:
