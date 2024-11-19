@@ -508,7 +508,7 @@ Status ConnectRedisSentinel(RedisContext &context,
 
   RAY_CHECK(redis_reply) << "Failed to get redis sentinel masters info";
   RAY_CHECK(redis_reply->type == REDIS_REPLY_ARRAY)
-      << "redis sentinel master info should be REDIS_REPLY_ARRAY but got "
+      << "Redis sentinel master info should be REDIS_REPLY_ARRAY but got "
       << redis_reply->type;
   RAY_CHECK_EQ(redis_reply->elements, 1)
       << "expecting only one primary behind the redis sentinel";
