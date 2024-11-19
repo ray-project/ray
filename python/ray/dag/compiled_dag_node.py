@@ -2269,7 +2269,7 @@ class CompiledDAG:
 
 
         Supported CG:
-        - Scale: Works best for smaller CGs (typically fewer than 20 nodes).
+        - Scale: Works best for smaller CGs (typically fewer than 20 tasks).
             Larger CGs may result in dense, less readable ASCII
             outputs due to limited space for node and edge rendering.
         - Shape: Ideal for relatively shallow CGs with clear dependency paths.
