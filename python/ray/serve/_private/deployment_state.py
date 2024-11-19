@@ -1448,16 +1448,17 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id),
-            running_replica_infos,
-        )
-        # NOTE(zcin): notify changed for Java routers. Since Java only
-        # supports 1.x API, there is no concept of applications in Java,
-        # so the key should remain a string describing the deployment
-        # name. If there are no Java routers, this is a no-op.
-        self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
-            running_replica_infos,
+            {
+                (LongPollNamespace.RUNNING_REPLICAS, self._id): running_replica_infos,
+                # NOTE(zcin): notify changed for Java routers. Since Java only
+                # supports 1.x API, there is no concept of applications in Java,
+                # so the key should remain a string describing the deployment
+                # name. If there are no Java routers, this is a no-op.
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    self._id.name,
+                ): running_replica_infos,
+            }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
@@ -1473,8 +1474,7 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
-            current_deployment_config,
+            {(LongPollNamespace.DEPLOYMENT_CONFIG, self._id): current_deployment_config}
         )
 
         self._last_broadcasted_deployment_config = current_deployment_config
