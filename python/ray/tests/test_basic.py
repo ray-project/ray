@@ -593,7 +593,7 @@ def test_options():
 
     f3 = foo.options(num_cpus=1, num_gpus=1, **mock_options2(a=11, c=3))
 
-    assert f3.remote.__closure__[1].cell_contents == {
+    assert f3.remote.__closure__[2].cell_contents == {
         "_metadata": {"namespace": {"a": 1, "b": 2}, "namespace2": {"a": 11, "c": 3}},
         "num_cpus": 1,
         "num_gpus": 1,
