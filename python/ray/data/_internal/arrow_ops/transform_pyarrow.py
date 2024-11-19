@@ -390,7 +390,18 @@ def combine_chunked_array(
         #   - It's of 'large' kind (ie one using int64 offsets internally)
         return array.combine_chunks()
     else:
-        # NOTE: In this case PyArrow's `ChunkedArray` is actually returned
+        # NOTE: In this case it's actually *NOT* safe to try to directly combine
+        #       Arrow's `ChunkedArray` and is impossible to produce single, contiguous
+        #       `Array` since
+        #           - It's estimated to hold > 2 GiB
+        #           - It's type is not of the "large" kind (and hence is using int32
+        #             offsets internally, which would overflow)
+        #
+        #       In this case instead of combining into single contiguous array, we
+        #       instead just "clump" existing chunks into bigger ones, but no bigger
+        #       than 2 GiB each.
+        #
+        # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
         return _try_combine_chunks_safe(array)
 
 
