@@ -26,6 +26,7 @@ from ray import DynamicObjectRefGenerator
 from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -378,10 +379,11 @@ class BlockAccessor:
                 try:
                     return cls.batch_to_arrow_block(batch)
                 except ArrowConversionError as e:
-                    logger.warning(
-                        f"Failed to convert batch to Arrow due to: {e}; "
-                        f"falling back to Pandas block"
-                    )
+                    if log_once("_fallback_to_pandas_block_warning"):
+                        logger.warning(
+                            f"Failed to convert batch to Arrow due to: {e}; "
+                            f"falling back to Pandas block"
+                        )
 
                     if block_type is None:
                         return cls.batch_to_pandas_block(batch)
