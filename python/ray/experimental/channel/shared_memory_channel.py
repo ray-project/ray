@@ -729,6 +729,8 @@ class CompositeChannel(ChannelInterface):
         self, actor_id: Optional[str] = None, timeout: Optional[float] = None
     ) -> Any:
         self.ensure_registered_as_reader()
+        if actor_id is None:
+            actor_id = _get_self_actor()._actor_id.hex()
         return self._channel_dict[actor_id].read(timeout=timeout)
 
     def close(self) -> None:

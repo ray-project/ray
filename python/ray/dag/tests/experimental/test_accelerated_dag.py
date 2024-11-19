@@ -2081,7 +2081,7 @@ def test_multiple_reads_from_same_actor(ray_start_cluster):
         z = b.inc.bind(x)
         dag = MultiOutputNode([y, z])
     dag = dag.experimental_compile()
-    assert ray.get(dag.execute(1)) == [1, 1]
+    assert ray.get(dag.execute(1)) == [11, 12]
     dag.teardown()
 
 
