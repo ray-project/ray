@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1.3-labs
+
 ARG BASE_IMAGE
 ARG FULL_BASE_IMAGE=rayproject/ray-deps:nightly"$BASE_IMAGE"
 FROM $FULL_BASE_IMAGE
@@ -6,7 +8,6 @@ ARG WHEEL_PATH
 ARG FIND_LINKS_PATH=".whl"
 ARG CONSTRAINTS_FILE="requirements_compiled.txt"
 
-COPY requirements_compiled.txt ./
 COPY $WHEEL_PATH .
 COPY $FIND_LINKS_PATH $FIND_LINKS_PATH
 
