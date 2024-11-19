@@ -845,9 +845,7 @@ class Dataset:
         """  # noqa: E501
 
         if len(cols) != len(set(cols)):
-            raise ValueError(
-                f"drop_columns expects unique column names, got: {cols}"
-            )
+            raise ValueError(f"drop_columns expects unique column names, got: {cols}")
 
         def drop_columns(batch):
             return batch.drop(cols)
