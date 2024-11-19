@@ -749,7 +749,7 @@ cdef int prepare_labels(
             raise ValueError(f"Label key must be string, but got {type(key)}")
         if not isinstance(value, str):
             raise ValueError(f"Label value must be string, but got {type(value)}")
-        label_map[0][key.encode("ascii")] = value.encode("ascii")
+        label_map[0][key.encode("utf-8")] = value.encode("utf-8")
 
     return 0
 
