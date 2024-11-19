@@ -65,6 +65,13 @@ def get_node_ip_by_id(node_id: str) -> str:
     node = get_node(id=node_id)
     return node.node_ip
 
+class JobAgentSubmissionBrowserClient(JobAgentSubmissionClient):
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(self, *args, **kwargs)
+        self._session.headers.append("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36")
+
+
 
 @pytest_asyncio.fixture
 async def job_sdk_client(make_sure_dashboard_http_port_unused):
@@ -238,6 +245,57 @@ async def test_submit_job(job_sdk_client, runtime_env_option, monkeypatch):
     monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
 
     agent_client, head_client = job_sdk_client
+
+    runtime_env = runtime_env_option["runtime_env"]
+    runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
+    runtime_env = upload_py_modules_if_needed(runtime_env, logger=logger)
+    runtime_env = RuntimeEnv(**runtime_env_option["runtime_env"]).to_dict()
+    request = validate_request_type(
+        {"runtime_env": runtime_env, "entrypoint": runtime_env_option["entrypoint"]},
+        JobSubmitRequest,
+    )
+    submit_result = await agent_client.submit_job_internal(request)
+    job_id = submit_result.submission_id
+
+    try:
+        job_start_time = time.time()
+        wait_for_condition(
+            partial(
+                _check_job,
+                client=head_client,
+                job_id=job_id,
+                status=JobStatus.SUCCEEDED,
+            ),
+            timeout=300,
+        )
+        job_duration = time.time() - job_start_time
+        print(f"The job took {job_duration}s to succeed.")
+    except RuntimeError as e:
+        # If the job is still pending, include job logs and info in error.
+        if head_client.get_job_status(job_id) == JobStatus.PENDING:
+            logs = head_client.get_job_logs(job_id)
+            info = head_client.get_job_info(job_id)
+            raise RuntimeError(
+                f"Job was stuck in PENDING.\nLogs: {logs}\nInfo: {info}"
+            ) from e
+
+    # There is only one node, so there is no need to replace the client of the JobAgent
+    resp = await agent_client.get_job_logs_internal(job_id)
+    assert runtime_env_option["expected_logs"] in resp.logs
+
+
+@pytest.mark.asyncio
+async def test_submit_job_rejects_browsers(job_sdk_client, runtime_env_option, monkeypatch):
+    # This flag allows for local testing of runtime env conda functionality
+    # without needing a built Ray wheel.  Rather than insert the link to the
+    # wheel into the conda spec, it links to the current Python site.
+    monkeypatch.setenv("RAY_RUNTIME_ENV_LOCAL_DEV_MODE", "1")
+
+    # Instead of using the fixtured client, we stand up a similar version which uses a browser UA. We still grab the other one because it vblocks on the underlying agent starting up
+    agent_client, head_client = job_sdk_client
+    agent_address = agent_client._agent_address
+    agent_client = JobAgentSubmissionBrowserClient(agent_address)
+
 
     runtime_env = runtime_env_option["runtime_env"]
     runtime_env = upload_working_dir_if_needed(runtime_env, logger=logger)
