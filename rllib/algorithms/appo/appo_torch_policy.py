@@ -136,7 +136,7 @@ class APPOTorchPolicy(
         target_model = self.target_models[model]
 
         model_out, _ = model(train_batch)
-        current_action_dist = dist_class(model_out, model)
+        action_dist = dist_class(model_out, model)
 
         if isinstance(self.action_space, gym.spaces.Discrete):
             is_multidiscrete = False
@@ -156,11 +156,11 @@ class APPOTorchPolicy(
         actions = train_batch[SampleBatch.ACTIONS]
         dones = train_batch[SampleBatch.TERMINATEDS]
         rewards = train_batch[SampleBatch.REWARDS]
-        behavior_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
+        behaviour_logits = train_batch[SampleBatch.ACTION_DIST_INPUTS]
 
         target_model_out, _ = target_model(train_batch)
 
-        behavior_action_dist = dist_class(behavior_logits, model)
+        prev_action_dist = dist_class(behaviour_logits, model)
         values = model.value_function()
         values_time_major = _make_time_major(values)
         bootstrap_values_time_major = _make_time_major(
@@ -184,22 +184,22 @@ class APPOTorchPolicy(
         if self.config["vtrace"]:
             logger.debug("Using V-Trace surrogate loss (vtrace=True)")
 
-            target_policy_behavior_logits = target_model_out.detach()
-            target_policy_action_dist = dist_class(target_policy_behavior_logits, model)
+            old_policy_behaviour_logits = target_model_out.detach()
+            old_policy_action_dist = dist_class(old_policy_behaviour_logits, model)
 
             if isinstance(output_hidden_shape, (list, tuple, np.ndarray)):
-                unpacked_behavior_logits = torch.split(
-                    behavior_logits, list(output_hidden_shape), dim=1
+                unpacked_behaviour_logits = torch.split(
+                    behaviour_logits, list(output_hidden_shape), dim=1
                 )
-                unpacked_target_policy_behavior_logits = torch.split(
-                    target_policy_behavior_logits, list(output_hidden_shape), dim=1
+                unpacked_old_policy_behaviour_logits = torch.split(
+                    old_policy_behaviour_logits, list(output_hidden_shape), dim=1
                 )
             else:
-                unpacked_behavior_logits = torch.chunk(
-                    behavior_logits, output_hidden_shape, dim=1
+                unpacked_behaviour_logits = torch.chunk(
+                    behaviour_logits, output_hidden_shape, dim=1
                 )
-                unpacked_target_policy_behavior_logits = torch.chunk(
-                    target_policy_behavior_logits, output_hidden_shape, dim=1
+                unpacked_old_policy_behaviour_logits = torch.chunk(
+                    old_policy_behaviour_logits, output_hidden_shape, dim=1
                 )
 
             # Prepare actions for loss.
@@ -208,13 +208,13 @@ class APPOTorchPolicy(
             )
 
             # Prepare KL for loss.
-            action_kl = _make_time_major(target_policy_action_dist.kl(current_action_dist))
+            action_kl = _make_time_major(old_policy_action_dist.kl(action_dist))
 
             # Compute vtrace on the CPU for better perf.
             vtrace_returns = vtrace.multi_from_logits(
-                behaviour_policy_logits=_make_time_major(unpacked_behavior_logits),
+                behaviour_policy_logits=_make_time_major(unpacked_behaviour_logits),
                 target_policy_logits=_make_time_major(
-                    unpacked_target_policy_behavior_logits
+                    unpacked_old_policy_behaviour_logits
                 ),
                 actions=torch.unbind(_make_time_major(loss_actions), dim=2),
                 discounts=(1.0 - _make_time_major(dones).float())
@@ -228,15 +228,15 @@ class APPOTorchPolicy(
                 clip_pg_rho_threshold=self.config["vtrace_clip_pg_rho_threshold"],
             )
 
-            current_actions_logp = _make_time_major(current_action_dist.logp(actions))
-            behavior_actions_logp = _make_time_major(behavior_action_dist.logp(actions))
-            target_policy_actions_logp = _make_time_major(
-                target_policy_action_dist.logp(actions)
+            actions_logp = _make_time_major(action_dist.logp(actions))
+            prev_actions_logp = _make_time_major(prev_action_dist.logp(actions))
+            old_policy_actions_logp = _make_time_major(
+                old_policy_action_dist.logp(actions)
             )
             is_ratio = torch.clamp(
-                torch.exp(behavior_actions_logp - target_policy_actions_logp), 0.0, 2.0
+                torch.exp(prev_actions_logp - old_policy_actions_logp), 0.0, 2.0
             )
-            logp_ratio = is_ratio * torch.exp(current_actions_logp - behavior_actions_logp)
+            logp_ratio = is_ratio * torch.exp(actions_logp - prev_actions_logp)
             self._is_ratio = is_ratio
 
             advantages = vtrace_returns.pg_advantages.to(logp_ratio.device)
@@ -259,17 +259,17 @@ class APPOTorchPolicy(
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
-            mean_entropy = reduce_mean_valid(_make_time_major(current_action_dist.entropy()))
+            mean_entropy = reduce_mean_valid(_make_time_major(action_dist.entropy()))
 
         else:
             logger.debug("Using PPO surrogate loss (vtrace=False)")
 
             # Prepare KL for Loss
-            action_kl = _make_time_major(behavior_action_dist.kl(current_action_dist))
+            action_kl = _make_time_major(prev_action_dist.kl(action_dist))
 
-            current_actions_logp = _make_time_major(current_action_dist.logp(actions))
-            behavior_actions_logp = _make_time_major(behavior_action_dist.logp(actions))
-            logp_ratio = torch.exp(current_actions_logp - behavior_actions_logp)
+            actions_logp = _make_time_major(action_dist.logp(actions))
+            prev_actions_logp = _make_time_major(prev_action_dist.logp(actions))
+            logp_ratio = torch.exp(actions_logp - prev_actions_logp)
 
             advantages = _make_time_major(train_batch[Postprocessing.ADVANTAGES])
             surrogate_loss = torch.min(
@@ -291,7 +291,7 @@ class APPOTorchPolicy(
             mean_vf_loss = 0.5 * reduce_mean_valid(torch.pow(delta, 2.0))
 
             # The entropy loss.
-            mean_entropy = reduce_mean_valid(_make_time_major(current_action_dist.entropy()))
+            mean_entropy = reduce_mean_valid(_make_time_major(action_dist.entropy()))
 
         # The summed weighted loss.
         total_loss = mean_policy_loss - mean_entropy * self.entropy_coeff

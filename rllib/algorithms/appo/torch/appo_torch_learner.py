@@ -87,9 +87,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         target_action_dist = action_dist_cls_train.from_logits(
             module.forward_target(batch)[TARGET_ACTION_DIST_LOGITS_KEY]
         )
-        target_actions_logp = target_action_dist.logp(
-            batch[Columns.ACTIONS]
-        )
+        target_actions_logp = target_action_dist.logp(batch[Columns.ACTIONS])
         target_actions_logp_time_major = make_time_major(
             target_actions_logp,
             trajectory_len=rollout_frag_or_episode_len,
@@ -129,27 +127,39 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             dim=0,
         )
 
-        # The discount factor that is used should be gamma except for timesteps where
-        # the episode is terminated. In that case, the discount factor should be 0.
+        # The discount factor that is used should be `gamma * lambda_`, except for
+        # termination timesteps, in which case the discount factor should be 0.
         discounts_time_major = (
-            1.0
-            - make_time_major(
-                batch[Columns.TERMINATEDS],
-                trajectory_len=rollout_frag_or_episode_len,
-                recurrent_seq_len=recurrent_seq_len,
-            ).float()
-        ) * config.gamma
+            (
+                1.0
+                - make_time_major(
+                    batch[Columns.TERMINATEDS],
+                    trajectory_len=rollout_frag_or_episode_len,
+                    recurrent_seq_len=recurrent_seq_len,
+                ).float()
+                # See [1] 3.1: Discounts must contain the GAE lambda_ parameter as well.
+            )
+            * config.gamma
+            * config.lambda_
+        )
 
         # Note that vtrace will compute the main loop on the CPU for better performance.
         vtrace_adjusted_target_values, pg_advantages = vtrace_torch(
+            # See [1] 3.1: For AˆV-GAE, the ratios used are: min(c¯, π(target)/π(i))
+            # π(target)
             target_action_log_probs=target_actions_logp_time_major,
+            # π(i)
             behaviour_action_log_probs=behavior_actions_logp_time_major,
+            # See [1] 3.1: Discounts must contain the GAE lambda_ parameter as well.
             discounts=discounts_time_major,
             rewards=rewards_time_major,
             values=values_time_major,
             bootstrap_values=bootstrap_values,
-            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
+            # c¯
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
+            # c¯ (but we allow users to distinguish between c¯ used for
+            # value estimates and c¯ used for the advantages.
+            clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
         )
         pg_advantages = pg_advantages * loss_mask_time_major
 
@@ -161,36 +171,40 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         # - π(target) are the action probs from the target network
         # - ρ is the "target-worker clipping" (2.0 in the paper)
         target_worker_is_ratio = torch.clip(
-            torch.exp(behavior_actions_logp_time_major - target_actions_logp_time_major),
+            torch.exp(
+                behavior_actions_logp_time_major - target_actions_logp_time_major
+            ),
             0.0,
             config.target_worker_clipping,
         )
         target_worker_logp_ratio = target_worker_is_ratio * torch.exp(
             current_actions_logp_time_major - behavior_actions_logp_time_major
         )
-
         surrogate_loss = torch.minimum(
             pg_advantages * target_worker_logp_ratio,
-            pg_advantages * torch.clip(
+            pg_advantages
+            * torch.clip(
                 target_worker_logp_ratio,
                 1 - config.clip_param,
                 1 + config.clip_param,
             ),
         )
+        mean_pi_loss = -(torch.sum(surrogate_loss) / size_loss_mask)
 
+        # Compute KL-loss (if required): KL divergence between current action dist.
+        # and target action dict.
         if config.use_kl_loss:
             action_kl = target_action_dist.kl(current_action_dist) * loss_mask
             mean_kl_loss = torch.sum(action_kl) / size_loss_mask
         else:
             mean_kl_loss = 0.0
-        mean_pi_loss = -(torch.sum(surrogate_loss) / size_loss_mask)
 
-        # The baseline loss.
+        # Compute value function loss.
         delta = values_time_major - vtrace_adjusted_target_values
         vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0) * loss_mask_time_major)
         mean_vf_loss = vf_loss / size_loss_mask
 
-        # The entropy loss.
+        # Compute entropy loss.
         mean_entropy_loss = (
             -torch.sum(current_action_dist.entropy() * loss_mask) / size_loss_mask
         )
