@@ -7,6 +7,8 @@ from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
 
+from click.testing import CliRunner
+
 
 @pytest.mark.parametrize(
     "os_type,architecture",
@@ -38,6 +40,14 @@ def test_e2e(capsys):
     # Find the PID from the output: "To stop Prometheus, use the command: 'kill 22790'"
     pid = int(captured.out.split("kill ")[1].split("'")[0])
     subprocess.run(["kill", str(pid)])
+
+
+def test_shutdown_prometheus():
+    install_and_start_prometheus.main()
+    runner = CliRunner()
+    from ray.scripts.scripts import metrics_group
+    result = runner.invoke(metrics_group, ["shutdown-prometheus"])
+    assert result.exit_code == 0
 
 
 def test_prometheus_config_content():
