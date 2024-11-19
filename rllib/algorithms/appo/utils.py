@@ -23,7 +23,7 @@ class CircularBuffer:
     The buffer holds at most N batches, which are sampled at random (uniformly).
     If full and a new batch is added, the oldest batch is discarded. Also, each batch
     currently in the buffer can be sampled at most K times (after which it is also
-    discrded).
+    discarded).
     """
 
     def __init__(self, num_batches: int, iterations_per_batch: int):

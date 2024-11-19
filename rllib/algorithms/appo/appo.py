@@ -200,7 +200,7 @@ class APPOConfig(IMPALAConfig):
                 Learner API (enable_rl_module_and_learner=True).
             circular_buffer_num_batches: The number of train batches that fit
                 into the circular buffer. Each such train batch can be sampled for
-                training max. `circular_buffer_iterations_per_batch_K` times.
+                training max. `circular_buffer_iterations_per_batch` times.
             circular_buffer_iterations_per_batch: The number of times any train
                 batch in the circular buffer can be sampled for training. A batch gets
                 evicted from the buffer either if it's the oldest batch in the buffer
