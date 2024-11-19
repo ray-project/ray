@@ -14,10 +14,9 @@
 
 #include "ray/rpc/retryable_grpc_client.h"
 
-namespace ray {
-namespace rpc {
+namespace ray::rpc {
 RetryableGrpcClient::~RetryableGrpcClient() {
-  timer_->cancel();
+  timer_.cancel();
 
   // Fail the pending requests.
   while (!pending_requests_.empty()) {
@@ -34,11 +33,11 @@ RetryableGrpcClient::~RetryableGrpcClient() {
 }
 
 void RetryableGrpcClient::SetupCheckTimer() {
-  auto duration =
+  const auto duration =
       boost::posix_time::milliseconds(check_channel_status_interval_milliseconds_);
-  timer_->expires_from_now(duration);
+  timer_.expires_from_now(duration);
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
-  timer_->async_wait([weak_self](boost::system::error_code error) {
+  timer_.async_wait([weak_self](boost::system::error_code error) {
     if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
       self->CheckChannelStatus();
     }
@@ -55,6 +54,7 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
     }
     iter->second->Fail(ray::Status::TimedOut(absl::StrFormat(
         "Timed out while waiting for %s to become available.", server_name_)));
+    RAY_CHECK_GE(pending_requests_bytes_, iter->second->GetRequestBytes());
     pending_requests_bytes_ -= iter->second->GetRequestBytes();
     pending_requests_.erase(iter);
   }
@@ -76,13 +76,13 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
   switch (status) {
   case GRPC_CHANNEL_TRANSIENT_FAILURE:
   case GRPC_CHANNEL_CONNECTING: {
-    if (server_unavailable_timeout_time_ < absl::Now()) {
+    if (server_unavailable_timeout_time_ < now) {
       RAY_LOG(WARNING) << server_name_ << " has been unavailable for more than "
                        << server_unavailable_timeout_seconds_ << " seconds";
       server_unavailable_timeout_callback_();
       // Reset the unavailable timeout.
       server_unavailable_timeout_time_ =
-          absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
+          now + absl::Seconds(server_unavailable_timeout_seconds_);
     }
 
     if (reset_timer) {
@@ -115,14 +115,15 @@ void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
 void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   // In case of transient network error, we queue the request and these requests
   // will be executed once network is recovered.
-  auto request_bytes = request->GetRequestBytes();
+  const auto now = absl::Now();
+  const auto request_bytes = request->GetRequestBytes();
   auto self = shared_from_this();
   if (pending_requests_bytes_ + request_bytes > max_pending_requests_bytes_) {
     RAY_LOG(WARNING) << "Pending queue for failed request has reached the "
                      << "limit. Blocking the current thread until network is recovered";
     if (!server_unavailable_timeout_time_.has_value()) {
       server_unavailable_timeout_time_ =
-          absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
+          now + absl::Seconds(server_unavailable_timeout_seconds_);
     }
     while (server_unavailable_timeout_time_.has_value()) {
       std::this_thread::sleep_for(
@@ -142,16 +143,15 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   }
 
   pending_requests_bytes_ += request_bytes;
-  auto timeout = request->GetTimeoutMs() == -1
-                     ? absl::InfiniteFuture()
-                     : absl::Now() + absl::Milliseconds(request->GetTimeoutMs());
+  const auto timeout = request->GetTimeoutMs() == -1
+                           ? absl::InfiniteFuture()
+                           : now + absl::Milliseconds(request->GetTimeoutMs());
   pending_requests_.emplace(timeout, request);
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
     server_unavailable_timeout_time_ =
-        absl::Now() + absl::Seconds(server_unavailable_timeout_seconds_);
+        now + absl::Seconds(server_unavailable_timeout_seconds_);
     SetupCheckTimer();
   }
 }
-}  // namespace rpc
-}  // namespace ray
+}  // namespace ray::rpc

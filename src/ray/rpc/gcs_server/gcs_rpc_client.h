@@ -224,7 +224,7 @@ class GcsRpcClient {
         [callback](const Status &status, Reply &&reply) {
           if (status.ok()) {
             if constexpr (handle_payload_status) {
-              Status st = (reply.status().code() == (int)StatusCode::OK)
+              Status st = (reply.status().code() == static_cast<int>(StatusCode::OK))
                               ? Status()
                               : Status(StatusCode(reply.status().code()),
                                        reply.status().message());

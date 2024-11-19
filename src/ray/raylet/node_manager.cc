@@ -145,7 +145,7 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
       client_call_manager_(io_service),
-      worker_rpc_pool_([&](const rpc::Address &addr) {
+      worker_rpc_pool_([this](const rpc::Address &addr) {
         return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
           RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
         });
@@ -1997,7 +1997,7 @@ void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
                                           rpc::SendReplyCallback send_reply_callback) {
   reply->set_is_dead(worker_pool_.GetRegisteredWorker(
                          WorkerID::FromBinary(request.worker_id())) == nullptr);
-  send_reply_callback(Status::OK(), nullptr, nullptr);
+  send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,

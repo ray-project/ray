@@ -15,15 +15,19 @@
 #pragma once
 
 #include <chrono>
+#include <cstdint>
+#include <memory>
+#include <optional>
+#include <string>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/str_format.h"
+#include "absl/time/time.h"
 #include "ray/common/grpc_util.h"
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/grpc_client.h"
 
-namespace ray {
-namespace rpc {
+namespace ray::rpc {
 
 // Define a void retryable RPC client method.
 #define VOID_RETRYABLE_RPC_CLIENT_METHOD(                                        \
@@ -41,13 +45,14 @@ namespace rpc {
 
 /**
  * The client makes RPC calls through the provided underlying grpc client.
- * If the call goes through, the user provided callback is invoked.
- * If the call fails due to transient network error, it is added to a retry queue.
+ * - If the call goes through, the user provided callback is invoked.
+ * - If the call fails due to transient network error, it is added to a retry queue.
  * The client waits for the grpc channel reconnection to resend the requests.
- * If the total number of request bytes in the queue exceeds max_pending_requests_bytes,
+ * - If the total number of request bytes in the queue exceeds max_pending_requests_bytes,
  * the io context thread is blocked until some requests are resent.
- * If a call's timeout_ms reaches during retry, its callback is called with
- * Status::TimedOut. If the whole client does not reconnect within
+ * - If a call's timeout_ms reaches during retry, its callback is called with
+ * Status::TimedOut.
+ * - If the whole client does not reconnect within
  * server_unavailable_timeout_seconds, server_unavailable_timeout_callback is invoked.
  *
  * When all callers of the client release the shared_ptr of the client, the client
@@ -70,10 +75,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         std::weak_ptr<RetryableGrpcClient> weak_retryable_grpc_client,
         PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
         std::shared_ptr<GrpcClient<Service>> grpc_client,
-        const std::string &call_name,
-        const Request &request,
-        const ClientCallback<Reply> &callback,
-        const int64_t timeout_ms);
+        std::string call_name,
+        Request request,
+        ClientCallback<Reply> callback,
+        int64_t timeout_ms);
 
     RetryableGrpcRequest(const RetryableGrpcRequest &) = delete;
     RetryableGrpcRequest &operator=(const RetryableGrpcRequest &) = delete;
@@ -112,15 +117,15 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
       uint64_t check_channel_status_interval_milliseconds,
       uint64_t server_unavailable_timeout_seconds,
       std::function<void()> server_unavailable_timeout_callback,
-      const std::string &server_name) {
+      std::string server_name) {
     return std::shared_ptr<RetryableGrpcClient>(
-        new RetryableGrpcClient(channel,
+        new RetryableGrpcClient(std::move(channel),
                                 io_context,
                                 max_pending_requests_bytes,
                                 check_channel_status_interval_milliseconds,
                                 server_unavailable_timeout_seconds,
-                                server_unavailable_timeout_callback,
-                                server_name));
+                                std::move(server_unavailable_timeout_callback),
+                                std::move(server_name)));
   }
 
   RetryableGrpcClient(const RetryableGrpcClient &) = delete;
@@ -129,10 +134,10 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   template <typename Service, typename Request, typename Reply>
   void CallMethod(PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
                   std::shared_ptr<GrpcClient<Service>> grpc_client,
-                  const std::string &call_name,
-                  const Request &request,
-                  const ClientCallback<Reply> &callback,
-                  const int64_t timeout_ms);
+                  std::string call_name,
+                  Request request,
+                  ClientCallback<Reply> callback,
+                  int64_t timeout_ms);
 
   void Retry(std::shared_ptr<RetryableGrpcRequest> request);
 
@@ -148,9 +153,9 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
                       uint64_t check_channel_status_interval_milliseconds,
                       uint64_t server_unavailable_timeout_seconds,
                       std::function<void()> server_unavailable_timeout_callback,
-                      const std::string &server_name)
+                      std::string server_name)
       : io_context_(io_context),
-        timer_(std::make_unique<boost::asio::deadline_timer>(io_context)),
+        timer_(io_context),
         channel_(std::move(channel)),
         max_pending_requests_bytes_(max_pending_requests_bytes),
         check_channel_status_interval_milliseconds_(
@@ -158,21 +163,27 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
         server_unavailable_timeout_seconds_(server_unavailable_timeout_seconds),
         server_unavailable_timeout_callback_(
             std::move(server_unavailable_timeout_callback)),
-        server_name_(server_name) {}
+        server_name_(std::move(server_name)) {}
 
   void SetupCheckTimer();
 
   void CheckChannelStatus(bool reset_timer = true);
 
   instrumented_io_context &io_context_;
-  const std::unique_ptr<boost::asio::deadline_timer> timer_;
+  boost::asio::deadline_timer timer_;
 
   std::shared_ptr<grpc::Channel> channel_;
 
+  // Max total bytes of pending requests before
+  // we pause the io context thread, this is mainly
+  // to prevent OOM.
   const uint64_t max_pending_requests_bytes_;
   const uint64_t check_channel_status_interval_milliseconds_;
   const uint64_t server_unavailable_timeout_seconds_;
+  // After the server is unavailable for server_unavailable_timeout_seconds_,
+  // this callback will be called.
   std::function<void()> server_unavailable_timeout_callback_;
+  // Human readable server name for logging purpose.
   const std::string server_name_;
 
   // This is only set when there are pending requests and
@@ -187,6 +198,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // no mutex is needed.
   absl::btree_multimap<absl::Time, std::shared_ptr<RetryableGrpcRequest>>
       pending_requests_;
+  // Total number of bytes of pending requests.
   size_t pending_requests_bytes_ = 0;
 };
 
@@ -194,16 +206,16 @@ template <typename Service, typename Request, typename Reply>
 void RetryableGrpcClient::CallMethod(
     PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
     std::shared_ptr<GrpcClient<Service>> grpc_client,
-    const std::string &call_name,
-    const Request &request,
-    const ClientCallback<Reply> &callback,
-    const int64_t timeout_ms) {
+    std::string call_name,
+    Request request,
+    ClientCallback<Reply> callback,
+    int64_t timeout_ms) {
   RetryableGrpcRequest::Create(weak_from_this(),
-                               prepare_async_function,
-                               grpc_client,
-                               call_name,
-                               request,
-                               callback,
+                               std::move(prepare_async_function),
+                               std::move(grpc_client),
+                               std::move(call_name),
+                               std::move(request),
+                               std::move(callback),
                                timeout_ms)
       ->CallMethod();
 }
@@ -214,18 +226,20 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
     std::weak_ptr<RetryableGrpcClient> weak_retryable_grpc_client,
     PrepareAsyncFunction<Service, Request, Reply> prepare_async_function,
     std::shared_ptr<GrpcClient<Service>> grpc_client,
-    const std::string &call_name,
-    const Request &request,
-    const ClientCallback<Reply> &callback,
-    const int64_t timeout_ms) {
+    std::string call_name,
+    Request request,
+    ClientCallback<Reply> callback,
+    int64_t timeout_ms) {
   RAY_CHECK(callback != nullptr);
   RAY_CHECK(grpc_client.get() != nullptr);
 
-  auto executor = [weak_retryable_grpc_client,
-                   prepare_async_function,
-                   grpc_client,
-                   call_name,
-                   request,
+  const auto request_bytes = request.ByteSizeLong();
+
+  auto executor = [weak_retryable_grpc_client = std::move(weak_retryable_grpc_client),
+                   prepare_async_function = std::move(prepare_async_function),
+                   grpc_client = std::move(grpc_client),
+                   call_name = std::move(call_name),
+                   request = std::move(request),
                    callback](std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>
                                  retryable_grpc_request) {
     grpc_client->template CallMethod<Request, Reply>(
@@ -246,15 +260,12 @@ RetryableGrpcClient::RetryableGrpcRequest::Create(
   };
 
   auto failure_callback = [callback](const ray::Status &status) {
-    callback(status, Reply());
+    callback(status, Reply{});
   };
 
   return std::shared_ptr<RetryableGrpcClient::RetryableGrpcRequest>(
-      new RetryableGrpcClient::RetryableGrpcRequest(std::move(executor),
-                                                    std::move(failure_callback),
-                                                    request.ByteSizeLong(),
-                                                    timeout_ms));
+      new RetryableGrpcClient::RetryableGrpcRequest(
+          std::move(executor), std::move(failure_callback), request_bytes, timeout_ms));
 }
 
-}  // namespace rpc
-}  // namespace ray
+}  // namespace ray::rpc
