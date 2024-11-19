@@ -181,28 +181,19 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
 
     def verify(expected_task_status):
         lineage_reconstruction_tasks = get_local_ongoing_lineage_reconstruction_tasks()
+        lineage_reconstruction_tasks.sort(key=lambda task: task[0].name)
         assert len(lineage_reconstruction_tasks) == 2
-        assert {
+        assert [
             lineage_reconstruction_tasks[0][0].name,
             lineage_reconstruction_tasks[1][0].name,
-        } == {"task", "Actor.run"}
+        ] == ["Actor.run", "task"]
         assert (
-            lineage_reconstruction_tasks[0][0].labels
-            == (
-                {"key1": "value1"}
-                if lineage_reconstruction_tasks[0][0].name == "task"
-                else {"key2": "value2"}
-            )
+            lineage_reconstruction_tasks[0][0].labels == {"key2": "value2"}
             and lineage_reconstruction_tasks[0][0].status == expected_task_status
             and lineage_reconstruction_tasks[0][1] == 1
         )
         assert (
-            lineage_reconstruction_tasks[1][0].labels
-            == (
-                {"key1": "value1"}
-                if lineage_reconstruction_tasks[1][0].name == "task"
-                else {"key2": "value2"}
-            )
+            lineage_reconstruction_tasks[1][0].labels == {"key1": "value1"}
             and lineage_reconstruction_tasks[1][0].status == expected_task_status
             and lineage_reconstruction_tasks[1][1] == 1
         )
