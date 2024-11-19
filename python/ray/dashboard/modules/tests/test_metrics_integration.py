@@ -1,13 +1,14 @@
 import subprocess
 import sys
+import time
 
 import pytest
+from click.testing import CliRunner
 
 from ray.dashboard.consts import PROMETHEUS_CONFIG_INPUT_PATH
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.dashboard.modules.metrics.templates import PROMETHEUS_YML_TEMPLATE
-
-from click.testing import CliRunner
+from ray.scripts.scripts import metrics_group
 
 
 @pytest.mark.parametrize(
@@ -45,7 +46,9 @@ def test_e2e(capsys):
 def test_shutdown_prometheus():
     install_and_start_prometheus.main()
     runner = CliRunner()
-    from ray.scripts.scripts import metrics_group
+    # Sleep for a few seconds to make sure Prometheus is running
+    # before we try to shut it down.
+    time.sleep(5)
     result = runner.invoke(metrics_group, ["shutdown-prometheus"])
     assert result.exit_code == 0
 
