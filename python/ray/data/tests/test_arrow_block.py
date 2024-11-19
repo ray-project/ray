@@ -7,7 +7,7 @@ import pytest
 import ray
 from ray._private.test_utils import run_string_as_driver
 from ray.data._internal.arrow_block import ArrowBlockAccessor
-from ray.data.extensions.object_extension import object_extension_type_allowed
+from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_append_column(ray_start_regular_shared):
@@ -46,7 +46,7 @@ assert str(schema) == \"\"\"{1}\"\"\"
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension type not supported."
+    not _object_extension_type_allowed(), reason="Object extension type not supported."
 )
 def test_dict_doesnt_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, previously, we would
