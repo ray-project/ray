@@ -506,7 +506,7 @@ Status ConnectRedisSentinel(RedisContext &context,
   auto redis_reply = reinterpret_cast<redisReply *>(
       ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
-  RAY_CHECK(redis_reply) << "failed to get redis sentinel masters info";
+  RAY_CHECK(redis_reply) << "Failed to get redis sentinel masters info";
   RAY_CHECK(redis_reply->type == REDIS_REPLY_ARRAY)
       << "redis sentinel master info should be REDIS_REPLY_ARRAY but got "
       << redis_reply->type;
