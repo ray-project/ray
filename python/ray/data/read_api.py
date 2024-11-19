@@ -27,6 +27,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -2306,6 +2307,58 @@ def read_databricks_tables(
     return read_datasource(
         datasource=datasource,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hudi(
+    table_uri: str,
+    *,
+    storage_options: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from an
+    `Apache Hudi table <https://hudi.apache.org>`_.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ... )
+
+    Args:
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
+            are supported.
+        storage_options: Extra options that make sense for a particular storage
+            connection. This is used to store connection parameters like credentials,
+            endpoint, etc. See more explanation
+            `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the Hudi table.
+    """  # noqa: E501
+    datasource = HudiDatasource(
+        table_uri=table_uri,
+        storage_options=storage_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,

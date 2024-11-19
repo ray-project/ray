@@ -233,6 +233,14 @@ py_test(
 )
 
 py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
