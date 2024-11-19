@@ -443,9 +443,10 @@ bool isRedisSentinel(RedisContext &context) {
 
 Status ConnectRedisCluster(RedisContext &context,
                            const std::string &password,
-                           bool enable_ssl) {
+                           bool enable_ssl,
+                           const std::string &redis_address) {
   // Ray has some restrictions for RedisDB. Validate it here.
-  ValidateRedisDB(*this);
+  ValidateRedisDB(context);
 
   // Find the true leader
   std::vector<const char *> argv;
@@ -457,7 +458,7 @@ Status ConnectRedisCluster(RedisContext &context,
   }
 
   auto redis_reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context_.get(), cmds.size(), argv.data(), argc.data()));
+      ::redisCommandArgv(context.sync_context(), cmds.size(), argv.data(), argc.data()));
 
   if (redis_reply->type == REDIS_REPLY_ERROR) {
     // This should be a MOVED error
@@ -467,14 +468,14 @@ Status ConnectRedisCluster(RedisContext &context,
     auto maybe_ip_port = ParseIffMovedError(error_msg);
     RAY_CHECK(maybe_ip_port.has_value())
         << "Setup Redis cluster failed in the dummy deletion: " << error_msg;
-    Disconnect();
+    context.Disconnect();
     const auto &[ip, port] = maybe_ip_port.value();
     // Connect to the true leader.
     RAY_LOG(INFO) << "Redis cluster leader is " << ip << ":" << port
                   << ". Reconnect to it.";
-    return Connect(ip, port, password, enable_ssl);
+    return context.Connect(ip, port, password, enable_ssl);
   } else {
-    RAY_LOG(INFO) << "Redis cluster leader is " << ip_addresses[0] << ":" << port;
+    RAY_LOG(INFO) << "Redis cluster leader is " << redis_address;
     freeReplyObject(redis_reply);
   }
 
@@ -612,7 +613,8 @@ Status RedisContext::Connect(const std::string &address,
   if (isRedisSentinel(*this)) {
     return ConnectRedisSentinel(*this, password, enable_ssl);
   } else {
-    return ConnectRedisCluster(*this, password, enable_ssl);
+    return ConnectRedisCluster(
+        *this, password, enable_ssl, ip_addresses[0] + ":" + std::to_string(port));
   }
 }
 
