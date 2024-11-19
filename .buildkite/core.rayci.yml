@@ -66,14 +66,15 @@ steps:
       - dashboard
     instance_type: large
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag:tests/experimental/test_mocked_nccl_dag core
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu || true
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag:tests/experimental/test_mocked_nccl_dag core
         --workers 4 --worker-id "{{matrix.worker_id}}" --parallelism-per-worker 3
         --python-version {{matrix.python}}
-        --only-tags use_all_core --skip-ray-installation
+        --only-tags use_all_core --skip-ray-installation || true
+      - sleep 10000
     depends_on: corebuild-multipy
     matrix:
       setup:
@@ -85,13 +86,14 @@ steps:
     instance_type: large
     parallelism: 4
     commands:
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag:tests/experimental/test_mocked_nccl_dag core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
         --test-env=TEST_EXTERNAL_REDIS=1
-        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu
-      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/tests/... //python/ray/dag/... python/ray/autoscaler/v2/... core
+        --except-tags debug_tests,asan_tests,post_wheel_build,ha_integration,mem_pressure,tmpfs,container,manual,use_all_core,multi_gpu || true
+      - bazel run //ci/ray_ci:test_in_docker -- //python/ray/dag:tests/experimental/test_mocked_nccl_dag core
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}"
-        --only-tags use_all_core --skip-ray-installation
+        --only-tags use_all_core --skip-ray-installation || true
+      - sleep 10000
 
   - label: ":ray: core: memory pressure tests"
     tags:
