@@ -27,7 +27,7 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 
 * Ray 2.0.0+
 * KubeRay 0.6.0+
-* Redis: single shard, one or multiple replicas
+* Redis: single shard Redis Cluster or Redis Sentinel, one or multiple replicas
 
 ## Quickstart
 

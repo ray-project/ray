@@ -98,6 +98,12 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
+def redis_sentinel_replicas():
+    import os
+
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
+
+
 def get_redis_cli(port, enable_tls):
     try:
         # If there is no redis libs installed, skip the check.
@@ -120,6 +126,63 @@ def get_redis_cli(port, enable_tls):
             params["ssl_keyfile"] = Config.REDIS_CLIENT_KEY()
 
     return redis.Redis("localhost", str(port), **params)
+
+
+def start_redis_sentinel_instance(
+    session_dir_path: str,
+    port: int,
+    redis_master_port: int,
+    password: Optional[str] = None,
+    enable_tls: bool = False,
+    db_dir=None,
+    free_port=0,
+):
+    config_file = os.path.join(
+        session_dir_path, "redis-sentinel-" + uuid.uuid4().hex + ".conf"
+    )
+    config_lines = []
+    # Port for this Sentinel instance
+    if enable_tls:
+        config_lines.append(f"port {free_port}")
+    else:
+        config_lines.append(f"port {port}")
+
+    # Monitor the Redis master
+    config_lines.append(f"sentinel monitor redis-test 127.0.0.1 {redis_master_port} 1")
+    config_lines.append(
+        "sentinel down-after-milliseconds redis-test 1000"
+    )  # failover after 1 second
+    config_lines.append("sentinel failover-timeout redis-test 5000")  #
+    config_lines.append("sentinel parallel-syncs redis-test 1")
+
+    if password:
+        config_lines.append(f"sentinel auth-pass redis-test {password}")
+
+    if enable_tls:
+        config_lines.append(f"tls-port {port}")
+        if Config.REDIS_CA_CERT():
+            config_lines.append(f"tls-ca-cert-file {Config.REDIS_CA_CERT()}")
+        # Check and add TLS client certificate file
+        if Config.REDIS_CLIENT_CERT():
+            config_lines.append(f"tls-cert-file {Config.REDIS_CLIENT_CERT()}")
+        # Check and add TLS client key file
+        if Config.REDIS_CLIENT_KEY():
+            config_lines.append(f"tls-key-file {Config.REDIS_CLIENT_KEY()}")
+        config_lines.append("tls-auth-clients no")
+        config_lines.append("sentinel tls-auth-clients redis-test no")
+    if db_dir:
+        config_lines.append(f"dir {db_dir}")
+
+    with open(config_file, "w") as f:
+        f.write("\n".join(config_lines))
+
+    command = [REDIS_EXECUTABLE, config_file, "--sentinel"]
+    process_info = ray._private.services.start_ray_process(
+        command,
+        ray_constants.PROCESS_TYPE_REDIS_SERVER,
+        fate_share=False,
+    )
+    return process_info
 
 
 def start_redis_instance(
