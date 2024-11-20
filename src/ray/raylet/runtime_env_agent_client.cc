@@ -92,6 +92,26 @@ class Session : public std::enable_shared_from_this<Session> {
   // This method should only be called once.
   void run(FinishedCallback finished_callback) {
     finished_callback_ = std::move(finished_callback);
+
+    // Check cache.
+    bool cache_hit = false;
+    {
+      const std::lock_guard lck(tcp_stream_cache_mutex_);
+      if (!free_tcp_stream_.empty()) {
+        stream_ = std::move(free_tcp_stream_.front());
+        free_tcp_stream_.pop_front();
+        cache_hit = true;
+      }
+    }
+
+    if (cache_hit) {
+      http::async_write(
+          *stream_,
+          req_,
+          beast::bind_front_handler(&Session::on_write, shared_from_this()));
+      return;
+    }
+
     // Starts the state machine by looking up the domain name.
     resolver_.async_resolve(
         host_,
@@ -109,13 +129,13 @@ class Session : public std::enable_shared_from_this<Session> {
                    std::function<void(std::string)> succ_callback,
                    std::function<void(ray::Status)> fail_callback)
       : resolver_(ioc),
-        stream_(ioc),
+        stream_(std::make_unique<beast::tcp_stream>(ioc)),
         host_(std::string(host)),
         port_(std::string(port)),
         method_(method),
         succ_callback_(std::move(succ_callback)),
         fail_callback_(std::move(fail_callback)) {
-    stream_.expires_never();
+    stream_->expires_never();
     req_.method(method_);
     req_.target(target);
     req_.body() = std::move(body);
@@ -125,7 +145,6 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.set(http::field::content_type, "application/octet-stream");
     // Sets Content-Length header.
     req_.prepare_payload();
-    (void)req_;
   }
 
   void Failed(ray::Status status) {
@@ -144,9 +163,9 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
-    stream_.expires_never();
+    stream_->expires_never();
     // Make the connection on the IP address we get from a lookup
-    stream_.async_connect(
+    stream_->async_connect(
         results, beast::bind_front_handler(&Session::on_connect, shared_from_this()));
   }
 
@@ -156,10 +175,11 @@ class Session : public std::enable_shared_from_this<Session> {
       return;
     }
 
-    stream_.expires_never();
+    stream_->expires_never();
     // Send the HTTP request to the remote host
-    http::async_write(
-        stream_, req_, beast::bind_front_handler(&Session::on_write, shared_from_this()));
+    http::async_write(*stream_,
+                      req_,
+                      beast::bind_front_handler(&Session::on_write, shared_from_this()));
   }
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
@@ -168,9 +188,9 @@ class Session : public std::enable_shared_from_this<Session> {
           "on_write ", ec.message(), ", bytes_transferred ", bytes_transferred)));
       return;
     }
-    stream_.expires_never();
+    stream_->expires_never();
     // Receive the HTTP response
-    http::async_read(stream_,
+    http::async_read(*stream_,
                      buffer_,
                      res_,
                      beast::bind_front_handler(&Session::on_read, shared_from_this()));
@@ -192,8 +212,12 @@ class Session : public std::enable_shared_from_this<Session> {
                                                std::move(res_).body())));
     }
 
-    // Gracefully close the socket
-    stream_.socket().shutdown(tcp::socket::shutdown_both, ec);
+    // Never close the tcp stream, but put it back to free list.
+    {
+      std::lock_guard lck(tcp_stream_cache_mutex_);
+      free_tcp_stream_.emplace_back(std::move(stream_));
+    }
+
     // not_connected happens sometimes so don't bother reporting it.
     if (ec && ec != beast::errc::not_connected) {
       RAY_LOG(INFO) << "on_read error after response body received: " << ec.message();
@@ -201,7 +225,7 @@ class Session : public std::enable_shared_from_this<Session> {
   }
 
   tcp::resolver resolver_;
-  beast::tcp_stream stream_;
+  std::unique_ptr<beast::tcp_stream> stream_;
   std::string host_;
   std::string port_;
   http::verb method_;
@@ -211,6 +235,11 @@ class Session : public std::enable_shared_from_this<Session> {
   http::request<http::string_body> req_;
   http::response<http::string_body> res_;
   FinishedCallback finished_callback_;
+
+  // For sessions used for runtime env agent, IP/port are always the same.
+  // Cache free tcp streams for reuse.
+  inline static std::mutex tcp_stream_cache_mutex_;
+  inline static std::deque<std::unique_ptr<beast::tcp_stream>> free_tcp_stream_;
 };
 
 // A pool of sessions with a fixed max concurrency. Each session can handle 1 concurrent
