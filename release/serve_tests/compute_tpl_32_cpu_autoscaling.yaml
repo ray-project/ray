@@ -20,7 +20,7 @@ worker_node_types:
       max_workers: 35
       use_spot: false
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:
