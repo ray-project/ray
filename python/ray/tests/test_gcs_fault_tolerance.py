@@ -916,7 +916,7 @@ def test_redis_with_sentinel_failureover(
 
     wait_for_condition(
         lambda: len(get_sentinel_nodes())
-        == int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "3"))
+        == redis_sentinel_replicas()
     )
 
     @ray.remote(max_restarts=-1)
