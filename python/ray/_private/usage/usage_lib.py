@@ -634,8 +634,8 @@ def _get_cluster_status_to_report_v2(gcs_client) -> ClusterStatusToReport:
     try:
         cluster_status = get_cluster_status(gcs_client.address)
         total_resources = cluster_status.total_resources()
-        result.total_num_cpus = total_resources.get("CPU", 0)
-        result.total_num_gpus = total_resources.get("GPU", 0)
+        result.total_num_cpus = int(total_resources.get("CPU", 0))
+        result.total_num_gpus = int(total_resources.get("GPU", 0))
 
         to_GiB = 1 / 2**30
         result.total_memory_gb = total_resources.get("memory", 0) * to_GiB
