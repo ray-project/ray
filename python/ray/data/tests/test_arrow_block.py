@@ -116,7 +116,13 @@ def test_single_row_gt_2gb(
     assert total == 1
 
 
-@pytest.mark.parametrize("op", ["map", "map_batches"])
+@pytest.mark.parametrize(
+    "op",
+    [
+        "map",
+        "map_batches",
+    ],
+)
 def test_arrow_batch_gt_2gb(
     ray_start_regular_shared,
     parquet_dataset_single_column_gt_2gb,
@@ -129,10 +135,9 @@ def test_arrow_batch_gt_2gb(
     dataset_path, num_rows, total_column_size = parquet_dataset_single_column_gt_2gb
 
     def _id(x):
-        print(f">>> [DBG] _id: {len(str(x)) / GiB:.2f} GiB, {str(x)[:128]}")
         return x
 
-    ds = ray.data.read_parquet(dataset_path).materialize()
+    ds = ray.data.read_parquet(dataset_path)
 
     if op == "map":
         ds = ds.map(_id)
@@ -252,7 +257,7 @@ def test_combine_chunked_array_large():
 
     # Should re-combine first provided 14 chunks into 1
     assert result.chunks[0].nbytes == sum([c.nbytes for c in input_.chunks[:14]])
-    # Remaining 2 go into teh second one
+    # Remaining 2 go into the second one
     assert result.chunks[1].nbytes == sum([c.nbytes for c in input_.chunks[14:]])
 
 
