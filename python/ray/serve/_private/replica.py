@@ -10,7 +10,16 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 from importlib import import_module
-from typing import Any, AsyncGenerator, Callable, Dict, Generator, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import starlette.responses
 from starlette.types import ASGIApp, Message
@@ -231,6 +240,9 @@ class ReplicaMetricsManager:
         )
 
 
+StatusCodeCallback = Callable[[str], None]
+
+
 class ReplicaActor:
     """Actor definition for replicas of Ray Serve deployments.
 
@@ -380,7 +392,7 @@ class ReplicaActor:
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Generator[Callable[[str], None], None, None]:
+    ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
@@ -402,7 +414,8 @@ class ReplicaActor:
         )
 
         status_code = None
-        def _write_status_code(s: str):
+
+        def _status_code_callback(s: str):
             nonlocal status_code
             status_code = s
 
@@ -410,7 +423,7 @@ class ReplicaActor:
         user_exception = None
         try:
             self._metrics_manager.inc_num_ongoing_requests()
-            yield _write_status_code
+            yield _status_code_callback
         except asyncio.CancelledError as e:
             user_exception = e
 
@@ -463,7 +476,7 @@ class ReplicaActor:
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
-        write_status_code,
+        status_code_callback: StatusCodeCallback,
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
@@ -512,8 +525,8 @@ class ReplicaActor:
                             if first_message["type"] == "http.response.start":
                                 # HTTP responses begin with exactly one
                                 # "http.response.start" message containing the "status"
-                                # field. Other response types (e.g., WebSockets) may not.
-                                write_status_code(str(first_message["status"]))
+                                # field. Other response types like WebSockets may not.
+                                status_code_callback(str(first_message["status"]))
                                 yield pickle.dumps(messages)
                     else:
                         for msg in messages:
@@ -545,7 +558,7 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -560,11 +573,14 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
+        with self._wrap_user_method_call(
+            request_metadata, request_args
+        ) as status_code_callback:
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
+                status_code_callback=status_code_callback,
             ):
                 yield result
 
@@ -602,7 +618,9 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
+        with self._wrap_user_method_call(
+            request_metadata, request_args
+        ) as status_code_callback:
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,
@@ -617,7 +635,7 @@ class ReplicaActor:
                     request_metadata,
                     request_args,
                     request_kwargs,
-                    write_status_code=write_status_code,
+                    status_code_callback=status_code_callback,
                 ):
                     yield result
             else:
@@ -645,7 +663,7 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
+        with self._wrap_user_method_call(request_metadata, request_args):
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
