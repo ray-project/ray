@@ -295,8 +295,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         # Check User log
         user_log_regexes = [
             f".*{resp['request_id']} -- user func.*",
-            f".*{resp2['request_id']} -- user log.*"
-            "message from class method.*",
+            f".*{resp2['request_id']} -- user log.*" "message from class method.*",
         ]
 
         def check_log():
@@ -343,12 +342,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"component_name": "replica".*'
             )
         else:
-            user_method_log_regex = (
-                f".*{resp['request_id']} -- user func.*"
-            )
+            user_method_log_regex = f".*{resp['request_id']} -- user func.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} -- .*"
-                "user log message from class method.*"
+                f".*{resp2['request_id']} -- .*" "user log message from class method.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
