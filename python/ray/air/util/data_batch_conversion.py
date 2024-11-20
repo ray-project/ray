@@ -229,7 +229,9 @@ def _convert_batch_type_to_numpy(
             # (making them compatible with numpy format)
             combined_array = transform_pyarrow.combine_chunked_array(col)
 
-            column_values_ndarrays.append(combined_array.to_numpy(zero_copy_only=False))
+            column_values_ndarrays.append(
+                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
+            )
 
         arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
 

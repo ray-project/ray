@@ -1,9 +1,12 @@
 from typing import TYPE_CHECKING, List, Union
 
+import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import INT32_OVERFLOW_THRESHOLD
+from ray.air.util.object_extensions.arrow import PYARROW_VERSION
+from ray.air.util.tensor_extensions.arrow import INT32_OVERFLOW_THRESHOLD, MIN_PYARROW_VERSION_SCALAR, \
+    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY
 
 try:
     import pyarrow
@@ -327,6 +330,28 @@ def concat_and_sort(
     ret = concat(blocks)
     indices = pac.sort_indices(ret, sort_keys=sort_key.to_arrow_sort_args())
     return take_table(ret, indices)
+
+
+def to_numpy(
+    array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
+    *,
+    zero_copy_only: bool = True
+) -> np.ndarray:
+    """Wrapper for `Array`s and `ChunkedArray`s `to_numpy` API,
+    handling API divergence b/w Arrow versions"""
+
+    import pyarrow as pa
+
+    if isinstance(array, pa.Array):
+        return array.to_numpy(zero_copy_only=zero_copy_only)
+    elif isinstance(array, pa.ChunkedArray):
+        if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
+            return array.to_numpy(zero_copy_only=zero_copy_only)
+        else:
+            return array.to_numpy()
+    else:
+        raise ValueError(f"Either of `Array` or `ChunkedArray` was expected, "
+                         f"got {type(array)}")
 
 
 def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":

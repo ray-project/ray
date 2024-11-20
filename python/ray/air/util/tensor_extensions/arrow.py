@@ -29,6 +29,8 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
+# Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
+MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
 
