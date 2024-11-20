@@ -122,7 +122,7 @@ def test_handle_access_log(serve_instance):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    method_name.upper() in s,
+                    method_name in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
                     ("blah blah blah" in s and "RuntimeError" in s)
@@ -288,14 +288,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} replica.py",
+            f"{resp['request_id']} -- ",
+            f"{resp2['request_id']} -- ",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log "
+            f".*{resp['request_id']} -- user func.*",
+            f".*{resp2['request_id']} -- user log.*"
             "message from class method.*",
         ]
 
@@ -344,10 +344,10 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             )
         else:
             user_method_log_regex = (
-                f".*{resp['request_id']} {resp['route']}.* user func.*"
+                f".*{resp['request_id']} -- user func.*"
             )
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} {resp2['route']}.* "
+                f".*{resp2['request_id']} -- .*"
                 "user log message from class method.*"
             )
 
