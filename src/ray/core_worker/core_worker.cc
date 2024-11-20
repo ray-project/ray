@@ -2920,9 +2920,6 @@ CoreWorker::ListNamedActors(bool all_namespaces) {
               "probably because the GCS server is dead or under high load .";
     return std::make_pair(std::move(actors), Status::TimedOut(stream.str()));
   }
-  if (!status.ok()) {
-    return std::make_pair(std::move(actors), std::move(status));
-  }
   return std::make_pair(std::move(actors), std::move(status));
 }
 
