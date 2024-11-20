@@ -1189,7 +1189,7 @@ void CoreWorker::InternalHeartbeat() {
     absl::MutexLock lock(&mutex_);
     while (!to_resubmit_.empty() &&
            current_time_ms() > to_resubmit_.top().execution_time_ms) {
-      tasks_to_resubmit.emplace_back(std::move(to_resubmit_.top()));
+      tasks_to_resubmit.emplace_back(to_resubmit_.top());
       to_resubmit_.pop();
     }
   }
