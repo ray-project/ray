@@ -78,7 +78,7 @@ def do_link(package, force=False, skip_list=None, local_path=None):
         if package == "serve":
             # Copy generated folder to a temp dir
             generated_folder = os.path.join(package_home, "generated")
-            temp_dir = "/tmp/ray/"
+            temp_dir = "/tmp/ray/_serve/"
             if not os.path.exists(temp_dir):
                 os.makedirs(temp_dir)
             subprocess.check_call(["cp", "-r", generated_folder, temp_dir])
@@ -88,9 +88,11 @@ def do_link(package, force=False, skip_list=None, local_path=None):
 
         # Move generated folder to local_home
         if package == "serve":
-            tmp_generated_folder = "/tmp/ray/generated"
-            local_generated_folder = os.path.join(local_home, "generated")
-            subprocess.check_call(["mv", tmp_generated_folder, local_generated_folder])
+            tmp_generated_folder = os.path.join(temp_dir, "generated")
+            package_generated_folder = os.path.join(package_home, "generated")
+            subprocess.check_call(
+                ["mv", tmp_generated_folder, package_generated_folder]
+            )
 
 
 if __name__ == "__main__":
