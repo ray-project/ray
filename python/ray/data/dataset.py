@@ -87,6 +87,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     DataBatch,
+    DataBatchColumn,
     T,
     U,
     UserDefinedFunction,
@@ -703,7 +704,7 @@ class Dataset:
         col: str,
         fn: Callable[
             [DataBatch],
-            Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", "np.ndarray"],
+            DataBatchColumn,
         ],
         *,
         batch_format: Optional[str] = "pandas",
@@ -760,15 +761,38 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        # Check that batch_format
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        if batch_format not in accepted_batch_formats:
+            raise ValueError(
+                f"batch_format argument must be on of {accepted_batch_formats}, "
+                f"got: {batch_format}"
+            )
 
         def add_column(
             batch: DataBatch,
         ) -> Union["pyarrow.Array", "pandas.Series", Dict[str, "np.ndarray"]]:
             column = fn(batch)
             if batch_format == "pandas":
+                import pandas as pd
+
+                assert isinstance(column, pd.Series), (
+                    f"For pandas batch format, the function must return a pandas "
+                    f"Series, got: {type(column)}"
+                )
+                if col in batch:
+                    raise ValueError(
+                        f"Trying to add an existing column with name" f" {col}"
+                    )
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
+                import pyarrow as pa
+
+                assert isinstance(column, (pa.Array, pa.ChunkedArray)), (
+                    f"For pyarrow batch format, the function must return a pyarrow "
+                    f"Array, got: {type(column)}"
+                )
                 # Historically, this method was written for pandas batch format.
                 # To resolve https://github.com/ray-project/ray/issues/48090,
                 # we also allow pyarrow batch format which is preferred but would be
@@ -781,10 +805,21 @@ class Dataset:
                     # Append the column to the table
                     return batch.append_column(col, column)
                 else:
-                    # Create a new table with the updated column
-                    return batch.set_column(column_idx, col, column)
+                    raise ValueError(
+                        f"Trying to add an existing column with name" f" {col}"
+                    )
+
             else:
-                # batch format is assumed to be numpy
+                # batch format is assumed to be numpy since we checked at the
+                # beginning of the add_column function
+                assert isinstance(column, np.ndarray), (
+                    f"For numpy batch format, the function must return a "
+                    f"numpy.ndarray, got: {type(column)}"
+                )
+                if col in batch:
+                    raise ValueError(
+                        f"Trying to add an existing column with name" f" {col}"
+                    )
                 batch[col] = column
                 return batch
 

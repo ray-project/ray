@@ -2,6 +2,7 @@ import subprocess
 
 import pandas as pd
 import pyarrow as pa
+import pymongoarrow
 import pytest
 
 import ray
@@ -95,6 +96,11 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
     assert ds._block_num_rows() == [3, 2]
     assert ds.count() == 5
     assert ds.schema().names == ["_id", "float_field", "int_field"]
+    assert ds.schema().types == [
+        pymongoarrow.types.ObjectIdType(),
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read a subset of the collection.
@@ -119,6 +125,11 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
 
     assert ds.count() == 5
     assert ds.schema().names == ["_id", "float_field", "int_field"]
+    assert ds.schema().types == [
+        pymongoarrow.types.ObjectIdType(),
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Read with a parallelism larger than number of rows.
@@ -131,6 +142,11 @@ def test_read_write_mongo(ray_start_regular_shared, start_mongo):
 
     assert ds.count() == 5
     assert ds.schema().names == ["_id", "float_field", "int_field"]
+    assert ds.schema().types == [
+        pymongoarrow.types.ObjectIdType(),
+        pa.float64(),
+        pa.int32(),
+    ]
     assert df.equals(ds.drop_columns(["_id"]).to_pandas())
 
     # Add a column and then write back to MongoDB.
