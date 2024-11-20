@@ -14,13 +14,15 @@ from unittest.mock import patch
 import pytest
 import requests
 import starlette
+from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
 
 import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ReplicaID, ServeComponentType
+from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
     ServeComponentFilter,
@@ -95,6 +97,70 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
     rotation_config = handle.remote().result()
     assert rotation_config["max_bytes"] == max_bytes
     assert rotation_config["backup_count"] == backup_count
+
+
+def test_http_access_log(serve_instance):
+    name = "deployment_name"
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        @fastapi_app.get("/")
+        def root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.post("/")
+        def root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            return PlainTextResponse(self._replica_unique_id, status_code=int(status))
+
+        @fastapi_app.put("/fail")
+        def template(self):
+            raise RuntimeError("OOPS!")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+
+        def check_log(replica_id: ReplicaID, method: str, route: str, status_code: str, fail: bool = False):
+            s = f.getvalue()
+            return all(
+                [
+                    name in s,
+                    _get_expected_replica_log_content(replica_id) in s,
+                    f"-- {method} {route} {status_code}" in s,
+                    "ms" in s,
+                    ("OOPS!" in s and "RuntimeError" in s)
+                    if fail
+                    else True,  # Check for stacktrace.
+                ]
+            )
+
+        r = requests.get("http://localhost:8000/")
+        assert r.status_code == 200
+        replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
+        wait_for_condition(check_log, replica_id=replica_id, method="GET", route="/", status_code="200")
+
+        r = requests.post("http://localhost:8000/")
+        assert r.status_code == 200
+        wait_for_condition(check_log, replica_id=replica_id, method="POST", route="/", status_code="200")
+
+        r = requests.get("http://localhost:8000/350")
+        assert r.status_code == 350
+        wait_for_condition(check_log, replica_id=replica_id, method="GET", route="/{status}", status_code="350")
+
+        r = requests.put("http://localhost:8000/fail")
+        assert r.status_code == 500
+        wait_for_condition(check_log, replica_id=replica_id, method="PUT", route="/fail", status_code="500", fail=True)
 
 
 def test_handle_access_log(serve_instance):

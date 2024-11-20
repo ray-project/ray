@@ -485,7 +485,6 @@ class ReplicaActor:
         """
         call_user_method_future = None
         wait_for_message_task = None
-        first_message_peeked = False
         try:
             result_queue = MessageQueue()
 
@@ -503,6 +502,7 @@ class ReplicaActor:
                 )
             )
 
+            first_message_peeked = False
             while True:
                 wait_for_message_task = self._event_loop.create_task(
                     result_queue.wait_for_message()
@@ -519,15 +519,17 @@ class ReplicaActor:
                     # and use vanilla pickle (we know it's safe because these messages
                     # only contain primitive Python types).
                     if request_metadata.is_http_request:
+                        # Peek the first ASGI message to determine the status code.
                         if not first_message_peeked:
-                            first_message = messages[0]
+                            msg = messages[0]
                             first_message_peeked = True
-                            if first_message["type"] == "http.response.start":
+                            if msg["type"] == "http.response.start":
                                 # HTTP responses begin with exactly one
                                 # "http.response.start" message containing the "status"
                                 # field. Other response types like WebSockets may not.
-                                status_code_callback(str(first_message["status"]))
-                                yield pickle.dumps(messages)
+                                status_code_callback(str(msg["status"]))
+
+                        yield pickle.dumps(messages)
                     else:
                         for msg in messages:
                             yield msg
