@@ -216,12 +216,10 @@ def start_redis_with_sentinel(db_dir):
         ]
         for p in redis_ports[1:]
     ]
-    
+
     # ensure all redis servers are up
     for port in redis_ports[1:]:
-        wait_for_condition(
-            redis_alive, 3, 100, port=port, enable_tls=False
-        )
+        wait_for_condition(redis_alive, 3, 100, port=port, enable_tls=False)
 
     # setup replicas of the master
     for port in redis_ports[2:]:
