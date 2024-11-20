@@ -67,8 +67,8 @@ Status InMemoryStoreClient::AsyncGetAll(
   RAY_CHECK(callback);
   auto result = absl::flat_hash_map<std::string, std::string>();
   auto table = GetOrCreateTable(table_name);
-  result.reserve(table->records_.size());
   absl::MutexLock lock(&(table->mutex_));
+  result.reserve(table->records_.size());
   result.insert(table->records_.begin(), table->records_.end());
   main_io_service_.post(
       [result = std::move(result), callback]() mutable { callback(std::move(result)); },
