@@ -10,7 +10,7 @@ import traceback
 from contextlib import contextmanager
 from functools import wraps
 from importlib import import_module
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
+from typing import Any, AsyncGenerator, Callable, Dict, Generator, Optional, Tuple, Union
 
 import starlette.responses
 from starlette.types import ASGIApp, Message
@@ -341,20 +341,23 @@ class ReplicaActor:
         """
         return self._metrics_manager.get_num_ongoing_requests()
 
-    def _maybe_get_asgi_route(
+    def _maybe_get_http_route_and_method(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Optional[str]:
+    ) -> Tuple[Optional[str], Optional[str]]:
         """Get the matched route string for ASGI apps to be used in logs & metrics.
 
         If this replica does not wrap an ASGI app or there is no matching for the
         request, returns the existing route from the request metadata.
         """
         route = request_metadata.route
+        method = None
         if (
             request_metadata.is_http_request
             and self._user_callable_asgi_app is not None
         ):
             req: StreamingHTTPRequest = request_args[0]
+            # WebSocket messages don't have a 'method' field.
+            method = req.asgi_scope.get("method", "WS")
             try:
                 matched_route = get_asgi_route_name(
                     self._user_callable_asgi_app, req.asgi_scope
@@ -372,22 +375,24 @@ class ReplicaActor:
             if matched_route is not None:
                 route = matched_route
 
-        return route
+        return route, method
 
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[Callable[[str], None], None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        route = self._maybe_get_asgi_route(request_metadata, request_args)
+        http_route, http_method = self._maybe_get_http_route_and_method(
+            request_metadata, request_args
+        )
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
-                route=route,
+                route=http_route,
                 request_id=request_metadata.request_id,
                 _internal_request_id=request_metadata.internal_request_id,
                 app_name=self._deployment_id.app_name,
@@ -396,11 +401,16 @@ class ReplicaActor:
             )
         )
 
+        status_code = None
+        def _write_status_code(s: str):
+            nonlocal status_code
+            status_code = s
+
         start_time = time.time()
         user_exception = None
         try:
             self._metrics_manager.inc_num_ongoing_requests()
-            yield
+            yield _write_status_code
         except asyncio.CancelledError as e:
             user_exception = e
 
@@ -430,14 +440,16 @@ class ReplicaActor:
 
         logger.info(
             access_log_msg(
-                method=request_metadata.call_method,
-                status=status_str,
+                method=http_method or "CALL",
+                route=http_route or request_metadata.call_method,
+                # Prefer the HTTP status code if it was populated.
+                status=status_code or status_str,
                 latency_ms=latency_ms,
             ),
             extra={"serve_access_log": True},
         )
         self._metrics_manager.record_request_metrics(
-            route=route,
+            route=http_route,
             status_str=status_str,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
@@ -451,6 +463,7 @@ class ReplicaActor:
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
+        write_status_code,
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
@@ -459,6 +472,7 @@ class ReplicaActor:
         """
         call_user_method_future = None
         wait_for_message_task = None
+        first_message_peeked = False
         try:
             result_queue = MessageQueue()
 
@@ -492,7 +506,15 @@ class ReplicaActor:
                     # and use vanilla pickle (we know it's safe because these messages
                     # only contain primitive Python types).
                     if request_metadata.is_http_request:
-                        yield pickle.dumps(messages)
+                        if not first_message_peeked:
+                            first_message = messages[0]
+                            first_message_peeked = True
+                            if first_message["type"] == "http.response.start":
+                                # HTTP responses begin with exactly one
+                                # "http.response.start" message containing the "status"
+                                # field. Other response types (e.g., WebSockets) may not.
+                                write_status_code(str(first_message["status"]))
+                                yield pickle.dumps(messages)
                     else:
                         for msg in messages:
                             yield msg
@@ -523,7 +545,7 @@ class ReplicaActor:
     ) -> Tuple[bytes, Any]:
         """Entrypoint for `stream=False` calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata, request_args):
+        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -538,7 +560,7 @@ class ReplicaActor:
     ) -> AsyncGenerator[Any, None]:
         """Generator that is the entrypoint for all `stream=True` handle calls."""
         request_metadata = pickle.loads(pickled_request_metadata)
-        with self._wrap_user_method_call(request_metadata, request_args):
+        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
@@ -580,7 +602,7 @@ class ReplicaActor:
             )
             return
 
-        with self._wrap_user_method_call(request_metadata, request_args):
+        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
             yield pickle.dumps(
                 ReplicaQueueLengthInfo(
                     accepted=True,
@@ -595,6 +617,7 @@ class ReplicaActor:
                     request_metadata,
                     request_args,
                     request_kwargs,
+                    write_status_code=write_status_code,
                 ):
                     yield result
             else:
@@ -622,7 +645,7 @@ class ReplicaActor:
             multiplexed_model_id=proto.multiplexed_model_id,
             route=proto.route,
         )
-        with self._wrap_user_method_call(request_metadata, request_args):
+        with self._wrap_user_method_call(request_metadata, request_args) as write_status_code:
             return await asyncio.wrap_future(
                 self._user_callable_wrapper.call_user_method(
                     request_metadata, request_args, request_kwargs
@@ -1239,7 +1262,12 @@ class UserCallableWrapper:
             )
 
         except Exception:
-            if request_metadata.is_http_request and asgi_args is not None:
+            if (
+                request_metadata.is_http_request
+                and asgi_args is not None
+                # If the callable is an ASGI app, it already sent a 500 status response.
+                and not is_asgi_app
+            ):
                 await self._send_user_result_over_asgi(
                     starlette.responses.Response(
                         "Internal Server Error", status_code=500
