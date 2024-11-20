@@ -31,6 +31,7 @@
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
@@ -302,10 +303,8 @@ void RayLog::InitLogFormat() {
   log_format_json_ = false;
   log_format_pattern_ = kLogFormatTextPattern;
 
-  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON");
-  if (var_value != nullptr) {
-    std::string data = var_value;
-    if (data == "1") {
+  if (const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON"); var_value != nullptr) {
+    if (std::string_view{var_value} == std::string_view{"1"}) {
       log_format_json_ = true;
       log_format_pattern_ = kLogFormatJsonPattern;
     }
