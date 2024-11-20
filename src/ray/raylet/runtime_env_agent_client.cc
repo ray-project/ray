@@ -125,6 +125,7 @@ class Session : public std::enable_shared_from_this<Session> {
     req_.set(http::field::content_type, "application/octet-stream");
     // Sets Content-Length header.
     req_.prepare_payload();
+    (void)req_;
   }
 
   void Failed(ray::Status status) {
