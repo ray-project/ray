@@ -663,8 +663,7 @@ system resources. It is strongly recommended not to override these defaults, as 
 Data processing in RLlib involves three key layers, all of which are highly scalable:
 
 1. **Read Operations:** This layer handles data ingestion from files in a specified folder. It is automatically optimized by Ray Data and should not be manually scaled or adjusted.
-2. **Post-processing:** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects 
-for updating. This layer can be scaling the ``DataWorker`` instances.
+2. **Post-processing:** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects for updating. This layer can be scaling the ``DataWorker`` instances.
 3. **Updating:** This stage involves updating the policy and associated modules. Scalability is achieved by increasing the number of learners (``num_learners``), enabling parallel processing of batches during updates.
 
 Ray Data Integration
