@@ -2269,7 +2269,6 @@ class CompiledDAG:
         Limitations:
         - Note: This is only used for quick visualization for small graphs.
             For complex graph (i.e. more than 20 tasks), please use graphviz.
-
         - Scale: Works best for smaller CGs (typically fewer than 20 tasks).
             Larger CGs may result in dense, less readable ASCII
             outputs due to limited space for node and edge rendering.
@@ -2290,7 +2289,8 @@ class CompiledDAG:
             print(compiled_dag.visualize(format="ascii"))
             ```
 
-            Example of Ordered Visualization (to reduce line intersection):
+            Example of Ordered Visualization (task is build in order
+                to reduce line intersection):
             ```python
             with InputNode() as i:
                 o1, o2, o3 = a.return_three.bind(i)
@@ -2620,7 +2620,8 @@ class CompiledDAG:
             filename: The name of the output file (without extension).
             format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
             view: For non-ascii: Whether to open the file with the default viewer.
-                For ascii: Whether to print the visualization or return the string.
+                For ascii: Whether to print the visualization and return None
+                    or return the ascii visualization string directly.
             return_dot: If True, returns the DOT source as a string instead of figure.
             channel_details: If True, adds channel details to edges.
 

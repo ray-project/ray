@@ -12,8 +12,8 @@ def test_visualize_basic(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1
-            1 -> 2
+            0 -> 1 [label=SharedMemoryType]
+            1 -> 2 [label=SharedMemoryType]
     """
 
     @ray.remote
@@ -54,11 +54,11 @@ def test_visualize_multi_return(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1
-            1 -> 2
-            1 -> 3
-            2 -> 4
-            3 -> 4
+            0 -> 1 [label=SharedMemoryType]
+            1 -> 2 [label=SharedMemoryType]
+            1 -> 3 [label=SharedMemoryType]
+            2 -> 4 [label=SharedMemoryType]
+            3 -> 4 [label=SharedMemoryType]
     """
 
     @ray.remote
@@ -101,13 +101,13 @@ def test_visualize_multi_return2(ray_start_regular):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
-            0 -> 1
-            1 -> 2
-            1 -> 3
-            2 -> 4
-            3 -> 5
-            4 -> 6
-            5 -> 6
+            0 -> 1 [label=SharedMemoryType]
+            1 -> 2 [label=SharedMemoryType]
+            1 -> 3 [label=SharedMemoryType]
+            2 -> 4 [label=SharedMemoryType]
+            3 -> 5 [label=SharedMemoryType]
+            4 -> 6 [label=SharedMemoryType]
+            5 -> 6 [label=SharedMemoryType]
     """
 
     @ray.remote
