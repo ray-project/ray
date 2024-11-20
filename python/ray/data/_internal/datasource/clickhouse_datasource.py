@@ -19,7 +19,7 @@ class ClickHouseDatasource(Datasource):
         self,
         entity: str,
         dsn: str,
-        columns: Optional[Tuple[str, ...]] = None,
+        columns: Optional[List[str]] = None,
         filters: Optional[Dict[str, Tuple[str, Any]]] = None,
         order_by: Optional[Tuple[List[str], bool]] = None,
         client_settings: Optional[Dict[str, Any]] = None,
