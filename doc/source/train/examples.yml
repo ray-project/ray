@@ -119,7 +119,7 @@ examples:
     contributor: community
     link: examples/intel_gaudi/llama_pretrain
 
-  - title: Fine tune Llama3.1 with AWS Trainium
+  - title: Fine-tune Llama3.1 with AWS Trainium
     frameworks:
       - pytorch
       - aws neuron 
@@ -129,7 +129,7 @@ examples:
       - large language models
     contributor: community
     link: examples/aws-trainium/llama3
-  - title: Fine-tune a Llama-2 text generation models with DeepSpeed and Hugging Face Accelerate
+  - title: Fine-tune a Llama-2 text generation model with DeepSpeed and Hugging Face Accelerate
     frameworks:
       - accelerate
       - deepspeed

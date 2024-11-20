@@ -1,11 +1,11 @@
 :orphan:
 
-Distributed Fine-tuning of LLaMA3.1 8B on AWS Trainium with Ray and PyTorch Lightning
+Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
 =====================================================================================
 
 
-This example demonstrates how to fine-tune `Llama 3.1 8B <https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/>`__ model on `AWS
-Trainium <https://aws.amazon.com/ai/machine-learning/trainium/>`__ instances using Ray Train, PyTorch Lightning and AWS Neuron SDK.
+This example demonstrates how to fine-tune the `Llama 3.1 8B <https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/>`__ model on `AWS
+Trainium <https://aws.amazon.com/ai/machine-learning/trainium/>`__ instances using Ray Train, PyTorch Lightning, and AWS Neuron SDK.
 
 AWS Trainium is the machine learning (ML) chip that AWS built for deep
 learning (DL) training of 100B+ parameter models. `AWS Neuron
@@ -40,14 +40,14 @@ Once the EKS cluster is ready, it's time to create an Amazon ECR repository for 
    chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh 
    ./0-kuberay-trn1-llama3-finetune-build-image.sh
 
-4. Enter the zone your cluster is running in, for example: us-east-2
+4. Enter the zone your cluster is running in, for example: us-east-2.
 
 5. Verify in the AWS console that the Amazon ECR service has the newly
    created ``kuberay_trn1_llama3.1_pytorch2`` repository.
 
 6. Update the ECR image ARN in the manifest file used for creating the Ray cluster.
 
-Replace the <AWS_ACCOUNT_ID> and <REGION> placeholders with actual values in the ``1-llama3-finetune-trn1-create-raycluster.yaml`` file using commands below (to reflect the ECR image ARN created above):
+Replace the <AWS_ACCOUNT_ID> and <REGION> placeholders with actual values in the ``1-llama3-finetune-trn1-create-raycluster.yaml`` file using commands below to reflect the ECR image ARN created above:
 
 ::
 
@@ -60,7 +60,7 @@ Configuring Ray Cluster
 -----------------------
 
 The ``llama3.1_8B_finetune_ray_ptl_neuron`` directory in the AWS Neuron samples repository simplifies the
-Ray configuration. KubeRay provides a manifest that you can easily apply
+Ray configuration. KubeRay provides a manifest that you can apply
 to the cluster to set up the head and worker pods. 
 
 Run the following command to set up the Ray cluster:
@@ -83,7 +83,7 @@ Run it in the background with the following command:
 Launching Ray Jobs
 ------------------
 
-With the Ray cluster now ready to handle workloads, it's time to initiate the data preparation and fine-tuning Ray jobs:
+The Ray cluster now ready to handle workloads. Initiate the data preparation and fine-tuning Ray jobs:
 
 1. Launch the Ray job for downloading the dolly-15k dataset and the Llama3.1 8B model artifacts:
 
@@ -100,4 +100,4 @@ With the Ray cluster now ready to handle workloads, it's time to initiate the da
 3. Monitor the jobs via the Ray Dashboard
 
 
-For detailed information on each of the steps above, refer to the `AWS documentation link <https://github.com/aws-neuron/aws-neuron-eks-samples/blob/master/llama3.1_8B_finetune_ray_ptl_neuron/README.md/>`__.
+For detailed information on each of the steps above, see the `AWS documentation link <https://github.com/aws-neuron/aws-neuron-eks-samples/blob/master/llama3.1_8B_finetune_ray_ptl_neuron/README.md/>`__.
