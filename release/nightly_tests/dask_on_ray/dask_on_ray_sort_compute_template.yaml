@@ -1,7 +1,7 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
 
-aws_advanced_configurations_json:
+aws:
     BlockDeviceMappings:
         - DeviceName: /dev/sda1
           Ebs:
