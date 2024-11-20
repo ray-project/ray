@@ -30,6 +30,8 @@
 namespace ray {
 namespace core {
 
+class ActorManager;
+
 class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id,
@@ -65,6 +67,8 @@ class TaskFinisherInterface {
   virtual bool MarkTaskCanceled(const TaskID &task_id) = 0;
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
+
+  virtual bool IsTaskPending(const TaskID &task_id) const = 0;
 
   virtual ~TaskFinisherInterface() = default;
 };
@@ -551,7 +555,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
+  bool IsTaskPending(const TaskID &task_id) const override;
 
   /// Return whether the task is scheduled adn waiting for execution.
   ///
@@ -601,7 +605,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Key is the lineage reconstruction task info.
   /// Value is the number of ongoing lineage reconstruction tasks of this type.
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-  GetOngoingLineageReconstructionTasks() const;
+  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
