@@ -35,6 +35,9 @@ class CircularBuffer:
         self._buffer = deque(maxlen=self.num_batches)
         self._lock = threading.Lock()
 
+        # The number of valid (not expired) entries in this buffer.
+        self._num_valid_batches = 0
+
     def add(self, batch):
         dropped_entry = None
         dropped_ts = 0
@@ -45,12 +48,14 @@ class CircularBuffer:
             if len_ == self.num_batches:
                 dropped_entry = self._buffer[0]
             self._buffer.append([batch, 0])
+            self._num_valid_batches += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
         if dropped_entry is not None and dropped_entry[0] is not None:
             dropped_ts += dropped_entry[0].env_steps() * (
                 self.iterations_per_batch - dropped_entry[1]
             )
+            self._num_valid_batches -= 1
 
         return dropped_ts
 
@@ -59,7 +64,7 @@ class CircularBuffer:
 
         while True:
             # Only initially, the buffer may be empty -> Just wait for some time.
-            if len(self._buffer) == 0:
+            if len(self) == 0:
                 time.sleep(0.001)
                 continue
             # Sample a random buffer index.
@@ -78,9 +83,14 @@ class CircularBuffer:
         if k == self.iterations_per_batch - 1:
             entry[0] = None
             entry[1] = None
+            self._num_valid_batches += 1
 
         # Return the sampled batch.
         return batch
+
+    def __len__(self) -> int:
+        """Returns the number of actually valid (non-expired) batches in the buffer."""
+        return self._num_valid_batches
 
 
 @OldAPIStack
