@@ -1,3 +1,4 @@
+import gc
 import os
 import sys
 import types
@@ -161,6 +162,12 @@ def test_arrow_batch_gt_2gb(
     )
 
     assert total_binary_column_size == total_column_size
+
+    # Clean up refs
+    del batch
+    del ds
+    # Force GC to free up object store memory
+    gc.collect()
 
 
 @pytest.mark.parametrize(
