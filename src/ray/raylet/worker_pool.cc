@@ -1150,8 +1150,7 @@ void WorkerPool::KillIdleWorker(std::shared_ptr<WorkerInterface> idle_worker,
           // kill the worker (e.g., when the worker owns the object). Without this,
           // if the first N workers own objects, it can't kill idle workers that are
           // >= N+1.
-          idle_of_all_languages_.emplace_back(
-              std::make_pair(idle_worker, last_time_used));
+          idle_of_all_languages_.emplace_back(idle_worker, last_time_used);
         }
       });
 }
