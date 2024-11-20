@@ -55,7 +55,6 @@ examples:
       - natural language processing
     contributor: community
     link: examples/intel_gaudi/bert
-
   - title: Train a text classifier with DeepSpeed
     frameworks:
       - deepspeed
@@ -65,24 +64,6 @@ examples:
       - large language models
       - natural language processing
     link: examples/deepspeed/deepspeed_example
-  - title: Fine-tune a personalized Stable Diffusion model
-    skill_level: intermediate
-    frameworks:
-      - pytorch
-    use_cases:
-      - computer vision
-      - generative ai
-    link: examples/pytorch/dreambooth_finetuning
-  - title: Finetune Stable Diffusion and generate images with Intel Gaudi
-    skill_level: intermediate
-    frameworks:
-      - accelerate
-      - transformers
-    use_cases:
-      - computer vision
-      - generative ai
-    contributor: community
-    link: examples/intel_gaudi/sd
   - title: Train a text classifier with PyTorch Lightning and Ray Data
     frameworks:
       - lightning
@@ -97,6 +78,16 @@ examples:
     use_cases:
       - natural language processing
     link: examples/transformers/huggingface_text_classification
+  - title: Fine-tune Stable Diffusion and generate images with Intel Gaudi
+    skill_level: intermediate
+    frameworks:
+      - accelerate
+      - transformers
+    use_cases:
+      - computer vision
+      - generative ai
+    contributor: community
+    link: examples/intel_gaudi/sd
   - title: "Fine-tune Llama-2-7b and Llama-2-70b with Intel Gaudi"
     frameworks:
       - accelerate
