@@ -104,6 +104,7 @@ bool GetRequest::Wait(int64_t timeout_ms) {
   auto remaining_timeout_ms = timeout_ms;
   auto timeout_timestamp = current_time_ms() + timeout_ms;
   while (!is_ready_) {
+    // TODO (dayshah): see if using cv condition function instead of busy while helps.
     auto status = cv_.wait_for(lock, std::chrono::milliseconds(remaining_timeout_ms));
     auto current_timestamp = current_time_ms();
     remaining_timeout_ms =
@@ -304,6 +305,7 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   {
     absl::flat_hash_set<ObjectID> remaining_ids;
     absl::flat_hash_set<ObjectID> ids_to_remove;
+    bool existing_objects_has_exception = false;
 
     absl::MutexLock lock(&mu_);
     // Check for existing objects and see if this get request can be fullfilled.
@@ -319,6 +321,10 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
           ids_to_remove.insert(object_id);
         }
         count += 1;
+        if (abort_if_any_object_is_exception && iter->second->IsException() &&
+            !iter->second->IsInPlasmaError()) {
+          existing_objects_has_exception = true;
+        }
       } else {
         remaining_ids.insert(object_id);
       }
@@ -332,8 +338,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
       }
     }
 
-    // Return if all the objects are obtained.
-    if (remaining_ids.empty() || count >= num_objects) {
+    // Return if all the objects are obtained, or any existing objects are known to have
+    // exception.
+    if (remaining_ids.empty() || count >= num_objects || existing_objects_has_exception) {
       return Status::OK();
     }
 

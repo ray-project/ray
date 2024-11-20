@@ -4,7 +4,7 @@ import pickle
 import sys
 import threading
 from dataclasses import dataclass
-from typing import Any, AsyncGenerator, Callable, Generator, Optional
+from typing import AsyncGenerator, Callable, Generator, Optional
 
 import pytest
 from fastapi import FastAPI
@@ -12,7 +12,6 @@ from starlette.requests import Request
 from starlette.responses import PlainTextResponse
 
 from ray import serve
-from ray.exceptions import RayTaskError
 from ray.serve._private.common import (
     DeploymentID,
     RequestMetadata,
@@ -117,7 +116,6 @@ def _make_request_metadata(
     return RequestMetadata(
         request_id="test_request",
         internal_request_id="test_internal_request",
-        endpoint="test_endpoint",
         call_method=call_method if call_method is not None else "__call__",
         _request_protocol=protocol,
         is_streaming=is_streaming,
@@ -153,7 +151,7 @@ def test_basic_class_callable():
 
     # Call non-generator method with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
-    with pytest.raises(RayTaskError, match="did not return a generator."):
+    with pytest.raises(TypeError, match="did not return a generator."):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), dict()
         ).result()
@@ -177,7 +175,7 @@ def test_basic_class_callable():
         ).result()
         == "hi-kwarg"
     )
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
         ).result()
@@ -186,7 +184,7 @@ def test_basic_class_callable():
     request_metadata = _make_request_metadata(
         call_method="call_async", is_streaming=True
     )
-    with pytest.raises(RayTaskError, match="did not return a generator."):
+    with pytest.raises(TypeError, match="did not return a generator."):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), dict()
         ).result()
@@ -211,7 +209,7 @@ def test_basic_class_callable():
         ).result()
         == "hi-kwarg"
     )
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
         ).result()
@@ -223,18 +221,18 @@ def test_basic_class_callable_generators():
 
     result_list = []
 
-    async def append_to_list(item: Any):
-        result_list.append(item)
-
     # Call sync generator without is_streaming.
     request_metadata = _make_request_metadata(
         call_method="call_generator", is_streaming=False
     )
     with pytest.raises(
-        RayTaskError, match="Method 'call_generator' returned a generator."
+        TypeError, match="Method 'call_generator' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=append_to_list
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call sync generator.
@@ -242,18 +240,18 @@ def test_basic_class_callable_generators():
         call_method="call_generator", is_streaming=True
     )
     user_callable_wrapper.call_user_method(
-        request_metadata, (10,), dict(), generator_result_callback=append_to_list
+        request_metadata, (10,), dict(), generator_result_callback=result_list.append
     ).result()
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call sync generator raising exception.
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=append_to_list,
+            generator_result_callback=result_list.append,
         ).result()
     assert result_list == [0]
     result_list.clear()
@@ -263,10 +261,13 @@ def test_basic_class_callable_generators():
         call_method="call_async_generator", is_streaming=False
     )
     with pytest.raises(
-        RayTaskError, match="Method 'call_async_generator' returned a generator."
+        TypeError, match="Method 'call_async_generator' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=append_to_list
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call async generator.
@@ -274,18 +275,18 @@ def test_basic_class_callable_generators():
         call_method="call_async_generator", is_streaming=True
     )
     user_callable_wrapper.call_user_method(
-        request_metadata, (10,), dict(), generator_result_callback=append_to_list
+        request_metadata, (10,), dict(), generator_result_callback=result_list.append
     ).result()
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call async generator raising exception.
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=append_to_list,
+            generator_result_callback=result_list.append,
         ).result()
     assert result_list == [0]
 
@@ -297,7 +298,7 @@ def test_basic_function_callable(fn: Callable):
 
     # Call non-generator function with is_streaming.
     request_metadata = _make_request_metadata(is_streaming=True)
-    with pytest.raises(RayTaskError, match="did not return a generator."):
+    with pytest.raises(TypeError, match="did not return a generator."):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), dict()
         ).result()
@@ -318,7 +319,7 @@ def test_basic_function_callable(fn: Callable):
             request_metadata, tuple(), {"suffix": "-kwarg"}
         ).result()
     ) == "hi-kwarg"
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata, tuple(), {"raise_exception": True}
         ).result()
@@ -331,16 +332,16 @@ def test_basic_function_callable_generators(fn: Callable):
 
     result_list = []
 
-    async def append_to_list(item: Any):
-        result_list.append(item)
-
     # Call generator function without is_streaming.
     request_metadata = _make_request_metadata(is_streaming=False)
     with pytest.raises(
-        RayTaskError, match=f"Method '{fn.__name__}' returned a generator."
+        TypeError, match=f"Method '{fn.__name__}' returned a generator."
     ):
         user_callable_wrapper.call_user_method(
-            request_metadata, (10,), dict(), generator_result_callback=append_to_list
+            request_metadata,
+            (10,),
+            dict(),
+            generator_result_callback=result_list.append,
         ).result()
 
     # Call generator function.
@@ -348,18 +349,18 @@ def test_basic_function_callable_generators(fn: Callable):
         call_method="call_generator", is_streaming=True
     )
     user_callable_wrapper.call_user_method(
-        request_metadata, (10,), dict(), generator_result_callback=append_to_list
+        request_metadata, (10,), dict(), generator_result_callback=result_list.append
     ).result()
     assert result_list == list(range(10))
     result_list.clear()
 
     # Call generator function raising exception.
-    with pytest.raises(RayTaskError, match="uh-oh"):
+    with pytest.raises(RuntimeError, match="uh-oh"):
         user_callable_wrapper.call_user_method(
             request_metadata,
             (10,),
             {"raise_exception": True},
-            generator_result_callback=append_to_list,
+            generator_result_callback=result_list.append,
         ).result()
     assert result_list == [0]
 
@@ -527,9 +528,6 @@ def test_grpc_streaming_request():
 
     result_list = []
 
-    async def append_to_list(item: Any):
-        result_list.append(item)
-
     request_metadata = _make_request_metadata(
         call_method="stream", is_grpc_request=True, is_streaming=True
     )
@@ -537,7 +535,7 @@ def test_grpc_streaming_request():
         request_metadata,
         (grpc_request,),
         dict(),
-        generator_result_callback=append_to_list,
+        generator_result_callback=result_list.append,
     ).result()
 
     assert len(result_list) == 10
@@ -616,15 +614,12 @@ def test_http_handler(callable: Callable, monkeypatch):
 
     result_list = []
 
-    async def append_to_list(item: Any):
-        result_list.append(item)
-
     request_metadata = _make_request_metadata(is_http_request=True, is_streaming=True)
     user_callable_wrapper.call_user_method(
         request_metadata,
         (http_request,),
         dict(),
-        generator_result_callback=append_to_list,
+        generator_result_callback=result_list.append,
     ).result()
 
     assert result_list[0]["type"] == "http.response.start"
