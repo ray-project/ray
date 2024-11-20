@@ -22,7 +22,7 @@ class TestClickHouseDatasource:
         datasource = ClickHouseDatasource(
             entity="default.table_name",
             dsn="clickhouse://user:password@localhost:8123/default",
-            columns=("column1", "column2"),
+            columns=["column1", "column2"],
             filters={"column1": ("is", "value1"), "column2": ("greater", 10)},
             order_by=(["column1"], False),
             client_settings={"setting1": "value1"},
@@ -52,8 +52,13 @@ class TestClickHouseDatasource:
     @pytest.mark.parametrize(
         "columns, expected_query_part",
         [
-            (("field1",), "SELECT field1 FROM default.table_name"),
-            (("field1", "field2"), "SELECT field1, field2 FROM default.table_name"),
+            (
+                [
+                    "field1",
+                ],
+                "SELECT field1 FROM default.table_name",
+            ),
+            (["field1", "field2"], "SELECT field1, field2 FROM default.table_name"),
             (None, "SELECT * FROM default.table_name"),
         ],
     )
@@ -109,7 +114,6 @@ class TestClickHouseDatasource:
             assert read_task.metadata.num_rows == expected_rows
 
     def test_get_read_tasks_no_batches(self, datasource, mock_clickhouse_client):
-        # Mock an empty Arrow stream
         mock_reader = mock.MagicMock()
         mock_reader.__iter__.return_value = iter([])
         mock_clickhouse_client.query_arrow_stream.return_value = mock_reader
