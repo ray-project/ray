@@ -3283,10 +3283,9 @@ def read_clickhouse(
             and None are allowed as values.
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC).
-        client_settings: ClickHouse server settings to be used with the session/every request. For more information,
-            see `ClickHouse Connect doc <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_
-        client_kwargs: Optional keyword arguments to pass to the ClickHouse client. For more information,
-            see `ClickHouse Connect doc <https://clickhouse.com/docs/en/integrations/python#settings-argument`_
+        client_settings: Optional ClickHouse server settings to be used with the session/every request. For more information,
+            see `ClickHouse Connect doc <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional keyword arguments to pass to the ClickHouse client.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
