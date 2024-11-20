@@ -1011,14 +1011,15 @@ class HTTPProxy(GenericProxy):
                             response_generator.stop_checking_for_disconnect()
                     elif asgi_message["type"] == "websocket.disconnect":
                         status_code = str(asgi_message["code"])
-                        is_error = (
+                        status = ResponseStatus(
+                            code=status_code,
                             # 1xxx status codes are considered errors aside from:
                             # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
-                            status_code.startswith("1")
-                            and status_code not in ["1000", "1001"]
+                            is_error=(
+                                status_code.startswith("1")
+                                and status_code not in ["1000", "1001"]
+                            ),
                         )
-
-                        status = ResponseStatus(code=status_code, is_error=is_error)
                         response_generator.stop_checking_for_disconnect()
 
                     yield asgi_message
