@@ -66,8 +66,8 @@ Status InMemoryStoreClient::AsyncGetAll(
     const MapCallback<std::string, std::string> &callback) {
   RAY_CHECK(callback);
   auto result = absl::flat_hash_map<std::string, std::string>();
-  result.reserve(table->records_.size());
   auto table = GetOrCreateTable(table_name);
+  result.reserve(table->records_.size());
   absl::MutexLock lock(&(table->mutex_));
   result.insert(table->records_.begin(), table->records_.end());
   main_io_service_.post(
@@ -172,9 +172,8 @@ Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   bool result = table->records_.contains(key);
-  main_io_service_.post(
-      [result, callback = std::move(callback)]() mutable { callback(result); },
-      "GcsInMemoryStore.Exists");
+  main_io_service_.post([result, callback = std::move(callback)]() { callback(result); },
+                        "GcsInMemoryStore.Exists");
   return Status::OK();
 }
 
