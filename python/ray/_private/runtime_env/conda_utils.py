@@ -213,7 +213,10 @@ class ShellCommandException(Exception):
 
 
 def exec_cmd(
-    cmd: List[str], throw_on_error: bool = True, logger: Optional[logging.Logger] = None
+    cmd: List[str],
+    throw_on_error: bool = True,
+    shell: bool = False,
+    logger: Optional[logging.Logger] = None,
 ) -> Tuple[int, str, str]:
     """
     Runs a command as a child process.
@@ -234,6 +237,7 @@ def exec_cmd(
         stdin=subprocess.PIPE,
         stderr=subprocess.PIPE,
         universal_newlines=True,
+        shell=shell,
     )
     (stdout, stderr) = child.communicate()
     exit_code = child.wait()
@@ -284,5 +288,7 @@ def check_if_conda_environment_valid(conda_env_name: str) -> bool:
     We try to `conda activate` it and check that python is runnable
     """
     activate_cmd = get_conda_activate_commands(conda_env_name) + ["python", "--version"]
-    exit_code, _, _ = exec_cmd(activate_cmd, throw_on_error=False)
+    exit_code, _, _ = exec_cmd(
+        [" ".join(activate_cmd)], throw_on_error=False, shell=True
+    )
     return exit_code == 0
