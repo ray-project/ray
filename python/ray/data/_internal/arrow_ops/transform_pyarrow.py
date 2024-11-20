@@ -330,12 +330,10 @@ def concat_and_sort(
 
 
 def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
-    """This is pyarrow.Table.combine_chunks()
-    with support for extension types.
+    """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
+    extended `ChunkedArray` combination protocol.
 
-    TODO update
-
-    This will create a new table by combining the chunks the input table has.
+    For more details check out `combine_chunked_array` py-doc
     """
 
     new_column_values_arrays = []
@@ -349,7 +347,17 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
 def combine_chunked_array(
     array: "pyarrow.ChunkedArray",
 ) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
-    """TODO add"""
+    """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
+
+        1. Handles `ExtensionType`s (like ArrowTensorType, ArrowTensorTypeV2,
+           ArrowPythonObjectType, etc)
+
+        2. Making sure `ChunkedArray`s comprising provided `Table` are combined
+           safely, ie avoiding overflows of Arrow's internal offsets (using int32 for
+           most of its native types, other than "large" kind).
+
+    For more details check py-doc of `_try_combine_chunks_safe` method.
+    """
 
     import pyarrow as pa
 
