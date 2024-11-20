@@ -7,6 +7,8 @@ import grpc
 import pytest
 import requests
 from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
+from starlette.requests import Request
 
 import ray
 import ray.util.state as state_api
@@ -582,6 +584,77 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
     print("serve_grpc_request_latency_ms_sum working as expected.")
 
+
+def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
+    """Verify that 2xx status codes aren't errors, others are."""
+    def check_request_count_metrics(
+        expected_error_count: int,
+        expected_success_count: int,
+    ):
+        resp = requests.get("http://127.0.0.1:9999").text
+        error_count = 0
+        success_count = 0
+        for line in resp.split("\n"):
+            if line.startswith("ray_serve_num_http_error_requests_total"):
+                error_count += int(float(line.split(" ")[-1]))
+            if line.startswith("ray_serve_num_http_requests_total"):
+                success_count += int(float(line.split(" ")[-1]))
+
+        assert error_count == expected_error_count
+        assert success_count == expected_success_count
+        return True
+
+    @serve.deployment
+    async def return_status_code(request: Request):
+        code = int((await request.body()).decode("utf-8"))
+        return PlainTextResponse("", status_code=code)
+
+    serve.run(return_status_code.bind())
+
+    # 200 is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"200")
+    assert r.status_code == 200
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=1,
+    )
+
+    # 2xx is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"250")
+    assert r.status_code == 250
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=2,
+    )
+
+    # 3xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"300")
+    assert r.status_code == 300
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=1,
+        expected_success_count=3,
+    )
+
+    # 4xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"400")
+    assert r.status_code == 400
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=2,
+        expected_success_count=4,
+    )
+
+    # 5xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"500")
+    assert r.status_code == 500
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=3,
+        expected_success_count=5,
+    )
 
 def test_replica_metrics_fields(serve_start_shutdown):
     """Test replica metrics fields"""
