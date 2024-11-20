@@ -7,8 +7,8 @@ import grpc
 import pytest
 import requests
 from fastapi import FastAPI
-from starlette.responses import PlainTextResponse
 from starlette.requests import Request
+from starlette.responses import PlainTextResponse
 
 import ray
 import ray.util.state as state_api
@@ -587,6 +587,7 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
 
 def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
     """Verify that 2xx status codes aren't errors, others are."""
+
     def check_request_count_metrics(
         expected_error_count: int,
         expected_success_count: int,
@@ -655,6 +656,7 @@ def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
         expected_error_count=3,
         expected_success_count=5,
     )
+
 
 def test_replica_metrics_fields(serve_start_shutdown):
     """Test replica metrics fields"""
