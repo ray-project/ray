@@ -2941,7 +2941,7 @@ CoreWorker::ListNamedActorsLocalMode() {
   for (auto it = local_mode_named_actor_registry_.begin();
        it != local_mode_named_actor_registry_.end();
        it++) {
-    actors.emplace_back(std::make_pair(/*namespace=*/"", it->first));
+    actors.emplace_back(/*namespace=*/"", it->first);
   }
   return std::make_pair(std::move(actors), Status::OK());
 }
