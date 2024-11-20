@@ -981,6 +981,7 @@ void LocalTaskManager::Dispatch(
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  RAY_CHECK(worker);
   const auto &task_spec = task.GetTaskSpecification();
 
   if (task_spec.IsActorCreationTask()) {
@@ -1010,6 +1011,7 @@ void LocalTaskManager::Dispatch(
   } else {
     allocated_resources = worker->GetAllocatedInstances();
   }
+  RAY_LOG(INFO) << "here 1";
   ::ray::rpc::ResourceMapEntry *resource;
   for (auto &resource_id : allocated_resources->ResourceIds()) {
     bool first = true;  // Set resource name only if at least one of its
