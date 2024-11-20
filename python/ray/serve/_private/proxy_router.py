@@ -1,18 +1,8 @@
 import logging
-from abc import ABC, abstractmethod
 from typing import Callable, Dict, List, Optional, Tuple
 
-from ray.serve._private.common import (
-    ApplicationName,
-    DeploymentHandleSource,
-    DeploymentID,
-    EndpointInfo,
-    RequestProtocol,
-)
-from ray.serve._private.constants import (
-    RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-    SERVE_LOGGER_NAME,
-)
+from ray.serve._private.common import ApplicationName, DeploymentID, EndpointInfo
+from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.handle import DeploymentHandle
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -21,27 +11,32 @@ NO_ROUTES_MESSAGE = "Route table is not populated yet."
 NO_REPLICAS_MESSAGE = "No replicas are available yet."
 
 
-class ProxyRouter(ABC):
+class ProxyRouter:
     """Router interface for the proxy to use."""
 
     def __init__(
         self,
         get_handle: Callable[[str, str], DeploymentHandle],
-        protocol: RequestProtocol,
     ):
         # Function to get a handle given a name. Used to mock for testing.
         self._get_handle = get_handle
-        # Protocol to config handle
-        self._protocol = protocol
         # Contains a ServeHandle for each endpoint.
         self.handles: Dict[DeploymentID, DeploymentHandle] = dict()
         # Flipped to `True` once the route table has been updated at least once.
         # The proxy router is not ready for traffic until the route table is populated
         self._route_table_populated = False
 
-    @abstractmethod
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        raise NotImplementedError
+        # Info used for HTTP proxy
+        # Routes sorted in order of decreasing length.
+        self.sorted_routes: List[str] = list()
+        # Endpoints associated with the routes.
+        self.route_info: Dict[str, DeploymentID] = dict()
+        # Map of application name to is_cross_language.
+        self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
+
+        # Info used for gRPC proxy
+        # Endpoints info associated with endpoints.
+        self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
 
     def ready_for_traffic(self, is_head: bool) -> Tuple[bool, str]:
         """Whether the proxy router is ready to serve traffic.
@@ -72,30 +67,14 @@ class ProxyRouter(ABC):
 
         return False, NO_REPLICAS_MESSAGE
 
-
-class LongestPrefixRouter(ProxyRouter):
-    """Router that performs longest prefix matches on incoming routes."""
-
-    def __init__(
-        self,
-        get_handle: Callable[[str, str], DeploymentHandle],
-        protocol: RequestProtocol,
-    ):
-        super().__init__(get_handle, protocol)
-
-        # Routes sorted in order of decreasing length.
-        self.sorted_routes: List[str] = list()
-        # Endpoints associated with the routes.
-        self.route_info: Dict[str, DeploymentID] = dict()
-        # Map of application name to is_cross_language.
-        self.app_to_is_cross_language: Dict[ApplicationName, bool] = dict()
-
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]) -> None:
+    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
         logger.info(
-            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
+            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": True}
         )
         if endpoints:
             self._route_table_populated = True
+
+        self.endpoints = endpoints
 
         existing_handles = set(self.handles.keys())
         routes = []
@@ -108,19 +87,7 @@ class LongestPrefixRouter(ProxyRouter):
             if endpoint in self.handles:
                 existing_handles.remove(endpoint)
             else:
-                handle = self._get_handle(endpoint.name, endpoint.app_name)
-                # NOTE(zcin): since the router is eagerly initialized here,
-                # it will receive the replica set from the controller early.
-                if not handle.is_initialized:
-                    handle._init(
-                        _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-                        _source=DeploymentHandleSource.PROXY,
-                    )
-                handle._set_request_protocol(self._protocol)
-                # Streaming codepath isn't supported for Java.
-                self.handles[endpoint] = handle.options(
-                    stream=not info.app_is_cross_language
-                )
+                self.handles[endpoint] = self._get_handle(endpoint, info)
 
         # Clean up any handles that are no longer used.
         if len(existing_handles) > 0:
@@ -173,53 +140,6 @@ class LongestPrefixRouter(ProxyRouter):
 
         return None
 
-
-class EndpointRouter(ProxyRouter):
-    """Router that matches endpoint to return the handle."""
-
-    def __init__(self, get_handle: Callable, protocol: RequestProtocol):
-        super().__init__(get_handle, protocol)
-
-        # Endpoints info associated with endpoints.
-        self.endpoints: Dict[DeploymentID, EndpointInfo] = dict()
-
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        logger.info(
-            f"Got updated endpoints: {endpoints}.", extra={"log_to_stderr": False}
-        )
-        if endpoints:
-            self._route_table_populated = True
-
-        self.endpoints = endpoints
-
-        existing_handles = set(self.handles.keys())
-        for endpoint, info in endpoints.items():
-            if endpoint in self.handles:
-                existing_handles.remove(endpoint)
-            else:
-                handle = self._get_handle(endpoint.name, endpoint.app_name)
-                # NOTE(zcin): since the router is eagerly initialized here,
-                # it will receive the replica set from the controller early.
-                if not handle.is_initialized:
-                    handle._init(
-                        _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
-                        _source=DeploymentHandleSource.PROXY,
-                    )
-                handle._set_request_protocol(self._protocol)
-                # Streaming codepath isn't supported for Java.
-                self.handles[endpoint] = handle.options(
-                    stream=not info.app_is_cross_language
-                )
-
-        # Clean up any handles that are no longer used.
-        if len(existing_handles) > 0:
-            logger.info(
-                f"Deleting {len(existing_handles)} unused handles.",
-                extra={"log_to_stderr": False},
-            )
-        for endpoint in existing_handles:
-            del self.handles[endpoint]
-
     def get_handle_for_endpoint(
         self, target_app_name: str
     ) -> Optional[Tuple[str, DeploymentHandle, bool]]:
@@ -228,7 +148,7 @@ class EndpointRouter(ProxyRouter):
         Args:
             target_app_name: app_name to match against.
         Returns:
-            (route, handle, app_name, is_cross_language) for the single app if there
+            (route, handle, is_cross_language) for the single app if there
             is only one, else find the app and handle for exact match. Else return None.
         """
         for endpoint_tag, handle in self.handles.items():

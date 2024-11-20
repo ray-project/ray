@@ -1868,7 +1868,12 @@ Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_on
     }
   }
   // Also try to delete all objects locally.
-  return DeleteImpl(object_ids, local_only);
+  Status status = DeleteImpl(object_ids, local_only);
+  if (status.IsIOError()) {
+    return Status::UnexpectedSystemExit(status.ToString());
+  } else {
+    return status;
+  }
 }
 
 Status CoreWorker::GetLocationFromOwner(
@@ -2110,7 +2115,8 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &concurrency_group_name,
     bool include_job_config,
     int64_t generator_backpressure_num_objects,
-    bool enable_task_events) {
+    bool enable_task_events,
+    const std::unordered_map<std::string, std::string> &labels) {
   // Build common task spec.
   auto override_runtime_env_info =
       OverrideTaskOrActorRuntimeEnvInfo(serialized_runtime_env_info);
@@ -2156,7 +2162,8 @@ void CoreWorker::BuildCommonTaskSpec(
       main_thread_current_task_id,
       override_runtime_env_info,
       concurrency_group_name,
-      enable_task_events);
+      enable_task_events,
+      labels);
   // Set task arguments.
   for (const auto &arg : args) {
     builder.AddArg(*arg);
@@ -2212,7 +2219,8 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/
                       task_options.generator_backpressure_num_objects,
-                      /*enable_task_event*/ task_options.enable_task_events);
+                      /*enable_task_event*/ task_options.enable_task_events,
+                      task_options.labels);
   ActorID root_detached_actor_id;
   if (!worker_context_.GetRootDetachedActorID().IsNil()) {
     root_detached_actor_id = worker_context_.GetRootDetachedActorID();
@@ -2303,7 +2311,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
                       /*generator_backpressure_num_objects*/ -1,
-                      /*enable_task_events*/ actor_creation_options.enable_task_events);
+                      /*enable_task_events*/ actor_creation_options.enable_task_events,
+                      actor_creation_options.labels);
 
   // If the namespace is not specified, get it from the job.
   const auto ray_namespace = (actor_creation_options.ray_namespace.empty()
@@ -2323,7 +2332,8 @@ Status CoreWorker::CreateActor(const RayFunction &function,
       ray_namespace,
       actor_creation_options.max_pending_calls,
       actor_creation_options.execute_out_of_order,
-      actor_creation_options.enable_task_events);
+      actor_creation_options.enable_task_events,
+      actor_creation_options.labels);
   std::string serialized_actor_handle;
   actor_handle->Serialize(&serialized_actor_handle);
   ActorID root_detached_actor_id;
@@ -3934,7 +3944,7 @@ void CoreWorker::ProcessSubscribeObjectLocations(
 
 std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
 CoreWorker::GetLocalOngoingLineageReconstructionTasks() const {
-  return task_manager_->GetOngoingLineageReconstructionTasks();
+  return task_manager_->GetOngoingLineageReconstructionTasks(*actor_manager_);
 }
 
 Status CoreWorker::GetLocalObjectLocations(
@@ -4037,7 +4047,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
     RAY_LOG(INFO).WithField(task_id).WithField(current_actor_id)
         << "Cancel an actor task";
     CancelActorTaskOnExecutor(
-        caller_worker_id, task_id, force_kill, recursive, on_cancel_callback);
+        caller_worker_id, task_id, force_kill, recursive, std::move(on_cancel_callback));
   } else {
     RAY_CHECK(current_actor_id.IsNil());
     RAY_LOG(INFO).WithField(task_id) << "Cancel a normal task";
@@ -4048,7 +4058,7 @@ void CoreWorker::HandleCancelTask(rpc::CancelTaskRequest request,
 void CoreWorker::CancelTaskOnExecutor(TaskID task_id,
                                       bool force_kill,
                                       bool recursive,
-                                      OnCanceledCallback on_canceled) {
+                                      const OnCanceledCallback &on_canceled) {
   bool requested_task_running;
   {
     absl::MutexLock lock(&mutex_);

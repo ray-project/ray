@@ -795,6 +795,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
   /// for objects we do not own.
   ///
+  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
+  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
+  /// that calls this function in application code can properly retry when hitting the
+  /// IOError.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
@@ -1462,7 +1467,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
-      bool enable_task_events = true);
+      bool enable_task_events = true,
+      const std::unordered_map<std::string, std::string> &labels = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1710,7 +1716,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   void CancelTaskOnExecutor(TaskID intended_task_id,
                             bool force_kill,
                             bool recursive,
-                            OnCanceledCallback on_canceled);
+                            const OnCanceledCallback &on_canceled);
 
   /// Cancel an actor task queued or running in the current worker.
   ///

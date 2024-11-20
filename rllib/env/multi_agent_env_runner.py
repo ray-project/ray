@@ -35,6 +35,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_EPISODES,
+    NUM_EPISODES_LIFETIME,
     NUM_MODULE_STEPS_SAMPLED,
     NUM_MODULE_STEPS_SAMPLED_LIFETIME,
     WEIGHTS_SEQ_NO,
@@ -281,9 +282,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -321,7 +323,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                     force_reset=True,
                 )
             obs, rewards, terminateds, truncateds, infos = results
-            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
 
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
@@ -345,6 +346,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 truncateds=truncateds,
                 extra_model_outputs=extra_model_outputs,
             )
+
+            ts += self._increase_sampled_metrics(self.num_envs, obs, self._episode)
 
             # Make the `on_episode_step` callback (before finalizing the episode
             # object).
@@ -482,9 +485,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
                 # MultiRLModule forward pass: Explore or not.
                 if explore:
-                    env_steps_lifetime = self.metrics.peek(
-                        NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0
-                    ) + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    env_steps_lifetime = (
+                        self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
+                        + self.metrics.peek(NUM_ENV_STEPS_SAMPLED, default=0)
+                    ) * (self.config.num_env_runners or 1)
                     to_env = self.module.forward_exploration(
                         to_module, t=env_steps_lifetime
                     )
@@ -522,8 +526,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 )
             obs, rewards, terminateds, truncateds, infos = results
 
-            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
-
             # TODO (sven): This simple approach to re-map `to_env` from a
             #  dict[col, List[MADict]] to a dict[agentID, MADict] would not work for
             #  a vectorized env.
@@ -546,6 +548,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 truncateds=truncateds,
                 extra_model_outputs=extra_model_outputs,
             )
+
+            ts += self._increase_sampled_metrics(self.num_envs, obs, _episode)
 
             # Make `on_episode_step` callback before finalizing the episode.
             self._make_on_episode_callback("on_episode_step", _episode)
@@ -672,14 +676,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 dict(agent_steps),
             )
 
-        # Log num episodes counter for this iteration.
-        self.metrics.log_value(
-            NUM_EPISODES,
-            len(self._done_episodes_for_metrics),
-            reduce="sum",
-            clear_on_reduce=True,  # Not a lifetime count.
-        )
-
         # Now that we have logged everything, clear cache of done episodes.
         self._done_episodes_for_metrics.clear()
 
@@ -696,7 +692,6 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
     ) -> StateDict:
         # Basic state dict.
         state = {
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
             NUM_ENV_STEPS_SAMPLED_LIFETIME: (
                 self.metrics.peek(NUM_ENV_STEPS_SAMPLED_LIFETIME, default=0)
             ),
@@ -712,6 +707,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
+
         # Env-to-module connector.
         if self._check_component(
             COMPONENT_ENV_TO_MODULE_CONNECTOR, components, not_components
@@ -915,10 +912,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         )
 
     def _increase_sampled_metrics(self, num_steps, next_obs, episode):
+        # Env steps.
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
         )
         self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        # Completed episodes.
+        if episode.is_done:
+            self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
+            self.metrics.log_value(NUM_EPISODES_LIFETIME, 1, reduce="sum")
+
         # TODO (sven): obs is not-vectorized. Support vectorized MA envs.
         for aid in next_obs:
             self.metrics.log_value(
