@@ -4,10 +4,10 @@ import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.object_extensions.arrow import PYARROW_VERSION
 from ray.air.util.tensor_extensions.arrow import (
     INT32_OVERFLOW_THRESHOLD,
     MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
+    PYARROW_VERSION,
 )
 
 try:
