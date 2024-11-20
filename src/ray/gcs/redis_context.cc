@@ -530,7 +530,7 @@ Status ConnectRedisSentinel(RedisContext &context,
     RAY_LOG(ERROR)
         << "Failed to get the ip and port of the primary node from Redis sentinel";
     return Status::RedisError(
-        "failed to get the ip and port of the primary node from redis sentinel");
+        "Failed to get the ip and port of the primary node from Redis sentinel");
   } else {
     RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << actual_ip
                   << ":" << actual_port;
