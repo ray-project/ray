@@ -27,14 +27,17 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
 #include <sstream>
+#include <string_view>
 
 #include "absl/debugging/failure_signal_handler.h"
 #include "absl/debugging/stacktrace.h"
 #include "absl/debugging/symbolize.h"
+#include "absl/strings/numbers.h"
 #include "absl/strings/str_format.h"
 #include "nlohmann/json.hpp"
 #include "ray/util/event_label.h"
@@ -301,10 +304,8 @@ void RayLog::InitLogFormat() {
   log_format_json_ = false;
   log_format_pattern_ = kLogFormatTextPattern;
 
-  const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON");
-  if (var_value != nullptr) {
-    std::string data = var_value;
-    if (data == "1") {
+  if (const char *var_value = std::getenv("RAY_BACKEND_LOG_JSON"); var_value != nullptr) {
+    if (std::string_view{var_value} == std::string_view{"1"}) {
       log_format_json_ = true;
       log_format_pattern_ = kLogFormatJsonPattern;
     }
@@ -321,7 +322,9 @@ void RayLog::StartRayLog(const std::string &app_name,
   log_dir_ = log_dir;
 
   // All the logging sinks to add.
-  std::vector<spdlog::sink_ptr> sinks;
+  // One for file/stdout, another for stderr.
+  std::array<spdlog::sink_ptr, 2> sinks;  // Intentionally no initialization.
+
   auto level = GetMappedSeverity(severity_threshold_);
   std::string app_name_without_path = app_name;
   if (app_name.empty()) {
@@ -343,17 +346,20 @@ void RayLog::StartRayLog(const std::string &app_name,
 #endif
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
-    if (std::getenv("RAY_ROTATION_MAX_BYTES")) {
-      long max_size = std::atol(std::getenv("RAY_ROTATION_MAX_BYTES"));
-      // 0 means no log rotation in python, but not in spdlog. We just use the default
-      // value here.
-      if (max_size != 0) {
+    if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+        ray_rotation_max_bytes != nullptr) {
+      long max_size = 0;
+      if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+        // 0 means no log rotation in python, but not in spdlog. We just use the default
+        // value here.
         log_rotation_max_size_ = max_size;
       }
     }
-    if (std::getenv("RAY_ROTATION_BACKUP_COUNT")) {
-      long file_num = std::atol(std::getenv("RAY_ROTATION_BACKUP_COUNT"));
-      if (file_num != 0) {
+
+    if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
+        ray_rotation_backup_count != nullptr) {
+      long file_num = 0;
+      if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
         log_rotation_file_num_ = file_num;
       }
     }
@@ -370,23 +376,24 @@ void RayLog::StartRayLog(const std::string &app_name,
         log_rotation_max_size_,
         log_rotation_file_num_);
     file_sink->set_level(level);
-    sinks.push_back(file_sink);
+    sinks[0] = std::move(file_sink);
   } else {
     component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(level);
-    sinks.push_back(console_sink);
+    sinks[0] = std::move(console_sink);
   }
 
   // In all cases, log errors to the console log so they are in driver logs.
   // https://github.com/ray-project/ray/issues/12893
   auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
   err_sink->set_level(spdlog::level::err);
-  sinks.push_back(err_sink);
+  sinks[1] = std::move(err_sink);
 
   // Set the combined logger.
-  auto logger = std::make_shared<spdlog::logger>(
-      RayLog::GetLoggerName(), sinks.begin(), sinks.end());
+  auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),
+                                                 std::make_move_iterator(sinks.begin()),
+                                                 std::make_move_iterator(sinks.end()));
   logger->set_level(level);
   // Set the pattern of all sinks.
   logger->set_pattern(log_format_pattern_);
