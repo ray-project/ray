@@ -1009,16 +1009,16 @@ class HTTPProxy(GenericProxy):
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
-                    elif asgi_message["type"] == "websocket.disconnect":
+                    elif asgi_message["type"] in [
+                        "websocket.close",
+                        "websocket.disconnect",
+                    ]:
                         status_code = str(asgi_message["code"])
                         status = ResponseStatus(
                             code=status_code,
-                            # 1xxx status codes are considered errors aside from:
+                            # All status codes are considered errors aside from:
                             # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
-                            is_error=(
-                                status_code.startswith("1")
-                                and status_code not in ["1000", "1001"]
-                            ),
+                            is_error=status_code not in ["1000", "1001"],
                         )
                         response_generator.stop_checking_for_disconnect()
 
