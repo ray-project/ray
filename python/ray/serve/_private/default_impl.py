@@ -56,6 +56,12 @@ def create_deployment_scheduler(
     )
 
 
+def create_replica_impl(**kwargs):
+    from ray.serve._private.replica import Replica
+
+    return Replica(**kwargs)
+
+
 def create_dynamic_handle_options(**kwargs):
     return DynamicHandleOptions(**kwargs)
 
