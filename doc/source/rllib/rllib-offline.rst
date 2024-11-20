@@ -51,9 +51,8 @@ Example: Training an expert policy.
 In this example you train an PPO agent to play ``CartPole-v1`` until it collects an episode mean reward of ``450.0``. You checkpoint 
 this agent and later use its policy to record expert data to local disk.
 
-.. testsetup::
-    :hide:
-
+.. testsetup:: 
+    
     # Define a shared variable to store the path to the
     # best checkpoint.
     best_checkpoint = None
