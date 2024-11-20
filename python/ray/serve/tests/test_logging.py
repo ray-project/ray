@@ -111,11 +111,11 @@ def test_http_access_log(serve_instance):
             self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
 
         @fastapi_app.get("/")
-        def root(self):
+        def get_root(self):
             return PlainTextResponse(self._replica_unique_id)
 
         @fastapi_app.post("/")
-        def root(self):
+        def post_root(self):
             return PlainTextResponse(self._replica_unique_id)
 
         @fastapi_app.get("/{status}")
@@ -123,7 +123,7 @@ def test_http_access_log(serve_instance):
             return PlainTextResponse(self._replica_unique_id, status_code=int(status))
 
         @fastapi_app.put("/fail")
-        def template(self):
+        def fail(self):
             raise RuntimeError("OOPS!")
 
     serve.run(Handler.bind())
@@ -131,7 +131,13 @@ def test_http_access_log(serve_instance):
     f = io.StringIO()
     with redirect_stderr(f):
 
-        def check_log(replica_id: ReplicaID, method: str, route: str, status_code: str, fail: bool = False):
+        def check_log(
+            replica_id: ReplicaID,
+            method: str,
+            route: str,
+            status_code: str,
+            fail: bool = False,
+        ):
             s = f.getvalue()
             return all(
                 [
@@ -148,19 +154,40 @@ def test_http_access_log(serve_instance):
         r = requests.get("http://localhost:8000/")
         assert r.status_code == 200
         replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
-        wait_for_condition(check_log, replica_id=replica_id, method="GET", route="/", status_code="200")
+        wait_for_condition(
+            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+        )
 
         r = requests.post("http://localhost:8000/")
         assert r.status_code == 200
-        wait_for_condition(check_log, replica_id=replica_id, method="POST", route="/", status_code="200")
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="POST",
+            route="/",
+            status_code="200",
+        )
 
         r = requests.get("http://localhost:8000/350")
         assert r.status_code == 350
-        wait_for_condition(check_log, replica_id=replica_id, method="GET", route="/{status}", status_code="350")
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/{status}",
+            status_code="350",
+        )
 
         r = requests.put("http://localhost:8000/fail")
         assert r.status_code == 500
-        wait_for_condition(check_log, replica_id=replica_id, method="PUT", route="/fail", status_code="500", fail=True)
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="PUT",
+            route="/fail",
+            status_code="500",
+            fail=True,
+        )
 
 
 def test_handle_access_log(serve_instance):
