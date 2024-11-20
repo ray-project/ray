@@ -214,7 +214,7 @@ Lance
    read_lance
 
 ClickHouse
------
+----------
 
 .. autosummary::
    :nosignatures:
