@@ -107,7 +107,7 @@ def enable_redis_sentinel():
 def redis_sentinel_replicas():
     import os
 
-    return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "3"))
+    return int(os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL_REPLICAS", "2"))
 
 
 def get_redis_cli(port, enable_tls):
