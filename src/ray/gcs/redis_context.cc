@@ -532,7 +532,7 @@ Status ConnectRedisSentinel(RedisContext &context,
     return Status::RedisError(
         "failed to get the ip and port of the primary node from redis sentinel");
   } else {
-    RAY_LOG(INFO) << "connecting to the redis primary node behind sentinel: " << actual_ip
+    RAY_LOG(INFO) << "Connecting to the Redis primary node behind sentinel: " << actual_ip
                   << ":" << actual_port;
     context.Disconnect();
     return context.Connect(actual_ip, std::stoi(actual_port), password, enable_ssl);
