@@ -28,6 +28,7 @@ from ray.train.v2._internal.execution.failure_handling import DefaultFailurePoli
 from ray.train.v2._internal.execution.scaling_policy import create_scaling_policy
 from ray.train.v2._internal.util import construct_train_func
 from ray.train.v2.api.config import RunConfig, ScalingConfig
+from ray.train.v2.api.result import Result
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 logger = logging.getLogger(__name__)
@@ -161,7 +162,7 @@ class DataParallelTrainer:
         if metadata != _UNSUPPORTED:
             raise NotImplementedError(error_msg.format("metadata"))
 
-    def fit(self):
+    def fit(self) -> Result:
         train_fn = construct_train_func(
             self.train_loop_per_worker,
             config=self.train_loop_config,

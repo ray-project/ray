@@ -33,4 +33,4 @@ def get_checkpoint() -> Optional[Checkpoint]:
 
 @_copy_doc(session.get_dataset_shard)
 def get_dataset_shard(dataset_name: Optional[str] = None) -> Optional["DataIterator"]:
-    raise NotImplementedError
+    return get_train_context().get_dataset_shard(dataset_name)
