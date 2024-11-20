@@ -513,7 +513,7 @@ Status ConnectRedisSentinel(RedisContext &context,
       << "Redis sentinel master info should be REDIS_REPLY_ARRAY but got "
       << redis_reply->type;
   RAY_CHECK_EQ(redis_reply->elements, 1UL)
-      << "expecting only one primary behind the redis sentinel";
+      << "There should be only one primary behind the Redis sentinel";
   auto primary = redis_reply->element[0];
   std::string actual_ip, actual_port;
   for (size_t i = 0; i < primary->elements; i += 2) {
