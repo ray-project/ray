@@ -59,6 +59,12 @@ def create_deployment_scheduler(
     )
 
 
+def create_replica_impl(**kwargs):
+    from ray.serve._private.replica import Replica
+
+    return Replica(**kwargs)
+
+
 def create_dynamic_handle_options(**kwargs):
     return DynamicHandleOptions(**kwargs)
 
@@ -197,6 +203,12 @@ def create_deployment_scheduler(  # noqa: F811
         create_placement_group_fn=create_placement_group_fn_override
         or ray.util.placement_group,
     )
+
+
+def create_replica_impl(**kwargs):  # noqa: F811
+    from ray.anyscale.serve._private.replica import AnyscaleReplica
+
+    return AnyscaleReplica(**kwargs)
 
 
 def create_init_handle_options(**kwargs):  # noqa: F811
