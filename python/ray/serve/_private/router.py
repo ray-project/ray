@@ -757,17 +757,14 @@ class SharedRouterLongPollClient:
         # Register the new listeners on the long poll client.
         # Some of these listeners may already exist, but it's safe to add them again.
         key_listeners = {
-            **{
-                (LongPollNamespace.RUNNING_REPLICAS, deployment_id): partial(
-                    self.update_running_replicas, deployment_id=deployment_id
-                )
-                for deployment_id in self.routers.keys()
-            },
-            **{
-                (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id): partial(
-                    self.update_deployment_config, deployment_id=deployment_id
-                )
-                for deployment_id in self.routers.keys()
-            },
+            (LongPollNamespace.RUNNING_REPLICAS, deployment_id): partial(
+                self.update_running_replicas, deployment_id=deployment_id
+            )
+            for deployment_id in self.routers.keys()
+        } | {
+            (LongPollNamespace.DEPLOYMENT_CONFIG, deployment_id): partial(
+                self.update_deployment_config, deployment_id=deployment_id
+            )
+            for deployment_id in self.routers.keys()
         }
         self.long_poll_client.add_key_listeners(key_listeners)
