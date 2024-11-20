@@ -948,7 +948,7 @@ def test_composite_channel_single_reader(ray_start_cluster):
         )
     )
     ray.get(actor2.write.remote("world hello"))
-    assert actor2_to_driver_channel.read() == "world hello"
+    assert actor2_to_driver_channel.read(driver_actor._actor_id.hex()) == "world hello"
 
 
 @pytest.mark.skipif(
