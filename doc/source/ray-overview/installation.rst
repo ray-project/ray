@@ -441,8 +441,8 @@ Install Ray Java with Maven
 ---------------------------
 
 .. note::
-   
-   All Ray Java APIs are experimental and only supported by the community. 
+
+   All Ray Java APIs are experimental and only supported by the community.
 
 Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
 Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
@@ -506,7 +506,7 @@ Install Ray C++
 
 .. note::
 
-  All Ray C++ APIs are experimental and only supported by the community. 
+  All Ray C++ APIs are experimental and only supported by the community.
 
 You can install and use Ray C++ API as follows.
 
