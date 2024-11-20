@@ -1469,7 +1469,7 @@
   group: Golden Notebook tests
   working_dir: golden_notebook_tests
 
-  frequency: nightly-3x
+  frequency: manual
   team: ml
 
   cluster:
