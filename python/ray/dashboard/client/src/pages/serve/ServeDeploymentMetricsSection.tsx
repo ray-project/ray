@@ -56,7 +56,6 @@ export const ServeReplicaMetricsSection = ({
     prometheusHealth,
     dashboardUids,
     dashboardDatasource,
-    serverTimeZone,
     currentTimeZone,
   } = useContext(GlobalContext);
   const grafanaServeDashboardUid =
