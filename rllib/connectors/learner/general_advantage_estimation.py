@@ -8,6 +8,7 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.evaluation.postprocessing import Postprocessing
+from ray.rllib.utils.annotations import override
 from ray.rllib.utils.numpy import convert_to_numpy
 from ray.rllib.utils.postprocessing.value_predictions import compute_value_targets
 from ray.rllib.utils.postprocessing.zero_padding import (
@@ -69,6 +70,7 @@ class GeneralAdvantageEstimation(ConnectorV2):
         # vf targets) into tensors.
         self._numpy_to_tensor_connector = None
 
+    @override(ConnectorV2)
     def __call__(
         self,
         *,

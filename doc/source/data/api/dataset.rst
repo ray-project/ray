@@ -23,3 +23,15 @@ Developer API
   block.BlockExecStats
   block.BlockMetadata
   block.BlockAccessor
+
+Deprecated API
+--------------
+
+.. currentmodule:: ray.data
+
+.. autosummary::
+  :nosignatures:
+  :toctree: doc/
+
+  Dataset.iter_tf_batches
+  Dataset.to_torch
