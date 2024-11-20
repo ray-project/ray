@@ -130,9 +130,6 @@ class Batcher(BatcherInterface):
                 # the leftovers.
                 leftover.append(block)
             elif accessor.num_rows() <= needed:
-                # We need this entire block to fill out a batch.
-                # We need to call `accessor.slice()` to ensure
-                # the subsequent block's type are the same.
                 output.add_block(accessor.to_block())
                 needed -= accessor.num_rows()
             else:

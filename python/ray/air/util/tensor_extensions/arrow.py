@@ -216,7 +216,7 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _len_gt_2gb(obj: Any) -> bool:
+    def _len_gt_overflow_threshold(obj: Any) -> bool:
         # NOTE: This utility could be seeing objects other than strings or bytes in
         #       cases when column contains non-scalar non-homogeneous object types as
         #       column values, therefore making Arrow unable to infer corresponding
@@ -230,11 +230,11 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         return False
 
     if pa.types.is_binary(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_binary()
     elif pa.types.is_string(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_string()
 

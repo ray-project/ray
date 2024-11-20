@@ -436,7 +436,7 @@ def _try_combine_chunks_safe(
     # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
     # `Array` since
     #     - It's estimated to hold > 2 GiB
-    #     - It's type is not of the "large" kind (and hence is using int32
+    #     - Its type is not of the "large" kind (and hence is using int32
     #       offsets internally, which would overflow)
     #
     # In this case instead of combining into single contiguous array, we
