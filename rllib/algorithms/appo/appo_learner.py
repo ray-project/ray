@@ -2,6 +2,7 @@ import abc
 from typing import Any, Dict, Optional
 
 from ray.rllib.algorithms.appo.appo import APPOConfig
+from ray.rllib.algorithms.appo.utils import CircularBuffer
 from ray.rllib.algorithms.impala.impala_learner import IMPALALearner
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.core.learner.utils import update_target_network
@@ -28,6 +29,11 @@ class APPOLearner(IMPALALearner):
 
     @override(IMPALALearner)
     def build(self):
+        self._learner_thread_in_queue = CircularBuffer(
+            num_batches=self.config.circular_buffer_num_batches,
+            iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
+        )
+
         super().build()
 
         # Make target networks.
