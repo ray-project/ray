@@ -703,7 +703,7 @@ class Dataset:
         col: str,
         fn: Callable[
             [DataBatch],
-            Union["pyarrow.Array", "pandas.Series", Dict[str, "np.ndarray"]],
+            Union["pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", "np.ndarray"],
         ],
         *,
         batch_format: Optional[str] = "pandas",
