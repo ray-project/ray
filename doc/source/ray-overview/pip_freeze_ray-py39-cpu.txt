@@ -13,10 +13,10 @@ attrs==21.4.0
 azure-cli-core==2.40.0
 azure-cli-telemetry==1.0.8
 azure-common==1.1.28
-azure-core==1.31.0
+azure-core==1.32.0
 azure-identity==1.10.0
 azure-mgmt-compute==23.1.0
-azure-mgmt-core==1.4.0
+azure-mgmt-core==1.5.0
 azure-mgmt-network==19.0.0
 azure-mgmt-resource==20.0.0
 backoff==1.10.0
@@ -32,7 +32,7 @@ charset-normalizer==3.3.2
 click==8.1.7
 cloudpickle==2.2.0
 colorful==0.5.5
-conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1722273159124/work
+conda @ file:///home/conda/feedstock_root/build_artifacts/conda_1729155160301/work
 conda-content-trust @ file:///croot/conda-content-trust_1714483159009/work
 conda-libmamba-solver @ file:///croot/conda-libmamba-solver_1706733287605/work/src
 conda-package-handling @ file:///croot/conda-package-handling_1718138267740/work
@@ -58,17 +58,16 @@ google-auth==2.23.4
 google-auth-httplib2==0.2.0
 google-oauth==1.0.1
 googleapis-common-protos==1.61.0
-grpcio==1.60.0
-gymnasium==0.28.1
+grpcio==1.66.2
+gymnasium==1.0.0
 h11==0.12.0
 httplib2==0.22.0
-httptools==0.6.1
+httptools==0.6.4
 humanfriendly==10.0
 idna @ file:///croot/idna_1714398848350/work
 imageio==2.34.2
 importlib-metadata==6.11.0
-isodate==0.6.1
-jax-jumpy==1.0.0
+isodate==0.7.2
 Jinja2==3.1.2
 jmespath==1.0.1
 jsonpatch @ file:///croot/jsonpatch_1714483231291/work
@@ -104,7 +103,7 @@ packaging==23.0
 pandas==1.5.3
 paramiko==2.12.0
 pillow==10.3.0
-pkginfo==1.11.1
+pkginfo==1.11.2
 platformdirs==3.11.0
 pluggy @ file:///tmp/build/80754af9/pluggy_1648024445381/work
 portalocker==2.10.1
@@ -123,21 +122,21 @@ Pygments==2.18.0
 PyJWT==2.9.0
 PyNaCl==1.5.0
 pyOpenSSL==23.0.0
-pyparsing==3.1.4
+pyparsing==3.2.0
 pyrsistent==0.20.0
 PySocks @ file:///tmp/build/80754af9/pysocks_1605305812635/work
 python-dateutil==2.8.2
 python-dotenv==1.0.1
 pytz==2022.7.1
 PyYAML==6.0.1
-ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=29398ae540c9e4047328710b6bd8cce2cc9f4f82deb75db76a8632d6f602dea5
+ray @ file:///home/ray/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl#sha256=51dff03e70d4cb811226c482302b7c73c6b9a9b73177f4d49e3c85d05b555803
 redis==3.5.3
 requests==2.31.0
 requests-oauthlib==2.0.0
 rich==13.3.2
 rsa==4.7.2
-ruamel.yaml @ file:///croot/ruamel.yaml_1666304550667/work
-ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1666302247304/work
+ruamel.yaml @ file:///croot/ruamel.yaml_1727980156079/work
+ruamel.yaml.clib @ file:///croot/ruamel.yaml.clib_1727769819935/work
 s3transfer==0.6.2
 scikit-image==0.24.0
 scipy==1.11.4
@@ -161,4 +160,4 @@ watchfiles==0.19.0
 websockets==11.0.3
 yarl==1.9.4
 zipp==3.19.2
-zstandard @ file:///croot/zstandard_1714677652653/work
+zstandard @ file:///croot/zstandard_1728569189425/work

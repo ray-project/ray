@@ -24,20 +24,23 @@
 #include <boost/asio/generic/stream_protocol.hpp>
 #include <sstream>
 #include <string>
+#include <string_view>
 #include <vector>
 #ifndef _WIN32
 #include <boost/asio/local/stream_protocol.hpp>
 #endif
 #include <boost/asio/ip/tcp.hpp>
 
+#include "absl/strings/match.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/logging.h"
 
+namespace {
 /// Uses sscanf() to read a token matching from the string, advancing the iterator.
 /// \param c_str A string iterator that is dereferenceable. (i.e.: c_str < string::end())
 /// \param format The pattern. It must not produce any output. (e.g., use %*d, not %d.)
 /// \return The scanned prefix of the string, if any.
-static std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
+std::string ScanToken(std::string::const_iterator &c_str, std::string format) {
   int i = 0;
   std::string result;
   format += "%n";
@@ -47,6 +50,7 @@ static std::string ScanToken(std::string::const_iterator &c_str, std::string for
   }
   return result;
 }
+}  // namespace
 
 std::string EndpointToUrl(
     const boost::asio::generic::basic_endpoint<boost::asio::generic::stream_protocol> &ep,
@@ -56,7 +60,7 @@ std::string EndpointToUrl(
   case AF_INET: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v4(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in *>(dst) = *reinterpret_cast<const sockaddr_in *>(src);
@@ -68,7 +72,7 @@ std::string EndpointToUrl(
   case AF_INET6: {
     scheme = "tcp://";
     boost::asio::ip::tcp::endpoint e(boost::asio::ip::tcp::v6(), 0);
-    RAY_CHECK(e.size() == ep.size());
+    RAY_CHECK_EQ(e.size(), ep.size());
     const sockaddr *src = ep.data();
     sockaddr *dst = e.data();
     *reinterpret_cast<sockaddr_in6 *>(dst) = *reinterpret_cast<const sockaddr_in6 *>(src);
@@ -100,12 +104,12 @@ ParseUrlEndpoint(const std::string &endpoint, int default_port) {
   // Note that we're a bit more flexible, to allow parsing "127.0.0.1" as a URL.
   boost::asio::generic::stream_protocol::endpoint result;
   std::string address = endpoint, scheme;
-  if (address.find("unix://") == 0) {
+  if (absl::StartsWith(address, "unix://")) {
     scheme = "unix://";
     address.erase(0, scheme.size());
-  } else if (address.size() > 0 && ray::IsDirSep(address[0])) {
+  } else if (!address.empty() && ray::IsDirSep(address[0])) {
     scheme = "unix://";
-  } else if (address.find("tcp://") == 0) {
+  } else if (absl::StartsWith(address, "tcp://")) {
     scheme = "tcp://";
     address.erase(0, scheme.size());
   } else {
@@ -356,24 +360,25 @@ std::shared_ptr<absl::flat_hash_map<std::string, std::string>> ParseURL(std::str
   url.erase(0, pos + delimiter.length());
   const std::string query_delimeter = "&";
 
-  auto parse_key_value_with_equal_delimter = [](std::string key_value) {
+  auto parse_key_value_with_equal_delimter =
+      [](std::string_view key_value) -> std::pair<std::string_view, std::string_view> {
     // Parse the query key value pair.
     const std::string key_value_delimter = "=";
-    size_t key_value_pos = 0;
-    key_value_pos = key_value.find(key_value_delimter);
-    const std::string key = key_value.substr(0, key_value_pos);
+    size_t key_value_pos = key_value.find(key_value_delimter);
+    std::string_view key = key_value.substr(0, key_value_pos);
     return std::make_pair(key, key_value.substr(key.size() + 1));
   };
 
   while ((pos = url.find(query_delimeter)) != std::string::npos) {
-    std::string token = url.substr(0, pos);
+    std::string_view token = std::string_view{url}.substr(0, pos);
     auto key_value_pair = parse_key_value_with_equal_delimter(token);
-    result->emplace(key_value_pair.first, key_value_pair.second);
+    result->emplace(std::string(key_value_pair.first),
+                    std::string(key_value_pair.second));
     url.erase(0, pos + delimiter.length());
   }
-  std::string token = url.substr(0, pos);
+  std::string_view token = std::string_view{url}.substr(0, pos);
   auto key_value_pair = parse_key_value_with_equal_delimter(token);
-  result->emplace(key_value_pair.first, key_value_pair.second);
+  result->emplace(std::string(key_value_pair.first), std::string(key_value_pair.second));
   return result;
 }
 

@@ -183,7 +183,7 @@ class FaultAwareApply:
             return func(self, *args, **kwargs)
         except Exception as e:
             # Actor should be recreated by Ray.
-            if self.config.recreate_failed_env_runners:
+            if self.config.restart_failed_env_runners:
                 logger.exception(f"Worker exception caught during `apply()`: {e}")
                 # Small delay to allow logs messages to propagate.
                 time.sleep(self.config.delay_between_env_runner_restarts_s)
@@ -398,7 +398,7 @@ class FaultTolerantActorManager:
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         *,
         healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
+        remote_actor_ids: Optional[List[int]] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,

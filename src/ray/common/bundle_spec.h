@@ -97,7 +97,21 @@ struct PgFormattedResourceData {
   std::string original_resource;
   /// -1 if it is a wildcard resource.
   int64_t bundle_index;
+  std::string group_id;
 };
+
+/// Format a placement group resource with provided parameters.
+///
+/// \param original_resource_name The original resource name of the pg resource.
+/// \param group_id_str The group id in string format.
+/// \param bundle_index The bundle index. If -1, generate the wildcard pg resource.
+///                     E.g., [original_resource_name]_group_[group_id_str].
+///                     If >=0, generate the indexed pg resource. E.g.,
+///                     [original_resource_name]_group_[bundle_index]_[group_id_str]
+/// \return The corresponding formatted placement group resource string.
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const std::string &group_id_hex,
+                                         int64_t bundle_index = -1);
 
 /// Format a placement group resource, e.g., CPU -> CPU_group_i
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,

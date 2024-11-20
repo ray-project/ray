@@ -2,6 +2,18 @@ load("@rules_cc//cc:defs.bzl", "cc_test")
 load("//bazel:ray.bzl", "COPTS")
 
 cc_test(
+    name = "thread_checker_test",
+    srcs = ["thread_checker_test.cc"],
+    copts = COPTS,
+    size = "small",
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:thread_checker",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
     name = "container_util_test",
     size = "small",
     srcs = ["container_util_test.cc"],
@@ -168,5 +180,17 @@ cc_test(
         "@boost//:range",
         "@com_google_googletest//:gtest_main",
         "//src/ray/protobuf:gcs_cc_proto",
+    ],
+)
+
+cc_test(
+    name = "size_literals_test",
+    srcs = ["size_literals_test.cc"],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:size_literals",
+        "@com_google_googletest//:gtest_main",
     ],
 )

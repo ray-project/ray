@@ -1,7 +1,6 @@
 import abc
 from collections import defaultdict
 import copy
-from dataclasses import dataclass
 from functools import partial
 import logging
 import numpy
@@ -25,7 +24,12 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_METRICS_LOGGER,
+    COMPONENT_OPTIMIZER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
@@ -52,9 +56,12 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
+    WEIGHTS_SEQ_NO,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.minibatch_utils import (
@@ -96,21 +103,6 @@ ENTROPY_KEY = "entropy"
 
 # Additional update keys
 LR_KEY = "learning_rate"
-
-
-@dataclass
-class LearnerHyperparameters:
-    def __init_subclass__(cls, **kwargs):
-        raise ValueError(
-            "All `LearnerHyperparameters` classes have been deprecated! Instead, "
-            "the AlgorithmConfig object of your experiment is passed into the `Learner`"
-            " constructor as the `config` arg. Make sure that your custom `Learner` "
-            "class(es) can read information from this config object (e.g. instead of "
-            "using `LearnerHyperparameters.entropy_coeff`, now read the value from "
-            "`config.entropy_coeff`). All `Learner` methods that used to accept a "
-            "(module specific) `hps` argument, now take a (module specific) `config` "
-            "argument instead."
-        )
 
 
 @PublicAPI(stability="alpha")
@@ -256,6 +248,7 @@ class Learner(Checkpointable):
 
         # The actual MultiRLModule used by this Learner.
         self._module: Optional[MultiRLModule] = None
+        self._weights_seq_no = 0
         # Our Learner connector pipeline.
         self._learner_connector: Optional[LearnerConnectorPipeline] = None
         # These are set for properly applying optimizers and adding or removing modules.
@@ -294,16 +287,15 @@ class Learner(Checkpointable):
             return
 
         # Build learner connector pipeline used on this Learner worker.
-        if self.config.enable_env_runner_and_connector_v2:
-            # TODO (sven): Figure out which space to provide here. For now,
-            #  it doesn't matter, as the default connector piece doesn't use
-            #  this information anyway.
-            #  module_spec = self._module_spec.as_multi_rl_module_spec()
-            self._learner_connector = self.config.build_learner_connector(
-                input_observation_space=None,
-                input_action_space=None,
-                device=self._device,
-            )
+        # TODO (sven): Figure out which space to provide here. For now,
+        #  it doesn't matter, as the default connector piece doesn't use
+        #  this information anyway.
+        #  module_spec = self._module_spec.as_multi_rl_module_spec()
+        self._learner_connector = self.config.build_learner_connector(
+            input_observation_space=None,
+            input_action_space=None,
+            device=self._device,
+        )
 
         # Build the module to be trained by this learner.
         self._module = self._make_module()
@@ -1223,8 +1215,13 @@ class Learner(Checkpointable):
                 ),
                 **kwargs,
             )
+            state[WEIGHTS_SEQ_NO] = self._weights_seq_no
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
+
+        if self._check_component(COMPONENT_METRICS_LOGGER, components, not_components):
+            # TODO (sven): Make `MetricsLogger` a Checkpointable.
+            state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
 
         return state
 
@@ -1232,16 +1229,27 @@ class Learner(Checkpointable):
     def set_state(self, state: StateDict) -> None:
         self._check_is_built()
 
+        weights_seq_no = state.get(WEIGHTS_SEQ_NO, 0)
+
         if COMPONENT_RL_MODULE in state:
-            self.module.set_state(state[COMPONENT_RL_MODULE])
+            if weights_seq_no == 0 or self._weights_seq_no < weights_seq_no:
+                self.module.set_state(state[COMPONENT_RL_MODULE])
 
         if COMPONENT_OPTIMIZER in state:
             self._set_optimizer_state(state[COMPONENT_OPTIMIZER])
+
+        # Update our weights_seq_no, if the new one is > 0.
+        if weights_seq_no > 0:
+            self._weights_seq_no = weights_seq_no
 
         # Update our trainable Modules information/function via our config.
         # If not provided in state (None), all Modules will be trained by default.
         if "should_module_be_updated" in state:
             self.config.multi_agent(policies_to_train=state["should_module_be_updated"])
+
+        # TODO (sven): Make `MetricsLogger` a Checkpointable.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
@@ -1312,7 +1320,7 @@ class Learner(Checkpointable):
             episodes = tree.flatten(episodes)
 
         # Call the learner connector.
-        if self._learner_connector is not None and episodes is not None:
+        if episodes is not None:
             # Call the learner connector pipeline.
             with self.metrics.log_time((ALL_MODULES, LEARNER_CONNECTOR_TIMER)):
                 shared_data = {}
@@ -1381,11 +1389,6 @@ class Learner(Checkpointable):
             # `minibatch_size` and `num_epochs` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
-        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
-        # device (e.g. GPU). We move the batch already here to avoid having to move
-        # every single minibatch that is created in the `batch_iter` below.
-        if self._learner_connector is None:
-            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(
@@ -1413,6 +1416,15 @@ class Learner(Checkpointable):
                     value=loss,
                     window=1,
                 )
+
+        self._weights_seq_no += 1
+        self.metrics.log_dict(
+            {
+                (mid, WEIGHTS_SEQ_NO): self._weights_seq_no
+                for mid in batch.policy_batches.keys()
+            },
+            window=1,
+        )
 
         self._set_slicing_by_batch_id(batch, value=False)
 
@@ -1641,8 +1653,6 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-
-        log_dict = defaultdict(dict)
         for mid, module_batch in batch.policy_batches.items():
             module_batch_size = len(module_batch)
             # Log average batch size (for each module).
@@ -1651,17 +1661,29 @@ class Learner(Checkpointable):
                 value=module_batch_size,
             )
             # Log module steps (for each module).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
             # Log module steps (sum of all modules).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
@@ -1669,8 +1691,11 @@ class Learner(Checkpointable):
             reduce="sum",
             clear_on_reduce=True,
         )
-        # Log per-module steps trained (plus all modules) and per-agent steps trained.
-        self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+            batch.env_steps(),
+            reduce="sum",
+        )
 
     @Deprecated(
         new="Learner.before_gradient_based_update("

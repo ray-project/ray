@@ -431,7 +431,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`d2982b7 <https://github.com/ray-project/ray/commit/d2982b7b4f0e10e2f6143f932803017728387b73>`_)
+        Ray version: nightly (`e393a71 <https://github.com/ray-project/ray/commit/e393a716d8742a987a36df555defb2ca90bb94d4>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 
@@ -441,8 +441,8 @@ Install Ray Java with Maven
 ---------------------------
 
 .. note::
-   
-   All Ray Java APIs are experimental and only supported by the community. 
+
+   All Ray Java APIs are experimental and only supported by the community.
 
 Before installing Ray Java with Maven, you should install Ray Python with `pip install -U ray` . Note that the versions of Ray Java and Ray Python must match.
 Note that nightly Ray python wheels are also required if you want to install Ray Java snapshot version.
@@ -506,7 +506,7 @@ Install Ray C++
 
 .. note::
 
-  All Ray C++ APIs are experimental and only supported by the community. 
+  All Ray C++ APIs are experimental and only supported by the community.
 
 You can install and use Ray C++ API as follows.
 

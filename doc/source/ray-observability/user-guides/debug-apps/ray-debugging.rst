@@ -14,14 +14,11 @@ drop into a PDB session that you can then use to:
 .. warning::
 
     The Ray Debugger is deprecated. Use the :doc:`Ray Distributed Debugger <../../ray-distributed-debugger>` instead.
+    Starting with Ray 2.39, the new debugger is the default and you need to set the environment variable `RAY_DEBUG=legacy` to
+    use the old debugger (e.g. by using a runtime environment).
 
 Getting Started
 ---------------
-
-.. note::
-
-    On Python 3.6, the ``breakpoint()`` function is not supported and you need to use
-    ``ray.util.pdb.set_trace()`` instead.
 
 Take the following example:
 
@@ -29,6 +26,8 @@ Take the following example:
     :skipif: True
 
     import ray
+
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def f(x):
@@ -117,6 +116,8 @@ following recursive function as an example:
     :skipif: True
 
     import ray
+
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 
     @ray.remote
     def fact(n):
@@ -222,104 +223,54 @@ Post Mortem Debugging
 Often we do not know in advance where an error happens, so we cannot set a breakpoint. In these cases,
 we can automatically drop into the debugger when an error occurs or an exception is thrown. This is called *post-mortem debugging*.
 
-We will show how this works using a Ray serve application. To get started, install the required dependencies:
-
-.. code-block:: bash
-
-    pip install "ray[serve]" scikit-learn
-
-Next, copy the following code into a file called ``serve_debugging.py``:
+Copy the following code into a file called ``post_mortem_debugging.py``. The flag ``RAY_DEBUG_POST_MORTEM=1`` will have the effect
+that if an exception happens, Ray will drop into the debugger instead of propagating it further.
 
 .. testcode::
     :skipif: True
 
-    import time
-
-    from sklearn.datasets import load_iris
-    from sklearn.ensemble import GradientBoostingClassifier
-
     import ray
-    from ray import serve
 
-    serve.start()
+    ray.init(runtime_env={"env_vars": {"RAY_DEBUG": "legacy", "RAY_DEBUG_POST_MORTEM": "1"}})
 
-    # Train model
-    iris_dataset = load_iris()
-    model = GradientBoostingClassifier()
-    model.fit(iris_dataset["data"], iris_dataset["target"])
+    @ray.remote
+    def post_mortem(x):
+        x += 1
+        raise Exception("An exception is raised.")
+        return x
 
-    # Define Ray Serve model,
-    @serve.deployment
-    class BoostingModel:
-        def __init__(self):
-            self.model = model
-            self.label_list = iris_dataset["target_names"].tolist()
+    ray.get(post_mortem.remote(10))
 
-        async def __call__(self, starlette_request):
-            payload = (await starlette_request.json())["vector"]
-            print(f"Worker: received request with data: {payload}")
-
-            prediction = self.model.predict([payload])[0]
-            human_name = self.label_list[prediction]
-            return {"result": human_name}
-
-    # Deploy model
-    serve.run(BoostingModel.bind(), route_prefix="/iris")
-
-    time.sleep(3600.0)
-
-Let's start the program with the post-mortem debugging activated (``RAY_PDB=1``):
+Let's start the program:
 
 .. code-block:: bash
 
-    RAY_PDB=1 python serve_debugging.py
+    python post_mortem_debugging.py
 
-The flag ``RAY_PDB=1`` will have the effect that if an exception happens, Ray will
-drop into the debugger instead of propagating it further. Let's see how this works!
-First query the model with an invalid request using
-
-.. code-block:: bash
-
-    python -c 'import requests; response = requests.get("http://localhost:8000/iris", json={"vector": [1.2, 1.0, 1.1, "a"]})'
-
-When the ``serve_debugging.py`` driver hits the breakpoint, it will tell you to run
-``ray debug``. After we do that, we see an output like the following:
+Now run ``ray debug``. After we do that, we see an output like the following:
 
 .. code-block:: text
 
     Active breakpoints:
-    index | timestamp           | Ray task                                     | filename:lineno
-    0     | 2021-07-13 23:49:14 | ray::RayServeWrappedReplica.handle_request() | /home/ubuntu/ray/python/ray/serve/backend_worker.py:249
+    index | timestamp           | Ray task                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | filename:lineno
+    0     | 2024-11-01 20:14:00 | /Users/pcmoritz/ray/python/ray/_private/workers/default_worker.py --node-ip-address=127.0.0.1 --node-manager-port=49606 --object-store-name=/tmp/ray/session_2024-11-01_13-13-51_279910_8596/sockets/plasma_store --raylet-name=/tmp/ray/session_2024-11-01_13-13-51_279910_8596/sockets/raylet --redis-address=None --metrics-agent-port=58655 --runtime-env-agent-port=56999 --logging-rotate-bytes=536870912 --logging-rotate-backup-count=5 --runtime-env-agent-port=56999 --gcs-address=127.0.0.1:6379 --session-name=session_2024-11-01_13-13-51_279910_8596 --temp-dir=/tmp/ray --webui=127.0.0.1:8265 --cluster-id=6d341469ae0f85b6c3819168dde27cceda12e95c8efdfc256e0fd8ce --startup-token=12 --worker-launch-time-ms=1730492039955 --node-id=0d43573a606286125da39767a52ce45ad101324c8af02cc25a9fbac7 --runtime-env-hash=-1746935720 | /Users/pcmoritz/ray/python/ray/_private/worker.py:920
     Traceback (most recent call last):
 
-      File "/home/ubuntu/ray/python/ray/serve/backend_worker.py", line 242, in invoke_single
-        result = await method_to_call(*args, **kwargs)
+    File "python/ray/_raylet.pyx", line 1856, in ray._raylet.execute_task
 
-      File "serve_debugging.py", line 24, in __call__
-        prediction = self.model.predict([payload])[0]
+    File "python/ray/_raylet.pyx", line 1957, in ray._raylet.execute_task
 
-      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1188, in predict
-        raw_predictions = self.decision_function(X)
+    File "python/ray/_raylet.pyx", line 1862, in ray._raylet.execute_task
 
-      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/ensemble/_gb.py", line 1143, in decision_function
-        X = check_array(X, dtype=DTYPE, order="C", accept_sparse='csr')
+    File "/Users/pcmoritz/ray-debugger-test/post_mortem_debugging.py", line 8, in post_mortem
+        raise Exception("An exception is raised.")
 
-      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 63, in inner_f
-        return f(*args, **kwargs)
-
-      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/sklearn/utils/validation.py", line 673, in check_array
-        array = np.asarray(array, order=order, dtype=dtype)
-
-      File "/home/ubuntu/anaconda3/lib/python3.7/site-packages/numpy/core/_asarray.py", line 83, in asarray
-        return array(a, dtype, copy=False, order=order)
-
-    ValueError: could not convert string to float: 'a'
+    Exception: An exception is raised.
 
     Enter breakpoint index or press enter to refresh:
 
 We now press ``0`` and then Enter to enter the debugger. With ``ll`` we can see the context and with
-``print(a)`` we an print the array that causes the problem. As we see, it contains a string (``'a'``)
-instead of a number as the last element.
+``print(x)`` we an print the value of ``x``.
 
 In a similar manner as above, you can also debug Ray actors. Happy debugging!
 
