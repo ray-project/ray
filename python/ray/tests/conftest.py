@@ -216,17 +216,22 @@ def start_redis_with_sentinel(db_dir):
         ]
         for p in redis_ports[1:]
     ]
-    # setup replicas of the master
+    
+    # ensure all redis servers are up
+    for port in redis_ports[1:]:
+        wait_for_condition(
+            redis_alive, 3, 100, port=port, enable_tls=False
+        )
 
-    time.sleep(1)
+    # setup replicas of the master
     for port in redis_ports[2:]:
         redis_cli = get_redis_cli(port, False)
         redis_cli.replicaof("127.0.0.1", master_port)
-    sentinel_process = start_redis_sentinel_instance(
-        temp_dir, sentinel_port, master_port
-    )
-    address_str = f"127.0.0.1:{sentinel_port}"
-    return address_str, redis_processes + [sentinel_process]
+        sentinel_process = start_redis_sentinel_instance(
+            temp_dir, sentinel_port, master_port
+        )
+        address_str = f"127.0.0.1:{sentinel_port}"
+        return address_str, redis_processes + [sentinel_process]
 
 
 def start_redis(db_dir):

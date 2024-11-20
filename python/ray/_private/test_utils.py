@@ -98,12 +98,6 @@ def redis_replicas():
     return int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS", "1"))
 
 
-def enable_redis_sentinel():
-    import os
-
-    return os.environ.get("TEST_EXTERNAL_REDIS_SENTINEL") == "1"
-
-
 def redis_sentinel_replicas():
     import os
 
