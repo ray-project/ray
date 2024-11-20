@@ -8,217 +8,664 @@ Working With Offline Data
 Getting started
 ---------------
 
-RLlib's offline dataset APIs enable working with experiences read from offline storage (e.g., disk, cloud storage, streaming systems, HDFS). For example, you might want to read experiences saved from previous training runs, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can also log new agent experiences produced during online training for future use.
+RLlib's offline RL API enables you to work with experiences read from offline storage (e.g., disk, cloud storage, 
+streaming systems, HDFS). For example, you might want to read experiences saved from previous training runs, collected 
+from experts, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can 
+also log new agent experiences produced during online training for future use.
 
-RLlib represents trajectory sequences (i.e., ``(s, a, r, s', ...)`` tuples) with `SampleBatch <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ objects. Using a batch format enables efficient encoding and compression of experiences. During online training, RLlib uses `policy evaluation <rllib-concepts.html#policy-evaluation>`__ actors to generate batches of experiences in parallel using the current policy. RLlib also uses this same batch format for reading and writing experiences to offline storage.
+RLlib represents trajectory sequences (i.e., ``(s, a, r, s', ...)`` tuples) with `SingleAgentEpisode 
+<single-agent-episode.rst>`__ objects (multi-agent offline training is currently not supported). Using this episode format 
+enables efficient encoding and compression of experiences, rewriting trajectories, and user-friendly data access via getters. 
+During online training, RLlib uses `SingleAgentEnvRunner <rllib-concepts.html#policy-evaluation>`__ actors to generate episodes 
+of experiences in parallel using the current policy. RLlib can also uses this same episode format for reading and writing 
+experiences to offline storage. For offline writing RLlib uses the `OfflineSingleAgentEnvRunner 
+<https://github.com/ray-project/ray/blob/master/rllib/offline/offline_single_agent_env_runner.py>`__ that samples episodes 
+and writes them to offline storage. 
 
-Example: Training on previously saved experiences
--------------------------------------------------
+You can store experiences either directly in RLlib's episode format or in table (columns) 
+format. You should use the episode format when 
 
-.. note::
+a. You need experiences grouped by their trajectory and ordered in time (e.g. to train stateful modules).
+b. You want to use recorded experiences exclusively within RLlib.
 
-    For custom models and enviroments, you'll need to use the `Python API <rllib-training.html#basic-python-api>`__.
+Contrary, you should prefer the table (columns) format, if
 
-In this example, we will save batches of experiences generated during online training to disk, and then leverage this saved data to train a policy offline using DQN. First, we run a simple policy gradient algorithm for 100k steps with ``"output": "/tmp/cartpole-out"`` to tell RLlib to write simulation outputs to the ``/tmp/cartpole-out`` directory.
+a. You need to read the data easily with other data tools or ML libraries.
+b. You do not need full (usually complete) trajectories in training.
 
-.. code-block:: bash
+.. note:: RLlib's redesigned API stack incorporates principles that support standalone applications. Consequently, the 
+    `SingleAgentEpisode` class is available for use independently of RLlib. To enable faster access through external data tools 
+    (e.g., for data transformations), it is recommended to use the table record format in these scenarios.
 
-    $ rllib train \
-        --run=PG \
-        --env=CartPole-v1 \
-        --config='{"output": "/tmp/cartpole-out", "output_max_file_size": 5000000}' \
-        --stop='{"timesteps_total": 100000}'
+Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and 
+write methods supported by Ray Data (e.g. ``read_parquet``, ``read_json``, etc.) with ``read/write_parquet`` being the default 
+read and write methods. A core design principle of the API is to apply as many data transformations as possible on-the-fly to
+the learner, allowing the learner to focus exclusively on model updates. 
 
-The experiences will be saved in compressed JSON batch format:
+.. note:: During the transition phase from old to new API stack you can use the new offline RL API also with your 
+    `SampleBatch <https://github.com/ray-project/ray/blob/master/rllib/offline/offline_single_agent_env_runner.py>`__ data recorded 
+    with the old API stack. To enable this feature set ``input_read_sample_batches=True``.
 
-.. code-block:: text
+Example: Training an expert policy.
+--------------------------------------------
+In this example you train an PPO agent to play ``CartPole-v1`` until it collects an episode mean reward of ``450.0``. You checkpoint 
+this agent and later use its policy to record expert data to local disk.
 
-    $ ls -l /tmp/cartpole-out
-    total 11636
-    -rw-rw-r-- 1 eric eric 5022257 output-2019-01-01_15-58-57_worker-0_0.json
-    -rw-rw-r-- 1 eric eric 5002416 output-2019-01-01_15-59-22_worker-0_1.json
-    -rw-rw-r-- 1 eric eric 1881666 output-2019-01-01_15-59-47_worker-0_2.json
+.. testsetup::
+    :hide:
 
-Then, we can tell DQN to train using these previously generated experiences with ``"input": "/tmp/cartpole-out"``. We disable exploration since it has no effect on the input:
+    # Define a shared variable to store the path to the
+    # best checkpoint.
+    best_checkpoint = None
 
-.. code-block:: bash
+    # Define a shared variable to store the path to the
+    # recorded data.
+    data_path = None
 
-    $ rllib train \
-        --run=DQN \
-        --env=CartPole-v1 \
-        --config='{
-            "input": "/tmp/cartpole-out",
-            "explore": false}'
+    # Define another shared variable to store the path to
+    # the tabular recording data.
+    tabular_data_path = None
 
-Off-Policy Estimation (OPE)
----------------------------
+.. testcode::
 
-In practice, when training on offline data, it is usually not straightforward to evaluate the trained policies using a simulator as in online RL. For example, in recommender systems, rolling out a policy trained on offline data in a real-world environment can jeopardize your business if the policy is suboptimal. For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which avoid the risk of evaluating a possibly sub-optimal policy in a real-world environment.
-
-With RLlib's evaluation framework you can:
-
-- Evaluate policies on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``).
-
-- Use RLlib's off-policy estimation methods, which estimate the policy's performance on a separate offline dataset. To be able to use this feature, the evaluation dataset should contain ``action_prob`` key that represents the action probability distribution of the collected data so that we can do counterfactual evaluation.
-
-RLlib supports the following off-policy estimators:
-
-- `Importance Sampling (IS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/importance_sampling.py>`__
-- `Weighted Importance Sampling (WIS) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/weighted_importance_sampling.py>`__
-- `Direct Method (DM) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/direct_method.py>`__
-- `Doubly Robust (DR) <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/doubly_robust.py>`__
-
-IS and WIS compute the ratio between the action probabilities under the behavior policy (from the dataset) and the target policy (the policy under evaluation), and use this ratio to estimate the policy's return. More details on this can be found in their respective papers.
-
-DM and DR train a Q-model to compute the estimated return. By default, RLlib uses `Fitted-Q Evaluation (FQE) <https://arxiv.org/abs/1911.06854>`__ to train the Q-model. See `fqe_torch_model.py <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__ for more details.
-
-.. note:: For a contextual bandit dataset, the ``dones`` key should always be set to ``True``. In this case, FQE reduces to fitting a reward model to the data.
-
-RLlib's OPE estimators output six metrics:
-
-- ``v_behavior``: The discounted sum over rewards in the offline episode, averaged over episodes in the batch.
-- ``v_behavior_std``: The standard deviation corresponding to v_behavior.
-- ``v_target``: The OPE's estimated discounted return for the target policy, averaged over episodes in the batch.
-- ``v_target_std``: The standard deviation corresponding to v_target.
-- ``v_gain``: ``v_target / max(v_behavior, 1e-8)``. ``v_gain > 1.0`` indicates that the policy is better than the policy that generated the behavior data. In case, ``v_behavior <= 0``, ``v_delta`` should be used instead for comparison.
-- ``v_delta``: The difference between v_target and v_behavior.
-
-As an example, we generate an evaluation dataset for off-policy estimation:
-
-.. code-block:: bash
-
-    $ rllib train \
-        --run=PG \
-        --env=CartPole-v1 \
-        --config='{"output": "/tmp/cartpole-eval", "output_max_file_size": 5000000}' \
-        --stop='{"timesteps_total": 10000}'
-
-.. hint:: You should use separate datasets for algorithm training and OPE, as shown here.
-
-We can now train a DQN algorithm offline and evaluate it using OPE:
-
-.. code-block:: python
-
-    from ray.rllib.algorithms.dqn import DQNConfig
-    from ray.rllib.offline.estimators import (
-        ImportanceSampling,
-        WeightedImportanceSampling,
-        DirectMethod,
-        DoublyRobust,
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+    from ray.rllib.utils.metrics import (
+        ENV_RUNNER_RESULTS,
+        EVALUATION_RESULTS,
+        EPISODE_RETURN_MEAN,
     )
-    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+    from ray import train, tune
 
+    # Configure the PPO algorithm.
     config = (
-        DQNConfig()
-        .environment(env="CartPole-v1")
-        .framework("torch")
-        .offline_data(input_="/tmp/cartpole-out")
-        .evaluation(
-            evaluation_interval=1,
-            evaluation_duration=10,
-            evaluation_num_env_runners=1,
-            evaluation_duration_unit="episodes",
-            evaluation_config={"input": "/tmp/cartpole-eval"},
-            off_policy_estimation_methods={
-                "is": {"type": ImportanceSampling},
-                "wis": {"type": WeightedImportanceSampling},
-                "dm_fqe": {
-                    "type": DirectMethod,
-                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
-                },
-                "dr_fqe": {
-                    "type": DoublyRobust,
-                    "q_model_config": {"type": FQETorchModel, "polyak_coef": 0.05},
-                },
-            },
+        PPOConfig()
+        .environment("CartPole-v1")
+        # Enable the new API stack.
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .training(
+            lr=0.0003,
+            # Run 6 SGD minibatch iterations on a batch.
+            num_epochs=6,
+            # Weigh the value function loss smaller than 
+            # the policy loss.
+            vf_loss_coeff=0.01,
+        )
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                # Share encoder layers between value network
+                # and policy.
+                vf_share_layers=True,
+            ),
         )
     )
 
+    # Define the metric to use for stopping.
+    metric = f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+
+    # Define the Tuner.
+    tuner = tune.Tuner(
+        "PPO",
+        param_space=config,
+        run_config=train.RunConfig(
+            stop={
+                metric: 450.0,
+            },
+            name="docs_rllib_offline_pretrain_ppo",
+            verbose=2,
+            checkpoint_config=train.CheckpointConfig(
+                checkpoint_frequency=1,
+                checkpoint_at_end=True,
+            ),
+        ),
+    )
+    analysis = tuner.fit()
+
+    best_checkpoint = (
+        analysis
+        .get_best_result(
+            metric=metric,
+            mode="max"
+        )
+        .checkpoint.path
+    )
+
+Example: Record expert data to local disk
+-----------------------------------------
+After you trained an expert policy to play ``CartPole-v1`` you load its policy here to record expert data during evaluation. You will use 
+5 ``OfflineSingleAgentEnvRunner`` s to collect in each rollout 50 complete episodes. In this example you store experiences directly in RLlib's 
+``SingleAgentEpisode`` objects with no more than 25 episode objects per Parquet file. Altogether you run 10 evaluation runs, which should
+result in 500 recorded episodes from the expert policy. You will use these data in the next example to train via Offline RL a new policy 
+that should reach a return of 450.0 when playing ``CartPole-v1``.
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core import (
+        COMPONENT_LEARNER_GROUP,
+        COMPONENT_LEARNER,
+        COMPONENT_RL_MODULE,
+        DEFAULT_MODULE_ID,
+    )
+    from ray.rllib.core.rl_module import RLModuleSpec
+    
+    # Store recording data under the following path.
+    data_path = "/tmp/docs_rllib_offline_recording"
+
+    # Configure the algorithm for recording.
+    config = (
+        PPOConfig()
+        # The environment needs to be specified.
+        .environment(
+            env="CartPole-v1",
+        )
+        # Make sure you use the new API stack.
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        # Make sure to sample complete episodes because
+        # you want to record RLlib's episode objects.
+        .env_runners(
+            batch_mode="complete_episodes",
+        )
+        # Set up 5 evaluation `EnvRunners` for recording.
+        # Sample 50 episodes in each evaluation rollout.
+        .evaluation(
+            evaluation_num_env_runners=5,
+            evaluation_duration=50,
+        )
+        # Use the checkpointed expert policy from PPO training
+        # above. Note, we have to use the same `model_config` as
+        # the one with which the expert policy was trained, otherwise
+        # the module state cannot be loaded.
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                # Share encoder layers between value network
+                # and policy.
+                vf_share_layers=True,
+            ),
+        )
+        # Define the output path and format. In this example you
+        # want to store data directly in RLlib's episode objects.
+        # Each Parquet file should hold no more than 25 episodes. 
+        .offline_data(
+            output=data_path,
+            output_write_episodes=True,
+            output_max_rows_per_file=25,
+        )
+    )
+
+    # Build the algorithm.
     algo = config.build()
-    for _ in range(100):
-        algo.train()
+    # Load now the PPO-trained `RLModule` to use in recording.
+    algo.restore_from_path(
+        best_checkpoint,
+        # Load only the `RLModule` component here.
+        component=COMPONENT_RL_MODULE,
+    )
 
-.. image:: images/rllib-offline.png
+    # Run 10 evaluation iterations and record the data.
+    for i in range(10):
+        print(f"Iteration {i + 1}")
+        res_eval = algo.evaluate()
+        print(res_eval)
 
-**Estimator Python API:** For greater control over the evaluation process, you can create off-policy estimators in your Python code and call ``estimator.train(batch)`` to perform any neccessary training and ``estimator.estimate(batch)`` to perform counterfactual estimation. The estimators take in an RLlib Policy object and gamma value for the environment, along with additional estimator-specific arguments (e.g. ``q_model_config`` for DM and DR). You can take a look at the example config parameters of the q_model_config `here <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/fqe_torch_model.py>`__. You can also write your own off-policy estimator by subclassing from the `OffPolicyEstimator <https://github.com/ray-project/ray/blob/master/rllib/offline/estimators/off_policy_estimator.py>`__ base class.
+    # Stop the algorithm. Note, this is important for when
+    # defining `output_max_rows_per_file`. Otherwise,
+    # remaining episodes in the `EnvRunner`s buffer will not
+    # be written to disk.
+    algo.stop()
+
+.. note:: The stored episode data is formatted as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``, 
+    ensuring version compatibility.
+
+RLlib's  recording process is efficient because it utilizes multiple ``OfflineSingleAgentEnvRunner`` instances during evaluation, enabling parallel 
+data writing. You can explore the folder to review the stored Parquet data:
+
+.. code-block:: text
+
+    $ ls -la /tmp/docs_rllib_offline_recording/cartpole-v1
+
+    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00006
+    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00011
+    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00016
+    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00021
+
+.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see for each ``OfflineSingleAgentEnvRunner`` and write operation 
+    one folder of Parquet files. The write operation count is given in the second numbering. 
+
+Example: Training on previously saved experiences
+-------------------------------------------------
+In this example you are using behavior cloning with the previously recorded Parquet data from your expert policy playing ``CartPole-v1``. The 
+data needs to be linked in the configuration of the algorithm (via the ``input_`` attribute).
+
+.. testcode:: python
+    
+    from ray import train, tune
+    from ray.rllib.algorithms.bc import BCConfig
+
+    # Setup the config for behavior cloning.
+    config = (
+        BCConfig()
+        .environment(
+            # Use the `CartPole-v1` environment from which the
+            # data was recorded. This is merely for receiving 
+            # action and observation spaces and to use it during
+            # evaluation.
+            env="CartPole-v1",
+        )
+        .api_stack(
+            # Enable the new API stack.
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        .learners(
+            # Use a single learner.
+            num_learners=0,
+        )
+        .training(
+            # This has to be defined in the new offline RL API.
+            train_batch_size_per_learner=1024,
+        )
+        .offline_data(
+            # Link the data.
+            input_=[data_path],
+            # You want to read in RLlib's episode format b/c this
+            # is how you recorded data.
+            input_read_episodes=True,
+            # Read smaller batches from the data than the learner
+            # trains on. Note, each batch element is an episode
+            # with multiple timesteps.
+            input_read_batch_size=512,
+            # Create exactly 2 `DataWorkers` that transform 
+            # the data on-the-fly. Give each of them a single
+            # CPU.
+            map_batches_kwargs={
+                "concurrency": 2,
+                "num_cpus": 1,
+            },
+            # When iterating over the data, prefetch two batches
+            # to improve the data pipeline. Do not shuffle the 
+            # buffer (the data is too small).
+            iter_batches_kwargs={
+                "prefetch_batches": 2,
+                "local_shuffle_buffer_size": None,
+            },
+            # You must set this for single-learner setups.
+            dataset_num_iters_per_learner=1,
+        )
+        .evaluation(
+            # Run evaluation to see how well the learned policy
+            # performs. Run every 3rd training iteration an evaluation.
+            evaluation_interval=3,
+            # Use a single `EnvRunner` for evaluation.
+            evaluation_num_env_runners=1,
+            # In each evaluation rollout, collect 5 episodes of data.
+            evaluation_duration=5,
+            # Evaluate the policy parallel to training.
+            evaluation_parallel_to_training=True,
+        )
+    )
+
+    # Set the stopping metric to be the evaluation episode return mean.
+    metric = f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+
+    # Configure the Ray Tune.
+    tuner = tune.Tuner(
+        "BC",
+        param_space=config,
+        run_config=train.RunConfig(
+            name="docs_rllib_offline_bc",
+            # Stop behavior cloning when we reach 450 in return.
+            stop={metric: 450.0},
+            checkpoint_config=train.CheckpointConfig(
+                # Only checkpoint at the end to be faster.
+                checkpoint_frequency=0,
+                checkpoint_at_end=True,
+            ),
+            verbose=2,
+        )
+    )
+    # Run the experiment.
+    analysis = tuner.fit()
+
+Behavior cloning in RLlib is highly performant, completing a single training iteration in approximately 2 milliseconds. The experiment's 
+results should resemble the following:
+
+.. image:: images/offline/docs_rllib_offline_bc_episode_return_mean.svg
+    :alt: Episode mean return over the course of BC training.
+    :width: 750
+    :align: left
+
+It should take you around 98 seconds (456 iterations) to achieve the same episode return mean as the PPO agent. While this may not seem 
+impressive compared to the PPO training time, it is important to note that ``CartPole-v1`` is a very simple environment to learn. In more 
+complex environments, which require more sophisticated agents and significantly longer training times, pretraining via behavior cloning 
+can be highly beneficial. Combining behavior cloning with subsequent fine-tuning using a reinforcement learning algorithm can substantially 
+reduce training time, resource consumption, and associated costs.
+
+Using external expert experiences
+---------------------------------
+Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically, 
+this data is stored in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
+via a specified schema that organizes the expert data. The API's default schema for reading data is provided in `offline_prelearner.SCHEMA 
+<http://github.com/ray-project/ray/blob/master/rllib/offline/offline_prelearner.py#33>`__.
+
+Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case 
+you provide this schema as follows:
 
 .. code-block:: python
 
-    algo = DQN(...)
-    ...  # train policy offline
+    from ray.rllib.algorithms.bc import BCConfig
+    from ray.rllib.core.columns import Columns
 
-    from ray.rllib.offline.json_reader import JsonReader
-    from ray.rllib.offline.estimators import DoublyRobust
-    from ray.rllib.offline.estimators.fqe_torch_model import FQETorchModel
+    config = (
+        BCConfig()
+        ...
+        .offline_data(
+            input_=[<input_path>],
+            # Provide the schema of your data.
+            input_read_schema={
+                Columns.OBS: "o_t",
+                Columns.ACTIONS: "a_t",
+                Columns.REWARDS: "r_t",
+                Columns.NEXT_OBS: "o_tp1",
+                Columns.INFOS: "i_t",
+                "done": "d_t",
+            },
+        )
+    )
+        
+.. note:: Internally, the legacy ``gym``'s ``done`` signals are mapped to ``gymnasium``'s ``terminated`` signals, with ``truncated`` values defaulting to 
+    ``False``. RLlib's ``SingleAgentEpisode`` structures align with ``gymnasium``, adhering to the updated environment API standards in reinforcement learning.
 
-    estimator = DoublyRobust(
-        policy=algo.get_policy(),
-        gamma=0.99,
-        q_model_config={"type": FQETorchModel, "n_iters": 160},
+Converting tabular data to RLlib's episode format
+-------------------------------------------------
+While the tabular format is widely compatible and seamlessly integrates with RLlib's new Offline RL API, there are cases where you may prefer to use RLlib's native episode format. 
+As briefly mentioned earlier, such scenarios typically arise when full expert trajectories are required.
+
+.. note::
+    RLlib processes tabular data in batches, converting each row into a *single-step episode*. This approach is primarily for procedural simplicity, as data cannot 
+    generally be assumed to arrive in time-ordered rows grouped by episodes, though this may occasionally be the case (however knowledge of such a structure resides  
+    with the user as RLlib cannot easily infer it automatically). While it is possible to concatenate ``SingleAgentEpisode`` chunks, this cannot be done with fragmented chunks.
+
+If you require full trajectories you can transform your tabular data into ``SingleAgentEpisode`` objects and store these in Parquet format. The next example shows how to do this. 
+First, you will store experiences of the above trained expert policy in tabular format:
+
+.. testcode:: python
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core import (
+        COMPONENT_LEARNER_GROUP,
+        COMPONENT_LEARNER,
+        COMPONENT_RL_MODULE,
+        DEFAULT_MODULE_ID,
+    )
+    from ray.rllib.core.rl_module import RLModuleSpec
+    
+    # Set up a path for the tabular data records.
+    tabular_data_path = "tmp/docs_rllib_offline_recording_tabular"
+
+    # Configure the algorithm for recording.
+    config = (
+        PPOConfig()
+        # The environment needs to be specified.
+        .environment(
+            env="CartPole-v1",
+        )
+        # Make sure you use the new API stack.
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+        # Make sure to sample complete episodes because
+        # you want to record RLlib's episode objects.
+        .env_runners(
+            batch_mode="complete_episodes",
+        )
+        # Set up 5 evaluation `EnvRunners` for recording.
+        # Sample 50 episodes in each evaluation rollout.
+        .evaluation(
+            evaluation_num_env_runners=5,
+            evaluation_duration=50,
+        )
+        # Use the checkpointed expert policy from PPO training
+        # above. Note, we have to use the same `model_config` as
+        # the one with which the expert policy was trained, otherwise
+        # the module state cannot be loaded.
+        .rl_module(
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32],
+                fcnet_activation="linear",
+                # Share encoder layers between value network
+                # and policy.
+                vf_share_layers=True,
+            ),
+        )
+        # Define the output path and format. In this example you
+        # want to store data directly in RLlib's episode objects. 
+        .offline_data(
+            output=tabular_data_path,
+            # You want to store for this example tabular data.
+            output_write_episodes=False,
+        )
     )
 
-    # Train estimator's Q-model; only required for DM and DR estimators
-    reader = JsonReader("/tmp/cartpole-out")
-    for _ in range(100):
-        batch = reader.next()
-        print(estimator.train(batch))
-        # {'loss': ...}
+    # Build the algorithm.
+    algo = config.build()
+    # Load now the PPO-trained `RLModule` to use in recording.
+    algo.restore_from_path(
+        best_checkpoint,
+        # Load only the `RLModule` component here.
+        component=COMPONENT_RL_MODULE,
+    )
 
-    reader = JsonReader("/tmp/cartpole-eval")
-    # Compute off-policy estimates
-    for _ in range(100):
-        batch = reader.next()
-        print(estimator.estimate(batch))
-        # {'v_behavior': ..., 'v_target': ..., 'v_gain': ...,
-        # 'v_behavior_std': ..., 'v_target_std': ..., 'v_delta': ...}
+    # Run 10 evaluation iterations and record the data.
+    for i in range(10):
+        print(f"Iteration {i + 1}")
+        res_eval = algo.evaluate()
+        print(res_eval)
 
-Example: Converting external experiences to batch format
---------------------------------------------------------
+    # Stop the algorithm. Note, this is important for when
+    # defining `output_max_rows_per_file`. Otherwise,
+    # remaining episodes in the `EnvRunner`s buffer will not
+    # be written to disk.
+    algo.stop()
 
-When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
+You may have noticed that recording data in tabular format takes significantly longer than recording in episode format. This slower performance is due to the additional post-processing 
+required to convert episode data into a columnar format. To confirm that the recorded data is now in columnar format, you can print its schema:
 
-.. literalinclude:: ../../../rllib/examples/offline_rl/saving_experiences.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
+.. testcode:: python
 
-On-policy algorithms and experience postprocessing
-----------------------------------------------------
+    from ray import data
+    
+    # Read the tabular data into a Ray dataset.
+    ds = ray.data.read_parquet(tabular_data_path)
+    # Now, print its schema.
+    print("Tabular data schema of expert experiences:\n")
+    print(ds.schema())
+    
+    # Column              Type
+    # ------              ----
+    # eps_id              string
+    # agent_id            null
+    # module_id           null
+    # obs                 numpy.ndarray(shape=(4,), dtype=float)
+    # actions             int32
+    # rewards             double
+    # new_obs             numpy.ndarray(shape=(4,), dtype=float)
+    # terminateds         bool
+    # truncateds          bool
+    # action_dist_inputs  numpy.ndarray(shape=(2,), dtype=float)
+    # action_logp         float
+    # weights_seq_no      int64
 
-RLlib assumes that input batches are of
-`postprocessed experiences <https://github.com/ray-project/ray/blob/master/rllib/policy/policy.py#L434>`__.
-This isn't typically critical for off-policy algorithms
-(e.g., DQN's `post-processing <https://github.com/ray-project/ray/blob/master/rllib/algorithms/dqn/dqn_tf_policy.py#L434>`__
-is only needed if ``n_step > 1`` or ``replay_buffer_config.worker_side_prioritization: True``).
-For off-policy algorithms, you can also safely set the ``postprocess_inputs: True`` config to auto-postprocess data.
+.. note::
+    ``infos`` are not stored to disk when they are all empty.
 
-However, for on-policy algorithms like PPO, you'll need to pass in the extra values added during policy evaluation and postprocessing to ``batch_builder.add_values()``, e.g., ``logits``, ``vf_preds``, ``value_target``, and ``advantages`` for PPO. This is needed since the calculation of these values depends on the parameters of the *behaviour* policy, which RLlib does not have access to in the offline setting (in online training, these values are automatically added during policy evaluation).
+If your expert data is given in columnar format and you need to train on full expert trajectories you can follow the code in the following example to convert 
+your own data into RLlib's ``SingleAgentEpisode`` objects:
 
-Note that for on-policy algorithms, you'll also have to throw away experiences generated by prior versions of the policy. This greatly reduces sample efficiency, which is typically undesirable for offline training, but can make sense for certain applications.
+.. testcode:: python
+    import gymnasium as gym
+    import msgpack
+    import msgpack_numpy as mnp
 
-Mixing simulation and offline data
------------------------------------
+    from collections import defaultdict
 
-RLlib supports multiplexing inputs from multiple input sources, including simulation. For example, in the following example we read 40% of our experiences from ``/tmp/cartpole-out``, 30% from ``hdfs:/archive/cartpole``, and the last 30% is produced via policy evaluation. Input sources are multiplexed using `np.random.choice <https://docs.scipy.org/doc/numpy-1.15.0/reference/generated/numpy.random.choice.html>`__:
+    from ray import data
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 
-.. code-block:: bash
+    # Load the dataset with the tabular data.
+    ds = data.read_parquet(tabular_data_path)
 
-    $ rllib train \
-        --run=DQN \
-        --env=CartPole-v1 \
-        --config='{
-            "input": {
-                "/tmp/cartpole-out": 0.4,
-                "hdfs:/archive/cartpole": 0.3,
-                "sampler": 0.3,
-            },
-            "explore": false}'
+    # Build the environment from which the data was sampled to get the
+    # spaces.
+    env = gym.make("CartPole-v1")
+    # Define buffers for episode data.
+    eps_obs = []
+    eps_actions = []
+    eps_rewards = []
+    # Note, extra-model-outputs needs to be a dictionary with list
+    # values.
+    eps_extra_model_outputs = defaultdict(list)
+    # Define a buffer for unwritten episodes.
+    episodes = []
+
+    # Start iterating over the rows of your experience data.
+    for i, row in enumerate(ds.iter_rows(prefetch_batches=10)):
+        # If the episode is not terminated nor truncated, buffer the data.
+        if not row["terminateds"] and not row["truncateds"]:
+            eps_obs.append(row["obs"])
+            eps_actions.append(row["actions"])
+            eps_rewards.append(row["rewards"])
+            eps_extra_model_outputs["action_dist_inputs"].append(row["action_dist_inputs"])
+            eps_extra_model_outputs["action_logp"].append(row["action_logp"])
+        # Otherwise, build the episode.
+        else:
+            eps_obs.append(row["new_obs"])
+            episode = SingleAgentEpisode(
+                id_=row["eps_id"],
+                agent_id=row["agent_id"],
+                module_id=row["module_id"],
+                observations=eps_obs,
+                # Use the spaces from the environment.
+                observation_space=env.observation_space,
+                action_space=env.action_space,
+                actions=eps_actions,
+                rewards=eps_rewards,
+                # Set the starting timestep to zero.
+                t_started=0,
+                # You do not want to have a lookback buffer.
+                len_lookback_buffer=0,
+                terminated=row["terminateds"],
+                truncated=row["truncateds"],
+                extra_model_outputs=eps_extra_model_outputs,
+            )
+            # Store the ready-to-write episode to the episode buffer.
+            episodes.append(msgpack.packb(episode.get_state(), default=mnp.encode))
+            # Clear all episode data buffers.
+            eps_obs.clear()
+            eps_actions.clear()
+            eps_rewards.clear()
+            eps_extra_model_outputs = defaultdict(list)
+
+        # Write episodes to disk when the episode buffer holds 50 episodes.
+        if len(episodes) > 49:
+            # Generate a Ray dataset from episodes.
+            episodes_ds = data.from_items(episodes)
+            # Write the Parquet data and compress it.
+            episodes_ds.write_parquet(
+                f"/tmp/test_converting/file-{i}".zfill(6),
+                compression="gzip",
+            )
+            # Delete the dataset in memory and clear the episode buffer.
+            del episodes_ds
+            episodes.clear()
+
+    # If we are finished and have unwritten episodes, write them now.
+    if len(episodes) > 0:
+        episodes_ds = data.from_items(episodes)
+        episodes_ds.write_parquet(
+            f"/tmp/test_converting/file-{i}".zfill(6),
+            compression="gzip",
+        )
+        del episodes_ds
+        episodes.clear()
+
+Using old API stack ``SampleBatch`` recordings
+----------------------------------------------
+If you have expert data previously recorded using RLlib's older API stack, it can be seamlessly utilized in the new Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, you can convert your ``SampleBatch`` recordings into 
+``SingleAgentEpisode`` format using RLlib's ``OfflinePreLearner`` as demonstrated below:
+
+.. code-block:: python
+
+    import msgpack
+    import msgpack_numpy as mnp
+
+    from ray import data
+    from ray.rllib.offline.offline_prelearner import OfflinePreLearner
+
+    # Set up the data path to your `SampleBatch` expert data.
+    data_path = ...
+    # Set up the write path for the Parquet episode data.
+    output_data_path = "/tmp/sample_batch_data"
+
+    # Load the `SampleBatch` recordings.
+    ds = data.read_json(data_path)
+
+    # Iterate over batches (of `SampleBatch`es) and convert them to episodes.
+    for i, batch in enumerate(ds.iter_batches(batch_size=100, prefetch_batches=2)):
+        # Use the RLlib's `OfflinePreLearner` to convert `SampleBatch`es to episodes.
+        episodes = OfflinePreLearner._map_sample_batch_to_episode(False, batch)["episodes"]
+
+        # Create a dataset from the episodes. Note, for storing episodes you need to 
+        # serialize them via `msgpack-numpy`.
+        episode_ds = data.from_items([msgpack.packb(eps.get_state(), default=mnp.encode) for eps in episodes])
+        # Write the batch of episodes to local disk.
+        episode_ds.write_parquet(output_data_path + f"/file-{i}".zfill(6), compression="gzip")
+
+    print("Finished converting `SampleBatch` data to episode data.")
+
+.. note:: RLlib considers your ``SampleBatch`` to represent a terminated/truncated episode and builds its ``SingleAgentEpisode`` according to this assumption.
+
+Pre-processing, filtering and post-processing
+---------------------------------------------
+
+During recording, your expert policy may utilize pre-processing techniques for observations, such as *frame-stacking*, or filtering methods like *mean-std filtering*. Similarly, actions may undergo pre-processing, such as *action 
+sampling* or *scaling*. In its ``EnvRunner`` instances, RLlib applies such pre-processing and filtering (via the *env-to-module* connector pipeline) **before** observations are passed to the ``RLModule``. However, raw observations (as received 
+directly from the environment) are stored in the episodes. Likewise, actions are recorded in their raw form (as output directly from the ``RLModule``) while undergoing pre-processing (via RLlib's *module-to-env* connectors) before being 
+sent to the environment.
+
+It is crucial to carefully consider the pre-processing and filtering applied during the recording of experiences, as they significantly influence how the expert policy learns and subsequently performs in the environment. For example, if 
+the expert policy uses *mean-std filtering* for observations, it learns a strategy based on the filtered observations, where the filter itself is highly dependent on the experiences collected during training. When deploying this expert 
+policy, it is essential to use the exact same filter during evaluation to avoid performance degradation. Similarly, a policy trained via behavior cloning may also require a *mean-std filter* for observations to accurately replicate the 
+behavior of the expert policy.
 
 Scaling I/O throughput
 -----------------------
 
-Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_env_runners`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
+Just as online training can be scaled, offline recording I/O throughput can also be increased by configuring the number of RLlib env-runners. Use the ``num_env_runners`` setting to scale recording during training or ``evaluation_num_env_runners``
+for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each ``OfflineSingleAgentEnvRunner``, episodes are sampled 
+(environments are usually vectorized) and serialized before being written to disk.
+
+Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to 
+transform offline experiences into a learner-compatible format (``MultiAgentBatch``). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available 
+system resources. It is strongly recommended not to override these defaults, as doing so may disrupt this optimization process.
+
+Data processing in RLlib involves three key layers, all of which are highly scalable:
+
+1. **Read Operations:** This layer handles data ingestion from files in a specified folder. It is automatically optimized by Ray Data and should not be manually scaled or adjusted.
+2. **Post-processing:** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects 
+for updating. This layer can be scaling the ``DataWorker`` instances.
+3. **Updating:** This stage involves updating the policy and associated modules. Scalability is achieved by increasing the number of learners (``num_learners``), enabling parallel processing of batches during updates.
 
 Ray Data Integration
 --------------------
@@ -250,20 +697,7 @@ To load sample data using Dataset, specify input and input_config keys like the 
 	...
     }
 
-To write sample data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
 
-.. code-block:: python
-
-    config = {
-        "output": "dataset",
-        "output_config": {
-            "format": "json",  # json or parquet
-	    # Directory to write data files.
-            "path": "/tmp/test_samples/",
-	    # Break samples into multiple files, each containing about this many records.
-            "max_num_samples_per_file": 100000,
-        }
-    }
 
 Writing Environment Data
 --------------------------
