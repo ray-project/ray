@@ -31,11 +31,16 @@ def take_table(
     extension arrays. This is exposed as a static method for easier use on
     intermediate tables, not underlying an ArrowBlockAccessor.
     """
+
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
     )
 
+    if table.num_rows == 0:
+        return table
+    if len(indices) == 0:
+        return pyarrow.Table.from_pydict({})
     if any(_is_column_extension_type(col) for col in table.columns):
         new_cols = []
         for col in table.columns:
@@ -342,7 +347,9 @@ def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
     cols = table.columns
     new_cols = []
     for col in cols:
-        if _is_column_extension_type(col):
+        if col.num_chunks == 0:
+            arr = pyarrow.chunked_array([], type=col.type)
+        elif _is_column_extension_type(col):
             # Extension arrays don't support concatenation.
             arr = _concatenate_extension_column(col)
         else:

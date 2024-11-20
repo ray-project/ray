@@ -536,3 +536,34 @@ cdef class RawSerializedObject(SerializedObject):
                                  MEMCOPY_THREADS)
             else:
                 memcpy(&buffer[0], self.value_ptr, self._total_bytes)
+
+
+cdef class ArrowSerializedObject(SerializedObject):
+    cdef:
+        object value
+        int64_t _total_bytes
+
+    def __init__(self, value):
+        import pyarrow
+        super(ArrowSerializedObject,
+              self).__init__(ray_constants.OBJECT_METADATA_TYPE_ARROW)
+        self.value = value
+        sink = pyarrow.MockOutputStream()
+        writer = pyarrow.ipc.new_stream(sink, self.value.schema)
+        writer.write(self.value)
+        writer.close()
+        self._total_bytes = sink.size()
+
+    @property
+    def total_bytes(self):
+        return self._total_bytes
+
+    @cython.boundscheck(False)
+    @cython.wraparound(False)
+    cdef void write_to(self, uint8_t[:] buffer) nogil:
+        with gil:
+            import pyarrow
+            sink = pyarrow.FixedSizeBufferWriter(pyarrow.py_buffer(buffer))
+            writer = pyarrow.ipc.new_stream(sink, self.value.schema)
+            writer.write(self.value)
+            writer.close()
