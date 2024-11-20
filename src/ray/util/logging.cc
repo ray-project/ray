@@ -27,6 +27,7 @@
 #endif
 
 #include <algorithm>
+#include <array>
 #include <cstdlib>
 #include <fstream>
 #include <iostream>
@@ -321,7 +322,9 @@ void RayLog::StartRayLog(const std::string &app_name,
   log_dir_ = log_dir;
 
   // All the logging sinks to add.
-  std::vector<spdlog::sink_ptr> sinks;
+  // One for file/stdout, another for stderr.
+  std::array<spdlog::sink_ptr, 2> sinks;  // Intentionally no initialization.
+
   auto level = GetMappedSeverity(severity_threshold_);
   std::string app_name_without_path = app_name;
   if (app_name.empty()) {
@@ -373,23 +376,24 @@ void RayLog::StartRayLog(const std::string &app_name,
         log_rotation_max_size_,
         log_rotation_file_num_);
     file_sink->set_level(level);
-    sinks.push_back(file_sink);
+    sinks[0] = std::move(file_sink);
   } else {
     component_name_ = app_name_without_path;
     auto console_sink = std::make_shared<spdlog::sinks::stdout_color_sink_mt>();
     console_sink->set_level(level);
-    sinks.push_back(console_sink);
+    sinks[0] = std::move(console_sink);
   }
 
   // In all cases, log errors to the console log so they are in driver logs.
   // https://github.com/ray-project/ray/issues/12893
   auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
   err_sink->set_level(spdlog::level::err);
-  sinks.push_back(err_sink);
+  sinks[1] = std::move(err_sink);
 
   // Set the combined logger.
-  auto logger = std::make_shared<spdlog::logger>(
-      RayLog::GetLoggerName(), sinks.begin(), sinks.end());
+  auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),
+                                                 std::make_move_iterator(sinks.begin()),
+                                                 std::make_move_iterator(sinks.end()));
   logger->set_level(level);
   // Set the pattern of all sinks.
   logger->set_pattern(log_format_pattern_);
