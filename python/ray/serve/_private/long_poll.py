@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 import random
+from asyncio import sleep
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
 from dataclasses import dataclass
@@ -264,10 +265,14 @@ class LongPollHost:
     ) -> Union[LongPollState, Dict[KeyType, UpdatedObject]]:
         """Listen for changed objects.
 
-        This method will returns a dictionary of updated objects. It returns
+        This method will return a dictionary of updated objects. It returns
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's an update.
         """
+        if not keys_to_snapshot_ids:
+            await sleep(random.uniform(*self._listen_for_change_request_timeout_s))
+            return {}
+
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
         updated_objects = {}
