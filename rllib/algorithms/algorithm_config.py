@@ -19,6 +19,7 @@ from typing import (
 )
 
 import gymnasium as gym
+import tree
 from packaging import version
 
 import ray
@@ -58,6 +59,7 @@ from ray.rllib.utils.serialization import (
     deserialize_type,
     serialize_type,
 )
+from ray.rllib.utils.test_utils import check
 from ray.rllib.utils.torch_utils import TORCH_COMPILE_REQUIRED_VERSION
 from ray.rllib.utils.typing import (
     AgentID,
@@ -80,25 +82,6 @@ from ray.tune.tune import _Config
 
 Space = gym.Space
 
-"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
-under input and input_config keys. E.g.
-input: sample
-input_config {
-env: CartPole-v1
-}
-or:
-input: json_reader
-input_config {
-path: /tmp/
-}
-or:
-input: dataset
-input_config {
-format: parquet
-path: /tmp/
-}
-"""
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -106,7 +89,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.learner import Learner
     from ray.rllib.core.learner.learner_group import LearnerGroup
     from ray.rllib.core.rl_module.rl_module import RLModule
-    from ray.rllib.evaluation.episode import Episode as OldEpisode
+    from ray.rllib.utils.typing import EpisodeType
 
 logger = logging.getLogger(__name__)
 
@@ -129,12 +112,13 @@ class AlgorithmConfig(_Config):
         from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
-        config = (PPOConfig().training(gamma=0.9, lr=0.01)
-                .environment(env="CartPole-v1")
-                .resources(num_gpus=0)
-                .env_runners(num_env_runners=0)
-                .callbacks(MemoryTrackingCallbacks)
-            )
+        config = (
+            PPOConfig()
+            .training(gamma=0.9, lr=0.01)
+            .environment(env="CartPole-v1")
+            .env_runners(num_env_runners=0)
+            .callbacks(MemoryTrackingCallbacks)
+        )
         # A config object can be used to construct the respective Algorithm.
         rllib_algo = config.build()
 
@@ -319,10 +303,6 @@ class AlgorithmConfig(_Config):
         # Default setting for skipping `nan` gradient updates.
         self.torch_skip_nan_gradients = False
 
-        # `self.api_stack()`
-        self.enable_rl_module_and_learner = False
-        self.enable_env_runner_and_connector_v2 = False
-
         # `self.environment()`
         self.env = None
         self.env_config = {}
@@ -346,7 +326,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
-        self.max_requests_in_flight_per_env_runner = 2
+        self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -370,7 +350,6 @@ class AlgorithmConfig(_Config):
         self.observation_filter = "NoFilter"
         self.update_worker_filter_stats = True
         self.use_worker_filter_stats = True
-        self.enable_connectors = True
         self.sampler_perf_stats_ema_coef = None
 
         # `self.learners()`
@@ -424,7 +403,19 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = {}
+        if not hasattr(self, "exploration_config"):
+            # Helper to keep track of the original exploration config when dis-/enabling
+            # rl modules.
+            self._prior_exploration_config = None
+            self.exploration_config = {}
+
+        # `self.api_stack()`
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
 
         # `self.multi_agent()`
         # TODO (sven): Prepare multi-agent setup for logging each agent's and each
@@ -548,9 +539,6 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self._model_config = {}
         self._rl_module_spec = None
-        # Helper to keep track of the original exploration config when dis-/enabling
-        # rl modules.
-        self.__prior_exploration_config = None
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -572,6 +560,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.enable_connectors = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
         self.evaluation_num_episodes = DEPRECATED_VALUE
@@ -701,12 +690,18 @@ class AlgorithmConfig(_Config):
         # Namely, we want to re-instantiate the exploration config this config had
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
-        enable_rl_module_and_learner = config_dict.get(
+        enable_new_api_stack = config_dict.get(
             "_enable_new_api_stack",
-            config_dict.get("enable_rl_module_and_learner"),
+            config_dict.get(
+                "enable_rl_module_and_learner",
+                config_dict.get("enable_env_runner_and_connector_v2"),
+            ),
         )
-        if enable_rl_module_and_learner:
-            self.api_stack(enable_rl_module_and_learner=enable_rl_module_and_learner)
+        if enable_new_api_stack is not None:
+            self.api_stack(
+                enable_rl_module_and_learner=enable_new_api_stack,
+                enable_env_runner_and_connector_v2=enable_new_api_stack,
+            )
 
         # Modify our properties one by one.
         for key, value in config_dict.items():
@@ -750,7 +745,7 @@ class AlgorithmConfig(_Config):
             elif key.startswith("evaluation_"):
                 eval_call[key] = value
             elif key == "exploration_config":
-                if enable_rl_module_and_learner:
+                if enable_new_api_stack:
                     self.exploration_config = value
                     continue
                 if isinstance(value, dict) and "type" in value:
@@ -1604,13 +1599,13 @@ class AlgorithmConfig(_Config):
             self.enable_rl_module_and_learner = enable_rl_module_and_learner
 
             if enable_rl_module_and_learner is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
+                self._prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
 
             elif enable_rl_module_and_learner is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
+                if self._prior_exploration_config is not None:
+                    self.exploration_config = self._prior_exploration_config
+                    self._prior_exploration_config = None
                 else:
                     logger.warning(
                         "config.enable_rl_module_and_learner was set to False, but no "
@@ -1758,7 +1753,6 @@ class AlgorithmConfig(_Config):
         exploration_config: Optional[dict] = NotProvided,  # @OldAPIStack
         create_env_on_local_worker: Optional[bool] = NotProvided,  # @OldAPIStack
         sample_collector: Optional[Type[SampleCollector]] = NotProvided,  # @OldAPIStack
-        enable_connectors: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_worker_envs: Optional[bool] = NotProvided,  # @OldAPIStack
         remote_env_batch_wait_ms: Optional[float] = NotProvided,  # @OldAPIStack
         preprocessor_pref: Optional[str] = NotProvided,  # @OldAPIStack
@@ -1776,6 +1770,8 @@ class AlgorithmConfig(_Config):
         worker_health_probe_timeout_s=DEPRECATED_VALUE,
         worker_restore_timeout_s=DEPRECATED_VALUE,
         synchronize_filter=DEPRECATED_VALUE,
+        # deprecated
+        enable_connectors=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the rollout worker configuration.
 
@@ -1822,9 +1818,6 @@ class AlgorithmConfig(_Config):
                 because it doesn't have to sample (done by remote_workers;
                 worker_indices > 0) nor evaluate (done by evaluation workers;
                 see below).
-            enable_connectors: Use connector based environment runner, so that all
-                preprocessing of obs and postprocessing of actions are done in agent
-                and action connectors.
             env_to_module_connector: A callable taking an Env as input arg and returning
                 an env-to-module ConnectorV2 (might be a pipeline) object.
             module_to_env_connector: A callable taking an Env and an RLModule as input
@@ -1933,29 +1926,29 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
+        if enable_connectors != DEPRECATED_VALUE:
+            deprecation_warning(
+                old="AlgorithmConfig.env_runners(enable_connectors=...)",
+                error=False,
+            )
         if num_rollout_workers != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(num_rollout_workers)",
                 new="AlgorithmConfig.env_runners(num_env_runners)",
-                error=False,
+                error=True,
             )
-            self.num_env_runners = num_rollout_workers
         if num_envs_per_worker != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(num_envs_per_worker)",
                 new="AlgorithmConfig.env_runners(num_envs_per_env_runner)",
-                error=False,
+                error=True,
             )
-            self.num_envs_per_env_runner = num_envs_per_worker
         if validate_workers_after_construction != DEPRECATED_VALUE:
             deprecation_warning(
                 old="AlgorithmConfig.env_runners(validate_workers_after_construction)",
                 new="AlgorithmConfig.env_runners(validate_env_runners_after_"
                 "construction)",
-                error=False,
-            )
-            self.validate_env_runners_after_construction = (
-                validate_workers_after_construction
+                error=True,
             )
 
         if env_runner_cls is not NotProvided:
@@ -1987,8 +1980,6 @@ class AlgorithmConfig(_Config):
             self.sample_collector = sample_collector
         if create_env_on_local_worker is not NotProvided:
             self.create_env_on_local_worker = create_env_on_local_worker
-        if enable_connectors is not NotProvided:
-            self.enable_connectors = enable_connectors
         if env_to_module_connector is not NotProvided:
             self._env_to_module_connector = env_to_module_connector
         if module_to_env_connector is not NotProvided:
@@ -2874,7 +2865,7 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         policy_map_capacity: Optional[int] = NotProvided,
         policy_mapping_fn: Optional[
-            Callable[[AgentID, "OldEpisode"], PolicyID]
+            Callable[[AgentID, "EpisodeType"], PolicyID]
         ] = NotProvided,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
@@ -3562,7 +3553,7 @@ class AlgorithmConfig(_Config):
         # Not yet determined, try to figure this out.
         if self._is_atari is None:
             # Atari envs are usually specified via a string like "PongNoFrameskip-v4"
-            # or "ALE/Breakout-v5".
+            # or "ale_py:ALE/Breakout-v5".
             # We do NOT attempt to auto-detect Atari env for other specified types like
             # a callable, to avoid running heavy logics in validate().
             # For these cases, users can explicitly set `environment(atari=True)`.
@@ -3988,7 +3979,7 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override RLModuleSpec -> Use this to
+                # User provided an override RLModuleSpec -> Use this to
                 # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
@@ -4003,7 +3994,7 @@ class AlgorithmConfig(_Config):
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.rl_module_specs
                         )
-                    # The currently setup multi-agent spec has NO
+                    # The currently set up multi-agent spec has NO
                     # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
@@ -4013,7 +4004,7 @@ class AlgorithmConfig(_Config):
                             "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
                             "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., single_agent_rl_module_spec=..)`."
+                            "policy_dict=.., rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only
@@ -4424,6 +4415,7 @@ class AlgorithmConfig(_Config):
     def _validate_new_api_stack_settings(self):
         """Checks, whether settings related to the new API stack make sense."""
 
+        # Old API stack checks.
         if not self.enable_rl_module_and_learner:
             # Throw a warning if the user has used `self.rl_module(rl_module_spec=...)`
             # but has not enabled the new API stack at the same time.
@@ -4466,12 +4458,24 @@ class AlgorithmConfig(_Config):
                 "to False (old API stack), instead."
             )
 
-        # New API stack (RLModule, Learner APIs) only works with connectors.
-        if not self.enable_connectors:
-            raise ValueError(
-                "The new API stack (RLModule and Learner APIs) only works with "
-                "connectors! Please enable connectors via "
-                "`config.env_runners(enable_connectors=True)`."
+        # For those users that accidentally use the new API stack (because it's the
+        # default now for many algos), we need to make sure they are warned.
+        try:
+            tree.assert_same_structure(self.model, MODEL_DEFAULTS)
+            # Create copies excluding the specified key
+            check(
+                {k: v for k, v in self.model.items() if k != "vf_share_layers"},
+                {k: v for k, v in MODEL_DEFAULTS.items() if k != "vf_share_layers"},
+            )
+        except Exception:
+            logger.warning(
+                "You configured a custom `model` config (probably through calling "
+                "config.training(model=..), whereas your config uses the new API "
+                "stack! In order to switch off the new API stack, set in your config: "
+                "`config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. If you DO want to use "
+                "the new API stack, configure your model, instead, through: "
+                "`config.rl_module(model_config={..})`."
             )
 
         # LR-schedule checking.

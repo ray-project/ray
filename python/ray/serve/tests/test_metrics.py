@@ -1581,7 +1581,7 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write a value.
-    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote({"key_1": 999}))
     object_ref = host.listen_for_change.remote({"key_1": -1})
 
     # Check that the result's size is reported.
@@ -1595,8 +1595,8 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write two new values.
-    ray.get(host.notify_changed.remote("key_1", 1000))
-    ray.get(host.notify_changed.remote("key_2", 1000))
+    ray.get(host.notify_changed.remote({"key_1": 1000}))
+    ray.get(host.notify_changed.remote({"key_2": 1000}))
     object_ref = host.listen_for_change.remote(
         {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
     )
