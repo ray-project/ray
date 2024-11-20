@@ -5,8 +5,10 @@ from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
 from ray.air.util.object_extensions.arrow import PYARROW_VERSION
-from ray.air.util.tensor_extensions.arrow import INT32_OVERFLOW_THRESHOLD, MIN_PYARROW_VERSION_SCALAR, \
-    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY
+from ray.air.util.tensor_extensions.arrow import (
+    INT32_OVERFLOW_THRESHOLD,
+    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
+)
 
 try:
     import pyarrow
@@ -335,7 +337,7 @@ def concat_and_sort(
 def to_numpy(
     array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
     *,
-    zero_copy_only: bool = True
+    zero_copy_only: bool = True,
 ) -> np.ndarray:
     """Wrapper for `Array`s and `ChunkedArray`s `to_numpy` API,
     handling API divergence b/w Arrow versions"""
@@ -350,8 +352,9 @@ def to_numpy(
         else:
             return array.to_numpy()
     else:
-        raise ValueError(f"Either of `Array` or `ChunkedArray` was expected, "
-                         f"got {type(array)}")
+        raise ValueError(
+            f"Either of `Array` or `ChunkedArray` was expected, " f"got {type(array)}"
+        )
 
 
 def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
