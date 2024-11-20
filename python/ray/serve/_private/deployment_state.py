@@ -1955,8 +1955,7 @@ class DeploymentState:
                 f"{self._replica_constructor_error_msg}"
             )
 
-        if message != self._curr_status_info.message:
-            self._curr_status_info = self._curr_status_info.update_message(message)
+        self._curr_status_info = self._curr_status_info.update_message(message)
 
         # If we have pending ops, the current goal is *not* ready.
         if (
