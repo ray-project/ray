@@ -4,8 +4,8 @@ import logging
 import threading
 import time
 import uuid
-from abc import ABC, abstractmethod
 import weakref
+from abc import ABC, abstractmethod
 from asyncio import AbstractEventLoop
 from collections import defaultdict
 from collections.abc import MutableMapping
@@ -749,7 +749,8 @@ class SharedRouterLongPollClient:
         # Remove the entries for any deployment ids that no longer have any routers.
         # The WeakSets will automatically lose track of Routers that get GC'd,
         # but the outer dict will keep the key around, so we need to clean up manually.
-        for deployment_id, routers in self.routers.items():
+        # Note the list(...) to avoid mutating self.routers while iterating over it.
+        for deployment_id, routers in list(self.routers.items()):
             if not routers:
                 self.routers.pop(deployment_id)
 
