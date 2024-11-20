@@ -82,25 +82,6 @@ from ray.tune.tune import _Config
 
 Space = gym.Space
 
-"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
-under input and input_config keys. E.g.
-input: sample
-input_config {
-env: CartPole-v1
-}
-or:
-input: json_reader
-input_config {
-path: /tmp/
-}
-or:
-input: dataset
-input_config {
-format: parquet
-path: /tmp/
-}
-"""
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -131,12 +112,13 @@ class AlgorithmConfig(_Config):
         from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
-        config = (PPOConfig().training(gamma=0.9, lr=0.01)
-                .environment(env="CartPole-v1")
-                .resources(num_gpus=0)
-                .env_runners(num_env_runners=0)
-                .callbacks(MemoryTrackingCallbacks)
-            )
+        config = (
+            PPOConfig()
+            .training(gamma=0.9, lr=0.01)
+            .environment(env="CartPole-v1")
+            .env_runners(num_env_runners=0)
+            .callbacks(MemoryTrackingCallbacks)
+        )
         # A config object can be used to construct the respective Algorithm.
         rllib_algo = config.build()
 
@@ -321,10 +303,6 @@ class AlgorithmConfig(_Config):
         # Default setting for skipping `nan` gradient updates.
         self.torch_skip_nan_gradients = False
 
-        # `self.api_stack()`
-        self.enable_rl_module_and_learner = False
-        self.enable_env_runner_and_connector_v2 = False
-
         # `self.environment()`
         self.env = None
         self.env_config = {}
@@ -348,7 +326,7 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_env_runner = 0
         self.custom_resources_per_env_runner = {}
         self.validate_env_runners_after_construction = True
-        self.max_requests_in_flight_per_env_runner = 2
+        self.max_requests_in_flight_per_env_runner = 1
         self.sample_timeout_s = 60.0
         self.create_env_on_local_worker = False
         self._env_to_module_connector = None
@@ -425,7 +403,19 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = {}
+        if not hasattr(self, "exploration_config"):
+            # Helper to keep track of the original exploration config when dis-/enabling
+            # rl modules.
+            self._prior_exploration_config = None
+            self.exploration_config = {}
+
+        # `self.api_stack()`
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
 
         # `self.multi_agent()`
         # TODO (sven): Prepare multi-agent setup for logging each agent's and each
@@ -549,9 +539,6 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self._model_config = {}
         self._rl_module_spec = None
-        # Helper to keep track of the original exploration config when dis-/enabling
-        # rl modules.
-        self.__prior_exploration_config = None
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -1612,13 +1599,13 @@ class AlgorithmConfig(_Config):
             self.enable_rl_module_and_learner = enable_rl_module_and_learner
 
             if enable_rl_module_and_learner is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
+                self._prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
 
             elif enable_rl_module_and_learner is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
+                if self._prior_exploration_config is not None:
+                    self.exploration_config = self._prior_exploration_config
+                    self._prior_exploration_config = None
                 else:
                     logger.warning(
                         "config.enable_rl_module_and_learner was set to False, but no "
@@ -3992,7 +3979,7 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override RLModuleSpec -> Use this to
+                # User provided an override RLModuleSpec -> Use this to
                 # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
@@ -4007,7 +3994,7 @@ class AlgorithmConfig(_Config):
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.rl_module_specs
                         )
-                    # The currently setup multi-agent spec has NO
+                    # The currently set up multi-agent spec has NO
                     # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
@@ -4017,7 +4004,7 @@ class AlgorithmConfig(_Config):
                             "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
                             "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., single_agent_rl_module_spec=..)`."
+                            "policy_dict=.., rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only
