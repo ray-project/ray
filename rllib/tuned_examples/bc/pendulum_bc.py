@@ -58,7 +58,6 @@ config = (
         # local shuffle.
         iter_batches_kwargs={
             "prefetch_batches": 1,
-            "local_shuffle_buffer_size": None,
         },
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to

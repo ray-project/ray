@@ -465,6 +465,7 @@ class OfflinePreLearner:
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 
+    @staticmethod
     def _map_sample_batch_to_episode(
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],
