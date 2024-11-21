@@ -764,9 +764,7 @@ class Dataset:
                 f"got: {batch_format}"
             )
 
-        def add_column(
-            batch: DataBatch,
-        ) -> Union["pyarrow.Array", "pandas.Series", Dict[str, "np.ndarray"]]:
+        def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
                 import pandas as pd
