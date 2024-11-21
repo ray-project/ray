@@ -270,9 +270,13 @@ class LongPollHost:
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's an update.
         """
+        # If there are no keys to listen for, just wait for the timeout and return.
         if not keys_to_snapshot_ids:
             await sleep(random.uniform(*self._listen_for_change_request_timeout_s))
-            return {}
+
+            updated_objects = {}
+            self._count_send(updated_objects)
+            return updated_objects
 
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
