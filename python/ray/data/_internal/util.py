@@ -26,7 +26,6 @@ import numpy as np
 
 import ray
 from ray._private.utils import _get_pyarrow_version
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -40,6 +39,12 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
+
+
+KiB = 1024  # bytes
+MiB = 1024 * KiB
+GiB = 1024 * MiB
+
 
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
@@ -707,6 +712,7 @@ def unify_block_metadata_schema(
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
+    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.
