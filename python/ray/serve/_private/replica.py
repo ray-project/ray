@@ -380,6 +380,7 @@ class ReplicaBase(ABC):
 
         return None
 
+    @contextmanager
     def _handle_errors_and_metrics(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
     ) -> Generator[StatusCodeCallback, None, None]:
@@ -770,9 +771,9 @@ class Replica(ReplicaBase):
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        route = self._maybe_get_asgi_route(request_metadata, request_args)
-        request_metadata.route = route
-
+        request_metadata.route = self._maybe_get_http_route(
+            request_metadata, request_args
+        )
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
