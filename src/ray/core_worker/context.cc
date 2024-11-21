@@ -183,7 +183,7 @@ uint64_t WorkerContext::GetNextTaskIndex() {
   return GetThreadContext().GetNextTaskIndex();
 }
 
-uint64_t WorkerContext::GetTaskIndex() { return GetThreadContext().GetTaskIndex(); }
+uint64_t WorkerContext::GetTaskIndex() const { return GetThreadContext().GetTaskIndex(); }
 
 ObjectIDIndexType WorkerContext::GetNextPutIndex() {
   return GetThreadContext().GetNextPutIndex();

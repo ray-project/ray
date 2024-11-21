@@ -47,8 +47,8 @@ class WorkerContext {
   /// WorkerContext::GetNextPutIndex.
   /// If std::nullopt is specified, it will deduce the put index from the
   /// current worker context.
-  const ObjectID GetGeneratorReturnId(const TaskID &task_id,
-                                      std::optional<ObjectIDIndexType> put_index);
+  ObjectID GetGeneratorReturnId(const TaskID &task_id,
+                                std::optional<ObjectIDIndexType> put_index);
 
   WorkerType GetWorkerType() const;
 
