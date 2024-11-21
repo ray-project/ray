@@ -5067,7 +5067,7 @@
   stable: true
 
   env: gce
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}
@@ -5084,7 +5084,7 @@
   stable: true
 
   env: gce
-  frequency: nightly
+  frequency: manual
   team: clusters
   cluster:
     byod: {}
