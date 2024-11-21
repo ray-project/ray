@@ -1,4 +1,4 @@
-from collections import defaultdict
+from collections import defaultdict, deque
 import time
 import threading
 from typing import Any, Callable, Dict, Optional, Tuple, Union
@@ -219,7 +219,7 @@ class Stats:
 
         # On each `.reduce()` call, we store the result of this call in hist[0] and the
         # previous `reduce()` result in hist[1].
-        self._hist = (0, 0)
+        self._hist = deque([0, 0, 0], maxlen=3)
 
         self._throughput = _throughput
         if self._throughput:
@@ -268,7 +268,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: bool = False, throughput: bool = False) -> Any:
+    def peek(self, *, previous: Union[bool, int] = False, throughput: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -276,16 +276,17 @@ class Stats:
         given the current internal values list.
 
         Args:
-            previous: If True, returns the previous (reduced) result of this `Stats`
-                object.
+            previous: If an int, returns the previously (reduced) result of this `Stats`
+                object (from `previous` number of `reduce()` calls ago). If False
+                (default), return current value.
 
         Returns:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
         # Return previously reduced value.
-        if previous:
-            return self._hist[1]
+        if isinstance(previous, int):
+            return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
             return self._current_throughput if self._throughput else None
@@ -308,17 +309,20 @@ class Stats:
 
         # Keep track and update underlying throughput metric.
         if self._throughput:
-            delta_sum = reduced - self._hist[0]
+            # Take the delta between the new (upcoming) reduced value and the most
+            # recently reduced value (one `reduce()` call ago).
+            delta_sum = reduced - self._hist[-1]
             time_now = time.perf_counter()
             delta_time = time_now - self._throughput_last_time
             self._throughput_last_time = time_now
             self._current_throughput = delta_sum / delta_time
+            print(f"Stats current throughput={self._current_throughput}")
 
         # Reduce everything to a single (init) value.
         self.values = values
 
         # Shift historic reduced valued by one in our hist-tuple.
-        self._hist = (reduced, self._hist[0])
+        self._hist.append(reduced)
 
         # `clear_on_reduce` -> Return an empty new Stats object with the same settings
         # as `self`.
@@ -525,7 +529,8 @@ class Stats:
 
         # Update our throughput as the sum over all others' current throughputs.
         if self._throughput:
-            self._current_throughput = sum(o._current_throughput for o in others)
+            self._current_throughput = sum(o.peek(throughput=True) for o in others)
+            print(f"Stats current throughput after parallel merge={self._current_throughput}")
 
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
@@ -598,17 +603,20 @@ class Stats:
             "window": self._window,
             "ema_coeff": self._ema_coeff,
             "clear_on_reduce": self._clear_on_reduce,
+            "_hist": list(self._hist),
         }
 
     @staticmethod
     def from_state(state: Dict[str, Any]) -> "Stats":
-        return Stats(
+        stats = Stats(
             state["values"],
             reduce=state["reduce"],
             window=state["window"],
             ema_coeff=state["ema_coeff"],
             clear_on_reduce=state["clear_on_reduce"],
         )
+        stats._hist = deque(state["_hist"], maxlen=stats._hist.maxlen)
+        return stats
 
     @staticmethod
     def similar_to(

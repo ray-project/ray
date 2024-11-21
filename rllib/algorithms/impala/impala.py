@@ -667,17 +667,20 @@ class IMPALA(Algorithm):
                     )
                     >= self.config.broadcast_interval
                 )
+                timesteps = {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    ),
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                        (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                    ),
+                }
                 if self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -687,12 +690,7 @@ class IMPALA(Algorithm):
                         episodes=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,

@@ -1,4 +1,3 @@
-import copy
 import logging
 import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
@@ -642,16 +641,16 @@ class MetricsLogger:
                     more_stats.append(stat_or_value)
 
             # Special case: `base_stats` is a lifetime sum (reduce=sum,
-            # clear_on_reduce=False) -> We only(!) use `base_stats`'s values, not
-            # our own (b/c the sum over `base_stats` already contains older values from
-            # before).
+            # clear_on_reduce=False) -> We subtract the previous value (from 2
+            # `reduce()` calls ago) from all to-be-merged stats, so we don't count
+            # twice the older sum from before.
             if (
                 base_stats._reduce_method == "sum"
                 and base_stats._window is None
                 and base_stats._clear_on_reduce is False
             ):
                 for stat in [base_stats] + more_stats:
-                    stat.push(-stat.peek(previous=True))
+                    stat.push(-stat.peek(previous=2))
 
             # There are more than one incoming parallel others -> Merge all of them
             # first in parallel.
@@ -894,22 +893,25 @@ class MetricsLogger:
             PATH = path
             return stats.reduce()
 
-        # Create a shallow copy of `self.stats` in case we need to reset some of our
-        # stats due to this `reduce()` call (and the Stat having self.clear_on_reduce
-        # set to True). In case we clear the Stats upon `reduce`, we receive a
-        # new empty `Stats` object from `stat.reduce()` with the same settings as
-        # existing one and can now re-assign it to `self.stats[key]` (while we return
-        # from this method the properly reduced, but not cleared/emptied new `Stats`).
+        # Create a shallow (yet nested) copy of `self.stats` in case we need to reset
+        # some of our stats due to this `reduce()` call (and the Stat having
+        # self.clear_on_reduce set to True). In case we clear the Stats upon `reduce`,
+        # we receive a new empty `Stats` object from `stat.reduce()` with the same
+        # settings as existing one and can now re-assign it to `self.stats[key]` (while
+        # we return from this method the properly reduced, but not cleared/emptied new
+        # `Stats`).
         try:
             with self._tensor_mode_lock:
                 assert not self.tensor_mode
                 if key is not None:
-                    stats_to_return = copy.deepcopy(self._get_key(key, key_error=False))
+                    stats_to_return = tree.map_structure(
+                        lambda s: s, self._get_key(key, key_error=False)
+                    )
                     self._set_key(
                         key, tree.map_structure_with_path(_reduce, stats_to_return)
                     )
                 else:
-                    stats_to_return = copy.deepcopy(self.stats)
+                    stats_to_return = tree.map_structure(lambda s: s, self.stats)
                     self.stats = tree.map_structure_with_path(_reduce, stats_to_return)
         # Provide proper error message if reduction fails due to bad data.
         except Exception as e:

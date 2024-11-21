@@ -42,6 +42,8 @@ QUEUE_SIZE_GPU_LOADER_QUEUE = "queue_size_gpu_loader_queue"
 QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
+_CURRENT_GLOBAL_TIMESTEPS = None
+
 
 class IMPALALearner(Learner):
     @override(Learner)
@@ -115,10 +117,8 @@ class IMPALALearner(Learner):
         timesteps: Dict[str, Any],
         **kwargs,
     ) -> ResultDict:
-        self.metrics.set_value(
-            (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-        )
+        global _CURRENT_GLOBAL_TIMESTEPS
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps
 
         # TODO (sven): IMPALA does NOT call additional update anymore from its
         #  `training_step()` method. Instead, we'll do this here (to avoid the extra
@@ -165,12 +165,12 @@ class IMPALALearner(Learner):
                     (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                     self._gpu_loader_in_queue.qsize(),
                 )
+            # Add the batch directly to the learner queue (or circular buffer).
             else:
                 ma_batch = MultiAgentBatch(
                     {mid: SampleBatch(b) for mid, b in batch.items()},
                     env_steps=env_steps,
                 )
-                # Add the batch directly to the circular buffer.
                 if isinstance(self._learner_thread_in_queue, CircularBuffer):
                     ts_dropped = self._learner_thread_in_queue.add(ma_batch)
                     self.metrics.log_value(
@@ -181,9 +181,7 @@ class IMPALALearner(Learner):
                 else:
                     # Enqueue to Learner thread's in-queue.
                     _LearnerThread.enqueue(
-                        self._learner_thread_in_queue,
-                        ma_batch,
-                        self.metrics,
+                        self._learner_thread_in_queue, ma_batch, self.metrics
                     )
 
         # Empty out the queue (which contains one `True` for each successful update
@@ -205,7 +203,7 @@ class IMPALALearner(Learner):
             # Update entropy coefficient via our Scheduler.
             new_entropy_coeff = self.entropy_coeff_schedulers_per_module[
                 module_id
-            ].update(timestep=timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0))
+            ].update(timestep=timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME])
             self.metrics.log_value(
                 (module_id, LEARNER_RESULTS_CURR_ENTROPY_COEFF_KEY),
                 new_entropy_coeff,
@@ -299,6 +297,8 @@ class _LearnerThread(threading.Thread):
             self.step()
 
     def step(self):
+        global _CURRENT_GLOBAL_TIMESTEPS
+
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
@@ -323,11 +323,7 @@ class _LearnerThread(threading.Thread):
             #  MA-CartPole).
             self._update_method(
                 batch=ma_batch_on_gpu,
-                timesteps={
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    )
-                },
+                timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
             # Signal to the out queue, that (some) results are ready.
             self._out_queue.put(True)
@@ -338,7 +334,7 @@ class _LearnerThread(threading.Thread):
             )
 
     @staticmethod
-    def enqueue(learner_queue: deque, batch, metrics_logger):
+    def enqueue(learner_queue: deque, batch, metrics):
         # Right-append to learner queue (a deque). If full, drops the leftmost
         # (oldest) item in the deque.
         # Note that we consume from the left (oldest first), which is why the queue size
@@ -348,7 +344,7 @@ class _LearnerThread(threading.Thread):
         # from newer batches (left side) most times, BUT sometimes grabbing a
         # really old batches (right area of deque).
         if len(learner_queue) == learner_queue.maxlen:
-            metrics_logger.log_value(
+            metrics.log_value(
                 (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                 learner_queue.popleft().env_steps(),
                 reduce="sum",
@@ -356,7 +352,7 @@ class _LearnerThread(threading.Thread):
         learner_queue.append(batch)
 
         # Log current queue size.
-        metrics_logger.log_value(
+        metrics.log_value(
             (ALL_MODULES, QUEUE_SIZE_LEARNER_THREAD_QUEUE),
             len(learner_queue),
         )
