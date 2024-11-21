@@ -981,7 +981,9 @@ void LocalTaskManager::Dispatch(
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
+  RAY_LOG(INFO) << "jjyao Dispatch";
   RAY_CHECK(worker);
+  RAY_CHECK(allocated_instances);
   const auto &task_spec = task.GetTaskSpecification();
 
   if (task_spec.IsActorCreationTask()) {
@@ -991,6 +993,7 @@ void LocalTaskManager::Dispatch(
     worker->SetAllocatedInstances(allocated_instances);
   }
   worker->SetAssignedTask(task);
+  RAY_LOG(INFO) << "jjyao point 1";
 
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
@@ -998,11 +1001,13 @@ void LocalTaskManager::Dispatch(
   reply->mutable_worker_address()->set_port(worker->Port());
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
+  RAY_LOG(INFO) << "jjyao point 2";
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
   cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
       WorkFootprint::NODE_WORKERS);
+  RAY_LOG(INFO) << "jjyao point 3";
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
