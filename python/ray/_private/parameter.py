@@ -130,6 +130,8 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
+        enable_physical_mode: Whether physical mode is enaled, which applies
+        constraint to tasks' resource consumption.
     """
 
     def __init__(
@@ -193,6 +195,7 @@ class RayParams:
         webui: Optional[str] = None,
         cluster_id: Optional[str] = None,
         node_id: Optional[str] = None,
+        enable_physical_mode: bool = False,
     ):
         self.redis_address = redis_address
         self.gcs_address = gcs_address
@@ -256,6 +259,7 @@ class RayParams:
         self._check_usage()
         self.cluster_id = cluster_id
         self.node_id = node_id
+        self.enable_physical_mode = enable_physical_mode
 
         # Set the internal config options for object reconstruction.
         if enable_object_reconstruction:
