@@ -1380,6 +1380,11 @@ class ProxyActor:
             log_level="warning",
             access_log=False,
             timeout_keep_alive=self.keep_alive_timeout_s,
+            # These flags must be set in order for redirects to work properly when
+            # behind a proxy that terminates TLS.
+            # See: https://github.com/fastapi/fastapi/discussions/9328.
+            proxy_headers=True,
+            forwarded_allow_ips=os.environ.get("FORWARDED_ALLOW_IPS", "*"),
         )
         self._uvicorn_server = uvicorn.Server(config=config)
         # TODO(edoakes): we need to override install_signal_handlers here
