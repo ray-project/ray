@@ -1908,54 +1908,57 @@ class DeploymentState:
             states=[ReplicaState.RUNNING], version=target_version
         )
 
-        failed_to_start_count = self._replica_constructor_retry_counter
         failed_to_start_threshold = min(
             MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
             self._target_state.target_num_replicas * 3,
         )
 
+        # At least one RUNNING replica at target state, partial
+        # success; We can stop tracking constructor failures and
+        # leave it to the controller to fully scale to target
+        # number of replicas and only return as completed once
+        # reached target replica count
+        if running_at_target_version_replica_cnt > 0:
+            self._replica_constructor_retry_counter = -1
+
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
         if (
-            failed_to_start_count >= failed_to_start_threshold
+            self._replica_constructor_retry_counter >= failed_to_start_threshold
             and failed_to_start_threshold != 0
         ):
-            if running_at_target_version_replica_cnt > 0:
-                # At least one RUNNING replica at target state, partial
-                # success; We can stop tracking constructor failures and
-                # leave it to the controller to fully scale to target
-                # number of replicas and only return as completed once
-                # reached target replica count
-                self._replica_constructor_retry_counter = -1
-            else:
-                self._curr_status_info = self._curr_status_info.handle_transition(
-                    trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
-                    message=(
-                        f"The deployment failed to start {failed_to_start_count} times "
-                        "in a row. This may be due to a problem with its "
-                        "constructor or initial health check failing. See "
-                        "controller logs for details. Retrying after "
-                        f"{self._backoff_time_s} seconds. Error:\n"
-                        f"{self._replica_constructor_error_msg}"
-                    ),
+            self._curr_status_info = self._curr_status_info.handle_transition(
+                trigger=DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED,
+                message=(
+                    "The deployment failed to start "
+                    f"{self._replica_constructor_retry_counter} times "
+                    "in a row. This may be due to a problem with its "
+                    "constructor or initial health check failing. See "
+                    "controller logs for details. Retrying after "
+                    f"{self._backoff_time_s} seconds. Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                ),
+            )
+            return False, any_replicas_recovering
+
+        if self._replica_constructor_retry_counter > 0:
+            if failed_to_start_threshold == 0:
+                message = (
+                    "A replica failed to start with exception. Retrying. Error:\n"
+                    f"{self._replica_constructor_error_msg}"
                 )
-                return False, any_replicas_recovering
+            else:
+                remaining_retries = (
+                    failed_to_start_threshold - self._replica_constructor_retry_counter
+                )
+                message = (
+                    f"A replica failed to start with exception. Retrying "
+                    f"{remaining_retries} more time(s). Error:\n"
+                    f"{self._replica_constructor_error_msg}"
+                )
 
-        if failed_to_start_threshold == 0:
-            message = (
-                "A replica failed to start with exception. Retrying. Error:\n"
-                f"{self._replica_constructor_error_msg}"
-            )
-        else:
-            remaining_retries = failed_to_start_threshold - failed_to_start_count
-            message = (
-                f"A replica failed to start with exception. Retrying "
-                f"{remaining_retries} more time(s). Error:\n"
-                f"{self._replica_constructor_error_msg}"
-            )
-
-        self._curr_status_info = self._curr_status_info.update_message(message)
+            self._curr_status_info = self._curr_status_info.update_message(message)
 
         # If we have pending ops, the current goal is *not* ready.
         if (
