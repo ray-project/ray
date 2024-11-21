@@ -562,13 +562,11 @@ class ReplicaBase(ABC):
         with self._wrap_user_method_call(
             request_metadata, request_args
         ) as status_code_callback:
-            yield pickle.dumps(
-                ReplicaQueueLengthInfo(
-                    accepted=True,
-                    # NOTE(edoakes): `_wrap_user_method_call` will increment the number
-                    # of ongoing requests to include this one, so re-fetch the value.
-                    num_ongoing_requests=self.get_num_ongoing_requests(),
-                )
+            yield ReplicaQueueLengthInfo(
+                accepted=True,
+                # NOTE(edoakes): `_wrap_user_method_call` will increment the number
+                # of ongoing requests to include this one, so re-fetch the value.
+                num_ongoing_requests=self.get_num_ongoing_requests(),
             )
 
             if request_metadata.is_streaming:
