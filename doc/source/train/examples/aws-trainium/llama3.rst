@@ -1,7 +1,7 @@
 :orphan:
 
 Distributed fine-tuning of Llama 3.1 8B on AWS Trainium with Ray and PyTorch Lightning
-=====================================================================================
+======================================================================================
 
 
 This example demonstrates how to fine-tune the `Llama 3.1 8B <https://huggingface.co/NousResearch/Meta-Llama-3.1-8B/>`__ model on `AWS
@@ -18,7 +18,7 @@ Prepare the environment
 See `Setup EKS cluster and tools <https://github.com/aws-neuron/aws-neuron-eks-samples/tree/master/llama3.1_8B_finetune_ray_ptl_neuron#setupeksclusterandtools>`__ for setting up an Amazon EKS cluster leveraging AWS Trainium instances.
 
 Create a Docker image
--------------------
+---------------------
 When the EKS cluster is ready, create an Amazon ECR repository for building and uploading the Docker image containing artifacts for fine-tuning a Llama3.1 8B model:
 
 1. Clone the repo.
