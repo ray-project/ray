@@ -661,149 +661,252 @@ system resources. It is strongly recommended not to override these defaults, as 
 
 Data processing in RLlib involves three key layers, all of which are highly scalable:
 
-1. **Read Operations:** This layer handles data ingestion from files in a specified folder. It is automatically optimized by Ray Data and should not be manually scaled or adjusted.
-2. **Post-processing:** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects for updating. This layer can be scaling the ``DataWorker`` instances.
-3. **Updating:** This stage involves updating the policy and associated modules. Scalability is achieved by increasing the number of learners (``num_learners``), enabling parallel processing of batches during updates.
+#. **Read Operations:** This layer handles data ingestion from files in a specified folder. It is automatically optimized by Ray Data and should not be manually scaled or adjusted.
+#. **Post-processing (PreLearner):** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects for updating. This layer can be scaling the ``DataWorker`` instances.
+#. **Updating (Learner):** This stage involves updating the policy and associated modules. Scalability is achieved by increasing the number of learners (``num_learners``), enabling parallel processing of batches during updates.
 
-Ray Data Integration
---------------------
+The diagram below illustrates the layers and their scalability:
 
-RLlib has experimental support for reading/writing training samples from/to large offline datasets using
-:ref:`Ray Data <data>`.
-We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
+.. image:: images/offline/key_layers.svg
+    :width: 500
+    :alt: Key layers of RLlib's fully scalable Offline RL API.
 
-Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
-by simply specifying the desired ``num_env_runners`` config.
-
-To load sample data using Dataset, specify input and input_config keys like the following:
+**Read operations** are executed exclusively on the CPU and are primarily scaled by allocating additional resources (see :ref:`How to tune performance` for details), as they are fully managed by Ray Data. **Post-processing** can be scaled by increasing 
+the concurrency level specified in the keyword arguments for the mapping operation:
 
 .. code-block:: python
-
-    config = {
-        ...
-        "input"="dataset",
-        "input_config"={
-            "format": "json",  # json or parquet
-	    # Path to data file or directory.
-            "path": "/path/to/json_dir/",
-	    # Num of tasks reading dataset in parallel, default is num_env_runners.
-            "parallelism": 3,
-	    # Dataset allocates 0.5 CPU for each reader by default.
-	    # Adjust this value based on the size of your offline dataset.
-            "num_cpus_per_read_task": 0.5,
+    
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 10,
+            "num_cpus": 4,
         }
-	...
-    }
+    )
 
+This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable ``OfflinePreLearner`` class to post-process batches for updating the ``RLModule``.
 
+.. note:: The ``num_cpus`` (and similarly the ``num_gpus``) attribute defines the resources **allocated to each** ``DataWorker`` not the full actor pool.
 
-Writing Environment Data
---------------------------
+You scale the number of learners in RLlib's ``learners`` configuration block:
 
-To include environment data in the training sample datasets you can use the optional
-``store_infos`` parameter that is part of the ``output_config`` dictionary. This parameter
-ensures that the ``infos`` dictionary, as returned by the RL environment, is included in the output files.
+.. code-block:: python
+    
+    AlgorithmConfig()
+    .learners(
+        num_learners=4,
+        num_gpus_per_learner=1,
+    )
 
-.. note:: It is the responsibility of the user to ensure that the content of ``infos`` can be serialized to file.
+With this configuration you start an application with 4 (remote) ``Learner`` s (see :ref:`Learner (Alpha)` for more details about RLlib's learners) each of them using a single GPU. 
 
-.. note:: This setting is only relevant for the TensorFlow based agents, for PyTorch agents the ``infos`` data is always stored.
+Using cloud storage
+-------------------
+Unlike RLlib's previous stack, the new Offline RL API is cloud-agnostic and fully integrates with PyArrow. You can utilize any available cloud storage path or PyArrow-compatible filesystem. If 
+using a PyArrow (or compatible) filesystem, ensure that your ``input_`` file path is a relative path within this filesystem. Similar to Ray Data, you can also use placeholders, lists of files 
+or folders, or simply specify a single folder to read recursively from.
 
-To write the ``infos`` data to JSON or Parquet files using Dataset, specify output and output_config keys like the following:
+For example, to read from a storage bucket in GCS, you can specify the folder location as follows:
 
 .. code-block:: python
 
-    config = {
-        "output": "dataset",
-        "output_config": {
-            "format": "json",  # json or parquet
-            # Directory to write data files.
-            "path": "/tmp/test_samples/",
-            # Write the infos dict data
-            "store_infos" : True,
-        }
-    }
+    AlgorithmConfig()
+    .offline_data(
+        input_="gs://<your-bucket>/dir1",
+    )
 
-
-
-Input Pipeline for Supervised Losses
-------------------------------------
-
-You can also define supervised model losses over offline data. This requires defining a `custom model loss <rllib-models.html#supervised-model-losses>`__. We provide a convenience function, ``InputReader.tf_input_ops()``, that can be used to convert any input reader to a TF input pipeline. For example:
+This configuration allows RLlib to read data recursively from any folder beneath the specified path. If you are using a filesystem for GCS (for instance, due to authentication requirements), 
+use the following syntax:
 
 .. code-block:: python
 
-    def custom_loss(self, policy_loss):
-        input_reader = JsonReader("/tmp/cartpole-out")
-        # print(input_reader.next())  # if you want to access imperatively
+    import pyarrow.fs
+    
+    # Define the PyArrow filesystem
+    gcs = pyarrow.fs.GcsFilesystem(
+        # This is needed to resolve the hostname for public buckets.
+        anonymous=True, 
+        retry_time_limit=timedelta(seconds=15)
+    )
 
-        input_ops = input_reader.tf_input_ops()
-        print(input_ops["obs"])  # -> output Tensor shape=[None, 4]
-        print(input_ops["actions"])  # -> output Tensor shape=[None]
+    # Define the configuration.
+    AlgorithmConfig()
+    .offline_data(
+        # NOTE: Use a relative file path now
+        input_="<public-bucket>/dir1",
+        input_filesystem=gcs,
+    )
 
-        supervised_loss = some_function_of(input_ops)
-        return policy_loss + supervised_loss
+You can learn more about PyArrow's filesystems, particularly regarding cloud filesystems and required authentication, in `PyArrow Filesystem Interface <https://arrow.apache.org/docs/python/filesystems.html#filesystem-interface>`__.
 
-See `custom_model_loss_and_metrics.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ for a runnable example of using these TF input ops in a custom loss.
+.. note:: When using cloud storage, Ray Data typically streams data, meaning it is consumed in chunks. This allows postprocessing and training to begin after a brief warmup phase. More specifically, even if your cloud storage is large, the same amount of 
+    space is not required on the node(s) running RLlib.
+
+How to tune performance 
+-----------------------
+
+Because the different key layers in the offline RL API are managed by different modules and configurations scaling the layers is not straightforward and you need to understand which parameters have which leverage
 
 Input API
 ---------
 
 You can configure experience input for an agent using the following options:
 
-.. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-    objects, which have the advantage of being type safe, allowing users to set different config settings within
-    meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
-    construct an Algorithm instance from these config objects (via their ``.build()`` method).
-
-
 .. code-block:: python
 
-    # Specify how to generate experiences:
-    #  - "sampler": Generate experiences via online (env) simulation (default).
-    #  - A local directory or file glob expression (e.g., "/tmp/*.json").
-    #  - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
-    #    "s3://bucket/2.json"]).
-    #  - A dict with string keys and sampling probabilities as values (e.g.,
-    #    {"sampler": 0.4, "/tmp/*.json": 0.4, "s3://bucket/expert.json": 0.2}).
-    #  - A callable that takes an `IOContext` object as only arg and returns a
-    #    ray.rllib.offline.InputReader.
-    #  - A string key that indexes a callable with tune.registry.register_input
-    "input": "sampler",
-    # Arguments accessible from the IOContext for configuring custom input
-    "input_config": {},
-    # True, if the actions in a given offline "input" are already normalized
-    # (between -1.0 and 1.0). This is usually the case when the offline
-    # file has been generated by another RLlib algorithm (e.g. PPO or SAC),
-    # while "normalize_actions" was set to True.
-    "actions_in_input_normalized": False,
-    # Specify how to evaluate the current policy. This only has an effect when
-    # reading offline experiences ("input" is not "sampler").
-    # Available options:
-    #  - "simulation": Run the environment in the background, but use
-    #    this data for evaluation only and not for learning.
-    #  - Any subclass of OffPolicyEstimator, e.g.
-    #    ray.rllib.offline.estimators.is::ImportanceSampling or your own custom
-    #    subclass.
-    "off_policy_estimation_methods": {
-        "is": {"type": ImportanceSampling},
-        "wis": {"type": WeightedImportanceSampling}
-    },
-    # Whether to run postprocess_trajectory() on the trajectory fragments from
-    # offline inputs. Note that postprocessing will be done using the *current*
-    # policy, not the *behavior* policy, which is typically undesirable for
-    # on-policy algorithms.
-    "postprocess_inputs": False,
-    # If positive, input batches will be shuffled via a sliding window buffer
-    # of this number of batches. Use this if the input data isn't in random
-    # enough order. Input is delayed until the shuffle buffer is filled.
-    "shuffle_buffer_size": 0,
-
-The interface for a custom input reader is as follows:
-
-.. autoclass:: ray.rllib.offline.InputReader
-    :members:
-    :noindex:
+    def offline_data(
+        self,
+        *,
+        # Specify how to generate experiences:
+        # - A local directory or file glob expression (e.g., "/tmp/*.json").
+        # - A cloud storage path or file glob expression (e.g., "gs://rl/").
+        # - A list of individual file paths/URIs (e.g., ["/tmp/1.json",
+        #   "s3://bucket/2.json"]).
+        # - A file or directory path in a given `input_filesystem`.
+        input_: Optional[Union[str, Callable[[IOContext], InputReader]]],
+        # Read method for the `ray.data.Dataset` to read in the
+        # offline data from `input_`. The default is `read_parquet` for Parquet
+        # files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+        # more info about available read methods in `ray.data`.
+        input_read_method: Optional[Union[str, Callable]],
+        # Keyword args for `input_read_method`. These
+        # are passed into the read method without checking. Use these
+        # keyword args together with `map_batches_kwargs` and
+        # `iter_batches_kwargs` to tune the performance of the data pipeline. It 
+        # is strongly recommended to rely on Ray Data's automatic read performance 
+        # tuning
+        input_read_method_kwargs: Optional[Dict],
+        # Table schema for converting offline data to episodes.
+        # This schema maps the offline data columns to
+        # `ray.rllib.core.columns.Columns`:
+        # `{Columns.OBS: 'o_t', Columns.ACTIONS: 'a_t', ...}`. Columns in
+        # the data set that are not mapped via this schema are sorted into
+        # episodes' `extra_model_outputs`. If no schema is passed in the default
+        # schema used is `ray.rllib.offline.offline_data.SCHEMA`. If your data set
+        # contains already the names in this schema, no `input_read_schema` is
+        # needed. The same applies, if the offline data is in RLlib's
+        # `EpisodeType` or old `SampleBatch` format
+        input_read_schema: Optional[Dict[str, str]],
+        # Whether offline data is already stored in RLlib's
+        # `EpisodeType` format, i.e. `ray.rllib.env.SingleAgentEpisode` (multi
+        # -agent is planned but not supported, yet). Reading episodes directly
+        # avoids additional transform steps and is usually faster and
+        # therefore the recommended format when your application remains fully
+        # inside of RLlib's schema. The other format is a columnar format and is
+        # agnostic to the RL framework used. Use the latter format, if you are
+        # unsure when to use the data or in which RL framework. The default is
+        # to read column data, i.e. `False`. `input_read_episodes` and
+        # `input_read_sample_batches` cannot be `True` at the same time. See
+        # also `output_write_episodes` to define the output data format when
+        # recording.
+        input_read_episodes: Optional[bool],
+        # Whether offline data is stored in RLlib's old
+        # stack `SampleBatch` type. This is usually the case for older data
+        # recorded with RLlib in JSON line format. Reading in `SampleBatch`
+        # data needs extra transforms and might not concatenate episode chunks
+        # contained in different `SampleBatch`es in the data. If possible avoid
+        # to read `SampleBatch`es and convert them in a controlled form into
+        # RLlib's `EpisodeType` (i.e. `SingleAgentEpisode`). The default is 
+        # `False`. `input_read_episodes` and `input_read_sample_batches` cannot 
+        # be True at the same time.
+        input_read_sample_batches: Optional[bool],
+        # Batch size to pull from the data set. This could
+        # differ from the `train_batch_size_per_learner`, if a dataset holds
+        # `EpisodeType` (i.e. `SingleAgentEpisode`) or `SampleBatch`, or any 
+        # other data type that contains multiple timesteps in a single row of the
+        # dataset. In such cases a single batch of size
+        # `train_batch_size_per_learner` will potentially pull a multiple of
+        # `train_batch_size_per_learner` timesteps from the offline dataset. The
+        # default is `None` in which the `train_batch_size_per_learner` is pulled.
+        input_read_batch_size: Optional[int],
+        # A cloud filesystem to handle access to cloud storage when
+        # reading experiences. Can be "gcs" for Google Cloud Storage, "s3" for AWS
+        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported 
+        # by PyArrow. In general the file path is sufficient for accessing data
+        # from public or local storage systems. See 
+        # https://arrow.apache.org/docs/python/filesystems.html for details.
+        input_filesystem: Optional[str],
+        # A dictionary holding the kwargs for the filesystem
+        # given by `input_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+        # `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+        # ABS filesystem arguments.
+        input_filesystem_kwargs: Optional[Dict],
+        # What input columns are compressed with LZ4 in the
+        # input data. If data is stored in RLlib's `SingleAgentEpisode` (
+        # `MultiAgentEpisode` not supported, yet). Note the providing
+        # `rllib.core.columns.Columns.OBS` also tries to decompress
+        # `rllib.core.columns.Columns.NEXT_OBS`.
+        input_compress_columns: Optional[List[str]],
+        # Whether the raw data should be materialized in memory.
+        # This boosts performance, but requires enough memory to avoid an OOM, so
+        # make sure that your cluster has the resources available. For very large
+        # data you might want to switch to streaming mode by setting this to
+        # `False` (default). If your algorithm does not need the RLModule in the
+        # Learner connector pipeline or all (learner) connectors are stateless
+        # you should consider setting `materialize_mapped_data` to `True`
+        # instead (and set `materialize_data` to `False`). If your data does not
+        # fit into memory and your Learner connector pipeline requires an RLModule
+        # or is stateful, set both `materialize_data` and
+        # `materialize_mapped_data` to `False`.
+        materialize_data: Optional[bool],
+        # Whether the data should be materialized after
+        # running it through the Learner connector pipeline (i.e. after running
+        # the `OfflinePreLearner`). This improves performance, but should only be
+        # used in case the (learner) connector pipeline does not require an
+        # RLModule and the (learner) connector pipeline is stateless. For example,
+        # MARWIL's Learner connector pipeline requires the RLModule for value
+        # function predictions and training batches would become stale after some
+        # iterations causing learning degradation or divergence. Also ensure that
+        # your cluster has enough memory available to avoid an OOM. If set to
+        # `True`, make sure that `materialize_data` is set to `False` to
+        # avoid materialization of two datasets. If your data does not fit into
+        # memory and your Learner connector pipeline requires an RLModule or is
+        # stateful, set both `materialize_data` and `materialize_mapped_data` to
+        # `False`.
+        materialize_mapped_data: Optional[bool],
+        # Keyword args for the `map_batches` method. These are
+        # passed into the `ray.data.Dataset.map_batches` method when sampling
+        # without checking. If no arguments passed in the default arguments
+        # `{'concurrency': max(2, num_learners), 'zero_copy_batch': True}` is
+        # used. Use these keyword args together with `input_read_method_kwargs`
+        # and `iter_batches_kwargs` to tune the performance of the data pipeline.
+        map_batches_kwargs: Optional[Dict],
+        # Keyword args for the `iter_batches` method. These are
+        # passed into the `ray.data.Dataset.iter_batches` method when sampling
+        # without checking. If no arguments are passed in, the default argument
+        # `{'prefetch_batches': 2}` is used. Use these keyword args
+        # together with `input_read_method_kwargs` and `map_batches_kwargs` to
+        # tune the performance of the data pipeline.
+        iter_batches_kwargs: Optional[Dict],
+        # An optional `OfflinePreLearner` class that is used to
+        # transform data batches in `ray.data.map_batches` used in the
+        # `OfflineData` class to transform data from columns to batches that can
+        # be used in the `Learner.update...()` methods. Override the
+        # `OfflinePreLearner` class and pass your derived class in here, if you
+        # need to make some further transformations specific for your data or
+        # loss. The default is `None`` which uses the base `OfflinePreLearner`
+        # defined in `ray.rllib.offline.offline_prelearner`. 
+        prelearner_class: Optional[Type],
+        # An optional `EpisodeReplayBuffer` class is
+        # used to buffer experiences when data is in `EpisodeType` or
+        # RLlib's previous `SampleBatch` type format. In this case, a single
+        # data row may contain multiple timesteps and the buffer serves two
+        # purposes: (a) to store intermediate data in memory, and (b) to ensure
+        # that exactly `train_batch_size_per_learner` experiences are sampled
+        # per batch. The default is RLlib's `EpisodeReplayBuffer`.
+        prelearner_buffer_class: Optional[Type],
+        # Optional keyword arguments for intializing the
+        # `EpisodeReplayBuffer`. In most cases this is simply the `capacity`
+        # for the default buffer used (`EpisodeReplayBuffer`), but it may
+        # differ if the `prelearner_buffer_class` uses a custom buffer.
+        prelearner_buffer_kwargs: Optional[Dict],
+        # Number of updates to run in each learner
+        # during a single training iteration. If None, each learner runs a
+        # complete epoch over its data block (the dataset is partitioned into
+        # at least as many blocks as there are learners). The default is `None`.
+        # This must be set to `1`, if a single (local) learner is used.
+        dataset_num_iters_per_learner: Optional[int],
+    )
 
 Example Custom Input API
 ------------------------
