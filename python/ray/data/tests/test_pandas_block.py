@@ -203,21 +203,18 @@ class TestSizeBytes:
 
     def test_nested_lists_strings(ray_start_regular_shared):
         rows = 5_000
-        size = 10
+        nested_lists = ["a"] * 3 + ["bb"] * 4 + ["ccc"] * 3
         data = {
-            "nested_lists": [
-                [random.choice(["a", "bb", "ccc"]) for _ in range(size)]
-                for _ in range(rows)
-            ],
+            "nested_lists": [nested_lists for _ in range(rows)],
         }
         block = pd.DataFrame(data)
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
         # Manually calculate the size
-        list_overhead = sys.getsizeof(
-            block["nested_lists"].iloc[0]
-        ) + size * sys.getsizeof("bb")
+        list_overhead = sys.getsizeof(block["nested_lists"].iloc[0]) + sum(
+            [sys.getsizeof(x) for x in nested_lists]
+        )
         true_size = rows * list_overhead
         assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
