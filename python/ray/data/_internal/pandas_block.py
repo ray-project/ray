@@ -295,7 +295,9 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from ray.data.extensions import TensorArrayElement
+        from pandas.api.types import is_object_dtype
+
+        from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()
 
@@ -344,17 +346,14 @@ class PandasBlockAccessor(TableBlockAccessor):
         # Get initial memory usage including deep introspection
         memory_usage = self._table.memory_usage(index=True, deep=True)
 
-        # python_object() for arrow of bytes
-        # If it's ndarray(TensorArrayElement), the outer self._table[column].dtype is
-        # "numpy.ndarray(shape=(None,), dtype=object)"
-        object_need_check = [
-            "object",
-            "python_object()",
-            "numpy.ndarray(shape=(None,), dtype=object)",
-        ]
+        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
+        object_need_check = (TensorDtype,)
         # Handle object columns separately
         for column in self._table.columns:
-            if str(self._table[column].dtype) in object_need_check:
+            # Check pandas object dtype and the extenstion dtype
+            if is_object_dtype(self._table[column].dtype) or isinstance(
+                self._table[column].dtype, object_need_check
+            ):
                 column_memory = 0
                 for element in self._table[column]:
                     column_memory += get_deep_size(element)
