@@ -196,11 +196,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
 
         # Sort rows lexicographically
-        columns = list(samples_dict.values())
-        sorted_rows_indices = np.lexsort(tuple(reversed(columns)))
-        # Stack columns to transpose from list of columns to an array of row-like arrays
-        sampled_rows_array = np.column_stack(columns)
-        sorted_rows_array = sampled_rows_array[sorted_rows_indices]
+        record_dtype = [(k, v.dtype) for k, v in samples_dict.items()]
+        sampled_rows_array = np.array(list(zip(*samples_dict.values())), dtype=record_dtype)
+
+        sampled_rows_array.sort()
+        sorted_rows_array = sampled_rows_array
 
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [
