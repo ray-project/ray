@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/util/event.h"
+#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 using json = nlohmann::json;
@@ -971,7 +972,7 @@ void CoreWorker::ForceExit(const rpc::WorkerExitType exit_type,
 void CoreWorker::RunIOService() {
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask = 0;
+  sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);

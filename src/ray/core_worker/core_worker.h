@@ -1432,7 +1432,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
  private:
   static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
-                                           const std::shared_ptr<nlohmann::json> parent);
+                                           const std::shared_ptr<nlohmann::json> &parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);

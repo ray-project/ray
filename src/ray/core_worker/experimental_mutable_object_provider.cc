@@ -263,7 +263,7 @@ void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
   // TODO(jhumphri): Decompose this.
 #ifndef _WIN32
   // Block SIGINT and SIGTERM so they will be handled by the main thread.
-  sigset_t mask = 0;
+  sigset_t mask;
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);

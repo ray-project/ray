@@ -252,7 +252,7 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   io_thread_ = std::thread([this]() {
 #ifndef _WIN32
     // Block SIGINT and SIGTERM so they will be handled by the main thread.
-    sigset_t mask = 0;
+    sigset_t mask;
     sigemptyset(&mask);
     sigaddset(&mask, SIGINT);
     sigaddset(&mask, SIGTERM);
