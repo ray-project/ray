@@ -29,8 +29,14 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
+# Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
+MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
+#       its offsets
+INT32_OVERFLOW_THRESHOLD = 2 * GiB
 
 logger = logging.getLogger(__name__)
 
@@ -212,7 +218,7 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _len_gt_2gb(obj: Any) -> bool:
+    def _len_gt_overflow_threshold(obj: Any) -> bool:
         # NOTE: This utility could be seeing objects other than strings or bytes in
         #       cases when column contains non-scalar non-homogeneous object types as
         #       column values, therefore making Arrow unable to infer corresponding
@@ -221,16 +227,16 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > 2 * GiB
+            return len(obj) > INT32_OVERFLOW_THRESHOLD
 
         return False
 
     if pa.types.is_binary(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_binary()
     elif pa.types.is_string(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_string()
 
@@ -569,7 +575,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
                 arr = np.stack(arr, axis=0)
-            except ValueError:
+            except ValueError as ve:
+                logger.warning(
+                    f"Failed to stack lists due to: {ve}; "
+                    f"falling back to using np.array(..., dtype=object)",
+                    exc_info=ve,
+                )
+
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
                 arr = np.array(arr, dtype=object)
         if not isinstance(arr, np.ndarray):

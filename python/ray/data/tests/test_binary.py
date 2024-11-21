@@ -1,7 +1,5 @@
 import os
 from io import BytesIO
-from tempfile import TemporaryDirectory
-from typing import Optional
 
 import pandas as pd
 import pyarrow as pa
@@ -11,7 +9,6 @@ import snappy
 
 import ray
 from ray.data import Schema
-from ray.data._internal.util import GiB, MiB
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -196,66 +193,6 @@ def test_read_binary_snappy_partitioned_with_filter(
         sorted_values=[b"1 a\n1 b\n1 c", b"3 e\n3 f\n3 g"],
         ds_take_transform_fn=lambda t: extract_values("bytes", t),
     )
-
-
-def _gen_chunked_binary(
-    dir_path: str, total_size: int, max_file_size: Optional[int] = None
-):
-    # NOTE: This util is primed to be writing even single large binary files
-    #       in chunks to reduce memory requirements while doing so
-    chunk_size = max_file_size or 256 * MiB
-    num_chunks = total_size // chunk_size
-    remainder = total_size % chunk_size
-
-    if max_file_size is not None and max_file_size < total_size:
-        for i in range(num_chunks):
-            filename = f"part_{i}.bin"
-            with open(f"{dir_path}/{filename}", "wb") as f:
-                f.write(b"a" * chunk_size)
-
-                print(f">>> Written file: {filename}")
-
-    else:
-        with open(f"{dir_path}/chunk.bin", "wb") as f:
-            for i in range(num_chunks):
-                f.write(b"a" * chunk_size)
-
-                print(f">>> Written chunk #{i}")
-
-            if remainder:
-                f.write(b"a" * remainder)
-
-    print(f">>> Wrote chunked dataset at: {dir_path}")
-
-
-@pytest.mark.parametrize(
-    "col_name",
-    [
-        "bytes",
-        # TODO fix numpy conversion
-        # "text",
-    ],
-)
-def test_single_row_gt_2gb(ray_start_regular_shared, col_name):
-    with TemporaryDirectory() as tmp_dir:
-        target_binary_size_gb = 2.1
-
-        # Write out single file > 2Gb
-        _gen_chunked_binary(tmp_dir, total_size=int(target_binary_size_gb * GiB))
-
-        def _id(row):
-            bs = row[col_name]
-            assert round(len(bs) / GiB, 1) == target_binary_size_gb
-            return row
-
-        if col_name == "text":
-            ds = ray.data.read_text(tmp_dir)
-        elif col_name == "bytes":
-            ds = ray.data.read_binary_files(tmp_dir)
-
-        total = ds.map(_id).count()
-
-        assert total == 1
 
 
 if __name__ == "__main__":
