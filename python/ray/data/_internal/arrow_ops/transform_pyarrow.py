@@ -353,7 +353,7 @@ def to_numpy(
             return array.to_numpy()
     else:
         raise ValueError(
-            f"Either of `Array` or `ChunkedArray` was expected, " f"got {type(array)}"
+            f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
         )
 
 
