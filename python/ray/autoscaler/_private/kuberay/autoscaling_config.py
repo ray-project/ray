@@ -30,7 +30,7 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
-_HEAD_GROUP_NAME = "head-group"
+_HEAD_GROUP_NAME = "headgroup"
 
 
 class AutoscalingConfigProducer:

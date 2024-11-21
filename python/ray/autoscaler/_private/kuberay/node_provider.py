@@ -38,8 +38,6 @@ KUBERAY_KIND_HEAD = "head"
 # Kind label value indicating the pod is the worker.
 KUBERAY_KIND_WORKER = "worker"
 
-# Group name (node type) to use for the head.
-KUBERAY_TYPE_HEAD = "head-group"
 # KubeRay CRD version
 KUBERAY_CRD_VER = os.getenv("KUBERAY_CRD_VER", "v1alpha1")
 
@@ -104,12 +102,12 @@ def kind_and_type(pod: Dict[str, Any]) -> Tuple[NodeKind, NodeType]:
     from a Ray pod's labels.
     """
     labels = pod["metadata"]["labels"]
-    if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
-        kind = NODE_KIND_HEAD
-        type = KUBERAY_TYPE_HEAD
-    else:
-        kind = NODE_KIND_WORKER
-        type = labels[KUBERAY_LABEL_KEY_TYPE]
+    kind = (
+        NODE_KIND_HEAD
+        if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD
+        else NODE_KIND_WORKER
+    )
+    type = labels[KUBERAY_LABEL_KEY_TYPE]
     return kind, type
 
 
