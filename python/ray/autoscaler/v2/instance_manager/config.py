@@ -129,7 +129,7 @@ class NodeTypeConfig:
     # The maximal number of worker nodes can be launched for this node type.
     max_worker_nodes: int
     # Idle timeout seconds for worker nodes of this node type.
-    idle_timeout_s: Optional[int] = None
+    idle_timeout_s: Optional[float] = None
     # The total resources on the node.
     resources: Dict[str, float] = field(default_factory=dict)
     # The labels on the node.
