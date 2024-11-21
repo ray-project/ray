@@ -266,11 +266,6 @@ data needs to be linked in the configuration of the algorithm (via the ``input_`
             # evaluation.
             env="CartPole-v1",
         )
-        .api_stack(
-            # Enable the new API stack.
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .learners(
             # Use a single learner.
             num_learners=0,
@@ -425,11 +420,6 @@ First, you will store experiences of the above trained expert policy in tabular 
         # The environment needs to be specified.
         .environment(
             env="CartPole-v1",
-        )
-        # Make sure you use the new API stack.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
         )
         # Make sure to sample complete episodes because
         # you want to record RLlib's episode objects.
