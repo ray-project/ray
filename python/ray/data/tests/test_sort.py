@@ -54,7 +54,8 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
 def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular):
     # Test for https://github.com/ray-project/ray/issues/45303.
     ds = ray.data.from_items(
-        [{"a": i, "b": f'{j}'} for i in range(2) for j in range(5)], override_num_blocks=5
+        [{"a": i, "b": f"{j}"} for i in range(2) for j in range(5)],
+        override_num_blocks=5,
     )
 
     ds_sorted = ds.sort(["a", "b"])

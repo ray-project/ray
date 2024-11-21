@@ -197,7 +197,9 @@ class SortTaskSpec(ExchangeTaskSpec):
 
         # Sort rows lexicographically
         record_dtype = [(k, v.dtype) for k, v in samples_dict.items()]
-        sampled_rows_array = np.array(list(zip(*samples_dict.values())), dtype=record_dtype)
+        sampled_rows_array = np.array(
+            list(zip(*samples_dict.values())), dtype=record_dtype
+        )
 
         sampled_rows_array.sort()
         sorted_rows_array = sampled_rows_array
