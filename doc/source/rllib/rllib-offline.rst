@@ -13,42 +13,41 @@ streaming systems, HDFS). For example, you might want to read experiences saved 
 from experts, or gathered from policies deployed in `web applications <https://arxiv.org/abs/1811.00260>`__. You can 
 also log new agent experiences produced during online training for future use.
 
-RLlib represents trajectory sequences (i.e., ``(s, a, r, s', ...)`` tuples) with `SingleAgentEpisode 
-<single-agent-episode.rst>`__ objects (multi-agent offline training is currently not supported). Using this episode format 
+RLlib represents trajectory sequences (i.e., ``(s, a, r, s', ...)`` tuples) with :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` 
+objects (multi-agent offline training is currently not supported). Using this episode format 
 enables efficient encoding and compression of experiences, rewriting trajectories, and user-friendly data access via getters. 
-During online training, RLlib uses `SingleAgentEnvRunner <rllib-concepts.html#policy-evaluation>`__ actors to generate episodes 
-of experiences in parallel using the current policy. RLlib can also uses this same episode format for reading and writing 
-experiences to offline storage. For offline writing RLlib uses the `OfflineSingleAgentEnvRunner 
-<https://github.com/ray-project/ray/blob/master/rllib/offline/offline_single_agent_env_runner.py>`__ that samples episodes 
-and writes them to offline storage. 
+During online training, RLlib uses :py:class:`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` actors to generate episodes of experiences 
+in parallel using the current policy. RLlib can also uses this same episode format for reading and writing experiences to offline storage. For offline 
+writing RLlib uses the :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` that samples episodes and writes them to offline 
+storage. 
 
 You can store experiences either directly in RLlib's episode format or in table (columns) 
 format. You should use the episode format when 
 
-a. You need experiences grouped by their trajectory and ordered in time (e.g. to train stateful modules).
-b. You want to use recorded experiences exclusively within RLlib.
+#. You need experiences grouped by their trajectory and ordered in time (e.g. to train stateful modules).
+#. You want to use recorded experiences exclusively within RLlib.
 
 Contrary, you should prefer the table (columns) format, if
 
-a. You need to read the data easily with other data tools or ML libraries.
-b. You do not need full (usually complete) trajectories in training.
+#. You need to read the data easily with other data tools or ML libraries.
+#. You do not need full (usually complete) trajectories in training.
 
 .. note:: RLlib's redesigned API stack incorporates principles that support standalone applications. Consequently, the 
-    `SingleAgentEpisode` class is available for use independently of RLlib. To enable faster access through external data tools 
-    (e.g., for data transformations), it is recommended to use the table record format in these scenarios.
+    :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is available for use independently of RLlib. To enable faster 
+    access through external data tools (e.g., for data transformations), it is recommended to use the table record format in these scenarios.
 
 Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and 
-write methods supported by Ray Data (e.g. ``read_parquet``, ``read_json``, etc.) with ``read/write_parquet`` being the default 
-read and write methods. A core design principle of the API is to apply as many data transformations as possible on-the-fly to
-the learner, allowing the learner to focus exclusively on model updates. 
+write methods supported by Ray Data (e.g. :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with 
+:py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle 
+of the API is to apply as many data transformations as possible on-the-fly to the learner, allowing the learner to focus exclusively on model updates. 
 
-.. note:: During the transition phase from old to new API stack you can use the new offline RL API also with your 
-    `SampleBatch <https://github.com/ray-project/ray/blob/master/rllib/offline/offline_single_agent_env_runner.py>`__ data recorded 
-    with the old API stack. To enable this feature set ``input_read_sample_batches=True``.
+.. hint:: During the transition phase from old to new API stack you can use the new offline RL API also with your 
+    :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data recorded with the old API stack. To enable this feature set 
+    ``input_read_sample_batches=True``.
 
 Example: Training an expert policy.
 --------------------------------------------
-In this example you train an PPO agent to play ``CartPole-v1`` until it collects an episode mean reward of ``450.0``. You checkpoint 
+In this example you train a PPO agent on the ``CartPole-v1`` environment until it reaches an episode mean return of ``450.0``. You checkpoint 
 this agent and later use its policy to record expert data to local disk.
 
 .. testsetup:: 
@@ -80,11 +79,6 @@ this agent and later use its policy to record expert data to local disk.
     config = (
         PPOConfig()
         .environment("CartPole-v1")
-        # Enable the new API stack.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .training(
             lr=0.0003,
             # Run 6 SGD minibatch iterations on a batch.
@@ -123,8 +117,10 @@ this agent and later use its policy to record expert data to local disk.
             ),
         ),
     )
-    analysis = tuner.fit()
+    results = tuner.fit()
 
+    # Store the best checkpoint to use it later for recording
+    # an expert policy.
     best_checkpoint = (
         analysis
         .get_best_result(
@@ -134,13 +130,16 @@ this agent and later use its policy to record expert data to local disk.
         .checkpoint.path
     )
 
+In this example, you saved a checkpoint from an agent that has become an expert at playing ``CartPole-v1``.  You use this checkpoint in the next 
+example to record expert data to disk, which will later be utilized for offline training to clone another agent.
+
 Example: Record expert data to local disk
 -----------------------------------------
 After you trained an expert policy to play ``CartPole-v1`` you load its policy here to record expert data during evaluation. You will use 
-5 ``OfflineSingleAgentEnvRunner`` s to collect in each rollout 50 complete episodes. In this example you store experiences directly in RLlib's 
-``SingleAgentEpisode`` objects with no more than 25 episode objects per Parquet file. Altogether you run 10 evaluation runs, which should
-result in 500 recorded episodes from the expert policy. You will use these data in the next example to train via Offline RL a new policy 
-that should reach a return of 450.0 when playing ``CartPole-v1``.
+``5`` :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` s to collect in each rollout ``50`` complete episodes. In this 
+example you store experiences directly in RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects with no more than 
+``25`` episode objects per Parquet file. Altogether you run 10 evaluation runs, which should result in ``500`` recorded episodes from the expert policy. 
+You will use these data in the next example to train via Offline RL a new policy that should reach a return of ``450.0`` when playing ``CartPole-v1``.
 
 .. testcode::
 
@@ -163,11 +162,6 @@ that should reach a return of 450.0 when playing ``CartPole-v1``.
         .environment(
             env="CartPole-v1",
         )
-        # Make sure you use the new API stack.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # Make sure to sample complete episodes because
         # you want to record RLlib's episode objects.
         .env_runners(
@@ -178,6 +172,7 @@ that should reach a return of 450.0 when playing ``CartPole-v1``.
         .evaluation(
             evaluation_num_env_runners=5,
             evaluation_duration=50,
+            evaluation_duration_unit="episodes",
         )
         # Use the checkpointed expert policy from PPO training
         # above. Note, we have to use the same `model_config` as
@@ -226,20 +221,30 @@ that should reach a return of 450.0 when playing ``CartPole-v1``.
 .. note:: The stored episode data is formatted as ``binary``. Each episode is converted into its dictionary representation and serialized using ``msgpack-numpy``, 
     ensuring version compatibility.
 
-RLlib's  recording process is efficient because it utilizes multiple ``OfflineSingleAgentEnvRunner`` instances during evaluation, enabling parallel 
-data writing. You can explore the folder to review the stored Parquet data:
+RLlib's  recording process is efficient because it utilizes multiple :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances during 
+evaluation, enabling parallel data writing. You can explore the folder to review the stored Parquet data:
 
 .. code-block:: text
 
     $ ls -la /tmp/docs_rllib_offline_recording/cartpole-v1
 
-    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00006
-    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00011
-    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00016
-    drwxr-xr-x.  2 user user 540 18. Nov 18:05 run-000001-00021
+    drwxr-xr-x. 22 user user 440 21. Nov 17:23 .
+    drwxr-xr-x.  3 user user  60 21. Nov 17:23 ..
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000001-00004
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000001-00009
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000001-00012
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000001-00016
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000002-00004
+    drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000002-00007
 
-.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see for each ``OfflineSingleAgentEnvRunner`` and write operation 
-    one folder of Parquet files. The write operation count is given in the second numbering. 
+
+.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see for each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` 
+    and write operation one folder of Parquet files. The write operation count is given in the second numbering. For example: above, env-runner 1 has sampled 25 episodes at 
+    its 4th :py:meth:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner.sample` call and writes then (because ``output_max_rows_per_file=25``) all sampled episodes 
+    to disk into file ``run-000001-00004``.
+
+.. note:: The number of write operations per worker may vary because policy rollouts are not evenly distributed. Faster workers collect more episodes, 
+    leading to differences in write operation counts. As a result, the second numbering may differ across files generated by different env-runner instances.
 
 Example: Training on previously saved experiences
 -------------------------------------------------
@@ -341,10 +346,10 @@ results should resemble the following:
 
 .. image:: images/offline/docs_rllib_offline_bc_episode_return_mean.svg
     :alt: Episode mean return over the course of BC training.
-    :width: 750
+    :width: 500
     :align: left
 
-It should take you around 98 seconds (456 iterations) to achieve the same episode return mean as the PPO agent. While this may not seem 
+It should take you around ``98`` seconds (``456`` iterations) to achieve the same episode return mean as the PPO agent. While this may not seem 
 impressive compared to the PPO training time, it is important to note that ``CartPole-v1`` is a very simple environment to learn. In more 
 complex environments, which require more sophisticated agents and significantly longer training times, pretraining via behavior cloning 
 can be highly beneficial. Combining behavior cloning with subsequent fine-tuning using a reinforcement learning algorithm can substantially 
@@ -354,8 +359,8 @@ Using external expert experiences
 ---------------------------------
 Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically, 
 this data is stored in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
-via a specified schema that organizes the expert data. The API's default schema for reading data is provided in `offline_prelearner.SCHEMA 
-<http://github.com/ray-project/ray/blob/master/rllib/offline/offline_prelearner.py#33>`__.
+via a specified schema that organizes the expert data. The API's default schema for reading data is provided in 
+:py:attr:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
 
 Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case 
 you provide this schema as follows:
@@ -383,7 +388,7 @@ you provide this schema as follows:
     )
         
 .. note:: Internally, the legacy ``gym``'s ``done`` signals are mapped to ``gymnasium``'s ``terminated`` signals, with ``truncated`` values defaulting to 
-    ``False``. RLlib's ``SingleAgentEpisode`` structures align with ``gymnasium``, adhering to the updated environment API standards in reinforcement learning.
+    ``False``. RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` structures align with ``gymnasium``, adhering to the updated environment API standards in reinforcement learning.
 
 Converting tabular data to RLlib's episode format
 -------------------------------------------------
@@ -393,9 +398,11 @@ As briefly mentioned earlier, such scenarios typically arise when full expert tr
 .. note::
     RLlib processes tabular data in batches, converting each row into a *single-step episode*. This approach is primarily for procedural simplicity, as data cannot 
     generally be assumed to arrive in time-ordered rows grouped by episodes, though this may occasionally be the case (however knowledge of such a structure resides  
-    with the user as RLlib cannot easily infer it automatically). While it is possible to concatenate ``SingleAgentEpisode`` chunks, this cannot be done with fragmented chunks.
+    with the user as RLlib cannot easily infer it automatically). While it is possible to concatenate :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` 
+    chunks, this cannot be done with fragmented chunks.
 
-If you require full trajectories you can transform your tabular data into ``SingleAgentEpisode`` objects and store these in Parquet format. The next example shows how to do this. 
+If you require full trajectories you can transform your tabular data into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects and store these in Parquet format. The next example shows 
+how to do this. 
 First, you will store experiences of the above trained expert policy in tabular format:
 
 .. testcode:: python
@@ -510,7 +517,7 @@ required to convert episode data into a columnar format. To confirm that the rec
     ``infos`` are not stored to disk when they are all empty.
 
 If your expert data is given in columnar format and you need to train on full expert trajectories you can follow the code in the following example to convert 
-your own data into RLlib's ``SingleAgentEpisode`` objects:
+your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects:
 
 .. testcode:: python
     import gymnasium as gym
@@ -601,8 +608,9 @@ your own data into RLlib's ``SingleAgentEpisode`` objects:
 
 Using old API stack ``SampleBatch`` recordings
 ----------------------------------------------
-If you have expert data previously recorded using RLlib's older API stack, it can be seamlessly utilized in the new Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, you can convert your ``SampleBatch`` recordings into 
-``SingleAgentEpisode`` format using RLlib's ``OfflinePreLearner`` as demonstrated below:
+If you have expert data previously recorded using RLlib's older API stack, it can be seamlessly utilized in the new Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, 
+you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format using RLlib's 
+:py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` as demonstrated below:
 
 .. code-block:: python
 
@@ -633,7 +641,8 @@ If you have expert data previously recorded using RLlib's older API stack, it ca
 
     print("Finished converting `SampleBatch` data to episode data.")
 
-.. note:: RLlib considers your ``SampleBatch`` to represent a terminated/truncated episode and builds its ``SingleAgentEpisode`` according to this assumption.
+.. note:: RLlib considers your :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` to represent a terminated/truncated episode and builds its :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
+    according to this assumption.
 
 Pre-processing, filtering and post-processing
 ---------------------------------------------
@@ -652,17 +661,17 @@ Scaling I/O throughput
 -----------------------
 
 Just as online training can be scaled, offline recording I/O throughput can also be increased by configuring the number of RLlib env-runners. Use the ``num_env_runners`` setting to scale recording during training or ``evaluation_num_env_runners``
-for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each ``OfflineSingleAgentEnvRunner``, episodes are sampled 
-(environments are usually vectorized) and serialized before being written to disk.
+for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`, episodes 
+are sampled (environments are usually vectorized) and serialized before being written to disk.
 
 Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to 
-transform offline experiences into a learner-compatible format (``MultiAgentBatch``). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available 
+transform offline experiences into a learner-compatible format (:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available 
 system resources. It is strongly recommended not to override these defaults, as doing so may disrupt this optimization process.
 
 Data processing in RLlib involves three key layers, all of which are highly scalable:
 
 #. **Read Operations:** This layer handles data ingestion from files in a specified folder. It is automatically optimized by Ray Data and should not be manually scaled or adjusted.
-#. **Post-processing (PreLearner):** In this stage, batches are converted, if necessary, into RLlib's ``SingleAgentEpisode`` format and passed through the *learner connector pipeline*. The processed data is then transformed into ``MultiAgentBatch`` objects for updating. This layer can be scaling the ``DataWorker`` instances.
+#. **Post-processing (PreLearner):** In this stage, batches are converted, if necessary, into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format and passed through the *learner connector pipeline*. The processed data is then transformed into :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects for updating. This layer can be scaling the ``DataWorker`` instances.
 #. **Updating (Learner):** This stage involves updating the policy and associated modules. Scalability is achieved by increasing the number of learners (``num_learners``), enabling parallel processing of batches during updates.
 
 The diagram below illustrates the layers and their scalability:
@@ -684,11 +693,12 @@ the concurrency level specified in the keyword arguments for the mapping operati
         }
     )
 
-This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable ``OfflinePreLearner`` class to post-process batches for updating the ``RLModule``.
+This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` class to post-process batches for updating the 
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`.
 
 .. note:: The ``num_cpus`` (and similarly the ``num_gpus``) attribute defines the resources **allocated to each** ``DataWorker`` not the full actor pool.
 
-You scale the number of learners in RLlib's ``learners`` configuration block:
+You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithm.AlgorithmConfig.learners` configuration block:
 
 .. code-block:: python
     
@@ -698,7 +708,8 @@ You scale the number of learners in RLlib's ``learners`` configuration block:
         num_gpus_per_learner=1,
     )
 
-With this configuration you start an application with 4 (remote) ``Learner`` s (see :ref:`Learner (Alpha)` for more details about RLlib's learners) each of them using a single GPU. 
+With this configuration you start an application with 4 (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`s (see :ref:`Learner (Alpha)` for more details about RLlib's learners) 
+each of them using a single GPU. 
 
 Using cloud storage
 -------------------
@@ -908,69 +919,5 @@ You can configure experience input for an agent using the following options:
         dataset_num_iters_per_learner: Optional[int],
     )
 
-Example Custom Input API
-------------------------
-
-You can create a custom input reader like the following:
-
-.. code-block:: python
-
-    from ray.rllib.offline import InputReader, IOContext, ShuffledInput
-    from ray.tune.registry import register_input
-
-    class CustomInputReader(InputReader):
-        def __init__(self, ioctx: IOContext): ...
-        def next(self): ...
-
-    def input_creator(ioctx: IOContext) -> InputReader:
-        return ShuffledInput(CustomInputReader(ioctx))
-
-    register_input("custom_input", input_creator)
-
-    config = {
-        "input": "custom_input",
-        "input_config": {},
-        ...
-    }
-
-You can pass arguments from the config to the custom input api through the
-``input_config`` option which can be accessed with the ``IOContext``.
-The interface for the ``IOContext`` is the following:
-
-.. autoclass:: ray.rllib.offline.IOContext
-    :members:
-    :noindex:
-
-See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/custom_input_api.py>`__ for a runnable example.
-
 Output API
 ----------
-
-You can configure experience output for an agent using the following options:
-
-.. tip::
-    Plain python config dicts will soon be replaced by :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`
-    objects, which have the advantage of being type safe, allowing users to set different config settings within
-    meaningful sub-categories (e.g. ``my_config.offline_data(input_=[xyz])``), and offer the ability to
-    construct an Algorithm instance from these config objects (via their ``.build()`` method).
-
-.. code-block:: python
-
-    # Specify where experiences should be saved:
-    #  - None: don't save any experiences
-    #  - "logdir" to save to the agent log dir
-    #  - a path/URI to save to a custom output directory (e.g., "s3://bucket/")
-    #  - a function that returns a rllib.offline.OutputWriter
-    "output": None,
-    # Arguments accessible from the IOContext for configuring custom output
-    "output_config": {},
-    # What sample batch columns to LZ4 compress in the output data.
-    "output_compress_columns": ["obs", "new_obs"],
-    # Max output file size (in bytes) before rolling over to a new file.
-    "output_max_file_size": 64 * 1024 * 1024,
-
-The interface for a custom output writer is as follows:
-
-.. autoclass:: ray.rllib.offline.OutputWriter
-    :members:
-    :noindex:
