@@ -1,0 +1,66 @@
+exclude = [
+    "python/ray/core/generated/",
+    "doc/source/conf.py",
+    "python/.eggs/",
+    "python/ray/core/src/ray/gcs/*",
+    "python/ray/workflow/tests/mock_server.py",
+    "python/ray/serve/tests/test_config_files/syntax_error.py",
+    "python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc.py",
+    "doc/*",
+    "python/ray/__init__.py",
+    "python/ray/setup-dev.py",
+    "python/build/*",
+    "python/ray/cloudpickle/*",
+    "python/ray/thirdparty_files/*",
+    "python/ray/_private/thirdparty/*",
+    "python/ray/_private/runtime_env/agent/thirdparty_files/*",
+    "python/ray/dag/*.py",
+    "ci/*",
+    "python/ray/_private/*",
+    "python/ray/includes/*",
+    "python/ray/internal/*",
+    "python/ray/ray_operator/*",
+    "python/ray/scripts/*",
+    "python/ray/serve/generated/serve_pb2.py",
+    "python/ray/streaming/*",
+    "python/ray/tests/*",
+    "python/ray/util/*",
+    "python/ray/workers/*",
+    "python/ray/workflow/*",
+    "rllib/*",
+    "release/*",
+    "doc/external/*",
+]
+
+[lint.pycodestyle]
+max-line-length = 88
+
+[lint.flake8-quotes]
+inline-quotes = "double"
+avoid-escape = false
+
+[lint]
+ignore = [
+    "B028",
+    "C408", "C417",
+    "E203",
+    "E226", "E24",
+    "W605",
+    "I", "N",
+    "B002", "B003", "B004", "B005",
+    "B007", "B008", "B009", "B010", "B011",
+    "B012", "B013", "B014", "B015", "B016",
+    "B017",
+]
+
+[lint.extend-per-file-ignores]
+"rllib/evaluation/worker_set.py" = ["E731"]
+"rllib/evaluation/sampler.py" = ["E731"]
+
+[lint.isort.sections]
+"afterray" = ["psutil", "setproctitle"]
+
+[lint.isort]
+known-local-folder = ["ray"]
+known-third-party = ["grpc"]
+section-order = ["future", "standard-library", "third-party", "first-party", "local-folder", "afterray"]

@@ -14,3 +14,4 @@ shellcheck-py==0.7.1.1
 yq
 types-pycurl==7.45.3.20240421
 types-requests==2.31.0.6
+ruff==0.8.0

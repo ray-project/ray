@@ -29,33 +29,13 @@ repos:
           )
       - id: check-toml
 
-  - repo: https://github.com/psf/black
-    rev: 22.10.0
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.7.4
     hooks:
-      - id: black
-        exclude: |
-          (?x)^(
-            python/ray/cloudpickle/|
-            python/build/|
-            python/ray/core/src/ray/gcs/|
-            python/ray/thirdparty_files/|
-            python/ray/_private/thirdparty/|
-            python/ray/serve/tests/test_config_files/syntax_error\.py|
-            python/ray/serve/_private/benchmarks/streaming/_grpc/test_server_pb2_grpc\.py|
-            doc/external/
-          )
+      - id: ruff
         types_or: [python]
-
-  - repo: https://github.com/pycqa/flake8
-    rev: 3.9.1
-    hooks:
-      - id: flake8
-        additional_dependencies:
-          [
-            flake8-comprehensions==3.10.1,
-            flake8-quotes==2.0.0,
-            flake8-bugbear==21.9.2,
-          ]
+      - id: ruff-format
+        types_or: [python]
 
   - repo: https://github.com/pre-commit/mirrors-prettier
     rev: v3.0.3
@@ -82,13 +62,6 @@ repos:
           [
             types-PyYAML==6.0.12.2,
           ]
-
-  - repo: https://github.com/pycqa/isort
-    rev: 5.12.0
-    hooks:
-      - id: isort
-        name: isort (python)
-        types_or: [python]
 
   - repo: https://github.com/pre-commit/pygrep-hooks
     rev: v1.10.0
