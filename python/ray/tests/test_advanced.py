@@ -125,11 +125,11 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
     ray_start_cluster_enabled,
 ):
     cluster = ray_start_cluster_enabled
-    cluster.add_node(resources={"head": 1})
+    cluster.add_node(resources={"head": 2})
     ray.init(address=cluster.address)
-    worker1 = cluster.add_node(resources={"worker": 1})
+    worker1 = cluster.add_node(resources={"worker": 2})
 
-    @ray.remote(resources={"head": 1})
+    @ray.remote(num_cpus=0, resources={"head": 1})
     class Counter:
         def __init__(self):
             self.count = 0
@@ -138,7 +138,9 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             self.count = self.count + 1
             return self.count
 
-    @ray.remote(max_retries=-1, num_cpus=0, resources={"worker": 1})
+    @ray.remote(
+        max_retries=-1, num_cpus=0, resources={"worker": 1}, _labels={"key1": "value1"}
+    )
     def task(counter):
         count = ray.get(counter.inc.remote())
         if count > 1:
@@ -146,10 +148,31 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
             time.sleep(100000)
         return [1] * 1024 * 1024
 
-    counter = Counter.remote()
-    obj = task.remote(counter)
+    @ray.remote(
+        max_restarts=-1,
+        max_task_retries=-1,
+        num_cpus=0,
+        resources={"worker": 1},
+        _labels={"key2": "value2"},
+    )
+    class Actor:
+        def run(self, counter):
+            count = ray.get(counter.inc.remote())
+            if count > 1:
+                # lineage reconstruction
+                time.sleep(100000)
+            return [1] * 1024 * 1024
+
+    counter1 = Counter.remote()
+    obj1 = task.remote(counter1)
     # Wait for task to finish
-    ray.wait([obj], fetch_local=False)
+    ray.wait([obj1], fetch_local=False)
+
+    counter2 = Counter.remote()
+    actor = Actor.remote()
+    obj2 = actor.run.remote(counter2)
+    # Wait for actor task to finish
+    ray.wait([obj2], fetch_local=False)
 
     assert len(get_local_ongoing_lineage_reconstruction_tasks()) == 0
 
@@ -158,16 +181,27 @@ def test_internal_get_local_ongoing_lineage_reconstruction_tasks(
 
     def verify(expected_task_status):
         lineage_reconstruction_tasks = get_local_ongoing_lineage_reconstruction_tasks()
-        return (
-            len(lineage_reconstruction_tasks) == 1
-            and lineage_reconstruction_tasks[0][0].name == "task"
-            and lineage_reconstruction_tasks[0][0].resources == {"worker": 1.0}
+        lineage_reconstruction_tasks.sort(key=lambda task: task[0].name)
+        assert len(lineage_reconstruction_tasks) == 2
+        assert [
+            lineage_reconstruction_tasks[0][0].name,
+            lineage_reconstruction_tasks[1][0].name,
+        ] == ["Actor.run", "task"]
+        assert (
+            lineage_reconstruction_tasks[0][0].labels == {"key2": "value2"}
             and lineage_reconstruction_tasks[0][0].status == expected_task_status
             and lineage_reconstruction_tasks[0][1] == 1
         )
+        assert (
+            lineage_reconstruction_tasks[1][0].labels == {"key1": "value1"}
+            and lineage_reconstruction_tasks[1][0].status == expected_task_status
+            and lineage_reconstruction_tasks[1][1] == 1
+        )
+
+        return True
 
     wait_for_condition(lambda: verify(common_pb2.TaskStatus.PENDING_NODE_ASSIGNMENT))
-    cluster.add_node(resources={"worker": 1})
+    cluster.add_node(resources={"worker": 2})
     wait_for_condition(lambda: verify(common_pb2.TaskStatus.SUBMITTED_TO_WORKER))
 
 
