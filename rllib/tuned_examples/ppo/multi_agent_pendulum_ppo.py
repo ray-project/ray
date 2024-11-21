@@ -30,7 +30,7 @@ config = (
     .training(
         train_batch_size_per_learner=1024,
         minibatch_size=128,
-        lr=0.0002 * (args.num_gpus or 1) ** 0.5,
+        lr=0.0002 * (args.num_learners or 1) ** 0.5,
         gamma=0.95,
         lambda_=0.5,
     )
