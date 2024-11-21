@@ -210,9 +210,6 @@ class DeploymentStatusInfo:
         )
 
     def update_message(self, message: str):
-        if self.message == message:
-            return self
-
         return self._updated_copy(message=message)
 
     def handle_transition(
