@@ -91,6 +91,7 @@ class IMPALAConfig(AlgorithmConfig):
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build()
         algo.train()
+        del algo
 
     .. testcode::
 
@@ -111,6 +112,11 @@ class IMPALAConfig(AlgorithmConfig):
             param_space=config,
             run_config=air.RunConfig(stop={"training_iteration": 1}),
         ).fit()
+
+    .. testoutput::
+        :hide:
+
+        ...
     """
 
     def __init__(self, algo_class=None):
