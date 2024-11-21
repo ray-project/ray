@@ -235,6 +235,14 @@ if setup_spec.type == SetupType.RAY:
         "cg": [
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
+        "azure": [
+            "azure-cli-core",
+            "azure-identity",
+            "azure-mgmt-compute",
+            "azure-mgmt-network",
+            "azure-mgmt-resource",
+            "msrestazure",
+        ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
