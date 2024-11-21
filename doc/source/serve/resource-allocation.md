@@ -6,14 +6,14 @@ This guide helps you configure Ray Serve to:
 
 - Scale your deployments horizontally by specifying a number of replicas
 - Scale up and down automatically to react to changing traffic
-- Allocate hardware resources (CPUs, GPUs, etc) for each deployment
+- Allocate hardware resources (CPUs, GPUs, other accelerators, etc) for each deployment
 
 
 (serve-cpus-gpus)=
 
-## Resource management (CPUs, GPUs)
+## Resource management (CPUs, GPUs, accelerators)
 
-You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs.  To assign hardware resources per replica, you can pass resource requirements to
+You may want to specify a deployment's resource requirements to reserve cluster resources like GPUs or other accelerators.  To assign hardware resources per replica, you can pass resource requirements to
 `ray_actor_options`.
 By default, each replica reserves one CPU.
 To learn about options to pass in, take a look at the [Resources with Actors guide](actor-resource-guide).
@@ -25,6 +25,14 @@ following:
 @serve.deployment(ray_actor_options={"num_gpus": 1})
 def func(*args):
     return do_something_with_my_gpu()
+```
+
+Or if you want to create a deployment where each replica uses another type of accelerator such as an HPU, follow the example below:
+
+```python
+@serve.deployment(ray_actor_options={"resources": {"HPU": 1}})
+def func(*args):
+    return do_something_with_my_hpu()
 ```
 
 (serve-fractional-resources-guide)=
