@@ -2054,7 +2054,7 @@ class DeploymentState:
                 retrying_msg += f" {remaining_retries} more time(s)"
 
             message = (
-                "A replica failed to start with exception. {retrying_msg}. Error:\n"
+                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
                 f"{error_msg}"
             )
             self._curr_status_info = self._curr_status_info.update_message(message)
