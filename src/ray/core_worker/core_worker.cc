@@ -3684,7 +3684,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [request = std::move(request), this] {
+      [this, request = std::move(request)] {
         RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },
