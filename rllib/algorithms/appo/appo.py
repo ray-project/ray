@@ -100,6 +100,7 @@ class APPOConfig(IMPALAConfig):
         # __sphinx_doc_begin__
         # APPO specific settings:
         self.vtrace = True
+        self.use_gae = True
         self.lambda_ = 1.0
         self.clip_param = 0.4
         self.use_kl_loss = False
@@ -117,7 +118,7 @@ class APPOConfig(IMPALAConfig):
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
-        self.target_network_update_freq = 1
+        self.target_network_update_freq = 2
         self.broadcast_interval = 1
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
@@ -149,27 +150,26 @@ class APPOConfig(IMPALAConfig):
         # Deprecated keys.
         self.target_update_frequency = DEPRECATED_VALUE
         self.use_critic = DEPRECATED_VALUE
-        self.use_gae = DEPRECATED_VALUE
 
     @override(IMPALAConfig)
     def training(
         self,
         *,
         vtrace: Optional[bool] = NotProvided,
+        use_gae: Optional[bool] = NotProvided,
         lambda_: Optional[float] = NotProvided,
         clip_param: Optional[float] = NotProvided,
         use_kl_loss: Optional[bool] = NotProvided,
         kl_coeff: Optional[float] = NotProvided,
         kl_target: Optional[float] = NotProvided,
-        tau: Optional[float] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
+        tau: Optional[float] = NotProvided,
         target_worker_clipping: Optional[float] = NotProvided,
         circular_buffer_num_batches: Optional[int] = NotProvided,
         circular_buffer_iterations_per_batch: Optional[int] = NotProvided,
         # Deprecated keys.
         target_update_frequency=DEPRECATED_VALUE,
         use_critic=DEPRECATED_VALUE,
-        use_gae=DEPRECATED_VALUE,
         **kwargs,
     ) -> "APPOConfig":
         """Sets the training related configuration.
@@ -177,15 +177,27 @@ class APPOConfig(IMPALAConfig):
         Args:
             vtrace: Whether to use V-trace weighted advantages. If false, PPO GAE
                 advantages will be used instead.
+            use_gae: If true, use the Generalized Advantage Estimator (GAE)
+                with a value function, see https://arxiv.org/pdf/1506.02438.pdf.
+                Only applies if vtrace=False.
             lambda_: GAE (lambda) parameter.
             clip_param: PPO surrogate slipping parameter.
             use_kl_loss: Whether to use the KL-term in the loss function.
             kl_coeff: Coefficient for weighting the KL-loss term.
             kl_target: Target term for the KL-term to reach (via adjusting the
                 `kl_coeff` automatically).
-            tau: The factor by which to update the target policy network towards
-                the current policy network. Can range between 0 and 1.
-                e.g. updated_param = tau * current_param + (1 - tau) * target_param
+            target_network_update_freq: NOTE: This parameter is only applicable on
+                the new API stack. The frequency with which to update the target
+                policy network from the main trained policy network. The metric
+                used is `NUM_ENV_STEPS_TRAINED_LIFETIME` and the unit is `n` (see [1]
+                4.1.1), where: `n = [circular_buffer_num_batches (N)] *
+                [circular_buffer_iterations_per_batch (K)] * [train batch size]`
+                For example, if you set `target_network_update_freq=2`, and N=4, K=2,
+                and `train_batch_size_per_learner=500`, then the target net is updated
+                every 2*4*2*500=8000 trained env steps (every 16 batch updates on each
+                learner).
+                The authors in [1] suggests that this setting is robust to a range of
+                choices (try values between 0.125 and 4).
             target_network_update_freq: The frequency to update the target policy and
                 tune the kl loss coefficients that are used during training. After
                 setting this parameter, the algorithm waits for at least
@@ -193,6 +205,9 @@ class APPOConfig(IMPALAConfig):
                 on before updating the target networks and tune the kl loss
                 coefficients. NOTE: This parameter is only applicable when using the
                 Learner API (enable_rl_module_and_learner=True).
+            tau: The factor by which to update the target policy network towards
+                the current policy network. Can range between 0 and 1.
+                e.g. updated_param = tau * current_param + (1 - tau) * target_param
             target_worker_clipping: The maximum value for the target-worker-clipping
                 used for computing the IS ratio, described in [1]
                 IS = min(π(i) / π(target), ρ) * (π / π(i))
@@ -221,18 +236,14 @@ class APPOConfig(IMPALAConfig):
                 "function (critic).",
                 error=True,
             )
-        if use_gae != DEPRECATED_VALUE:
-            deprecation_warning(
-                old="use_gae",
-                help="`use_gae` no longer supported! APPO uses v-trace instead.",
-                error=True,
-            )
 
         # Pass kwargs onto super's `training()` method.
         super().training(**kwargs)
 
         if vtrace is not NotProvided:
             self.vtrace = vtrace
+        if use_gae is not NotProvided:
+            self.use_gae = use_gae
         if lambda_ is not NotProvided:
             self.lambda_ = lambda_
         if clip_param is not NotProvided:
@@ -243,10 +254,10 @@ class APPOConfig(IMPALAConfig):
             self.kl_coeff = kl_coeff
         if kl_target is not NotProvided:
             self.kl_target = kl_target
-        if tau is not NotProvided:
-            self.tau = tau
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
+        if tau is not NotProvided:
+            self.tau = tau
         if target_worker_clipping is not NotProvided:
             self.target_worker_clipping = target_worker_clipping
         if circular_buffer_num_batches is not NotProvided:
