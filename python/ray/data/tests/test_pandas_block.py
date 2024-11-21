@@ -10,7 +10,7 @@ import pytest
 import ray
 import ray.data
 from ray.data._internal.pandas_block import PandasBlockAccessor
-from ray.data.extensions.object_extension import object_extension_type_allowed
+from ray.data.extensions.object_extension import _object_extension_type_allowed
 
 
 def test_append_column(ray_start_regular_shared):
@@ -26,7 +26,7 @@ def test_append_column(ray_start_regular_shared):
 
 
 @pytest.mark.skipif(
-    object_extension_type_allowed(), reason="Objects can be put into Arrow"
+    _object_extension_type_allowed(), reason="Objects can be put into Arrow"
 )
 def test_dict_fallback_to_pandas_block(ray_start_regular_shared):
     # If the UDF returns a column with dict, this throws
