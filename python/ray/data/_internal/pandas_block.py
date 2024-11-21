@@ -295,6 +295,8 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
+        from ray.data.extensions import TensorArrayElement
+
         pd = lazy_import_pandas()
 
         def get_deep_size(obj):
@@ -335,13 +337,21 @@ class PandasBlockAccessor(TableBlockAccessor):
                 elif isinstance(current, dict):
                     objects.extend(current.keys())
                     objects.extend(current.values())
+                elif isinstance(current, TensorArrayElement):
+                    objects.extend(current.to_numpy())
             return total_size
 
         # Get initial memory usage including deep introspection
         memory_usage = self._table.memory_usage(index=True, deep=True)
 
         # python_object() for arrow of bytes
-        object_need_check = ["object", "python_object()"]
+        # If it's ndarray(TensorArrayElement), the outer self._table[column].dtype is
+        # "numpy.ndarray(shape=(None,), dtype=object)"
+        object_need_check = [
+            "object",
+            "python_object()",
+            "numpy.ndarray(shape=(None,), dtype=object)",
+        ]
         # Handle object columns separately
         for column in self._table.columns:
             if str(self._table[column].dtype) in object_need_check:
