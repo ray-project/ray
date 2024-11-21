@@ -182,6 +182,8 @@ class LongPollClient:
             f"{list(updates.keys())}.",
             extra={"log_to_stderr": False},
         )
+        if not updates:  # no updates, no callbacks to run, just poll again
+            self._schedule_to_event_loop(self._poll_next)
         for key, update in updates.items():
             self.snapshot_ids[key] = update.snapshot_id
             callback = self.key_listeners[key]
