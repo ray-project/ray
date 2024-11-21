@@ -1,0 +1,1 @@
+from onnxslim.third_party.onnx_graphsurgeon.importers.base_importer import BaseImporter

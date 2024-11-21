@@ -1,0 +1,2 @@
+[console_scripts]
+onnxslim = onnxslim.cli:main
