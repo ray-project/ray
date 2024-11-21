@@ -11,7 +11,7 @@ import ray
 import ray.data
 from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.extensions.object_extension import object_extension_type_allowed
-
+from pytest import approx
 
 def test_append_column(ray_start_regular_shared):
     animals = ["Flamingo", "Centipede"]
@@ -65,7 +65,7 @@ class TestSizeBytes:
         # check that memory usage is within 10% of the size_bytes
         # For strings, Pandas seems to be fairly accurate, so let's use that.
         memory_usage = block.memory_usage(index=True, deep=True).sum()
-        assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
+        assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
             memory_usage,
         )
@@ -82,7 +82,7 @@ class TestSizeBytes:
         bytes_size = block_accessor.size_bytes()
 
         memory_usage = block.memory_usage(index=True, deep=True).sum()
-        assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
+        assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
             memory_usage,
         )
@@ -99,17 +99,9 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(block)
         bytes_size = block_accessor.size_bytes()
 
-        mean_size = (
-            sum(
-                [
-                    sys.getsizeof(animal)
-                    for animal in ["alligator", "crocodile", "centipede", "flamingo"]
-                ]
-            )
-            / 4
-        )
-        memory_usage = mean_size * num
-        assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
+        memory_usage = sum([sys.getsizeof(animal) for animal in animals])
+        
+        assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
             memory_usage,
         )
@@ -123,7 +115,7 @@ class TestSizeBytes:
 
         memory_usage = pickle.dumps(block).__sizeof__()
         # check that memory usage is within 10% of the size_bytes
-        assert memory_usage * 0.9 <= bytes_size <= memory_usage * 1.1, (
+        assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
             memory_usage,
         )
@@ -143,9 +135,12 @@ class TestSizeBytes:
         for bundle in ds.iter_internal_ref_bundles():
             size = bundle.size_bytes()
             # assert that true_value is within 10% of bundle.size_bytes()
-            assert true_value * 0.9 <= size <= true_value * 1.1, (true_value, size)
+            assert size == pytest.approx(true_value, rel=0.1), (
+            size,
+            true_value,
+        )
 
-    def test_unowned_numpy(ray_start_regular_shared):
+    def test_nested_numpy(ray_start_regular_shared):
         size = 1024
         rows = 1_000
         data = [
@@ -157,7 +152,10 @@ class TestSizeBytes:
         block_accessor = PandasBlockAccessor.for_block(df)
         block_size = block_accessor.size_bytes()
         true_value = rows * size
-        assert true_value * 0.9 <= block_size <= true_value * 1.1
+        assert block_size == pytest.approx(true_value, rel=0.1), (
+            block_size,
+            true_value,
+        )
 
     def test_nested_objects(ray_start_regular_shared):
         size = 10
@@ -174,7 +172,7 @@ class TestSizeBytes:
             sys.getsizeof([random.randint(0, 100) for _ in range(size)]) + size * 28
         )
 
-        assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (
+        assert bytes_size == pytest.approx(true_size, rel=0.1), (
             bytes_size,
             true_size,
         )
@@ -197,13 +195,11 @@ class TestSizeBytes:
         # Manually calculate the size
         int_size = rows * 8
         float_size = rows * 8
-        str_size = (
-            rows * sum([sys.getsizeof(s) for s in ["apple", "banana", "cherry"]]) // 3
-        )
+        str_size = sum(sys.getsizeof(string) for string in data["strings"])
         object_size = rows * sys.getsizeof(b"\x00" * 128)
 
         true_size = int_size + float_size + str_size + object_size
-        assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
+        assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
     def test_nested_lists_strings(ray_start_regular_shared):
         rows = 5_000
@@ -223,7 +219,7 @@ class TestSizeBytes:
             block["nested_lists"].iloc[0]
         ) + size * sys.getsizeof("bb")
         true_size = rows * list_overhead
-        assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
+        assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
     @pytest.mark.parametrize("size", [10, 1024])
     def test_multi_level_nesting(ray_start_regular_shared, size):
@@ -254,7 +250,7 @@ class TestSizeBytes:
         true_size = (
             numpy_size + str_size + list_ref_overhead + dict_overhead1 + dict_overhead3
         ) * rows
-        assert true_size * 0.85 <= bytes_size <= true_size * 1.15, (
+        assert bytes_size == pytest.approx(true_size, rel=0.15), (
             bytes_size,
             true_size,
         )
@@ -267,7 +263,7 @@ class TestSizeBytes:
 
         # No object case
         true_size = block.memory_usage(index=True, deep=True).sum()
-        assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
+        assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
     def test_arrow(ray_start_regular_shared):
         data = [
@@ -279,7 +275,7 @@ class TestSizeBytes:
         bytes_size = block_accessor.size_bytes()
 
         true_size = block.memory_usage(index=True, deep=True).sum()
-        assert true_size * 0.9 <= bytes_size <= true_size * 1.1, (bytes_size, true_size)
+        assert bytes_size == pytest.approx(true_size, rel=0.1), (bytes_size, true_size)
 
 
 if __name__ == "__main__":
