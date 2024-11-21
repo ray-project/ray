@@ -2492,8 +2492,6 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 3
-    # In the update sequence, the status is populated
-    # prior to scheduling, so the message is empty still.
     assert "Retrying 6 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
