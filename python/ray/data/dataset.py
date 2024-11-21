@@ -736,11 +736,6 @@ class Dataset:
             id      int64
             new_id  int64
 
-            Overwrite the existing values with zeros.
-
-            >>> ds.add_column("id", lambda df: 0).take(3)
-            [{'id': 0}, {'id': 0}, {'id': 0}]
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
