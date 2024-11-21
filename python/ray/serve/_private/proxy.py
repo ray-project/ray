@@ -454,9 +454,11 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
+            request_context = ray.serve.context._serve_request_context.get()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
+                    route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),

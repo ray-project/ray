@@ -141,8 +141,6 @@ class ServeFormatter(logging.Formatter):
         record_formats_attrs = []
         if SERVE_LOG_REQUEST_ID in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        if SERVE_LOG_ROUTE in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
 
@@ -153,9 +151,9 @@ class ServeFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def access_log_msg(*, method: str, status: str, latency_ms: float):
+def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
+    return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
