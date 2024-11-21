@@ -474,6 +474,7 @@ def _run(
     else:
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
+            global_logging_config=logging_config,
         )
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")

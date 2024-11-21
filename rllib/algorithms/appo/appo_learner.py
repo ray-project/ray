@@ -30,8 +30,8 @@ class APPOLearner(IMPALALearner):
     @override(IMPALALearner)
     def build(self):
         self._learner_thread_in_queue = CircularBuffer(
-            num_batches=self.config.circular_buffer_num_batches_N,
-            iterations_per_batch=self.config.circular_buffer_iterations_per_batch_K,
+            num_batches=self.config.circular_buffer_num_batches,
+            iterations_per_batch=self.config.circular_buffer_iterations_per_batch,
         )
 
         super().build()

@@ -16,14 +16,9 @@ config = (
     APPOConfig()
     .environment("CartPole-v1")
     .training(
-        train_batch_size_per_learner=500,
-        target_network_update_freq=2 * 4 * 2 * 500,  # 2n = 2*K*N
-        vf_loss_coeff=0.01,
-        entropy_coeff=0.007,
-        circular_buffer_num_batches_N=4,
-        circular_buffer_iterations_per_batch_K=2,
-        grad_clip=30.0,
-        lr=0.00075,
+        circular_buffer_iterations_per_batch=2,
+        vf_loss_coeff=0.05,
+        entropy_coeff=0.0,
     )
     .rl_module(
         model_config=DefaultModelConfig(vf_share_layers=True),

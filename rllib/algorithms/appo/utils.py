@@ -23,7 +23,7 @@ class CircularBuffer:
     The buffer holds at most N batches, which are sampled at random (uniformly).
     If full and a new batch is added, the oldest batch is discarded. Also, each batch
     currently in the buffer can be sampled at most K times (after which it is also
-    discrded).
+    discarded).
     """
 
     def __init__(self, num_batches: int, iterations_per_batch: int):
@@ -35,17 +35,12 @@ class CircularBuffer:
         self._buffer = deque(maxlen=self.num_batches)
         self._lock = threading.Lock()
 
-        #TEST
-        self._ids = 0
+        # The number of valid (not expired) entries in this buffer.
+        self._num_valid_batches = 0
 
     def add(self, batch):
         dropped_entry = None
         dropped_ts = 0
-
-        #TEST
-        batch._id = self._ids
-        self._ids += 1
-        #END: TEST
 
         # Add buffer and k=0 information to the deque.
         with self._lock:
@@ -53,14 +48,14 @@ class CircularBuffer:
             if len_ == self.num_batches:
                 dropped_entry = self._buffer[0]
             self._buffer.append([batch, 0])
+            self._num_valid_batches += 1
 
         # A valid entry (w/ a batch whose k has not been reach K yet) was dropped.
         if dropped_entry is not None and dropped_entry[0] is not None:
             dropped_ts += dropped_entry[0].env_steps() * (
                 self.iterations_per_batch - dropped_entry[1]
             )
-
-        print(f"Added batch {batch._id} (k=0); buffer size={len_} ({dropped_ts} dropped)")
+            self._num_valid_batches -= 1
 
         return dropped_ts
 
@@ -69,7 +64,7 @@ class CircularBuffer:
 
         while True:
             # Only initially, the buffer may be empty -> Just wait for some time.
-            if len(self._buffer) == 0:
+            if len(self) == 0:
                 time.sleep(0.001)
                 continue
             # Sample a random buffer index.
@@ -84,16 +79,18 @@ class CircularBuffer:
         assert k is not None
         entry[1] += 1
 
-        print(f"picked batch {batch._id} k={k}")
-
         # This batch has been exhausted (k == K) -> Invalidate it in the buffer.
         if k == self.iterations_per_batch - 1:
-            print(f" .. evicting (reached K)")
             entry[0] = None
             entry[1] = None
+            self._num_valid_batches += 1
 
         # Return the sampled batch.
         return batch
+
+    def __len__(self) -> int:
+        """Returns the number of actually valid (non-expired) batches in the buffer."""
+        return self._num_valid_batches
 
 
 @OldAPIStack
