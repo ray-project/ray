@@ -101,11 +101,8 @@ using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  ObjectRefStream(const ObjectID &generator_id)
-      : generator_id_(generator_id),
-        generator_task_id_(generator_id.TaskId()),
-        total_num_object_written_(0),
-        total_num_object_consumed_(0) {}
+  explicit ObjectRefStream(const ObjectID &generator_id)
+      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -183,8 +180,8 @@ class ObjectRefStream {
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
-  const ObjectID generator_id_;
-  const TaskID generator_task_id_;
+  ObjectID generator_id_;
+  TaskID generator_task_id_;
 
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.
@@ -204,9 +201,9 @@ class ObjectRefStream {
   /// the stream.
   int64_t max_index_seen_ = -1;
   /// The total number of the objects that are written to stream.
-  int64_t total_num_object_written_;
+  int64_t total_num_object_written_{};
   /// The total number of the objects that are consumed from stream.
-  int64_t total_num_object_consumed_;
+  int64_t total_num_object_consumed_{};
 };
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
@@ -218,11 +215,11 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes,
               worker::TaskEventBuffer &task_event_buffer)
-      : in_memory_store_(in_memory_store),
-        reference_counter_(reference_counter),
-        put_in_local_plasma_callback_(put_in_local_plasma_callback),
-        retry_task_callback_(retry_task_callback),
-        push_error_callback_(push_error_callback),
+      : in_memory_store_(std::move(in_memory_store)),
+        reference_counter_(std::move(reference_counter)),
+        put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
+        retry_task_callback_(std::move(retry_task_callback)),
+        push_error_callback_(std::move(push_error_callback)),
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer) {
     task_counter_.SetOnChangeCallback(
