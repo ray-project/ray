@@ -14,6 +14,7 @@ from ray_release.exception import ReleaseTestConfigError
 
 _TEST_COLLECTION_FILES = [
     "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
     "release/ray_release/tests/test_collection_data.yaml",
 ]
 
