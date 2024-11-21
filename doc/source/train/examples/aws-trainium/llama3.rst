@@ -15,11 +15,11 @@ developers train models on Trainium accelerators.
 Prepare the environment
 -----------------------
 
-Refer to the instructions in `Setup EKS cluster and tools <https://github.com/aws-neuron/aws-neuron-eks-samples/tree/master/llama3.1_8B_finetune_ray_ptl_neuron#setupeksclusterandtools>`__ for setting up an Amazon EKS cluster leveraging AWS Trainium instances.
+See `Setup EKS cluster and tools <https://github.com/aws-neuron/aws-neuron-eks-samples/tree/master/llama3.1_8B_finetune_ray_ptl_neuron#setupeksclusterandtools>`__ for setting up an Amazon EKS cluster leveraging AWS Trainium instances.
 
-Create docker image
+Create a Docker image
 -------------------
-Once the EKS cluster is ready, it's time to create an Amazon ECR repository for building and uploading the docker image containing artifacts for fine-tuning Llama3.1 8B model:
+When the EKS cluster is ready, create an Amazon ECR repository for building and uploading the Docker image containing artifacts for fine-tuning a Llama3.1 8B model:
 
 1. Clone the repo.
 
