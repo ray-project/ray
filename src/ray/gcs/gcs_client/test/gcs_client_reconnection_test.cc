@@ -335,7 +335,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ShutdownGCS();
 
   // Send one request which should fail
-  std::promise<std::string> p4;
+  std::promise<void> p4;
   auto f4 = p4.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
       "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
@@ -358,14 +358,14 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ASSERT_EQ(std::future_status::ready, state);
 
   // Send the second one and it should block the thread
-  std::promise<std::string> p5;
+  std::promise<void> p5;
   auto f5 = p5.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p5](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p5.set_value();
       }));
-  auto state = f5.wait_for(1s);
+  state = f5.wait_for(1s);
   RAY_LOG(INFO) << "5. state=" << futureStatusToString(state);
   ASSERT_EQ(state, std::future_status::timeout);
 
