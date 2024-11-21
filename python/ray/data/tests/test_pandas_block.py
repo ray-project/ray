@@ -11,7 +11,7 @@ import ray
 import ray.data
 from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.extensions.object_extension import object_extension_type_allowed
-from pytest import approx
+
 
 def test_append_column(ray_start_regular_shared):
     animals = ["Flamingo", "Centipede"]
@@ -100,7 +100,7 @@ class TestSizeBytes:
         bytes_size = block_accessor.size_bytes()
 
         memory_usage = sum([sys.getsizeof(animal) for animal in animals])
-        
+
         assert bytes_size == pytest.approx(memory_usage, rel=0.1), (
             bytes_size,
             memory_usage,
@@ -136,9 +136,9 @@ class TestSizeBytes:
             size = bundle.size_bytes()
             # assert that true_value is within 10% of bundle.size_bytes()
             assert size == pytest.approx(true_value, rel=0.1), (
-            size,
-            true_value,
-        )
+                size,
+                true_value,
+            )
 
     def test_nested_numpy(ray_start_regular_shared):
         size = 1024
