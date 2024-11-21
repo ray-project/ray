@@ -3827,7 +3827,7 @@
 
   run:
     timeout: 500
-    script: python read_and_consume.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: dataset_random_access
   group: data-tests
