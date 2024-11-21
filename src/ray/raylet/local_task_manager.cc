@@ -1003,9 +1003,13 @@ void LocalTaskManager::Dispatch(
 
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
+  RAY_LOG(INFO) << "jjyao point 1.1";
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
+  RAY_LOG(INFO) << "jjyao point 1.2";
   reply->mutable_worker_address()->set_port(worker->Port());
+  RAY_LOG(INFO) << "jjyao point 1.3";
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
+  RAY_LOG(INFO) << "jjyao point 1.4";
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
   RAY_LOG(INFO) << "jjyao point 2";
 
