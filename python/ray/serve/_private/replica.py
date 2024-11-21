@@ -335,7 +335,7 @@ class ReplicaBase(ABC):
 
     def _maybe_get_http_route(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ) -> Tuple[Optional[str], Optional[str]]:
+    ) -> Optional[str]:
         """Get the matched route string for ASGI apps to be used in logs & metrics.
 
         If this replica does not wrap an ASGI app or there is no matching for the
@@ -675,7 +675,7 @@ class ReplicaBase(ABC):
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[StatusCodeCallback, None, None]:
         pass
 
     async def _drain_ongoing_requests(self):
@@ -763,7 +763,7 @@ class Replica(ReplicaBase):
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
@@ -784,8 +784,10 @@ class Replica(ReplicaBase):
             )
         )
 
-        with self._handle_errors_and_metrics(request_metadata, request_args):
-            yield
+        with self._handle_errors_and_metrics(
+            request_metadata, request_args
+        ) as status_code_callback:
+            yield status_code_callback
 
 
 class ReplicaActor:
