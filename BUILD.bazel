@@ -2693,3 +2693,10 @@ genrule(
     """,
     local = 1,
 )
+
+ray_cc_library(
+    name = "cgroup_setup",
+    srcs = ["src/ray/raylet/cgroup_setup.cc"],
+    hdrs = ["src/ray/raylet/cgroup_setup.h"],
+    deps = ["//src/ray/util"],
+)
