@@ -202,7 +202,6 @@ class NexusScheduler:
         sorted_nodes = sorted(single_nodes, key=lambda node: node.get_occupancy(), reverse=True)
         # for n in sorted_nodes:
         #     n.print_node_pretty()
-        # print("+++"*50)
 
         for residual_node in sorted_nodes:
             max_occupancy = 0
@@ -214,7 +213,7 @@ class NexusScheduler:
             for i, n in enumerate(nodes):
                 new_node = self.mergeNodes(n, residual_node)
                 if new_node and new_node.get_occupancy() > max_occupancy:
-                    print(f"Merge possible between nodes")
+                    # print(f"Merge possible between nodes")
                     max_occupancy = new_node.get_occupancy()
                     max_node_ind  = i
                     max_node      = new_node
@@ -257,8 +256,8 @@ def main():
 
     # create sessions
     sessions: list [session] = []
-    resnet_session = session('resnet', 200, 1000)
-    vit_session    = session('vit', 100, 500)
+    resnet_session = session('resnet', 50, 1000)
+    vit_session    = session('vit', 25, 5000)
 
     sessions.append(resnet_session)
     sessions.append(vit_session)
