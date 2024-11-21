@@ -3826,7 +3826,7 @@
     cluster_compute: multi_node_autoscaling_compute.yaml
 
   run:
-    timeout: 500
+    timeout: 600
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: dataset_random_access
