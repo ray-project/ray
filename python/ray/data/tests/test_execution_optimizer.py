@@ -1172,6 +1172,75 @@ def test_sort_validate_keys(ray_start_regular_shared):
         ds_named.sort(invalid_col_name).take_all()
 
 
+def test_inherit_batch_format_rule():
+    from ray.data._internal.logical.rules.inherit_batch_format import (
+        InheritBatchFormatRule,
+    )
+
+    ctx = DataContext.get_current()
+
+    operator1 = get_parquet_read_logical_op()
+    operator2 = MapBatches(operator1, fn=lambda g: g, batch_format="pandas")
+    sort_key = SortKey("number", descending=True)
+    operator3 = Sort(operator2, sort_key)
+    original_plan = LogicalPlan(dag=operator3, context=ctx)
+
+    rule = InheritBatchFormatRule()
+    optimized_plan = rule.apply(original_plan)
+    assert optimized_plan.dag._batch_format == "pandas"
+
+
+def test_batch_format_on_sort(ray_start_regular_shared):
+    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    df_expected = pd.DataFrame(
+        {
+            "col1": [7, 5, 1, 1],
+            "col2": [8, 6, 4, 2],
+        }
+    )
+    df_actual = (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .sort("col2", descending=True)
+        .to_pandas()
+    )
+    pd.testing.assert_frame_equal(df_actual, df_expected)
+
+
+def test_batch_format_on_aggregate(ray_start_regular_shared):
+    """Checks that the Aggregate op can inherit batch_format
+    from upstream ops correctly."""
+    from ray.data.aggregate import AggregateFn
+
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    aggregation = AggregateFn(
+        init=lambda column: 1,
+        accumulate_row=lambda a, row: a * row["col2"],
+        merge=lambda a1, a2: a1 * a2,
+        name="prod",
+    )
+    assert (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .aggregate(aggregation)
+    ) == {"prod": 384}
+
+
 def test_aggregate_operator(ray_start_regular_shared):
     ctx = DataContext.get_current()
 

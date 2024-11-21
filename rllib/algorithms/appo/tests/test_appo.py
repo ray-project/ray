@@ -83,13 +83,11 @@ class TestAPPO(unittest.TestCase):
         algo.stop()
 
     def test_appo_entropy_coeff_schedule(self):
-        # Initial lr, doesn't really matter because of the schedule below.
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=1,
-                batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
             .training(
