@@ -801,7 +801,7 @@ class Dataset:
                     return batch.append_column(col, column)
                 else:
                     raise ValueError(
-                        f"Trying to add an existing column with name" f" {col}"
+                        f"Trying to add an existing column with name {col}"
                     )
 
             else:
