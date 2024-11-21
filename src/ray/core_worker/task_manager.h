@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -118,7 +120,7 @@ class ObjectRefStream {
   std::pair<ObjectID, bool> PeekNextItem();
 
   /// Return True if the item_index is already consumed.
-  bool IsObjectConsumed(int64_t item_index);
+  bool IsObjectConsumed(int64_t item_index) const;
 
   /// Insert the object id to the stream of an index item_index.
   ///
@@ -356,7 +358,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// \return True if a task return is registered. False otherwise.
   bool HandleReportGeneratorItemReturns(
       const rpc::ReportGeneratorItemReturnsRequest &request,
-      ExecutionSignalCallback execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
+      const ExecutionSignalCallback &execution_signal_callback) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Temporarily register a given generator return reference.
   ///
@@ -614,14 +616,14 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
 
  private:
   struct TaskEntry {
-    TaskEntry(const TaskSpecification &spec_arg,
+    TaskEntry(TaskSpecification spec_arg,
               int num_retries_left_arg,
               size_t num_returns,
               TaskStatusCounter &counter,
               int64_t num_oom_retries_left)
-        : spec(spec_arg),
+        : spec(std::move(spec_arg)),
           num_retries_left(num_retries_left_arg),
-          counter(counter),
+          counter(&counter),
           num_oom_retries_left(num_oom_retries_left) {
       reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
@@ -635,12 +637,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     void SetStatus(rpc::TaskStatus new_status) {
       auto new_tuple = std::make_tuple(spec.GetName(), new_status, is_retry_);
       if (IsPending()) {
-        counter.Swap(status, new_tuple);
+        counter->Swap(status, new_tuple);
       } else {
         // FINISHED and FAILED are monotonically increasing.
         // TODO(jjyao): We should use Counter instead of Gauge
         // for FINISHED and FAILED tasks.
-        counter.Increment(new_tuple);
+        counter->Increment(new_tuple);
       }
       status = std::move(new_tuple);
     }
@@ -674,12 +676,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
     /// the worker fails. We could avoid this by either not caching the full
     /// TaskSpec for tasks that cannot be retried (e.g., actor tasks), or by
     /// storing a shared_ptr to a PushTaskRequest protobuf for all tasks.
-    const TaskSpecification spec;
+    TaskSpecification spec;
     // Number of times this task may be resubmitted. If this reaches 0, then
     // the task entry may be erased.
     int32_t num_retries_left;
     // Reference to the task stats tracker.
-    TaskStatusCounter &counter;
+    TaskStatusCounter *counter;
     // Number of times this task may be resubmitted if the task failed
     // due to out of memory failure.
     int32_t num_oom_retries_left;

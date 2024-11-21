@@ -16,6 +16,8 @@
 
 #include <gtest/gtest_prod.h>
 
+#include <utility>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
@@ -34,9 +36,9 @@ class ActorManager {
   explicit ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
                         std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
                         std::shared_ptr<ReferenceCounterInterface> reference_counter)
-      : gcs_client_(gcs_client),
-        actor_task_submitter_(actor_task_submitter),
-        reference_counter_(reference_counter) {}
+      : gcs_client_(std::move(gcs_client)),
+        actor_task_submitter_(std::move(actor_task_submitter)),
+        reference_counter_(std::move(reference_counter)) {}
 
   ~ActorManager() = default;
 
@@ -181,7 +183,7 @@ class ActorManager {
   /// throw an exception.
   ///
   /// \param actor_handle The actor handle that will be marked as invalidate.
-  void MarkActorKilledOrOutOfScope(std::shared_ptr<ActorHandle> actor_handle);
+  void MarkActorKilledOrOutOfScope(const std::shared_ptr<ActorHandle> &actor_handle);
 
   /// Check if actor is valid.
   bool IsActorKilledOrOutOfScope(const ActorID &actor_id) const;

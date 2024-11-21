@@ -377,7 +377,7 @@ bool TaskManager::ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *tas
   return true;
 }
 
-void TaskManager::DrainAndShutdown(const std::function<void()> &shutdown) {
+void TaskManager::DrainAndShutdown(std::function<void()> shutdown) {
   bool has_pending_tasks = false;
   {
     absl::MutexLock lock(&mu_);
@@ -386,7 +386,7 @@ void TaskManager::DrainAndShutdown(const std::function<void()> &shutdown) {
       RAY_LOG(WARNING)
           << "This worker is still managing " << submissible_tasks_.size()
           << " in flight tasks, waiting for them to finish before shutting down.";
-      shutdown_hook_ = shutdown;
+      shutdown_hook_ = std::move(shutdown);
     }
   }
 
@@ -1263,7 +1263,7 @@ bool TaskManager::MarkTaskCanceled(const TaskID &task_id) {
     // receive generator reports out of order. If the task reports a later
     // index then exits because it was cancelled, we will hang waiting for the
     // intermediate indices.
-    MarkEndOfStream(generator_id, /*eof_index=*/-1);
+    MarkEndOfStream(generator_id, /*end_of_stream_index=*/-1);
   }
 
   absl::MutexLock lock(&mu_);
@@ -1499,7 +1499,7 @@ TaskManager::GetOngoingLineageReconstructionTasks() const {
     if (result.find(task) != result.end()) {
       result[task] += 1;
     } else {
-      result[task] = 1;
+      result.emplace(std::move(task), 1);
     }
   }
 

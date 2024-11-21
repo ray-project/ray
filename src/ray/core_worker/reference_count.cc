@@ -36,7 +36,7 @@ bool ReferenceCounter::OwnedByUs(const ObjectID &object_id) const {
   return false;
 }
 
-void ReferenceCounter::DrainAndShutdown(const std::function<void()> &shutdown) {
+void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
   absl::MutexLock lock(&mutex_);
   if (object_id_refs_.empty()) {
     shutdown();
@@ -44,7 +44,7 @@ void ReferenceCounter::DrainAndShutdown(const std::function<void()> &shutdown) {
     RAY_LOG(WARNING)
         << "This worker is still managing " << object_id_refs_.size()
         << " objects, waiting for them to go out of scope before shutting down.";
-    shutdown_hook_ = shutdown;
+    shutdown_hook_ = std::move(shutdown);
   }
 }
 

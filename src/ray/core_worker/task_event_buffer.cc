@@ -407,7 +407,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
   absl::flat_hash_map<TaskAttempt, rpc::TaskEvents> agg_task_events;
   auto to_rpc_event_fn = [this, &agg_task_events, &dropped_task_attempts_to_send](
                              std::shared_ptr<TaskEvent> &event) {
-    if (dropped_task_attempts_to_send.count(event->GetTaskAttempt())) {
+    if (dropped_task_attempts_to_send.contains(event->GetTaskAttempt())) {
       // We are marking this as data loss due to some missing task status updates.
       // We will not send this event to GCS.
       stats_counter_.Increment(
@@ -415,7 +415,7 @@ std::unique_ptr<rpc::TaskEventData> TaskEventBufferImpl::CreateDataToSend(
       return;
     }
 
-    if (!agg_task_events.count(event->GetTaskAttempt())) {
+    if (!agg_task_events.contains(event->GetTaskAttempt())) {
       auto inserted =
           agg_task_events.insert({event->GetTaskAttempt(), rpc::TaskEvents()});
       RAY_CHECK(inserted.second);
@@ -696,7 +696,7 @@ void TaskEventBufferImpl::AddTaskProfileEvent(std::unique_ptr<TaskEvent> profile
   profile_events_itr->second.push_back(profile_event_shared_ptr);
 }
 
-const std::string TaskEventBufferImpl::DebugString() {
+std::string TaskEventBufferImpl::DebugString() {
   std::stringstream ss;
 
   if (!Enabled()) {

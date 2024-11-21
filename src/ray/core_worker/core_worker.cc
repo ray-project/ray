@@ -22,7 +22,6 @@
 
 #include "absl/cleanup/cleanup.h"
 #include "absl/strings/str_format.h"
-#include "boost/fiber/all.hpp"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/runtime_env_common.h"
@@ -31,10 +30,7 @@
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/gcs/pb_util.h"
-#include "ray/stats/metric_defs.h"
-#include "ray/stats/stats.h"
 #include "ray/util/event.h"
-#include "ray/util/subreaper.h"
 #include "ray/util/util.h"
 
 using json = nlohmann::json;
@@ -77,6 +73,9 @@ class ScopedTaskMetricSetter {
     }
     ctr_.SetMetricStatus(task_name_, status, is_retry_);
   }
+
+  ScopedTaskMetricSetter(const ScopedTaskMetricSetter &) = delete;
+  ScopedTaskMetricSetter &operator=(const ScopedTaskMetricSetter &) = delete;
 
   ~ScopedTaskMetricSetter() { ctr_.UnsetMetricStatus(task_name_, status_, is_retry_); }
 
@@ -1731,12 +1730,11 @@ Status CoreWorker::Contains(const ObjectID &object_id,
 
 // For any objects that are ErrorType::OBJECT_IN_PLASMA, we need to move them from
 // the ready set into the plasma_object_ids set to wait on them there.
-static void RetryObjectInPlasmaErrors(
-    std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
-    WorkerContext &worker_context,
-    absl::flat_hash_set<ObjectID> &memory_object_ids,
-    absl::flat_hash_set<ObjectID> &plasma_object_ids,
-    absl::flat_hash_set<ObjectID> &ready) {
+void RetryObjectInPlasmaErrors(std::shared_ptr<CoreWorkerMemoryStore> &memory_store,
+                               WorkerContext &worker_context,
+                               absl::flat_hash_set<ObjectID> &memory_object_ids,
+                               absl::flat_hash_set<ObjectID> &plasma_object_ids,
+                               absl::flat_hash_set<ObjectID> &ready) {
   for (auto iter = memory_object_ids.begin(); iter != memory_object_ids.end();) {
     auto current = iter++;
     const auto &mem_id = *current;
@@ -3365,7 +3363,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   for (size_t i = 0; i < num_returns; i++) {
     if (!task_spec.IsActorCreationTask()) {
       reference_counter_->AddOwnedObject(task_spec.ReturnId(i),
-                                         /*inner_ids=*/{},
+                                         /*contained_ids=*/{},
                                          rpc_address_,
                                          CurrentCallSite(),
                                          -1,
@@ -3563,7 +3561,7 @@ void CoreWorker::HandleDirectActorCallArgWaitComplete(
   // Post on the task execution event loop since this may trigger the
   // execution of a task that is now ready to run.
   task_execution_service_.post(
-      [request, this] {
+      [request = std::move(request), this] {
         RAY_LOG(DEBUG) << "Arg wait complete for tag " << request.tag();
         task_argument_waiter_->OnWaitComplete(request.tag());
       },
@@ -3612,7 +3610,7 @@ void CoreWorker::HandleGetObjectStatus(rpc::GetObjectStatusRequest request,
     // its ref count is > 0.
     memory_store_->GetAsync(object_id,
                             [this, object_id, reply, send_reply_callback, is_freed](
-                                std::shared_ptr<RayObject> obj) {
+                                const std::shared_ptr<RayObject> &obj) {
                               if (is_freed) {
                                 reply->set_status(rpc::GetObjectStatusReply::FREED);
                               } else {

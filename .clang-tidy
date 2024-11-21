@@ -26,8 +26,14 @@ Checks: >
   bugprone-*,
   -bugprone-macro-parentheses,
   -bugprone-easily-swappable-parameters,
+  -bugprone-narrowing-conversions,
+  -bugprone-implicit-widening-of-multiplication-result,
   cert-*,
   cppcoreguidelines-*,
+  -cppcoreguidelines-non-private-member-variables-in-classes,
+  -cppcoreguidelines-narrowing-conversions,
+  -cppcoreguidelines-avoid-magic-numbers,
+  -cppcoreguidelines-avoid-do-while,
   google-*,
   -google-readability-todo,
   -google-default-arguments,
@@ -58,6 +64,7 @@ Checks: >
   readability-named-parameter,
   readability-non-const-parameter,
   readability-redundant-*,
+  -readability-redundant-access-specifiers,
   readability-static-definition-in-anonymous-namespace,
   readability-string-compare,
   readability-suspicious-call-argument,
@@ -68,6 +75,10 @@ CheckOptions:
     value: 'size_t;ptrdiff_t;size_type;difference_type'
   - key:   bugprone-narrowing-conversions.WarnOnEquivalentBitWidth
     value: 'false'
+  - key: cppcoreguidelines-special-member-functions.AllowMissingMoveFunctionsWhenCopyIsDeleted
+    value: 'true'
+  - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
+    value: 'true'
 
 # Turn all the warnings from the checks above into errors.
 WarningsAsErrors: "*"
