@@ -24,7 +24,12 @@ import ray
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
-from ray.rllib.core import COMPONENT_OPTIMIZER, COMPONENT_RL_MODULE, DEFAULT_MODULE_ID
+from ray.rllib.core import (
+    COMPONENT_METRICS_LOGGER,
+    COMPONENT_OPTIMIZER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.rl_module.apis import SelfSupervisedLossAPI
 from ray.rllib.core.rl_module import validate_module_id
 from ray.rllib.core.rl_module.multi_rl_module import (
@@ -51,7 +56,9 @@ from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
+    NUM_MODULE_STEPS_TRAINED_LIFETIME,
     LEARNER_CONNECTOR_TIMER,
     MODULE_TRAIN_BATCH_SIZE_MEAN,
     WEIGHTS_SEQ_NO,
@@ -1212,6 +1219,10 @@ class Learner(Checkpointable):
         if self._check_component(COMPONENT_OPTIMIZER, components, not_components):
             state[COMPONENT_OPTIMIZER] = self._get_optimizer_state()
 
+        if self._check_component(COMPONENT_METRICS_LOGGER, components, not_components):
+            # TODO (sven): Make `MetricsLogger` a Checkpointable.
+            state[COMPONENT_METRICS_LOGGER] = self.metrics.get_state()
+
         return state
 
     @override(Checkpointable)
@@ -1235,6 +1246,10 @@ class Learner(Checkpointable):
         # If not provided in state (None), all Modules will be trained by default.
         if "should_module_be_updated" in state:
             self.config.multi_agent(policies_to_train=state["should_module_be_updated"])
+
+        # TODO (sven): Make `MetricsLogger` a Checkpointable.
+        if COMPONENT_METRICS_LOGGER in state:
+            self.metrics.set_state(state[COMPONENT_METRICS_LOGGER])
 
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
@@ -1334,15 +1349,6 @@ class Learner(Checkpointable):
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
-
-        # TODO (sven): Remove this leftover hack here for the situation in which we
-        #  did not go through the learner connector.
-        #  Options:
-        #  a) Either also pass given batches through the learner connector (even if
-        #     episodes is None). (preferred solution)
-        #  b) Get rid of the option to pass in a batch altogether.
-        # if episodes is None:
-        #    batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
@@ -1647,8 +1653,6 @@ class Learner(Checkpointable):
 
     def _log_steps_trained_metrics(self, batch: MultiAgentBatch):
         """Logs this iteration's steps trained, based on given `batch`."""
-
-        log_dict = defaultdict(dict)
         for mid, module_batch in batch.policy_batches.items():
             module_batch_size = len(module_batch)
             # Log average batch size (for each module).
@@ -1657,17 +1661,29 @@ class Learner(Checkpointable):
                 value=module_batch_size,
             )
             # Log module steps (for each module).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[mid]:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[mid][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(mid, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
             # Log module steps (sum of all modules).
-            if NUM_MODULE_STEPS_TRAINED not in log_dict[ALL_MODULES]:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] = module_batch_size
-            else:
-                log_dict[ALL_MODULES][NUM_MODULE_STEPS_TRAINED] += module_batch_size
-
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED),
+                value=module_batch_size,
+                reduce="sum",
+                clear_on_reduce=True,
+            )
+            self.metrics.log_value(
+                key=(ALL_MODULES, NUM_MODULE_STEPS_TRAINED_LIFETIME),
+                value=module_batch_size,
+                reduce="sum",
+            )
         # Log env steps (all modules).
         self.metrics.log_value(
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED),
@@ -1675,8 +1691,11 @@ class Learner(Checkpointable):
             reduce="sum",
             clear_on_reduce=True,
         )
-        # Log per-module steps trained (plus all modules) and per-agent steps trained.
-        self.metrics.log_dict(dict(log_dict), reduce="sum", clear_on_reduce=True)
+        self.metrics.log_value(
+            (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+            batch.env_steps(),
+            reduce="sum",
+        )
 
     @Deprecated(
         new="Learner.before_gradient_based_update("

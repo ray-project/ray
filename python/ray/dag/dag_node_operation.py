@@ -66,7 +66,7 @@ class _DAGNodeOperation:
             f" type: {self.type})"
         )
 
-    def vis_str(self):
+    def viz_str(self):
         """
         A string representation of the node to be used in visualization.
         """
@@ -223,10 +223,7 @@ class _DAGOperationGraphNode:
         """
         A string representation of the node to be used in visualization.
         """
-        return (
-            f"[{self.operation.exec_task_idx}] "
-            f"{self.operation.method_name} {self.operation.type.viz_str()}"
-        )
+        return self.operation.viz_str()
 
     @property
     def _actor_id(self):

@@ -183,6 +183,12 @@ Status raylet::RayletClient::Disconnect(
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
+  // TODO (myan): In the current implementation, if raylet is already terminated in the
+  // "WriteMessage" function above, the worker process will exit early in the function
+  // and will not reach here. However, the code path here is shared between graceful
+  // shutdown and force termination. We need to make sure the above early exit
+  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
+  // leak if early exit is triggered
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << status.ToString()
@@ -365,10 +371,10 @@ void raylet::RayletClient::ReportWorkerBacklog(
   request.set_worker_id(worker_id.Binary());
   request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
   grpc_client_->ReportWorkerBacklog(
-      request, [](const Status &status, rpc::ReportWorkerBacklogReply &&reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
-        }
+      request,
+      [](const Status &status, rpc::ReportWorkerBacklogReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status)
+            << "Error reporting task backlog information: " << status;
       });
 }
 
@@ -384,12 +390,10 @@ Status raylet::RayletClient::ReturnWorker(
   request.set_disconnect_worker(disconnect_worker);
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
-  grpc_client_->ReturnWorker(request,
-                             [](const Status &status, rpc::ReturnWorkerReply &&reply) {
-                               if (!status.ok()) {
-                                 RAY_LOG(INFO) << "Error returning worker: " << status;
-                               }
-                             });
+  grpc_client_->ReturnWorker(
+      request, [](const Status &status, rpc::ReturnWorkerReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status) << "Error returning worker: " << status;
+      });
   return Status::OK();
 }
 
@@ -400,9 +404,7 @@ void raylet::RayletClient::GetTaskFailureCause(
   request.set_task_id(task_id.Binary());
   grpc_client_->GetTaskFailureCause(
       request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error getting task result: " << status;
-        }
+        RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
         callback(status, std::move(reply));
       });
 }
@@ -454,9 +456,7 @@ void raylet::RayletClient::PushMutableObject(
     // TODO: Add failure recovery, retries, and timeout.
     grpc_client_->PushMutableObject(
         request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
-          if (!status.ok()) {
-            RAY_LOG(ERROR) << "Error pushing mutable object: " << status;
-          }
+          RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
           if (reply.done()) {
             // The callback is only executed once the receiver node receives all chunks
             // for the mutable object write.
