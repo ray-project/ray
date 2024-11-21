@@ -11,7 +11,16 @@ from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from functools import wraps
 from importlib import import_module
-from typing import Any, AsyncGenerator, Callable, Dict, Optional, Tuple, Union
+from typing import (
+    Any,
+    AsyncGenerator,
+    Callable,
+    Dict,
+    Generator,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import starlette.responses
 from starlette.types import ASGIApp, Message
@@ -233,12 +242,10 @@ class ReplicaMetricsManager:
         )
 
 
-class ReplicaBase(ABC):
-    """
-    All interaction with the user-provided callable is done via the
-    `UserCallableWrapper` class.
-    """
+StatusCodeCallback = Callable[[str], None]
 
+
+class ReplicaBase(ABC):
     def __init__(
         self,
         replica_id: ReplicaID,
@@ -326,7 +333,7 @@ class ReplicaBase(ABC):
     def get_num_ongoing_requests(self):
         return self._metrics_manager.get_num_ongoing_requests()
 
-    def _maybe_get_asgi_route(
+    def _maybe_get_http_route(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
     ) -> Optional[str]:
         """Get the matched route string for ASGI apps to be used in logs & metrics.
@@ -359,13 +366,36 @@ class ReplicaBase(ABC):
 
         return route
 
+    def _maybe_get_http_method(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ) -> Optional[str]:
+        """Get the HTTP method to be used in logs & metrics.
+
+        If this is not an HTTP request, returns None.
+        """
+        if request_metadata.is_http_request:
+            req: StreamingHTTPRequest = request_args[0]
+            # WebSocket messages don't have a 'method' field.
+            return req.asgi_scope.get("method", "WS")
+
+        return None
+
     @contextmanager
-    def _handle_errors_and_metrics(self, request_metadata):
+    def _handle_errors_and_metrics(
+        self, request_metadata: RequestMetadata, request_args: Tuple[Any]
+    ) -> Generator[StatusCodeCallback, None, None]:
         start_time = time.time()
         user_exception = None
+
+        status_code = None
+
+        def _status_code_callback(s: str):
+            nonlocal status_code
+            status_code = s
+
         try:
             self._metrics_manager.inc_num_ongoing_requests()
-            yield
+            yield _status_code_callback
         except asyncio.CancelledError as e:
             user_exception = e
             self._on_request_cancelled(request_metadata, e)
@@ -384,16 +414,21 @@ class ReplicaBase(ABC):
         else:
             status_str = "ERROR"
 
+        http_method = self._maybe_get_http_method(request_metadata, request_args)
+        http_route = request_metadata.route
+        # Set in _wrap_user_method_call.
         logger.info(
             access_log_msg(
-                method=request_metadata.call_method,
-                status=status_str,
+                method=http_method or "CALL",
+                route=http_route or request_metadata.call_method,
+                # Prefer the HTTP status code if it was populated.
+                status=status_code or status_str,
                 latency_ms=latency_ms,
             ),
             extra={"serve_access_log": True},
         )
         self._metrics_manager.record_request_metrics(
-            route=request_metadata.route,
+            route=http_route,
             status_str=status_str,
             latency_ms=latency_ms,
             was_error=user_exception is not None,
@@ -407,6 +442,7 @@ class ReplicaBase(ABC):
         request_metadata: RequestMetadata,
         request_args: Tuple[Any],
         request_kwargs: Dict[str, Any],
+        status_code_callback: StatusCodeCallback,
     ) -> AsyncGenerator[Any, None]:
         """Calls a user method for a streaming call and yields its results.
 
@@ -432,6 +468,7 @@ class ReplicaBase(ABC):
                 )
             )
 
+            first_message_peeked = False
             while True:
                 wait_for_message_task = self._event_loop.create_task(
                     result_queue.wait_for_message()
@@ -448,6 +485,16 @@ class ReplicaBase(ABC):
                     # and use vanilla pickle (we know it's safe because these messages
                     # only contain primitive Python types).
                     if request_metadata.is_http_request:
+                        # Peek the first ASGI message to determine the status code.
+                        if not first_message_peeked:
+                            msg = messages[0]
+                            first_message_peeked = True
+                            if msg["type"] == "http.response.start":
+                                # HTTP responses begin with exactly one
+                                # "http.response.start" message containing the "status"
+                                # field. Other response types like WebSockets may not.
+                                status_code_callback(str(msg["status"]))
+
                         yield pickle.dumps(messages)
                     else:
                         for msg in messages:
@@ -472,7 +519,7 @@ class ReplicaBase(ABC):
                 wait_for_message_task.cancel()
 
     async def handle_request(
-        self, request_metadata, *request_args, **request_kwargs
+        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> Tuple[bytes, Any]:
         with self._wrap_user_method_call(request_metadata, request_args):
             return await asyncio.wrap_future(
@@ -482,18 +529,22 @@ class ReplicaBase(ABC):
             )
 
     async def handle_request_streaming(
-        self, request_metadata, *request_args, **request_kwargs
+        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ) -> AsyncGenerator[Any, None]:
-        with self._wrap_user_method_call(request_metadata, request_args):
+        """Generator that is the entrypoint for all `stream=True` handle calls."""
+        with self._wrap_user_method_call(
+            request_metadata, request_args
+        ) as status_code_callback:
             async for result in self._call_user_generator(
                 request_metadata,
                 request_args,
                 request_kwargs,
+                status_code_callback=status_code_callback,
             ):
                 yield result
 
     async def handle_request_with_rejection(
-        self, request_metadata, *request_args, **request_kwargs
+        self, request_metadata: RequestMetadata, *request_args, **request_kwargs
     ):
         limit = self._deployment_config.max_ongoing_requests
         num_ongoing_requests = self.get_num_ongoing_requests()
@@ -508,7 +559,9 @@ class ReplicaBase(ABC):
             )
             return
 
-        with self._wrap_user_method_call(request_metadata, request_args):
+        with self._wrap_user_method_call(
+            request_metadata, request_args
+        ) as status_code_callback:
             yield ReplicaQueueLengthInfo(
                 accepted=True,
                 # NOTE(edoakes): `_wrap_user_method_call` will increment the number
@@ -521,6 +574,7 @@ class ReplicaBase(ABC):
                     request_metadata,
                     request_args,
                     request_kwargs,
+                    status_code_callback=status_code_callback,
                 ):
                     yield result
             else:
@@ -534,7 +588,7 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    async def initialize(self, deployment_config):
+    async def initialize(self, deployment_config: DeploymentConfig):
         try:
             # Ensure that initialization is only performed once.
             # When controller restarts, it will call this method again.
@@ -620,7 +674,7 @@ class ReplicaBase(ABC):
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[StatusCodeCallback, None, None]:
         pass
 
     async def _drain_ongoing_requests(self):
@@ -708,16 +762,16 @@ class Replica(ReplicaBase):
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
         2) Records the access log message (if not disabled).
         3) Records per-request metrics via the metrics manager.
         """
-        route = self._maybe_get_asgi_route(request_metadata, request_args)
-        request_metadata.route = route
-
+        request_metadata.route = self._maybe_get_http_route(
+            request_metadata, request_args
+        )
         ray.serve.context._serve_request_context.set(
             ray.serve.context._RequestContext(
                 route=request_metadata.route,
@@ -729,8 +783,10 @@ class Replica(ReplicaBase):
             )
         )
 
-        with self._handle_errors_and_metrics(request_metadata):
-            yield
+        with self._handle_errors_and_metrics(
+            request_metadata, request_args
+        ) as status_code_callback:
+            yield status_code_callback
 
 
 class ReplicaActor:
@@ -1338,7 +1394,12 @@ class UserCallableWrapper:
             )
 
         except Exception:
-            if request_metadata.is_http_request and asgi_args is not None:
+            if (
+                request_metadata.is_http_request
+                and asgi_args is not None
+                # If the callable is an ASGI app, it already sent a 500 status response.
+                and not is_asgi_app
+            ):
                 await self._send_user_result_over_asgi(
                     starlette.responses.Response(
                         "Internal Server Error", status_code=500
