@@ -53,8 +53,8 @@ class ClickHouseDatasource(Datasource):
         self._columns = columns
         self._filters = filters
         self._order_by = order_by
-        self._client_settings = client_settings if client_settings is not None else {}
-        self._client_kwargs = client_kwargs if client_kwargs is not None else {}
+        self._client_settings = client_settings or {}
+        self._client_kwargs = client_kwargs or {}
         self._client = None
         self._query = self._generate_query()
 
