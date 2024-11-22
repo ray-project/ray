@@ -468,6 +468,7 @@ class AlgorithmConfig(_Config):
         self.output_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.output_max_file_size = 64 * 1024 * 1024
         self.output_max_rows_per_file = None
+        self.output_write_remaining_data = False
         self.output_write_method = "write_parquet"
         self.output_write_method_kwargs = {}
         self.output_filesystem = None
@@ -2579,6 +2580,7 @@ class AlgorithmConfig(_Config):
         output_compress_columns: Optional[List[str]] = NotProvided,
         output_max_file_size: Optional[float] = NotProvided,
         output_max_rows_per_file: Optional[int] = NotProvided,
+        output_write_remaining_data: Optional[bool] = NotProvided,
         output_write_method: Optional[str] = NotProvided,
         output_write_method_kwargs: Optional[Dict] = NotProvided,
         output_filesystem: Optional[str] = NotProvided,
@@ -2855,6 +2857,8 @@ class AlgorithmConfig(_Config):
             self.output_max_file_size = output_max_file_size
         if output_max_rows_per_file is not NotProvided:
             self.output_max_rows_per_file = output_max_rows_per_file
+        if output_write_remaining_data is not NotProvided:
+            self.output_write_remaining_data = output_write_remaining_data
         if output_write_method is not NotProvided:
             self.output_write_method = output_write_method
         if output_write_method_kwargs is not NotProvided:
