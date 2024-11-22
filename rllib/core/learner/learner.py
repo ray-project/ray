@@ -1694,8 +1694,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
             reduce="sum",
-            _throughput=True,
-            #id_="trained_life",
+            with_throughput=True,
         )
 
     @Deprecated(

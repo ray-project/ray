@@ -154,7 +154,7 @@ class TorchLearner(Learner):
         #    group.update_from_episodes(), so somehow, there is still a race condition
         #    possible (learner, which performs the reduce() and learner thread, which
         #    performs the logging of tensors into metrics logger).
-        # self._compute_off_policyness(batch)
+        self._compute_off_policyness(batch)
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)

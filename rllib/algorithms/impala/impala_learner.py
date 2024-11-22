@@ -84,7 +84,6 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
-        #self._learner_thread_out_queue = queue.Queue()
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -104,7 +103,6 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
-            #out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
         )
         self._learner_thread.start()
@@ -184,15 +182,6 @@ class IMPALALearner(Learner):
                         self._learner_thread_in_queue, ma_batch, self.metrics
                     )
 
-        # Empty out the queue (which contains one `True` for each successful update
-        # call).
-        #try:
-        #    while True:
-        #        self._learner_thread_out_queue.get(block=False)
-        #except queue.Empty:
-        #    # We have to deepcopy the results dict, b/c we must avoid having a returned
-        #    # Stats object sit in the queue and getting a new (possibly even tensor)
-        #    # value added to it, which would falsify this result.
         return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
@@ -280,7 +269,6 @@ class _LearnerThread(threading.Thread):
         *,
         update_method,
         in_queue: deque,
-        #out_queue: queue.Queue,
         metrics_logger,
     ):
         super().__init__()
@@ -290,7 +278,6 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
-        #self._out_queue: queue.Queue = out_queue
 
     def run(self) -> None:
         while not self.stopped:
@@ -325,13 +312,6 @@ class _LearnerThread(threading.Thread):
                 batch=ma_batch_on_gpu,
                 timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
-            # Signal to the out queue, that (some) results are ready.
-            #self._out_queue.put(True)
-
-            #self.metrics.log_value(
-            #    (ALL_MODULES, QUEUE_SIZE_RESULTS_QUEUE),
-            #    self._out_queue.qsize(),
-            #)
 
     @staticmethod
     def enqueue(learner_queue: deque, batch, metrics):

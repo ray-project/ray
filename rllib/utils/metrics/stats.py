@@ -137,8 +137,7 @@ class Stats:
         ema_coeff: Optional[float] = None,
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
-        _throughput=False,
-        #id_=None,
+        throughput: Union[bool, float] = False,
     ):
         """Initializes a Stats instance.
 
@@ -176,12 +175,14 @@ class Stats:
                 to True is useful for cases, in which the internal values list would
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
+            with_throughput: Whether to track a throughput estimate together with this
+                Stats. This is only supported for `reduce=sum` and
+                `clear_on_reduce=False` metrics (aka. "lifetime counts"). The `Stats`
+                then keeps track of the time passed between two consecutive calls to
+                `reduce()` and update its throughput estimate. The current throughput
+                estimate of a key can be obtained through:
+                `Stats.peek([some key], throughput=True)`.
         """
-
-        ##TEST
-        #self.id_ = id_
-
-
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
             raise ValueError("`reduce` must be one of `mean|min|max|sum` or None!")
@@ -227,11 +228,10 @@ class Stats:
         # previous `reduce()` result in hist[1].
         self._hist = deque([0, 0, 0], maxlen=3)
 
-        self._throughput = _throughput
-        if self._throughput:
+        self._throughput = throughput if throughput is not True else 0.0
+        if self._throughput is not False:
             assert self._reduce_method == "sum"
             assert self._window in [None, float("inf")]
-            self._current_throughput = 0.0
             self._throughput_last_time = time.perf_counter()
 
     def push(self, value) -> None:
@@ -295,7 +295,7 @@ class Stats:
             return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
-            return self._current_throughput if self._throughput else None
+            return self._throughput if self._throughput is not False else None
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -313,30 +313,23 @@ class Stats:
         """
         reduced, values = self._reduced_values()
 
-        #if self.id_ == "trained_life":
-        #    assert self._throughput
-            #print(f"before reducing: hist={list(self._hist)} values={self.values}")
-
         # Keep track and update underlying throughput metric.
-        if self._throughput:
+        if self._throughput is not False:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
-            assert delta_sum > 0
+            assert delta_sum >= 0
             time_now = time.perf_counter()
             delta_time = time_now - self._throughput_last_time
-            assert delta_time > 0.0
+            assert delta_time >= 0.0
             self._throughput_last_time = time_now
-            self._current_throughput = delta_sum / delta_time
+            self._throughput = delta_sum / delta_time
 
         # Reduce everything to a single (init) value.
         self.values = values
 
         # Shift historic reduced valued by one in our hist-tuple.
         self._hist.append(reduced)
-
-        #if self.id_ == "trained_life":
-        #    print(f"after reducing .. to {reduced}; NOW hist={list(self._hist)} values={self.values}")
 
         # `clear_on_reduce` -> Return an empty new Stats object with the same settings
         # as `self`.
@@ -351,7 +344,6 @@ class Stats:
         assert self._reduce_method == other._reduce_method
         assert self._window == other._window
         assert self._ema_coeff == other._ema_coeff
-        assert self._throughput == other._throughput
 
         # Extend `self`'s values by `other`'s.
         self.values.extend(other.values)
@@ -361,8 +353,7 @@ class Stats:
             self.values = self.values[-self._window :]
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        if self._throughput:
-            self._current_throughput = other._current_throughput
+        self._throughput = other._throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
@@ -504,7 +495,6 @@ class Stats:
             self._reduce_method == o._reduce_method
             and self._window == o._window
             and self._ema_coeff == o._ema_coeff
-            and self._throughput == o._throughput
             for o in others
         )
         win = self._window or float("inf")
@@ -542,9 +532,8 @@ class Stats:
         self.values = list(reversed(new_values))
 
         # Update our throughput as the sum over all others' current throughputs.
-        if self._throughput:
-            self._current_throughput = sum(o.peek(throughput=True) for o in others)
-            #print(f"Stats current throughput after parallel merge={self._current_throughput}")
+        if self._throughput is not False:
+            self._throughput = sum(o.peek(throughput=True) for o in others)
 
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
@@ -658,11 +647,8 @@ class Stats:
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
-            _throughput=other._throughput,
-            #id_=other.id_,
+            throughput=other._throughput,
         )
-        if stats._throughput:
-            stats._current_throughput = other._current_throughput
         stats._hist = other._hist
         return stats
 

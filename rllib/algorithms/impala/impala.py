@@ -601,7 +601,7 @@ class IMPALA(Algorithm):
             # this Algorithm's learning success that we sleep the correct amount of time
             # in each training_step to establish a healthy balance between sample
             # collection and training.
-            self._current_sleep_time = 0.1
+            self._current_sleep_time = 0.05
             self._sleep_time_lr = 0.01
             self._last_train_throughput = float("-inf")
             self._sleep_time_lr_direction = self._sleep_time_lr
@@ -656,7 +656,6 @@ class IMPALA(Algorithm):
                 key=MEAN_NUM_LEARNER_GROUP_UPDATE_CALLED,
                 value=len(data_packages_for_learner_group),
             )
-            #print(f"Putting {len(data_packages_for_learner_group)} new batches into buffer.")
             rl_module_state = None
             num_learner_group_results_received = 0
 
@@ -673,7 +672,8 @@ class IMPALA(Algorithm):
                         (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
                     ),
                     NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
-                        (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME), default=0
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                        default=0,
                     ),
                 }
                 if self.config.num_aggregation_workers:
