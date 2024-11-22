@@ -765,14 +765,14 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 }
 
 void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
-    RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object " << it->first
-                  << " num callbacks: "
-                  << it->second.on_object_out_of_scope_or_freed_callbacks.size();
-    for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
-      callback(it->first);
-    }
-    it->second.on_object_out_of_scope_or_freed_callbacks.clear();
-    ResetObjectPrimaryCopy(it);
+  RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
+                 << it->first << " num callbacks: "
+                 << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
+    callback(it->first);
+  }
+  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  ResetObjectPrimaryCopy(it);
 }
 
 void ReferenceCounter::ResetObjectPrimaryCopy(ReferenceTable::iterator it) {
