@@ -593,7 +593,8 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
     auto &requests = state.pending_registration_requests;
     auto it = std::find(requests.begin(), requests.end(), pop_worker_request);
     if (it != requests.end()) {
-      // Fail the task...
+      // Pop and fail the task...
+      requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       PopWorkerCallbackAsync(pop_worker_request->callback, nullptr, status);
     }

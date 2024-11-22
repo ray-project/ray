@@ -1928,6 +1928,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
   worker_pool_->ClearProcesses();
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerPendingRegistrationErasesRequest) {
+  std::shared_ptr<WorkerInterface> popped_worker;
+  PopWorkerStatus status;
+  auto task_spec = ExampleTaskSpec();
+  // Create a task without push worker. It should time out (WorkerPendingRegistration).
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
+  // The request should be erased.
+  ASSERT_EQ(worker_pool_->NumPendingRegistrationRequests(), 0);
+  worker_pool_->ClearProcesses();
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_worker_set;
   auto spill_worker_callback =
