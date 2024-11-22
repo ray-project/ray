@@ -82,25 +82,6 @@ from ray.tune.tune import _Config
 
 Space = gym.Space
 
-"""TODO(jungong, sven): in "offline_data" we can potentially unify all input types
-under input and input_config keys. E.g.
-input: sample
-input_config {
-env: CartPole-v1
-}
-or:
-input: json_reader
-input_config {
-path: /tmp/
-}
-or:
-input: dataset
-input_config {
-format: parquet
-path: /tmp/
-}
-"""
-
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm import Algorithm
@@ -131,12 +112,13 @@ class AlgorithmConfig(_Config):
         from ray.rllib.algorithms.callbacks import MemoryTrackingCallbacks
         # Construct a generic config object, specifying values within different
         # sub-categories, e.g. "training".
-        config = (PPOConfig().training(gamma=0.9, lr=0.01)
-                .environment(env="CartPole-v1")
-                .resources(num_gpus=0)
-                .env_runners(num_env_runners=0)
-                .callbacks(MemoryTrackingCallbacks)
-            )
+        config = (
+            PPOConfig()
+            .training(gamma=0.9, lr=0.01)
+            .environment(env="CartPole-v1")
+            .env_runners(num_env_runners=0)
+            .callbacks(MemoryTrackingCallbacks)
+        )
         # A config object can be used to construct the respective Algorithm.
         rllib_algo = config.build()
 
@@ -321,10 +303,6 @@ class AlgorithmConfig(_Config):
         # Default setting for skipping `nan` gradient updates.
         self.torch_skip_nan_gradients = False
 
-        # `self.api_stack()`
-        self.enable_rl_module_and_learner = False
-        self.enable_env_runner_and_connector_v2 = False
-
         # `self.environment()`
         self.env = None
         self.env_config = {}
@@ -379,6 +357,11 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
         self.local_gpu_idx = 0
+        # TODO (sven): This probably works even without any restriction
+        #  (allowing for any arbitrary number of requests in-flight). Test with
+        #  3 first, then with unlimited, and if both show the same behavior on
+        #  an async algo, remove this restriction entirely.
+        self.max_requests_in_flight_per_learner = 3
 
         # `self.training()`
         self.gamma = 0.99
@@ -425,7 +408,19 @@ class AlgorithmConfig(_Config):
         self.explore = True
         # This is not compatible with RLModules, which have a method
         # `forward_exploration` to specify custom exploration behavior.
-        self.exploration_config = {}
+        if not hasattr(self, "exploration_config"):
+            # Helper to keep track of the original exploration config when dis-/enabling
+            # rl modules.
+            self._prior_exploration_config = None
+            self.exploration_config = {}
+
+        # `self.api_stack()`
+        self.enable_rl_module_and_learner = True
+        self.enable_env_runner_and_connector_v2 = True
+        self.api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
 
         # `self.multi_agent()`
         # TODO (sven): Prepare multi-agent setup for logging each agent's and each
@@ -549,9 +544,6 @@ class AlgorithmConfig(_Config):
         # `self.rl_module()`
         self._model_config = {}
         self._rl_module_spec = None
-        # Helper to keep track of the original exploration config when dis-/enabling
-        # rl modules.
-        self.__prior_exploration_config = None
         # Module ID specific config overrides.
         self.algorithm_config_overrides_per_module = {}
         # Cached, actual AlgorithmConfig objects derived from
@@ -1612,13 +1604,13 @@ class AlgorithmConfig(_Config):
             self.enable_rl_module_and_learner = enable_rl_module_and_learner
 
             if enable_rl_module_and_learner is True and self.exploration_config:
-                self.__prior_exploration_config = self.exploration_config
+                self._prior_exploration_config = self.exploration_config
                 self.exploration_config = {}
 
             elif enable_rl_module_and_learner is False and not self.exploration_config:
-                if self.__prior_exploration_config is not None:
-                    self.exploration_config = self.__prior_exploration_config
-                    self.__prior_exploration_config = None
+                if self._prior_exploration_config is not None:
+                    self.exploration_config = self._prior_exploration_config
+                    self._prior_exploration_config = None
                 else:
                     logger.warning(
                         "config.enable_rl_module_and_learner was set to False, but no "
@@ -1811,15 +1803,16 @@ class AlgorithmConfig(_Config):
                 synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
-            max_requests_in_flight_per_env_runner: Max number of inflight requests
-                to each EnvRunner worker. See the FaultTolerantActorManager class for
-                more details.
+            max_requests_in_flight_per_env_runner: Max number of in-flight requests
+                to each EnvRunner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
                 Tuning these values is important when running experiments with
                 large sample batches, where there is the risk that the object store may
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
                 slowly as well. You can inspect the object store during your experiment
-                via a call to Ray memory on your head node, and by using the Ray
+                via a call to `ray memory` on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
@@ -2123,6 +2116,7 @@ class AlgorithmConfig(_Config):
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
+        max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
         """Sets LearnerGroup and Learner worker related configurations.
 
@@ -2148,6 +2142,10 @@ class AlgorithmConfig(_Config):
                 an index into the available
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
+            max_requests_in_flight_per_learner: Max number of in-flight requests
+                to each Learner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2160,6 +2158,8 @@ class AlgorithmConfig(_Config):
             self.num_gpus_per_learner = num_gpus_per_learner
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
+        if max_requests_in_flight_per_learner is not NotProvided:
+            self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
 
         return self
 
@@ -3992,7 +3992,7 @@ class AlgorithmConfig(_Config):
             # Default is multi-agent and user wants to override it -> Don't use the
             # default.
             else:
-                # Use has given an override RLModuleSpec -> Use this to
+                # User provided an override RLModuleSpec -> Use this to
                 # construct the individual RLModules within the MultiRLModuleSpec.
                 if single_agent_rl_module_spec is not None:
                     pass
@@ -4007,7 +4007,7 @@ class AlgorithmConfig(_Config):
                         single_agent_rl_module_spec = (
                             current_rl_module_spec.rl_module_specs
                         )
-                    # The currently setup multi-agent spec has NO
+                    # The currently set up multi-agent spec has NO
                     # RLModuleSpec in it -> Error (there is no way we can
                     # infer this information from anywhere at this point).
                     else:
@@ -4017,7 +4017,7 @@ class AlgorithmConfig(_Config):
                             "`RLModuleSpec`s to compile the individual "
                             "RLModules' specs! Use "
                             "`AlgorithmConfig.get_multi_rl_module_spec("
-                            "policy_dict=.., single_agent_rl_module_spec=..)`."
+                            "policy_dict=.., rl_module_spec=..)`."
                         )
 
                 single_agent_rl_module_spec.inference_only = inference_only
