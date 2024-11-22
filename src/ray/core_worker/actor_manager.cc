@@ -172,7 +172,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   if (inserted && owned) {
-    RAY_CHECK(reference_counter_->AddObjectPrimaryCopyDeleteCallback(
+    RAY_CHECK(reference_counter_->AddObjectOutOfScopeCallback(
         actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
           MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
         }));

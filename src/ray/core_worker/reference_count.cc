@@ -765,13 +765,16 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
 }
 
 void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
-  RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first
-                 << " num callbacks: "
-                 << it->second.on_object_primary_copy_delete_callbacks.size();
-  for (const auto &callback : it->second.on_object_primary_copy_delete_callbacks) {
-    callback(it->first);
+  if (it->second.OutOfScope(lineage_pinning_enabled_)) {
+    RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_callbacks for object " << it->first
+                  << " num callbacks: "
+                  << it->second.on_object_out_of_scope_callbacks.size();
+    for (const auto &callback : it->second.on_object_out_of_scope_callbacks) {
+      callback(it->first);
+    }
+    it->second.on_object_out_of_scope_callbacks.clear();
   }
-  it->second.on_object_primary_copy_delete_callbacks.clear();
+
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     // The spilled copy of the object should get deleted during the
@@ -795,7 +798,7 @@ bool ReferenceCounter::SetObjectRefDeletedCallback(
   return true;
 }
 
-bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
+bool ReferenceCounter::AddObjectOutOfScopeCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -812,7 +815,7 @@ bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
     return false;
   }
 
-  it->second.on_object_primary_copy_delete_callbacks.emplace_back(callback);
+  it->second.on_object_out_of_scope_callbacks.emplace_back(callback);
   return true;
 }
 
