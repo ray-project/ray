@@ -1495,8 +1495,8 @@ def test_idle_termination_with_node_type_idle_timeout(node_type_idle_timeout_s):
                 cloud_instance_id="c-2",
             ),
         ],
-        # Set autoscaler idle_timeout_s to a value greater than node_type_idle_timeout_s
-        idle_timeout_s=node_type_idle_timeout_s*2,
+        # Set autoscaler idle_timeout_s to a value greater than node_type_idle_timeout_s and idle_time_s
+        idle_timeout_s=idle_time_s*1000,
         cluster_resource_constraints=constraints,
     )
 
