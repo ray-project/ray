@@ -1,4 +1,51 @@
 ###############
+# Groupby tests
+###############
+
+- name: aggregate_groups
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_autoscaling_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: count
+      run:
+        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate count
+    - __suffix__: mean
+      run:
+        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate mean
+    - __suffix__: std
+      run:
+        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate std
+
+- name: map_groups
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_autoscaling_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --map-groups
+
+
+###############
 # Dataset tests
 ###############
 
