@@ -2750,6 +2750,15 @@ class AlgorithmConfig(_Config):
                 to a new file.
             output_max_rows_per_file: Max output row numbers before rolling over to a
                 new file.
+            output_write_remaining_data: Determines whether any remaining data in the
+                recording buffers should be stored to disk. It is only applicable if
+                `output_max_rows_per_file` is defined. When sampling data, it is
+                buffered until the threshold specified by `output_max_rows_per_file`
+                is reached. Only complete multiples of `output_max_rows_per_file` are
+                written to disk, while any leftover data remains in the buffers. If a
+                recording session is stopped, residual data may still reside in these
+                buffers. Setting `output_write_remaining_data` to `True` ensures this
+                data is flushed to disk. By default, this attribute is set to `False`.
             output_write_method: Write method for the `ray.data.Dataset` to write the
                 offline data to `output`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
