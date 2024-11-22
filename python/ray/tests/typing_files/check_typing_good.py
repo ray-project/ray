@@ -1,6 +1,7 @@
 import ray
 from typing import Generator
 from ray import ObjectRef
+from ray.util.queue import Queue
 
 ray.init()
 
@@ -57,6 +58,40 @@ def generator_1() -> Generator[int, None, None]:
 
 
 gen = generator_1.remote()
+
+
+int_list = [1, 2, 3]
+int_queue = Queue[int]()
+int_item: int
+for i in int_list:
+    int_queue.put(i)
+    int_item = int_queue.get()
+
+
+float_list = [1.0, 2.0, 3.0]
+float_queue = Queue[float]()
+float_item: float
+for i in float_list:
+    float_queue.put(i)
+    float_item = float_queue.get()
+
+
+str_list = ["1", "2", "3"]
+str_queue = Queue[str]()
+str_item: str
+for i in str_list:
+    str_queue.put(i)
+    std_item = str_queue.get()
+
+class RandomObject:
+    pass
+
+random_object_list = [RandomObject(), RandomObject(), RandomObject()]
+random_object_queue = Queue[RandomObject]()
+random_object_item: RandomObject
+for i in random_object_list:
+    random_object_queue.put(i)
+    random_object_item = random_object_queue.get()
 
 
 """
