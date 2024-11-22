@@ -15,7 +15,7 @@
     cluster_compute: multi_node_autoscaling_compute.yaml
 
   run:
-    timeout: 600
+    timeout: 3600
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --iterate
 
 - name: read_images
@@ -31,7 +31,7 @@
     cluster_compute: multi_node_autoscaling_compute.yaml
 
   run:
-    timeout: 600
+    timeout: 3600
     script: python read_and_consume_benchmark.py s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
 
 ###############
