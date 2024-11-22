@@ -39,6 +39,8 @@ The fact that resources are logical has several implications:
 - Ray does provide :ref:`GPU <gpu-support>` isolation in the form of *visible devices* by automatically setting the ``CUDA_VISIBLE_DEVICES`` environment variable,
   which most ML frameworks will respect for purposes of GPU assignment.
 
+.. _omp-num-thread-note:
+
 .. note::
     Ray sets the environment variable ``OMP_NUM_THREADS=<num_cpus>`` if ``num_cpus`` is set on
     the task/actor via :func:`ray.remote() <ray.remote>` and :meth:`task.options() <ray.remote_function.RemoteFunction.options>`/:meth:`actor.options() <ray.actor.ActorClass.options>`.
