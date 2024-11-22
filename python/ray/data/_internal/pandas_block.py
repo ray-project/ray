@@ -1,6 +1,5 @@
 import collections
 import heapq
-import sys
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -295,74 +294,7 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from pandas.api.types import is_object_dtype
-
-        from ray.data.extensions import TensorArrayElement, TensorDtype
-
-        pd = lazy_import_pandas()
-
-        def get_deep_size(obj):
-            """Calculates the memory size of objects,
-            including nested objects using an iterative approach."""
-            seen = set()
-            total_size = 0
-            objects = collections.deque([obj])
-            while objects:
-                current = objects.pop()
-
-                # Skip interning-eligible immutable objects
-                if isinstance(current, (str, bytes, int, float)):
-                    size = sys.getsizeof(current)
-                    total_size += size
-                    continue
-
-                # Check if the object has been seen before
-                if id(current) in seen:
-                    continue
-                seen.add(id(current))
-
-                try:
-                    size = sys.getsizeof(current)
-                except TypeError:
-                    size = 0
-                total_size += size
-
-                # Handle specific cases
-                if isinstance(current, np.ndarray):
-                    total_size += current.nbytes - size  # Avoid double counting
-                elif isinstance(current, pd.DataFrame):
-                    total_size += (
-                        current.memory_usage(index=True, deep=True).sum() - size
-                    )
-                elif isinstance(current, (list, tuple, set)):
-                    objects.extend(current)
-                elif isinstance(current, dict):
-                    objects.extend(current.keys())
-                    objects.extend(current.values())
-                elif isinstance(current, TensorArrayElement):
-                    objects.extend(current.to_numpy())
-            return total_size
-
-        # Get initial memory usage including deep introspection
-        memory_usage = self._table.memory_usage(index=True, deep=True)
-
-        # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
-        object_need_check = (TensorDtype,)
-        # Handle object columns separately
-        for column in self._table.columns:
-            # Check pandas object dtype and the extenstion dtype
-            if is_object_dtype(self._table[column].dtype) or isinstance(
-                self._table[column].dtype, object_need_check
-            ):
-                column_memory = 0
-                for element in self._table[column]:
-                    column_memory += get_deep_size(element)
-                memory_usage[column] = column_memory
-
-        # Sum up total memory usage
-        total_memory_usage = memory_usage.sum()
-
-        return int(total_memory_usage)
+        return int(self._table.memory_usage(index=True, deep=True).sum())
 
     def _zip(self, acc: BlockAccessor) -> "pandas.DataFrame":
         r = self.to_pandas().copy(deep=False)
