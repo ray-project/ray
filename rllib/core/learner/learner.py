@@ -1134,6 +1134,9 @@ class Learner(Checkpointable):
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 batch.policy_batches
             )
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             self._set_slicing_by_batch_id(batch, value=False)
             # If `num_iters` is reached break and return.
@@ -1143,9 +1146,6 @@ class Learner(Checkpointable):
         logger.info(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.

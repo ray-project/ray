@@ -357,6 +357,11 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
         self.local_gpu_idx = 0
+        # TODO (sven): This probably works even without any restriction
+        #  (allowing for any arbitrary number of requests in-flight). Test with
+        #  3 first, then with unlimited, and if both show the same behavior on
+        #  an async algo, remove this restriction entirely.
+        self.max_requests_in_flight_per_learner = 3
 
         # `self.training()`
         self.gamma = 0.99
@@ -1798,15 +1803,16 @@ class AlgorithmConfig(_Config):
                 synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
-            max_requests_in_flight_per_env_runner: Max number of inflight requests
-                to each EnvRunner worker. See the FaultTolerantActorManager class for
-                more details.
+            max_requests_in_flight_per_env_runner: Max number of in-flight requests
+                to each EnvRunner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
                 Tuning these values is important when running experiments with
                 large sample batches, where there is the risk that the object store may
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
                 slowly as well. You can inspect the object store during your experiment
-                via a call to Ray memory on your head node, and by using the Ray
+                via a call to `ray memory` on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
                 turn down the number of remote requests in flight or enable compression.
             sample_collector: For the old API stack only. The SampleCollector class to
@@ -2110,6 +2116,7 @@ class AlgorithmConfig(_Config):
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
+        max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
         """Sets LearnerGroup and Learner worker related configurations.
 
@@ -2135,6 +2142,10 @@ class AlgorithmConfig(_Config):
                 an index into the available
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
+            max_requests_in_flight_per_learner: Max number of in-flight requests
+                to each Learner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2147,6 +2158,8 @@ class AlgorithmConfig(_Config):
             self.num_gpus_per_learner = num_gpus_per_learner
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
+        if max_requests_in_flight_per_learner is not NotProvided:
+            self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
 
         return self
 

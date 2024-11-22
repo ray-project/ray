@@ -118,7 +118,6 @@ class APPOConfig(IMPALAConfig):
 
         # Override some of IMPALAConfig's default values with APPO-specific values.
         self.num_env_runners = 2
-        self.min_time_s_per_iteration = 10
         self.target_network_update_freq = 2
         self.broadcast_interval = 1
         self.grad_clip = 40.0
@@ -233,6 +232,8 @@ class APPOConfig(IMPALAConfig):
         if use_critic != DEPRECATED_VALUE:
             deprecation_warning(
                 old="use_critic",
+                help="`use_critic` no longer supported! APPO always uses a value "
+                "function (critic).",
                 error=True,
             )
 
