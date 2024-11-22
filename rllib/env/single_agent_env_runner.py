@@ -531,7 +531,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
-                clear_on_reduce=False,  # lifetime
                 with_throughput=True,
             )
 
@@ -738,7 +737,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             NUM_ENV_STEPS_SAMPLED_LIFETIME,
             num_steps,
             reduce="sum",
-            clear_on_reduce=False,  # lifetime
             with_throughput=True,
         )
         self.metrics.log_value(

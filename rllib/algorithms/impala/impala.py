@@ -68,6 +68,7 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.util.annotations import DeveloperAPI
 
 
 logger = logging.getLogger(__name__)
@@ -1458,6 +1459,32 @@ class IMPALA(Algorithm):
 
 
 Impala = IMPALA
+
+
+@DeveloperAPI
+@ray.remote(num_cpus=0, max_restarts=-1)
+class AggregationWorker(FaultAwareApply):
+    """A worker performing LearnerConnector pass throughs of collected episodes."""
+
+    def __init__(self, config: AlgorithmConfig):
+        self.config = config
+        self._learner_connector = self.config.build_learner_connector(
+            input_observation_space=None,
+            input_action_space=None,
+        )
+        self._rl_module = None
+
+    def process_episodes(self, episodes):
+        batch = self._learner_connector(
+            batch={},
+            episodes=episodes,
+            rl_module=self._rl_module,
+            shared_data={},
+        )
+        return batch
+
+    def get_host(self) -> str:
+        return platform.node()
 
 
 @OldAPIStack

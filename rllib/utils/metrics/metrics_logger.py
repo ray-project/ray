@@ -351,7 +351,8 @@ class MetricsLogger:
                         )
                     ),
                 )
-            # If value itself is a `Stats`, we merge it on time axis into self's `Stats`.
+            # If value itself is a `Stats`, we merge it on time axis into self's
+            # `Stats`.
             elif isinstance(value, Stats):
                 self._get_key(key).merge_on_time_axis(value)
             # Otherwise, we just push the value into self's `Stats`.

@@ -36,4 +36,4 @@ class TorchCompileConfig:
         "aot_eager" if sys.platform == "darwin" else "cudagraphs"
     )
     torch_dynamo_mode: str = None
-    kwargs: dict = field(default_factory=lambda: dict(dynamic=True))
+    kwargs: dict = field(default_factory=lambda: dict())
