@@ -67,7 +67,17 @@ ray_dashboard_api_requests_count_requests_total
 
 You can then see the number of requests to the Ray Dashboard API over time.
 
-To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
+To stop Prometheus, run the following commands:
+
+```sh
+# case 1: Ray > 2.40
+ray metrics shutdown-prometheus
+
+# case 2: Otherwise
+# Run `ps aux | grep prometheus` to find the PID of the Prometheus process. Then, kill the process.
+kill <PID>
+```
+
 
 ### [Optional] Manual: Running Prometheus locally
 

@@ -38,6 +38,11 @@ RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 
 RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
+RELEASE_TEST_CONFIG_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+]
+
 
 def read_and_validate_release_test_collection(
     config_files: List[str],
