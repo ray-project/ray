@@ -331,11 +331,11 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p4;
   auto f4 = p4.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p4.set_value();
       }));
-  ASSERT_EQ(std::future_status::timeout, f4.wait(1s));
+  ASSERT_EQ(std::future_status::timeout, f4.wait_for(1s));
 
   std::promise<void> p5;
   client_io_service_->post([&p5]() { p5.set_value(); }, "");
