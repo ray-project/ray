@@ -38,6 +38,9 @@ namespace ray::gcs {
 /// node will be removed from GcsHealthCheckManager. The node can be added into this class
 /// later. Although the same node id is not supposed to be reused in ray cluster, this is
 /// not enforced in this class.
+///
+/// All IO operations happens on the same thread, which is managed by the pass-ed in
+/// [io_service].
 /// TODO (iycheng): Move the GcsHealthCheckManager to ray/common.
 class GcsHealthCheckManager {
  public:

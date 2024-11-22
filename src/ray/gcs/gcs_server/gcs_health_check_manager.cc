@@ -24,29 +24,6 @@ DEFINE_stats(health_check_rpc_latency_ms,
              ({1, 10, 100, 1000, 10000}, ),
              ray::stats::HISTOGRAM);
 
-namespace {
-
-std::string_view GetHealthCheckStatus(
-    const ::grpc::health::v1::HealthCheckResponse &resp) {
-  using namespace grpc::health::v1;
-  const auto &status = resp.status();
-  switch (status) {
-  case HealthCheckResponse_ServingStatus_UNKNOWN:
-    return "UNKNOWN";
-  case HealthCheckResponse_ServingStatus_SERVING:
-    return "SERVING";
-  case HealthCheckResponse_ServingStatus_NOT_SERVING:
-    return "NOT_SERVING";
-  case HealthCheckResponse_ServingStatus_SERVICE_UNKNOWN:
-    return "SERVICE_UNKNOWN";
-  default:
-    RAY_LOG(FATAL) << "Unreachable";
-    return "";
-  }
-}
-
-}  // namespace
-
 namespace ray::gcs {
 
 GcsHealthCheckManager::GcsHealthCheckManager(
@@ -131,7 +108,8 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
                 return;
               }
               RAY_LOG(DEBUG) << "Health check status: "
-                             << GetHealthCheckStatus(response_);
+                             << HealthCheckResponse_ServingStatus_Name(
+                                    response_.status());
 
               if (status.ok() && response_.status() == HealthCheckResponse::SERVING) {
                 // Health check passed.
