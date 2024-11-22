@@ -1384,6 +1384,13 @@ class DeploymentState:
     def app_name(self) -> str:
         return self._id.app_name
 
+    @property
+    def _failed_to_start_threshold(self) -> int:
+        return min(
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            self._target_state.target_num_replicas * 3,
+        )
+
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
 
@@ -1845,11 +1852,10 @@ class DeploymentState:
 
             if to_add > 0:
                 # Exponential backoff
-                failed_to_start_threshold = min(
-                    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                    self._target_state.target_num_replicas * 3,
-                )
-                if self._replica_constructor_retry_counter >= failed_to_start_threshold:
+                if (
+                    self._replica_constructor_retry_counter
+                    >= self._failed_to_start_threshold
+                ):
                     # Wait 1, 2, 4, ... seconds before consecutive retries, with random
                     # offset added to avoid synchronization
                     if (
@@ -1909,17 +1915,13 @@ class DeploymentState:
         )
 
         failed_to_start_count = self._replica_constructor_retry_counter
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
 
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
         if (
-            failed_to_start_count >= failed_to_start_threshold
-            and failed_to_start_threshold != 0
+            failed_to_start_count >= self._failed_to_start_threshold
+            and self._failed_to_start_threshold != 0
         ):
             if running_at_target_version_replica_cnt > 0:
                 # At least one RUNNING replica at target state, partial
@@ -2043,17 +2045,27 @@ class DeploymentState:
             self._replica_constructor_retry_counter += 1
             self._replica_constructor_error_msg = error_msg
 
+            retrying_msg = "Retrying"
+            if self._failed_to_start_threshold != 0:
+                remaining_retries = (
+                    self._failed_to_start_threshold
+                    - self._replica_constructor_retry_counter
+                )
+                retrying_msg += f" {remaining_retries} more time(s)"
+
+            message = (
+                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
+                f"{error_msg}"
+            )
+            self._curr_status_info = self._curr_status_info.update_message(message)
+
     def update_replica_startup_backoff_time(self):
         """Updates the replica startup backoff time."""
 
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
-        if self._replica_constructor_retry_counter > failed_to_start_threshold:
+        if self._replica_constructor_retry_counter > self._failed_to_start_threshold:
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
