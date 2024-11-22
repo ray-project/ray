@@ -32,6 +32,7 @@ RESPONSE_SCHEMA = [
 ] + DATA_SCHEMA
 
 OPERATOR_SCHEMA = [
+    "name",
     "operator",
 ] + DATA_SCHEMA
 
@@ -64,12 +65,23 @@ def test_get_datasets():
     operators = dataset["operators"]
     assert len(operators) == 2
     op0 = operators[0]
+    op1 = operators[1]
     assert sorted(op0.keys()) == sorted(OPERATOR_SCHEMA)
-    assert op0["operator"] == "Input0"
-    assert op0["progress"] == 20
-    assert op0["total"] == 20
-    assert op0["state"] == "FINISHED"
-    assert operators[1]["operator"] == "ReadRange->MapBatches(<lambda>)1"
+    assert sorted(op1.keys()) == sorted(OPERATOR_SCHEMA)
+    assert {
+        "operator": "Input0",
+        "name": "Input",
+        "state": "FINISHED",
+        "progress": 20,
+        "total": 20,
+    }.items() <= op0.items()
+    assert {
+        "operator": "ReadRange->MapBatches(<lambda>)1",
+        "name": "ReadRange->MapBatches(<lambda>)",
+        "state": "FINISHED",
+        "progress": 20,
+        "total": 20,
+    }.items() <= op1.items()
 
     ds.map_batches(lambda x: x).materialize()
     data = requests.get(DATA_HEAD_URLS["GET"].format(job_id=job_id)).json()
@@ -83,4 +95,4 @@ def test_get_datasets():
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-vv", __file__]))
