@@ -67,7 +67,11 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
-  virtual ~GcsResourceManager() {}
+  virtual ~GcsResourceManager() = default;
+
+  /// Get the last resource usage update timestamp for the given [node_id].
+  /// If the node doesn't exist, return `absl::InfinitePast`.
+  absl::Time GetLastResourceUsageUpdateTime(const NodeID &node_id) const;
 
   /// Handle the resource update.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;
@@ -163,10 +167,10 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   /// Returns the mapping from node id to latest resource report.
   ///
   /// \returns The mapping from node id to latest resource report.
-  const absl::flat_hash_map<NodeID, rpc::ResourcesData> &NodeResourceReportView() const;
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> NodeResourceReportView() const;
 
   /// Get the placement group load info. This is used for autoscaler.
-  const std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
+  std::shared_ptr<rpc::PlacementGroupLoad> GetPlacementGroupLoad() const {
     if (placement_group_load_.has_value()) {
       return placement_group_load_.value();
     }
@@ -174,12 +178,17 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
   }
 
  private:
+  struct ResourceDataWithTimestamp {
+    rpc::ResourcesData resource_data;
+    absl::Time status_update_timestamp = absl::InfinitePast();
+  };
+
   /// io context. This is to ensure thread safety. Ideally, all public
   /// funciton needs to post job to this io_context.
   instrumented_io_context &io_context_;
 
   /// Newest resource usage of all nodes.
-  absl::flat_hash_map<NodeID, rpc::ResourcesData> node_resource_usages_;
+  absl::flat_hash_map<NodeID, ResourceDataWithTimestamp> node_resource_usages_;
 
   /// Placement group load information that is used for autoscaler.
   absl::optional<std::shared_ptr<rpc::PlacementGroupLoad>> placement_group_load_;

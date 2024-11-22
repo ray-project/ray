@@ -196,6 +196,8 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitRaySyncer(gcs_init_data);
 
   // Init gcs health check manager.
+  // Gcs health check manager relies on resource manager's periodical health report,
+  // should declare and initialize later.
   InitGcsHealthCheckManager(gcs_init_data);
 
   // Init KV service.
@@ -309,8 +311,9 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
 
   gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
       io_context_provider_.GetDefaultIOContext(),
-      // TODO(hjiang): Fill in node update state timestamp from [gcs_resource_manager_].
-      [](const NodeID &) { return absl::InfinitePast(); },
+      [this](const NodeID &node_id) {
+        return gcs_resource_manager_->GetLastResourceUsageUpdateTime(node_id);
+      },
       node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {

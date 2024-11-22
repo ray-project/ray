@@ -32,6 +32,15 @@ GcsResourceManager::GcsResourceManager(
       local_node_id_(std::move(local_node_id)),
       cluster_task_manager_(std::move(cluster_task_manager)) {}
 
+absl::Time GcsResourceManager::GetLastResourceUsageUpdateTime(
+    const NodeID &node_id) const {
+  const auto iter = node_resource_usages_.find(node_id);
+  if (iter == node_resource_usages_.end()) {
+    return absl::InfinitePast();
+  }
+  return iter->second.status_update_timestamp;
+}
+
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
   // ConsumeSyncMessage is called by ray_syncer which might not run
@@ -101,9 +110,9 @@ void GcsResourceManager::HandleGetAllAvailableResources(
       // `cluster_resource_manager_`, use the record from resource reports (stored in
       // `node_resource_usages_`) instead.
       if (using_resource_reports) {
-        auto resource_iter =
-            node_resource_usages_[node_id].resources_available().find(resource_name);
-        if (resource_iter != node_resource_usages_[node_id].resources_available().end()) {
+        auto &resource_data = node_resource_usages_[node_id].resource_data;
+        auto resource_iter = resource_data.resources_available().find(resource_name);
+        if (resource_iter != resource_data.resources_available().end()) {
           resource.mutable_resources_available()->insert(
               {resource_name, resource_iter->second});
         }
@@ -113,7 +122,7 @@ void GcsResourceManager::HandleGetAllAvailableResources(
             {resource_name, resource_value.Double()});
       }
     }
-    reply->add_resources_list()->CopyFrom(resource);
+    *reply->add_resources_list() = std::move(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
@@ -137,7 +146,7 @@ void GcsResourceManager::HandleGetAllTotalResources(
       resource.mutable_resources_total()->insert(
           {resource_name, resource_value.Double()});
     }
-    reply->add_resources_list()->CopyFrom(resource);
+    *reply->add_resources_list() = std::move(resource);
   }
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   ++counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST];
@@ -173,13 +182,20 @@ void GcsResourceManager::UpdateResourceLoads(const rpc::ResourcesData &data) {
     // It will happen when the node has been deleted or hasn't been added.
     return;
   }
-  (*iter->second.mutable_resource_load()) = data.resource_load();
-  (*iter->second.mutable_resource_load_by_shape()) = data.resource_load_by_shape();
+  (*iter->second.resource_data.mutable_resource_load()) = data.resource_load();
+  (*iter->second.resource_data.mutable_resource_load_by_shape()) =
+      data.resource_load_by_shape();
+  iter->second.status_update_timestamp = absl::Now();
 }
 
-const absl::flat_hash_map<NodeID, rpc::ResourcesData>
-    &GcsResourceManager::NodeResourceReportView() const {
-  return node_resource_usages_;
+absl::flat_hash_map<NodeID, rpc::ResourcesData>
+GcsResourceManager::NodeResourceReportView() const {
+  absl::flat_hash_map<NodeID, rpc::ResourcesData> resource_report;
+  resource_report.reserve(node_resource_usages_.size());
+  for (const auto &[node_id, resource_with_ts] : node_resource_usages_) {
+    resource_report.emplace(node_id, resource_with_ts.resource_data);
+  }
+  return resource_report;
 }
 
 void GcsResourceManager::HandleGetAllResourceUsage(
@@ -191,13 +207,14 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     std::unordered_map<google::protobuf::Map<std::string, double>, rpc::ResourceDemand>
         aggregate_load;
 
-    for (const auto &usage : node_resource_usages_) {
+    for (const auto &[node_id, usage_with_ts] : node_resource_usages_) {
+      const auto &usage = usage_with_ts.resource_data;
       // Aggregate the load reported by each raylet.
-      FillAggregateLoad(usage.second, &aggregate_load);
-      batch.add_batch()->CopyFrom(usage.second);
+      FillAggregateLoad(usage, &aggregate_load);
+      batch.add_batch()->CopyFrom(usage);
     }
 
-    if (cluster_task_manager_) {
+    if (cluster_task_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
@@ -212,7 +229,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     }
 
     for (const auto &demand : aggregate_load) {
-      auto demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
+      auto *demand_proto = batch.mutable_resource_load_by_shape()->add_resource_demands();
       demand_proto->CopyFrom(demand.second);
       for (const auto &resource_pair : demand.first) {
         (*demand_proto->mutable_shape())[resource_pair.first] = resource_pair.second;
@@ -223,14 +240,14 @@ void GcsResourceManager::HandleGetAllResourceUsage(
     if (placement_group_load_.has_value()) {
       auto placement_group_load = placement_group_load_.value();
       auto placement_group_load_proto = batch.mutable_placement_group_load();
-      placement_group_load_proto->CopyFrom(*placement_group_load.get());
+      *placement_group_load_proto = std::move(*placement_group_load.get());
     }
 
-    reply->mutable_resource_usage_data()->CopyFrom(batch);
+    *reply->mutable_resource_usage_data() = std::move(batch);
   }
 
-  RAY_DCHECK(static_cast<size_t>(reply->resource_usage_data().batch().size()) ==
-             num_alive_nodes_)
+  RAY_CHECK_EQ(static_cast<size_t>(reply->resource_usage_data().batch().size()),
+               num_alive_nodes_)
       << "Number of alive nodes " << num_alive_nodes_
       << " is not equal to number of usage reports "
       << reply->resource_usage_data().batch().size() << " in the autoscaler report.";
@@ -247,7 +264,8 @@ void GcsResourceManager::UpdateClusterFullOfActorsDetected(
 
   // TODO(rickyx): We should change this to be part of RESOURCE_VIEW.
   // This is being populated from NodeManager as part of COMMANDS
-  iter->second.set_cluster_full_of_actors_detected(cluster_full_of_actors_detected);
+  iter->second.resource_data.set_cluster_full_of_actors_detected(
+      cluster_full_of_actors_detected);
 }
 
 void GcsResourceManager::UpdateNodeResourceUsage(
@@ -280,11 +298,11 @@ void GcsResourceManager::UpdateNodeResourceUsage(
     return;
   }
   if (resource_view_sync_message.resources_total_size() > 0) {
-    (*iter->second.mutable_resources_total()) =
+    (*iter->second.resource_data.mutable_resources_total()) =
         resource_view_sync_message.resources_total();
   }
 
-  (*iter->second.mutable_resources_available()) =
+  (*iter->second.resource_data.mutable_resources_available()) =
       resource_view_sync_message.resources_available();
 }
 
@@ -316,7 +334,11 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
   rpc::ResourcesData data;
   data.set_node_id(node_id.Binary());
   data.set_node_manager_address(node.node_manager_address());
-  node_resource_usages_.emplace(node_id, std::move(data));
+  // TODO(hjiang): Update to designated initializer after we upgrade to C++20.
+  ResourceDataWithTimestamp data_with_ts;
+  data_with_ts.resource_data = std::move(data);
+  // Intentionally not set status update timestamp.
+  node_resource_usages_.emplace(node_id, std::move(data_with_ts));
   num_alive_nodes_++;
 }
 
