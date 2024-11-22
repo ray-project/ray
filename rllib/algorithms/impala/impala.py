@@ -93,6 +93,7 @@ class IMPALAConfig(AlgorithmConfig):
         # Build a Algorithm object from the config and run 1 training iteration.
         algo = config.build()
         algo.train()
+        del algo
 
     .. testcode::
 
