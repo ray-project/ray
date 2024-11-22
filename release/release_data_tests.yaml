@@ -2,7 +2,7 @@
 # Dataset tests
 ###############
 
-- name: parquet_metadata_resolution
+- name: count_parquet
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -12,22 +12,11 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
+    cluster_compute: multi_node_autoscaling_compute.yaml
 
   run:
-    # Expect the test to finish around 40 seconds.
-    timeout: 100
-    script: python parquet_metadata_resolution.py --num-files 915 --cloud aws
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-      run:
-        script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
+    timeout: 600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: stable_diffusion_benchmark
   group: data-tests
