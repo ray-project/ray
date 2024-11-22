@@ -186,6 +186,7 @@ void MutableObjectManager::DestroySemaphores(const ObjectID &object_id) {
   // semaphores below. As the two semaphores have already been unlinked by the first
   // instance, the sem_unlink() calls below will both fail with ENOENT.
   int ret = sem_unlink(GetSemaphoreHeaderName(name).c_str());
+  // TODO (dayshah): use macro with [[likely]] here vs. just RAY_CHECK(false) below
   if (ret != 0) {
     RAY_CHECK_EQ(errno, ENOENT);
   }
