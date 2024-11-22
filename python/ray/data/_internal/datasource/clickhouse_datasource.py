@@ -58,7 +58,7 @@ class ClickHouseDatasource(Datasource):
         self._client = None
         self._query = self._generate_query()
 
-    def _get_or_create_client(self):
+    def _init_client(self):
         _check_import(self, module="clickhouse_connect", package="clickhouse-connect")
         import clickhouse_connect
 
