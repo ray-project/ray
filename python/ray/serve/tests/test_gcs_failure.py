@@ -132,6 +132,7 @@ def router_populated_with_replicas(
     else:
         replicas = get_replicas_func()
 
+    print(f"Replica set in router: {replicas}")
     assert len(replicas) >= threshold
 
     # Return early if we don't need to check cache
