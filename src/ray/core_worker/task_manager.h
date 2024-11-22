@@ -103,8 +103,9 @@ using ExecutionSignalCallback = std::function<void(Status, int64_t)>;
 /// The API is not thread-safe.
 class ObjectRefStream {
  public:
-  explicit ObjectRefStream(const ObjectID &generator_id)
-      : generator_id_(generator_id), generator_task_id_(generator_id.TaskId()) {}
+  explicit ObjectRefStream(ObjectID generator_id)
+      : generator_task_id_(generator_id.TaskId()),
+        generator_id_(std::move(generator_id)) {}
 
   /// Asynchronously read object reference of the next index.
   ///
@@ -182,8 +183,8 @@ class ObjectRefStream {
  private:
   ObjectID GetObjectRefAtIndex(int64_t generator_index) const;
 
-  ObjectID generator_id_;
   TaskID generator_task_id_;
+  ObjectID generator_id_;
 
   /// Refs that are temporarily owned. It means a ref is
   /// written to a stream, but index is not known yet.

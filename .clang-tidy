@@ -79,6 +79,8 @@ CheckOptions:
     value: 'true'
   - key: cppcoreguidelines-special-member-functions.AllowSoleDefaultDtor
     value: 'true'
+  - key: performance-move-const-arg.CheckTriviallyCopyableMove
+    value: 'false'
 
 # Turn all the warnings from the checks above into errors.
 WarningsAsErrors: "*"

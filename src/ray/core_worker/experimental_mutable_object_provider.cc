@@ -20,9 +20,9 @@ namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(
     std::shared_ptr<plasma::PlasmaClientInterface> plasma, RayletFactory factory)
-    : plasma_(std::move(std::move(plasma))),
+    : plasma_(std::move(plasma)),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(std::move(std::move(factory))) {}
+      raylet_client_factory_(std::move(factory)) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
