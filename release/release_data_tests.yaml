@@ -1,29 +1,25 @@
+- defaults:
+    group: data-tests
+    working_dir: nightly_tests/dataset
+
+    frequency: nightly
+    team: data
+
+    cluster:
+      byod:
+        type: gpu
+      cluster_compute: multi_node_autoscaling_compute.yaml
+
 ###############
 # Dataset tests
 ###############
 
 - name: count_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: multi_node_autoscaling_compute.yaml
-
   run:
     timeout: 600
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: stable_diffusion_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -44,11 +40,6 @@
         cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_1tb
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -70,11 +61,6 @@
         cluster_compute: data_ingest_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_100gb_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -101,11 +87,6 @@
 # There was a bug in Ray Data that caused GPU memoy leak (see #3.919).
 # We add this test case to cover this scenario.
 - name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -127,11 +108,6 @@
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
 
 - name: aggregate_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -151,11 +127,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_parquet_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -177,11 +148,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_images_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -227,11 +193,7 @@
 #         cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -251,11 +213,7 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: read_images_train_4_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -275,11 +233,7 @@
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
 - name: read_images_train_4_gpu_worker_chaos
-  group: data-tests
-  working_dir: nightly_tests
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -300,11 +254,7 @@
         cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
 - name: read_images_train_4_gpu_node_chaos
-  group: data-tests
-  working_dir: nightly_tests
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -325,11 +275,7 @@
         cluster_compute: ../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
 - name: read_images_train_16_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -349,11 +295,7 @@
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_images_train_16_gpu_preserve_order
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -373,11 +315,7 @@
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_parquet_train_4_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -397,11 +335,7 @@
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_2x2_gce.yaml
 
 - name: read_parquet_train_16_gpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -421,11 +355,7 @@
         cluster_compute: ../../air_tests/air_benchmarks/compute_gpu_4x4_gce.yaml
 
 - name: read_images_train_1_gpu_5_cpu
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -445,11 +375,6 @@
         cluster_compute: compute_gpu_1g5c_gce.yaml
 
 - name: read_tfrecords_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -471,11 +396,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: map_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -496,11 +416,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_tensor_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -521,11 +436,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: iter_tensor_batches_benchmark_multi_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -546,11 +456,6 @@
         cluster_compute: multi_node_benchmark_compute_gce.yaml
 
 - name: iter_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -571,11 +476,6 @@
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
 - name: dataset_shuffle_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -600,11 +500,6 @@
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
   stable: False
 
   cluster:
@@ -630,13 +525,7 @@
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
   stable: false
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -661,11 +550,6 @@
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
   stable: False
 
   cluster:
@@ -691,12 +575,8 @@
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 - name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: data-tests
-  working_dir: nightly_tests
   stable: false
 
-  frequency: weekly
-  team: data
   cluster:
     byod:
       runtime_env:
@@ -730,11 +610,7 @@
 # 10 GB image classification raw images with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_raw
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -757,11 +633,7 @@
 # 10 GB image classification parquet with 1 GPU.
 # 1 g4dn.4xlarge
 - name: torch_batch_inference_1_gpu_10gb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -785,11 +657,7 @@
 # 300 GB image classification raw images with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_raw
-  group: data-tests
-  working_dir: nightly_tests/dataset
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -814,12 +682,8 @@
 
 
 - name: chaos_torch_batch_inference_16_gpu_300gb_raw
-  group: data-tests
-  working_dir: nightly_tests
   stable: false
 
-  frequency: nightly
-  team: data
   cluster:
     byod:
       type: gpu
@@ -847,11 +711,6 @@
 # 300 GB image classification parquet data with 16 GPUs
 # 4 g4dn.12xlarge
 - name: torch_batch_inference_16_gpu_300gb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
 
   cluster:
     byod:
@@ -878,11 +737,7 @@
 # 10 TB image classification parquet data with heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: torch_batch_inference_hetero_10tb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
   frequency: weekly
-  team: data
 
   cluster:
     byod:
