@@ -144,7 +144,7 @@ class _HcclGroup(GPUCommunicator):
         """
         if self._closed:
             raise RuntimeError("HCCL group has been destroyed.")
-        logger.info(f"start to send to:{peer_rank},self._rank : {self._rank} ")
+        logger.info(f"Start to send to:{peer_rank}, self._rank : {self._rank} ")
         dist.send(tensor, dst=peer_rank)
 
     def recv(
