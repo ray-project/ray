@@ -1,3 +1,52 @@
+"""Example showing how to record expert data from a trained policy.
+
+This example:
+    - demonstrates how you can train a single-agent expert PPO Policy (RLModule)
+    and checkpoint it.
+    - shows how you can then record expert data from the trained PPO Policy to
+    disk during evaluation.
+
+How to run this script
+----------------------
+`python [script file name].py --checkpoint-at-end`
+
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+Results to expect
+-----------------
+In the console output you can see that the episode return of 350.0 is reached
+before the timestep stop criteria is touched. Afterwards evaluation starts and
+runs 10 iterations while recording the data. The number of recorded experiences
+might differ from evaluation run to evaluation run because evaluation
+`EnvRunner`s sample episodes while recording timesteps and episodes contain
+usually different numbers of timesteps. Note, this is different when recording
+episodes - in this case each row is one episode.
+
++-----------------------------+------------+----------------------+
+| Trial name                  | status     | loc                  |
+|                             |            |                      |
+|-----------------------------+------------+----------------------+
+| PPO_CartPole-v1_df83f_00000 | TERMINATED | 192.168.0.119:233661 |
++-----------------------------+------------+----------------------+
++--------+------------------+------------------------+------------------------+
+|   iter |   total time (s) |   num_training_step_ca |   num_env_steps_sample |
+|        |                  |      lls_per_iteration |             d_lifetime |
++--------+------------------+------------------------+------------------------|
+|     21 |          25.9162 |                      1 |                  84000 |
++--------+------------------+------------------------+------------------------+
+
+...
+
+Number of experiences recorded: 26644
+"""
+
 import ray
 import time
 
@@ -13,7 +62,10 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
-parser = add_rllib_example_script_args()
+parser = add_rllib_example_script_args(
+    default_timesteps=200000,
+    default_reward=350.0,
+)
 parser.set_defaults(checkpoint_at_end=True)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
@@ -22,9 +74,7 @@ args = parser.parse_args()
 config = (
     PPOConfig()
     .env_runners(
-        rollout_fragment_length="auto",
         num_env_runners=5,
-        batch_mode="truncate_episodes",
     )
     .environment("CartPole-v1")
     .rl_module(
@@ -48,8 +98,10 @@ config = (
 )
 
 stop = {
-    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 200000,
-    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 350.0,
+    f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": args.stop_timesteps,
+    f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": (
+        args.stop_reward
+    ),
 }
 
 
