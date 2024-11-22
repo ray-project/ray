@@ -10,9 +10,11 @@ import ray
 import ray.cluster_utils
 import ray.experimental.collective as collective
 import torch
+import time
 from ray.air._internal import torch_utils
-from ray.dag import InputNode, MultiOutputNode
+from ray.dag import InputNode
 from ray.exceptions import RayChannelError
+from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
     GPUCommunicator,
     TorchTensorAllocator,
@@ -62,6 +64,20 @@ class TorchTensorWorker:
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
+
+    def recv_and_matmul(self, two_d_tensor):
+        """
+        Receive the tensor and do some expensive computation (matmul).
+
+        Args:
+            two_d_tensor: a 2D tensor that has the same size for its dimensions
+        """
+        # Check that tensor got loaded to the correct device.
+        assert two_d_tensor.dim() == 2
+        assert two_d_tensor.size(0) == two_d_tensor.size(1)
+        assert two_d_tensor.device == self.device
+        torch.matmul(two_d_tensor, two_d_tensor)
+        return (two_d_tensor[0][0].item(), two_d_tensor.shape, two_d_tensor.dtype)
 
     def recv_dict(self, tensor_dict):
         vals = {}
@@ -166,13 +182,21 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl(ray_start_regular):
+@pytest.mark.parametrize("enable_profiling", [False, True])
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_nccl(
+    ray_start_regular, monkeypatch, enable_profiling, overlap_gpu_communication
+):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
+
+    monkeypatch.setattr(
+        ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", enable_profiling
+    )
 
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
@@ -188,7 +212,9 @@ def test_torch_tensor_nccl(ray_start_regular):
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -211,7 +237,56 @@ def test_torch_tensor_nccl(ray_start_regular):
         assert ray.get(ref) == (i, shape, dtype)
 
 
-@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+@pytest.mark.parametrize(
+    "ray_start_regular, overlap_gpu_communication",
+    [({"num_cpus": 4}, False), ({"num_cpus": 4}, True)],
+    indirect=["ray_start_regular"],
+)
+def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communication):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 4
+    ), "This test requires at least 4 GPUs"
+
+    worker_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_senders = 3
+    senders = [worker_cls.remote() for _ in range(num_senders)]
+    receiver = worker_cls.remote()
+
+    shape = (10000, 10000)
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        branches = [sender.send.bind(shape, dtype, inp) for sender in senders]
+        branches = [
+            branch.with_type_hint(
+                TorchTensorType(
+                    transport="nccl", _static_shape=True, _direct_return=True
+                )
+            )
+            for branch in branches
+        ]
+        branches = [receiver.recv_and_matmul.bind(branch) for branch in branches]
+        dag = MultiOutputNode(branches)
+
+    # Test normal execution.
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    start = time.monotonic()
+    for i in range(5):
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        assert result == [(i, shape, dtype)] * num_senders
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+
+    compiled_dag.teardown()
+
+
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
@@ -272,12 +347,12 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    from cupy.cuda import nccl
-
     class TestNcclGroup(GPUCommunicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
+
+        import cupy as cp
 
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
@@ -338,8 +413,18 @@ def test_torch_tensor_custom_comm(ray_start_regular):
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
 
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.recv_stream
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.send_stream
+
         def destroy(self) -> None:
             return self._inner.destroy()
+
+    from cupy.cuda import nccl
 
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, [sender, receiver])
@@ -381,6 +466,8 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         """
         A mock NCCL group for testing. Send and recv are not implemented.
         """
+
+        import cupy as cp
 
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
@@ -431,6 +518,14 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             op: ReduceOp,
         ) -> None:
             raise NotImplementedError
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return None
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return None
 
         def destroy(self) -> None:
             pass
@@ -521,6 +616,8 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         A custom NCCL group based on existing torch.distributed setup.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, actor_handles):
             self._world_size = world_size
             self._actor_handles = actor_handles
@@ -572,6 +669,18 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             op: ReduceOp,
         ) -> None:
             raise NotImplementedError
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
 
         def destroy(self) -> None:
             pass
@@ -710,7 +819,10 @@ def test_torch_tensor_nccl_nested_dynamic(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 @pytest.mark.parametrize("static_shape", [False, True])
 @pytest.mark.parametrize("direct_return", [False, True])
-def test_torch_tensor_exceptions(ray_start_regular, static_shape, direct_return):
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_exceptions(
+    ray_start_regular, static_shape, direct_return, overlap_gpu_communication
+):
     """
     Test exceptions being thrown by a NCCL sending task.
     """
@@ -739,7 +851,9 @@ def test_torch_tensor_exceptions(ray_start_regular, static_shape, direct_return)
         )
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
 
     shape = (10,)
     dtype = torch.float16
@@ -864,7 +978,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
         collectives = collective.allreduce.bind(computes, ReduceOp.SUM)
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
-        dag = MultiOutputNode([recv, tensor])
+        dag = MultiOutputNode([recv, tensor, collectives[1]])
 
     compiled_dag = dag.experimental_compile()
 
@@ -873,7 +987,7 @@ def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
             [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
         )
         result = ray.get(ref)
-        metadata, tensor = result
+        metadata, tensor, _ = result
         reduced_val = sum(i + idx + 1 for idx in range(num_workers))
         assert metadata == (reduced_val, shape, dtype)
         tensor = tensor.to("cpu")
@@ -957,6 +1071,8 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
 
+        import cupy as cp
+
         def __init__(self, world_size, comm_id, actor_handles):
             self._world_size = world_size
             self._comm_id = comm_id
@@ -1015,6 +1131,14 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.recv_stream
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.send_stream
 
         def destroy(self) -> None:
             return self._inner.destroy()
