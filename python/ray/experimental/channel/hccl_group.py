@@ -143,9 +143,8 @@ class _HcclGroup(GPUCommunicator):
             peer_rank: The rank of the peer to send the tensor to.
         """
         if self._closed:
-            raise RayChannelError("HCCL group has been destroyed.")
-        if self._closed:
             raise RuntimeError("HCCL group has been destroyed.")
+        logger.info(f"start to send to:{peer_rank},self._rank : {self._rank} ")
         dist.send(tensor, dst=peer_rank)
 
     def recv(
