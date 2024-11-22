@@ -2322,6 +2322,25 @@ def test_intra_process_channel(shutdown_only):
     assert ray.get(ref) == 3
 
 
+def test_driver_as_actor_and_actor_reading(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
+
+
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_multiple_readers_multiple_writers(shutdown_only, single_fetch):
     """
