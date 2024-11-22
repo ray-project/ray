@@ -64,17 +64,20 @@ class GcsHealthCheckManager {
   ~GcsHealthCheckManager();
 
   /// Start to track the healthiness of a node.
+  /// Safe to call from non-io-context threads.
   ///
   /// \param node_id The id of the node.
   /// \param channel The gRPC channel to the node.
   void AddNode(const NodeID &node_id, std::shared_ptr<grpc::Channel> channel);
 
   /// Stop tracking the healthiness of a node.
+  /// Safe to call from non-io-context threads.
   ///
   /// \param node_id The id of the node to stop tracking.
   void RemoveNode(const NodeID &node_id);
 
   /// Return all the nodes monitored and alive.
+  /// Notice: have to invoke from io-context thread.
   ///
   /// \return A list of node id which are being monitored by this class.
   std::vector<NodeID> GetAllNodes() const;
