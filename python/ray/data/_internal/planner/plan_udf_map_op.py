@@ -352,6 +352,8 @@ def _generate_transform_fn_for_async_map_batches(
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
         output_batch_queue = queue.Queue()
+        # Use a special object to signal the end of the queue.
+        end_of_queue = object()
 
         async def process_batch(batch: DataBatch):
             try:
@@ -366,16 +368,19 @@ def _generate_transform_fn_for_async_map_batches(
                 )  # Put the exception into the queue to signal an error
 
         async def process_all_batches():
-            loop = ray.data._map_actor_context.udf_map_asyncio_loop
-            tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
+            try:
+                loop = ray.data._map_actor_context.udf_map_asyncio_loop
+                tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
 
-            ctx = ray.data.DataContext.get_current()
-            if ctx.execution_options.preserve_order:
-                for task in tasks:
-                    await task()
-            else:
-                for task in asyncio.as_completed(tasks):
-                    await task
+                ctx = ray.data.DataContext.get_current()
+                if ctx.execution_options.preserve_order:
+                    for task in tasks:
+                        await task()
+                else:
+                    for task in asyncio.as_completed(tasks):
+                        await task
+            finally:
+                output_batch_queue.put(end_of_queue)
 
         # Use the existing event loop to create and run Tasks to process each batch
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
@@ -389,6 +394,12 @@ def _generate_transform_fn_for_async_map_batches(
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
+            if out_batch is end_of_queue:
+                # Break out the loop as soon as the end of the queue is reached.
+                # Otherwise, the loop may enter a new iteration
+                # (because future.done() doesn't become true immediately),
+                # and stuck on the `output_batch_queue.get()` call.
+                break
             if isinstance(out_batch, Exception):
                 raise out_batch
             _validate_batch_output(out_batch)
