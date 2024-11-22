@@ -397,8 +397,8 @@ def _generate_transform_fn_for_async_map_batches(
             if out_batch is end_of_queue:
                 # Break out the loop as soon as the end of the queue is reached.
                 # Otherwise, the loop may enter a new iteration
-                # (because future.done() doesn't become true immediately),
-                # and stuck on the `output_batch_queue.get()` call.
+                # (because `future.done()` doesn't become true immediately),
+                # and stuck on the `output_batch_queue.get()` call forever.
                 break
             if isinstance(out_batch, Exception):
                 raise out_batch
