@@ -519,7 +519,7 @@ class OfflinePreLearner:
                     obs = [obs[i, ...] for i in range(obs.shape[0])]
                 # Otherwise observations are only compressed inside of the
                 # batch column (if at all).
-                elif isinstance(obs, np.array):
+                elif isinstance(obs, np.ndarray):
                     # Unpack observations, if they are compressed otherwise we
                     # simply convert to a list, which is needed by the
                     # `SingleAgentEpisode`.
