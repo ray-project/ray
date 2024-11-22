@@ -26,7 +26,7 @@ class ClickHouseDatasource(Datasource):
         client_kwargs: Optional[Dict[str, Any]] = None,
     ):
         """
-        Initialize a ClickHouseDatasource.
+        Initialize a ClickHouse Datasource.
 
         Args:
             entity: Fully qualified table or view identifier (e.g.,
