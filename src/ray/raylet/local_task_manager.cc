@@ -375,8 +375,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
-        RAY_CHECK(allocated_instances);
-        RAY_LOG(INFO) << "jjyao Set work allocated to non-null " << task_id;
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -612,7 +610,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     // We've already acquired resources so we need to release them.
     cluster_resource_scheduler_->GetLocalResourceManager().ReleaseWorkerResources(
         work->allocated_instances);
-    RAY_LOG(INFO) << "Setting allocated instances to nullptr " << task_id;
     work->allocated_instances = nullptr;
     // Release pinned task args.
     ReleaseTaskArgs(task_id);
@@ -620,9 +617,9 @@ bool LocalTaskManager::PoppedWorkerHandler(
 
     if (!worker) {
       // Empty worker popped.
-      RAY_LOG(INFO) << "This node has available resources, but no worker processes "
-                       "to grant the lease "
-                    << task_id;
+      RAY_LOG(DEBUG) << "This node has available resources, but no worker processes "
+                        "to grant the lease "
+                     << task_id;
       if (status == PopWorkerStatus::RuntimeEnvCreationFailed) {
         // In case of runtime env creation failed, we cancel this task
         // directly and raise a `RuntimeEnvSetupError` exception to user
@@ -635,7 +632,7 @@ bool LocalTaskManager::PoppedWorkerHandler(
       } else if (status == PopWorkerStatus::JobFinished) {
         // The task job finished.
         // Just remove the task from dispatch queue.
-        RAY_LOG(INFO) << "Call back to a job finished task, task id = " << task_id;
+        RAY_LOG(DEBUG) << "Call back to a job finished task, task id = " << task_id;
         erase_from_dispatch_queue_fn(work, scheduling_class);
       } else {
         // In other cases, set the work status `WAITING` to make this task
@@ -644,10 +641,8 @@ bool LocalTaskManager::PoppedWorkerHandler(
             internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
         if (status == PopWorkerStatus::JobConfigMissing) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_JOB_CONFIG_NOT_EXIST;
-          RAY_LOG(INFO) << "Set state back to waiting " << task_id << " job config not found";
         } else if (status == PopWorkerStatus::WorkerPendingRegistration) {
           cause = internal::UnscheduledWorkCause::WORKER_NOT_FOUND_REGISTRATION_TIMEOUT;
-          RAY_LOG(INFO) << "Set state back to waiting " << task_id << " worker timeout";
         } else {
           RAY_LOG(FATAL) << "Unexpected state received for the empty pop worker. Status: "
                          << status;
@@ -657,15 +652,14 @@ bool LocalTaskManager::PoppedWorkerHandler(
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
       // Just remove the task from dispatch queue.
-      RAY_LOG(INFO) << "Call back to an owner failed task, task id = " << task_id;
+      RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
     }
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
-    RAY_LOG(INFO) << "Dispatching task " << task_id << " to worker "
-                  << worker->WorkerId();
-    RAY_CHECK(work->allocated_instances) << task_id;
+    RAY_LOG(DEBUG) << "Dispatching task " << task_id << " to worker "
+                   << worker->WorkerId();
 
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
@@ -987,9 +981,6 @@ void LocalTaskManager::Dispatch(
     const RayTask &task,
     rpc::RequestWorkerLeaseReply *reply,
     std::function<void(void)> send_reply_callback) {
-  RAY_LOG(INFO) << "jjyao Dispatch";
-  RAY_CHECK(worker);
-  RAY_CHECK(allocated_instances);
   const auto &task_spec = task.GetTaskSpecification();
 
   if (task_spec.IsActorCreationTask()) {
@@ -999,25 +990,18 @@ void LocalTaskManager::Dispatch(
     worker->SetAllocatedInstances(allocated_instances);
   }
   worker->SetAssignedTask(task);
-  RAY_LOG(INFO) << "jjyao point 1";
 
   // Pass the contact info of the worker to use.
   reply->set_worker_pid(worker->GetProcess().GetId());
-  RAY_LOG(INFO) << "jjyao point 1.1";
   reply->mutable_worker_address()->set_ip_address(worker->IpAddress());
-  RAY_LOG(INFO) << "jjyao point 1.2";
   reply->mutable_worker_address()->set_port(worker->Port());
-  RAY_LOG(INFO) << "jjyao point 1.3";
   reply->mutable_worker_address()->set_worker_id(worker->WorkerId().Binary());
-  RAY_LOG(INFO) << "jjyao point 1.4";
   reply->mutable_worker_address()->set_raylet_id(self_node_id_.Binary());
-  RAY_LOG(INFO) << "jjyao point 2";
 
   RAY_CHECK(leased_workers.find(worker->WorkerId()) == leased_workers.end());
   leased_workers[worker->WorkerId()] = worker;
   cluster_resource_scheduler_->GetLocalResourceManager().SetBusyFootprint(
       WorkFootprint::NODE_WORKERS);
-  RAY_LOG(INFO) << "jjyao point 3";
 
   // Update our internal view of the cluster state.
   std::shared_ptr<TaskResourceInstances> allocated_resources;
@@ -1026,7 +1010,6 @@ void LocalTaskManager::Dispatch(
   } else {
     allocated_resources = worker->GetAllocatedInstances();
   }
-  RAY_LOG(INFO) << "here 1";
   ::ray::rpc::ResourceMapEntry *resource;
   for (auto &resource_id : allocated_resources->ResourceIds()) {
     bool first = true;  // Set resource name only if at least one of its
