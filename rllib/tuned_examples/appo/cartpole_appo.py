@@ -8,7 +8,7 @@ parser = add_rllib_example_script_args(
 )
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 
@@ -16,6 +16,7 @@ config = (
     APPOConfig()
     .environment("CartPole-v1")
     .training(
+        circular_buffer_iterations_per_batch=2,
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
     )
