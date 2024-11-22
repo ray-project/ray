@@ -230,7 +230,7 @@ def _node_type_from_group_spec(
 
     idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
     if idle_timeout_s is not None:
-        node_type["idle_timeout_s"] = idle_timeout_s
+        node_type["idle_timeout_s"] = float(idle_timeout_s)
 
     return node_type
 
