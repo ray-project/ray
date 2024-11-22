@@ -5,7 +5,7 @@ import pickle
 import time
 from contextlib import contextmanager
 from functools import wraps
-from typing import Any, AsyncGenerator, Tuple
+from typing import Any, AsyncGenerator, Generator, Tuple
 
 import grpc
 
@@ -28,7 +28,7 @@ from ray.serve._private.common import (
     ServeComponentType,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
-from ray.serve._private.replica import ReplicaBase
+from ray.serve._private.replica import ReplicaBase, StatusCodeCallback
 from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grpc
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -169,7 +169,7 @@ class AnyscaleReplica(ReplicaBase):
     @contextmanager
     def _wrap_user_method_call(
         self, request_metadata: RequestMetadata, request_args: Tuple[Any]
-    ):
+    ) -> Generator[StatusCodeCallback, None, None]:
         """Context manager that wraps user method calls.
 
         1) Sets the request context var with appropriate metadata.
@@ -182,8 +182,9 @@ class AnyscaleReplica(ReplicaBase):
             trace_context=trace_context,
         )
         with trace_manager:
-            route = self._maybe_get_asgi_route(request_metadata, request_args)
-            request_metadata.route = route
+            request_metadata.route = self._maybe_get_http_route(
+                request_metadata, request_args
+            )
 
             trace_attributes = {
                 "request_id": request_metadata.request_id,
@@ -208,8 +209,10 @@ class AnyscaleReplica(ReplicaBase):
                 )
             )
 
-            with self._handle_errors_and_metrics(request_metadata):
-                yield
+            with self._handle_errors_and_metrics(
+                request_metadata, request_args
+            ) as status_code_callback:
+                yield status_code_callback
 
     @_wrap_grpc_call
     async def HandleRequest(
