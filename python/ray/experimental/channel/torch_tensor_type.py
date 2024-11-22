@@ -73,7 +73,7 @@ class TorchTensorType(ChannelOutputType):
 
         if transport not in [self.AUTO, self.NCCL, self.HCCL]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, or TorchTensorType.HCCL"
             )
         self.transport = transport
 
