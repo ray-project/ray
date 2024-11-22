@@ -26,12 +26,14 @@ namespace gcs {
 
 GcsHealthCheckManager::GcsHealthCheckManager(
     instrumented_io_context &io_service,
+    std::function<absl::Time(const NodeID &)> get_node_status_update_time,
     std::function<void(const NodeID &)> on_node_death_callback,
     int64_t initial_delay_ms,
     int64_t timeout_ms,
     int64_t period_ms,
     int64_t failure_threshold)
     : io_service_(io_service),
+      get_node_status_update_time_(std::move(get_node_status_update_time)),
       on_node_death_callback_(on_node_death_callback),
       initial_delay_ms_(initial_delay_ms),
       timeout_ms_(timeout_ms),
@@ -79,13 +81,28 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
-  // Reset the context/request/response for the next request.
+  // Check whether we need to do a health check for the node, or we could delay due to the
+  // fresh status update.
+  const auto now = std::chrono::system_clock::now();
+  const auto last_update_time = (*get_node_status_update_time_)(node_id_);
+
+  // The update status from node is fresh enough, schedule a health status check later.
+  const absl::Duration dur_since_last_update = absl::FromChrono(now) - last_update_time;
+  if (dur_since_last_update < absl::Milliseconds(manager_->period_ms_)) {
+    const auto next_check_ms =
+        manager_->period_ms_ - absl::ToInt64Milliseconds(dur_since_last_update);
+    timer_.expires_from_now(boost::posix_time::milliseconds(next_check_ms));
+    timer_.async_wait([this](auto) { StartHealthCheck(); });
+    return;
+  }
+
+  // Have to perform a new health check, reset the context/request/response for the next
+  // request.
   context_.~ClientContext();
   new (&context_) grpc::ClientContext();
   response_.Clear();
 
-  auto deadline =
-      std::chrono::system_clock::now() + std::chrono::milliseconds(manager_->timeout_ms_);
+  auto deadline = now + std::chrono::milliseconds(manager_->timeout_ms_);
   context_.set_deadline(deadline);
   stub_->async()->Check(
       &context_, &request_, &response_, [this, now = absl::Now()](::grpc::Status status) {
@@ -115,6 +132,7 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
               if (health_check_remaining_ == 0) {
                 manager_->FailNode(node_id_);
+                // WARN: `delete this` **MUST** be the last statement.
                 delete this;
               } else {
                 // Do another health check.
@@ -134,7 +152,8 @@ void GcsHealthCheckManager::AddNode(const NodeID &node_id,
   io_service_.dispatch(
       [this, channel, node_id]() {
         RAY_CHECK(health_check_contexts_.count(node_id) == 0);
-        auto context = new HealthCheckContext(this, channel, node_id);
+        auto context =
+            new HealthCheckContext(this, channel, node_id, &get_node_status_update_time_);
         health_check_contexts_.emplace(std::make_pair(node_id, context));
       },
       "GcsHealthCheckManager::AddNode");

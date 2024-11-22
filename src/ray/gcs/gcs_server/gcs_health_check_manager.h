@@ -22,8 +22,6 @@
 #include "ray/common/ray_config.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
-class GcsHealthCheckManagerTest;
-
 namespace ray {
 namespace gcs {
 
@@ -41,6 +39,9 @@ class GcsHealthCheckManager {
   /// Constructor of GcsHealthCheckManager.
   ///
   /// \param io_service The thread where all operations in this class should run.
+  /// \param get_node_status_update_time Timestamp when the given node is alive, based on
+  /// the resource usage update; used to avoid unnecessary heartbheat checks for
+  /// health-check manager.
   /// \param on_node_death_callback The callback function when some node is marked as
   /// failure.
   /// \param initial_delay_ms The delay for the first health check.
@@ -49,6 +50,7 @@ class GcsHealthCheckManager {
   /// health check failure.
   GcsHealthCheckManager(
       instrumented_io_context &io_service,
+      std::function<absl::Time(const NodeID &)> get_node_status_update_time,
       std::function<void(const NodeID &)> on_node_death_callback,
       int64_t initial_delay_ms = RayConfig::instance().health_check_initial_delay_ms(),
       int64_t timeout_ms = RayConfig::instance().health_check_timeout_ms(),
@@ -86,13 +88,16 @@ class GcsHealthCheckManager {
   /// It can be updated to support streaming call for efficiency.
   class HealthCheckContext {
    public:
-    HealthCheckContext(GcsHealthCheckManager *manager,
-                       std::shared_ptr<grpc::Channel> channel,
-                       NodeID node_id)
+    HealthCheckContext(
+        GcsHealthCheckManager *manager,
+        std::shared_ptr<grpc::Channel> channel,
+        NodeID node_id,
+        std::function<absl::Time(const NodeID &)> *get_node_status_update_time)
         : manager_(manager),
           node_id_(node_id),
           timer_(manager->io_service_),
-          health_check_remaining_(manager->failure_threshold_) {
+          health_check_remaining_(manager->failure_threshold_),
+          get_node_status_update_time_(get_node_status_update_time) {
       request_.set_service(node_id.Hex());
       stub_ = grpc::health::v1::Health::NewStub(channel);
       timer_.expires_from_now(
@@ -124,10 +129,18 @@ class GcsHealthCheckManager {
 
     /// The remaining check left. If it reaches 0, the node will be marked as dead.
     int64_t health_check_remaining_;
+
+    /// Callback to get last timestamp for node status update.
+    /// Ownership lies in [GcsHealthCheckManager].
+    std::function<absl::Time(const NodeID &)> *get_node_status_update_time_;
   };
 
   /// The main service. All method needs to run on this thread.
   instrumented_io_context &io_service_;
+
+  /// Callback to get the timestamp for the last time we're sure node is alive, based on
+  /// the resource usage update. Return default value is `absl::InfinitePast`.
+  std::function<absl::Time(const NodeID &)> get_node_status_update_time_;
 
   /// Callback when the node failed.
   std::function<void(const NodeID &)> on_node_death_callback_;

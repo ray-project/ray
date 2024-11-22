@@ -308,7 +308,10 @@ void GcsServer::InitGcsHealthCheckManager(const GcsInitData &gcs_init_data) {
   };
 
   gcs_healthcheck_manager_ = std::make_unique<GcsHealthCheckManager>(
-      io_context_provider_.GetDefaultIOContext(), node_death_callback);
+      io_context_provider_.GetDefaultIOContext(),
+      // TODO(hjiang): Fill in node update state timestamp from [gcs_resource_manager_].
+      [](const NodeID &) { return absl::InfinitePast(); },
+      node_death_callback);
   for (const auto &item : gcs_init_data.Nodes()) {
     if (item.second.state() == rpc::GcsNodeInfo::ALIVE) {
       rpc::Address remote_address;
