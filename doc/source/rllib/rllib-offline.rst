@@ -740,13 +740,59 @@ use the following syntax:
 
 You can learn more about PyArrow's filesystems, particularly regarding cloud filesystems and required authentication, in `PyArrow Filesystem Interface <https://arrow.apache.org/docs/python/filesystems.html#filesystem-interface>`__.
 
+Using cloud storage for recording
+*********************************
+You can use cloud storage in a similar way when recording experiences from an expert policy:
+
+.. code-block:: python
+
+    AlgorithmConfig()
+    .offline_data(
+        output="gs://<your-bucket>/dir1",
+    )
+
+RLlib writes then directly into the folder in the cloud storage and creates it if not already existent in the bucket. The only difference to reading is that you cannot use multiple paths for writing.
+So something like
+
+.. code-block:: python
+
+    AlgorithmConfig()
+    .offline_data(
+        output=["gs://<your-bucket>/dir1", "gs://<your-bucket>/dir2"],
+    )
+
+would not work. If the storage requires special permissions for creating folders and/or writing files, ensure that the cluster user is granted the necessary permissions. Failure to do so will result 
+in denied write access, causing the recording process to stop.
+
 .. note:: When using cloud storage, Ray Data typically streams data, meaning it is consumed in chunks. This allows postprocessing and training to begin after a brief warmup phase. More specifically, even if your cloud storage is large, the same amount of 
     space is not required on the node(s) running RLlib.
 
 How to tune performance 
 -----------------------
 
-Because the different key layers in the offline RL API are managed by different modules and configurations scaling the layers is not straightforward and you need to understand which parameters have which leverage
+Because the different key layers in RLlib's Offline RL API are managed by different modules and configurations scaling the layers is not straightforward and you need to understand which parameters have which leverage. As 
+mentioned above the layer of **Reading Operations** is automatically managed and tuned on-the-fly by :ref:`Ray Data <data>` and you should not touch this process at best. Some parameters that do increase performance on this 
+layer to a certain degree is
+
+#. Available resources (dedicated to the job).
+#. Data locality.
+#. Data sharding.
+
+Available resources
+*******************
+The scheduling strategy used by :ref:`Ray Data <data>` typically schedules tasks and actors independently of any existing placement group. As a result, it is crucial that you ensure sufficient resources are reserved for the 
+other tasks and actors in your job. By increasing the available resources in your cluster while maintaining the resource allocation for your existing tasks and actors, you enable :ref:`Ray Data <data>` to scale its read operations. 
+This can significantly enhance reading performance. The primary resources to account for are CPUs and object store memory. If the object store memory becomes exhausted under heavy backpressure, objects are spilled to disk. This can 
+significantly degrade the performance of your application.
+
+Bandwidth is another critical factor that determines the throughput within your cluster. In certain scenarios, scaling nodes can help increase bandwidth and, consequently, the throughput of data flowing from storage to the consuming 
+processes. Such scenarios include:
+
+- Independent Connections to the Network Backbone: Nodes have dedicated bandwidth and do not share a common uplink, avoiding bottlenecks.
+- Optimized Cloud Access: Leveraging features such as `S3 Transfer Acceleration <https://aws.amazon.com/s3/transfer-acceleration/>`, `Google Cloud Storage FUSE <https://cloud.google.com/storage/docs/cloud-storage-fuse/file-caching#configure-parallel-downloads>` or parallel and accelerated data transfer.
+
+Data locality
+*************
 
 Input API
 ---------
