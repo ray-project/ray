@@ -78,7 +78,7 @@
       frequency: manual
       cluster:
         cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
-        
+
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
