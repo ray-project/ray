@@ -911,3 +911,49 @@ You can configure experience input for an agent using the following options:
 
 Output API
 ----------
+
+You can configure experience output for an agent using the following options:
+
+.. code-block:: python
+
+    def offline_data(
+        # Specify where experiences should be saved:
+        # - None: don't save any experiences
+        # - a path/URI to save to a custom output directory (e.g., "s3://bckt/")
+        output: Optional[str],
+        # What sample batch columns to LZ4 compress in the output data. 
+        # Note that providing `rllib.core.columns.Columns.OBS` also
+        # compresses `rllib.core.columns.Columns.NEXT_OBS`.
+        output_compress_columns: Optional[List[str]],
+        # Max output file size (in bytes) before rolling over to a new
+        # file.
+        output_max_file_size: Optional[float],
+        # Max output row numbers before rolling over to a new file.
+        output_max_rows_per_file: Optional[int],
+        # Write method for the `ray.data.Dataset` to write the
+        # offline data to `output`. The default is `read_parquet` for Parquet
+        # files. See https://docs.ray.io/en/latest/data/api/input_output.html for
+        # more info about available read methods in `ray.data`.
+        output_write_method: Optional[str],
+        # Keyword arguments for the `output_write_method`. These are
+        # passed into the write method without checking.
+        output_write_method_kwargs: Optional[Dict],
+        # A cloud filesystem to handle access to cloud storage when
+        # writing experiences. Can be "gcs" for Google Cloud Storage, "s3" for AWS
+        # S3 buckets, "abs" for Azure Blob Storage, or any filesystem supported 
+        # by PyArrow. In general the file path is sufficient for accessing data
+        # from public or local storage systems. See 
+        # https://arrow.apache.org/docs/python/filesystems.html for details.
+        output_filesystem: Optional[str],
+        # A dictionary holding the keyword arguments for the filesystem
+        # given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
+        # `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
+        # ABS filesystem arguments.
+        output_filesystem_kwargs: Optional[Dict],
+        # If data should be recorded in RLlib's `EpisodeType`
+        # format (i.e. `SingleAgentEpisode` objects). Use this format, if you
+        # need data to be ordered in time and directly grouped by episodes for
+        # example to train stateful modules or if you plan to use recordings
+        # exclusively in RLlib. Otherwise data is recorded in tabular (columnar)
+        # format. Default is `True`.
+        output_write_episodes: Optional[bool],

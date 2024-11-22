@@ -2762,6 +2762,12 @@ class AlgorithmConfig(_Config):
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
+            output_write_episodes: If data should be recorded in RLlib's `EpisodeType`
+                format (i.e. `SingleAgentEpisode` objects). Use this format, if you
+                need data to be ordered in time and directly grouped by episodes for
+                example to train stateful modules or if you plan to use recordings
+                exclusively in RLlib. Otherwise data is recorded in tabular (columnar)
+                format. Default is `True`.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners don't limit the number
                 of collected batches within the same `sample()` call based on
@@ -2846,6 +2852,7 @@ class AlgorithmConfig(_Config):
             self.postprocess_inputs = postprocess_inputs
         if shuffle_buffer_size is not NotProvided:
             self.shuffle_buffer_size = shuffle_buffer_size
+        # TODO (simon): Enable storing to general log-directory.
         if output is not NotProvided:
             self.output = output
         if output_config is not NotProvided:
