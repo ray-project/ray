@@ -22,12 +22,6 @@ InternalPubSubHandler::InternalPubSubHandler(
     const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)
     : io_service_(io_service), gcs_publisher_(gcs_publisher) {
   RAY_CHECK(gcs_publisher_);
-  io_service_thread_ = std::make_unique<std::thread>([this] {
-    SetThreadName("pubsub");
-    // Keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(io_service_);
-    io_service_.run();
-  });
 }
 
 void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
@@ -127,13 +121,6 @@ void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
     gcs_publisher_->GetPublisher().UnregisterSubscriber(subscriber_id);
   }
   sender_to_subscribers_.erase(iter);
-}
-
-void InternalPubSubHandler::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
 }
 
 }  // namespace gcs

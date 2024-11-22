@@ -1,4 +1,4 @@
-from typing import List, Type
+from typing import List, Optional, Type
 
 from ray.data._internal.logical.interfaces import (
     LogicalPlan,
@@ -6,6 +6,7 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
+from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
 )
@@ -20,6 +21,7 @@ from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULES = [
     ReorderRandomizeBlocksRule,
+    InheritBatchFormatRule,
 ]
 
 _PHYSICAL_RULES = [
@@ -31,13 +33,35 @@ _PHYSICAL_RULES = [
 
 
 @DeveloperAPI
-def register_logical_rule(cls: Type[Rule]):
-    _LOGICAL_RULES.append(cls)
+def register_logical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if cls in _LOGICAL_RULES:
+        return
+
+    if insert_index is None:
+        _LOGICAL_RULES.append(cls)
+    else:
+        _LOGICAL_RULES.insert(insert_index, cls)
 
 
 @DeveloperAPI
-def register_physical_rule(cls: Type[Rule]):
-    _PHYSICAL_RULES.append(cls)
+def get_logical_rules() -> List[Type[Rule]]:
+    return list(_LOGICAL_RULES)
+
+
+@DeveloperAPI
+def register_physical_rule(cls: Type[Rule], insert_index: Optional[int] = None):
+    if cls in _PHYSICAL_RULES:
+        return
+
+    if insert_index is None:
+        _PHYSICAL_RULES.append(cls)
+    else:
+        _PHYSICAL_RULES.insert(insert_index, cls)
+
+
+@DeveloperAPI
+def get_physical_rules() -> List[Type[Rule]]:
+    return list(_PHYSICAL_RULES)
 
 
 class LogicalOptimizer(Optimizer):

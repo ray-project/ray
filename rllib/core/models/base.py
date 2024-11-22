@@ -230,8 +230,6 @@ class Encoder(Model, abc.ABC):
                 super().__init__(config)
                 self.factor = config.factor
 
-            @check_input_specs("input_specs")
-            @check_output_specs("output_specs")
             def __call__(self, *args, **kwargs):
                 # This is a dummy method to do checked forward passes.
                 return self._forward(*args, **kwargs)
@@ -262,14 +260,6 @@ class Encoder(Model, abc.ABC):
         {'encoder_out': 2, 'state_out': 4}
 
     """
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return []
 
     @abc.abstractmethod
     def _forward(self, input_dict: dict, **kwargs) -> dict:
@@ -323,18 +313,6 @@ class ActorCriticEncoder(Encoder):
                 self.critic_encoder = config.base_encoder_config.build(
                     framework=self.framework
                 )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR)] + (
-            [(ENCODER_OUT, CRITIC)]
-            if not self.config.shared and self.critic_encoder
-            else []
-        )
 
     @override(Model)
     def _forward(self, inputs: dict, **kwargs) -> dict:
@@ -398,14 +376,6 @@ class StatefulActorCriticEncoder(Encoder):
             self.critic_encoder = config.base_encoder_config.build(
                 framework=self.framework
             )
-
-    @override(Model)
-    def get_input_specs(self) -> Optional[Spec]:
-        return [Columns.OBS, Columns.STATE_IN]
-
-    @override(Model)
-    def get_output_specs(self) -> Optional[Spec]:
-        return [(ENCODER_OUT, ACTOR), (ENCODER_OUT, CRITIC), (Columns.STATE_OUT,)]
 
     @override(Model)
     def get_initial_state(self):

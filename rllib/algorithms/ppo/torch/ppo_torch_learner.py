@@ -40,10 +40,12 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         batch: Dict[str, Any],
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
+
         # Possibly apply masking to some sub loss terms and to the total loss term
         # at the end. Masking could be used for RNN-based model (zero padded `batch`)
         # and for PPO's batched value function (and bootstrap value) computations,
-        # for which we add an additional (artificial) timestep to each episode to
+        # for which we add an (artificial) timestep to each episode to
         # simplify the actual computation.
         if Columns.LOSS_MASK in batch:
             mask = batch[Columns.LOSS_MASK]
@@ -55,12 +57,8 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
         else:
             possibly_masked_mean = torch.mean
 
-        action_dist_class_train = (
-            self.module[module_id].unwrapped().get_train_action_dist_cls()
-        )
-        action_dist_class_exploration = (
-            self.module[module_id].unwrapped().get_exploration_action_dist_cls()
-        )
+        action_dist_class_train = module.get_train_action_dist_cls()
+        action_dist_class_exploration = module.get_exploration_action_dist_cls()
 
         curr_action_dist = action_dist_class_train.from_logits(
             fwd_out[Columns.ACTION_DIST_INPUTS]
@@ -91,12 +89,14 @@ class PPOTorchLearner(PPOLearner, TorchLearner):
 
         # Compute a value function loss.
         if config.use_critic:
-            value_fn_out = fwd_out[Columns.VF_PREDS]
+            value_fn_out = module.compute_values(
+                batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+            )
             vf_loss = torch.pow(value_fn_out - batch[Postprocessing.VALUE_TARGETS], 2.0)
             vf_loss_clipped = torch.clamp(vf_loss, 0, config.vf_clip_param)
             mean_vf_loss = possibly_masked_mean(vf_loss_clipped)
             mean_vf_unclipped_loss = possibly_masked_mean(vf_loss)
-        # Ignore the value function.
+        # Ignore the value function -> Set all to 0.0.
         else:
             z = torch.tensor(0.0, device=surrogate_loss.device)
             value_fn_out = mean_vf_unclipped_loss = vf_loss_clipped = mean_vf_loss = z
