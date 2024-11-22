@@ -305,4 +305,4 @@ def test_proxy_router_updated_replicas_then_gcs_failure(serve_ha):
 
 
 if __name__ == "__main__":
-    sys.exit(pytest.main(["-v", "-s", "--forked", __file__]))
+    sys.exit(pytest.main(["-v", "-s", __file__]))
