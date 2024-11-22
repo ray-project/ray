@@ -110,7 +110,7 @@ class ObjectManagerInterface {
   virtual bool PullRequestActiveOrWaitingForMetadata(uint64_t request_id) const = 0;
   virtual int64_t PullManagerNumInactivePullsByTaskName(
       const TaskMetricsKey &task_key) const = 0;
-  virtual ~ObjectManagerInterface(){};
+  virtual ~ObjectManagerInterface() = default;
 };
 
 // TODO(hme): Add success/failure callbacks for push and pull.
@@ -183,7 +183,10 @@ class ObjectManager : public ObjectManagerInterface,
       std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
       const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request);
 
-  ~ObjectManager();
+  ObjectManager(const ObjectManager &) = delete;
+  ObjectManager &operator=(const ObjectManager &) = delete;
+
+  ~ObjectManager() override;
 
   /// Stop the Plasma Store eventloop. Currently it is only used to handle
   /// signals from Raylet.

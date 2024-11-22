@@ -14,9 +14,6 @@
 
 #include "ray/object_manager/common.h"
 
-#include "absl/functional/bind_front.h"
-#include "absl/strings/str_format.h"
-
 namespace ray {
 
 void PlasmaObjectHeader::Init() {
@@ -42,6 +39,7 @@ void PlasmaObjectHeader::Init() {
   metadata_size = 0;
 }
 
+namespace {
 void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
   std::string print;
   absl::StrAppend(&print, "PlasmaObjectHeader: \n");
@@ -62,6 +60,7 @@ void PrintPlasmaObjectHeader(const PlasmaObjectHeader *header) {
   absl::StrAppend(&print, "metadata_size: ", header->metadata_size, "\n");
   RAY_LOG(DEBUG) << print;
 }
+}  // namespace
 
 Status PlasmaObjectHeader::CheckHasError() const {
   // We do an acquire load so that no loads/stores are reordered before the load to
@@ -230,7 +229,7 @@ Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {
     RAY_CHECK_GT(num_read_releases_remaining, 0UL);
     num_read_releases_remaining--;
     RAY_CHECK_GE(num_read_releases_remaining, 0UL);
-    all_readers_done = !num_read_releases_remaining;
+    all_readers_done = (num_read_releases_remaining == 0u);
   }
 
   RAY_CHECK_EQ(sem_post(sem.header_sem), 0);

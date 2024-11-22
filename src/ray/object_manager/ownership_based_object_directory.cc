@@ -31,12 +31,12 @@ OwnershipBasedObjectDirectory::OwnershipBasedObjectDirectory(
       object_location_subscriber_(object_location_subscriber),
       owner_client_pool_(owner_client_pool),
       kMaxObjectReportBatchSize(max_object_report_batch_size),
-      mark_as_failed_(mark_as_failed) {}
+      mark_as_failed_(std::move(mark_as_failed)) {}
 
 namespace {
 
 /// Filter out the removed nodes from the object locations.
-void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
+void FilterRemovedNodes(const std::shared_ptr<gcs::GcsClient> &gcs_client,
                         std::unordered_set<NodeID> *node_ids) {
   for (auto it = node_ids->begin(); it != node_ids->end();) {
     if (gcs_client->Nodes().IsRemoved(*it)) {
@@ -49,7 +49,7 @@ void FilterRemovedNodes(std::shared_ptr<gcs::GcsClient> gcs_client,
 
 /// Update object location data based on response from the owning core worker.
 bool UpdateObjectLocations(const rpc::WorkerObjectLocationsPubMessage &location_info,
-                           std::shared_ptr<gcs::GcsClient> gcs_client,
+                           const std::shared_ptr<gcs::GcsClient> &gcs_client,
                            std::unordered_set<NodeID> *node_ids,
                            std::string *spilled_url,
                            NodeID *spilled_node_id,
@@ -234,7 +234,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   object_queue.erase(object_queue.begin(), object_queue_it);
 
   RAY_CHECK_EQ(object_queue.size(), object_map.size());
-  if (object_queue.size() == 0) {
+  if (object_queue.empty()) {
     location_buffers_.erase(location_buffer_it);
   }
 
@@ -243,7 +243,7 @@ void OwnershipBasedObjectDirectory::SendObjectLocationUpdateBatchIfNeeded(
   owner_client->UpdateObjectLocationBatch(
       request,
       [this, worker_id, node_id, owner_address](
-          Status status, const rpc::UpdateObjectLocationBatchReply &reply) {
+          const Status &status, const rpc::UpdateObjectLocationBatchReply &reply) {
         auto in_flight_request_it = in_flight_requests_.find(worker_id);
         RAY_CHECK(in_flight_request_it != in_flight_requests_.end());
         in_flight_requests_.erase(in_flight_request_it);
@@ -456,7 +456,7 @@ ray::Status OwnershipBasedObjectDirectory::UnsubscribeObjectLocations(
 void OwnershipBasedObjectDirectory::LookupRemoteConnectionInfo(
     RemoteConnectionInfo &connection_info) const {
   auto node_info = gcs_client_->Nodes().Get(connection_info.node_id);
-  if (node_info) {
+  if (node_info != nullptr) {
     NodeID result_node_id = NodeID::FromBinary(node_info->node_id());
     RAY_CHECK(result_node_id == connection_info.node_id);
     connection_info.ip = node_info->node_manager_address();
@@ -480,7 +480,7 @@ OwnershipBasedObjectDirectory::LookupAllRemoteConnections() const {
 
 void OwnershipBasedObjectDirectory::HandleNodeRemoved(const NodeID &node_id) {
   for (auto &[object_id, listener] : listeners_) {
-    bool updated = listener.current_object_locations.erase(node_id);
+    bool updated = listener.current_object_locations.erase(node_id) != 0u;
     if (listener.spilled_node_id == node_id) {
       listener.spilled_node_id = NodeID::Nil();
       listener.spilled_url = "";
@@ -509,25 +509,29 @@ void OwnershipBasedObjectDirectory::RecordMetrics(uint64_t duration_ms) {
 
   // Record number of object location updates per second.
   metrics_num_object_location_updates_per_second_ =
-      (double)metrics_num_object_location_updates_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_location_updates_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryLocationUpdates.Record(
       metrics_num_object_location_updates_per_second_);
   metrics_num_object_location_updates_ = 0;
   // Record number of object location lookups per second.
   metrics_num_object_location_lookups_per_second_ =
-      (double)metrics_num_object_location_lookups_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_location_lookups_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryLocationLookups.Record(
       metrics_num_object_location_lookups_per_second_);
   metrics_num_object_location_lookups_ = 0;
   // Record number of object locations added per second.
   metrics_num_object_locations_added_per_second_ =
-      (double)metrics_num_object_locations_added_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_locations_added_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryAddedLocations.Record(
       metrics_num_object_locations_added_per_second_);
   metrics_num_object_locations_added_ = 0;
   // Record number of object locations removed per second.
   metrics_num_object_locations_removed_per_second_ =
-      (double)metrics_num_object_locations_removed_ * (1000.0 / (double)duration_ms);
+      static_cast<double>(metrics_num_object_locations_removed_) *
+      (1000.0 / static_cast<double>(duration_ms));
   stats::ObjectDirectoryRemovedLocations.Record(
       metrics_num_object_locations_removed_per_second_);
   metrics_num_object_locations_removed_ = 0;

@@ -91,7 +91,7 @@ SpilledObjectReader::SpilledObjectReader(std::string file_path,
                                                       std::string &file_path,
                                                       uint64_t &object_offset,
                                                       uint64_t &object_size) {
-  static const std::regex object_url_pattern("^(.*)\\?offset=(\\d+)&size=(\\d+)$");
+  static const std::regex object_url_pattern(R"(^(.*)\?offset=(\d+)&size=(\d+)$)");
   std::smatch match_groups;
   if (!std::regex_match(object_url, match_groups, object_url_pattern) ||
       match_groups.size() != 4) {
@@ -135,7 +135,7 @@ bool SpilledObjectReader::ParseObjectHeader(std::istream &is,
   }
 
   std::string address_str(address_size, '\0');
-  if (!is.read(&address_str[0], address_size) ||
+  if (!is.read(address_str.data(), address_size) ||
       !owner_address.ParseFromString(address_str)) {
     return false;
   }
@@ -148,7 +148,7 @@ bool SpilledObjectReader::ParseObjectHeader(std::istream &is,
 /* static */
 bool SpilledObjectReader::ReadUINT64(std::istream &is, uint64_t &output) {
   std::string buff(UINT64_size, '\0');
-  if (!is.read(&buff[0], UINT64_size)) {
+  if (!is.read(buff.data(), UINT64_size)) {
     return false;
   }
   output = SpilledObjectReader::ToUINT64(buff);
