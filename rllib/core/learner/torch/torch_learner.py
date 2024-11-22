@@ -165,9 +165,7 @@ class TorchLearner(Learner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
-
-        return fwd_out, loss_per_module, collected_tensor_metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(

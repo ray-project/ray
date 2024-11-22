@@ -138,6 +138,7 @@ class Stats:
         clear_on_reduce: bool = False,
         on_exit: Optional[Callable] = None,
         _throughput=False,
+        #id_=None,
     ):
         """Initializes a Stats instance.
 
@@ -176,6 +177,11 @@ class Stats:
                 otherwise grow indefinitely, for example if reduce is None and there
                 is no `window` provided.
         """
+
+        ##TEST
+        #self.id_ = id_
+
+
         # Thus far, we only support mean, max, min, and sum.
         if reduce not in [None, "mean", "min", "max", "sum"]:
             raise ValueError("`reduce` must be one of `mean|min|max|sum` or None!")
@@ -268,7 +274,7 @@ class Stats:
 
         del self._start_times[thread_id]
 
-    def peek(self, *, previous: Union[bool, int] = False, throughput: bool = False) -> Any:
+    def peek(self, *, previous: Optional[int] = None, throughput: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
@@ -276,16 +282,16 @@ class Stats:
         given the current internal values list.
 
         Args:
-            previous: If an int, returns the previously (reduced) result of this `Stats`
-                object (from `previous` number of `reduce()` calls ago). If False
-                (default), return current value.
+            previous: If provided (int), returns that previously (reduced) result of
+                this `Stats` object, which was generated `previous` number of `reduce()`
+                calls ago). If None (default), returns the current (reduced) value.
 
         Returns:
             The result of reducing the internal values list (or the previously computed
             reduced result, if `previous` is True).
         """
         # Return previously reduced value.
-        if isinstance(previous, int):
+        if previous is not None:
             return self._hist[-abs(previous)]
         # Return the last measured throughput.
         elif throughput:
@@ -307,22 +313,30 @@ class Stats:
         """
         reduced, values = self._reduced_values()
 
+        #if self.id_ == "trained_life":
+        #    assert self._throughput
+            #print(f"before reducing: hist={list(self._hist)} values={self.values}")
+
         # Keep track and update underlying throughput metric.
         if self._throughput:
             # Take the delta between the new (upcoming) reduced value and the most
             # recently reduced value (one `reduce()` call ago).
             delta_sum = reduced - self._hist[-1]
+            assert delta_sum > 0
             time_now = time.perf_counter()
             delta_time = time_now - self._throughput_last_time
+            assert delta_time > 0.0
             self._throughput_last_time = time_now
             self._current_throughput = delta_sum / delta_time
-            print(f"Stats current throughput={self._current_throughput}")
 
         # Reduce everything to a single (init) value.
         self.values = values
 
         # Shift historic reduced valued by one in our hist-tuple.
         self._hist.append(reduced)
+
+        #if self.id_ == "trained_life":
+        #    print(f"after reducing .. to {reduced}; NOW hist={list(self._hist)} values={self.values}")
 
         # `clear_on_reduce` -> Return an empty new Stats object with the same settings
         # as `self`.
@@ -530,7 +544,7 @@ class Stats:
         # Update our throughput as the sum over all others' current throughputs.
         if self._throughput:
             self._current_throughput = sum(o.peek(throughput=True) for o in others)
-            print(f"Stats current throughput after parallel merge={self._current_throughput}")
+            #print(f"Stats current throughput after parallel merge={self._current_throughput}")
 
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
@@ -645,7 +659,10 @@ class Stats:
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
             _throughput=other._throughput,
+            #id_=other.id_,
         )
+        if stats._throughput:
+            stats._current_throughput = other._current_throughput
         stats._hist = other._hist
         return stats
 
