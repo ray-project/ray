@@ -199,21 +199,38 @@ def test_executes_in_bind_order(shared_ray_instance):
 
     @ray.remote
     class Actor:
+        def __init__(self):
+            self.state = []
+
         def foo(self, input_data):
-            return input_data * 2
+            output_data = input_data * 2
+            self.state.append(output_data)
+            return output_data
 
         def bar(self, input_data):
-            return input_data / 2
+            output_data = int(input_data / 2)
+            self.state.append(output_data)
+            return output_data
+
+        def baz(self, *inputs):
+            output_data = sum(inputs)
+            self.state.append(output_data)
+            return output_data
+
+        def get_state(self):
+            return "actor internal state: " + str(self.state)
 
     a = Actor.remote()
 
     with InputNode() as inp:
-        x = a.foo.bind(inp)
-        y = a.bar.bind(inp)
+        w = a.foo.bind(inp)
+        x = a.bar.bind(inp)
+        y = a.baz.bind(1, 2, 3, w, x, inp)
+        z = a.get_state.bind()
 
-        dag = MultiOutputNode([y, x])
+        dag = MultiOutputNode([x, w, y, z])
 
-    assert ray.get(dag.execute(4)) == [8, 2]
+    assert ray.get(dag.execute(4)) == [2, 8, 20, "actor internal state: [8, 2, 20]"]
 
 
 if __name__ == "__main__":

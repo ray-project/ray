@@ -1,6 +1,7 @@
 import ray
 from ray.dag.base import DAGNodeBase
 from ray.dag.py_obj_scanner import _PyObjScanner
+from ray.dag.dag_dependency_graph import DependencyGraph
 from ray.util.annotations import DeveloperAPI
 import copy
 
@@ -318,28 +319,56 @@ class DAGNode(DAGNodeBase):
         Returns:
             New DAGNode after replacing all child nodes.
         """
-
         replace_table = {}
         # CloudPickler scanner object for current layer of DAGNode. Same
         # scanner should be use for a full find & replace cycle.
         scanner = _PyObjScanner()
+
+        # Dependency graph for detecting and enforcing control dependencies
+        # based on bind_index in addition to data dependencies
+        dep_graph = DependencyGraph()
+
         # Find all first-level nested DAGNode children in args.
-        # Update replacement table and execute the replace.
-        for node in scanner.find_nodes(
+        all_nodes = scanner.find_nodes(
             [
                 self._bound_args,
                 self._bound_kwargs,
                 self._bound_other_args_to_resolve,
             ]
-        ):
-            if node not in replace_table:
+        )
+
+        # Create a map of nodes to their bind_index if present
+        bind_indices = {
+            node: node.get_other_args_to_resolve().get("bind_index")
+            for node in all_nodes
+            if "bind_index" in node.get_other_args_to_resolve()
+        }
+
+        # Iterate through each pair of nodes and add control dependencies
+        for node, node_bind_index in bind_indices.items():
+            for other_node, other_bind_index in bind_indices.items():
+                if other_bind_index < node_bind_index:
+                    dep_graph.add_dependency(other_node, node)
+
+        # Topologically sort the control dependencies for this layer of the dag
+        ctrl_dependencies = dep_graph.topological_sort()
+
+        i = 0
+        for node in all_nodes:
+            # node has a control dependency, instead of processing it directly
+            # we execute and replace the next node in the topo sort
+            if node in ctrl_dependencies:
+                replace_table[ctrl_dependencies[i]] = fn(ctrl_dependencies[i])
+                i += 1
+            # node with no control dependency, execute and replace as usual
+            elif node not in replace_table:
                 replace_table[node] = fn(node)
+
         new_args, new_kwargs, new_other_args_to_resolve = scanner.replace_nodes(
             replace_table
         )
         scanner.clear()
 
-        # Return updated copy of self.
         return self._copy(
             new_args, new_kwargs, self.get_options(), new_other_args_to_resolve
         )
@@ -383,20 +412,6 @@ class DAGNode(DAGNodeBase):
         else:
             if self._stable_uuid in fn.cache:
                 return fn.cache[self._stable_uuid]
-
-        if any(
-            hasattr(child, "get_other_args_to_resolve")
-            and "bind_index" in child.get_other_args_to_resolve()
-            for child in self._bound_args
-        ):
-            self._bound_args = sorted(
-                self._bound_args,
-                key=lambda child: child.get_other_args_to_resolve().get(
-                    "bind_index", float("inf")
-                )
-                if hasattr(child, "get_other_args_to_resolve")
-                else float("inf"),
-            )
 
         return fn(
             self._apply_and_replace_all_child_nodes(
