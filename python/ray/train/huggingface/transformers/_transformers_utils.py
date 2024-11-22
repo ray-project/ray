@@ -28,7 +28,7 @@ except ImportError as e:
 
 @PublicAPI(stability="beta")
 class RayTrainReportCallback(TrainerCallback):
-    """A simple callback to report checkpoints and metrics to Ray Tarin.
+    """A simple callback to report checkpoints and metrics to Ray Train.
 
     This callback is a subclass of `transformers.TrainerCallback
     <https://huggingface.co/docs/transformers/main/en/main_classes/callback#transformers.TrainerCallback>`_
