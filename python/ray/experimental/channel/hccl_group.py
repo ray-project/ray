@@ -142,21 +142,18 @@ class _HcclGroup(GPUCommunicator):
             tensor: The tensor to be sent.
             peer_rank: The rank of the peer to send the tensor to.
         """
-        print("send")
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
-        logger.info(f"start to send to:{peer_rank},self._rank : {self._rank} ")
         if self._closed:
             raise RuntimeError("HCCL group has been destroyed.")
         dist.send(tensor, dst=peer_rank)
-        logger.info(f"finishe send to dist {peer_rank}")
 
     def recv(
         self,
         shape: tuple,
         dtype: "torch.dtype",
         peer_rank: int,
-        allocator=Optional[TorchTensorAllocator],
+        allocator: Optional[TorchTensorAllocator],
     ) -> "torch.Tensor":
         """
         Receive a tensor from a peer using HCCL.
@@ -175,7 +172,6 @@ class _HcclGroup(GPUCommunicator):
         torch_npu.npu.set_device(f"npu:{self._rank}")
         tensor = torch.zeros(*shape, dtype=dtype).to(f"npu:{self._rank}")
         dist.recv(tensor, src=peer_rank)
-        # torch.npu.synchronize(self._rank)
         if self._closed:
             raise RayChannelError("HCCL group has been destroyed.")
         return tensor
@@ -198,8 +194,6 @@ class _HcclGroup(GPUCommunicator):
         """
         Destroy the HCCL group and clean up resources.
         """
-        if self._closed:
-            return
         self._closed = True
         dist.destroy_process_group()
         if self._rank is not None:

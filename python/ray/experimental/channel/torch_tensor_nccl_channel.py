@@ -618,8 +618,6 @@ def _do_check_has_gpu(self) -> bool:
 
 def _do_get_unique_nccl_id(self) -> bool:
     if "NPU" in ray.cluster_resources():
-        import uuid
-
         # NPU doesn't have get_unique_id
         return uuid.uuid4()
     else:
