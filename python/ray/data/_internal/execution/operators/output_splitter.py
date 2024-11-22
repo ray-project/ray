@@ -161,7 +161,7 @@ class OutputSplitter(PhysicalOperator):
 
     def _dispatch_bundles(self, dispatch_all: bool = False) -> None:
         start_time = time.perf_counter()
-        # Dispatch all dispatchable bundles from the internal buffer.
+        # Dispatch all postable bundles from the internal buffer.
         # This may not dispatch all bundles when equal=True.
         while self._buffer and (
             dispatch_all or len(self._buffer) >= self._min_buffer_size

@@ -30,43 +30,43 @@ namespace gcs {
 /// This class is thread safe.
 class InMemoryStoreClient : public StoreClient {
  public:
-  explicit InMemoryStoreClient(instrumented_io_context &main_io_service)
-      : main_io_service_(main_io_service) {}
+  explicit InMemoryStoreClient() = default;
 
   Status AsyncPut(const std::string &table_name,
                   const std::string &key,
                   const std::string &data,
                   bool overwrite,
-                  std::function<void(bool)> callback) override;
+                  Postable<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+                  ToPostable<OptionalItemCallback<std::string>> callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+                     ToPostable<MapCallback<std::string, std::string>> callback) override;
 
-  Status AsyncMultiGet(const std::string &table_name,
-                       const std::vector<std::string> &keys,
-                       const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncMultiGet(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      ToPostable<MapCallback<std::string, std::string>> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     Postable<void(bool)> callback) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
-                          std::function<void(int64_t)> callback) override;
+                          Postable<void(int64_t)> callback) override;
 
   int GetNextJobID() override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,
-                      std::function<void(std::vector<std::string>)> callback) override;
+                      Postable<void(std::vector<std::string>)> callback) override;
 
   Status AsyncExists(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     Postable<void(bool)> callback) override;
 
  private:
   struct InMemoryTable {
@@ -83,10 +83,6 @@ class InMemoryStoreClient : public StoreClient {
   absl::Mutex mutex_;
   absl::flat_hash_map<std::string, std::shared_ptr<InMemoryTable>> tables_
       ABSL_GUARDED_BY(mutex_);
-
-  /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
-  /// of the callback.
-  instrumented_io_context &main_io_service_;
 
   int job_id_ = 0;
 };

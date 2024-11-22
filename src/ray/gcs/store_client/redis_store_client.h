@@ -20,6 +20,7 @@
 
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
+#include "ray/common/asio/postable.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/redis_client.h"
 #include "ray/gcs/redis_context.h"
@@ -111,36 +112,37 @@ class RedisStoreClient : public StoreClient {
                   const std::string &key,
                   const std::string &data,
                   bool overwrite,
-                  std::function<void(bool)> callback) override;
+                  Postable<void(bool)> callback) override;
 
   Status AsyncGet(const std::string &table_name,
                   const std::string &key,
-                  const OptionalItemCallback<std::string> &callback) override;
+                  ToPostable<OptionalItemCallback<std::string>> callback) override;
 
   Status AsyncGetAll(const std::string &table_name,
-                     const MapCallback<std::string, std::string> &callback) override;
+                     ToPostable<MapCallback<std::string, std::string>> callback) override;
 
-  Status AsyncMultiGet(const std::string &table_name,
-                       const std::vector<std::string> &keys,
-                       const MapCallback<std::string, std::string> &callback) override;
+  Status AsyncMultiGet(
+      const std::string &table_name,
+      const std::vector<std::string> &keys,
+      ToPostable<MapCallback<std::string, std::string>> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     Postable<void(bool)> callback) override;
 
   Status AsyncBatchDelete(const std::string &table_name,
                           const std::vector<std::string> &keys,
-                          std::function<void(int64_t)> callback) override;
+                          Postable<void(int64_t)> callback) override;
 
   int GetNextJobID() override;
 
   Status AsyncGetKeys(const std::string &table_name,
                       const std::string &prefix,
-                      std::function<void(std::vector<std::string>)> callback) override;
+                      Postable<void(std::vector<std::string>)> callback) override;
 
   Status AsyncExists(const std::string &table_name,
                      const std::string &key,
-                     std::function<void(bool)> callback) override;
+                     Postable<void(bool)> callback) override;
 
  private:
   /// \class RedisScanner
@@ -157,16 +159,18 @@ class RedisStoreClient : public StoreClient {
     struct PrivateCtorTag {};
 
    public:
+    // Don't call this. Use ScanKeysAndValues instead.
     explicit RedisScanner(PrivateCtorTag tag,
                           std::shared_ptr<RedisClient> redis_client,
                           RedisKey redis_key,
                           RedisMatchPattern match_pattern,
-                          MapCallback<std::string, std::string> callback);
+                          ToPostable<MapCallback<std::string, std::string>> callback);
 
-    static void ScanKeysAndValues(std::shared_ptr<RedisClient> redis_client,
-                                  RedisKey redis_key,
-                                  RedisMatchPattern match_pattern,
-                                  MapCallback<std::string, std::string> callback);
+    static void ScanKeysAndValues(
+        std::shared_ptr<RedisClient> redis_client,
+        RedisKey redis_key,
+        RedisMatchPattern match_pattern,
+        ToPostable<MapCallback<std::string, std::string>> callback);
 
    private:
     // Scans the keys and values, one batch a time. Once all keys are scanned, the
@@ -196,7 +200,7 @@ class RedisStoreClient : public StoreClient {
 
     std::shared_ptr<RedisClient> redis_client_;
 
-    MapCallback<std::string, std::string> callback_;
+    ToPostable<MapCallback<std::string, std::string>> callback_;
 
     // Holds a self-ref until the scan is done.
     std::shared_ptr<RedisScanner> self_ref_;
@@ -210,7 +214,7 @@ class RedisStoreClient : public StoreClient {
   // \return The number of queues newly added. A queue will be added
   // only when there is no in-flight request for the key.
   size_t PushToSendingQueue(const std::vector<RedisConcurrencyKey> &keys,
-                            std::function<void()> send_request)
+                            const std::function<void()> &send_request)
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mu_);
 
   // Take requests from the sending queue and erase the queue if it's
@@ -224,7 +228,7 @@ class RedisStoreClient : public StoreClient {
 
   Status DeleteByKeys(const std::string &table_name,
                       const std::vector<std::string> &keys,
-                      std::function<void(int64_t)> callback);
+                      Postable<void(int64_t)> callback);
 
   // Send the redis command to the server. This method will make request to be
   // serialized for each key in keys. At a given time, only one request for a {table_name,
@@ -242,13 +246,6 @@ class RedisStoreClient : public StoreClient {
   // std::move(command)), it's UB because C++ don't have arg evaluation order guarantee,
   // hence command.args may become empty.
   void SendRedisCmdArgsAsKeys(RedisCommand command, RedisCallback redis_callback);
-
-  // HMGET external_storage_namespace@table_name key1 key2 ...
-  // `keys` are chunked to multiple HMGET commands by
-  // RAY_maximum_gcs_storage_operation_batch_size.
-  void MGetValues(const std::string &table_name,
-                  const std::vector<std::string> &keys,
-                  const MapCallback<std::string, std::string> &callback);
 
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
