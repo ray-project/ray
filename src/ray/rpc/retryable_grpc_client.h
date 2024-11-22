@@ -14,11 +14,13 @@
 
 #pragma once
 
+#include <utility>
 #include <chrono>
 #include <cstdint>
 #include <memory>
 #include <optional>
 #include <string>
+#include <functional>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/str_format.h"
