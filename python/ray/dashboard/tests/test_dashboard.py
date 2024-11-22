@@ -355,11 +355,9 @@ def test_dashboard_address_global(ray_start_with_dashboard):
     assert webui_ip == ray_start_with_dashboard["node_ip_address"]
 
 
-# TODO(aslonnie): fix the default installation of this test.
 @pytest.mark.skipif(
-    os.environ.get("RAY_MINIMAL") == "1" or os.environ.get("RAY_DEFAULT") == "1",
-    reason="This test is not supposed to work for minimal installation; "
-    "and currently failing on default installation.",
+    os.environ.get("RAY_MINIMAL") == "1",
+    reason="This test is not supposed to work for minimal installation.",
 )
 def test_http_get(enable_test_module, ray_start_with_dashboard):
     assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
