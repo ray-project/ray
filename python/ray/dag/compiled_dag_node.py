@@ -1880,7 +1880,7 @@ class CompiledDAG:
                 from ray.dag import DAGContext
 
                 ctx = DAGContext.get_current()
-                teardown_timeout = ctx.retrieval_timeout
+                teardown_timeout = ctx.teardown_timeout
 
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
@@ -2443,7 +2443,14 @@ class CompiledDAG:
 
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
+            from ray.dag import DAGContext
+
+            ctx = DAGContext.get_current()
             monitor.teardown(kill_actors=kill_actors)
+            monitor.join(timeout=ctx.teardown_timeout)
+            # We do not log a warning here if the thread is still alive because
+            # wait_teardown already logs upon teardown_timeout.
+
         self._is_teardown = True
 
     def __del__(self):
