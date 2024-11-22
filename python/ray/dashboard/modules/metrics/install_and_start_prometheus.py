@@ -93,6 +93,7 @@ def start_prometheus(prometheus_dir):
         f"{prometheus_dir}/prometheus",
         "--config.file",
         str(config_file),
+        "--web.enable-lifecycle",
     ]
     try:
         process = subprocess.Popen(prometheus_cmd)
@@ -107,6 +108,7 @@ def print_shutdown_message(process_id):
     message = (
         f"Prometheus is running with PID {process_id}.\n"
         "To stop Prometheus, use the command: "
+        "`ray metrics shutdown-prometheus`, "
         f"'kill {process_id}', or if you need to force stop, "
         f"use 'kill -9 {process_id}'."
     )
