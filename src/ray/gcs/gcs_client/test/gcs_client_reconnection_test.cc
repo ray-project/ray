@@ -345,6 +345,8 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   // Resume GCS server and it should unblock
   StartGCS();
   ASSERT_EQ(std::future_status::ready, f5.wait_for(5s));
+  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f4.wait_for(1s));
 }
 
 TEST_F(GcsClientReconnectionTest, Timeout) {
