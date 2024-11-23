@@ -19,6 +19,7 @@ from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
+from ray.rllib.algorithms.impala.utils import SleepTimeController
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -602,10 +603,7 @@ class IMPALA(Algorithm):
             # this Algorithm's learning success that we sleep the correct amount of time
             # in each training_step to establish a healthy balance between sample
             # collection and training.
-            self._current_sleep_time = 0.05
-            self._sleep_time_lr = 0.01
-            self._last_train_throughput = float("-inf")
-            self._sleep_time_lr_direction = self._sleep_time_lr
+            self._sleep_time_controller = SleepTimeController()
         else:
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
@@ -889,21 +887,13 @@ class IMPALA(Algorithm):
 
     def balance_backpressure(self):
         # Sleep for n seconds to balance backpressure.
-        time.sleep(self._current_sleep_time)
+        sleep_time = self._sleep_time_controller.current
+        time.sleep(sleep_time)
 
         # Adjust the sleep time once every iteration (on the first `training_step()`
         # call in each iteration).
         if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
-            self.metrics.log_value(
-                "_current_sleep_time",
-                self._current_sleep_time,
-                window=1,
-            )
-            self.metrics.log_value(
-                "_current_sleep_time_lr",
-                self._sleep_time_lr,
-                window=1,
-            )
+            self.metrics.log_value("_current_sleep_time", sleep_time, window=1)
             train_throughput = self.metrics.peek(
                 (
                     LEARNER_RESULTS,
@@ -918,35 +908,7 @@ class IMPALA(Algorithm):
                 train_throughput,
                 window=1,
             )
-            self.metrics.log_value(
-                "_measured_last_train_throughput",
-                self._last_train_throughput,
-                window=1,
-            )
-            # Improvement: Keep moving in the same direction with the same speed.
-            if train_throughput > self._last_train_throughput:
-                pass
-            # Got worse: Reverse direction and reduce learning rate.
-            else:
-                self._sleep_time_lr *= 0.95
-                self._sleep_time_lr_direction = (
-                    np.sign(-self._sleep_time_lr_direction) * self._sleep_time_lr
-                )
-            self._last_train_throughput = train_throughput
-            # Adjust sleeping time, trying to maximize sample throughput (w/o dropped
-            # samples).
-            self._current_sleep_time += self._sleep_time_lr_direction
-            self._current_sleep_time = max(0.0, min(1.0, self._current_sleep_time))
-            self.metrics.log_value(
-                "_current_sleep_time",
-                self._current_sleep_time,
-                window=1,
-            )
-            self.metrics.log_value(
-                "_current_sleep_time_lr_direction",
-                self._sleep_time_lr_direction,
-                window=1,
-            )
+            self._sleep_time_controller.log_result(train_throughput)
 
     @classmethod
     @override(Algorithm)
