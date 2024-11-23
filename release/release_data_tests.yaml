@@ -1,4 +1,40 @@
 ###############
+# Reading tests
+###############
+
+- name: read_parquet
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_autoscaling_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --iterate
+
+- name: read_images
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_autoscaling_compute.yaml
+
+  run:
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+
+###############
 # Dataset tests
 ###############
 
@@ -125,82 +161,6 @@
       frequency: manual
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-- name: read_parquet_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish in 400 seconds.
-    timeout: 400
-    script: python read_parquet_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_images_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python read_images_benchmark.py --single-node
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-# TODO: Re-enable this test once we fix https://github.com/ray-project/ray/issues/40686.
-# - name: read_images_benchmark_multi_node
-#   group: data-tests
-#   working_dir: nightly_tests/dataset
-
-#   frequency: nightly-3x
-#   team: data
-
-#   cluster:
-#     byod:
-#       type: gpu
-#     cluster_compute: multi_node_read_images_benchmark_compute.yaml
-
-#   run:
-#     timeout: 28800
-#     script: python read_images_benchmark.py --multi-node
-
-#   variations:
-#     - __suffix__: aws
-#     - __suffix__: gce
-#       env: gce
-#       frequency: manual
-#       cluster:
-#         cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests
