@@ -147,7 +147,7 @@ class VizierSearch(Searcher):
     def _setup_vizier(self) -> None:
         if self._mode == 'max':
             vizier_goal = svz.ObjectiveMetricGoal.MAXIMIZE
-        elif self._mode == 'min:
+        elif self._mode == 'min':
             vizier_goal = svz.ObjectiveMetricGoal.MINIMIZE
         else:
             raise RuntimeError(UNDEFINED_METRIC_MODE.format(cls=self.__class__.__name__, metric=self._metric, mode = self._mode))
