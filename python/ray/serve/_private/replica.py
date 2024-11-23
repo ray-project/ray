@@ -22,8 +22,8 @@ from typing import (
     Union,
 )
 
+from anyio import to_thread
 import starlette.responses
-from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message
 
 import ray
@@ -591,6 +591,10 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
+    def _set_max_threadpool_size(self, deployment_config: DeploymentConfig):
+        size_limit = deployment_config.max_ongoing_requests
+        to_thread.current_default_thread_limiter().total_tokens = size_limit
+
     async def initialize(self, deployment_config: DeploymentConfig):
         try:
             # Ensure that initialization is only performed once.
@@ -605,6 +609,7 @@ class ReplicaBase(ABC):
                     self._user_callable_initialized = True
 
                 if deployment_config:
+                    self._set_max_threadpool_size(deployment_config)
                     await asyncio.wrap_future(
                         self._user_callable_wrapper.call_reconfigure(
                             deployment_config.user_config
@@ -632,6 +637,7 @@ class ReplicaBase(ABC):
                 self._version, deployment_config
             )
 
+            self._set_max_threadpool_size(deployment_config)
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
             )
@@ -1137,7 +1143,10 @@ class UserCallableWrapper:
 
                 return result
 
-            result = await run_in_threadpool(set_serve_context_and_run)
+            # NOTE(edoakes): we use anyio.to_thread here because it's what Starlette
+            # uses (and therefore FastAPI too). The max size of the threadpool is
+            # set to max_ongoing_requests in the replica wrapper.
+            result = await to_thread.run_sync(set_serve_context_and_run)
         else:
             result = callable(*args, **kwargs)
             if inspect.iscoroutine(result):
