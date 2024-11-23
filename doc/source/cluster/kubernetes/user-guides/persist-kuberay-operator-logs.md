@@ -110,7 +110,7 @@ Finally, use a LogQL query to view logs for a specific pod, such as the KubeRay 
 
 ![Loki Logs](images/loki-logs.png)
 
-You can use LogQL's json syntax to filter logs based on specific fields, such as `RayCluster_name`. Learn more about LogQL filtering in the [Log query language doc](https://grafana.com/docs/loki/latest/query/).
+You can use LogQL's JSON syntax to filter logs based on specific fields, such as `RayCluster_name`. See  [Log query language doc](https://grafana.com/docs/loki/latest/query/) for more information about LogQL filtering.
 
 [GrafanaLoki]: https://grafana.com/oss/loki/
 [FluentBit]: https://docs.fluentbit.io/manual
