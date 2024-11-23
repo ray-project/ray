@@ -4,7 +4,7 @@ import pickle
 import sys
 import threading
 from dataclasses import dataclass
-from typing import AsyncGenerator, Callable, Generator, Optional
+from typing import AsyncGenerator, Callable, Generator, Optional, Tuple, Dict, Any
 
 import pytest
 from fastapi import FastAPI
@@ -90,14 +90,14 @@ async def basic_async_generator(n: int, raise_exception: bool = False):
 
 
 def _make_user_callable_wrapper(
-    callable: Optional[Callable] = None, *init_args, **init_kwargs
+    callable: Optional[Callable] = None, *, init_args: Optional[Tuple[Any]] = None, init_kwargs: Optional[Dict[str, Any]] = None, run_sync_methods_in_threadpool: bool = False
 ) -> UserCallableWrapper:
     return UserCallableWrapper(
         callable if callable is not None else BasicClass,
-        init_args,
-        init_kwargs,
+        init_args or tuple(),
+        init_kwargs or dict(),
         deployment_id=DeploymentID(name="test_name"),
-        run_sync_methods_in_threadpool=False,
+        run_sync_methods_in_threadpool=run_sync_methods_in_threadpool,
     )
 
 
@@ -145,8 +145,9 @@ def test_calling_methods_before_initialize():
         user_callable_wrapper.call_reconfigure(None).result()
 
 
-def test_basic_class_callable():
-    user_callable_wrapper = _make_user_callable_wrapper()
+@pytest.mark.parametrize("run_sync_methods_in_threadpool", [False, True])
+def test_basic_class_callable(run_sync_methods_in_threadpool: bool):
+    user_callable_wrapper = _make_user_callable_wrapper(run_sync_methods_in_threadpool=run_sync_methods_in_threadpool)
 
     user_callable_wrapper.initialize_callable().result()
 
@@ -216,8 +217,9 @@ def test_basic_class_callable():
         ).result()
 
 
-def test_basic_class_callable_generators():
-    user_callable_wrapper = _make_user_callable_wrapper()
+@pytest.mark.parametrize("run_sync_methods_in_threadpool", [False, True])
+def test_basic_class_callable_generators(run_sync_methods_in_threadpool: bool):
+    user_callable_wrapper = _make_user_callable_wrapper(run_sync_methods_in_threadpool=run_sync_methods_in_threadpool)
     user_callable_wrapper.initialize_callable().result()
 
     result_list = []
@@ -233,7 +235,6 @@ def test_basic_class_callable_generators():
             request_metadata,
             (10,),
             dict(),
-            generator_result_callback=result_list.append,
         ).result()
 
     # Call sync generator.
@@ -413,7 +414,7 @@ def test_callable_with_async_init():
     msg = "hello world"
     user_callable_wrapper = _make_user_callable_wrapper(
         AsyncInitializer,
-        msg,
+        init_args=(msg,),
     )
     user_callable_wrapper.initialize_callable().result()
     request_metadata = _make_request_metadata()

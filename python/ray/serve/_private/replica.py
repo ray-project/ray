@@ -1144,10 +1144,14 @@ class UserCallableWrapper:
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
-                assert generator_result_callback is not None, (
-                    f"Tried to call generator user method '{callable.__name__}' "
-                    "but no generator result callback was provided."
-                )
+                if generator_result_callback is None:
+                    # TODO(edoakes): make this check less redundant with the one in
+                    # _handle_user_method_result.
+                    raise TypeError(
+                        f"Method '{callable.__name__}' returned a generator. "
+                        "You must use `handle.options(stream=True)` to call "
+                        "generators on a deployment."
+                    )
 
             def run_callable():
                 result = callable(*args, **kwargs)
