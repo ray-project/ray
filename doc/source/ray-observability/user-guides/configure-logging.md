@@ -247,7 +247,7 @@ ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 Implement structured logging to enable downstream users and applications to consume the logs efficiently.
 
 ### Application logs
-A Ray applications include both driver and worker processes. For Python applications, use Python loggers to format and structure your logs.
+A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format and structure your logs.
 As a result, Python loggers need to be set up for both driver and worker processes.
 
 ::::{tab-set}
