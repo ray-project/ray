@@ -126,8 +126,8 @@ class VizierSearch(Searcher):
         else:
             raise TypeError("Space must be Tune space or Vizier SearchSpace. Got {}.".format(type(space)))
 
-    if self._space:
-        self._setup_vizier()
+        if self._space:
+            self._setup_vizier()
     
     def set_search_properties(
         self, metric: Optional[str], mode: Optional[str], config: Dict, **spec
