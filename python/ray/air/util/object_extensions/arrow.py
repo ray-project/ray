@@ -16,7 +16,7 @@ _VER = _get_pyarrow_version()
 PYARROW_VERSION = None if _VER is None else parse_version(_VER)
 
 
-def object_extension_type_allowed() -> bool:
+def _object_extension_type_allowed() -> bool:
     return (
         PYARROW_VERSION is not None
         and PYARROW_VERSION >= MIN_PYARROW_VERSION_SCALAR_SUBCLASS
@@ -104,7 +104,9 @@ class ArrowPythonObjectArray(pa.ExtensionArray):
         arr = pa.array(all_dumped_bytes, type=type_.storage_type)
         return ArrowPythonObjectArray.from_storage(type_, arr)
 
-    def to_numpy(self, zero_copy_only: bool = False) -> np.ndarray:
+    def to_numpy(
+        self, zero_copy_only: bool = False, writable: bool = False
+    ) -> np.ndarray:
         arr = np.empty(len(self), dtype=object)
         arr[:] = self.to_pylist()
         return arr

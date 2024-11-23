@@ -80,12 +80,16 @@ class IMPALAConfig(AlgorithmConfig):
     .. testcode::
 
         from ray.rllib.algorithms.impala import IMPALAConfig
-        config = IMPALAConfig()
-        config = config.training(lr=0.0003, train_batch_size_per_learner=512)
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
+
+        config = (
+            IMPALAConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(lr=0.0003, train_batch_size_per_learner=512)
+            .learners(num_learners=1)
+        )
         # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        algo = config.build()
         algo.train()
         del algo
 
@@ -94,16 +98,14 @@ class IMPALAConfig(AlgorithmConfig):
         from ray.rllib.algorithms.impala import IMPALAConfig
         from ray import air
         from ray import tune
-        config = IMPALAConfig()
 
-        # Update the config object.
-        config = config.training(
-            lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0
+        config = (
+            IMPALAConfig()
+            .environment("CartPole-v1")
+            .env_runners(num_env_runners=1)
+            .training(lr=tune.grid_search([0.0001, 0.0002]), grad_clip=20.0)
+            .learners(num_learners=1)
         )
-        config = config.learners(num_learners=1)
-        config = config.env_runners(num_env_runners=1)
-        # Set the config object's env.
-        config = config.environment(env="CartPole-v1")
         # Run with tune.
         tune.Tuner(
             "IMPALA",
@@ -146,8 +148,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_aggregation_workers = 0
         self.num_gpu_loader_threads = 8
-        # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
-        self._dont_auto_sync_env_runner_states = True
 
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
@@ -168,6 +168,9 @@ class IMPALAConfig(AlgorithmConfig):
         # __sphinx_doc_end__
         # fmt: on
 
+        # IMPALA takes care of its own EnvRunner (weights, connector, metrics) synching.
+        self._dont_auto_sync_env_runner_states = True
+
         self.lr_schedule = None  # @OldAPIStack
         self.entropy_coeff_schedule = None  # @OldAPIStack
         self.num_multi_gpu_tower_stacks = 1  # @OldAPIstack
@@ -181,7 +184,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.epsilon = 0.1  # @OldAPIstack
         self._separate_vf_optimizer = False  # @OldAPIstack
         self._lr_vf = 0.0005  # @OldAPIstack
-        self.train_batch_size = 500  # @OldAPIstack
         self.num_gpus = 1  # @OldAPIstack
         self._tf_policy_handles_more_than_one_loss = True  # @OldAPIstack
 
