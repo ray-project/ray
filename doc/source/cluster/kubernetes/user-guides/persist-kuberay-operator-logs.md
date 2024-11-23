@@ -53,7 +53,7 @@ helm install fluent-bit fluent/fluent-bit -f fluent-bit-config.yaml
 
 ### Install the KubeRay Operator
 
-Follow [this document](kuberay-operator-deploy) to install the KubeRay operator.
+Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the KubeRay operator.
 
 
 ### Deploy a RayCluster
