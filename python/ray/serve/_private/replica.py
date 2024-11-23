@@ -8,6 +8,7 @@ import pickle
 import threading
 import time
 import traceback
+import warnings
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
 from importlib import import_module
@@ -1014,6 +1015,7 @@ class UserCallableWrapper:
         self._deployment_id = deployment_id
         self._destructor_called = False
         self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
+        self._warned_about_sync_method_change = False
 
         # Will be populated in `initialize_callable`.
         self._callable = None
@@ -1118,15 +1120,16 @@ class UserCallableWrapper:
             if run_sync_methods_in_threadpool_override is None
             else run_sync_methods_in_threadpool_override
         )
-
-        if (
-            run_sync_in_threadpool
-            and (inspect.isfunction(callable) or inspect.ismethod(callable))
+        is_sync_method = (
+            inspect.isfunction(callable)
+            or inspect.ismethod(callable)
             and not (
                 inspect.iscoroutinefunction(callable)
                 or inspect.isasyncgenfunction(callable)
             )
-        ):
+        )
+
+        if is_sync_method and run_sync_in_threadpool:
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
@@ -1153,6 +1156,14 @@ class UserCallableWrapper:
             # set to max_ongoing_requests in the replica wrapper.
             result = await to_thread.run_sync(set_serve_context_and_run)
         else:
+            if is_sync_method and not self._warned_about_sync_method_change:
+                self._warned_about_sync_method_change = True
+                warnings.warn(
+                    f"Calling sync method '{callable.__name__}' directly on the "
+                    "asyncio loop. In a future version, sync methods will be run in a "
+                    "threadpool by default. Ensure your sync methods are thread safe "
+                    "or keep the existing behavior by making them `async def`."
+                )
             result = callable(*args, **kwargs)
             if inspect.iscoroutine(result):
                 result = await result

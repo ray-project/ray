@@ -357,7 +357,6 @@ RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
 )
 
 # Run sync methods defined in the replica in a thread pool by default.
-# XXX: off by default.
 RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
-    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1") == "1"
+    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0") == "1"
 )
