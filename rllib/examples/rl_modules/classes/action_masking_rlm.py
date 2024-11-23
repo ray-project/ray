@@ -1,10 +1,11 @@
 import gymnasium as gym
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, Union
 
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.apis.value_function_api import ValueFunctionAPI
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.torch_utils import FLOAT_MIN
@@ -32,9 +33,19 @@ class ActionMaskingRLModule(RLModule):
     """
 
     @override(RLModule)
-    def __init__(self, config: RLModuleConfig):
+    def __init__(
+        self,
+        config=-1,
+        *,
+        observation_space: Optional[gym.Space] = None,
+        action_space: Optional[gym.Space] = None,
+        inference_only: Optional[bool] = None,
+        learner_only: bool = False,
+        model_config: Optional[Union[dict, DefaultModelConfig]] = None,
+        catalog_class=None
+    ):
         # If observation space is not of type `Dict` raise an error.
-        if not isinstance(config.observation_space, gym.spaces.dict.Dict):
+        if not isinstance(observation_space, gym.spaces.Dict):
             raise ValueError(
                 "This RLModule requires the environment to provide a "
                 "`gym.spaces.Dict` observation space of the form: \n"
@@ -46,15 +57,23 @@ class ActionMaskingRLModule(RLModule):
         # the action mask and the original observation space, the 'RLModule'
         # receives only the `"observation"` element of the space, but not the
         # action mask.
-        self.observation_space_with_mask = config.observation_space
-        config.observation_space = config.observation_space["observations"]
+        # The `"full"` observation space is stored in separate attribute.
+        self.observation_space_with_mask = observation_space
 
         # Keeps track if observation specs have been checked already.
         self._checked_observations = False
 
         # The PPORLModule, in its constructor will build networks for the original
         # observation space (i.e. without the action mask).
-        super().__init__(config)
+        super().__init__(
+            config=config,
+            observation_space=observation_space["observations"],
+            action_space=action_space,
+            inference_only=inference_only,
+            learner_only=learner_only,
+            model_config=model_config,
+            catalog_class=catalog_class,
+        )
 
 
 class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):

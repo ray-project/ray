@@ -66,6 +66,7 @@ successfully:
 from gymnasium.spaces import Box, Discrete
 
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.action_mask_env import ActionMaskEnv
 from ray.rllib.examples.rl_modules.classes.action_masking_rlm import (
@@ -113,6 +114,7 @@ if __name__ == "__main__":
                     "head_fcnet_hiddens": [64, 64],
                     "head_fcnet_activation": "relu",
                 },
+                catalog_class=PPOCatalog,
             ),
         )
         .evaluation(
