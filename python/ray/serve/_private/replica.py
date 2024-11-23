@@ -1088,7 +1088,9 @@ class UserCallableWrapper:
             await Response(result).send(scope, receive, send)
 
     async def _call_func_or_gen(
-        self, callable: Callable, *,
+        self,
+        callable: Callable,
+        *,
         args: Optional[Tuple[Any]] = None,
         kwargs: Optional[Dict[str, Any]] = None,
         generator_result_callback: Optional[Callable] = None,
@@ -1110,7 +1112,10 @@ class UserCallableWrapper:
         if (
             run_sync_in_threadpool
             and (inspect.isfunction(callable) or inspect.ismethod(callable))
-            and not (inspect.iscoroutinefunction(callable) or inspect.isasyncgenfunction(callable))
+            and not (
+                inspect.iscoroutinefunction(callable)
+                or inspect.isasyncgenfunction(callable)
+            )
         ):
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
@@ -1120,6 +1125,7 @@ class UserCallableWrapper:
                 )
 
             curr_context = ray.serve.context._serve_request_context.get()
+
             def set_serve_context_and_run():
                 ray.serve.context._serve_request_context.set(curr_context)
                 result = callable(*args, **kwargs)
