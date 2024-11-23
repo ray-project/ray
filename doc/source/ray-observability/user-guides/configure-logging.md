@@ -472,4 +472,4 @@ The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * R
 
 ## Log persistence
 
-To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` and {ref}`log persistence on VMs <vm-logging>` for more details.
+To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` see {ref}`log persistence on VMs <vm-logging>` for more details.
