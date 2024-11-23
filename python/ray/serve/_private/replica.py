@@ -1101,12 +1101,16 @@ class UserCallableWrapper:
         kwargs: Optional[Dict[str, Any]] = None,
         generator_result_callback: Optional[Callable] = None,
         run_sync_methods_in_threadpool_override: Optional[bool] = None,
-    ) -> Any:
+    ) -> Tuple[Any, bool]:
         """Call the callable with the provided arguments.
 
         This is a convenience wrapper that will work for `def`, `async def`,
         generator, and async generator functions.
+
+        Returns the result and a boolean indicating if the result was a sync generator
+        that has already been consumed.
         """
+        sync_gen_consumed = False
         args = args if args is not None else tuple()
         kwargs = kwargs if kwargs is not None else dict()
         run_sync_in_threadpool = (
@@ -1125,6 +1129,7 @@ class UserCallableWrapper:
         ):
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
+                sync_gen_consumed = True
                 assert generator_result_callback is not None, (
                     f"Tried to call generator user method '{callable.__name__}' "
                     "but no generator result callback was provided."
@@ -1152,7 +1157,7 @@ class UserCallableWrapper:
             if inspect.iscoroutine(result):
                 result = await result
 
-        return result
+        return result, sync_gen_consumed
 
     @property
     def user_callable(self) -> Optional[Callable]:
@@ -1326,6 +1331,7 @@ class UserCallableWrapper:
         user_method_name: str,
         request_metadata: RequestMetadata,
         *,
+        sync_gen_consumed: bool,
         generator_result_callback: Optional[Callable],
         is_asgi_app: bool,
         asgi_args: Optional[ASGIArgs],
@@ -1359,7 +1365,7 @@ class UserCallableWrapper:
                 # For the FastAPI codepath, the response has already been sent over
                 # ASGI, but for the vanilla deployment codepath we need to send it.
                 await self._send_user_result_over_asgi(result, asgi_args)
-            elif not request_metadata.is_http_request:
+            elif not request_metadata.is_http_request and not sync_gen_consumed:
                 # If a unary method is called with stream=True for anything EXCEPT
                 # an HTTP request, raise an error.
                 # HTTP requests are always streaming regardless of if the method
@@ -1444,12 +1450,17 @@ class UserCallableWrapper:
                     request_args[0], request_metadata, user_method_params
                 )
 
-            result = await self._handle_user_method_result(
-                await self._call_func_or_gen(
-                    user_method, args=request_args, kwargs=request_kwargs
-                ),
+            result, sync_gen_consumed = await self._call_func_or_gen(
+                user_method,
+                args=request_args,
+                kwargs=request_kwargs,
+                generator_result_callback=generator_result_callback,
+            )
+            return await self._handle_user_method_result(
+                result,
                 user_method_name,
                 request_metadata,
+                sync_gen_consumed=sync_gen_consumed,
                 generator_result_callback=generator_result_callback,
                 is_asgi_app=is_asgi_app,
                 asgi_args=asgi_args,
@@ -1473,8 +1484,6 @@ class UserCallableWrapper:
         finally:
             if receive_task is not None and not receive_task.done():
                 receive_task.cancel()
-
-        return result
 
     @_run_on_user_code_event_loop
     async def call_destructor(self):
