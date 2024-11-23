@@ -58,7 +58,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the KubeR
 
 ### Deploy a RayCluster
 
-Follow [this document](raycluster-deploy) to deploy a RayCluster.
+Follow [Deploy a RayCluster custom resource](raycluster-deploy) to deploy a RayCluster.
 
 
 ### Deploy Grafana
