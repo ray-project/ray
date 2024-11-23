@@ -93,7 +93,7 @@ export POD_NAME=$(kubectl get pods --namespace default -l "app.kubernetes.io/nam
 kubectl --namespace default port-forward $POD_NAME 3000
 ```
 
-This will make Grafana available locally at `http://localhost:3000`.
+This command makes Grafana available locally at `http://localhost:3000`.
 
 * Username: "admin"
 * Password: Get the password using the following command:
