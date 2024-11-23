@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <memory>
 
 // clang-format off
-#include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
@@ -39,7 +40,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
+        gcs_publisher_, gcs_table_storage_, raylet_client_pool_.get(), ClusterID::Nil());
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
@@ -73,7 +74,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_service_,
         *gcs_actor_table_,
         *gcs_node_manager_,
-        cluster_task_manager_,
+        *cluster_task_manager_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -84,7 +85,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {
           success_actors_.emplace_back(std::move(actor));
         },
-        raylet_client_pool_,
+        *raylet_client_pool_,
         /*client_factory=*/
         [this](const rpc::Address &address) { return worker_client_; },
         /*normal_task_resources_changed_callback=*/

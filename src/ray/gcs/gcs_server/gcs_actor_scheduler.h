@@ -136,7 +136,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       rpc::CoreWorkerClientFactoryFn client_factory = nullptr,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
-  virtual ~GcsActorScheduler() = default;
+  ~GcsActorScheduler() override = default;
 
   /// Schedule the specified actor.
   /// If there is no available nodes then the actor would be queued in the
