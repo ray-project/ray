@@ -50,6 +50,7 @@ from ray.serve._private.constants import (
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
     RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -1156,14 +1157,17 @@ class UserCallableWrapper:
             # set to max_ongoing_requests in the replica wrapper.
             result = await to_thread.run_sync(set_serve_context_and_run)
         else:
-            if is_sync_method and not self._warned_about_sync_method_change:
+            if (
+                is_sync_method and not self._warned_about_sync_method_change
+                and run_sync_methods_in_threadpool_override is None
+            ):
                 self._warned_about_sync_method_change = True
                 warnings.warn(
-                    f"Calling sync method '{callable.__name__}' directly on the "
-                    "asyncio loop. In a future version, sync methods will be run in a "
-                    "threadpool by default. Ensure your sync methods are thread safe "
-                    "or keep the existing behavior by making them `async def`."
+                    RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING.format(
+                        method_name=callable.__name__,
+                    )
                 )
+
             result = callable(*args, **kwargs)
             if inspect.iscoroutine(result):
                 result = await result
