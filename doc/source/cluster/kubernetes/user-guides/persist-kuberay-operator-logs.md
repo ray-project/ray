@@ -10,7 +10,7 @@ The KubeRay Operator plays a vital role in managing Ray clusters on Kubernetes. 
 
 ### Deploy Loki monolithic mode
 
-Loki’s Helm chart supports three deployment methods to fit different scalability and performance needs: Monolithic, Simple Scalable, and Microservices. Here, we will demonstrate the monolithic method. For details on each deployment mode, see the [Loki deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) modes documentation.
+Loki’s Helm chart supports three deployment methods to fit different scalability and performance needs: Monolithic, Simple Scalable, and Microservices. This guide demonstrates the monolithic method. For details on each deployment mode, see the [Loki deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) modes documentation.
 
 Deploy the Loki deployment with the [Helm chart repository](https://github.com/grafana/loki/tree/main/production/helm/loki).
 
