@@ -593,10 +593,6 @@ class ReplicaBase(ABC):
     async def _on_initialized(self):
         raise NotImplementedError
 
-    def _set_max_threadpool_size(self, deployment_config: DeploymentConfig):
-        size_limit = deployment_config.max_ongoing_requests
-        to_thread.current_default_thread_limiter().total_tokens = size_limit
-
     async def initialize(self, deployment_config: DeploymentConfig):
         try:
             # Ensure that initialization is only performed once.
@@ -611,7 +607,11 @@ class ReplicaBase(ABC):
                     self._user_callable_initialized = True
 
                 if deployment_config:
-                    self._set_max_threadpool_size(deployment_config)
+                    await asyncio.wrap_future(
+                        self._user_callable_wrapper.set_sync_method_threadpool_limit(
+                            deployment_config.max_ongoing_requests
+                        )
+                    )
                     await asyncio.wrap_future(
                         self._user_callable_wrapper.call_reconfigure(
                             deployment_config.user_config
@@ -639,13 +639,17 @@ class ReplicaBase(ABC):
                 self._version, deployment_config
             )
 
-            self._set_max_threadpool_size(deployment_config)
             self._metrics_manager.set_autoscaling_config(
                 deployment_config.autoscaling_config
             )
             if logging_config_changed:
                 self._configure_logger_and_profilers(deployment_config.logging_config)
 
+            await asyncio.wrap_future(
+                self._user_callable_wrapper.set_sync_method_threadpool_limit(
+                    deployment_config.max_ongoing_requests
+                )
+            )
             if user_config_changed:
                 await asyncio.wrap_future(
                     self._user_callable_wrapper.call_reconfigure(
@@ -1055,6 +1059,12 @@ class UserCallableWrapper:
             )
 
         return wrapper
+
+    @_run_on_user_code_event_loop
+    async def set_sync_method_threadpool_limit(self, limit: int):
+        # NOTE(edoakes): the limit is thread local, so this must
+        # be run on the user code event loop.
+        to_thread.current_default_thread_limiter().total_tokens = limit
 
     def _get_user_callable_method(self, method_name: str) -> Callable:
         if self._is_function:
