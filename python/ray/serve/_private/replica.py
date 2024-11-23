@@ -1139,10 +1139,7 @@ class UserCallableWrapper:
                     "but no generator result callback was provided."
                 )
 
-            curr_context = ray.serve.context._serve_request_context.get()
-
-            def set_serve_context_and_run():
-                ray.serve.context._serve_request_context.set(curr_context)
+            def run_callable():
                 result = callable(*args, **kwargs)
                 if is_generator:
                     for r in result:
@@ -1155,7 +1152,8 @@ class UserCallableWrapper:
             # NOTE(edoakes): we use anyio.to_thread here because it's what Starlette
             # uses (and therefore FastAPI too). The max size of the threadpool is
             # set to max_ongoing_requests in the replica wrapper.
-            result = await to_thread.run_sync(set_serve_context_and_run)
+            # anyio.to_thread propagates ContextVars to the worker thread automatically.
+            result = await to_thread.run_sync(run_callable)
         else:
             if (
                 is_sync_method
