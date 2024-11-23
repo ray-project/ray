@@ -28,7 +28,7 @@ A new Ray session creates a new folder to the temp directory. The latest session
 
 Usually, temp directories are cleared up whenever the machines reboot. As a result, log files may get lost whenever your cluster or some of the nodes are stopped or terminated.
 
-If you need to inspect logs after the clusters are stopped or terminated, you need to store and persist the logs. View the instructions for how to process and export logs for {ref}`clusters on VMs <vm-logging>` and {ref}`KubeRay Clusters <persist-kuberay-custom-resource-logs>`.
+If you need to inspect logs after the clusters stop or terminate, you need to store and persist the logs. See the instructions for how to process and export logs for {ref}`Log persistence <vm-logging>` and {ref}`KubeRay Clusters <persist-kuberay-custom-resource-logs>`.
 
 (logging-directory-structure)=
 ## Log files in logging directory
