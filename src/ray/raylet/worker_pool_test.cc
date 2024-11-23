@@ -393,7 +393,7 @@ class WorkerPoolMock : public WorkerPool {
   // The worker commands by process.
   absl::flat_hash_map<Process, std::vector<std::string>> worker_commands_by_proc_;
   absl::flat_hash_map<Process, StartupToken> startup_tokens_by_proc_;
-  double current_time_ms_ = 0;
+  double current_time_ms_ = 1;  // Use `1` as the initial timestamp.
   absl::flat_hash_map<Process, std::vector<std::string>> pushedProcesses_;
   instrumented_io_context &instrumented_io_service_;
   int64_t error_message_type_;
