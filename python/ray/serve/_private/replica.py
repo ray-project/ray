@@ -1112,6 +1112,7 @@ class UserCallableWrapper:
         *,
         args: Optional[Tuple[Any]] = None,
         kwargs: Optional[Dict[str, Any]] = None,
+        request_metadata: Optional[RequestMetadata] = None,
         generator_result_callback: Optional[Callable] = None,
         run_sync_methods_in_threadpool_override: Optional[bool] = None,
     ) -> Tuple[Any, bool]:
@@ -1132,19 +1133,17 @@ class UserCallableWrapper:
             else run_sync_methods_in_threadpool_override
         )
         is_sync_method = (
-            inspect.isfunction(callable)
-            or inspect.ismethod(callable)
-            and not (
-                inspect.iscoroutinefunction(callable)
-                or inspect.isasyncgenfunction(callable)
-            )
+            inspect.isfunction(callable) or inspect.ismethod(callable)
+        ) and not (
+            inspect.iscoroutinefunction(callable)
+            or inspect.isasyncgenfunction(callable)
         )
 
         if is_sync_method and run_sync_in_threadpool:
             is_generator = inspect.isgeneratorfunction(callable)
             if is_generator:
                 sync_gen_consumed = True
-                if generator_result_callback is None:
+                if request_metadata and not request_metadata.is_streaming:
                     # TODO(edoakes): make this check less redundant with the one in
                     # _handle_user_method_result.
                     raise TypeError(
@@ -1157,6 +1156,10 @@ class UserCallableWrapper:
                 result = callable(*args, **kwargs)
                 if is_generator:
                     for r in result:
+                        # TODO(edoakes): make this less redundant with the handling in
+                        # _handle_user_method_result.
+                        if request_metadata and request_metadata.is_grpc_request:
+                            r = (request_metadata.grpc_context, r.SerializeToString())
                         generator_result_callback(r)
 
                     result = None
@@ -1482,7 +1485,10 @@ class UserCallableWrapper:
                 user_method,
                 args=request_args,
                 kwargs=request_kwargs,
-                generator_result_callback=generator_result_callback,
+                request_metadata=request_metadata,
+                generator_result_callback=generator_result_callback
+                if request_metadata.is_streaming
+                else None,
             )
             return await self._handle_user_method_result(
                 result,
