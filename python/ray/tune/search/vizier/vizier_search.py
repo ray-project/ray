@@ -115,8 +115,6 @@ class VizierSearch(Searcher):
 
         if isinstance(space, dict) and space:
             resolved_vars, domain_vars, grid_vars = parse_spec_vars(space)
-            if resolved_vars:
-                raise TypeError(SPACE_ERROR_MESSAGE)
             if domain_vars or grid_vars:
                 logger.warning(
                     UNRESOLVED_SEARCH_SPACE.format(par="space", cls=type(self))
@@ -126,7 +124,7 @@ class VizierSearch(Searcher):
         elif isinstance(space, svz.SearchSpace):
             self._space = space
         else:
-            raise TypeError(SPACE_ERROR_MESSAGE + " Got {}.".format(type(space)))
+            raise TypeError("Space must be Tune space or Vizier SearchSpace. Got {}.".format(type(space)))
 
     if self._space:
         self._setup_vizier()
