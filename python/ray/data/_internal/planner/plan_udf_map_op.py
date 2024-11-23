@@ -352,8 +352,8 @@ def _generate_transform_fn_for_async_map_batches(
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
         output_batch_queue = queue.Queue()
-        # Use a special object to signal the end of the queue.
-        end_of_queue = object()
+        # Sentinel object to signal the end of the async generator.
+        sentinel = object()
 
         async def process_batch(batch: DataBatch):
             try:
@@ -380,25 +380,20 @@ def _generate_transform_fn_for_async_map_batches(
                     for task in asyncio.as_completed(tasks):
                         await task
             finally:
-                output_batch_queue.put(end_of_queue)
+                output_batch_queue.put(sentinel)
 
         # Use the existing event loop to create and run Tasks to process each batch
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
-        future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
+        asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
         # Yield results as they become available.
-        # After all futures are completed, drain the queue to
-        # yield any remaining results.
-        while not future.done() or not output_batch_queue.empty():
+        while True:
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
-            if out_batch is end_of_queue:
-                # Break out the loop as soon as the end of the queue is reached.
-                # Otherwise, the loop may enter a new iteration
-                # (because `future.done()` doesn't become true immediately),
-                # and stuck on the `output_batch_queue.get()` call forever.
+            if out_batch is sentinel:
+                # Break out of the loop when the sentinel is received.
                 break
             if isinstance(out_batch, Exception):
                 raise out_batch
