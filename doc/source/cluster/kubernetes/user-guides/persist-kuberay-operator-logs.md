@@ -24,7 +24,7 @@ helm install loki grafana/loki -f https://raw.githubusercontent.com/grafana/loki
 
 ### Configure log processing
 
-Create a `fluent-bit-config.yaml` file which configures Fluent Bit to:
+Create a `fluent-bit-config.yaml` file, which configures Fluent Bit to:
 
 * Tail log files from Kubernetes containers.
 * Parse multi-line logs for Docker and CRI (Container Runtime Interface) formats.
