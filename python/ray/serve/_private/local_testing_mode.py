@@ -10,7 +10,7 @@ from typing import Any, Callable, Coroutine, Dict, Optional, Tuple, Union
 import ray
 from ray import cloudpickle
 from ray.serve._private.common import DeploymentID, RequestMetadata
-from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.constants import SERVE_LOGGER_NAME, RAY_SERVE_RUN_SYNC_IN_THREADPOOL
 from ray.serve._private.replica import UserCallableWrapper
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.router import Router
@@ -66,6 +66,7 @@ def make_local_deployment_handle(
         deployment.init_args,
         deployment.init_kwargs,
         deployment_id=deployment_id,
+        run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     )
     try:
         logger.info(f"Initializing local replica class for {deployment_id}.")
