@@ -194,9 +194,8 @@ SERVE_LOG_TIME = "asctime"
 # Logging format with record key to format string dict
 SERVE_LOG_RECORD_FORMAT = {
     SERVE_LOG_REQUEST_ID: "%(request_id)s",
-    SERVE_LOG_ROUTE: "%(route)s",
     SERVE_LOG_APPLICATION: "%(application)s",
-    SERVE_LOG_MESSAGE: "%(filename)s:%(lineno)d - %(message)s",
+    SERVE_LOG_MESSAGE: "-- %(message)s",
     SERVE_LOG_LEVEL_NAME: "%(levelname)s",
     SERVE_LOG_TIME: "%(asctime)s",
 }
