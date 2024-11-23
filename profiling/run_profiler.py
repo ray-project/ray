@@ -158,6 +158,7 @@ class ProfilerRunner:
     def run_profiling(self):
         """Run the complete profiling process"""
         start_time = time.time()
+        sleep_interval = 5  # Add a sleep interval of 2 seconds after each batch size profiling
         
         try:
             # Check system resources
@@ -197,7 +198,7 @@ class ProfilerRunner:
             
             # Run profiling
             print("\nStarting profiling process...")
-            results = profiler.profile_all()
+            results = profiler.profile_all(sleep_interval=sleep_interval)
             
             # Save results with additional information
             profiler.save_results(results, 

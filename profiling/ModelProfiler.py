@@ -177,7 +177,7 @@ class ModelProfiler:
             
         return result
 
-    def profile_all(self) -> List[dict]:
+    def profile_all(self, sleep_interval: int = 0) -> List[dict]:
         """Profile all batch sizes with progress tracking"""
         results = []
         consecutive_errors = 0
@@ -211,6 +211,10 @@ class ModelProfiler:
                         break
                 
                 self._reset_cuda_state()
+                
+                if sleep_interval > 0:
+                    print(f"Sleeping for {sleep_interval} seconds to reduce GPU throttling...")
+                    time.sleep(sleep_interval)
                 
         except KeyboardInterrupt:
             print("\nProfiling interrupted by user")
