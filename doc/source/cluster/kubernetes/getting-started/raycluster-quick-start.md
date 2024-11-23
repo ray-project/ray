@@ -40,7 +40,7 @@ KubeRay offers multiple options for operator installations, such as Helm, Kustom
 (raycluster-deploy)=
 ## Step 3: Deploy a RayCluster custom resource
 
-Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do so, we create a RayCluster Custom Resource (CR) in the `default` namespace.
+Once the KubeRay operator is running, you're ready to deploy a RayCluster. Create a RayCluster Custom Resource (CR) in the `default` namespace.
 
   ::::{tab-set}
 
