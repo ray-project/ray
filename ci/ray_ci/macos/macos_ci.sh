@@ -2,6 +2,7 @@
 
 set -ex
 
+export BUILDKITE="true"
 export CI="true"
 export PYTHON="3.9"
 export RAY_USE_RANDOM_PORTS="1"
@@ -80,6 +81,17 @@ run_core_dashboard_test() {
     --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
     --test_tag_filters=-post_wheel_build -- \
     //:all python/ray/dashboard/... -python/ray/serve/... -rllib/...) || exit 42
+}
+
+run_gcs_client_reconnection_test() {
+  # 42 is the universal rayci exit code for test failures
+  echo "running run_gcs_client_reconnection_test"
+  echo "$RAY_TEST_SUMMARY_DIR"
+  # shellcheck disable=SC2046
+  (bazel test --config=ci --dynamic_mode=off \
+    --test_env=CI $(./ci/run/bazel_export_options) --build_tests_only \
+    --test_tag_filters=-post_wheel_build --test_output=all -- \
+    //:gcs_client_reconnection_test) || exit 42
 }
 
 run_ray_cpp_and_java() {
