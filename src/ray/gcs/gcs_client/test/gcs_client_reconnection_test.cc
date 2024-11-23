@@ -385,6 +385,8 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   state = f3.wait_for(5s);
   RAY_LOG(INFO) << "3. state=" << futureStatusToString(state);
   ASSERT_EQ(std::future_status::ready, state);
+  ASSERT_EQ(std::future_status::ready, f4.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f5.wait_for(1s));
 }
 
 TEST_F(GcsClientReconnectionTest, Timeout) {
