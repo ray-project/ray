@@ -1158,7 +1158,8 @@ class UserCallableWrapper:
             result = await to_thread.run_sync(set_serve_context_and_run)
         else:
             if (
-                is_sync_method and not self._warned_about_sync_method_change
+                is_sync_method
+                and not self._warned_about_sync_method_change
                 and run_sync_methods_in_threadpool_override is None
             ):
                 self._warned_about_sync_method_change = True
