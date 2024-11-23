@@ -40,7 +40,7 @@ A few notes on the above config:
 
 * Inputs: The `tail` input reads log files from `/var/log/containers/*.log`, with `multiline.parser` to handle complex log messages across multiple lines.
 * Filters: The `kubernetes` filter adds metadata like namespace, pod, and container names to each log, enabling more efficient log management and querying in Loki.
-* Outputs: The `loki` output block specifies Loki as the target. The `Host` and `Port` define the Loki service endpoint, and `Labels` add metadata for easier querying in Grafana. Additionally, `tenant_id` allows for multi-tenancy if required by the Loki setup.
+* Outputs: The `loki` output block specifies Loki as the target. The `Host` and `Port` define the Loki service endpoint, and `Labels` adds metadata for easier querying in Grafana. Additionally, `tenant_id` allows for multi-tenancy if required by the Loki setup.
 
 Deploy the Fluent Bit deployment with the [Helm chart repository](https://github.com/fluent/helm-charts/tree/main/charts/fluent-bit).
 
