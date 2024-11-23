@@ -248,7 +248,7 @@ Implement structured logging to enable downstream users and applications to cons
 
 ### Application logs
 A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format and structure your logs.
-As a result, Python loggers need to be set up for both driver and worker processes.
+As a result, you need to set up Python loggers for both driver and worker processes.
 
 ::::{tab-set}
 
