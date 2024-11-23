@@ -355,3 +355,9 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
     os.environ.get("RAY_SERVE_FORCE_LOCAL_TESTING_MODE", "0") == "1"
 )
+
+# Run sync methods defined in the replica in a thread pool by default.
+# XXX: off by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
+        os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "1") == "1"
+)

@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import functools
 import inspect
 import logging
 import os
@@ -9,7 +10,6 @@ import time
 import traceback
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
-from functools import wraps
 from importlib import import_module
 from typing import (
     Any,
@@ -23,6 +23,7 @@ from typing import (
 )
 
 import starlette.responses
+from starlette.concurrency import run_in_threadpool
 from starlette.types import ASGIApp, Message
 
 import ray
@@ -47,6 +48,7 @@ from ray.serve._private.constants import (
     HEALTH_CHECK_METHOD,
     RAY_SERVE_COLLECT_AUTOSCALING_METRICS_ON_HANDLE,
     RAY_SERVE_REPLICA_AUTOSCALING_METRIC_RECORD_PERIOD_S,
+    RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
     RECONFIGURE_METHOD,
     SERVE_CONTROLLER_NAME,
     SERVE_LOGGER_NAME,
@@ -274,6 +276,7 @@ class ReplicaBase(ABC):
             init_args,
             init_kwargs,
             deployment_id=self._deployment_id,
+            run_sync_methods_in_threadpool=RAY_SERVE_RUN_SYNC_IN_THREADPOOL,
         )
 
         # Guards against calling the user's callable constructor multiple times.
@@ -990,6 +993,7 @@ class UserCallableWrapper:
         init_kwargs: Dict,
         *,
         deployment_id: DeploymentID,
+        run_sync_methods_in_threadpool: bool,
     ):
         if not (inspect.isfunction(deployment_def) or inspect.isclass(deployment_def)):
             raise TypeError(
@@ -1003,6 +1007,7 @@ class UserCallableWrapper:
         self._is_function = inspect.isfunction(deployment_def)
         self._deployment_id = deployment_id
         self._destructor_called = False
+        self._run_sync_methods_in_threadpool = run_sync_methods_in_threadpool
 
         # Will be populated in `initialize_callable`.
         self._callable = None
@@ -1033,7 +1038,7 @@ class UserCallableWrapper:
             f
         ), "_run_on_user_code_event_loop can only be used on coroutine functions."
 
-        @wraps(f)
+        @functools.wraps(f)
         def wrapper(self, *args, **kwargs) -> concurrent.futures.Future:
             return asyncio.run_coroutine_threadsafe(
                 f(self, *args, **kwargs),
@@ -1082,15 +1087,55 @@ class UserCallableWrapper:
         else:
             await Response(result).send(scope, receive, send)
 
-    async def _call_func_or_gen(self, callable: Callable, *args, **kwargs) -> Any:
+    async def _call_func_or_gen(
+        self, callable: Callable, *,
+        args: Optional[Tuple[Any]] = None,
+        kwargs: Optional[Dict[str, Any]] = None,
+        generator_result_callback: Optional[Callable] = None,
+        run_sync_methods_in_threadpool_override: Optional[bool] = None,
+    ) -> Any:
         """Call the callable with the provided arguments.
 
         This is a convenience wrapper that will work for `def`, `async def`,
         generator, and async generator functions.
         """
-        result = callable(*args, **kwargs)
-        if inspect.iscoroutine(result):
-            result = await result
+        args = args if args is not None else tuple()
+        kwargs = kwargs if kwargs is not None else dict()
+        run_sync_in_threadpool = (
+            self._run_sync_methods_in_threadpool
+            if run_sync_methods_in_threadpool_override is None
+            else run_sync_methods_in_threadpool_override
+        )
+
+        if (
+            run_sync_in_threadpool
+            and (inspect.isfunction(callable) or inspect.ismethod(callable))
+            and not (inspect.iscoroutinefunction(callable) or inspect.isasyncgenfunction(callable))
+        ):
+            is_generator = inspect.isgeneratorfunction(callable)
+            if is_generator:
+                assert generator_result_callback is not None, (
+                    f"Tried to call generator user method '{callable.__name__}' "
+                    "but no generator result callback was provided."
+                )
+
+            curr_context = ray.serve.context._serve_request_context.get()
+            def set_serve_context_and_run():
+                ray.serve.context._serve_request_context.set(curr_context)
+                result = callable(*args, **kwargs)
+                if is_generator:
+                    for r in result:
+                        generator_result_callback(r)
+
+                    result = None
+
+                return result
+
+            result = await run_in_threadpool(set_serve_context_and_run)
+        else:
+            result = callable(*args, **kwargs)
+            if inspect.iscoroutine(result):
+                result = await result
 
         return result
 
@@ -1129,8 +1174,10 @@ class UserCallableWrapper:
             self._callable = self._deployment_def.__new__(self._deployment_def)
             await self._call_func_or_gen(
                 self._callable.__init__,
-                *self._init_args,
-                **self._init_kwargs,
+                args=self._init_args,
+                kwargs=self._init_kwargs,
+                # Always run the constructor on the main user code thread.
+                run_sync_methods_in_threadpool_override=False,
             )
 
             if isinstance(self._callable, ASGIAppReplicaWrapper):
@@ -1192,7 +1239,7 @@ class UserCallableWrapper:
                 )
             await self._call_func_or_gen(
                 getattr(self._callable, RECONFIGURE_METHOD),
-                user_config,
+                args=(user_config,),
             )
 
     def _prepare_args_for_http_request(
@@ -1384,7 +1431,7 @@ class UserCallableWrapper:
 
             result = await self._handle_user_method_result(
                 await self._call_func_or_gen(
-                    user_method, *request_args, **request_kwargs
+                    user_method, args=request_args, kwargs=request_kwargs
                 ),
                 user_method_name,
                 request_metadata,
@@ -1437,7 +1484,11 @@ class UserCallableWrapper:
         try:
             if hasattr(self._callable, "__del__"):
                 # Make sure to accept `async def __del__(self)` as well.
-                await self._call_func_or_gen(self._callable.__del__)
+                await self._call_func_or_gen(
+                    self._callable.__del__,
+                    # Always run the destructor on the main user callable thread.
+                    run_sync_methods_in_threadpool_override=False,
+                )
 
             if hasattr(self._callable, "__serve_multiplex_wrapper"):
                 await getattr(self._callable, "__serve_multiplex_wrapper").shutdown()

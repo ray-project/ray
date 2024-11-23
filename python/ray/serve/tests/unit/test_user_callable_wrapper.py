@@ -97,6 +97,7 @@ def _make_user_callable_wrapper(
         init_args,
         init_kwargs,
         deployment_id=DeploymentID(name="test_name"),
+        run_sync_methods_in_threadpool=False,
     )
 
 
