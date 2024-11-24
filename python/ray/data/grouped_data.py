@@ -198,10 +198,12 @@ class GroupedData:
             if self._key:
                 projected_block = block_accessor.to_numpy(self._key)
 
-                if not isinstance(projected_block, dict):
-                    # get_block_boundaries() expects a dict but does not check
-                    # the key names
-                    projected_block = {"key": projected_block}
+                # get_block_boundaries() expects a list of arrays
+                if isinstance(self._key, str):
+                    projected_block = [projected_block]
+                else:
+                    # projected_block is a dict of arrays
+                    projected_block = list(projected_block.values())
 
                 boundaries = _get_block_boundaries(projected_block)
             else:
