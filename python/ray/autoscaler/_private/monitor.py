@@ -30,8 +30,8 @@ from ray.autoscaler._private.event_summarizer import EventSummarizer
 from ray.autoscaler._private.load_metrics import LoadMetrics
 from ray.autoscaler._private.prom_metrics import AutoscalerPrometheusMetrics
 from ray.autoscaler._private.util import format_readonly_node_type
+from ray.autoscaler.v2.sdk import get_cluster_resource_state
 from ray.core.generated import gcs_pb2
-from ray.core.generated.autoscaler_pb2 import GetClusterResourceStateReply
 from ray.core.generated.event_pb2 import Event as RayEvent
 from ray.experimental.internal_kv import (
     _initialize_internal_kv,
@@ -239,15 +239,6 @@ class Monitor:
             prom_metrics=self.prom_metrics,
         )
 
-    def get_cluster_resource_state(self):
-        """
-        Get the cluster resource state from GCS.
-        """
-        str_reply = self.gcs_client.get_cluster_resource_state()
-        reply = GetClusterResourceStateReply()
-        reply.ParseFromString(str_reply)
-        return reply.cluster_resource_state
-
     def update_load_metrics(self):
         """Fetches resource usage data from GCS and updates load metrics."""
 
@@ -257,9 +248,8 @@ class Monitor:
 
         # This is a workaround to get correct idle_duration_ms
         # from "get_cluster_resource_state"
-        # reason: https://github.com/ray-project/ray/pull/48519#issuecomment-2481659346
-        # TODO(mimi): use idle_duration_ms from "get_all_resource_usage"
-        cluster_resource_state = self.get_cluster_resource_state()
+        # ref: https://github.com/ray-project/ray/pull/48519#issuecomment-2481659346
+        cluster_resource_state = get_cluster_resource_state(self.gcs_client)
         ray_node_states = cluster_resource_state.node_states
         ray_nodes_idle_duration_ms_by_id = {
             node.node_id: node.idle_duration_ms for node in ray_node_states
@@ -341,7 +331,7 @@ class Monitor:
                 infeasible_bundles,
                 pending_placement_groups,
                 cluster_full,
-                idle_duration_ms,
+                time.time() - idle_duration_ms / 1000,  # last_used_time
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
