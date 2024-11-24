@@ -479,10 +479,10 @@ class BlockAccessor:
 
 def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
     """Compute boundaries of the groups within a block, which is represented
-    by a list of sorted numpy arrays for each column.
+    by a list of sorted 1D numpy arrays for each column.
 
     Args:
-        arrays: a list of sorted numpy arrays. This is generally given by the
+        arrays: a list of sorted 1D numpy arrays. This is generally given by the
         dictionary values of ``BlockAccessor.to_numpy()``.
 
     Returns:
@@ -490,6 +490,9 @@ def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
         group, i.e., there are ``num_groups + 1`` entries and the first and last
         entries are 0 and ``len(array)`` respectively.
 
+    Note:
+        This function is implemented as finding the row indices where any of the
+        columns is not equal to the previous row.
     """
     return np.hstack(
         [
