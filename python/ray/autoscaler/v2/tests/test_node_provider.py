@@ -492,6 +492,43 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
+    def test_inconsistent_pods_raycr(self):
+        """
+        Test the case where the cluster state has not yet reached the desired state.
+        Specifically, the replicas field in the RayCluster CR does not match the actual
+        number of Pods.
+        """
+        # Check the assumptions of the test
+        small_group = "small-group"
+        num_pods = 0
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                num_pods += 1
+
+        assert (
+            self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["groupName"]
+            == small_group
+        )
+        desired_replicas = num_pods + 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "replicas"
+        ] = desired_replicas
+
+        # Launch a new node. The replicas field should be incremented by 1, even though
+        # the cluster state has not yet reached the goal state.
+        launch_request = {"small-group": 1}
+        self.provider.launch(shape=launch_request, request_id="launch-1")
+
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert len(patches) == 1
+        assert patches[0] == {
+            "op": "replace",
+            "path": "/spec/workerGroupSpecs/0/replicas",
+            "value": desired_replicas + 1,
+        }
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
