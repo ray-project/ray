@@ -1,6 +1,6 @@
 import asyncio
 import pickle
-from abc import ABC
+from abc import ABC, abstractmethod
 from typing import Optional, Set, Tuple, Union
 
 import ray
@@ -11,6 +11,7 @@ from ray.serve._private.common import (
     ReplicaQueueLengthInfo,
     RunningReplicaInfo,
 )
+from ray.serve._private.replica_result import ActorReplicaResult, ReplicaResult
 from ray.serve._private.replica_scheduler.common import PendingRequest
 from ray.serve._private.utils import JavaActorHandleProxy
 from ray.serve.generated.serve_pb2 import RequestMetadata as RequestMetadataProto
@@ -22,54 +23,6 @@ class ReplicaWrapper(ABC):
     This is used to abstract away details of Ray actor calls for testing.
     """
 
-    @property
-    def replica_id(self) -> ReplicaID:
-        """ID of this replica."""
-        pass
-
-    @property
-    def multiplexed_model_ids(self) -> Set[str]:
-        """Set of model IDs on this replica."""
-        pass
-
-    @property
-    def max_ongoing_requests(self) -> int:
-        """Max concurrent requests that can be sent to this replica."""
-        pass
-
-    def push_proxy_handle(self, handle: ActorHandle):
-        """When on proxy, push proxy's self handle to replica"""
-        pass
-
-    async def get_queue_len(self, *, deadline_s: float) -> int:
-        """Returns current queue len for the replica.
-
-        `deadline_s` is passed to verify backoff for testing.
-        """
-        pass
-
-    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
-        """Send request to this replica."""
-        pass
-
-    async def send_request_with_rejection(
-        self,
-        pr: PendingRequest,
-    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
-        """Send request to this replica.
-
-        The replica will yield a system message (ReplicaQueueLengthInfo) before
-        executing the actual request. This can cause it to reject the request.
-
-        The result will *always* be a generator, so for non-streaming requests it's up
-        to the caller to resolve it to its first (and only) ObjectRef.
-
-        Only supported for Python replicas.
-        """
-        pass
-
-
-class ActorReplicaWrapper:
     def __init__(self, replica_info: RunningReplicaInfo):
         self._replica_info = replica_info
         self._multiplexed_model_ids = set(replica_info.multiplexed_model_ids)
@@ -81,6 +34,7 @@ class ActorReplicaWrapper:
 
     @property
     def replica_id(self) -> ReplicaID:
+        """ID of this replica."""
         return self._replica_info.replica_id
 
     @property
@@ -93,10 +47,12 @@ class ActorReplicaWrapper:
 
     @property
     def multiplexed_model_ids(self) -> Set[str]:
+        """Set of model IDs on this replica."""
         return self._multiplexed_model_ids
 
     @property
     def max_ongoing_requests(self) -> int:
+        """Max concurrent requests that can be sent to this replica."""
         return self._replica_info.max_ongoing_requests
 
     @property
@@ -104,8 +60,40 @@ class ActorReplicaWrapper:
         return self._replica_info.is_cross_language
 
     def push_proxy_handle(self, handle: ActorHandle):
+        """When on proxy, push proxy's self handle to replica"""
         self._actor_handle.push_proxy_handle.remote(handle)
 
+    @abstractmethod
+    async def get_queue_len(self, *, deadline_s: float) -> int:
+        """Returns current queue len for the replica.
+
+        `deadline_s` is passed to verify backoff for testing.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
+        """Send request to this replica."""
+        raise NotImplementedError
+
+    @abstractmethod
+    async def send_request_with_rejection(
+        self, pr: PendingRequest
+    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
+        """Send request to this replica.
+
+        The replica will yield a system message (ReplicaQueueLengthInfo) before
+        executing the actual request. This can cause it to reject the request.
+
+        The result will *always* be a generator, so for non-streaming requests it's up
+        to the caller to resolve it to its first (and only) ObjectRef.
+
+        Only supported for Python replicas.
+        """
+        raise NotImplementedError
+
+
+class ActorReplicaWrapper(ReplicaWrapper):
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # NOTE(edoakes): the `get_num_ongoing_requests` method name is shared by
         # the Python and Java replica implementations. If you change it, you need to
@@ -131,7 +119,6 @@ class ActorReplicaWrapper:
         return self._actor_handle.handle_request.remote(
             RequestMetadataProto(
                 request_id=pr.metadata.request_id,
-                endpoint=pr.metadata.endpoint,
                 # Default call method in java is "call," not "__call__" like Python.
                 call_method="call"
                 if pr.metadata.call_method == "__call__"
@@ -160,16 +147,23 @@ class ActorReplicaWrapper:
 
         return method.remote(pickle.dumps(pr.metadata), *pr.args, **pr.kwargs)
 
-    def send_request(self, pr: PendingRequest) -> Union[ObjectRef, ObjectRefGenerator]:
+    def send_request(self, pr: PendingRequest) -> ReplicaResult:
         if self._replica_info.is_cross_language:
-            return self._send_request_java(pr)
+            return ActorReplicaResult(
+                self._send_request_java(pr),
+                is_streaming=pr.metadata.is_streaming,
+                request_id=pr.metadata.request_id,
+            )
         else:
-            return self._send_request_python(pr, with_rejection=False)
+            return ActorReplicaResult(
+                self._send_request_python(pr, with_rejection=False),
+                is_streaming=pr.metadata.is_streaming,
+                request_id=pr.metadata.request_id,
+            )
 
     async def send_request_with_rejection(
-        self,
-        pr: PendingRequest,
-    ) -> Tuple[Optional[ObjectRefGenerator], ReplicaQueueLengthInfo]:
+        self, pr: PendingRequest
+    ) -> Tuple[Optional[ReplicaResult], ReplicaQueueLengthInfo]:
         assert (
             not self._replica_info.is_cross_language
         ), "Request rejection not supported for Java."
@@ -182,7 +176,14 @@ class ActorReplicaWrapper:
             if not queue_len_info.accepted:
                 return None, queue_len_info
             else:
-                return obj_ref_gen, queue_len_info
+                return (
+                    ActorReplicaResult(
+                        obj_ref_gen,
+                        is_streaming=pr.metadata.is_streaming,
+                        request_id=pr.metadata.request_id,
+                    ),
+                    queue_len_info,
+                )
         except asyncio.CancelledError as e:
             # HTTP client disconnected or request was explicitly canceled.
             ray.cancel(obj_ref_gen)

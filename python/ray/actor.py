@@ -924,6 +924,7 @@ class ActorClass:
             scheduling_strategy: Strategy about how to schedule this actor.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
+            _labels: The key-value labels of the actor.
 
         Returns:
             A handle to the newly created actor.
@@ -965,7 +966,11 @@ class ActorClass:
         is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
-            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
+            actor_options["max_concurrency"] = (
+                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                if is_asyncio
+                else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
+            )
 
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
@@ -1193,6 +1198,7 @@ class ActorClass:
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
+            labels=actor_options.get("_labels"),
         )
 
         if _actor_launch_hook:

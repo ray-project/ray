@@ -58,7 +58,7 @@ class TestBC(unittest.TestCase):
         )
 
         num_iterations = 350
-        min_reward = 120.0
+        min_return_to_reach = 120.0
 
         # TODO (simon): Add support for recurrent modules.
         algo = config.build()
@@ -73,14 +73,15 @@ class TestBC(unittest.TestCase):
                     EPISODE_RETURN_MEAN
                 ]
                 print(f"iter={i}, R={episode_return_mean}")
-                if episode_return_mean > min_reward:
+                if episode_return_mean > min_return_to_reach:
                     print("BC has learnt the task!")
                     learnt = True
                     break
 
         if not learnt:
             raise ValueError(
-                f"`BC` did not reach {min_reward} reward from expert offline data!"
+                f"`BC` did not reach {min_return_to_reach} reward from "
+                "expert offline data!"
             )
 
         algo.stop()

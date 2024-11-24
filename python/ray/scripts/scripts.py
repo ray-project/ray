@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
+import requests
 
 import click
 import psutil
@@ -198,6 +199,12 @@ def continue_debug_session(live_jobs: Set[str]):
                 time.sleep(1.0)
 
 
+def none_to_empty(s):
+    if s is None:
+        return ""
+    return s
+
+
 def format_table(table):
     """Format a table as a list of lines with aligned columns."""
     result = []
@@ -213,7 +220,14 @@ def format_table(table):
 @click.option(
     "--address", required=False, type=str, help="Override the address to connect to."
 )
-def debug(address):
+@click.option(
+    "-v",
+    "--verbose",
+    required=False,
+    is_flag=True,
+    help="Shows additional fields in breakpoint selection page.",
+)
+def debug(address: str, verbose: bool):
     """Show all active breakpoints and exceptions in the Ray debugger."""
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
@@ -246,19 +260,50 @@ def debug(address):
         sessions_data = sorted(
             sessions_data, key=lambda data: data["timestamp"], reverse=True
         )
-        table = [["index", "timestamp", "Ray task", "filename:lineno"]]
-        for i, data in enumerate(sessions_data):
-            date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
-                "%Y-%m-%d %H:%M:%S"
-            )
-            table.append(
+        if verbose:
+            table = [
                 [
-                    str(i),
-                    date,
-                    data["proctitle"],
-                    data["filename"] + ":" + str(data["lineno"]),
+                    "index",
+                    "timestamp",
+                    "Ray task",
+                    "filename:lineno",
+                    "Task ID",
+                    "Worker ID",
+                    "Actor ID",
+                    "Node ID",
                 ]
-            )
+            ]
+            for i, data in enumerate(sessions_data):
+                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                table.append(
+                    [
+                        str(i),
+                        date,
+                        data["proctitle"],
+                        data["filename"] + ":" + str(data["lineno"]),
+                        data["task_id"],
+                        data["worker_id"],
+                        none_to_empty(data["actor_id"]),
+                        data["node_id"],
+                    ]
+                )
+        else:
+            # Non verbose mode: no IDs.
+            table = [["index", "timestamp", "Ray task", "filename:lineno"]]
+            for i, data in enumerate(sessions_data):
+                date = datetime.utcfromtimestamp(data["timestamp"]).strftime(
+                    "%Y-%m-%d %H:%M:%S"
+                )
+                table.append(
+                    [
+                        str(i),
+                        date,
+                        data["proctitle"],
+                        data["filename"] + ":" + str(data["lineno"]),
+                    ]
+                )
         for i, line in enumerate(format_table(table)):
             print(line)
             if i >= 1 and not sessions_data[i - 1]["traceback"].startswith(
@@ -2537,6 +2582,15 @@ def metrics_group():
 @metrics_group.command(name="launch-prometheus")
 def launch_prometheus():
     install_and_start_prometheus.main()
+
+
+@metrics_group.command(name="shutdown-prometheus")
+def shutdown_prometheus():
+    try:
+        requests.post("http://localhost:9090/-/quit")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
 
 
 def add_command_alias(command, name, hidden):

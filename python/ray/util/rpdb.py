@@ -259,6 +259,10 @@ def _connect_ray_pdb(
         "traceback": "\n".join(traceback.format_exception(*sys.exc_info())),
         "timestamp": time.time(),
         "job_id": ray.get_runtime_context().get_job_id(),
+        "node_id": ray.get_runtime_context().get_node_id(),
+        "worker_id": ray.get_runtime_context().get_worker_id(),
+        "actor_id": ray.get_runtime_context().get_actor_id(),
+        "task_id": ray.get_runtime_context().get_task_id(),
     }
     _internal_kv_put(
         "RAY_PDB_{}".format(breakpoint_uuid),
@@ -280,22 +284,22 @@ def set_trace(breakpoint_uuid=None):
 
     Can be used within a Ray task or actor.
     """
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy.set_trace(breakpoint_uuid)
-
-    # If there is an active debugger already, we do not want to
-    # start another one, so "set_trace" is just a no-op in that case.
-    if ray._private.worker.global_worker.debugger_breakpoint == b"":
-        frame = sys._getframe().f_back
-        rdb = _connect_ray_pdb(
-            host=None,
-            port=None,
-            patch_stdstreams=False,
-            quiet=None,
-            breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
-            debugger_external=ray._private.worker.global_worker.ray_debugger_external,
-        )
-        rdb.set_trace(frame=frame)
+    if os.environ.get("RAY_DEBUG", "1") == "legacy":
+        # If there is an active debugger already, we do not want to
+        # start another one, so "set_trace" is just a no-op in that case.
+        if ray._private.worker.global_worker.debugger_breakpoint == b"":
+            frame = sys._getframe().f_back
+            rdb = _connect_ray_pdb(
+                host=None,
+                port=None,
+                patch_stdstreams=False,
+                quiet=None,
+                breakpoint_uuid=breakpoint_uuid.decode() if breakpoint_uuid else None,
+                debugger_external=ray._private.worker.global_worker.ray_debugger_external,  # noqa: E501
+            )
+            rdb.set_trace(frame=frame)
 
 
 def _driver_set_trace():
@@ -304,27 +308,27 @@ def _driver_set_trace():
     This disables Ray driver logs temporarily so that the PDB console is not
     spammed: https://github.com/ray-project/ray/issues/18172
     """
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy.set_trace()
+    if os.environ.get("RAY_DEBUG", "1") == "legacy":
+        print("*** Temporarily disabling Ray worker logs ***")
+        ray._private.worker._worker_logs_enabled = False
 
-    print("*** Temporarily disabling Ray worker logs ***")
-    ray._private.worker._worker_logs_enabled = False
+        def enable_logging():
+            print("*** Re-enabling Ray worker logs ***")
+            ray._private.worker._worker_logs_enabled = True
 
-    def enable_logging():
-        print("*** Re-enabling Ray worker logs ***")
-        ray._private.worker._worker_logs_enabled = True
-
-    pdb = _PdbWrap(enable_logging)
-    frame = sys._getframe().f_back
-    pdb.set_trace(frame)
+        pdb = _PdbWrap(enable_logging)
+        frame = sys._getframe().f_back
+        pdb.set_trace(frame)
 
 
-def _is_ray_debugger_enabled():
-    return "RAY_PDB" in os.environ or ray.util.ray_debugpy._is_ray_debugger_enabled()
+def _is_ray_debugger_post_mortem_enabled():
+    return os.environ.get("RAY_DEBUG_POST_MORTEM", "0") == "1"
 
 
 def _post_mortem():
-    if ray.util.ray_debugpy._is_ray_debugger_enabled():
+    if os.environ.get("RAY_DEBUG", "1") == "1":
         return ray.util.ray_debugpy._post_mortem()
 
     rdb = _connect_ray_pdb(

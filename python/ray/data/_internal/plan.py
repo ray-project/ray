@@ -165,7 +165,7 @@ class ExecutionPlan:
                 else:
                     assert len(sources) == 1
                     plan = ExecutionPlan(DatasetStats(metadata={}, parent=None))
-                    plan.link_logical_plan(LogicalPlan(sources[0]))
+                    plan.link_logical_plan(LogicalPlan(sources[0], plan._context))
                     schema = plan.schema()
                     count = plan.meta_count()
         else:
@@ -279,6 +279,7 @@ class ExecutionPlan:
         execution plan.
         """
         self._logical_plan = logical_plan
+        self._logical_plan._context = self._context
 
     def copy(self) -> "ExecutionPlan":
         """Create a shallow copy of this execution plan.
@@ -582,8 +583,8 @@ class ExecutionPlan:
         return isinstance(root_op, Read) and len(root_op.input_dependencies) == 0
 
     def has_computed_output(self) -> bool:
-        """Whether this plan has a computed snapshot for the final operator, i.e. for the
-        output of this plan.
+        """Whether this plan has a computed snapshot for the final operator, i.e. for
+        the output of this plan.
         """
         return (
             self._snapshot_bundle is not None
