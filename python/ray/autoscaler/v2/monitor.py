@@ -17,6 +17,7 @@ import ray._private.utils
 from ray._private.event.event_logger import get_event_logger
 from ray._private.ray_logging import setup_component_logger
 from ray._private.usage.usage_lib import record_extra_usage_tag
+from ray._private.worker import SCRIPT_MODE
 from ray._raylet import GcsClient
 from ray.autoscaler._private.constants import (
     AUTOSCALER_METRIC_PORT,
@@ -77,7 +78,7 @@ class AutoscalerMonitor:
             )
         self._session_name = self._get_session_name(self.gcs_client)
         logger.info(f"session_name: {self._session_name}")
-        worker.mode = 0
+        worker.set_mode(SCRIPT_MODE)
         head_node_ip = self.gcs_address.split(":")[0]
 
         self.autoscaler = None
