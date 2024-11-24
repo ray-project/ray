@@ -44,12 +44,12 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
                     "--skip-version-check",
                 ]
             )
-            # Logging is not ready yet. Print to stdout for now.
-            print("The Ray head is ready. Starting the autoscaler.")
+            logger.info("The Ray head is ready. Starting the autoscaler.")
             break
         except subprocess.CalledProcessError:
-            print("The Ray head is not yet ready.")
-            print(f"Will check again in {BACKOFF_S} seconds.")
+            logger.info(
+                f"The Ray head is not ready. Will check again in {BACKOFF_S} seconds."
+            )
             time.sleep(BACKOFF_S)
 
     # The Ray head container sets up the log directory. Thus, we set up logging
