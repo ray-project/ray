@@ -887,13 +887,11 @@ class IMPALA(Algorithm):
 
     def balance_backpressure(self):
         # Sleep for n seconds to balance backpressure.
-        sleep_time = self._sleep_time_controller.current
-        time.sleep(sleep_time)
+        time.sleep(self._sleep_time_controller.current)
 
         # Adjust the sleep time once every iteration (on the first `training_step()`
         # call in each iteration).
         if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
-            self.metrics.log_value("_current_sleep_time", sleep_time, window=1)
             train_throughput = self.metrics.peek(
                 (
                     LEARNER_RESULTS,
@@ -909,6 +907,11 @@ class IMPALA(Algorithm):
                 window=1,
             )
             self._sleep_time_controller.log_result(train_throughput)
+            self.metrics.log_value(
+                "_current_sleep_time",
+                self._sleep_time_controller.current,
+                window=1,
+            )
 
     @classmethod
     @override(Algorithm)

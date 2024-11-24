@@ -232,7 +232,7 @@ class Stats:
         if self._throughput is not False:
             assert self._reduce_method == "sum"
             assert self._window in [None, float("inf")]
-            self._throughput_last_time = time.perf_counter()
+            self._throughput_last_time = -1
 
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
@@ -320,10 +320,13 @@ class Stats:
             delta_sum = reduced - self._hist[-1]
             assert delta_sum >= 0
             time_now = time.perf_counter()
-            delta_time = time_now - self._throughput_last_time
-            assert delta_time >= 0.0
+            if self._throughput_last_time == -1:
+                self._throughput = np.nan
+            else:
+                delta_time = time_now - self._throughput_last_time
+                assert delta_time >= 0.0
+                self._throughput = delta_sum / delta_time
             self._throughput_last_time = time_now
-            self._throughput = delta_sum / delta_time
 
         # Reduce everything to a single (init) value.
         self.values = values

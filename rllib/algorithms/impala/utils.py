@@ -47,6 +47,12 @@ class SleepTimeController:
             return self.high
 
     def log_result(self, performance):
+        self.iteration += 1
+
+        # Skip first 2 iterations for ignoring warm-up effect.
+        if self.iteration < 2:
+            return
+
         self.results[self.current].append(performance)
 
         # If all candidates have at least 3 results logged, re-evaluate
@@ -81,8 +87,6 @@ class SleepTimeController:
                 self.results.pop(low, None)
 
             self._recompute_candidates()
-
-        self.iteration += 1
 
 
 if __name__ == "__main__":
