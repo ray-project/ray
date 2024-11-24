@@ -47,7 +47,7 @@ def run_kuberay_autoscaler(cluster_name: str, cluster_namespace: str):
             logger.info("The Ray head is ready. Starting the autoscaler.")
             break
         except subprocess.CalledProcessError:
-            logger.info(
+            logger.warning(
                 f"The Ray head is not ready. Will check again in {BACKOFF_S} seconds."
             )
             time.sleep(BACKOFF_S)
