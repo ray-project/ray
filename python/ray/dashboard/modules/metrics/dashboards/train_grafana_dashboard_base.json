@@ -76,7 +76,7 @@
         },
         "datasource": "${datasource}",
         "definition": "label_values(ray_train_report_total_blocked_time_s{{{global_filters}}}, ray_train_run_name)",
-        "description": "Filter queries to specific ray sessions.",
+        "description": "Filter queries to specific Ray Train run name.",
         "error": null,
         "hide": 0,
         "includeAll": true,
