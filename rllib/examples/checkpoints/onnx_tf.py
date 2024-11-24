@@ -23,7 +23,15 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Configure our PPO Algorithm.
-    config = ppo.PPOConfig().env_runners(num_env_runners=1).framework(args.framework)
+    config = (
+        ppo.PPOConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
+        .env_runners(num_env_runners=1)
+        .framework(args.framework)
+    )
 
     outdir = "export_tf"
     if os.path.exists(outdir):

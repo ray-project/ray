@@ -1,12 +1,8 @@
 group: others
 depends_on:
   - forge
-  - oss-ci-base_build
 steps:
-  #build
-  - name: doctestbuild
-    wanda: ci/docker/doctest.build.wanda.yaml
-
+  # dependencies
   - label: ":tapioca: build: pip-compile dependencies"
     key: pip_compile_dependencies
     instance_type: small
@@ -19,10 +15,13 @@ steps:
       - cp -f ./python/requirements_compiled.txt /artifact-mount/
     soft_fail: true
     job_env: oss-ci-base_test-py3.11
-    depends_on:
-      - oss-ci-base_test-multipy
+    depends_on: oss-ci-base_test-multipy
 
-  # test
+  # docs
+  - name: doctestbuild
+    wanda: ci/docker/doctest.build.wanda.yaml
+    depends_on: oss-ci-base_build
+
   - label: doc tests
     instance_type: large
     commands:
@@ -40,6 +39,7 @@ steps:
         --skip-ray-installation
     depends_on: doctestbuild
 
+  # java
   - label: ":java: java tests"
     tags: java
     instance_type: medium
@@ -48,7 +48,7 @@ steps:
       - docker run -i --rm --volume /tmp/artifacts:/artifact-mount --shm-size=2.5gb
         "$${RAYCI_WORK_REPO}":"$${RAYCI_BUILD_ID}"-corebuild /bin/bash -iecuo pipefail 
         "./java/test.sh"
-    depends_on: [ "corebuild", "forge" ]
+    depends_on: corebuild
 
   # bot
   - label: ":robot_face: CI weekly green metric"

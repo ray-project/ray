@@ -23,6 +23,10 @@ num_envs_per_env_runner = 5
 # Define the config as an APPOConfig object.
 config = (
     APPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment("multi_cartpole")
     .env_runners(
         num_env_runners=4,

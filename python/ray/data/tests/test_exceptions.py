@@ -77,7 +77,7 @@ def test_system_exception(caplog, propagate_logs, ray_start_regular_shared):
 def test_full_traceback_logged_with_ray_debugger(
     caplog, propagate_logs, ray_start_regular_shared, monkeypatch
 ):
-    monkeypatch.setenv("RAY_PDB", 1)
+    monkeypatch.setenv("RAY_DEBUG_POST_MORTEM", 1)
 
     def f(row):
         1 / 0

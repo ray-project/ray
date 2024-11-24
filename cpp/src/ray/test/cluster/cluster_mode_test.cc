@@ -588,11 +588,11 @@ class Pip {
       : packages(packages), pip_check(pip_check) {}
 };
 
-void to_json(json &j, const Pip &pip) {
-  j = json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
+void to_json(nlohmann::json &j, const Pip &pip) {
+  j = nlohmann::json{{"packages", pip.packages}, {"pip_check", pip.pip_check}};
 };
 
-void from_json(const json &j, Pip &pip) {
+void from_json(const nlohmann::json &j, Pip &pip) {
   j.at("packages").get_to(pip.packages);
   j.at("pip_check").get_to(pip.pip_check);
 };

@@ -793,11 +793,11 @@ class Trial:
         return None
 
     def _handle_restore_error(self, exc: Exception):
+        # For Restoration errors, we only increment the restore failure count
+        # if the number of failures exceeds the restore retry limit.
         if self.temporary_state.num_restore_failures >= int(
             os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
         ):
-            # Restore was unsuccessful, try again without checkpoint.
-            self.clear_checkpoint()
             self.run_metadata.num_failures += 1
         else:
             self.temporary_state.num_restore_failures += 1
@@ -882,12 +882,6 @@ class Trial:
 
     def has_checkpoint(self) -> bool:
         return self.checkpoint is not None
-
-    def clear_checkpoint(self):
-        if self.latest_checkpoint_result:
-            self.latest_checkpoint_result.checkpoint = None
-        self.temporary_state.restoring_from = None
-        self.run_metadata.invalidate_cache()
 
     def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.

@@ -77,11 +77,27 @@ After you're done testing, you can shut down Ray Serve by interrupting the `serv
 (ServeController pid=9865) INFO 2022-08-11 11:47:19,929 controller 9865 deployment_state.py:1257 - Removing 1 replicas from deployment 'HelloDeployment'.
 ```
 
-Note that rerunning `serve run` will redeploy all deployments. To prevent redeploying those deployments whose code hasn't changed, you can use `serve deploy`; see the [Production Guide](serve-in-production) for details.
+Note that rerunning `serve run` redeploys all deployments. To prevent redeploying the deployments whose code hasn't changed, you can use `serve deploy`; see the [Production Guide](serve-in-production) for details.
+
+### Local Testing Mode
+
+:::{note}
+This is an experimental feature.
+:::
+
+Ray Serve supports a local testing mode that allows you to run your deployments locally in a single process. This mode is useful for unit testing and debugging your application logic without the overhead of a full Ray cluster. To enable this mode, use the `_local_testing_mode` flag in the `serve.run` function:
+
+```{literalinclude} ../doc_code/local_dev.py
+:start-after: __local_dev_testing_start__
+:end-before: __local_dev_testing_end__
+:language: python
+```
+
+This mode runs each deployment in a background thread and supports most of the same features as running on a full Ray cluster. Note that some features, such as converting `DeploymentResponses` to `ObjectRefs`, are not supported in local testing mode. If you encounter limitations, consider filing a feature request on GitHub.
 
 ## Testing on a remote cluster
 
-To test on a remote cluster, you'll use `serve run` again, but this time you'll pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
+To test on a remote cluster, use `serve run` again, but this time, pass in an `--address` argument to specify the address of the Ray cluster to connect to.  For remote clusters, this address has the form `ray://<head-node-ip-address>:10001`; see [Ray Client](ray-client-ref) for more information.
 
 When making the transition from your local machine to a remote cluster, you'll need to make sure your cluster has a similar environment to your local machine--files, environment variables, and Python packages, for example.
 

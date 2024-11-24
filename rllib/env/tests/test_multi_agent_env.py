@@ -678,6 +678,10 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("flex_agents_multi_agent")
             .env_runners(num_env_runners=0)
             .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
@@ -700,8 +704,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("sometimes_zero_agents")
-            .env_runners(num_env_runners=0, enable_connectors=True)
+            .env_runners(num_env_runners=0)
         )
         algo = config.build()
         for i in range(4):

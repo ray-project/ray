@@ -7,6 +7,8 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import concat, unify_schemas
 from ray.data.block import BlockAccessor
 from ray.data.extensions import (
@@ -16,7 +18,7 @@ from ray.data.extensions import (
     ArrowTensorArray,
     ArrowTensorType,
     ArrowVariableShapedTensorType,
-    object_extension_type_allowed,
+    _object_extension_type_allowed,
 )
 
 
@@ -87,17 +89,27 @@ def test_arrow_concat_tensor_extension_uniform():
     t2 = pa.table({"a": ArrowTensorArray.from_numpy(a2)})
     ts = [t1, t2]
     out = concat(ts)
+
     # Check length.
     assert len(out) == 6
+
     # Check schema.
+    if DataContext.get_current().use_arrow_tensor_v2:
+        tensor_type = ArrowTensorTypeV2
+    else:
+        tensor_type = ArrowTensorType
+
     assert out.column_names == ["a"]
-    assert out.schema.types == [ArrowTensorType((2, 2), pa.int64())]
+    assert out.schema.types == [tensor_type((2, 2), pa.int64())]
+
     # Confirm that concatenation is zero-copy (i.e. it didn't trigger chunk
     # consolidation).
     assert out["a"].num_chunks == 2
+
     # Check content.
     np.testing.assert_array_equal(out["a"].chunk(0).to_numpy(), a1)
     np.testing.assert_array_equal(out["a"].chunk(1).to_numpy(), a2)
+
     # Check equivalence.
     expected = pa.concat_tables(ts, promote=True)
     assert out == expected
@@ -187,7 +199,7 @@ def test_arrow_concat_tensor_extension_uniform_but_different():
 
 
 @pytest.mark.skipif(
-    not object_extension_type_allowed(), reason="Object extension type not supported."
+    not _object_extension_type_allowed(), reason="Object extension type not supported."
 )
 def test_arrow_concat_with_objects():
     obj = types.SimpleNamespace(a=1, b="test")
@@ -446,9 +458,10 @@ def _create_dataset(op, data):
         assert op == "map_batches"
 
         def map_batches(x):
+            row_id = x["id"][0]
             return {
                 "id": x["id"],
-                "my_data": data[x["id"][0]],
+                "my_data": [data[row_id]],
             }
 
         ds = ds.map_batches(map_batches, batch_size=None)
@@ -460,14 +473,14 @@ def _create_dataset(op, data):
 
 
 @pytest.mark.skipif(
-    object_extension_type_allowed(), reason="Arrow table supports pickled objects"
+    _object_extension_type_allowed(), reason="Arrow table supports pickled objects"
 )
 @pytest.mark.parametrize(
     "op, data",
     [
         ("map", [UnsupportedType(), 1]),
-        ("map_batches", [[None], [1]]),
-        ("map_batches", [[{"a": 1}], [{"a": 2}]]),
+        ("map_batches", [None, 1]),
+        ("map_batches", [{"a": 1}, {"a": 2}]),
     ],
 )
 def test_fallback_to_pandas_on_incompatible_data(
@@ -485,34 +498,59 @@ def test_fallback_to_pandas_on_incompatible_data(
 
 
 @pytest.mark.parametrize(
-    "op, data",
+    "op, data, should_fail, expected_type",
     [
-        ("map", [1, 2**100]),
-        ("map_batches", [[1.0], [2**4]]),
+        # Case A: Upon serializing to Arrow fallback to `ArrowPythonObjectType`
+        ("map_batches", [1, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", [1.0, 2**100], False, ArrowPythonObjectType()),
+        ("map_batches", ["1.0", 2**100], False, ArrowPythonObjectType()),
+        # Case B: No fallback to `ArrowPythonObjectType` and hence arrow is enforcing
+        #         deduced schema
+        ("map_batches", [1.0, 2**4], True, None),
+        ("map_batches", ["1.0", 2**4], True, None),
     ],
 )
-def test_pyarrow_conversion_error_detailed_info(
+def test_pyarrow_conversion_error_handling(
     ray_start_regular_shared,
     op,
     data,
+    should_fail: bool,
+    expected_type: pa.DataType,
 ):
     # Ray Data infers the block type (arrow or pandas) and the block schema
-    # based on the first UDF output.
-    # In one of the following cases, an error will be raised:
-    # * The first UDF output is compatible with Arrow, but the second is not.
-    # * Both UDF outputs are compatible with Arrow, but the second has a different
-    #   schema.
-    # Check that we'll raise an ArrowConversionError with detailed information
-    # about the incompatible data.
+    # based on the first *block* produced by UDF.
+    #
+    # These tests simulate following scenarios
+    #   1. (Case A) Type of the value of the first block is deduced as Arrow scalar
+    #      type, but second block carries value that overflows pa.int64 representation,
+    #      and column henceforth will be serialized as `ArrowPythonObjectExtensionType`
+    #      coercing first block to it as well
+    #
+    #   2. (Case B) Both blocks carry proper Arrow scalars which, however, have
+    #      diverging types and therefore Arrow fails during merging of these blocks
+    #      into 1
     ds = _create_dataset(op, data)
 
-    with pytest.raises(Exception) as e:
+    if should_fail:
+        with pytest.raises(Exception) as e:
+            ds.materialize()
+
+        error_msg = str(e.value)
+        expected_msg = "ArrowConversionError: Error converting data to Arrow:"
+
+        assert expected_msg in error_msg
+        assert "my_data" in error_msg
+
+    else:
         ds.materialize()
 
-    error_msg = str(e.value)
-    expected_msg = "ArrowConversionError: Error converting data to Arrow:"
-    assert expected_msg in error_msg, error_msg
-    assert "my_data" in error_msg, error_msg
+        assert ds.schema().base_schema == pa.schema(
+            [pa.field("id", pa.int64()), pa.field("my_data", expected_type)]
+        )
+
+        assert ds.take_all() == [
+            {"id": i, "my_data": data[i]} for i in range(len(data))
+        ]
 
 
 if __name__ == "__main__":

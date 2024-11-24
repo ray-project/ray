@@ -1,3 +1,4 @@
+import os
 import random
 import shutil
 import tempfile
@@ -7,9 +8,45 @@ import ray
 from ray.data.dataset import Dataset
 
 from benchmark import Benchmark
-from read_images_benchmark import generate_images
+from PIL import Image
 import pyarrow as pa
 import numpy as np
+
+
+def generate_images(
+    num_images: int, sizes: List[Tuple[int, int]], modes: List[str], formats: List[str]
+) -> str:
+    dimensions = []
+    for mode in modes:
+        if mode in ["1", "L", "P"]:
+            dimension = 1
+        elif mode in ["RGB", "YCbCr", "LAB", "HSV"]:
+            dimension = 3
+        elif mode in ["RGBA", "CMYK", "I", "F"]:
+            dimension = 4
+        else:
+            raise ValueError(f"Found unknown image mode: {mode}.")
+        dimensions.append(dimension)
+    images_dir = tempfile.mkdtemp()
+    for image_idx in range(num_images):
+        size = random.choice(sizes)
+        file_format = random.choice(formats)
+        mode_idx = random.randrange(len(modes))
+        mode = modes[mode_idx]
+        dimension = dimensions[mode_idx]
+        width, height = size
+        file_name = f"{images_dir}/{image_idx}.{file_format}"
+        pixels_per_dimension = []
+        for _ in range(dimension):
+            pixels = os.urandom(width * height)
+            pixels_per_dimension.append(pixels)
+        image = Image.new(mode, size)
+        if len(pixels_per_dimension) == 1:
+            image.putdata(pixels_per_dimension[0])
+        else:
+            image.putdata(list(zip(*pixels_per_dimension)))
+        image.save(file_name)
+    return images_dir
 
 
 def read_tfrecords(path: str) -> Dataset:
@@ -67,11 +104,10 @@ def generate_random_tfrecords(
         features = {k: v for (k, v) in features.items() if len(v) > 0}
         return pa.table(features)
 
-    ds = ray.data.range(num_rows).map_batches(generate_features)
-    assert ds.count() == num_rows, ds.count()
-
     tfrecords_dir = tempfile.mkdtemp()
-    ds.write_tfrecords(tfrecords_dir)
+    ray.data.range(num_rows).map_batches(generate_features).write_tfrecords(
+        tfrecords_dir
+    )
     return tfrecords_dir
 
 

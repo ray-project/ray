@@ -17,13 +17,13 @@
 
 #pragma once
 
+#include <gtest/gtest_prod.h>
 #include <stddef.h>
 
 #include <memory>
 #include <string>
 #include <unordered_map>
 
-#include "gtest/gtest.h"
 #include "ray/common/id.h"
 #include "ray/object_manager/common.h"
 #include "ray/object_manager/plasma/compat.h"

@@ -21,6 +21,10 @@ class TestLSTMs(unittest.TestCase):
         """Tests LSTM prev-a/r input insertions using complex actions."""
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=True,
+                enable_env_runner_and_connector_v2=True,
+            )
             .environment(
                 RandomEnv,
                 env_config={

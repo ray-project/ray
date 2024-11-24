@@ -298,7 +298,7 @@ def test_one_hot_encoder_with_max_categories():
     expected_df = pd.DataFrame(
         {
             "A": col_a,
-            "B": [[0, 1], [1, 0], [0, 0], [1, 0]],
+            "B": [[0, 0], [1, 0], [0, 1], [1, 0]],
             "C": [[1, 0, 0], [0, 0, 1], [0, 1, 0], [0, 0, 1]],
         }
     )

@@ -12,7 +12,6 @@ import gymnasium as gym
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.numpy import convert_to_numpy
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.models.catalog import ModelCatalog
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.tf.tf_action_dist import TFActionDistribution
@@ -339,7 +338,7 @@ class EagerTFPolicyV2(Policy):
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         """Post process trajectory in the format of a SampleBatch.
 
@@ -420,7 +419,7 @@ class EagerTFPolicyV2(Policy):
         input_dict: Dict[str, TensorType],
         explore: bool = None,
         timestep: Optional[int] = None,
-        episodes: Optional[List[Episode]] = None,
+        episodes=None,
         **kwargs,
     ) -> Tuple[TensorType, List[TensorType], Dict[str, TensorType]]:
         self._is_training = False

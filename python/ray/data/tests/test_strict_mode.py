@@ -181,7 +181,7 @@ def test_strict_schema(ray_start_regular_shared):
     from ray.data._internal.pandas_block import PandasBlockSchema
     from ray.data.extensions.object_extension import (
         ArrowPythonObjectType,
-        object_extension_type_allowed,
+        _object_extension_type_allowed,
     )
     from ray.data.extensions.tensor_extension import ArrowTensorType
 
@@ -199,7 +199,7 @@ def test_strict_schema(ray_start_regular_shared):
 
     ds = ray.data.from_items([{"x": 2, "y": object(), "z": [1, 2]}])
     schema = ds.schema()
-    if object_extension_type_allowed():
+    if _object_extension_type_allowed():
         assert isinstance(schema.base_schema, pa.lib.Schema)
         assert schema.names == ["x", "y", "z"]
         assert schema.types == [
@@ -219,12 +219,21 @@ def test_strict_schema(ray_start_regular_shared):
     schema = ds.schema()
     assert isinstance(schema.base_schema, pa.lib.Schema)
     assert schema.names == ["data"]
-    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
+
+    from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+    from ray.data import DataContext
+
+    if DataContext.get_current().use_arrow_tensor_v2:
+        expected_arrow_ext_type = ArrowTensorTypeV2(shape=(10,), dtype=pa.float64())
+    else:
+        expected_arrow_ext_type = ArrowTensorType(shape=(10,), dtype=pa.float64())
+
+    assert schema.types == [expected_arrow_ext_type]
 
     schema = ds.map_batches(lambda x: x, batch_format="pandas").schema()
     assert isinstance(schema.base_schema, PandasBlockSchema)
     assert schema.names == ["data"]
-    assert schema.types == [ArrowTensorType(shape=(10,), dtype=pa.float64())]
+    assert schema.types == [expected_arrow_ext_type]
 
 
 def test_use_raw_dicts(ray_start_regular_shared):

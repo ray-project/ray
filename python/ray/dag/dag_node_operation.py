@@ -66,7 +66,7 @@ class _DAGNodeOperation:
             f" type: {self.type})"
         )
 
-    def vis_str(self):
+    def viz_str(self):
         """
         A string representation of the node to be used in visualization.
         """
@@ -223,17 +223,7 @@ class _DAGOperationGraphNode:
         """
         A string representation of the node to be used in visualization.
         """
-        class_name = (
-            self.actor_handle._ray_actor_creation_function_descriptor.class_name
-        )
-        actor_id_abbv = self._actor_id[:4] + "..."
-        return (
-            class_name
-            + "_"
-            + actor_id_abbv
-            + f" [{self.operation.exec_task_idx}] "
-            + f"{self.operation.method_name} {self.operation.type.viz_str()}"
-        )
+        return self.operation.viz_str()
 
     @property
     def _actor_id(self):
@@ -469,6 +459,18 @@ def _build_dag_node_operation_graph(
     return graph
 
 
+def _actor_viz_str(actor: "ray.actor.ActorHandle"):
+    """
+    A string representation of an actor in the visualization of the execution schedule.
+
+    Args:
+        actor: The actor to be represented.
+    """
+    class_name = actor._ray_actor_creation_function_descriptor.class_name
+    actor_id = actor._ray_actor_id.hex()
+    return f"Actor class name: {class_name}\nActor ID: {actor_id}"
+
+
 def _node_viz_str(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
     """
     A string representation of a node in the visualization of the execution schedule.
@@ -497,10 +499,9 @@ def _visualize_execution_schedule(
     Details of the visualization: # noqa
 
         Node description format:
-            <actor_name>_<actor_id> [<task_index>] <method_name> <operation> <orig_index>, <overlap_index>
+            [<task_index>] <method_name> <operation> <orig_index>, <overlap_index>
 
         Node description fields:
-            actor_id: is abbreviated, only the first 4 characters are shown
             operation: is R(READ), C(COMPUTE), or W(WRITE)
             orig_index: the index in the original execution schedule
             overlap_index: the index in the overlap-communication optimized execution schedule
@@ -508,6 +509,7 @@ def _visualize_execution_schedule(
 
         Node grouping:
             The nodes belonging to the same actor are grouped in the same rectangle
+            The actor class name and the actor id are shown in the rectangle
 
         Edges:
             black color (without label): data dependency
@@ -548,7 +550,9 @@ def _visualize_execution_schedule(
         }
 
         with dot.subgraph(name=f"cluster_{execution_nodes[0]._actor_id}") as subgraph:
-            subgraph.attr(rank=execution_nodes[0]._actor_id)
+            subgraph.attr(
+                rank=execution_nodes[0]._actor_id, label=_actor_viz_str(actor)
+            )
             for i, node in enumerate(execution_nodes):
                 optimized_index = node_to_optimized_index.get(node)
                 node_viz = _node_viz_str(node, i, optimized_index)
@@ -573,21 +577,21 @@ def _visualize_execution_schedule(
         legend.attr(label="Legend", labelloc="t", fontsize="20", bgcolor="lightgrey")
 
         # Single node and its explanation
-        legend.node("example_node", "Worker_3c6a... [0] bwd C 10,10\n")
+        legend.node("example_node", "[0] bwd C 10,10\n")
         explanation = (
             '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'  # noqa
             '<TR><TD ALIGN="LEFT"><B>Node description format:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">&lt;actor_name&gt;_&lt;actor_id&gt; [&lt;task_index&gt;] &lt;method_name&gt; &lt;operation&gt; &lt;orig_index&gt;, &lt;overlap_index&gt;</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">[&lt;task_index&gt;] &lt;method_name&gt; &lt;operation&gt; &lt;orig_index&gt;, &lt;overlap_index&gt;</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Node description fields:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">actor_id: is abbreviated, only the first 4 characters are shown</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">operation: is R(READ), C(COMPUTE), or W(WRITE)</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">orig_index: the index in the original execution schedule</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">overlap_index: the index in the overlap-communication optimized execution schedule</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">If this is different from orig_index, the node is highlighted in <FONT COLOR="red">red color</FONT></TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Node grouping:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangular</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangle</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">The actor class name and the actor id are shown in the rectangle</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
             '<TR><TD ALIGN="LEFT">black color (without label): data dependency</TD></TR>'  # noqa

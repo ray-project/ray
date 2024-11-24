@@ -216,6 +216,10 @@ class Stats:
         # Code to execute when exiting a with-context.
         self._on_exit = on_exit
 
+        # On each `.reduce()` call, we store the result of this call in hist[0] and the
+        # previous `reduce()` result in hist[1].
+        self._hist = (0, 0)
+
     def push(self, value) -> None:
         """Appends a new value into the internal values list.
 
@@ -247,25 +251,33 @@ class Stats:
         """Called when exiting a context (with which users can measure a time delta)."""
         thread_id = threading.get_ident()
         assert self._start_times[thread_id] is not None
-        time_delta = time.perf_counter() - self._start_times[thread_id]
-        self.push(time_delta)
+        time_delta_s = time.perf_counter() - self._start_times[thread_id]
+        self.push(time_delta_s)
 
         # Call the on_exit handler.
         if self._on_exit:
-            self._on_exit(time_delta)
+            self._on_exit(time_delta_s)
 
         del self._start_times[thread_id]
 
-    def peek(self) -> Any:
+    def peek(self, *, previous: bool = False) -> Any:
         """Returns the result of reducing the internal values list.
 
         Note that this method does NOT alter the internal values list in this process.
         Thus, users can call this method to get an accurate look at the reduced value
         given the current internal values list.
 
+        Args:
+            previous: If True, returns the previous (reduced) result of this `Stats`
+                object.
+
         Returns:
-            The result of reducing the internal values list.
+            The result of reducing the internal values list (or the previously computed
+            reduced result, if `previous` is True).
         """
+        # Return previously reduced value.
+        if previous:
+            return self._hist[1]
         return self._reduced_values()[0]
 
     def reduce(self) -> "Stats":
@@ -281,10 +293,16 @@ class Stats:
             Returns a new `Stats` object with an empty internal values list, but
             otherwise the same constructor settings (window, reduce, etc..) as `self`.
         """
+        reduced, values = self._reduced_values()
+
         # Reduce everything to a single (init) value.
-        self.values = self._reduced_values()[1]
-        # `clear_on_reduce` -> Return an empty new Stats object with the same option as
-        # `self`.
+        self.values = values
+
+        # Shift historic reduced valued by one in our hist-tuple.
+        self._hist = (reduced, self._hist[0])
+
+        # `clear_on_reduce` -> Return an empty new Stats object with the same settings
+        # as `self`.
         if self._clear_on_reduce:
             return Stats.similar_to(self)
         # No reset required upon `reduce()` -> Return `self`.
@@ -339,10 +357,8 @@ class Stats:
             # - Thereby always reducing across the different Stats objects' at the
             #   current index.
             # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND
-            #   added to the new merged-values list n times (where n is the number of
-            #   Stats, across
-            #   which we merge).
+            #   repeated AND added to the new merged-values list n times (where n is
+            #   the number of Stats, across which we merge).
             # - The merged-values list is reversed.
             # Here:
             # index -1: [3, 6] -> [4.5, 4.5]
@@ -365,13 +381,11 @@ class Stats:
             stats.merge_in_parallel(stats1, stats2)
             # Same here: Fill new merged-values list:
             # - Start with index -1, moving to the start.
-            # - Thereby always reducing across the different Stats objects' at the
+            # - Thereby always reduce across the different Stats objects' at the
             #   current index.
             # - The resulting reduced value (across Stats at current index) is then
-            #   repeated AND
-            #   added to the new merged-values list n times (where n is the number of
-            #   Stats, across
-            #   which we merge).
+            #   repeated AND added to the new merged-values list n times (where n is the
+            #   number of Stats, across which we merge).
             # - The merged-values list is reversed.
             # Here:
             # index -1: [3, 6] -> [6, 6]
@@ -404,7 +418,7 @@ class Stats:
 
             # Parallel-merge two (reduce=sum) stats with no window.
             # Note that when reduce="sum", we do NOT reduce across the indices of the
-            # parallel
+            # parallel values.
             stats = Stats(reduce="sum")
             stats1 = Stats(reduce="sum")
             stats1.push(1)
@@ -419,7 +433,6 @@ class Stats:
             # index -2: [0, 5] -> [3, 6, 0, 5]
             # index -3: [2, 4] -> [3, 6, 0, 5, 2, 4]
             # index -4: [1] -> [3, 6, 0, 5, 2, 4, 1]
-            # STOP after merged list contains >= 4 items (window size)
             # reverse: [1, 4, 2, 5, 0, 6, 3]
             stats.merge_in_parallel(stats1, stats2)
             check(stats.values, [1, 4, 2, 5, 0, 6, 3])
@@ -427,7 +440,7 @@ class Stats:
 
             # Parallel-merge two "concat" (reduce=None) stats with no window.
             # Note that when reduce=None, we do NOT reduce across the indices of the
-            # parallel
+            # parallel values.
             stats = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1 = Stats(reduce=None, window=float("inf"), clear_on_reduce=True)
             stats1.push(1)
@@ -549,7 +562,7 @@ class Stats:
 
     def get_state(self) -> Dict[str, Any]:
         return {
-            "values": self.values,
+            "values": convert_to_numpy(self.values),
             "reduce": self._reduce_method,
             "window": self._window,
             "ema_coeff": self._ema_coeff,
@@ -567,14 +580,34 @@ class Stats:
         )
 
     @staticmethod
-    def similar_to(other: "Stats", init_value: Optional[Any] = None):
-        return Stats(
+    def similar_to(
+        other: "Stats",
+        init_value: Optional[Any] = None,
+    ) -> "Stats":
+        """Returns a new Stats object that's similar to `other`.
+
+        "Similar" here means it has the exact same settings (reduce, window, ema_coeff,
+        etc..). The initial values of the returned `Stats` are empty by default, but
+        can be set as well.
+
+        Args:
+            other: The other Stats object to return a similar new Stats equivalent for.
+            init_value: The initial value to already push into the returned Stats. If
+                None (default), the returned Stats object will have no values in it.
+
+        Returns:
+            A new Stats object similar to `other`, with the exact same settings and
+            maybe a custom initial value (if provided; otherwise empty).
+        """
+        stats = Stats(
             init_value=init_value,
             reduce=other._reduce_method,
             window=other._window,
             ema_coeff=other._ema_coeff,
             clear_on_reduce=other._clear_on_reduce,
         )
+        stats._hist = other._hist
+        return stats
 
     def _reduced_values(self, values=None, window=None) -> Tuple[Any, Any]:
         """Runs a non-commited reduction procedure on given values (or `self.values`).

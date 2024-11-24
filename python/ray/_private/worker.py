@@ -874,7 +874,9 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout is not None else -1
+        timeout_ms = (
+            int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        )
         data_metadata_pairs: List[
             Tuple[ray._raylet.Buffer, bytes]
         ] = self.core_worker.get_objects(
@@ -3547,7 +3549,7 @@ def remote(
             for more details.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
+        _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
