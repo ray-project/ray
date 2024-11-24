@@ -477,15 +477,13 @@ class BlockAccessor:
         raise NotImplementedError
 
 
-def _get_block_boundaries(block: Dict[str, np.ndarray]):
-    """Compute boundaries of the groups within a block.
-
-    The function expects the input block to be projected and sorted, i.e.,
-    only the grouping columns are present.
+def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
+    """Compute boundaries of the groups within a block, which is represented
+    by a list of sorted numpy arrays for each column.
 
     Args:
-        block: a dict of numpy arrays with keys being the group column names.
-        This is generally coming from ``BlockAccessor.to_numpy()``.
+        arrays: a list of sorted numpy arrays. This is generally given by the
+        dictionary values of ``BlockAccessor.to_numpy()``.
 
     Returns:
         A list of starting indices of each group and an end index of the last
@@ -493,13 +491,15 @@ def _get_block_boundaries(block: Dict[str, np.ndarray]):
         entries are 0 and ``len(array)`` respectively.
 
     """
-    if len(block) == 1:
-        # For single key, just use the numpy array directly.
-        block = block.popitem()[1]
-    else:
-        # For multiple keys, we create a numpy record array to handle
-        # potentially different dtypes for each column.
-        dtype = [(k, v.dtype) for k, v in block.items()]
-        block = np.rec.fromarrays(list(block.values()), dtype=dtype)
-
-    return np.hstack([[0], np.where(block[1:] != block[:-1])[0] + 1, [len(block)]])
+    return np.hstack(
+        [
+            [0],
+            (
+                np.vstack([array[1:] != array[:-1] for array in arrays])
+                .any(axis=0)
+                .nonzero()[0]
+                + 1
+            ),
+            [len(arrays[0])],
+        ]
+    )
