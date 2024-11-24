@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 
-from typing import List
+from typing import List, Set
 
 
 class _SynchronousGroup(ABC):
@@ -11,6 +11,10 @@ class _SynchronousGroup(ABC):
     def __init__(self):
         # Task idxs in a compiled DAG.
         self.task_idxs: List[int] = []
+        # Indices of tasks that are ready (in-degree=0).
+        self.ready_task_idxs: Set[int] = set()
+        # Whether the group has been added to the execution schedule.
+        self.scheduled: bool = False
 
     @abstractmethod
     def execute(self, *args, **kwargs) -> None:

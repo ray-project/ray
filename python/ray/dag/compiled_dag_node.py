@@ -437,18 +437,6 @@ class ExecutableTask:
         # and the result of a compute operation will be used by a write operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
-    @property
-    def sync_task_idxs(self) -> List[int]:
-        """
-        If this task is part of a synchronous group, return indices of all tasks
-        in the group. If not, return an empty list to indicate there are no
-        synchronous peer tasks.
-        """
-        if self.sync_group is None:
-            return []
-        else:
-            return self.sync_group.task_idxs
-
     def cancel(self):
         """
         Close all the input channels and the output channel. The exact behavior
@@ -1815,7 +1803,7 @@ class CompiledDAG:
                     _DAGNodeOperation(exec_task_idx, method_name),
                     task_idx,
                     actor_handle,
-                    exec_task.sync_task_idxs,
+                    exec_task.sync_group,
                     requires_nccl_read,
                     requires_nccl_write,
                     requires_nccl_collective,

@@ -1,4 +1,5 @@
 from functools import total_ordering
+from ray.dag.sync_group import _SynchronousGroup
 from typing import Set, Tuple, List, Dict, Optional
 import copy
 import logging
@@ -53,7 +54,7 @@ class _DAGOperationGraphNode:
         op: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        sync_task_idxs: List[int],
+        sync_group: Optional[_SynchronousGroup] = None,
         # [TODO:andyub] only 1 requires_nccl?
         requires_nccl_read: bool = False,
         requires_nccl_write: bool = False,
@@ -90,9 +91,9 @@ class _DAGOperationGraphNode:
         # the edge is a control dependency.
         self.in_edges: Dict[int, Tuple[str, bool]] = {}
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
-        # Indices of tasks that run synchronously with the task represented
-        # by this node.
-        self.sync_task_idxs: List[int] = sync_task_idxs
+        # Synchronous group of this task. None if the task is not a
+        # synchronous operation.
+        self.sync_group: Optional[_SynchronousGroup] = sync_group
 
     def __repr__(self):
         return (
@@ -154,14 +155,15 @@ class _DAGOperationGraphNode:
     def in_degree(self) -> int:
         return len(self.in_edges)
 
-    def is_ready(self, graph: Dict[int, "_DAGOperationGraphNode"]) -> bool:
+    def is_ready(self) -> bool:
         """
         If this node is not part of a synchronous group of tasks, it is ready
         when it has a zero in-degree. If it is part of a synchronous group, it
         is ready when all nodes in the group have zero in-degrees.
         """
-        return self.in_degree == 0 and all(
-            graph[idx].in_degree == 0 for idx in self.sync_task_idxs
+        return self.in_degree == 0 and (
+            self.sync_group is None
+            or len(self.sync_group.task_idxs) == len(self.sync_group.ready_task_idxs)
         )
 
     @property
@@ -211,20 +213,23 @@ def _add_edge(
 
 def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
-    graph: Dict[int, _DAGOperationGraphNode],
     node: _DAGOperationGraphNode,
 ) -> None:
-    if node.is_ready(graph):
-        heapq.heappush(
-            actor_to_candidates[node.actor_handle._actor_id],
-            node,
-        )
+    if node.in_degree == 0 and node.sync_group is not None:
+        node.sync_group.ready_task_idxs.add(node.task_idx)
+    if node.is_ready():
+        if node.sync_group is None or not node.sync_group.scheduled:
+            heapq.heappush(
+                actor_to_candidates[node.actor_handle._actor_id],
+                node,
+            )
+        if node.sync_group is not None:
+            node.sync_group.scheduled = True
 
 
 def _select_next_nodes(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     graph: Dict[int, _DAGOperationGraphNode],
-    visited: Set[_DAGOperationGraphNode],
 ) -> Optional[List[_DAGOperationGraphNode]]:
     """
     This function selects the next nodes for the topological sort to generate
@@ -254,8 +259,6 @@ def _select_next_nodes(
     """
     top_priority_node = None
     for candidates in actor_to_candidates.values():
-        while candidates and candidates[0] in visited:
-            heapq.heappop(candidates)
         if len(candidates) == 0:
             continue
         if top_priority_node is None or candidates[0] < top_priority_node:
@@ -267,10 +270,11 @@ def _select_next_nodes(
         heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
     }
 
-    for peer_idx in top_priority_node.sync_task_idxs:
-        peer_node = graph[peer_idx]
-        assert peer_node.is_ready(graph)
-        next_nodes.add(peer_node)
+    if top_priority_node.sync_group is not None:
+        for peer_idx in top_priority_node.sync_group.task_idxs:
+            peer_node = graph[peer_idx]
+            assert peer_node.is_ready()
+            next_nodes.add(peer_node)
 
     return list(next_nodes)
 
@@ -545,7 +549,7 @@ def _generate_actor_to_execution_schedule(
         "ray._raylet.ActorID", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
     for node in graph.values():
-        _push_candidate_node_if_ready(actor_to_candidates, graph, node)
+        _push_candidate_node_if_ready(actor_to_candidates, node)
 
     visited_nodes: Set[_DAGOperationGraphNode] = set()
 
@@ -555,7 +559,7 @@ def _generate_actor_to_execution_schedule(
         # 1. If a selected node is not in a synchronous group, only itself is returned.
         # 2. If a selected node is part of a synchronous group, all nodes in the group
         #    are returned.
-        nodes = _select_next_nodes(actor_to_candidates, graph, visited_nodes)
+        nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
             break
         assert all(node not in visited_nodes for node in nodes)
@@ -568,11 +572,11 @@ def _generate_actor_to_execution_schedule(
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
                 out_node.in_edges.pop(node.task_idx)
-                _push_candidate_node_if_ready(actor_to_candidates, graph, out_node)
+                _push_candidate_node_if_ready(actor_to_candidates, out_node)
     num_nodes = len(graph)
     assert len(visited_nodes) == num_nodes, "Expected all nodes to be visited"
     for node in visited_nodes:
-        assert node.is_ready(graph), f"Expected {node} to be ready"
+        assert node.is_ready(), f"Expected {node} to be ready"
     for candidates in actor_to_candidates.values():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 
