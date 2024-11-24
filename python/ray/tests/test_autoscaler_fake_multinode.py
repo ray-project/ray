@@ -171,10 +171,9 @@ def test_autoscaler_cpu_task_gpu_node_up(autoscaler_v2):
         cluster.shutdown()
 
 
-@pytest.mark.parametrize("autoscaler_v2", [False, True], ids=["v1", "v2"])
-def test_autoscaler_not_kill_blocking_node(autoscaler_v2):
-    """Tests that the autoscaler does not kill a node that
-    has worker in blocking state."""
+@pytest.fixture
+def setup_cluster(request):
+    autoscaler_v2 = request.param
     cluster = AutoscalingCluster(
         head_resources={"CPU": 0},
         worker_node_types={
@@ -188,29 +187,36 @@ def test_autoscaler_not_kill_blocking_node(autoscaler_v2):
         idle_timeout_minutes=0.1,
         autoscaler_v2=autoscaler_v2,
     )
-
     try:
         cluster.start()
         ray.init("auto")
-
-        @ray.remote(num_cpus=1)
-        def short_task():
-            time.sleep(5)
-
-        @ray.remote(num_cpus=1)
-        def long_task():
-            time.sleep(20)
-
-        @ray.remote(num_cpus=1)
-        def f():
-            future_list = [short_task.remote(), long_task.remote()]
-            ray.get(future_list)
-
-        ray.get(f.remote())
-
-        ray.shutdown()
+        yield cluster
     finally:
+        ray.shutdown()
         cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "setup_cluster", [False, True], ids=["v1", "v2"], indirect=True
+)
+def test_autoscaler_not_kill_blocking_node(setup_cluster):
+    """Tests that the autoscaler does not kill a node that
+    has worker in blocking state."""
+
+    @ray.remote(num_cpus=1)
+    def short_task():
+        time.sleep(5)
+
+    @ray.remote(num_cpus=1)
+    def long_task():
+        time.sleep(20)
+
+    @ray.remote(num_cpus=1)
+    def f():
+        future_list = [short_task.remote(), long_task.remote()]
+        ray.get(future_list)
+
+    ray.get(f.remote(), timeout=30)
 
 
 if __name__ == "__main__":
