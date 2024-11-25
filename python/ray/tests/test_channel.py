@@ -964,6 +964,8 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         itself, can read it.
     (3) An actor writes data to CompositeChannel and two actor methods on the same
         actor read it. This is not supported and should raise an exception.
+    (4) An actor writes data to CompositeChannel and another actor and the driver
+        can read it.
     """
     # This node is for both the driver and the Reader actors.
     cluster = ray_start_cluster
@@ -1025,6 +1027,18 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # are the same actor. Note that reading the channel multiple
         # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
+
+    # actor1 writes data to CompositeChannel and actor2 and the driver reads it.
+    driver_actor = create_driver_actor()
+    actor1_output_channel = ray.get(
+        actor1.create_composite_channel.remote(
+            actor1, [(actor2, node2), (driver_actor, get_actor_node_id(driver_actor))]
+        )
+    )
+    ray.get(actor2.pass_channel.remote(actor1_output_channel))
+    ray.get(actor1.write.remote("world hello"))
+    assert ray.get(actor2.read.remote()) == "world hello"
+    assert actor1_output_channel.read(driver_actor._actor_id.hex()) == "world hello"
 
 
 @pytest.mark.skipif(
