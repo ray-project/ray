@@ -1,6 +1,6 @@
-(kuberay-logging)=
+(persist-kuberay-custom-resource-logs)=
 
-# Log Persistence
+# Persist KubeRay custom resource logs
 
 Logs (both system and application logs) are useful for troubleshooting Ray applications and Clusters. For example, you may want to access system logs if a node terminates unexpectedly.
 
