@@ -14,6 +14,8 @@
 
 #include "ray/object_manager/pull_manager.h"
 
+#include <utility>
+
 #include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/container_util.h"
@@ -22,27 +24,27 @@ namespace ray {
 
 PullManager::PullManager(
     NodeID &self_node_id,
-    const std::function<bool(const ObjectID &)> object_is_local,
-    const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-    const std::function<void(const ObjectID &)> cancel_pull_request,
-    const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-    const RestoreSpilledObjectCallback restore_spilled_object,
-    const std::function<double()> get_time_seconds,
+    std::function<bool(const ObjectID &)> object_is_local,
+    std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+    std::function<void(const ObjectID &)> cancel_pull_request,
+    std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+    RestoreSpilledObjectCallback restore_spilled_object,
+    std::function<double()> get_time_seconds,
     int pull_timeout_ms,
     int64_t num_bytes_available,
     std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
     std::function<std::string(const ObjectID &)> get_locally_spilled_object_url)
     : self_node_id_(self_node_id),
-      object_is_local_(object_is_local),
-      send_pull_request_(send_pull_request),
-      cancel_pull_request_(cancel_pull_request),
-      restore_spilled_object_(restore_spilled_object),
-      get_time_seconds_(get_time_seconds),
+      object_is_local_(std::move(object_is_local)),
+      send_pull_request_(std::move(send_pull_request)),
+      cancel_pull_request_(std::move(cancel_pull_request)),
+      restore_spilled_object_(std::move(restore_spilled_object)),
+      get_time_seconds_(std::move(get_time_seconds)),
       pull_timeout_ms_(pull_timeout_ms),
       num_bytes_available_(num_bytes_available),
-      pin_object_(pin_object),
-      get_locally_spilled_object_url_(get_locally_spilled_object_url),
-      fail_pull_request_(fail_pull_request),
+      pin_object_(std::move(pin_object)),
+      get_locally_spilled_object_url_(std::move(get_locally_spilled_object_url)),
+      fail_pull_request_(std::move(fail_pull_request)),
       gen_(std::chrono::high_resolution_clock::now().time_since_epoch().count()) {}
 
 uint64_t PullManager::Pull(const std::vector<rpc::ObjectReference> &object_ref_bundle,
@@ -181,7 +183,8 @@ void PullManager::DeactivateBundlePullRequest(
   for (const auto &obj_id : request.objects) {
     absl::MutexLock lock(&active_objects_mu_);
     auto it = active_object_pull_requests_.find(obj_id);
-    if (it == active_object_pull_requests_.end() || !it->second.erase(request_id)) {
+    if (it == active_object_pull_requests_.end() ||
+        (it->second.erase(request_id) == 0u)) {
       // The object is already deactivated, no action is required.
       continue;
     }
@@ -217,13 +220,13 @@ void PullManager::DeactivateUntilMarginAvailable(
   }
 }
 
-int64_t PullManager::RemainingQuota() {
+int64_t PullManager::RemainingQuota() const {
   // Note that plasma counts pinned bytes as used.
   int64_t bytes_left_to_pull = num_bytes_being_pulled_ - pinned_objects_size_;
   return num_bytes_available_ - bytes_left_to_pull;
 }
 
-bool PullManager::OverQuota() { return RemainingQuota() < 0L; }
+bool PullManager::OverQuota() const { return RemainingQuota() < 0L; }
 
 void PullManager::UpdatePullsBasedOnAvailableMemory(int64_t num_bytes_available) {
   if (num_bytes_available_ != num_bytes_available) {

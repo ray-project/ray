@@ -110,13 +110,13 @@ class SpilledObjectReader : public IObjectReader {
   FRIEND_TEST(SpilledObjectReaderTest, Getters);
   FRIEND_TEST(ChunkObjectReaderTest, GetNumChunks);
 
-  const std::string file_path_;
-  const uint64_t object_size_;
-  const uint64_t data_offset_;
-  const uint64_t data_size_;
-  const uint64_t metadata_offset_;
-  const uint64_t metadata_size_;
-  const rpc::Address owner_address_;
+  std::string file_path_;
+  uint64_t object_size_;
+  uint64_t data_offset_;
+  uint64_t data_size_;
+  uint64_t metadata_offset_;
+  uint64_t metadata_size_;
+  rpc::Address owner_address_;
 };
 
 }  // namespace ray

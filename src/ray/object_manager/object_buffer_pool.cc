@@ -24,7 +24,7 @@ namespace ray {
 
 ObjectBufferPool::ObjectBufferPool(
     std::shared_ptr<plasma::PlasmaClientInterface> store_client, uint64_t chunk_size)
-    : store_client_(store_client), default_chunk_size_(chunk_size) {}
+    : store_client_(std::move(store_client)), default_chunk_size_(chunk_size) {}
 
 ObjectBufferPool::~ObjectBufferPool() {
   absl::MutexLock lock(&pool_mutex_);
@@ -201,11 +201,11 @@ std::vector<ObjectBufferPool::ChunkInfo> ObjectBufferPool::BuildChunks(
     const ObjectID &object_id,
     uint8_t *data,
     uint64_t data_size,
-    std::shared_ptr<Buffer> buffer_ref) {
+    const std::shared_ptr<Buffer> &buffer_ref) {
   uint64_t space_remaining = data_size;
   std::vector<ChunkInfo> chunks;
   int64_t position = 0;
-  while (space_remaining) {
+  while (space_remaining != 0u) {
     position = data_size - space_remaining;
     if (space_remaining < default_chunk_size_) {
       chunks.emplace_back(chunks.size(), data + position, space_remaining, buffer_ref);

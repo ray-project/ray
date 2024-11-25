@@ -37,7 +37,7 @@ namespace ray {
 
 // Identifier for task metrics reporting, which is tuple of the task name
 // (empty string if unknown), and is_retry bool.
-typedef std::pair<std::string, bool> TaskMetricsKey;
+using TaskMetricsKey = std::pair<std::string, bool>;
 
 enum BundlePriority {
   /// Bundle requested by ray.get().
@@ -66,15 +66,15 @@ class PullManager {
   /// retrieve an spilled object from the external store.
   PullManager(
       NodeID &self_node_id,
-      const std::function<bool(const ObjectID &)> object_is_local,
-      const std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
-      const std::function<void(const ObjectID &)> cancel_pull_request,
-      const std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
-      const RestoreSpilledObjectCallback restore_spilled_object,
-      const std::function<double()> get_time_seconds,
+      std::function<bool(const ObjectID &)> object_is_local,
+      std::function<void(const ObjectID &, const NodeID &)> send_pull_request,
+      std::function<void(const ObjectID &)> cancel_pull_request,
+      std::function<void(const ObjectID &, rpc::ErrorType)> fail_pull_request,
+      RestoreSpilledObjectCallback restore_spilled_object,
+      std::function<double()> get_time_seconds,
       int pull_timeout_ms,
       int64_t num_bytes_available,
-      std::function<std::unique_ptr<RayObject>(const ObjectID &object_id)> pin_object,
+      std::function<std::unique_ptr<RayObject>(const ObjectID &)> pin_object,
       std::function<std::string(const ObjectID &)> get_locally_spilled_object_url);
 
   /// Add a new pull request for a bundle of objects. The objects in the
@@ -170,7 +170,7 @@ class PullManager {
 
   /// Returns the number of bytes of quota remaining. When this is less than zero,
   /// we are OverQuota(). Visible for testing.
-  int64_t RemainingQuota();
+  int64_t RemainingQuota() const;
 
   void SetOutOfDisk(const ObjectID &object_id);
 
@@ -181,12 +181,8 @@ class PullManager {
  private:
   /// A helper structure for tracking information about each ongoing object pull.
   struct ObjectPullRequest {
-    ObjectPullRequest(double first_retry_time)
-        : client_locations(),
-          spilled_url(),
-          next_pull_time(first_retry_time),
-          num_retries(0),
-          bundle_request_ids() {}
+    explicit ObjectPullRequest(double first_retry_time)
+        : next_pull_time(first_retry_time) {}
     std::vector<NodeID> client_locations;
     std::string spilled_url;
     NodeID spilled_node_id;
@@ -197,7 +193,7 @@ class PullManager {
     double expiration_time_seconds = 0;
     int64_t activate_time_ms = 0;
     int64_t request_start_time_ms = absl::GetCurrentTimeNanos() / 1e3;
-    uint8_t num_retries;
+    uint8_t num_retries{};
     bool object_size_set = false;
     size_t object_size = 0;
     // All bundle requests that haven't been canceled yet that require this
@@ -226,15 +222,14 @@ class PullManager {
 
   /// A helper structure for tracking information about each ongoing bundle pull request.
   struct BundlePullRequest {
-    BundlePullRequest(std::vector<ObjectID> requested_objects,
-                      const TaskMetricsKey &task_key)
-        : objects(std::move(requested_objects)), task_key(task_key) {}
+    BundlePullRequest(std::vector<ObjectID> requested_objects, TaskMetricsKey task_key)
+        : objects(std::move(requested_objects)), task_key(std::move(task_key)) {}
     // All the objects that this bundle is trying to pull.
-    const std::vector<ObjectID> objects;
+    std::vector<ObjectID> objects;
     // All the objects that are pullable.
     absl::flat_hash_set<ObjectID> pullable_objects;
     // The name of the task, if a task arg request, otherwise the empty string.
-    const TaskMetricsKey task_key;
+    TaskMetricsKey task_key;
 
     void MarkObjectAsPullable(const ObjectID &object) {
       pullable_objects.emplace(object);
@@ -369,7 +364,7 @@ class PullManager {
   /// Returns whether the set of active pull requests exceeds the memory allowance
   /// for pulls. Note that exceeding the quota is allowed in certain situations,
   /// e.g., for get requests and to ensure at least one active request.
-  bool OverQuota();
+  bool OverQuota() const;
 
   /// Pin the object if possible. Only actively pulled objects should be pinned.
   bool TryPinObject(const ObjectID &object_id);
@@ -435,11 +430,11 @@ class PullManager {
 
   /// See the constructor's arguments.
   NodeID self_node_id_;
-  const std::function<bool(const ObjectID &)> object_is_local_;
-  const std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
-  const std::function<void(const ObjectID &)> cancel_pull_request_;
-  const RestoreSpilledObjectCallback restore_spilled_object_;
-  const std::function<double()> get_time_seconds_;
+  std::function<bool(const ObjectID &)> object_is_local_;
+  std::function<void(const ObjectID &, const NodeID &)> send_pull_request_;
+  std::function<void(const ObjectID &)> cancel_pull_request_;
+  RestoreSpilledObjectCallback restore_spilled_object_;
+  std::function<double()> get_time_seconds_;
   uint64_t pull_timeout_ms_;
 
   /// The next ID to assign to a bundle pull request, so that the caller can

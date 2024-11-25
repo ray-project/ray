@@ -14,9 +14,7 @@
 
 #include "ray/object_manager/push_manager.h"
 
-#include "ray/common/common_protocol.h"
 #include "ray/stats/metric_defs.h"
-#include "ray/util/util.h"
 
 namespace ray {
 
@@ -30,7 +28,7 @@ void PushManager::StartPush(const NodeID &dest_id,
   auto it = push_info_.find(push_id);
   if (it == push_info_.end()) {
     chunks_remaining_ += num_chunks;
-    auto push_state = std::make_unique<PushState>(num_chunks, send_chunk_fn);
+    auto push_state = std::make_unique<PushState>(num_chunks, std::move(send_chunk_fn));
     push_requests_with_chunks_to_send_.push_back(
         std::make_pair(push_id, push_state.get()));
     push_info_[push_id] = std::move(push_state);
@@ -43,7 +41,7 @@ void PushManager::StartPush(const NodeID &dest_id,
       push_requests_with_chunks_to_send_.push_back(
           std::make_pair(push_id, it->second.get()));
     }
-    chunks_remaining_ += it->second->ResendAllChunks(send_chunk_fn);
+    chunks_remaining_ += it->second->ResendAllChunks(std::move(send_chunk_fn));
   }
   ScheduleRemainingPushes();
 }

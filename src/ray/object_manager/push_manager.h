@@ -17,6 +17,7 @@
 #include <algorithm>
 #include <list>
 #include <memory>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -33,7 +34,7 @@ class PushManager {
   ///
   /// \param max_chunks_in_flight Max number of chunks allowed to be in flight
   ///                             from this PushManager (this raylet).
-  PushManager(int64_t max_chunks_in_flight)
+  explicit PushManager(int64_t max_chunks_in_flight)
       : max_chunks_in_flight_(max_chunks_in_flight) {
     RAY_CHECK(max_chunks_in_flight_ > 0) << max_chunks_in_flight_;
   };
@@ -81,33 +82,31 @@ class PushManager {
   /// Tracks the state of an active object push to another node.
   struct PushState {
     /// total number of chunks of this object.
-    const int64_t num_chunks;
+    int64_t num_chunks;
     /// The function to send chunks with.
     std::function<void(int64_t)> chunk_send_fn;
     /// The index of the next chunk to send.
-    int64_t next_chunk_id;
+    int64_t next_chunk_id{};
     /// The number of chunks pending completion.
-    int64_t num_chunks_inflight;
+    int64_t num_chunks_inflight{};
     /// The number of chunks remaining to send.
     int64_t num_chunks_to_send;
 
     PushState(int64_t num_chunks, std::function<void(int64_t)> chunk_send_fn)
         : num_chunks(num_chunks),
-          chunk_send_fn(chunk_send_fn),
-          next_chunk_id(0),
-          num_chunks_inflight(0),
+          chunk_send_fn(std::move(chunk_send_fn)),
           num_chunks_to_send(num_chunks) {}
 
     /// Resend all chunks and returns how many more chunks will be sent.
     int64_t ResendAllChunks(std::function<void(int64_t)> send_fn) {
-      chunk_send_fn = send_fn;
+      chunk_send_fn = std::move(send_fn);
       int64_t additional_chunks_to_send = num_chunks - num_chunks_to_send;
       num_chunks_to_send = num_chunks;
       return additional_chunks_to_send;
     }
 
     /// whether all the chunks have been sent.
-    bool NoChunksToSend() { return num_chunks_to_send == 0; }
+    bool NoChunksToSend() const { return num_chunks_to_send == 0; }
 
     /// Send one chunck. Return true if a new chunk is sent, false if no more chunk to
     /// send.
@@ -127,7 +126,7 @@ class PushManager {
     void OnChunkComplete() { --num_chunks_inflight; }
 
     /// Wether all chunks are successfully sent.
-    bool AllChunksComplete() {
+    bool AllChunksComplete() const {
       return num_chunks_inflight <= 0 && num_chunks_to_send <= 0;
     }
   };
@@ -136,10 +135,10 @@ class PushManager {
   void ScheduleRemainingPushes();
 
   /// Pair of (destination, object_id).
-  typedef std::pair<NodeID, ObjectID> PushID;
+  using PushID = std::pair<NodeID, ObjectID>;
 
   /// Max number of chunks in flight allowed.
-  const int64_t max_chunks_in_flight_;
+  int64_t max_chunks_in_flight_;
 
   /// Running count of chunks in flight, used to limit progress of in_flight_pushes_.
   int64_t chunks_in_flight_ = 0;
