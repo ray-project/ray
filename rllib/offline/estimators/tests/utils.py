@@ -43,6 +43,10 @@ def get_cliff_walking_wall_policy_and_data(
 
     config = (
         AlgorithmConfig()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .debugging(seed=seed)
         .env_runners(batch_mode="complete_episodes")
         .experimental(_disable_preprocessor_api=True)

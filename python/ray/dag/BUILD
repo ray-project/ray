@@ -108,6 +108,7 @@ py_test_module_list(
         "tests/experimental/test_torch_tensor_dag.py",
         "tests/experimental/test_collective_dag.py",
         "tests/experimental/test_execution_schedule.py",
+        "tests/experimental/test_dag_visualization.py",
     ],
     tags = [
         "accelerated_dag",

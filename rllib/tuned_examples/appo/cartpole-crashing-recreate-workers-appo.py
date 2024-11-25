@@ -27,6 +27,10 @@ stop = {
 
 config = (
     APPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment(
         "env",
         env_config={

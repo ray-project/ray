@@ -5,23 +5,17 @@ import logging
 import os
 import shutil
 import sys
-import tempfile
-from typing import Dict, List, Optional, Tuple
-from contextlib import asynccontextmanager
+from typing import Dict, List, Optional
 from asyncio import create_task, get_running_loop
 
-from ray._private.runtime_env.context import RuntimeEnvContext
+from ray._private.runtime_env import virtualenv_utils
+from ray._private.runtime_env import dependency_utils
 from ray._private.runtime_env.packaging import Protocol, parse_uri
 from ray._private.runtime_env.plugin import RuntimeEnvPlugin
 from ray._private.runtime_env.utils import check_output_cmd
 from ray._private.utils import get_directory_size_bytes, try_to_create_directory
 
 default_logger = logging.getLogger(__name__)
-
-_WIN32 = os.name == "nt"
-
-INTERNAL_PIP_FILENAME = "ray_runtime_env_internal_pip_requirements.txt"
-MAX_INTERNAL_PIP_FILENAME_TRIES = 100
 
 
 def _get_pip_hash(pip_dict: Dict) -> str:
@@ -48,69 +42,6 @@ def get_uri(runtime_env: Dict) -> Optional[str]:
     return uri
 
 
-class _PathHelper:
-    @staticmethod
-    def get_virtualenv_path(target_dir: str) -> str:
-        return os.path.join(target_dir, "virtualenv")
-
-    @classmethod
-    def get_virtualenv_python(cls, target_dir: str) -> str:
-        virtualenv_path = cls.get_virtualenv_path(target_dir)
-        if _WIN32:
-            return os.path.join(virtualenv_path, "Scripts", "python.exe")
-        else:
-            return os.path.join(virtualenv_path, "bin", "python")
-
-    @classmethod
-    def get_virtualenv_activate_command(cls, target_dir: str) -> List[str]:
-        virtualenv_path = cls.get_virtualenv_path(target_dir)
-        if _WIN32:
-            cmd = [os.path.join(virtualenv_path, "Scripts", "activate.bat")]
-
-        else:
-            cmd = ["source", os.path.join(virtualenv_path, "bin/activate")]
-        return cmd + ["1>&2", "&&"]
-
-    @staticmethod
-    def get_requirements_file(target_dir: str, pip_list: Optional[List[str]]) -> str:
-        """Returns the path to the requirements file to use for this runtime env.
-
-        If pip_list is not None, we will check if the internal pip filename is in any of
-        the entries of pip_list. If so, we will append numbers to the end of the
-        filename until we find one that doesn't conflict. This prevents infinite
-        recursion if the user specifies the internal pip filename in their pip list.
-
-        Args:
-            target_dir: The directory to store the requirements file in.
-            pip_list: A list of pip requirements specified by the user.
-
-        Returns:
-            The path to the requirements file to use for this runtime env.
-        """
-
-        def filename_in_pip_list(filename: str) -> bool:
-            for pip_entry in pip_list:
-                if filename in pip_entry:
-                    return True
-            return False
-
-        filename = INTERNAL_PIP_FILENAME
-        if pip_list is not None:
-            i = 1
-            while (
-                filename_in_pip_list(filename) and i < MAX_INTERNAL_PIP_FILENAME_TRIES
-            ):
-                filename = f"{INTERNAL_PIP_FILENAME}.{i}"
-                i += 1
-            if i == MAX_INTERNAL_PIP_FILENAME_TRIES:
-                raise RuntimeError(
-                    "Could not find a valid filename for the internal "
-                    "pip requirements file. Please specify a different "
-                    "pip list in your runtime env."
-                )
-        return os.path.join(target_dir, filename)
-
-
 class PipProcessor:
     def __init__(
         self,
@@ -135,16 +66,6 @@ class PipProcessor:
         self._pip_env = os.environ.copy()
         self._pip_env.update(self._runtime_env.env_vars())
 
-    @staticmethod
-    def _is_in_virtualenv() -> bool:
-        # virtualenv <= 16.7.9 sets the real_prefix,
-        # virtualenv > 16.7.9 & venv set the base_prefix.
-        # So, we check both of them here.
-        # https://github.com/pypa/virtualenv/issues/1622#issuecomment-586186094
-        return hasattr(sys, "real_prefix") or (
-            hasattr(sys, "base_prefix") and sys.base_prefix != sys.prefix
-        )
-
     @classmethod
     async def _ensure_pip_version(
         cls,
@@ -158,7 +79,7 @@ class PipProcessor:
         if not pip_version:
             return
 
-        python = _PathHelper.get_virtualenv_python(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
         # Ensure pip version.
         pip_reinstall_cmd = [
             python,
@@ -186,7 +107,7 @@ class PipProcessor:
         if not pip_check:
             logger.info("Skip pip check.")
             return
-        python = _PathHelper.get_virtualenv_python(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
 
         await check_output_cmd(
             [python, "-m", "pip", "check", "--disable-pip-version-check"],
@@ -197,138 +118,6 @@ class PipProcessor:
 
         logger.info("Pip check on %s successfully.", path)
 
-    @staticmethod
-    @asynccontextmanager
-    async def _check_ray(python: str, cwd: str, logger: logging.Logger):
-        """A context manager to check ray is not overwritten.
-
-        Currently, we only check ray version and path. It works for virtualenv,
-          - ray is in Python's site-packages.
-          - ray is overwritten during yield.
-          - ray is in virtualenv's site-packages.
-        """
-
-        async def _get_ray_version_and_path() -> Tuple[str, str]:
-            with tempfile.TemporaryDirectory(
-                prefix="check_ray_version_tempfile"
-            ) as tmp_dir:
-                ray_version_path = os.path.join(tmp_dir, "ray_version.txt")
-                check_ray_cmd = [
-                    python,
-                    "-c",
-                    """
-import ray
-with open(r"{ray_version_path}", "wt") as f:
-    f.write(ray.__version__)
-    f.write(" ")
-    f.write(ray.__path__[0])
-                    """.format(
-                        ray_version_path=ray_version_path
-                    ),
-                ]
-                if _WIN32:
-                    env = os.environ.copy()
-                else:
-                    env = {}
-                output = await check_output_cmd(
-                    check_ray_cmd, logger=logger, cwd=cwd, env=env
-                )
-                logger.info(
-                    f"try to write ray version information in: {ray_version_path}"
-                )
-                with open(ray_version_path, "rt") as f:
-                    output = f.read()
-                # print after import ray may have [0m endings, so we strip them by *_
-                ray_version, ray_path, *_ = [s.strip() for s in output.split()]
-            return ray_version, ray_path
-
-        version, path = await _get_ray_version_and_path()
-        yield
-        actual_version, actual_path = await _get_ray_version_and_path()
-        if actual_version != version or actual_path != path:
-            raise RuntimeError(
-                "Changing the ray version is not allowed: \n"
-                f"  current version: {actual_version}, "
-                f"current path: {actual_path}\n"
-                f"  expect version: {version}, "
-                f"expect path: {path}\n"
-                "Please ensure the dependencies in the runtime_env pip field "
-                "do not install a different version of Ray."
-            )
-
-    @classmethod
-    async def _create_or_get_virtualenv(
-        cls, path: str, cwd: str, logger: logging.Logger
-    ):
-        """Create or get a virtualenv from path."""
-        python = sys.executable
-        virtualenv_path = os.path.join(path, "virtualenv")
-        virtualenv_app_data_path = os.path.join(path, "virtualenv_app_data")
-
-        if _WIN32:
-            current_python_dir = sys.prefix
-            env = os.environ.copy()
-        else:
-            current_python_dir = os.path.abspath(
-                os.path.join(os.path.dirname(python), "..")
-            )
-            env = {}
-
-        if cls._is_in_virtualenv():
-            # virtualenv-clone homepage:
-            # https://github.com/edwardgeorge/virtualenv-clone
-            # virtualenv-clone Usage:
-            # virtualenv-clone /path/to/existing/venv /path/to/cloned/ven
-            # or
-            # python -m clonevirtualenv /path/to/existing/venv /path/to/cloned/ven
-            clonevirtualenv = os.path.join(
-                os.path.dirname(__file__), "_clonevirtualenv.py"
-            )
-            create_venv_cmd = [
-                python,
-                clonevirtualenv,
-                current_python_dir,
-                virtualenv_path,
-            ]
-            logger.info(
-                "Cloning virtualenv %s to %s", current_python_dir, virtualenv_path
-            )
-        else:
-            # virtualenv options:
-            # https://virtualenv.pypa.io/en/latest/cli_interface.html
-            #
-            # --app-data
-            # --reset-app-data
-            #   Set an empty seperated app data folder for current virtualenv.
-            #
-            # --no-periodic-update
-            #   Disable the periodic (once every 14 days) update of the embedded
-            #   wheels.
-            #
-            # --system-site-packages
-            #   Inherit site packages.
-            #
-            # --no-download
-            #   Never download the latest pip/setuptools/wheel from PyPI.
-            create_venv_cmd = [
-                python,
-                "-m",
-                "virtualenv",
-                "--app-data",
-                virtualenv_app_data_path,
-                "--reset-app-data",
-                "--no-periodic-update",
-                "--system-site-packages",
-                "--no-download",
-                virtualenv_path,
-            ]
-            logger.info(
-                "Creating virtualenv at %s, current python dir %s",
-                virtualenv_path,
-                virtualenv_path,
-            )
-        await check_output_cmd(create_venv_cmd, logger=logger, cwd=cwd, env=env)
-
     @classmethod
     async def _install_pip_packages(
         cls,
@@ -338,19 +127,21 @@ with open(r"{ray_version_path}", "wt") as f:
         pip_env: Dict,
         logger: logging.Logger,
     ):
-        virtualenv_path = _PathHelper.get_virtualenv_path(path)
-        python = _PathHelper.get_virtualenv_python(path)
+        virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
+        python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
-        pip_requirements_file = _PathHelper.get_requirements_file(path, pip_packages)
-
-        def _gen_requirements_txt():
-            with open(pip_requirements_file, "w") as file:
-                for line in pip_packages:
-                    file.write(line + "\n")
+        pip_requirements_file = dependency_utils.get_requirements_file(
+            path, pip_packages
+        )
 
         # Avoid blocking the event loop.
         loop = get_running_loop()
-        await loop.run_in_executor(None, _gen_requirements_txt)
+        await loop.run_in_executor(
+            None,
+            dependency_utils.gen_requirements_txt,
+            pip_requirements_file,
+            pip_packages,
+        )
 
         # pip options
         #
@@ -385,9 +176,9 @@ with open(r"{ray_version_path}", "wt") as f:
         exec_cwd = os.path.join(path, "exec_cwd")
         os.makedirs(exec_cwd, exist_ok=True)
         try:
-            await self._create_or_get_virtualenv(path, exec_cwd, logger)
-            python = _PathHelper.get_virtualenv_python(path)
-            async with self._check_ray(python, exec_cwd, logger):
+            await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
+            python = virtualenv_utils.get_virtualenv_python(path)
+            async with dependency_utils.check_ray(python, exec_cwd, logger):
                 # Ensure pip version.
                 await self._ensure_pip_version(
                     path,
@@ -485,7 +276,7 @@ class PipPlugin(RuntimeEnvPlugin):
         self,
         uri: str,
         runtime_env: "RuntimeEnv",  # noqa: F821
-        context: RuntimeEnvContext,
+        context: "RuntimeEnvContext",  # noqa: F821
         logger: Optional[logging.Logger] = default_logger,
     ) -> int:
         if not runtime_env.has_pip():
@@ -523,7 +314,7 @@ class PipPlugin(RuntimeEnvPlugin):
         self,
         uris: List[str],
         runtime_env: "RuntimeEnv",  # noqa: F821
-        context: RuntimeEnvContext,
+        context: "RuntimeEnvContext",  # noqa: F821
         logger: logging.Logger = default_logger,
     ):
         if not runtime_env.has_pip():
@@ -533,7 +324,7 @@ class PipPlugin(RuntimeEnvPlugin):
         # Update py_executable.
         protocol, hash_val = parse_uri(uri)
         target_dir = self._get_path_from_hash(hash_val)
-        virtualenv_python = _PathHelper.get_virtualenv_python(target_dir)
+        virtualenv_python = virtualenv_utils.get_virtualenv_python(target_dir)
 
         if not os.path.exists(virtualenv_python):
             raise ValueError(
@@ -542,6 +333,6 @@ class PipPlugin(RuntimeEnvPlugin):
                 "installing the runtime_env `pip` packages."
             )
         context.py_executable = virtualenv_python
-        context.command_prefix += _PathHelper.get_virtualenv_activate_command(
+        context.command_prefix += virtualenv_utils.get_virtualenv_activate_command(
             target_dir
         )

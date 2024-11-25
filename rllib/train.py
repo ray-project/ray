@@ -91,6 +91,10 @@ def load_experiments_from_file(
             experiments = yaml.safe_load(f)
             if stop is not None and stop != "{}":
                 raise ValueError("`stop` criteria only supported for python files.")
+        # Make sure yaml experiments are always old API stack.
+        for experiment in experiments.values():
+            experiment["config"]["enable_rl_module_and_learner"] = False
+            experiment["config"]["enable_env_runner_and_connector_v2"] = False
     # Python file case (ensured by file type enum)
     else:
         module_name = os.path.basename(config_file).replace(".py", "")

@@ -1,5 +1,8 @@
 # __quick_start_begin__
 import gymnasium as gym
+import numpy as np
+import torch
+
 from ray.rllib.algorithms.ppo import PPOConfig
 
 
@@ -19,9 +22,9 @@ class SimpleCorridor(gym.Env):
 
     def __init__(self, config):
         self.end_pos = config["corridor_length"]
-        self.cur_pos = 0
+        self.cur_pos = 0.0
         self.action_space = gym.spaces.Discrete(2)  # left and right
-        self.observation_space = gym.spaces.Box(0.0, self.end_pos, shape=(1,))
+        self.observation_space = gym.spaces.Box(0.0, self.end_pos, (1,), np.float32)
 
     def reset(self, *, seed=None, options=None):
         """Resets the episode.
@@ -29,9 +32,9 @@ class SimpleCorridor(gym.Env):
         Returns:
            Initial observation of the new episode and an info dict.
         """
-        self.cur_pos = 0
+        self.cur_pos = 0.0
         # Return initial observation.
-        return [self.cur_pos], {}
+        return np.array([self.cur_pos], np.float32), {}
 
     def step(self, action):
         """Takes a single step in the episode given `action`.
@@ -50,23 +53,24 @@ class SimpleCorridor(gym.Env):
         truncated = False
         # +1 when goal reached, otherwise -1.
         reward = 1.0 if terminated else -0.1
-        return [self.cur_pos], reward, terminated, truncated, {}
+        return np.array([self.cur_pos], np.float32), reward, terminated, truncated, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig object.
 config = (
     PPOConfig().environment(
         # Env class to use (here: our gym.Env sub-class from above).
-        env=SimpleCorridor,
+        SimpleCorridor,
         # Config dict to be passed to our custom env's constructor.
         # Use corridor with 20 fields (including S and G).
-        env_config={"corridor_length": 28},
+        env_config={"corridor_length": 20},
     )
     # Parallelize environment rollouts.
     .env_runners(num_env_runners=3)
 )
 # Construct the actual (PPO) algorithm object from the config.
 algo = config.build()
+rl_module = algo.get_module()
 
 # Train for n iterations and report results (mean episode rewards).
 # Since we have to move at least 19 times in the env to reach the goal and
@@ -74,7 +78,7 @@ algo = config.build()
 # Expect to reach an optimal episode reward of `-0.1*18 + 1.0 = -0.8`.
 for i in range(5):
     results = algo.train()
-    print(f"Iter: {i}; avg. return={results['env_runners']['episode_return_mean']}")
+    print(f"Iter: {i}; avg. results={results['env_runners']}")
 
 # Perform inference (action computations) based on given env observations.
 # Note that we are using a slightly different env here (len 10 instead of 20),
@@ -89,7 +93,12 @@ total_reward = 0.0
 while not terminated and not truncated:
     # Compute a single action, given the current observation
     # from the environment.
-    action = algo.compute_single_action(obs)
+    action_logits = rl_module.forward_inference(
+        {"obs": torch.from_numpy(obs).unsqueeze(0)}
+    )["action_dist_inputs"].numpy()[
+        0
+    ]  # [0]: B=1
+    action = np.argmax(action_logits)
     # Apply the computed action in the environment.
     obs, reward, terminated, truncated, info = env.step(action)
     # Sum up rewards for reporting purposes.

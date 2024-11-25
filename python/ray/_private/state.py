@@ -525,7 +525,7 @@ class GlobalState:
         """Return a list of transfer events that can viewed as a timeline.
 
         To view this information as a timeline, simply dump it as a json file
-        by passing in "filename" or using using json.dump, and then load go to
+        by passing in "filename" or using json.dump, and then load go to
         chrome://tracing in the Chrome web browser and load the dumped file.
         Make sure to enable "Flow events" in the "View Options" menu.
 
@@ -748,7 +748,7 @@ class GlobalState:
         return set(self.total_resources_per_node().keys())
 
     def available_resources_per_node(self):
-        """Returns a dictionary mapping node id to avaiable resources."""
+        """Returns a dictionary mapping node id to available resources."""
         self._check_connected()
         available_resources_by_id = {}
 
@@ -952,7 +952,7 @@ def timeline(filename=None):
     variable prior to starting Ray, and set RAY_task_events_report_interval_ms=0
 
     To view this information as a timeline, simply dump it as a json file by
-    passing in "filename" or using using json.dump, and then load go to
+    passing in "filename" or using json.dump, and then load go to
     chrome://tracing in the Chrome web browser and load the dumped file.
 
     Args:
@@ -970,7 +970,7 @@ def object_transfer_timeline(filename=None):
     """Return a list of transfer events that can viewed as a timeline.
 
     To view this information as a timeline, simply dump it as a json file by
-    passing in "filename" or using using json.dump, and then load go to
+    passing in "filename" or using json.dump, and then load go to
     chrome://tracing in the Chrome web browser and load the dumped file. Make
     sure to enable "Flow events" in the "View Options" menu.
 

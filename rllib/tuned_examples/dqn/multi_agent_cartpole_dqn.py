@@ -25,13 +25,9 @@ register_env("multi_agent_cartpole", lambda cfg: MultiAgentCartPole(config=cfg))
 
 config = (
     DQNConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment(env="multi_agent_cartpole", env_config={"num_agents": args.num_agents})
     .training(
-        lr=0.00065 * (args.num_gpus or 1) ** 0.5,
+        lr=0.00065 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=48,
         replay_buffer_config={
             "type": "MultiAgentPrioritizedEpisodeReplayBuffer",

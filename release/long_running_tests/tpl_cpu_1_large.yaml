@@ -9,7 +9,7 @@ head_node_type:
 
 worker_node_types: []
 
-aws:
+advanced_configurations_json:
   TagSpecifications:
     - ResourceType: "instance"
       Tags:

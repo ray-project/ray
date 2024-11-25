@@ -104,6 +104,7 @@ bool GetRequest::Wait(int64_t timeout_ms) {
   auto remaining_timeout_ms = timeout_ms;
   auto timeout_timestamp = current_time_ms() + timeout_ms;
   while (!is_ready_) {
+    // TODO (dayshah): see if using cv condition function instead of busy while helps.
     auto status = cv_.wait_for(lock, std::chrono::milliseconds(remaining_timeout_ms));
     auto current_timestamp = current_time_ms();
     remaining_timeout_ms =

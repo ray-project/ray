@@ -1,9 +1,9 @@
-from typing import Dict
+from typing import Dict, Optional
 
 from ray.rllib.core.learner.learner import Learner
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
-from ray.rllib.utils.typing import ModuleID, TensorType
+from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn, TensorType
 
 LEARNER_RESULTS_MOVING_AVG_SQD_ADV_NORM_KEY = "moving_avg_sqd_adv_norm"
 LEARNER_RESULTS_VF_EXPLAINED_VAR_KEY = "vf_explained_variance"
@@ -29,6 +29,15 @@ class MARWILLearner(Learner):
         )
 
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
-        super().remove_module(module_id)
-        self.moving_avg_sqd_adv_norms_per_module.pop(module_id)
+    def remove_module(
+        self,
+        module_id: ModuleID,
+        *,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> None:
+        super().remove_module(
+            module_id,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
+        # In case of BC (beta==0.0 and this property never being used),
+        self.moving_avg_sqd_adv_norms_per_module.pop(module_id, None)

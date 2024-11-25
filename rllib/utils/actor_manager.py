@@ -398,7 +398,7 @@ class FaultTolerantActorManager:
         func: Union[Callable[[Any], Any], List[Callable[[Any], Any]]],
         *,
         healthy_only: bool = True,
-        remote_actor_ids: List[int] = None,
+        remote_actor_ids: Optional[List[int]] = None,
         timeout_seconds: Optional[float] = None,
         return_obj_refs: bool = False,
         mark_healthy: bool = False,

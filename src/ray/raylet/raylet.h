@@ -23,9 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 // clang-format on
 
-namespace ray {
-
-namespace raylet {
+namespace ray::raylet {
 
 using rpc::GcsNodeInfo;
 using rpc::NodeSnapshot;
@@ -109,6 +107,4 @@ class Raylet {
   local_stream_socket socket_;
 };
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet

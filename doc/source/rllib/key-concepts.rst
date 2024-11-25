@@ -73,7 +73,15 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Build.
             algo = config.build()
@@ -91,7 +99,15 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Train via Ray Tune.
             tune.run("PPO", config=config)

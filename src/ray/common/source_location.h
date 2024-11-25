@@ -21,7 +21,14 @@ namespace ray {
 
 // A struct which represents source code location (aka. filename and line
 // number), expected to use only via internal macros.
+//
+// TODO(hjiang): Remove default constructor after we upgrade to C++20, which has
+// designated initializer. Ref:
+// https://en.cppreference.com/w/cpp/language/aggregate_initialization
 struct SourceLocation {
+  SourceLocation() = default;
+  SourceLocation(std::string_view fname, int line) : filename(fname), line_no(line) {}
+
   // Via `__FILE__` macros, memory ownership lies in data segment and never destructs.
   std::string_view filename;
   int line_no = 0;
@@ -35,4 +42,4 @@ std::ostream &operator<<(std::ostream &os, const SourceLocation &loc);
 }  // namespace ray
 
 #define RAY_LOC() \
-  ray::SourceLocation { .filename = __FILE__, .line_no = __LINE__, }
+  ray::SourceLocation { __FILE__, __LINE__ }

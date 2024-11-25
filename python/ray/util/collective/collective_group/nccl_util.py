@@ -63,7 +63,7 @@ if torch_available():
     }
 
     # Older versions of cupy don't support bfloat16.
-    if hasattr(nccl, "NCCL_BFlOAT16"):
+    if hasattr(nccl, "NCCL_BFLOAT16"):
         TORCH_NCCL_DTYPE_MAP[torch.bfloat16] = nccl.NCCL_BFLOAT16
 
     TORCH_NUMPY_DTYPE_MAP = {

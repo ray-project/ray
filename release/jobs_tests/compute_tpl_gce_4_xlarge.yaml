@@ -1,6 +1,6 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
-allowed_azs: 
+allowed_azs:
     - us-west1-c
 
 max_workers: 4
@@ -16,7 +16,7 @@ worker_node_types:
       max_workers: 4
       use_spot: false
 
-#aws:
+#advanced_configurations_json:
 #  TagSpecifications:
 #    - ResourceType: "instance"
 #      Tags:

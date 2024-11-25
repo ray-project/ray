@@ -1,4 +1,7 @@
 import gymnasium as gym
+import numpy as np
+import torch
+
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -21,7 +24,7 @@ class ParrotEnv(gym.Env):
     def __init__(self, config):
         # Make the space (for actions and observations) configurable.
         self.action_space = config.get(
-            "parrot_shriek_range", gym.spaces.Box(-1.0, 1.0, shape=(1,))
+            "parrot_shriek_range", gym.spaces.Box(-1.0, 1.0, (1,), np.float32)
         )
         # Since actions should repeat observations, their spaces must be the
         # same.
@@ -45,12 +48,12 @@ class ParrotEnv(gym.Env):
         """
         # Set `done` and `truncated` flags after 10 steps.
         self.episode_len += 1
-        done = truncated = self.episode_len >= 10
+        terminated = truncated = self.episode_len >= 10
         # r = -abs(obs - action)
         reward = -sum(abs(self.cur_obs - action))
         # Set a new observation (random sample).
         self.cur_obs = self.observation_space.sample()
-        return self.cur_obs, reward, done, truncated, {}
+        return self.cur_obs, reward, terminated, truncated, {}
 
 
 # Create an RLlib Algorithm instance from a PPOConfig to learn how to
@@ -88,7 +91,10 @@ total_reward = 0.0
 while not done:
     # Compute a single action, given the current observation
     # from the environment.
-    action = algo.compute_single_action(obs)
+    model_outputs = algo.env_runner.module.forward_inference(
+        {"obs": torch.from_numpy(obs)}
+    )
+    action = model_outputs["action_dist_inputs"][0].numpy()
     # Apply the computed action in the environment.
     obs, reward, done, truncated, info = env.step(action)
     # Sum up rewards for reporting purposes.

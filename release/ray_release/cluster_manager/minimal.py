@@ -9,7 +9,7 @@ from ray_release.exception import (
 from ray_release.logger import logger
 from ray_release.cluster_manager.cluster_manager import ClusterManager
 from ray_release.util import format_link, anyscale_cluster_env_build_url
-from retry import retry
+from ray_release.retry import retry
 
 REPORT_S = 30.0
 
@@ -20,7 +20,12 @@ class MinimalClusterManager(ClusterManager):
     Builds app config and compute template but does not start or stop session.
     """
 
-    @retry((ClusterEnvCreateError), delay=10, jitter=5, tries=2)
+    @retry(
+        init_delay_sec=10,
+        jitter_sec=5,
+        max_retry_count=2,
+        exceptions=(ClusterEnvCreateError,),
+    )
     def create_cluster_env(self):
         assert self.cluster_env_id is None
 

@@ -78,6 +78,8 @@ class NewPlacementGroupResourceManagerTest : public ::testing::Test {
 
 TEST_F(NewPlacementGroupResourceManagerTest,
        TestGetOriginalResourceNameFromWildcardResource) {
+  scheduling::ResourceID resourceId = scheduling::ResourceID("GPU");
+  ASSERT_EQ(resourceId, ResourceID::GPU());
   ASSERT_EQ(GetOriginalResourceNameFromWildcardResource(
                 "CPU_group_0_4482dec0faaf5ead891ff1659a9501000000"),
             "");
@@ -191,25 +193,20 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewPrepareBundleDuringDraining)
   ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle2_specs));
   // Prepared bundles can still be committed.
   new_placement_group_resource_manager_->CommitBundles(bundle1_specs);
-  absl::flat_hash_map<std::string, double> remaining_resources = {
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
       {"CPU_group_" + group1_id.Hex(), 1.0},
       {"CPU_group_1_" + group1_id.Hex(), 1.0},
       {"CPU", 2.0},
       {"bundle_group_1_" + group1_id.Hex(), 1000},
       {"bundle_group_" + group1_id.Hex(), 1000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          unit_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"CPU_group_" + group1_id.Hex(), 1.0},
+      {"CPU_group_1_" + group1_id.Hex(), 1.0},
+      {"CPU", 1.0},
+      {"bundle_group_1_" + group1_id.Hex(), 1000},
+      {"bundle_group_" + group1_id.Hex(), 1000}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -225,25 +222,20 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewCommitBundleResource) {
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
   new_placement_group_resource_manager_->CommitBundles(bundle_specs);
   /// 4. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
       {"CPU_group_" + group_id.Hex(), 1.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU", 1.0},
       {"bundle_group_1_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 1000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          unit_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"CPU_group_" + group_id.Hex(), 1.0},
+      {"CPU_group_1_" + group_id.Hex(), 1.0},
+      {"CPU", 0.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -263,11 +255,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewReturnBundleResource) {
   /// 4. return bundle resource.
   ASSERT_TRUE(new_placement_group_resource_manager_->ReturnBundle(bundle_spec).ok());
   /// 5. check remaining resources is correct.
-  auto remaining_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
-      io_context, scheduling::NodeID("remaining"), unit_resource, is_node_available_fn_);
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(unit_resource, unit_resource);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -292,7 +281,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
   new_placement_group_resource_manager_->CommitBundles(
       ConvertSingleSpecToVectorPtrs(second_bundle_spec));
   /// 4. check remaining resources is correct after commit phase.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
       {"CPU_group_" + group_id.Hex(), 2.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU_group_2_" + group_id.Hex(), 1.0},
@@ -300,58 +289,41 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewMultipleBundlesCommitAndRetu
       {"bundle_group_1_" + group_id.Hex(), 1000},
       {"bundle_group_2_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 2000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          init_unit_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"CPU_group_" + group_id.Hex(), 2.0},
+      {"CPU_group_1_" + group_id.Hex(), 1.0},
+      {"CPU_group_2_" + group_id.Hex(), 1.0},
+      {"CPU", 0.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 2000}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 5. return second bundle.
   ASSERT_TRUE(
       new_placement_group_resource_manager_->ReturnBundle(second_bundle_spec).ok());
   /// 6. check remaining resources is correct after return second bundle.
-  remaining_resources = {{"CPU_group_" + group_id.Hex(), 2.0},
-                         {"CPU_group_1_" + group_id.Hex(), 1.0},
-                         {"CPU", 2.0},
-                         {"bundle_group_1_" + group_id.Hex(), 1000},
-                         {"bundle_group_" + group_id.Hex(), 2000}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          {{"CPU_group_" + group_id.Hex(), 1.0},
-           {"CPU", 1.0},
-           {"bundle_group_" + group_id.Hex(), 1000}},
-          resource_instances));
+  remaining_resources_total = {{"CPU_group_" + group_id.Hex(), 2.0},
+                               {"CPU_group_1_" + group_id.Hex(), 1.0},
+                               {"CPU", 2.0},
+                               {"bundle_group_1_" + group_id.Hex(), 1000},
+                               {"bundle_group_" + group_id.Hex(), 2000}};
+  remaining_resources_avail = {{"CPU_group_" + group_id.Hex(), 1.0},
+                               {"CPU_group_1_" + group_id.Hex(), 1.0},
+                               {"CPU", 1.0},
+                               {"bundle_group_1_" + group_id.Hex(), 1000},
+                               {"bundle_group_" + group_id.Hex(), 1000}};
   remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
   /// 7. return first bundle.
   ASSERT_TRUE(
       new_placement_group_resource_manager_->ReturnBundle(first_bundle_spec).ok());
   /// 8. check remaining resources is correct after all bundle returned.
-  remaining_resources = {{"CPU", 2.0}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
+  remaining_resources_total = {{"CPU", 2.0}};
   remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_total);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -370,20 +342,10 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithMultiPrepare)
     ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
   }
   /// 4. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          unit_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {{"CPU", 3.0}};
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {{"CPU", 2.0}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -405,25 +367,20 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec)));
   /// 4. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
       {"CPU_group_" + group_id.Hex(), 1.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU", 3.0},
       {"bundle_group_1_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 1000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          unit_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"CPU_group_" + group_id.Hex(), 1.0},
+      {"CPU_group_1_" + group_id.Hex(), 1.0},
+      {"CPU", 2.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 1000}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   CheckRemainingResourceCorrect(remaining_resource_instance);
   ASSERT_TRUE(new_placement_group_resource_manager_->ReturnBundle(bundle_spec).ok());
   // 5. prepare bundle -> commit bundle -> commit bundle.
@@ -443,14 +400,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestNewIdempotencyWithRandomOrder) 
   new_placement_group_resource_manager_->CommitBundles(
       ConvertSingleSpecToVectorPtrs(bundle_spec));
   // 8. check remaining resources is correct.
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 available_resource,
-                                                 is_node_available_fn_);
   remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(available_resource, available_resource);
   CheckRemainingResourceCorrect(remaining_resource_instance);
 }
 
@@ -470,14 +421,8 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   ASSERT_FALSE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
   // 4. check remaining resources is correct.
   absl::flat_hash_map<std::string, double> remaining_resources = {{"CPU", 3.0}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources, remaining_resources);
   CheckRemainingResourceCorrect(remaining_resource_instance);
   // 5. re-init the local available resource with 4 CPUs.
   available_resource = {std::make_pair("CPU", 4.0)};
@@ -488,55 +433,7 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestPreparedResourceBatched) {
   ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
   new_placement_group_resource_manager_->CommitBundles(bundle_specs);
   // 7. re-check remaining resources is correct.
-  remaining_resources = {{"CPU_group_" + group_id.Hex(), 4.0},
-                         {"CPU_group_1_" + group_id.Hex(), 1.0},
-                         {"CPU_group_2_" + group_id.Hex(), 1.0},
-                         {"CPU_group_3_" + group_id.Hex(), 1.0},
-                         {"CPU_group_4_" + group_id.Hex(), 1.0},
-                         {"CPU", 4.0},
-                         {"bundle_group_1_" + group_id.Hex(), 1000},
-                         {"bundle_group_2_" + group_id.Hex(), 1000},
-                         {"bundle_group_3_" + group_id.Hex(), 1000},
-                         {"bundle_group_4_" + group_id.Hex(), 1000},
-                         {"bundle_group_" + group_id.Hex(), 4000}};
-  remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  absl::flat_hash_map<std::string, double> allocating_resource;
-  allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          allocating_resource, resource_instances));
-  remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
-  RAY_LOG(INFO) << "The current local resource view: "
-                << cluster_resource_scheduler_->DebugString();
-  CheckRemainingResourceCorrect(remaining_resource_instance);
-}
-
-TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
-  // 1. create a placement group spec with 4 bundles and each required 1 CPU.
-  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
-  absl::flat_hash_map<std::string, double> unit_resource;
-  unit_resource.insert({"CPU", 1.0});
-  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
-  // 2. init local available resource with 4 CPUs.
-  absl::flat_hash_map<std::string, double> available_resource = {
-      std::make_pair("CPU", 4.0)};
-  InitLocalAvailableResource(available_resource);
-  // 3. prepare resources for the four bundles and make sure it succeeds.
-  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
-  // 4. prepare resources for the four bundles.
-  new_placement_group_resource_manager_->CommitBundles(bundle_specs);
-  // make sure it keeps Idempotency.
-  new_placement_group_resource_manager_->CommitBundles(bundle_specs);
-  // 5. check remaining resources is correct.
-  absl::flat_hash_map<std::string, double> remaining_resources = {
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
       {"CPU_group_" + group_id.Hex(), 4.0},
       {"CPU_group_1_" + group_id.Hex(), 1.0},
       {"CPU_group_2_" + group_id.Hex(), 1.0},
@@ -548,21 +445,68 @@ TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
       {"bundle_group_3_" + group_id.Hex(), 1000},
       {"bundle_group_4_" + group_id.Hex(), 1000},
       {"bundle_group_" + group_id.Hex(), 4000}};
-  auto remaining_resource_scheduler =
-      std::make_shared<ClusterResourceScheduler>(io_context,
-                                                 scheduling::NodeID("remaining"),
-                                                 remaining_resources,
-                                                 is_node_available_fn_);
-  std::shared_ptr<TaskResourceInstances> resource_instances =
-      std::make_shared<TaskResourceInstances>();
-  absl::flat_hash_map<std::string, double> allocating_resource;
-  allocating_resource.insert({"CPU", 4.0});
-  ASSERT_TRUE(
-      remaining_resource_scheduler->GetLocalResourceManager().AllocateLocalTaskResources(
-          allocating_resource, resource_instances));
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"CPU_group_" + group_id.Hex(), 4.0},
+      {"CPU_group_1_" + group_id.Hex(), 1.0},
+      {"CPU_group_2_" + group_id.Hex(), 1.0},
+      {"CPU_group_3_" + group_id.Hex(), 1.0},
+      {"CPU_group_4_" + group_id.Hex(), 1.0},
+      {"CPU", 0.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_3_" + group_id.Hex(), 1000},
+      {"bundle_group_4_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 4000}};
+  remaining_resource_instance =
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
+  RAY_LOG(INFO) << "The current local resource view: "
+                << cluster_resource_scheduler_->DebugString();
+  CheckRemainingResourceCorrect(remaining_resource_instance);
+}
+
+TEST_F(NewPlacementGroupResourceManagerTest, TestCommiteResourceBatched) {
+  // 1. create a placement group spec with 4 bundles and each required 1 CPU.
+  auto group_id = PlacementGroupID::Of(JobID::FromInt(1));
+  absl::flat_hash_map<std::string, double> unit_resource;
+  unit_resource.insert({"GPU", 2.0});
+  auto bundle_specs = Mocker::GenBundleSpecifications(group_id, unit_resource, 4);
+  // 2. init local available resource with 4 CPUs.
+  absl::flat_hash_map<std::string, double> available_resource = {
+      std::make_pair("GPU", 10.0)};
+  InitLocalAvailableResource(available_resource);
+  // 3. prepare resources for the four bundles and make sure it succeeds.
+  ASSERT_TRUE(new_placement_group_resource_manager_->PrepareBundles(bundle_specs));
+  // 4. prepare resources for the four bundles.
+  new_placement_group_resource_manager_->CommitBundles(bundle_specs);
+  // make sure it keeps Idempotency.
+  new_placement_group_resource_manager_->CommitBundles(bundle_specs);
+  // 5. check remaining resources is correct.
+  absl::flat_hash_map<std::string, double> remaining_resources_total = {
+      {"GPU_group_" + group_id.Hex(), 8.0},
+      {"GPU_group_1_" + group_id.Hex(), 2.0},
+      {"GPU_group_2_" + group_id.Hex(), 2.0},
+      {"GPU_group_3_" + group_id.Hex(), 2.0},
+      {"GPU_group_4_" + group_id.Hex(), 2.0},
+      {"GPU", 10.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_3_" + group_id.Hex(), 1000},
+      {"bundle_group_4_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 4000}};
+  absl::flat_hash_map<std::string, double> remaining_resources_avail = {
+      {"GPU_group_" + group_id.Hex(), 8.0},
+      {"GPU_group_1_" + group_id.Hex(), 2.0},
+      {"GPU_group_2_" + group_id.Hex(), 2.0},
+      {"GPU_group_3_" + group_id.Hex(), 2.0},
+      {"GPU_group_4_" + group_id.Hex(), 2.0},
+      {"GPU", 2.0},
+      {"bundle_group_1_" + group_id.Hex(), 1000},
+      {"bundle_group_2_" + group_id.Hex(), 1000},
+      {"bundle_group_3_" + group_id.Hex(), 1000},
+      {"bundle_group_4_" + group_id.Hex(), 1000},
+      {"bundle_group_" + group_id.Hex(), 4000}};
   auto remaining_resource_instance =
-      remaining_resource_scheduler->GetClusterResourceManager().GetNodeResources(
-          scheduling::NodeID("remaining"));
+      ResourceMapToNodeResources(remaining_resources_total, remaining_resources_avail);
   RAY_LOG(INFO) << "The current local resource view: "
                 << cluster_resource_scheduler_->DebugString();
   CheckRemainingResourceCorrect(remaining_resource_instance);

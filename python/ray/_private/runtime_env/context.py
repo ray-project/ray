@@ -23,18 +23,12 @@ class RuntimeEnvContext:
         command_prefix: List[str] = None,
         env_vars: Dict[str, str] = None,
         py_executable: Optional[str] = None,
-        resources_dir: Optional[str] = None,
         override_worker_entrypoint: Optional[str] = None,
         java_jars: List[str] = None,
     ):
         self.command_prefix = command_prefix or []
         self.env_vars = env_vars or {}
         self.py_executable = py_executable or sys.executable
-        # TODO(edoakes): this should not be in the context but just passed to
-        # the per-resource manager constructor. However, it's currently used in
-        # the legacy Ray client codepath to pass the resources dir to the shim
-        # process. We should remove it once Ray client uses the agent.
-        self.resources_dir: str = resources_dir
         self.override_worker_entrypoint: Optional[str] = override_worker_entrypoint
         self.java_jars = java_jars or []
 

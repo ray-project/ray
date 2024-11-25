@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 from unittest.mock import MagicMock
+from urllib.parse import quote_plus
 
 import pytest
 import requests
@@ -370,7 +371,9 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(3)
         try:
-            response = requests.get(webui_url + "/test/http_get?url=" + target_url)
+            response = requests.get(
+                webui_url + "/test/http_get?url=" + quote_plus(target_url)
+            )
             response.raise_for_status()
             try:
                 dump_info = response.json()
@@ -385,7 +388,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             http_port, grpc_port = ports
 
             response = requests.get(
-                f"http://{ip}:{http_port}" f"/test/http_get_from_agent?url={target_url}"
+                f"http://{ip}:{http_port}"
+                f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
             try:

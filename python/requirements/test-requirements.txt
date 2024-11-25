@@ -14,8 +14,7 @@ beautifulsoup4==4.11.1
 boto3==1.26.76
 # Todo: investigate if we can get rid of this and exchange for ray.cloudpickle
 cloudpickle==2.2.0
-# Keep in sync with `ci/build/upload_build_info.sh`
-cryptography==38.0.1
+cryptography==42.0.5
 cython==0.29.37
 fastapi==0.109.2
 feather-format==0.4.1
@@ -25,6 +24,7 @@ freezegun==1.1.0
 google-api-python-client==2.111.0
 google-cloud-storage==2.14.0
 gradio==3.50.2; platform_system != "Windows"
+graphviz==0.20.3
 websockets==11.0.3
 joblib==1.2.0
 jsonpatch==1.32
@@ -44,8 +44,7 @@ Pillow==10.3.0; platform_system != "Windows"
 proxy.py==2.4.3
 pydantic==2.5.0
 pydot==1.4.2
-# Keep in sync with `ci/build/upload_build_info.sh`
-PyOpenSSL==23.0.0
+pyopenssl==24.2.1
 pygame==2.5.2
 Pygments==2.18.0
 pymongo==4.3.2

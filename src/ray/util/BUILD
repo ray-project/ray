@@ -44,6 +44,12 @@ cc_library(
 )
 
 cc_library(
+    name = "size_literals",
+    hdrs = ["size_literals.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "thread_checker",
     hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],

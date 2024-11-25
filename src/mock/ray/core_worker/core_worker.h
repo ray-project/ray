@@ -14,28 +14,11 @@
 #pragma once
 #include "gmock/gmock.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
-namespace ray {
-namespace core {
 
-class MockCoreWorkerOptions : public CoreWorkerOptions {
- public:
-};
+namespace ray::core {
 
-}  // namespace core
-}  // namespace ray
-
-namespace ray {
-namespace core {
-
-class MockCoreWorkerProcess : public CoreWorkerProcess {
- public:
-};
-
-}  // namespace core
-}  // namespace ray
-
-namespace ray {
-namespace core {
+class MockCoreWorkerOptions : public CoreWorkerOptions {};
+class MockCoreWorkerProcess : public CoreWorkerProcess {};
 
 class MockCoreWorker : public CoreWorker {
  public:
@@ -179,5 +162,4 @@ class MockCoreWorker : public CoreWorker {
               (override));
 };
 
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core

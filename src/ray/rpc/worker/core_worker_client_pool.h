@@ -20,9 +20,6 @@
 #include "ray/common/id.h"
 #include "ray/rpc/worker/core_worker_client.h"
 
-using absl::optional;
-using std::shared_ptr;
-
 namespace ray {
 namespace rpc {
 
@@ -35,13 +32,13 @@ class CoreWorkerClientPool {
       : client_factory_(defaultClientFactory(ccm)){};
 
   /// Creates a CoreWorkerClientPool by a given connection function.
-  CoreWorkerClientPool(ClientFactoryFn client_factory)
+  CoreWorkerClientPool(CoreWorkerClientFactoryFn client_factory)
       : client_factory_(client_factory){};
 
   /// Returns an open CoreWorkerClientInterface if one exists, and connect to one
   /// if it does not. The returned pointer is borrowed, and expected to be used
   /// briefly.
-  shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
+  std::shared_ptr<CoreWorkerClientInterface> GetOrConnect(const Address &addr_proto);
 
   /// Removes a connection to the worker from the pool, if one exists. Since the
   /// shared pointer will no longer be retained in the pool, the connection will
@@ -59,7 +56,7 @@ class CoreWorkerClientPool {
   /// Provides the default client factory function. Providing this function to the
   /// construtor aids migration but is ultimately a thing that should be
   /// deprecated and brought internal to the pool, so this is our bridge.
-  ClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
+  CoreWorkerClientFactoryFn defaultClientFactory(rpc::ClientCallManager &ccm) const {
     return [&](const rpc::Address &addr) {
       return std::shared_ptr<rpc::CoreWorkerClient>(new rpc::CoreWorkerClient(addr, ccm));
     };
@@ -76,7 +73,7 @@ class CoreWorkerClientPool {
   /// This factory function does the connection to CoreWorkerClient, and is
   /// provided by the constructor (either the default implementation, above, or a
   /// provided one)
-  ClientFactoryFn client_factory_;
+  CoreWorkerClientFactoryFn client_factory_;
 
   absl::Mutex mu_;
 
@@ -84,11 +81,11 @@ class CoreWorkerClientPool {
    public:
     CoreWorkerClientEntry() {}
     CoreWorkerClientEntry(ray::WorkerID worker_id,
-                          shared_ptr<CoreWorkerClientInterface> core_worker_client)
+                          std::shared_ptr<CoreWorkerClientInterface> core_worker_client)
         : worker_id(worker_id), core_worker_client(core_worker_client) {}
 
     ray::WorkerID worker_id;
-    shared_ptr<CoreWorkerClientInterface> core_worker_client;
+    std::shared_ptr<CoreWorkerClientInterface> core_worker_client;
   };
 
   /// A list of open connections from the most recent accessed to the least recent

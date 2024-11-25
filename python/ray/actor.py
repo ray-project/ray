@@ -924,6 +924,7 @@ class ActorClass:
             scheduling_strategy: Strategy about how to schedule this actor.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
+            _labels: The key-value labels of the actor.
 
         Returns:
             A handle to the newly created actor.
@@ -1197,6 +1198,7 @@ class ActorClass:
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
+            labels=actor_options.get("_labels"),
         )
 
         if _actor_launch_hook:
