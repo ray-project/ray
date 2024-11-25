@@ -55,7 +55,7 @@ class TestCoreContextFilter:
                 "node_id": runtime_context.get_node_id(),
                 "task_id": runtime_context.get_task_id(),
                 "task_name": runtime_context.get_task_name(),
-                "task_function_name": runtime_context.get_task_function_name(),
+                "task_func_name": runtime_context.get_task_function_name(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
@@ -83,7 +83,7 @@ class TestCoreContextFilter:
                     "actor_name": runtime_context.get_actor_name(),
                     "task_id": runtime_context.get_task_id(),
                     "task_name": runtime_context.get_task_name(),
-                    "task_function_name": runtime_context.get_task_function_name(),
+                    "task_func_name": runtime_context.get_task_function_name(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)

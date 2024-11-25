@@ -352,7 +352,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "worker_id": ray.get_runtime_context().get_worker_id(),
             "node_id": ray.get_runtime_context().get_node_id(),
             "task_name": ray.get_runtime_context().get_task_name(),
-            "task_function_name": ray.get_runtime_context().get_task_function_name(),
+            "task_func_name": ray.get_runtime_context().get_task_function_name(),
             "actor_name": ray.get_runtime_context().get_actor_name(),
         }
 
@@ -373,7 +373,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "worker_id": ray.get_runtime_context().get_worker_id(),
                 "node_id": ray.get_runtime_context().get_node_id(),
                 "task_name": ray.get_runtime_context().get_task_name(),
-                "task_function_name": ray.get_runtime_context().get_task_function_name(),
+                "task_func_name": ray.get_runtime_context().get_task_function_name(),
                 "actor_name": ray.get_runtime_context().get_actor_name(),
             }
 
@@ -425,7 +425,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
                 f'"task_name": "{resp["task_name"]}", '
-                f'"task_function_name": "{resp["task_function_name"]}", '
+                f'"task_func_name": "{resp["task_func_name"]}", '
                 f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
@@ -440,7 +440,7 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '
                 f'"task_name": "{resp2["task_name"]}", '
-                f'"task_function_name": "{resp2["task_function_name"]}", '
+                f'"task_func_name": "{resp2["task_func_name"]}", '
                 f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
