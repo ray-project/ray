@@ -4131,7 +4131,7 @@
 
   run:
     timeout: 1200
-    script: python launch_and_verify_cluster.py gcp/example-minimal.yaml
+    script: python launch_and_verify_cluster.py gcp/example-minimal-pinned.yaml
 
 - name: gcp_cluster_launcher_full
   group: cluster-launcher-test
