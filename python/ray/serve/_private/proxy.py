@@ -454,9 +454,11 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
+            request_context = ray.serve.context._serve_request_context.get()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
+                    route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
@@ -988,8 +990,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=status_code != "200",
+                            is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1010,11 +1011,16 @@ class HTTPProxy(GenericProxy):
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
-                    elif asgi_message["type"] == "websocket.disconnect":
+                    elif asgi_message["type"] in [
+                        "websocket.close",
+                        "websocket.disconnect",
+                    ]:
+                        status_code = str(asgi_message["code"])
                         status = ResponseStatus(
-                            code=str(asgi_message["code"]),
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=False,
+                            code=status_code,
+                            # All status codes are considered errors aside from:
+                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
+                            is_error=status_code not in ["1000", "1001"],
                         )
                         response_generator.stop_checking_for_disconnect()
 

@@ -275,19 +275,20 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # All ResourceTypes as in
         # ray_release.aws.RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
-        target_cluster_compute["aws"] = {
+        target_cluster_compute["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "instance", "Tags": [{"Key": "foo", "Value": "bar"}]},
                 {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
             ]
         }
         self.assertEqual(
-            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["advanced_configurations_json"],
+            target_cluster_compute["advanced_configurations_json"],
         )
 
         # Test merging with already existing tags
         cluster_compute_with_tags = TEST_CLUSTER_COMPUTE.copy()
-        cluster_compute_with_tags["aws"] = {
+        cluster_compute_with_tags["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "fake", "Tags": []},
                 {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
@@ -299,7 +300,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
         # All ResourceTypes as in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
-        target_cluster_compute["aws"] = {
+        target_cluster_compute["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "fake", "Tags": []},
                 {
@@ -313,7 +314,8 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["advanced_configurations_json"],
+            target_cluster_compute["advanced_configurations_json"],
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
