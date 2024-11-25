@@ -311,7 +311,7 @@ class OptunaSearch(Searcher):
         )
         tuner.fit()
 
-    .. versionadded:: 0.8.9
+    .. versionadded:: 0.8.8
 
     """
 
