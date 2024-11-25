@@ -1,95 +1,100 @@
 #!/bin/bash
 # shellcheck disable=SC2086
 # This script is for users to build docker images locally. It is most useful for users wishing to edit the
-# base-deps, ray-deps, or ray images. This script is *not* tested.
-
-set -x
+# base-deps, or ray images. This script is *not* tested.
 
 GPU=""
 BASE_IMAGE="ubuntu:22.04"
 WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
-PYTHON_VERSION="3.9.19"
+CPP_WHEEL_URL="https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray_cpp-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl"
+PYTHON_VERSION="3.9"
 
+BUILD_ARGS=()
 
-while [[ $# -gt 0 ]]
-do
-key="$1"
-case $key in
-    --gpu)
-    GPU="-gpu"
-    BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
-    ;;
-    --base-image)
-    # Override for the base image.
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --gpu)
+            GPU="-gpu"
+            BASE_IMAGE="nvidia/cuda:11.8.0-cudnn8-devel-ubuntu22.04"
+        ;;
+        --base-image)
+            # Override for the base image.
+            shift
+            BASE_IMAGE="$1"
+        ;;
+        --no-cache-build)
+            BUILD_ARGS+=("--no-cache")
+        ;;
+        --shas-only)
+            # output the SHA sum of each build. This is useful for scripting tests,
+            # especially when builds of different versions are running on the same machine.
+            # It also can facilitate cleanup.
+            OUTPUT_SHA=YES
+            BUILD_ARGS+=("-q")
+        ;;
+        --python-version)
+            # Python version to install. e.g. 3.9
+            # Changing python versions may require a different wheel.
+            # If not provided defaults to 3.9
+            shift
+            PYTHON_VERSION="$1"
+        ;;
+        *)
+            echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
+            exit 1
+    esac
     shift
-    BASE_IMAGE=$1
-    ;;
-    --no-cache-build)
-    NO_CACHE="--no-cache"
-    ;;
-    --build-development-image)
-    BUILD_DEV=YES
-    ;;
-    --build-examples)
-    BUILD_EXAMPLES=YES
-    ;;
-    --shas-only)
-    # output the SHA sum of each build. This is useful for scripting tests, 
-    # especially when builds of different versions are running on the same machine. 
-    # It also can facilitate cleanup.
-    OUTPUT_SHA=YES
-    ;;
-    --python-version)
-    # Python version to install. e.g. 3.9.19.
-    # Changing python versions may require a different wheel.
-    # If not provided defaults to 3.9.19
-    shift
-    PYTHON_VERSION=$1
-    ;;
-    *)
-    echo "Usage: build-docker.sh [ --gpu ] [ --base-image ] [ --no-cache-build ] [ --shas-only ] [ --build-development-image ] [ --build-examples ] [ --python-version ]"
-    exit 1
-esac
-shift
 done
 
-WHEEL_DIR=$(mktemp -d)
-wget --quiet "$WHEEL_URL" -P "$WHEEL_DIR"
-WHEEL="$WHEEL_DIR/$(basename "$WHEEL_DIR"/*.whl)"
-# Build base-deps, ray-deps, and ray.
-for IMAGE in "base-deps" "ray-deps" "ray"
-do
-    cp "$WHEEL" "docker/$IMAGE/$(basename "$WHEEL")"
-    if [ "$OUTPUT_SHA" ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -q -t "rayproject/$IMAGE:nightly$GPU" "docker/$IMAGE")
-        echo "rayproject/$IMAGE:nightly$GPU SHA:$IMAGE_SHA"
-    else
-        docker build $NO_CACHE --build-arg GPU="$GPU" --build-arg BASE_IMAGE="$BASE_IMAGE" --build-arg WHEEL_PATH="$(basename "$WHEEL")" --build-arg PYTHON_VERSION="$PYTHON_VERSION" -t "rayproject/$IMAGE:nightly$GPU" "docker/$IMAGE"
-    fi
-    rm "docker/$IMAGE/$(basename "$WHEEL")"
-done 
+export DOCKER_BUILDKIT=1
 
 
-# Build the current Ray source
-if [ $BUILD_DEV ]; then 
-    git rev-parse HEAD > ./docker/development/git-rev
-    git archive -o ./docker/development/ray.tar "$(git rev-parse HEAD)"
-    if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/development docker/development)
-        echo "rayproject/development:latest SHA:$IMAGE_SHA"
-    else
-        docker build $NO_CACHE -t rayproject/development docker/development
-    fi
-    rm ./docker/development/ray.tar ./docker/development/git-rev
+# Build base-deps image
+if [[ "$OUTPUT_SHA" != "YES" ]]; then
+    echo "=== Building base-deps image ===" >/dev/stderr
 fi
 
-if [ $BUILD_EXAMPLES ]; then 
-    if [ $OUTPUT_SHA ]; then
-        IMAGE_SHA=$(docker build $NO_CACHE -q -t rayproject/examples docker/examples)
-        echo "rayproject/examples:latest SHA:$IMAGE_SHA"
-    else
-        docker build $NO_CACHE -t rayproject/examples docker/examples
-    fi
+BUILD_CMD=(
+    docker build "${BUILD_ARGS[@]}"
+    --build-arg BASE_IMAG="$BASE_IMAGE"
+    --build-arg PYTHON_VERSION="${PYTHON_VERSION}"
+    -t "rayproject/base-deps:dev$GPU" "docker/base-deps"
+)
+
+if [[ "$OUTPUT_SHA" == "YES" ]]; then
+    IMAGE_SHA="$("${BUILD_CMD[@]}")"
+    echo "rayproject/base-deps:dev$GPU SHA:$IMAGE_SHA"
+else
+    "${BUILD_CMD[@]}"
+fi
+
+
+# Build ray image
+if [[ "$OUTPUT_SHA" != "YES" ]]; then
+    echo "=== Building ray image ===" >/dev/stderr
+fi
+
+RAY_BUILD_DIR="$(mktemp -d)"
+mkdir -p "$RAY_BUILD_DIR/.whl"
+wget --quiet "$WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+wget --quiet "$CPP_WHEEL_URL" -P "$RAY_BUILD_DIR/.whl"
+cp python/requirements_compiled.txt "$RAY_BUILD_DIR"
+cp docker/ray/Dockerfile "$RAY_BUILD_DIR"
+
+WHEEL="$(basename "$WHEEL_DIR"/.whl/ray-*.whl)"
+
+BUILD_CMD=(
+    docker build "${BUILD_ARGS[@]}"
+    --build-arg FULL_BASE_IMAGE="rayproject/base-deps:dev$GPU"
+    --build-arg WHEEL_PATH=".whl/${WHEEL}"
+    -t "rayproject/ray:dev$GPU" "$RAY_BUILD_DIR"
+)
+
+if [[ "$OUTPUT_SHA" == "YES" ]]; then
+    IMAGE_SHA="$("${BUILD_CMD[@]}")"
+    echo "rayproject/ray:dev$GPU SHA:$IMAGE_SHA"
+else
+    "${BUILD_CMD[@]}"
 fi
 
 rm -rf "$WHEEL_DIR"

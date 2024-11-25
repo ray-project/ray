@@ -22,7 +22,7 @@ from ray._private.test_utils import (
     wait_for_pid_to_exit,
 )
 from ray.job_config import JobConfig, LoggingConfig
-from ray.job_submission import JobSubmissionClient
+from ray.job_submission import JobStatus, JobSubmissionClient
 from ray.dashboard.modules.job.pydantic_models import JobDetails
 
 
@@ -56,6 +56,9 @@ def test_invalid_gcs_address():
         JobSubmissionClient("abc:abc")
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="lib is not supported on Python 3.12"
+)
 def test_job_isolation(call_ray_start):
     # Make sure two jobs with same module name
     # don't interfere with each other
@@ -230,6 +233,30 @@ print("result:", get_entrypoint_name())
     # Test IPython shell
     outputs = execute_driver(["ipython"], input=get_entrypoint)
     assert line_exists(outputs, ".*result: \(interactive_shell\).*ipython")
+
+
+def test_removed_internal_flags(shutdown_only):
+    ray.init()
+    address = ray._private.worker._global_node.webui_url
+    address = format_web_url(address)
+    client = JobSubmissionClient(address)
+
+    # Tests this env var is not set.
+    job_submission_id = client.submit_job(
+        entrypoint='[ -z "${RAY_JOB_ID+x}" ] && '
+        'echo "RAY_JOB_ID is not set" || '
+        '{ echo "RAY_JOB_ID is set to $RAY_JOB_ID"; return 1; }'
+    )
+
+    def job_finished():
+        status = client.get_job_status(job_submission_id)
+        assert status != JobStatus.FAILED
+        return status == JobStatus.SUCCEEDED
+
+    wait_for_condition(job_finished)
+
+    all_logs = client.get_job_logs(job_submission_id)
+    assert "RAY_JOB_ID is not set" in all_logs
 
 
 def test_entrypoint_field(shutdown_only):

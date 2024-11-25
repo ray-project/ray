@@ -28,9 +28,9 @@
 
 #include "ray/common/status.h"
 
-#include <assert.h>
-
 #include <boost/system/error_code.hpp>
+#include <cassert>
+#include <sstream>
 
 #include "absl/container/flat_hash_map.h"
 
@@ -66,6 +66,7 @@ namespace ray {
 #define STATUS_CODE_AUTH_ERROR "AuthError"
 #define STATUS_CODE_INVALID_ARGUMENT "InvalidArgument"
 #define STATUS_CODE_CHANNEL_ERROR "ChannelError"
+#define STATUS_CODE_CHANNEL_TIMEOUT_ERROR "ChannelTimeoutError"
 
 // not a real status (catch all for codes not known)
 #define STATUS_CODE_UNKNOWN "Unknown"
@@ -105,6 +106,7 @@ const absl::flat_hash_map<StatusCode, std::string> kCodeToStr = {
     {StatusCode::AuthError, STATUS_CODE_AUTH_ERROR},
     {StatusCode::InvalidArgument, STATUS_CODE_INVALID_ARGUMENT},
     {StatusCode::ChannelError, STATUS_CODE_CHANNEL_ERROR},
+    {StatusCode::ChannelTimeoutError, STATUS_CODE_CHANNEL_TIMEOUT_ERROR},
 };
 
 const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
@@ -117,11 +119,18 @@ const absl::flat_hash_map<std::string, StatusCode> kStrToCode = []() {
 
 }  // namespace
 
-Status::Status(StatusCode code, const std::string &msg, int rpc_code) {
+Status::Status(StatusCode code, const std::string &msg, int rpc_code)
+    : Status(code, msg, SourceLocation{}, rpc_code) {}
+
+Status::Status(StatusCode code,
+               const std::string &msg,
+               SourceLocation loc,
+               int rpc_code) {
   assert(code != StatusCode::OK);
   state_ = new State;
   state_->code = code;
   state_->msg = msg;
+  state_->loc = loc;
   state_->rpc_code = rpc_code;
 }
 
@@ -135,7 +144,7 @@ void Status::CopyFrom(const State *state) {
 }
 
 std::string Status::CodeAsString() const {
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return STATUS_CODE_OK;
   }
 
@@ -148,7 +157,7 @@ std::string Status::CodeAsString() const {
 
 StatusCode Status::StringToCode(const std::string &str) {
   // Note: unknown string is mapped to IOError, while unknown code is mapped to "Unknown"
-  // which is not an error. This means for code -> string -> code is not identity.
+  // which is not an error. This means code -> string -> code is not identity.
   auto it = kStrToCode.find(str);
   if (it == kStrToCode.end()) {
     return StatusCode::IOError;
@@ -158,11 +167,19 @@ StatusCode Status::StringToCode(const std::string &str) {
 
 std::string Status::ToString() const {
   std::string result(CodeAsString());
-  if (state_ == NULL) {
+  if (state_ == nullptr) {
     return result;
   }
+
   result += ": ";
   result += state_->msg;
+
+  if (IsValidSourceLoc(state_->loc)) {
+    std::stringstream ss;
+    ss << state_->loc;
+    result += " at ";
+    result += ss.str();
+  }
   return result;
 }
 

@@ -102,6 +102,8 @@ parser.set_defaults(
     checkpoint_at_end=True,
     # Use CartPole-v1 by default.
     env="CartPole-v1",
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--explore-during-inference",
@@ -134,17 +136,21 @@ if __name__ == "__main__":
     best_result = results.get_best_result(
         metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
     )
-    # Create new Algorithm and restore its state from the last checkpoint.
+    # Create new RLModule and restore its state from the last algo checkpoint.
+    # Note that the checkpoint for the RLModule can be found deeper inside the algo
+    # checkpoint's subdirectories ([algo dir] -> "learner/" -> "module_state/" ->
+    # "[module ID]):
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
+            "learner_group",
             "learner",
-            "module_state",
+            "rl_module",
             DEFAULT_MODULE_ID,
         )
     )
 
-    # Create the env to do inference in.
+    # Create an env to do inference in.
     env = gym.make(args.env)
     obs, info = env.reset()
 

@@ -31,7 +31,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 
 .. image:: images/env_key_concept1.png
 
-An RLlib environment consists of: 
+An RLlib environment consists of:
 
 1. all possible actions (**action space**)
 2. a complete description of the environment, nothing hidden (**state space**)
@@ -53,7 +53,7 @@ Algorithms
 ----------
 
 Algorithms bring all RLlib components together, making learning of different tasks
-accessible via RLlib's Python API and its command line interface (CLI).
+accessible via RLlib's Python API.
 Each ``Algorithm`` class is managed by its respective ``AlgorithmConfig``, for example to
 configure a ``PPO`` instance, you should use the ``PPOConfig`` class.
 An ``Algorithm`` sets up its rollout workers and optimizers, and collects training metrics.
@@ -73,7 +73,15 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Build.
             algo = config.build()
@@ -91,17 +99,18 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Train via Ray Tune.
             tune.run("PPO", config=config)
-
-
-    .. tab-item:: RLlib Command Line
-
-        .. code-block:: bash
-
-            rllib train --run=PPO --env=CartPole-v1 --config='{"train_batch_size": 4000}'
 
 
 RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
@@ -129,7 +138,7 @@ implement reinforcement learning policies in RLlib and can therefore be found in
 where their exploration and inference logic is used to sample from an environment.
 The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
 where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModule`
+RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
 contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
 
 .. image:: images/rllib-concepts-rlmodules-sketch.png
@@ -262,7 +271,7 @@ An example implementation of VPG could look like the following:
     def training_step(self) -> ResultDict:
         # 1. Sampling.
         train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_env_steps=self.config["train_batch_size"]
                     )
 
@@ -270,7 +279,7 @@ An example implementation of VPG could look like the following:
         train_results = train_one_step(self, train_batch)
 
         # 3. Synchronize worker weights.
-        self.workers.sync_weights()
+        self.env_runner_group.sync_weights()
 
         # 4. Return results.
         return train_results
@@ -290,11 +299,11 @@ In the first step, we collect trajectory data from the environment(s):
 .. code-block:: python
 
     train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
+                        worker_set=self.env_runner_group,
                         max_env_steps=self.config["train_batch_size"]
                     )
 
-Here, ``self.workers`` is a set of ``RolloutWorkers`` that are created in the ``Algorithm``'s ``setup()`` method
+Here, ``self.env_runner_group`` is a set of ``EnvRunners`` that are created in the ``Algorithm``'s ``setup()`` method
 (prior to calling ``training_step()``).
 This :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` is covered in greater depth on the :ref:`EnvRunnerGroup documentation page <workerset-reference-docs>`.
 The utility function ``synchronous_parallel_sample`` can be used for parallel sampling in a blocking
@@ -312,19 +321,19 @@ The ``train_batch`` is then passed to another utility function: ``train_one_step
 Methods like ``train_one_step`` and ``multi_gpu_train_one_step`` are used for training our Policy.
 Further documentation with examples can be found on the :ref:`train ops documentation page <train-ops-docs>`.
 
-The training updates on the policy are only applied to its version inside ``self.workers.local_worker``.
+The training updates on the policy are only applied to its version inside ``self.env_runner``.
 Note that each :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` has n remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances and exactly one "local worker" and that all EnvRunners (remote and local ones)
 hold a copy of the policy.
 
-Now that we updated the local policy (the copy in ``self.workers.local_worker``), we need to make sure
-that the copies in all remote workers (``self.workers.remote_workers``) have their weights synchronized
+Now that we updated the local policy (the copy in ``self.env_runner_group.local_env_runner``), we need to make sure
+that the copies in all remote workers (``self.env_runner_group.remote_workers``) have their weights synchronized
 (from the local one):
 
 .. code-block:: python
 
-    self.workers.sync_weights()
+    self.env_runner_group.sync_weights()
 
-By calling ``self.workers.sync_weights()``,
+By calling ``self.env_runner_group.sync_weights()``,
 weights are broadcasted from the local worker to the remote workers. See :ref:`rollout worker
 reference docs <rolloutworker-reference-docs>` for further details.
 
@@ -381,5 +390,3 @@ training update.
 :ref:`Replay Buffers <replay-buffer-reference-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
-
-

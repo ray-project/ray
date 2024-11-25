@@ -69,7 +69,7 @@ def _get_basic_autoscaling_config() -> dict:
             "type": "kuberay",
         },
         "available_node_types": {
-            "head-group": {
+            "headgroup": {
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -125,7 +125,7 @@ def _get_basic_autoscaling_config() -> dict:
         "cluster_synced_files": [],
         "file_mounts": {},
         "file_mounts_sync_continuously": False,
-        "head_node_type": "head-group",
+        "head_node_type": "headgroup",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,

@@ -32,6 +32,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -49,32 +50,23 @@ class error_code;
 // Return the given status if it is not OK.
 #define RAY_RETURN_NOT_OK(s)           \
   do {                                 \
-    ::ray::Status _s = (s);            \
+    const ::ray::Status &_s = (s);     \
     if (RAY_PREDICT_FALSE(!_s.ok())) { \
       return _s;                       \
     }                                  \
-  } while (0)
-
-#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
-  do {                                   \
-    ::ray::Status _s = (s);              \
-    if (!_s.ok()) {                      \
-      else_;                             \
-      return _s;                         \
-    }                                    \
   } while (0)
 
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                \
   do {                                                    \
-    ::ray::Status _s = (to_call);                         \
+    const ::ray::Status &_s = (to_call);                  \
     RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
   } while (0)
 
 // If the status is bad, CHECK immediately, appending the status to the
 // logged message.
-#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
+#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND((s), "Bad status")
 
 namespace ray {
 
@@ -116,6 +108,9 @@ enum class StatusCode : char {
   // Indicates that a channel (a mutable plasma object) is closed and cannot be
   // read or written to.
   ChannelError = 35,
+  // Indicates that a read or write on a channel (a mutable plasma object) timed out.
+  ChannelTimeoutError = 36,
+  // If you add to this list, please also update kCodeToStr in status.cc.
 };
 
 #if defined(__clang__)
@@ -126,10 +121,11 @@ class RAY_MUST_USE_RESULT RAY_EXPORT Status;
 class RAY_EXPORT Status {
  public:
   // Create a success status.
-  Status() : state_(NULL) {}
+  Status() : state_(nullptr) {}
   ~Status() { delete state_; }
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
+  Status(StatusCode code, const std::string &msg, SourceLocation loc, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
@@ -255,10 +251,14 @@ class RAY_EXPORT Status {
     return Status(StatusCode::ChannelError, msg);
   }
 
+  static Status ChannelTimeoutError(const std::string &msg) {
+    return Status(StatusCode::ChannelTimeoutError, msg);
+  }
+
   static StatusCode StringToCode(const std::string &str);
 
   // Returns true iff the status indicates success.
-  bool ok() const { return (state_ == NULL); }
+  bool ok() const { return (state_ == nullptr); }
 
   bool IsOutOfMemory() const { return code() == StatusCode::OutOfMemory; }
   bool IsOutOfDisk() const { return code() == StatusCode::OutOfDisk; }
@@ -307,6 +307,8 @@ class RAY_EXPORT Status {
 
   bool IsChannelError() const { return code() == StatusCode::ChannelError; }
 
+  bool IsChannelTimeoutError() const { return code() == StatusCode::ChannelTimeoutError; }
+
   // Return a string representation of this status suitable for printing.
   // Returns the string "OK" for success.
   std::string ToString() const;
@@ -325,10 +327,11 @@ class RAY_EXPORT Status {
   struct State {
     StatusCode code;
     std::string msg;
+    SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
   };
-  // OK status has a `NULL` state_.  Otherwise, `state_` points to
+  // OK status has a `nullptr` state_.  Otherwise, `state_` points to
   // a `State` structure containing the error code and message(s)
   State *state_;
 
@@ -341,7 +344,7 @@ static inline std::ostream &operator<<(std::ostream &os, const Status &x) {
 }
 
 inline Status::Status(const Status &s)
-    : state_((s.state_ == NULL) ? NULL : new State(*s.state_)) {}
+    : state_((s.state_ == nullptr) ? nullptr : new State(*s.state_)) {}
 
 inline void Status::operator=(const Status &s) {
   // The following condition catches both aliasing (when this == &s),

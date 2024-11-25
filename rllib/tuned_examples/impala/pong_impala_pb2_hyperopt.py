@@ -1,7 +1,7 @@
 import gymnasium as gym
 
-from ray.rllib.algorithms.impala import ImpalaConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.algorithms.impala import IMPALAConfig
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.atari_wrappers import wrap_atari_for_new_api_stack
 from ray.rllib.examples.rl_modules.classes.tiny_atari_cnn_rlm import TinyAtariCNN
 from ray.rllib.utils.metrics import (
@@ -15,7 +15,7 @@ from ray.tune.schedulers.pb2 import PB2
 from ray import tune
 
 parser = add_rllib_example_script_args()
-parser.set_defaults(env="ALE/Pong-v5")
+parser.set_defaults(env="ale_py:ALE/Pong-v5")
 parser.add_argument(
     "--use-tiny-cnn",
     action="store_true",
@@ -57,12 +57,7 @@ pb2_scheduler = PB2(
 )
 
 config = (
-    ImpalaConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
+    IMPALAConfig()
     .environment(
         "env",
         env_config={
@@ -84,7 +79,7 @@ config = (
     #    entropy_coeff=0.008,
     #    # Only update connector states and model weights every n training_step calls.
     #    broadcast_interval=5,
-    #    lr=0.009 * ((args.num_gpus or 1) ** 0.5),
+    #    lr=0.009 * ((args.num_learners or 1) ** 0.5),
     # )
     .training(
         train_batch_size_per_learner=tune.randint(256, 1024),
@@ -99,17 +94,14 @@ config = (
     )
     .rl_module(
         rl_module_spec=(
-            SingleAgentRLModuleSpec(module_class=TinyAtariCNN)
-            if args.use_tiny_cnn
-            else None
+            RLModuleSpec(module_class=TinyAtariCNN) if args.use_tiny_cnn else None
         ),
-        model_config_dict=(
+        model_config=(
             {
                 "vf_share_layers": True,
                 "conv_filters": [[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
                 "conv_activation": "relu",
                 "post_fcnet_hiddens": [256],
-                "uses_new_env_runners": True,
             }
             if not args.use_tiny_cnn
             else {}

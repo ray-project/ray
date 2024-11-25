@@ -22,7 +22,7 @@
 #include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
-#include "ray/core_worker/transport/direct_task_transport.h"
+#include "ray/core_worker/transport/normal_task_submitter.h"
 #include "ray/raylet_client/raylet_client.h"
 
 namespace ray {
@@ -75,7 +75,7 @@ class MockRayletClient : public PinObjectsInterface {
     for (const auto &callback : callbacks_snapshot) {
       rpc::PinObjectIDsReply reply;
       reply.add_successes(success);
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
     }
     return flushed;
   }
@@ -112,12 +112,14 @@ class MockObjectDirectory {
 
 class ObjectRecoveryManagerTestBase : public ::testing::Test {
  public:
-  ObjectRecoveryManagerTestBase(bool lineage_enabled)
+  explicit ObjectRecoveryManagerTestBase(bool lineage_enabled)
       : local_raylet_id_(NodeID::FromRandom()),
+        io_context_("TestOnly.ObjectRecoveryManagerTestBase"),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
         subscriber_(std::make_shared<pubsub::MockSubscriber>()),
         object_directory_(std::make_shared<MockObjectDirectory>()),
-        memory_store_(std::make_shared<CoreWorkerMemoryStore>()),
+        memory_store_(
+            std::make_shared<CoreWorkerMemoryStore>(io_context_.GetIoService())),
         raylet_client_(std::make_shared<MockRayletClient>()),
         task_resubmitter_(std::make_shared<MockTaskResubmitter>()),
         ref_counter_(std::make_shared<ReferenceCounter>(
@@ -155,9 +157,17 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
         [](const ObjectID &, std::vector<ObjectID> *args) { return 0; });
   }
 
+  void TearDown() override {
+    // io_context_ must be joined and stopped before any other managers being
+    // destructed, otherwise it may run callbacks that captured dangling objects.
+    io_context_.Stop();
+  }
+
   NodeID local_raylet_id_;
   absl::flat_hash_map<ObjectID, rpc::ErrorType> failed_reconstructions_;
 
+  // Used by memory_store_.
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<pubsub::MockPublisher> publisher_;
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::shared_ptr<MockObjectDirectory> object_directory_;
@@ -260,6 +270,7 @@ TEST_F(ObjectRecoveryManagerTest, TestReconstruction) {
   task_resubmitter_->AddTask(object_id.TaskId(), {});
 
   ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(ref_counter_->IsObjectPendingCreation(object_id));
   ASSERT_TRUE(object_directory_->Flush() == 1);
 
   ASSERT_TRUE(failed_reconstructions_.empty());
@@ -396,6 +407,32 @@ TEST_F(ObjectRecoveryManagerTest, TestLineageEvicted) {
   ASSERT_EQ(object_directory_->Flush(), 1);
   ASSERT_EQ(failed_reconstructions_[object_id],
             rpc::ErrorType::OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED);
+}
+
+TEST_F(ObjectRecoveryManagerTest, TestReconstructionSkipped) {
+  // Test that if the object is already pinned or spilled,
+  // reconstruction is skipped.
+  ObjectID object_id = ObjectID::FromRandom();
+  ref_counter_->AddOwnedObject(object_id,
+                               {},
+                               rpc::Address(),
+                               "",
+                               0,
+                               true,
+                               /*add_local_ref=*/true);
+  ref_counter_->UpdateObjectPinnedAtRaylet(object_id, NodeID::FromRandom());
+
+  memory_store_->Delete({object_id});
+  ASSERT_TRUE(manager_.RecoverObject(object_id));
+  ASSERT_TRUE(failed_reconstructions_.empty());
+  ASSERT_EQ(object_directory_->Flush(), 0);
+  ASSERT_EQ(raylet_client_->Flush(), 0);
+  ASSERT_EQ(task_resubmitter_->num_tasks_resubmitted, 0);
+  // The object should be added back to the memory store
+  // indicating the object is available again.
+  bool in_plasma = false;
+  ASSERT_TRUE(memory_store_->Contains(object_id, &in_plasma));
+  ASSERT_TRUE(in_plasma);
 }
 
 }  // namespace core

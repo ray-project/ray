@@ -163,7 +163,7 @@ assert len(ready) == 1
 assert len(unready) == 0
 next(gen)
 
-# Because the second yield hasn't happened yet, 
+# Because the second yield hasn't happened yet,
 ready, unready = ray.wait([gen], timeout=0)
 print("Wait for 0 seconds. The next item is not ready.")
 print(ready, unready)

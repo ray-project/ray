@@ -76,7 +76,7 @@ void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work
   // guarantee that the local node is not selected for scheduling.
   ASSERT_FALSE(
       cluster_resource_scheduler_->GetLocalResourceManager().IsLocalNodeDraining());
-  WaitForTaskArgsRequests(work);
+  WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
 
@@ -86,25 +86,25 @@ bool LocalTaskManager::WaitForTaskArgsRequests(std::shared_ptr<internal::Work> w
   const auto &scheduling_key = task.GetTaskSpecification().GetSchedulingClass();
   auto object_ids = task.GetTaskSpecification().GetDependencies();
   bool can_dispatch = true;
-  if (object_ids.size() > 0) {
+  if (!object_ids.empty()) {
     bool args_ready = task_dependency_manager_.RequestTaskDependencies(
         task_id,
         task.GetDependencies(),
         {task.GetTaskSpecification().GetName(), task.GetTaskSpecification().IsRetry()});
     if (args_ready) {
       RAY_LOG(DEBUG) << "Args already ready, task can be dispatched " << task_id;
-      tasks_to_dispatch_[scheduling_key].push_back(work);
+      tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
     } else {
       RAY_LOG(DEBUG) << "Waiting for args for task: "
                      << task.GetTaskSpecification().TaskId();
       can_dispatch = false;
-      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), work);
+      auto it = waiting_task_queue_.insert(waiting_task_queue_.end(), std::move(work));
       RAY_CHECK(waiting_tasks_index_.emplace(task_id, it).second);
     }
   } else {
     RAY_LOG(DEBUG) << "No args, task can be dispatched "
                    << task.GetTaskSpecification().TaskId();
-    tasks_to_dispatch_[scheduling_key].push_back(work);
+    tasks_to_dispatch_[scheduling_key].emplace_back(std::move(work));
   }
   return can_dispatch;
 }
@@ -130,13 +130,16 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     auto &scheduling_class = shapes_it->first;
     auto &dispatch_queue = shapes_it->second;
 
-    if (info_by_sched_cls_.find(scheduling_class) == info_by_sched_cls_.end()) {
+    auto sched_cls_iter = info_by_sched_cls_.find(scheduling_class);
+    if (sched_cls_iter == info_by_sched_cls_.end()) {
       // Initialize the class info.
-      info_by_sched_cls_.emplace(
-          scheduling_class,
-          SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(scheduling_class)));
+      sched_cls_iter = info_by_sched_cls_
+                           .emplace(scheduling_class,
+                                    SchedulingClassInfo(MaxRunningTasksPerSchedulingClass(
+                                        scheduling_class)))
+                           .first;
     }
-    auto &sched_cls_info = info_by_sched_cls_.at(scheduling_class);
+    auto &sched_cls_info = sched_cls_iter->second;
 
     // Fair scheduling is applied only when the total CPU requests exceed the node's
     // capacity. This skips scheduling classes whose number of running tasks exceeds the
@@ -249,7 +252,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
     for (auto work_it = dispatch_queue.begin(); work_it != dispatch_queue.end();) {
       auto &work = *work_it;
       const auto &task = work->task;
-      const auto spec = task.GetTaskSpecification();
+      const auto &spec = task.GetTaskSpecification();
       TaskID task_id = spec.TaskId();
       if (work->GetState() == internal::WorkStatus::WAITING_FOR_WORKER) {
         work_it++;
@@ -372,10 +375,6 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
         sched_cls_info.running_tasks.insert(spec.TaskId());
         // The local node has the available resources to run the task, so we should run
         // it.
-        std::string allocated_instances_serialized_json = "{}";
-        if (RayConfig::instance().worker_resource_limits_enabled()) {
-          allocated_instances_serialized_json = allocated_instances->SerializeAsJson();
-        }
         work->allocated_instances = allocated_instances;
         work->SetStateWaitingForWorker();
         bool is_detached_actor = spec.IsDetachedActor();
@@ -396,8 +395,7 @@ void LocalTaskManager::DispatchScheduledTasksToWorkers() {
                                          is_detached_actor,
                                          owner_address,
                                          runtime_env_setup_error_message);
-            },
-            allocated_instances_serialized_json);
+            });
         work_it++;
       }
     }
@@ -438,7 +436,8 @@ void LocalTaskManager::SpillWaitingTasks() {
   while (it != waiting_task_queue_.begin()) {
     it--;
     const auto &task = (*it)->task;
-    const auto &task_id = task.GetTaskSpecification().TaskId();
+    const auto &spec = task.GetTaskSpecification();
+    const auto &task_id = spec.TaskId();
 
     // Check whether this task's dependencies are blocked (not being actively
     // pulled).  If this is true, then we should force the task onto a remote
@@ -454,9 +453,9 @@ void LocalTaskManager::SpillWaitingTasks() {
     // object store memory availability. Ideally, we should pick the node with
     // the most memory availability.
     scheduling::NodeID scheduling_node_id;
-    if (!task.GetTaskSpecification().IsSpreadSchedulingStrategy()) {
+    if (!spec.IsSpreadSchedulingStrategy()) {
       scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-          task.GetTaskSpecification(),
+          spec,
           /*preferred_node_id*/ self_node_id_.Binary(),
           /*exclude_local_node*/ task_dependencies_blocked,
           /*requires_object_store_memory*/ true,
@@ -472,9 +471,8 @@ void LocalTaskManager::SpillWaitingTasks() {
         scheduling_node_id.Binary() != self_node_id_.Binary()) {
       NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
       Spillback(node_id, *it);
-      if (!task.GetTaskSpecification().GetDependencies().empty()) {
-        task_dependency_manager_.RemoveTaskDependencies(
-            task.GetTaskSpecification().TaskId());
+      if (!spec.GetDependencies().empty()) {
+        task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
       }
       num_waiting_task_spilled_++;
       waiting_tasks_index_.erase(task_id);
@@ -497,14 +495,15 @@ void LocalTaskManager::SpillWaitingTasks() {
 
 bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
                                     bool &is_infeasible) {
+  const auto &spec = work->task.GetTaskSpecification();
   auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
-      work->task.GetTaskSpecification(),
+      spec,
       // We should prefer to stay local if possible
       // to avoid unnecessary spillback
       // since this node is already selected by the cluster scheduler.
-      /*preferred_node_id*/ self_node_id_.Binary(),
-      /*exclude_local_node*/ false,
-      /*requires_object_store_memory*/ false,
+      /*preferred_node_id=*/self_node_id_.Binary(),
+      /*exclude_local_node=*/false,
+      /*requires_object_store_memory=*/false,
       &is_infeasible);
 
   if (is_infeasible || scheduling_node_id.IsNil() ||
@@ -515,9 +514,8 @@ bool LocalTaskManager::TrySpillback(const std::shared_ptr<internal::Work> &work,
   NodeID node_id = NodeID::FromBinary(scheduling_node_id.Binary());
   Spillback(node_id, work);
   num_unschedulable_task_spilled_++;
-  if (!work->task.GetTaskSpecification().GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(
-        work->task.GetTaskSpecification().TaskId());
+  if (!spec.GetDependencies().empty()) {
+    task_dependency_manager_.RemoveTaskDependencies(spec.TaskId());
   }
   return true;
 }
@@ -535,7 +533,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
   const auto &callback = work->callback;
   bool canceled = work->GetState() == internal::WorkStatus::CANCELLED;
   const auto &task = work->task;
-  const auto &spec = task.GetTaskSpecification();
   bool dispatched = false;
 
   // Check whether owner worker or owner node dead.
@@ -558,6 +555,14 @@ bool LocalTaskManager::PoppedWorkerHandler(
     }
   }
 
+  // Erases the work from task_to_dispatch_ queue, also removes the task dependencies.
+  //
+  // IDEA(ryw): Make an RAII class to wrap the a shared_ptr<internal::Work> and
+  // requests task dependency upon ctor, and remove task dependency upon dtor.
+  // I tried this, it works, but we expose the map via GetTaskToDispatch() used in
+  // scheduler_resource_reporter.cc. Maybe we can use `boost::any_range` to only expose
+  // a view of the Work ptrs, but I got dependency issues
+  // (can't include boost/range/any_range.hpp).
   auto erase_from_dispatch_queue_fn = [this](const std::shared_ptr<internal::Work> &work,
                                              const SchedulingClass &scheduling_class) {
     auto shapes_it = tasks_to_dispatch_.find(scheduling_class);
@@ -576,6 +581,12 @@ bool LocalTaskManager::PoppedWorkerHandler(
       tasks_to_dispatch_.erase(shapes_it);
     }
     RAY_CHECK(erased);
+
+    const auto &task = work->task;
+    if (!task.GetDependencies().empty()) {
+      task_dependency_manager_.RemoveTaskDependencies(
+          task.GetTaskSpecification().TaskId());
+    }
   };
 
   if (canceled) {
@@ -637,8 +648,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
                          << status;
         }
         work->SetStateWaiting(cause);
-        // Return here because we shouldn't remove task dependencies.
-        return dispatched;
       }
     } else if (not_detached_with_owner_failed) {
       // The task owner failed.
@@ -646,7 +655,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
       RAY_LOG(DEBUG) << "Call back to an owner failed task, task id = " << task_id;
       erase_from_dispatch_queue_fn(work, scheduling_class);
     }
-
   } else {
     // A worker has successfully popped for a valid task. Dispatch the task to
     // the worker.
@@ -656,11 +664,6 @@ bool LocalTaskManager::PoppedWorkerHandler(
     Dispatch(worker, leased_workers_, work->allocated_instances, task, reply, callback);
     erase_from_dispatch_queue_fn(work, scheduling_class);
     dispatched = true;
-  }
-
-  // Remove task dependencies.
-  if (!spec.GetDependencies().empty()) {
-    task_dependency_manager_.RemoveTaskDependencies(task.GetTaskSpecification().TaskId());
   }
 
   return dispatched;
@@ -980,16 +983,12 @@ void LocalTaskManager::Dispatch(
     std::function<void(void)> send_reply_callback) {
   const auto &task_spec = task.GetTaskSpecification();
 
-  worker->SetJobId(task_spec.JobId());
-  worker->SetBundleId(task_spec.PlacementGroupBundleId());
-  worker->SetOwnerAddress(task_spec.CallerAddress());
   if (task_spec.IsActorCreationTask()) {
     // The actor belongs to this worker now.
     worker->SetLifetimeAllocatedInstances(allocated_instances);
   } else {
     worker->SetAllocatedInstances(allocated_instances);
   }
-  worker->AssignTaskId(task_spec.TaskId());
   worker->SetAssignedTask(task);
 
   // Pass the contact info of the worker to use.
@@ -1258,6 +1257,16 @@ void LocalTaskManager::DebugStr(std::stringstream &buffer) const {
            << "\n";
   }
   buffer << "}\n";
+  buffer << "Backlog Size per scheduling descriptor :{workerId: num backlogs}:\n";
+  for (const auto &[sched_cls, worker_to_backlog_size] : backlog_tracker_) {
+    const auto &descriptor = TaskSpecification::GetSchedulingClassDescriptor(sched_cls);
+    buffer << "\t" << descriptor.ResourceSetStr() << ": {\n";
+    for (const auto &[worker_id, backlog_size] : worker_to_backlog_size) {
+      buffer << "\t\t" << worker_id << ": " << backlog_size << "\n";
+    }
+    buffer << "\t}\n";
+  }
+  buffer << "\n";
   buffer << "Running tasks by scheduling class:\n";
 
   for (const auto &pair : info_by_sched_cls_) {

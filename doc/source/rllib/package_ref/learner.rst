@@ -3,8 +3,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 .. _learner-reference-docs:
 
 
@@ -93,7 +91,7 @@ Computing Losses
     :nosignatures:
     :toctree: doc/
 
-    Learner.compute_loss
+    Learner.compute_losses
     Learner.compute_loss_for_module
     Learner._is_module_compatible_with_learner
     Learner._get_tensor_variable
@@ -138,16 +136,14 @@ Saving, Loading, Checkpointing, and Restoring States
     :nosignatures:
     :toctree: doc/
 
-    Learner.save_state
-    Learner.load_state
-    Learner._save_optimizers
-    Learner._load_optimizers
     Learner.get_state
     Learner.set_state
-    Learner.get_optimizer_state
-    Learner.set_optimizer_state
-    Learner._get_metadata
-    
+    Learner.save_to_path
+    Learner.restore_from_path
+    Learner.from_checkpoint
+    Learner._get_optimizer_state
+    Learner._set_optimizer_state
+
 Adding and Removing Modules
 ---------------------------
 

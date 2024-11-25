@@ -18,6 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -36,9 +37,15 @@ class GcsTaskManagerTest : public ::testing::Test {
   )");
   }
 
-  virtual void SetUp() { task_manager.reset(new GcsTaskManager()); }
+  virtual void SetUp() {
+    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsTaskManagerTest");
+    task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService());
+  }
 
-  virtual void TearDown() { task_manager->Stop(); }
+  virtual void TearDown() {
+    task_manager.reset();
+    io_context_.reset();
+  }
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
     std::vector<TaskID> task_ids;
@@ -104,7 +111,7 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     request.mutable_data()->CopyFrom(events_data);
     // Dispatch so that it runs in GcsTaskManager's io service.
-    task_manager->GetIoContext().dispatch(
+    io_context_->GetIoService().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleAddTaskEventData(
               request,
@@ -161,7 +168,7 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
 
-    task_manager->GetIoContext().dispatch(
+    io_context_->GetIoService().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
               request,
@@ -275,6 +282,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<GcsTaskManager> task_manager = nullptr;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_ = nullptr;
 };
 
 class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {
@@ -673,22 +681,23 @@ TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
   {
     auto reply = SyncGetTaskEvents({tasks_running});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 4);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 4);
   }
 
   // Check task attempt failed event is not overriding failed tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_failed});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 3);
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
   }
 
   // Check task attempt failed event is not overriding finished tasks.
   {
     auto reply = SyncGetTaskEvents({tasks_finished});
     auto task_event = *(reply.events_by_task().begin());
-    EXPECT_FALSE(task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
-    EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FINISHED), 2);
+    EXPECT_FALSE(
+        task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
+    EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED), 2);
   }
 }
 
@@ -740,7 +749,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED),
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED),
                 /* 5 ms to ns */ 5 * 1000 * 1000);
       EXPECT_TRUE(task_event.state_updates().has_error_info());
       EXPECT_TRUE(task_event.state_updates().error_info().error_type() ==
@@ -757,9 +766,10 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FINISHED), 2);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FINISHED),
+                2);
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
     }
   }
 
@@ -769,7 +779,7 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     auto reply = SyncGetTaskEvents(tasks);
     EXPECT_EQ(reply.events_by_task_size(), 10);
     for (const auto &task_event : reply.events_by_task()) {
-      EXPECT_EQ(task_event.state_updates().state_ts().at(rpc::TaskStatus::FAILED), 3);
+      EXPECT_EQ(task_event.state_updates().state_ts_ns().at(rpc::TaskStatus::FAILED), 3);
     }
   }
 
@@ -781,9 +791,9 @@ TEST_F(GcsTaskManagerTest, TestJobFinishesFailAllRunningTasks) {
     EXPECT_EQ(reply.events_by_task_size(), 5);
     for (const auto &task_event : reply.events_by_task()) {
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FAILED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FAILED));
       EXPECT_FALSE(
-          task_event.state_updates().state_ts().contains(rpc::TaskStatus::FINISHED));
+          task_event.state_updates().state_ts_ns().contains(rpc::TaskStatus::FINISHED));
     }
   }
 }

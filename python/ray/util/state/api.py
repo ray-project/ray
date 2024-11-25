@@ -553,7 +553,7 @@ def get_actor(
     address: Optional[str] = None,
     timeout: int = DEFAULT_RPC_TIMEOUT,
     _explain: bool = False,
-) -> Optional[Dict]:
+) -> Optional[ActorState]:
     """Get an actor by id.
 
     Args:
@@ -1266,7 +1266,7 @@ def get_log(
         submission_id=submission_id,
         attempt_number=attempt_number,
     )
-    options_dict = {}
+    options_dict = {"format": "leading_1"}
     for field in fields(options):
         option_val = getattr(options, field.name)
         if option_val is not None:

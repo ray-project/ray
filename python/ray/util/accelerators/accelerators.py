@@ -5,7 +5,9 @@ NVIDIA_TESLA_P4 = "P4"
 NVIDIA_TESLA_K80 = "K80"
 NVIDIA_TESLA_A10G = "A10G"
 NVIDIA_L4 = "L4"
+NVIDIA_L40S = "L40S"
 NVIDIA_A100 = "A100"
+NVIDIA_H100 = "H100"
 INTEL_MAX_1550 = "Intel-GPU-Max-1550"
 INTEL_MAX_1100 = "Intel-GPU-Max-1100"
 INTEL_GAUDI = "Intel-GAUDI"
@@ -22,6 +24,7 @@ GOOGLE_TPU_V3 = "TPU-V3"
 GOOGLE_TPU_V4 = "TPU-V4"
 GOOGLE_TPU_V5P = "TPU-V5P"
 GOOGLE_TPU_V5LITEPOD = "TPU-V5LITEPOD"
+GOOGLE_TPU_V6E = "TPU-V6E"
 
 # Use these instead of NVIDIA_A100 if you need a specific accelerator size. Note that
 # these labels are not auto-added to nodes, you'll have to add them manually in

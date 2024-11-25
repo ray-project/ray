@@ -1,4 +1,7 @@
 from numpy.testing import assert_almost_equal
+import os
+import sys
+import pytest
 
 import ray
 import ray.experimental.tf_utils
@@ -250,9 +253,9 @@ def test_remote_training_loss(ray_start_2_cpus):
 
 
 if __name__ == "__main__":
-    import pytest
-    import os
-    import sys
+    # TODO(can): No tensorflow for python 3.12
+    if sys.version_info >= (3, 12):
+        sys.exit(0)
 
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

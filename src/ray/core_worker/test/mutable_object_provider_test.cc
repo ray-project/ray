@@ -153,7 +153,7 @@ TEST(MutableObjectProvider, RegisterWriterChannel) {
   MutableObjectProvider provider(
       plasma,
       /*factory=*/absl::bind_front(GetTestInterface, interface));
-  provider.RegisterWriterChannel(object_id, &node_id);
+  provider.RegisterWriterChannel(object_id, {node_id});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider
@@ -179,7 +179,7 @@ TEST(MutableObjectProvider, MutableObjectBufferReadRelease) {
   auto plasma = std::make_shared<TestPlasma>();
   MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr);
-  provider.RegisterWriterChannel(object_id, nullptr);
+  provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider
@@ -222,8 +222,8 @@ TEST(MutableObjectProvider, HandlePushMutableObject) {
 
   ray::rpc::PushMutableObjectRequest request;
   request.set_writer_object_id(object_id.Binary());
-  request.set_data_size(0);
-  request.set_metadata_size(0);
+  request.set_total_data_size(0);
+  request.set_total_metadata_size(0);
 
   ray::rpc::PushMutableObjectReply reply;
   provider.HandlePushMutableObject(request, &reply);
@@ -239,7 +239,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetError) {
   auto plasma = std::make_shared<TestPlasma>();
   MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr);
-  provider.RegisterWriterChannel(object_id, nullptr);
+  provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider
@@ -294,7 +294,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeWriteRelease) {
   auto plasma = std::make_shared<TestPlasma>();
   MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr);
-  provider.RegisterWriterChannel(object_id, nullptr);
+  provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider
@@ -349,7 +349,7 @@ TEST(MutableObjectProvider, MutableObjectBufferSetErrorBeforeReadRelease) {
   auto plasma = std::make_shared<TestPlasma>();
   MutableObjectProvider provider(plasma,
                                  /*factory=*/nullptr);
-  provider.RegisterWriterChannel(object_id, nullptr);
+  provider.RegisterWriterChannel(object_id, {});
 
   std::shared_ptr<Buffer> data;
   EXPECT_EQ(provider

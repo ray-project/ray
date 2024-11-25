@@ -266,7 +266,11 @@ def test_debug_dump_topology():
         make_map_transformer(lambda block: [b * 2 for b in block]), o2
     )
     topo, _ = build_streaming_topology(o3, opt)
-    resource_manager = ResourceManager(topo, ExecutionOptions())
+    resource_manager = ResourceManager(
+        topo,
+        ExecutionOptions(),
+        MagicMock(return_value=ExecutionResources.zero()),
+    )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
     _debug_dump_topology(topo, resource_manager)

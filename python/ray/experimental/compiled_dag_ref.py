@@ -1,5 +1,5 @@
 import asyncio
-from typing import Any, List
+from typing import Any, List, Optional
 
 import ray
 from ray.exceptions import RayTaskError
@@ -14,6 +14,9 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
     a single return value instead of a list.
     """
     # Check for exceptions.
+    if isinstance(return_vals, Exception):
+        raise return_vals
+
     for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()
@@ -43,6 +46,7 @@ class CompiledDAGRef:
         self,
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
+        channel_index: Optional[int] = None,
     ):
         """
         Args:
@@ -50,9 +54,15 @@ class CompiledDAGRef:
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
+            channel_index: The index of the DAG's output channel to fetch
+                the result from. A DAG can have multiple output channels, and
+                channel index indicates which channel this CompiledDAGRef
+                corresponds to. If channel index is not provided, this CompiledDAGRef
+                wraps the results from all output channels.
         """
         self._dag = dag
         self._execution_index = execution_index
+        self._channel_index = channel_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
         self._dag_output_channels = dag.dag_output_channels
@@ -60,7 +70,8 @@ class CompiledDAGRef:
     def __str__(self):
         return (
             f"CompiledDAGRef({self._dag.get_id()}, "
-            f"execution_index={self._execution_index})"
+            f"execution_index={self._execution_index}, "
+            f"channel_index={self._channel_index})"
         )
 
     def __copy__(self):
@@ -73,26 +84,30 @@ class CompiledDAGRef:
         raise ValueError("CompiledDAGRef cannot be pickled.")
 
     def __del__(self):
+        # If the dag is already teardown, it should do nothing.
+        if self._dag.is_teardown:
+            return
+
         # If not yet, get the result and discard to avoid execution result leak.
         if not self._ray_get_called:
             self.get()
 
-    def get(self):
+    def get(self, timeout: Optional[float] = None):
         if self._ray_get_called:
             raise ValueError(
                 "ray.get() can only be called once "
                 "on a CompiledDAGRef, and it was already called."
             )
+
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(self._execution_index)
-        return _process_return_vals(
-            return_vals,
-            self._dag.has_single_output,
+        return_vals = self._dag._execute_until(
+            self._execution_index, self._channel_index, timeout
         )
+        return _process_return_vals(return_vals, True)
 
 
 @PublicAPI(stability="alpha")
-class CompiledDAGFuture(CompiledDAGRef):
+class CompiledDAGFuture:
     """
     A reference to a compiled DAG execution result, when executed with asyncio.
     This differs from CompiledDAGRef in that `await` must be called on the
@@ -112,15 +127,18 @@ class CompiledDAGFuture(CompiledDAGRef):
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
         fut: "asyncio.Future",
+        channel_index: Optional[int] = None,
     ):
         self._dag = dag
         self._execution_index = execution_index
         self._fut = fut
+        self._channel_index = channel_index
 
     def __str__(self):
         return (
             f"CompiledDAGFuture({self._dag.get_id()}, "
-            f"execution_index={self._execution_index})"
+            f"execution_index={self._execution_index}, "
+            f"channel_index={self._channel_index})"
         )
 
     def __copy__(self):
@@ -145,9 +163,12 @@ class CompiledDAGFuture(CompiledDAGRef):
         fut = self._fut
         self._fut = None
 
-        return_vals = yield from fut.__await__()
+        if not self._dag._has_execution_results(self._execution_index):
+            result = yield from fut.__await__()
+            self._dag._cache_execution_results(self._execution_index, result)
+            self._dag.increment_max_finished_execution_index()
 
-        return _process_return_vals(
-            return_vals,
-            self._dag.has_single_output,
+        return_vals = self._dag._get_execution_results(
+            self._execution_index, self._channel_index
         )
+        return _process_return_vals(return_vals, True)

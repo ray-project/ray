@@ -3,7 +3,7 @@ from checkpoint.
 
 This example:
     - Runs a multi-agent `Pendulum-v1` experiment with >= 2 policies.
-    - Saves a checkpoint of the `MultiAgentRLModule` used every `--checkpoint-freq`
+    - Saves a checkpoint of the `MultiRLModule` used every `--checkpoint-freq`
        iterations.
     - Stops the experiments after the agents reach a combined return of -800.
     - Picks the best checkpoint by combined return and restores policy 0 from it.
@@ -40,7 +40,7 @@ Results to expect
 -----------------
 You should expect a reward of -400.0 eventually being achieved by a simple
 single PPO policy (no tuning, just using RLlib's default settings). In the
-second run of the experiment, the MARL module weights for policy 0 are
+second run of the experiment, the MultiRLModule weights for policy 0 are
 restored from the checkpoint of the first run. The reward for a single agent
 should be -400.0 again, but the training time should be shorter (around 30
 iterations instead of 190).
@@ -48,7 +48,8 @@ iterations instead of 190).
 
 import os
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
@@ -65,6 +66,10 @@ parser = add_rllib_example_script_args(
     default_iters=200,
     default_timesteps=100000,
     default_reward=-400.0,
+)
+parser.set_defaults(
+    checkpoint_freq=1,
+    num_agents=2,
 )
 # TODO (sven): This arg is currently ignored (hard-set to 2).
 parser.add_argument("--num-policies", type=int, default=2)
@@ -96,14 +101,14 @@ if __name__ == "__main__":
         .environment("env")
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
+            minibatch_size=64,
             lambda_=0.1,
             gamma=0.95,
             lr=0.0003,
             vf_clip_param=10.0,
         )
         .rl_module(
-            model_config_dict={"fcnet_activation": "relu"},
+            model_config=DefaultModelConfig(fcnet_activation="relu"),
         )
     )
 
@@ -121,9 +126,7 @@ if __name__ == "__main__":
     env = MultiAgentPendulum(config={"num_agents": args.num_agents})
     # Get the default module spec from the algorithm config.
     module_spec = base_config.get_default_rl_module_spec()
-    module_spec.model_config_dict = base_config.model_config | {
-        "fcnet_activation": "relu",
-    }
+    module_spec.model_config = DefaultModelConfig(fcnet_activation="relu")
     module_spec.observation_space = env.envs[0].observation_space
     module_spec.action_space = env.envs[0].action_space
     # Create the module for each policy, but policy 0.
@@ -137,10 +140,10 @@ if __name__ == "__main__":
     module_spec.load_state_path = p_0_module_state_path
     module_specs["p0"] = module_spec
 
-    # Create the MARL module.
-    marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
-    # Define the MARL module in the base config.
-    base_config.rl_module(rl_module_spec=marl_module_spec)
+    # Create the MultiRLModule.
+    multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
+    # Define the MultiRLModule in the base config.
+    base_config.rl_module(rl_module_spec=multi_rl_module_spec)
     # We need to re-register the environment when starting a new run.
     register_env(
         "env",
@@ -153,5 +156,5 @@ if __name__ == "__main__":
         TRAINING_ITERATION: 30,
     }
 
-    # Run the experiment again with the restored MARL module.
+    # Run the experiment again with the restored MultiRLModule.
     run_rllib_example_script_experiment(base_config, args, stop=stop)

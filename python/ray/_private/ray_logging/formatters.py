@@ -35,20 +35,23 @@ def generate_record_format_attrs(
     exclude_standard_attrs,
 ) -> dict:
     record_format_attrs = {}
+
     # If `exclude_standard_attrs` is False, include the standard attributes.
     # Otherwise, include only Ray and user-provided context.
     if not exclude_standard_attrs:
-        record_format_attrs = {
-            LogKey.ASCTIME: formatter.formatTime(record),
-            LogKey.LEVELNAME: record.levelname,
-            LogKey.MESSAGE: record.getMessage(),
-            LogKey.FILENAME: record.filename,
-            LogKey.LINENO: record.lineno,
-        }
+        record_format_attrs.update(
+            {
+                LogKey.ASCTIME.value: formatter.formatTime(record),
+                LogKey.LEVELNAME.value: record.levelname,
+                LogKey.MESSAGE.value: record.getMessage(),
+                LogKey.FILENAME.value: record.filename,
+                LogKey.LINENO.value: record.lineno,
+            }
+        )
         if record.exc_info:
             if not record.exc_text:
                 record.exc_text = formatter.formatException(record.exc_info)
-            record_format_attrs[LogKey.EXC_TEXT] = record.exc_text
+            record_format_attrs[LogKey.EXC_TEXT.value] = record.exc_text
 
     for key, value in record.__dict__.items():
         # Both Ray and user-provided context are stored in `record_format`.
@@ -74,6 +77,7 @@ class TextFormatter(logging.Formatter):
         record_format_attrs = generate_record_format_attrs(
             self, record, exclude_standard_attrs=True
         )
+
         additional_attrs = " ".join(
             [f"{key}={value}" for key, value in record_format_attrs.items()]
         )

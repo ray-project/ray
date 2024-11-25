@@ -62,10 +62,12 @@ api_annotations() {
   ./ci/lint/check_api_annotations.py
 }
 
-api_discrepancy() {
+api_policy_check() {
+  # install ray and compile doc to generate API files
+  make -C doc/ html
   RAY_DISABLE_EXTRA_CPP=1 pip install -e "python[all]"
-  # TODO(can): run this check with other ray packages
-  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- ray.data
+  # validate the API files
+  bazel run //ci/ray_ci/doc:cmd_check_api_discrepancy -- /ray "$@"
 }
 
 documentation_style() {

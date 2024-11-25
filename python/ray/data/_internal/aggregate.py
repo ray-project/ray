@@ -1,5 +1,5 @@
 import math
-from typing import TYPE_CHECKING, List, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, List, Optional, Union
 
 from ray.data._internal.null_aggregate import (
     _null_wrap_accumulate_block,
@@ -335,9 +335,13 @@ class Quantile(_AggregateOnKeyBase):
 
         import math
 
-        def percentile(input_values, key=lambda x: x):
+        def percentile(input_values, key: Optional[Callable[[Any], Any]] = None):
             if not input_values:
                 return None
+
+            if key is None:
+                key = lambda x: x  # noqa: E731
+
             input_values = sorted(input_values)
             k = (len(input_values) - 1) * self._q
             f = math.floor(k)

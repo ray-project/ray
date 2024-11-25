@@ -50,8 +50,8 @@ the env:
 """
 from pettingzoo.sisl import waterworld_v4
 
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -96,8 +96,8 @@ if __name__ == "__main__":
             vf_loss_coeff=0.005,
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={"p0": SingleAgentRLModuleSpec()},
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs={"p0": RLModuleSpec()},
             ),
         )
     )

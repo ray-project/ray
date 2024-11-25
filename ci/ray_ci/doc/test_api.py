@@ -20,6 +20,7 @@ def test_from_autosummary():
                     "\t:toc\n"
                     "\n"
                     "\tfun_01\n"
+                    "\t.. this is a comment\n"
                     "\tfun_02\n"
                     "something else"
                 ),
@@ -120,7 +121,7 @@ def test_is_private_name():
             "output": True,
         },
         {
-            "input": "a.b.internal.public_function",
+            "input": "a.b._internal.public_function",
             "output": True,
         },
         {
@@ -146,7 +147,7 @@ def test_is_public():
         code_type=CodeType.FUNCTION,
     ).is_public()
     assert not API(
-        name="a.b.internal.public_function",
+        name="a.b._internal.public_function",
         annotation_type=AnnotationType.PUBLIC_API,
         code_type=CodeType.FUNCTION,
     ).is_public()
@@ -160,6 +161,52 @@ def test_is_public():
         annotation_type=AnnotationType.PUBLIC_API,
         code_type=CodeType.FUNCTION,
     ).is_public()
+
+
+def test_is_deprecated():
+    assert not API(
+        name="a.b._private_function",
+        annotation_type=AnnotationType.PUBLIC_API,
+        code_type=CodeType.FUNCTION,
+    ).is_deprecated()
+
+    assert API(
+        name="a.b.function",
+        annotation_type=AnnotationType.DEPRECATED,
+        code_type=CodeType.FUNCTION,
+    ).is_deprecated()
+
+
+def test_split_good_and_bad_apis():
+    good_apis, bad_apis = API.split_good_and_bad_apis(
+        {
+            "a.b.public_function": API(
+                name="a.b.public_function",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b._private_function": API(
+                name="a.b._private_function",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b.deprecated_function_01": API(
+                name="a.b.deprecated_function_01",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+            "a.b.deprecated_function_02": API(
+                name="a.b.deprecated_function_02",
+                annotation_type=AnnotationType.PUBLIC_API,
+                code_type=CodeType.FUNCTION,
+            ),
+        },
+        {"a.b.public_function"},
+        {"a.b._private_function"},
+    )
+
+    assert good_apis == ["a.b.public_function"]
+    assert bad_apis == ["a.b.deprecated_function_01", "a.b.deprecated_function_02"]
 
 
 if __name__ == "__main__":

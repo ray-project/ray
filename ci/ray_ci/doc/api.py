@@ -1,9 +1,10 @@
 import re
 import importlib
+import inspect
 
 from enum import Enum
 from dataclasses import dataclass
-from typing import Optional, List
+from typing import Optional, List, Tuple, Set, Dict
 
 
 _SPHINX_AUTOSUMMARY_HEADER = ".. autosummary::"
@@ -56,6 +57,9 @@ class API:
                 continue
             if line.strip().startswith(":"):
                 # option lines
+                continue
+            if line.strip().startswith(".."):
+                # comment lines
                 continue
             if not line.strip():
                 # empty lines
@@ -117,7 +121,9 @@ class API:
                 return self.name
             attribute = getattr(attribute, token)
 
-        return f"{attribute.__module__}.{attribute.__qualname__}"
+        if inspect.isclass(attribute) or inspect.isfunction(attribute):
+            return f"{attribute.__module__}.{attribute.__qualname__}"
+        return self.name
 
     def _is_private_name(self) -> bool:
         """
@@ -125,7 +131,7 @@ class API:
         underscores.
         """
         name_has_underscore = self.name.split(".")[-1].startswith("_")
-        is_internal = ".internal." in self.name
+        is_internal = "._internal." in self.name
 
         return name_has_underscore or is_internal
 
@@ -138,3 +144,36 @@ class API:
             self.annotation_type == AnnotationType.PUBLIC_API
             and not self._is_private_name()
         )
+
+    def is_deprecated(self) -> bool:
+        """
+        Check if this API is deprecated. Deprecated APIs are those that are annotated as
+        deprecated.
+        """
+        return self.annotation_type == AnnotationType.DEPRECATED
+
+    @staticmethod
+    def split_good_and_bad_apis(
+        api_in_codes: Dict[str, "API"], api_in_docs: Set[str], white_list_apis: Set[str]
+    ) -> Tuple[List[str]]:
+        """
+        Given the APIs in the codebase and the documentation, split the APIs into good
+        and bad APIs. Good APIs are those that are public and documented, bad APIs are
+        those that are public but NOT documented.
+        """
+        good_apis = []
+        bad_apis = []
+
+        for name, api in api_in_codes.items():
+            if not api.is_public():
+                continue
+
+            if name in white_list_apis:
+                continue
+
+            if name in api_in_docs:
+                good_apis.append(name)
+            else:
+                bad_apis.append(name)
+
+        return good_apis, bad_apis
