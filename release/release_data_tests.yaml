@@ -1,14 +1,14 @@
-- defaults:
-    group: data-tests
-    working_dir: nightly_tests/dataset
+- name: DEFAULTS
+  group: data-tests
+  working_dir: nightly_tests/dataset
 
-    frequency: nightly
-    team: data
+  frequency: nightly
+  team: data
 
-    cluster:
-      byod:
-        type: gpu
-      cluster_compute: multi_node_autoscaling_compute.yaml
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_autoscaling_compute.yaml
 
 ###############
 # Dataset tests

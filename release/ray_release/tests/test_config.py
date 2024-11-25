@@ -96,8 +96,8 @@ def test_parse_test_definition():
 def test_parse_test_definition_with_defaults():
     test_definitions = yaml.safe_load(
         """
-        - defaults:
-            working_dir: default_working_dir
+        - name: DEFAULTS
+          working_dir: default_working_dir
         - name: sample_test_with_default_working_dir
           frequency: nightly
           team: sample

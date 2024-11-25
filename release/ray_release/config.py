@@ -81,12 +81,15 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
-    defaults = {}
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
-        if "defaults" in test_definition:
-            defaults = test_definition.pop("defaults")
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = test_definition
             continue
+
+        # Add default values to the test definition.
+        test_definition = copy.deepcopy(default_definition).deep_update(test_definition)
 
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
@@ -104,8 +107,7 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
                 "__suffix__" in variation,
                 "missing __suffix__ field in a variation",
             )
-            test = copy.deepcopy(defaults)
-            test = deep_update(test, test_definition)
+            test = copy.deepcopy(test_definition)
             test["name"] = f'{test["name"]}.{variation.pop("__suffix__")}'
             test = deep_update(test, variation)
             tests.append(Test(test))
