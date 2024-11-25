@@ -90,14 +90,11 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   new (&context_) grpc::ClientContext();
   response_.Clear();
 
-  const auto now = std::chrono::system_clock::now();
-  auto deadline = now + std::chrono::milliseconds(manager_->timeout_ms_);
-  context_.set_deadline(deadline);
+  const auto now = absl::Now();
+  const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
+  context_.set_deadline(absl::ToChronoTime(deadline));
   stub_->async()->Check(
-      &context_,
-      &request_,
-      &response_,
-      [this, start = absl::FromChrono(now)](::grpc::Status status) {
+      &context_, &request_, &response_, [this, start = now](::grpc::Status status) {
         // This callback is done in gRPC's thread pool.
         STATS_health_check_rpc_latency_ms.Record(
             absl::ToInt64Milliseconds(absl::Now() - start));
