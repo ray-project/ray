@@ -212,6 +212,7 @@ class CQLConfig(SACConfig):
             AddObservationsFromEpisodesToBatch,
             AddNextObservationsFromEpisodesToTrainBatch(),
         )
+        pipeline.remove("NumpyToTensor")
 
         return pipeline
 

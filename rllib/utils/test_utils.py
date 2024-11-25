@@ -300,6 +300,15 @@ def add_rllib_example_script_args(
         "for all required Learners (--num-learners), use a value of 1, otherwise 0.",
     )
 
+    parser.add_argument(
+        "--num-gpus-per-data-worker",
+        type=float,
+        default=None,
+        help="The number of GPUs per OfflinePreLearner to use. If none "
+        "OfflinePreLearners run on CPU. Use GPUs only in the OfflinePreLearner, if the "
+        "module is used (like for exmaple in MARWIL for computing the VAE).",
+    )
+
     # Ray init options.
     parser.add_argument("--num-cpus", type=int, default=0)
     parser.add_argument(

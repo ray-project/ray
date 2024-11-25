@@ -1389,6 +1389,13 @@ class Learner(Checkpointable):
             # `minibatch_size` and `num_epochs` are not set by the user.
             batch_iter = MiniBatchDummyIterator
 
+        # Convert input batch into a tensor batch (MultiAgentBatch) on the correct
+        # device (e.g. GPU). We move the batch already here to avoid having to move
+        # every single minibatch that is created in the `batch_iter` below.
+        # Note, if we have a learner connector, but a `MultiAgentBatch` is passed in,
+        # we are in an offline setting.
+        if self._learner_connector is None or episodes is None:
+            batch = self._convert_batch_type(batch)
         batch = self._set_slicing_by_batch_id(batch, value=True)
 
         for tensor_minibatch in batch_iter(

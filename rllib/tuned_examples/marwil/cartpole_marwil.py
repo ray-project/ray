@@ -24,9 +24,7 @@ assert (
 # Define the data paths.
 data_path = "tests/data/cartpole/cartpole-v1_large"
 base_path = Path(__file__).parents[2]
-print(f"base_path={base_path}")
 data_path = "local://" / base_path / data_path
-print(f"data_path={data_path}")
 
 # Define the MARWIL config.
 config = (
@@ -58,7 +56,11 @@ config = (
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
-        map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+        map_batches_kwargs={
+            "concurrency": 2,
+            "num_cpus": None if args.num_gpus_per_data_worker else 1,
+            "num_gpus": args.num_gpus_per_data_worker,
+        },
         # The `kwargs` for the `iter_batches` method. Due to the small
         # dataset we choose only a single batch to prefetch.
         iter_batches_kwargs={"prefetch_batches": 1},
