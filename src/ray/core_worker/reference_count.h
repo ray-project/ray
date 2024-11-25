@@ -851,6 +851,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// that the object was pinned at or spilled at, if the address was set.
   void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
 
+  /// This should be called whenever the object is out of scope or manually freed.
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
 
   /// Shutdown if all references have gone out of scope and shutdown
