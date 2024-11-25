@@ -45,6 +45,7 @@ export type Task = {
   error_type: string | null;
   error_message: string | null;
   task_log_info: { [key: string]: string | null | number };
+  invocation_stacktrace: string | null;
 };
 
 export type ProfilingData = {

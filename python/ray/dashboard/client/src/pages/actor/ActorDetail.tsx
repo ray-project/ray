@@ -1,6 +1,7 @@
 import { Box } from "@mui/material";
 import React from "react";
 import { Outlet } from "react-router-dom";
+import { CodeDialogButton } from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -203,6 +204,19 @@ const ActorDetailPage = () => {
                   type=""
                 />
               </div>
+            ),
+          },
+          {
+            label: "Invocation stacktrace",
+            content: !actorDetail.invocationStacktrace ? {
+              value: "Invocation stacktrace not enabled. To enable, set environment variable \"RAY_enable_invocation_stacktrace\" to \"true\"."
+            } : (
+              <Box display="inline-block">
+                <CodeDialogButton
+                  title="Invocation stacktrace"
+                  code={actorDetail.invocationStacktrace}
+                />
+              </Box>
             ),
           },
         ]}

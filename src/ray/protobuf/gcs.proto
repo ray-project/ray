@@ -155,6 +155,9 @@ message ActorTableData {
   bool preempted = 32;
   // Number of times this actor is restarted due to lineage reconstructions.
   uint64 num_restarts_due_to_lineage_reconstruction = 33;
+  // Human readable stacktrace of the actor creation. The exact data
+  // format depends on the language. Only populated if the flag is enabled.
+  optional string invocation_stacktrace = 34;
 }
 
 message ErrorTableData {

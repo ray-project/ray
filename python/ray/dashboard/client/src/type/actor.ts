@@ -32,6 +32,7 @@ export type Actor = {
   };
   exitDetail: string;
   reprName: string;
+  invocationStacktrace?: string | undefined;
 };
 
 export type ActorDetail = {

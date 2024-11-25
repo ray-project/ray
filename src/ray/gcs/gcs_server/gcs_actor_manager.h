@@ -135,6 +135,9 @@ class GcsActor {
 
     actor_table_data_.set_serialized_runtime_env(
         task_spec.runtime_env_info().serialized_runtime_env());
+    if (task_spec.invocation_stacktrace().size() > 0) {
+      actor_table_data_.set_invocation_stacktrace(task_spec.invocation_stacktrace());
+    }
     RefreshMetrics();
   }
 
@@ -472,14 +475,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the created actors.
   ///
   /// \return The created actors.
-  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
-      &GetCreatedActors() const;
+  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
+  GetCreatedActors() const;
 
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
       const;
 
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
-      &GetActorRegisterCallbacks() const;
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
+  GetActorRegisterCallbacks() const;
 
   std::string DebugString() const;
 
