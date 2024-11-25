@@ -86,6 +86,7 @@ const TaskPageContents = ({
     job_id,
     func_or_class_name,
     name,
+    invocation_stacktrace,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
@@ -242,6 +243,12 @@ const TaskPageContents = ({
                 label: "",
                 content: undefined,
               },
+          {
+            label: "Invocation stacktrace",
+            content: {
+              value: invocation_stacktrace,
+            },
+          },
         ]}
       />
       <CollapsibleSection title="Logs" startExpanded>

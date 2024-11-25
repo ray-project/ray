@@ -760,6 +760,8 @@ class TaskState(StateSchema):
     error_message: Optional[str] = state_column(detail=True, filterable=False)
     # Is task paused by the debugger
     is_debugger_paused: Optional[bool] = state_column(detail=True, filterable=True)
+    #: The invocation stacktrace of the task.
+    invocation_stacktrace: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
@@ -1579,6 +1581,7 @@ def protobuf_to_task_state_dict(message: TaskEvents) -> dict:
                 "runtime_env_info",
                 "parent_task_id",
                 "placement_group_id",
+                "invocation_stacktrace",
             ],
         ),
         (task_attempt, ["task_id", "attempt_number", "job_id"]),

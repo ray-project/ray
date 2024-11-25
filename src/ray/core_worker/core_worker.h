@@ -831,6 +831,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If Nil() is given, it will be automatically propagated from worker_context.
   /// This is used when worker_context cannot reliably obtain the curernt task_id
   /// i.e., Python async actors.
+  /// \param[in] invocation_stacktrace The stacktrace of the task invocation, or actor
+  /// creation. This is only used for observability.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -841,6 +843,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist = "",
+      const std::string &invocation_stacktrace = "",
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
@@ -851,6 +854,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[in] extension_data Extension data of the actor handle,
   /// see `ActorHandle` in `core_worker.proto`.
+  /// \param[in] invocation_stacktrace The stacktrace of the actor creation. This is
+  /// only used for observability.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
@@ -858,6 +863,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data,
+                     const std::string &invocation_stacktrace,
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -901,6 +907,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
+  /// \param[in] invocation_stacktrace The stacktrace of the task invocation. This is
+  /// only used for observability.
   /// \param[out] task_returns The object returned by this task
   /// param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
@@ -915,6 +923,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          int max_retries,
                          bool retry_exceptions,
                          const std::string &serialized_retry_exception_allowlist,
+                         const std::string &invocation_stacktrace,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());
 
@@ -1352,6 +1361,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const std::string &invocation_stacktrace,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,

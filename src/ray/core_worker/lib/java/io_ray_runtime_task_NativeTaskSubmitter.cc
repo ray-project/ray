@@ -380,6 +380,8 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitTask(JNIEnv *env,
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
   // TODO (kfstorm): Allow setting `max_retries` via `CallOptions`.
+  // TODO(ryw): support `invocation_stacktrace` in SubmitTask. Problem is it needs to
+  // happen in Java, while we don't yet expose RayConfig to Java.
   auto return_refs =
       CoreWorkerProcess::GetCoreWorker().SubmitTask(ray_function,
                                                     task_args,
@@ -416,11 +418,13 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeCreateActor(
   auto actor_creation_options = ToActorCreationOptions(env, actorCreationOptions);
 
   ActorID actor_id;
-  auto status = CoreWorkerProcess::GetCoreWorker().CreateActor(ray_function,
-                                                               task_args,
-                                                               actor_creation_options,
-                                                               /*extension_data*/ "",
-                                                               &actor_id);
+  auto status =
+      CoreWorkerProcess::GetCoreWorker().CreateActor(ray_function,
+                                                     task_args,
+                                                     actor_creation_options,
+                                                     /*extension_data*/ "",
+                                                     /*invocation_stacktrace=*/"",
+                                                     &actor_id);
 
   THROW_EXCEPTION_AND_RETURN_IF_NOT_OK(env, status, nullptr);
   return IdToJavaByteArray<ActorID>(env, actor_id);
@@ -460,6 +464,7 @@ Java_io_ray_runtime_task_NativeTaskSubmitter_nativeSubmitActorTask(
       max_retries,
       /*retry_exceptions=*/false,
       /*serialized_retry_exception_allowlist=*/"",
+      /*invocation_stacktrace=*/"",
       return_refs);
   if (!status.ok()) {
     std::stringstream ss;

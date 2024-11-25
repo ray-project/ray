@@ -4039,6 +4039,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             CTaskID current_c_task_id
             TaskID current_task = self.get_current_task_id()
+            c_string invocation_stacktrace
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4046,6 +4047,9 @@ cdef class CoreWorker:
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
             function_descriptor)
+
+        if RayConfig.instance().enable_invocation_stacktrace():
+            invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4074,6 +4078,7 @@ cdef class CoreWorker:
                     c_scheduling_strategy,
                     debugger_breakpoint,
                     serialized_retry_exception_allowlist,
+                    invocation_stacktrace,
                     current_c_task_id,
                 )
 
@@ -4123,9 +4128,13 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
+            c_string invocation_stacktrace
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
+
+        if RayConfig.instance().enable_invocation_stacktrace():
+            invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4162,7 +4171,9 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels),
                     extension_data,
-                    &c_actor_id)
+                    invocation_stacktrace,
+                    &c_actor_id,
+                )
 
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
@@ -4272,10 +4283,14 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
+            c_string invocation_stacktrace
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
             function_descriptor)
+
+        if RayConfig.instance().enable_invocation_stacktrace():
+            invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -4305,8 +4320,10 @@ cdef class CoreWorker:
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
+                    invocation_stacktrace,
                     return_refs,
-                    current_c_task_id)
+                    current_c_task_id,
+                )
             # These arguments were serialized and put into the local object
             # store during task submission. The backend increments their local
             # ref count initially to ensure that they remain in scope until we
