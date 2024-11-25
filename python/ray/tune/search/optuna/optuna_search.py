@@ -136,7 +136,7 @@ class OptunaSearch(Searcher):
                 This is an Optuna issue and may be fixed in a future
                 Optuna release.
         study_name: Optuna study name that uniquely identifies the trial
-            results. Defaults to ``optuna``.
+            results. Defaults to ``"optuna"``.
         storage: Optuna storage used for storing trial results to
             storages other than in-momemory storage,
             for instance optuna.storages.RDBStorage.
