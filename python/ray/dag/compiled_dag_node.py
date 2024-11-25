@@ -185,7 +185,7 @@ def do_profile_tasks(
     """
     try:
         for task in tasks:
-            task.prepare()
+            task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
         if not hasattr(self, "__ray_adag_events"):
             self.__ray_adag_events = []
@@ -1880,7 +1880,7 @@ class CompiledDAG:
                 from ray.dag import DAGContext
 
                 ctx = DAGContext.get_current()
-                teardown_timeout = ctx.retrieval_timeout
+                teardown_timeout = ctx.teardown_timeout
 
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
@@ -2443,7 +2443,14 @@ class CompiledDAG:
 
         monitor = getattr(self, "_monitor", None)
         if monitor is not None:
+            from ray.dag import DAGContext
+
+            ctx = DAGContext.get_current()
             monitor.teardown(kill_actors=kill_actors)
+            monitor.join(timeout=ctx.teardown_timeout)
+            # We do not log a warning here if the thread is still alive because
+            # wait_teardown already logs upon teardown_timeout.
+
         self._is_teardown = True
 
     def __del__(self):

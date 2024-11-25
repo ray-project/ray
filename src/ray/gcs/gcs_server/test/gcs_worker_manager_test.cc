@@ -297,8 +297,3 @@ TEST_F(GcsWorkerManagerTest, TestUpdateWorkerNumPausedThreads) {
     ASSERT_EQ(reply.worker_table_data(0).num_paused_threads(), num_paused_threads_delta);
   }
 }
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

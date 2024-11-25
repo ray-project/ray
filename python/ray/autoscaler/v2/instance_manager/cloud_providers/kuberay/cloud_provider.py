@@ -55,13 +55,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         """
         Args:
             cluster_name: The name of the RayCluster resource.
-            namespace: The namespace of the RayCluster resource.
+            provider_config: The namespace of the RayCluster.
             k8s_api_client: The client to the Kubernetes API server.
                 This could be used to mock the Kubernetes API server for testing.
         """
         self._cluster_name = cluster_name
         self._namespace = provider_config["namespace"]
-        self._head_node_type = provider_config["head_node_type"]
 
         self._k8s_api_client = k8s_api_client or KubernetesHttpApiClient(
             namespace=self._namespace
@@ -478,26 +477,23 @@ class KubeRayProvider(ICloudInstanceProvider):
                 # Ignore pods marked for termination.
                 continue
             pod_name = pod["metadata"]["name"]
-            cloud_instance = self._cloud_instance_from_pod(pod, self._head_node_type)
+            cloud_instance = self._cloud_instance_from_pod(pod)
             if cloud_instance:
                 cloud_instances[pod_name] = cloud_instance
         return cloud_instances
 
     @staticmethod
-    def _cloud_instance_from_pod(
-        pod: Dict[str, Any], head_node_type: NodeType
-    ) -> Optional[CloudInstance]:
+    def _cloud_instance_from_pod(pod: Dict[str, Any]) -> Optional[CloudInstance]:
         """
         Convert a pod to a Ray CloudInstance.
 
         Args:
             pod: The pod resource dict.
-            head_node_type: The node type of the head node.
         """
         labels = pod["metadata"]["labels"]
         if labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_HEAD:
             kind = NodeKind.HEAD
-            type = head_node_type
+            type = labels[KUBERAY_LABEL_KEY_TYPE]
         elif labels[KUBERAY_LABEL_KEY_KIND] == KUBERAY_KIND_WORKER:
             kind = NodeKind.WORKER
             type = labels[KUBERAY_LABEL_KEY_TYPE]
