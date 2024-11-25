@@ -102,7 +102,6 @@ class LoadMetrics:
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
         self.cluster_full_of_actors_detected = cluster_full_of_actors_detected
-        self.ray_nodes_last_used_time_by_ip[ip] = node_last_used_time_s
 
         if not waiting_bundles:
             waiting_bundles = []
@@ -122,6 +121,9 @@ class LoadMetrics:
         self.dynamic_resources_by_ip[ip] = dynamic_resources_update
 
         now = time.time()
+        self.ray_nodes_last_used_time_by_ip[ip] = (
+            node_last_used_time_s if node_last_used_time_s else now
+        )
         self.last_heartbeat_time_by_ip[ip] = now
         self.waiting_bundles = waiting_bundles
         self.infeasible_bundles = infeasible_bundles
