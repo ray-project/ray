@@ -626,8 +626,10 @@ Windows powershell users need additional escaping:
     "--include-log-monitor",
     default=None,
     type=bool,
-    help="If set to True or left unset, a log monitor will start to monitor "
-    "the log files of all processes on this node and push their contents to GCS.",
+    help="If set to True or left unset, a log monitor will start monitoring "
+    "the log files of all processes on this node and push their contents to GCS. "
+    "Only one log monitor should be started per physical host to avoid log "
+    "duplication on the driver process.",
 )
 @add_click_logging_options
 @PublicAPI
