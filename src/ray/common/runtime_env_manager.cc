@@ -31,12 +31,13 @@ void RuntimeEnvManager::AddURIReference(const std::string &hex_id,
   if (!uris.working_dir_uri().empty()) {
     const auto &uri = uris.working_dir_uri();
     uri_reference_[uri]++;
-    id_to_uris_[hex_id].push_back(uri);
+    id_to_uris_[hex_id].emplace_back(uri);
     RAY_LOG(DEBUG) << "[working_dir] Added URI Reference " << uri << " for id " << hex_id;
   }
+
   for (const auto &uri : uris.py_modules_uris()) {
     uri_reference_[uri]++;
-    id_to_uris_[hex_id].push_back(uri);
+    id_to_uris_[hex_id].emplace_back(uri);
     RAY_LOG(DEBUG) << "[py_modules] Added URI Reference " << uri << " for id " << hex_id;
   }
   PrintDebugString();
@@ -51,21 +52,24 @@ const std::vector<std::string> &RuntimeEnvManager::GetReferences(
 
 void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
   RAY_LOG(DEBUG) << "Subtracting 1 from URI Reference for id " << hex_id;
-  if (!id_to_uris_.count(hex_id)) {
+  auto iter = id_to_uris_.find(hex_id);
+  if (iter == id_to_uris_.end()) {
     return;
   }
 
-  for (const auto &uri : id_to_uris_[hex_id]) {
-    --uri_reference_[uri];
-    auto ref_count = uri_reference_[uri];
-    RAY_CHECK(ref_count >= 0);
-    if (ref_count == 0) {
-      uri_reference_.erase(uri);
+  for (const auto &uri : iter->second) {
+    auto uri_ref_iter = uri_reference_.find(uri);
+    RAY_CHECK(uri_ref_iter != uri_reference_.end());
+    --uri_ref_iter->second;
+    const auto new_ref_count = uri_ref_iter->second;
+    RAY_CHECK_GE(new_ref_count, 0);
+    if (new_ref_count == 0) {
+      uri_reference_.erase(uri_ref_iter);
       RAY_LOG(DEBUG) << "Deleting URI Reference " << uri;
       deleter_(uri, [](bool success) {});
     }
   }
-  id_to_uris_.erase(hex_id);
+  id_to_uris_.erase(iter);
   PrintDebugString();
 }
 
