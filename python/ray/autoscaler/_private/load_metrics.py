@@ -2,7 +2,7 @@ import logging
 import time
 from collections import Counter
 from functools import reduce
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 from ray._private.gcs_utils import PlacementGroupTableData
 from ray.autoscaler._private.constants import (
@@ -97,7 +97,7 @@ class LoadMetrics:
         infeasible_bundles: List[Dict[str, float]] = None,
         pending_placement_groups: List[PlacementGroupTableData] = None,
         cluster_full_of_actors_detected: bool = False,
-        node_last_used_time_s: float = time.time(),
+        node_last_used_time_s: Optional[float] = None,
     ):
         self.static_resources_by_ip[ip] = static_resources
         self.raylet_id_by_ip[ip] = raylet_id
