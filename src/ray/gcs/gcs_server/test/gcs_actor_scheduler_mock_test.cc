@@ -82,7 +82,7 @@ class GcsActorSchedulerMockTest : public Test {
     worker_id = WorkerID::FromRandom();
     gcs_node_manager->AddNode(node_info);
   }
-  std::unique_ptr<ClusterTaskManager>;
+  std::unique_ptr<ClusterTaskManager> cluster_task_manager;
   std::shared_ptr<MockRayletClientInterface> raylet_client;
   instrumented_io_context io_context;
   std::shared_ptr<MockStoreClient> store_client;
