@@ -1306,7 +1306,7 @@ def test_aggregate_validate_keys(ray_start_regular_shared):
 
     with pytest.raises(
         ValueError,
-        match=f"there's no such column in the dataset",
+        match="there's no such column in the dataset",
     ):
         ds_named.groupby(invalid_col_name).count()
 
