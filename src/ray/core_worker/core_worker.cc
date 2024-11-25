@@ -2314,7 +2314,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
   const auto task_id = TaskID::ForNormalTask(worker_context_.GetCurrentJobID(),
                                              worker_context_.GetCurrentInternalTaskId(),
                                              next_task_index);
-  RAY_LOG(ERROR) << "task id " << task_id << " has stacktrace " << invocation_stacktrace;
   auto constrained_resources =
       AddPlacementGroupConstraint(task_options.resources, scheduling_strategy);
 
