@@ -60,7 +60,8 @@ void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
   for (const auto &uri : iter->second) {
     auto uri_ref_iter = uri_reference_.find(uri);
     RAY_CHECK(uri_ref_iter != uri_reference_.end());
-    const auto new_ref_count = --uri_ref_iter->second;
+    --uri_ref_iter->second;
+    const auto new_ref_count = uri_ref_iter->second;
     RAY_CHECK_GE(new_ref_count, 0);
     if (new_ref_count == 0) {
       uri_reference_.erase(uri_ref_iter);
