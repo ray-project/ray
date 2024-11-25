@@ -164,7 +164,6 @@ ray_cc_library(
         ":node_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -198,7 +197,6 @@ ray_cc_library(
         ":pubsub_lib",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
         "@com_google_absl//absl/container:btree",
     ],
 )
@@ -222,7 +220,6 @@ ray_cc_library(
         ":object_manager_cc_grpc",
         ":ray_common",
         "@boost//:asio",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -250,7 +247,6 @@ ray_cc_library(
         ":worker_cc_grpc",
         "@boost//:asio",
         "@boost//:thread",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
@@ -274,7 +270,6 @@ ray_cc_library(
         "//src/ray/common:status",
         "@boost//:asio",
         "@boost//:thread",
-        "@com_github_grpc_grpc//:grpc++",
     ],
 )
 
