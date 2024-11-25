@@ -770,29 +770,91 @@ in denied write access, causing the recording process to stop.
 How to tune performance 
 -----------------------
 
-Because the different key layers in RLlib's Offline RL API are managed by different modules and configurations scaling the layers is not straightforward and you need to understand which parameters have which leverage. As 
-mentioned above the layer of **Reading Operations** is automatically managed and tuned on-the-fly by :ref:`Ray Data <data>` and you should not touch this process at best. Some parameters that do increase performance on this 
-layer to a certain degree is
+In RLlib's Offline RL API the various key layers are managed by distinct modules and configurations, making it non-trivial to scale these layers effectively. It is important to understand the specific parameters and their respective impact on system performance. 
+
+How to tune Reading Operations
+******************************
+As noted earlier, the **Reading Operations** layer is automatically handled and dynamically optimized by :ref:`Ray Data <data>`. It is strongly recommended to avoid modifying this process. However, there are certain parameters that can enhance performance on this 
+layer to some extent, including:
 
 #. Available resources (dedicated to the job).
 #. Data locality.
 #. Data sharding.
+#. Data pruning.
 
 Available resources
-*******************
-The scheduling strategy used by :ref:`Ray Data <data>` typically schedules tasks and actors independently of any existing placement group. As a result, it is crucial that you ensure sufficient resources are reserved for the 
-other tasks and actors in your job. By increasing the available resources in your cluster while maintaining the resource allocation for your existing tasks and actors, you enable :ref:`Ray Data <data>` to scale its read operations. 
-This can significantly enhance reading performance. The primary resources to account for are CPUs and object store memory. If the object store memory becomes exhausted under heavy backpressure, objects are spilled to disk. This can 
-significantly degrade the performance of your application.
+~~~~~~~~~~~~~~~~~~~
+The scheduling strategy employed by :ref:`Ray Data <data>` operates independently of any existing placement group, scheduling tasks and actors separately. Consequently, it is essential to reserve adequate resources for other tasks and actors within your job. To 
+optimize :ref:`Ray Data <data>`'s scalability for read operations and improve reading performance, consider increasing the available resources in your cluster while preserving the resource allocation for existing tasks and actors. The key resources to monitor and 
+provision are CPUs and object store memory. Insufficient object store memory, especially under heavy backpressure, may lead to objects being spilled to disk, which can severely impact application performance.
 
-Bandwidth is another critical factor that determines the throughput within your cluster. In certain scenarios, scaling nodes can help increase bandwidth and, consequently, the throughput of data flowing from storage to the consuming 
-processes. Such scenarios include:
+Bandwidth is a crucial factor influencing the throughput within your cluster. In some cases, scaling the number of nodes can increase bandwidth, thereby enhancing the flow of data from storage to consuming processes. Scenarios where this approach is beneficial 
+include:
 
-- Independent Connections to the Network Backbone: Nodes have dedicated bandwidth and do not share a common uplink, avoiding bottlenecks.
-- Optimized Cloud Access: Leveraging features such as `S3 Transfer Acceleration <https://aws.amazon.com/s3/transfer-acceleration/>`, `Google Cloud Storage FUSE <https://cloud.google.com/storage/docs/cloud-storage-fuse/file-caching#configure-parallel-downloads>` or parallel and accelerated data transfer.
+- Independent Connections to the Network Backbone: Nodes utilize dedicated bandwidth, avoiding shared uplinks and potential bottlenecks (see e.g. `here <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html>` for AWS and `here <https://cloud.google.com/compute/docs/network-bandwidth?hl=en>` for GCP network bandwidth documentations).
+- Optimized Cloud Access: Employing features like `S3 Transfer Acceleration <https://aws.amazon.com/s3/transfer-acceleration/>`, `Google Cloud Storage FUSE <https://cloud.google.com/storage/docs/cloud-storage-fuse/file-caching#configure-parallel-downloads>` , or parallel and accelerated data transfer methods to enhance performance.
 
 Data locality
-*************
+~~~~~~~~~~~~~
+Data locality is a critical factor in achieving fast data processing. For instance, if your data resides on GCP, running a Ray cluster on AWS S3 or a local machine will inevitably result in low transfer rates and slow data processing. To ensure optimal performance, storing data within the same region, same zone and cloud provider as the Ray cluster is generally 
+sufficient to enable efficient streaming for RLlib's Offline RL API. Additional adjustments to consider include:
+
+- Multi-Region Buckets: Use multi-region storage to improve data availability and potentially enhance access speeds for distributed systems.
+- Storage class optimization within bucklets: Use **standard storage** for frequent access and low-latency streaming. Avoid archival storage classes (e.g., AWS Glacier, GCP Archive) for streaming workloads due to high retrieval times.
+
+Data sharding
+~~~~~~~~~~~~~
+Data sharding improves the efficiency of fetching, transferring, and reading data by balancing chunk sizes. If chunks are too large, they can cause delays during transfer and processing, leading to bottlenecks. Conversely, chunks that are too small can result in high metadata fetching overhead, slowing down overall performance. Finding an optimal chunk size is 
+critical for balancing these trade-offs and maximizing throughput. 
+
+- As a rule-of-thumb keep data file sizes in between 64MiB to 256MiB.
+
+Data Pruning
+~~~~~~~~~~~~
+If your data is in **Parquet** format (the recommended offline data format for RLlib), you can leverage data pruning to optimize performance. :ref:`Ray Data <data>`` supports pruning in its :py:meth:`~ray.data.read_parquet` method through projection pushdown (column filtering) and filter pushdown (row filtering). These filters are applied directly during file 
+scans, reducing the amount of unnecessary data loaded into memory.
+
+For instance, if you only require specific columns from your offline data (e.g., to avoid loading the ``infos`` column):
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.columns import Columns
+
+    AlgorithmConfig()
+    .offline_Data(
+        input_read_method_kwargs={
+            "columns": [
+                Columns.EPS_ID,
+                Columns.AGENT_ID,
+                Columns.OBS,
+                Columns.NEXT_OBS,
+                Columns.REWARDS,
+                Columns.ACTIONS,
+                Columns.TERMINATED,
+                Columns.TRUNCATED,
+            ],
+        },
+    )
+
+Similarly, if you only require specific rows from your dataset, you can apply pushdown filters as shown below:
+
+.. code-block:: python
+    
+    import pyarrow.dataset
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.core.columns import Columns
+
+    AlgorithmConfig()
+    .offline_data(
+        input_read_method_kwargs={
+            "filter": pyarrow.dataset.field(Columns.AGENT_ID) == "agent_1",
+        },
+    )
+
+How to tune Post-processing (PreLearner)
+****************************************
 
 Input API
 ---------
