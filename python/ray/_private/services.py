@@ -27,6 +27,7 @@ import ray._private.ray_constants as ray_constants
 from ray._raylet import GcsClient, GcsClientOptions
 from ray.core.generated.common_pb2 import Language
 from ray._private.ray_constants import RAY_NODE_IP_FILENAME
+from ray._private.ray_logging import formatters as ray_logging_formatters
 
 resource = None
 if sys.platform != "win32":
@@ -1141,8 +1142,8 @@ def start_log_monitor(
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+
+        logging_format = ray_logging_formatters._get_logging_redirect_stderr_format(
             component=ray_constants.PROCESS_TYPE_LOG_MONITOR
         )
         command.append(f"--logging-format={logging_format}")
@@ -1289,8 +1290,8 @@ def start_api_server(
             # If not redirecting logging to files, unset log filename.
             # This will cause log records to go to stderr.
             command.append("--logging-filename=")
-            # Use stderr log format with the component name as a message prefix.
-            logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+
+            logging_format = ray_logging_formatters._get_logging_redirect_stderr_format(
                 component=ray_constants.PROCESS_TYPE_DASHBOARD
             )
             command.append(f"--logging-format={logging_format}")
@@ -1746,8 +1747,8 @@ def start_raylet(
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         dashboard_agent_command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+
+        logging_format = ray_logging_formatters._get_logging_redirect_stderr_format(
             component=ray_constants.PROCESS_TYPE_DASHBOARD_AGENT
         )
         dashboard_agent_command.append(f"--logging-format={logging_format}")
@@ -2146,8 +2147,8 @@ def start_monitor(
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         command.append("--logging-filename=")
-        # Use stderr log format with the component name as a message prefix.
-        logging_format = ray_constants.LOGGER_FORMAT_STDERR.format(
+
+        logging_format = ray_logging_formatters._get_logging_redirect_stderr_format(
             component=ray_constants.PROCESS_TYPE_MONITOR
         )
         command.append(f"--logging-format={logging_format}")
