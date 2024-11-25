@@ -17,6 +17,7 @@
 #include <boost/circular_buffer.hpp>
 #include <memory>
 #include <string>
+#include <utility>
 
 #include "absl/base/thread_annotations.h"
 #include "absl/synchronization/mutex.h"
@@ -73,11 +74,11 @@ class TaskEvent {
 
  protected:
   /// Task Id.
-  const TaskID task_id_ = TaskID::Nil();
+  TaskID task_id_ = TaskID::Nil();
   /// Job id.
-  const JobID job_id_ = JobID::Nil();
+  JobID job_id_ = JobID::Nil();
   /// Attempt number
-  const int32_t attempt_number_ = -1;
+  int32_t attempt_number_ = -1;
 };
 
 /// TaskStatusEvent is generated when a task changes its status.
@@ -85,41 +86,42 @@ class TaskStatusEvent : public TaskEvent {
  public:
   /// A class that contain data that will be converted to rpc::TaskStateUpdate
   struct TaskStateUpdate {
-    TaskStateUpdate() {}
+    TaskStateUpdate() = default;
 
-    TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
+    explicit TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
         : error_info_(error_info) {}
 
     TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
         : node_id_(node_id), worker_id_(worker_id) {}
 
-    TaskStateUpdate(const rpc::TaskLogInfo &task_log_info)
-        : task_log_info_(task_log_info) {}
+    explicit TaskStateUpdate(rpc::TaskLogInfo task_log_info)
+        : task_log_info_(std::move(task_log_info)) {}
 
-    TaskStateUpdate(const std::string &actor_repr_name, uint32_t pid)
-        : actor_repr_name_(actor_repr_name), pid_(pid) {}
+    TaskStateUpdate(std::string actor_repr_name, uint32_t pid)
+        : actor_repr_name_(std::move(actor_repr_name)), pid_(pid) {}
 
-    TaskStateUpdate(uint32_t pid) : pid_(pid) {}
+    explicit TaskStateUpdate(uint32_t pid) : pid_(pid) {}
 
-    TaskStateUpdate(bool is_debugger_paused) : is_debugger_paused_(is_debugger_paused) {}
+    explicit TaskStateUpdate(bool is_debugger_paused)
+        : is_debugger_paused_(is_debugger_paused) {}
 
    private:
     friend class TaskStatusEvent;
 
     /// Node id if it's a SUBMITTED_TO_WORKER status change.
-    const std::optional<NodeID> node_id_ = std::nullopt;
+    std::optional<NodeID> node_id_ = std::nullopt;
     /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-    const std::optional<WorkerID> worker_id_ = std::nullopt;
+    std::optional<WorkerID> worker_id_ = std::nullopt;
     /// Task error info.
-    const std::optional<rpc::RayErrorInfo> error_info_ = std::nullopt;
+    std::optional<rpc::RayErrorInfo> error_info_ = std::nullopt;
     /// Task log info.
-    const std::optional<rpc::TaskLogInfo> task_log_info_ = std::nullopt;
+    std::optional<rpc::TaskLogInfo> task_log_info_ = std::nullopt;
     /// Actor task repr name.
-    const std::string actor_repr_name_ = "";
+    std::string actor_repr_name_;
     /// Worker's pid if it's a RUNNING status change.
-    const std::optional<uint32_t> pid_ = std::nullopt;
+    std::optional<uint32_t> pid_ = std::nullopt;
     /// If the task is paused by the debugger.
-    const std::optional<bool> is_debugger_paused_ = std::nullopt;
+    std::optional<bool> is_debugger_paused_ = std::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -140,26 +142,26 @@ class TaskStatusEvent : public TaskEvent {
 
  private:
   /// The task status change if it's a status change event.
-  const rpc::TaskStatus task_status_ = rpc::TaskStatus::NIL;
+  rpc::TaskStatus task_status_ = rpc::TaskStatus::NIL;
   /// The time when the task status change happens.
-  const int64_t timestamp_ = -1;
+  int64_t timestamp_ = -1;
   /// Pointer to the task spec.
-  const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
+  std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Optional task state update
-  const std::optional<const TaskStateUpdate> state_update_ = std::nullopt;
+  std::optional<const TaskStateUpdate> state_update_ = std::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.
 class TaskProfileEvent : public TaskEvent {
  public:
-  explicit TaskProfileEvent(TaskID task_id,
-                            JobID job_id,
-                            int32_t attempt_number,
-                            const std::string &component_type,
-                            const std::string &component_id,
-                            const std::string &node_ip_address,
-                            const std::string &event_name,
-                            int64_t start_time);
+  TaskProfileEvent(TaskID task_id,
+                   JobID job_id,
+                   int32_t attempt_number,
+                   std::string component_type,
+                   std::string component_id,
+                   std::string node_ip_address,
+                   std::string event_name,
+                   int64_t start_time);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -174,12 +176,12 @@ class TaskProfileEvent : public TaskEvent {
 
  private:
   /// The below fields mirror rpc::ProfileEvent
-  const std::string component_type_;
-  const std::string component_id_;
-  const std::string node_ip_address_;
-  const std::string event_name_;
-  const int64_t start_time_;
-  int64_t end_time_;
+  std::string component_type_;
+  std::string component_id_;
+  std::string node_ip_address_;
+  std::string event_name_;
+  int64_t start_time_{};
+  int64_t end_time_{};
   std::string extra_data_;
 };
 
@@ -284,7 +286,7 @@ class TaskEventBuffer {
   virtual bool Enabled() const = 0;
 
   /// Return a string that describes the task event buffer stats.
-  virtual const std::string DebugString() = 0;
+  virtual std::string DebugString() = 0;
 };
 
 /// Implementation of TaskEventBuffer.
@@ -298,7 +300,10 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   /// Constructor
   ///
   /// \param gcs_client GCS client
-  TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client);
+  explicit TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client);
+
+  TaskEventBufferImpl(const TaskEventBufferImpl &) = delete;
+  TaskEventBufferImpl &operator=(const TaskEventBufferImpl &) = delete;
 
   ~TaskEventBufferImpl() override;
 
@@ -313,7 +318,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
 
   bool Enabled() const override;
 
-  const std::string DebugString() override;
+  std::string DebugString() override;
 
  private:
   /// Add a task status event to be reported.
