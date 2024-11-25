@@ -399,7 +399,7 @@ class KubeRayProvider(ICloudInstanceProvider):
     @staticmethod
     def _get_workers_delete_info(
         ray_cluster_spec: Dict[str, Any], node_set: Set[CloudInstanceId]
-    ) -> Tuple[Set[NodeType], Set[NodeType]]:
+    ) -> Tuple[Set[NodeType], Set[NodeType], Set[CloudInstanceId]]:
         """
         Gets the worker groups that have pending deletes and the worker groups that
         have finished deletes.
