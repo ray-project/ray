@@ -7,6 +7,7 @@ import torch
 import ray
 import ray.experimental.channel as ray_channel
 from ray.experimental.channel.gpu_communicator import TorchTensorAllocator, ReduceOp, GPUCommunicator
+from unittest import mock
 
 @ray.remote(num_cpus=0)
 class CPUCommunicator:
@@ -118,24 +119,23 @@ class CPUNcclGroup(GPUCommunicator):
     """
     def __init__(
         self,
-        world_size: int, 
-        rank: Optional[int], 
+        world_size: int,
         actor_handles: List["ray.actor.ActorHandle"]
     ):
         """We use the op index to synchronize the sender and receiver at the
         communicator actor."""
         self._world_size = world_size
-        self._rank = rank
         self._actor_handles = actor_handles
         self.num_ops = defaultdict(int)
         self.communicators = set()
+        self._rank = None
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
         """Send the tensor to the communicator actor."""
         comm_key = f"communicator-p2p-{self.get_self_rank()}-{peer_rank}"
         comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(2)
-
         self.communicators.add(comm)
+
         ray.get(comm.wait_p2p.remote(self.num_ops[comm_key], tensor))
         self.num_ops[comm_key] += 1
 
@@ -150,8 +150,8 @@ class CPUNcclGroup(GPUCommunicator):
         comm_key = f"communicator-p2p-{peer_rank}-{self.get_self_rank()}"
         comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(2)
         self.communicators.add(comm)
-        received_tensor = ray.get(comm.wait_p2p.remote(self.num_ops[comm_key]))
 
+        received_tensor = ray.get(comm.wait_p2p.remote(self.num_ops[comm_key]))
         assert allocator is not None, "torch tensor allocator is required for CPUNcclGroup"
         buf = allocator(shape, dtype)
         buf[:] = received_tensor[:]
@@ -170,7 +170,6 @@ class CPUNcclGroup(GPUCommunicator):
         self.communicators.add(comm)
 
         result = ray.get(comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op))
-
         assert recv_buf is not None, "Receiving buffer required for CPUNcclGroup"
         recv_buf[:] = result[:]
         self.num_ops[comm_key] += 1
@@ -180,8 +179,7 @@ class CPUNcclGroup(GPUCommunicator):
             ray.kill(communicator)
     
     def initialize(self, rank: int) -> None:
-        # No additional initialization is needed.
-        pass
+        self._rank = rank
 
     def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
         return self._actor_handles
@@ -201,9 +199,8 @@ class CPUNcclGroup(GPUCommunicator):
         return rank
 
     def get_self_rank(self) -> Optional[int]:
-        """
-        Return this actor's rank.
-        """
+        if self._rank is None:
+            return None
         return self._rank
 
     def get_world_size(self) -> int:
@@ -212,9 +209,51 @@ class CPUNcclGroup(GPUCommunicator):
         """
         return self._world_size
 
-
     def recv_stream(self):
         pass
 
     def send_stream(self):
         pass
+
+class MockCudaStream:
+    def __init__(self):
+        self.cuda_stream = 0
+
+def start_nccl_mock():
+    """
+    Patch methods that require CUDA.
+    """
+    # Mock cupy dependencies.
+    nccl_mock = mock.MagicMock()
+    nccl_mock.nccl.get_unique_id.return_value = 0
+    cp_patcher = mock.patch.dict(
+        "sys.modules",
+        {
+            "cupy.cuda": nccl_mock,
+            "cupy": mock.MagicMock(),
+            "ray.util.collective.collective_group": mock.MagicMock(),
+        },
+    )
+    cp_patcher.start()
+
+    # PyTorch mocks.
+    stream_patcher = mock.patch(
+        "torch.cuda.current_stream", new_callable=lambda: MockCudaStream
+    )
+    stream_patcher.start()
+    new_stream_patcher = mock.patch(
+        "torch.cuda.Stream", new_callable=lambda: MockCudaStream
+    )
+    new_stream_patcher.start()
+    tensor_patcher = mock.patch("torch.Tensor.device", torch.device("cuda"))
+    tensor_patcher.start()
+    tensor_patcher = mock.patch("torch.Tensor.is_cuda", True)
+    tensor_patcher.start()
+    tensor_allocator_patcher = mock.patch(
+        "ray.experimental.channel.torch_tensor_nccl_channel._torch_zeros_allocator",
+        lambda shape, dtype: torch.zeros(shape, dtype=dtype),
+    )
+    tensor_allocator_patcher.start()
+
+    ctx = ray_channel.ChannelContext.get_current()
+    ctx.set_torch_device(torch.device("cuda"))
