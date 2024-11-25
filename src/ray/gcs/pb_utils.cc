@@ -39,7 +39,7 @@ std::shared_ptr<ray::rpc::ErrorTableData> CreateErrorTableData(
   } else {
     error_info_ptr->set_error_message(error_msg);
   }
-  error_info_ptr->set_timestamp(absl::ToUnixSeconds(timestamp));
+  error_info_ptr->set_timestamp(absl::ToUnixMillis(timestamp));
   error_info_ptr->set_job_id(job_id.Binary());
   return error_info_ptr;
 }
