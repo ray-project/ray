@@ -28,7 +28,10 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -84,6 +87,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     DataBatch,
+    DataBatchColumn,
     T,
     U,
     UserDefinedFunction,
@@ -526,7 +530,8 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -697,16 +702,21 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        fn: Callable[
+            [DataBatch],
+            DataBatchColumn,
+        ],
         *,
+        batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        A function generating the new column values given the batch in pandas
-        format must be specified.
+        A function generating the new column values given the batch in pyarrow or pandas
+        format must be specified. This function must operate on batches of
+        `batch_format`.
 
         Examples:
 
@@ -726,11 +736,6 @@ class Dataset:
             id      int64
             new_id  int64
 
-            Overwrite the existing values with zeros.
-
-            >>> ds.add_column("id", lambda df: 0).take(3)
-            [{'id': 0}, {'id': 0}, {'id': 0}]
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -738,6 +743,11 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
@@ -746,17 +756,72 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        # Check that batch_format
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        if batch_format not in accepted_batch_formats:
+            raise ValueError(
+                f"batch_format argument must be on of {accepted_batch_formats}, "
+                f"got: {batch_format}"
+            )
 
-        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
-            batch.loc[:, col] = fn(batch)
-            return batch
+        def add_column(batch: DataBatch) -> DataBatch:
+            column = fn(batch)
+            if batch_format == "pandas":
+                import pandas as pd
+
+                assert isinstance(column, pd.Series), (
+                    f"For pandas batch format, the function must return a pandas "
+                    f"Series, got: {type(column)}"
+                )
+                if col in batch:
+                    raise ValueError(
+                        f"Trying to add an existing column with name" f" {col}"
+                    )
+                batch.loc[:, col] = column
+                return batch
+            elif batch_format == "pyarrow":
+                import pyarrow as pa
+
+                assert isinstance(column, (pa.Array, pa.ChunkedArray)), (
+                    f"For pyarrow batch format, the function must return a pyarrow "
+                    f"Array, got: {type(column)}"
+                )
+                # Historically, this method was written for pandas batch format.
+                # To resolve https://github.com/ray-project/ray/issues/48090,
+                # we also allow pyarrow batch format which is preferred but would be
+                # a breaking change to enforce.
+
+                # For pyarrow, the index of the column will be -1 if it is missing in
+                # which case we'll want to append it
+                column_idx = batch.schema.get_field_index(col)
+                if column_idx == -1:
+                    # Append the column to the table
+                    return batch.append_column(col, column)
+                else:
+                    raise ValueError(
+                        f"Trying to add an existing column with name {col}"
+                    )
+
+            else:
+                # batch format is assumed to be numpy since we checked at the
+                # beginning of the add_column function
+                assert isinstance(column, np.ndarray), (
+                    f"For numpy batch format, the function must return a "
+                    f"numpy.ndarray, got: {type(column)}"
+                )
+                if col in batch:
+                    raise ValueError(
+                        f"Trying to add an existing column with name" f" {col}"
+                    )
+                batch[col] = column
+                return batch
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
             add_column,
-            batch_format="pandas",  # TODO(ekl) we should make this configurable.
+            batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=False,
@@ -798,7 +863,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised.
+                an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -807,12 +872,15 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
+        if len(cols) != len(set(cols)):
+            raise ValueError(f"drop_columns expects unique column names, got: {cols}")
+
         def drop_columns(batch):
-            return batch.drop(columns=cols)
+            return batch.drop(cols)
 
         return self.map_batches(
             drop_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
@@ -4313,7 +4381,8 @@ class Dataset:
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> import pandas as pd
+            >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
@@ -4478,15 +4547,17 @@ class Dataset:
                     }
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
-                from ray.data.extensions import ArrowTensorType
+                arrow_tensor_ext_types = get_arrow_extension_fixed_shape_tensor_types()
 
-                if any(isinstance(type_, ArrowTensorType) for type_ in schema.types):
+                if any(
+                    isinstance(type_, arrow_tensor_ext_types) for type_ in schema.types
+                ):
                     meta = pd.DataFrame(
                         {
                             col: pd.Series(
                                 dtype=(
                                     dtype.to_pandas_dtype()
-                                    if not isinstance(dtype, ArrowTensorType)
+                                    if not isinstance(dtype, arrow_tensor_ext_types)
                                     else np.object_
                                 )
                             )
