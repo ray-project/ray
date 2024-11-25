@@ -847,9 +847,9 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Delete the object primary copy, if any. Also unsets the raylet address
-  /// that the object was pinned at, if the address was set.
-  void ResetObjectPrimaryCopy(ReferenceTable::iterator it);
+  /// Unsets the raylet address
+  /// that the object was pinned at or spilled at, if the address was set.
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
 
   void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
 

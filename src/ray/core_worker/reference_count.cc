@@ -700,7 +700,6 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
-    // Perform the deletion.
     OnObjectOutOfScopeOrFreed(it);
     if (deleted) {
       deleted->push_back(id);
@@ -772,10 +771,10 @@ void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
     callback(it->first);
   }
   it->second.on_object_out_of_scope_or_freed_callbacks.clear();
-  ResetObjectPrimaryCopy(it);
+  UnsetObjectPrimaryCopy(it);
 }
 
-void ReferenceCounter::ResetObjectPrimaryCopy(ReferenceTable::iterator it) {
+void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
     it->second.spilled = false;
@@ -822,7 +821,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      ResetObjectPrimaryCopy(it);
+      UnsetObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -862,7 +861,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
-        ResetObjectPrimaryCopy(it);
+        UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1429,7 +1428,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
-    ResetObjectPrimaryCopy(it);
+    UnsetObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;

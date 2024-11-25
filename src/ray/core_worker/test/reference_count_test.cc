@@ -2683,7 +2683,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
-  ASSERT_TRUE(deleted->count(id) > 0);
+  ASSERT_TRUE(deleted->empty());
   deleted->clear();
 }
 
