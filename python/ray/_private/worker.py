@@ -536,8 +536,8 @@ class Worker:
         return self.core_worker.get_current_task_name()
 
     @property
-    def current_task_function(self):
-        return self.core_worker.get_current_task_function()
+    def current_task_function_name(self):
+        return self.core_worker.get_current_task_function_name()
 
     @property
     def current_node_id(self):

@@ -341,7 +341,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                : "";
   }
 
-  const std::string GetCurrentTaskFunction() const {
+  const std::string GetCurrentTaskFunctionName() const {
     return (worker_context_.GetCurrentTask() != nullptr &&
             worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
                ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()

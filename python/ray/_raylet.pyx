@@ -262,7 +262,7 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
-async_task_function = contextvars.ContextVar('async_task_function', default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name', default=None)
 
 
 class DynamicObjectRefGenerator:
@@ -3425,7 +3425,7 @@ cdef class CoreWorker:
                 .decode("utf-8")
         return task_name
 
-    def get_current_task_function(self) -> str:
+    def get_current_task_function_name(self) -> str:
         """Return the current task function.
 
         If it is a normal task, it returns the task function from the main thread.
@@ -3434,17 +3434,17 @@ cdef class CoreWorker:
         the current asyncio task.
         """
         # We can only obtain the correct task function within asyncio task
-        # via async_task_function contextvar. We try this first.
+        # via async_task_function_name contextvar. We try this first.
         # It is needed because the core Worker's GetCurrentTask API
         # doesn't have asyncio context, thus it cannot return the
         # correct task function.
-        task_function = async_task_function.get()
-        if task_function is None:
+        task_function_name = async_task_function_name.get()
+        if task_function_name is None:
             # if it is not within asyncio context, fallback to TaskName
             # obtainable from core worker.
-            task_function = CCoreWorkerProcess.GetCoreWorker() \
-                .GetCurrentTaskFunction().decode("utf-8")
-        return task_function
+            task_function_name = CCoreWorkerProcess.GetCoreWorker() \
+                .GetCurrentTaskFunctionName().decode("utf-8")
+        return task_function_name
 
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
@@ -4891,7 +4891,7 @@ cdef class CoreWorker:
                     async_task_id.set(task_id)
                 if task_name is not None:
                     async_task_name.set(task_name)
-                async_task_function.set(function_descriptor.repr)
+                async_task_function_name.set(function_descriptor.repr)
 
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro

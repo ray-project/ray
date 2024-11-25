@@ -23,9 +23,9 @@ class CoreContextFilter(logging.Filter):
             task_name = runtime_context.get_task_name()
             if task_name is not None:
                 setattr(record, LogKey.TASK_NAME.value, task_name)
-            task_function = runtime_context.get_task_function()
-            if task_function is not None:
-                setattr(record, LogKey.TASK_FUNCTION.value, task_function)
+            task_function_name = runtime_context.get_task_function_name()
+            if task_function_name is not None:
+                setattr(record, LogKey.TASK_FUNCTION_NAME.value, task_function_name)
             actor_name = runtime_context.get_actor_name()
             if actor_name is not None:
                 setattr(record, LogKey.ACTOR_NAME.value, actor_name)

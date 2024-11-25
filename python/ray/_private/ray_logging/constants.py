@@ -43,7 +43,7 @@ class LogKey(str, Enum):
     TASK_ID = "task_id"
     ACTOR_NAME = "actor_name"
     TASK_NAME = "task_name"
-    TASK_FUNCTION = "task_function"
+    TASK_FUNCTION_NAME = "task_function_name"
 
     # Logger built-in context
     ASCTIME = "asctime"

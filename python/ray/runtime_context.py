@@ -272,8 +272,8 @@ class RuntimeContext(object):
             return None
         return self.worker.current_task_name
 
-    def get_task_function(self) -> Optional[str]:
-        """Get current task function string for this worker.
+    def get_task_function_name(self) -> Optional[str]:
+        """Get current task function name string for this worker.
 
         Example:
 
@@ -283,45 +283,45 @@ class RuntimeContext(object):
 
                 @ray.remote
                 class Actor:
-                    def get_task_function(self):
-                        return ray.get_runtime_context().get_task_function()
+                    def get_task_function_name(self):
+                        return ray.get_runtime_context().get_task_function_name()
 
                 @ray.remote
                 class AsyncActor:
-                    async def get_task_function(self):
-                        return ray.get_runtime_context().get_task_function()
+                    async def get_task_function_name(self):
+                        return ray.get_runtime_context().get_task_function_name()
 
                 @ray.remote
-                def get_task_function():
-                    return ray.get_runtime_context().get_task_function()
+                def get_task_function_name():
+                    return ray.get_runtime_context().get_task_function_name()
 
                 a = Actor.remote()
                 b = AsyncActor.remote()
                 # Task functions are available for actor tasks.
-                print(ray.get(a.get_task_function.remote()))
+                print(ray.get(a.get_task_function_name.remote()))
                 # Task functions are available for async actor tasks.
-                print(ray.get(b.get_task_function.remote()))
+                print(ray.get(b.get_task_function_name.remote()))
                 # Task functions are available for normal tasks.
-                print(ray.get(get_task_function.remote()))
+                print(ray.get(get_task_function_name.remote()))
 
             .. testoutput::
                 :options: +MOCK
 
-                [python modual name].Actor.get_task_function
-                [python modual name].AsyncActor.get_task_function
-                [python modual name].get_task_function
+                [python modual name].Actor.get_task_function_name
+                [python modual name].AsyncActor.get_task_function_name
+                [python modual name].get_task_function_name
 
         Returns:
             The current worker's task function call string
         """
-        # only worker mode has task_function
+        # only worker mode has task_function_name
         if self.worker.mode != ray._private.worker.WORKER_MODE:
             logger.warning(
                 "This method is only available when the process is a "
                 f"worker. Current mode: {self.worker.mode}"
             )
             return None
-        return self.worker.current_task_function
+        return self.worker.current_task_function_name
 
     @property
     @Deprecated(message="Use get_actor_id() instead", warning=True)
