@@ -1279,9 +1279,7 @@ def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
 def test_aggregate_validate_keys(ray_start_regular_shared):
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
-    with pytest.raises(
-        ValueError, match=f"The column '{invalid_col_name}' does not exist"
-    ):
+    with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds.groupby(invalid_col_name).count()
 
     ds_named = ray.data.from_items(
@@ -1308,7 +1306,7 @@ def test_aggregate_validate_keys(ray_start_regular_shared):
 
     with pytest.raises(
         ValueError,
-        match=f"The column '{invalid_col_name}' does not exist in the schema",
+        match=f"there's no such column in the dataset",
     ):
         ds_named.groupby(invalid_col_name).count()
 
