@@ -14,13 +14,15 @@ from unittest.mock import patch
 import pytest
 import requests
 import starlette
+from fastapi import FastAPI
+from starlette.responses import PlainTextResponse
 
 import ray
 import ray.util.state as state_api
 from ray import serve
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ReplicaID, ServeComponentType
+from ray.serve._private.common import DeploymentID, ReplicaID, ServeComponentType
 from ray.serve._private.constants import SERVE_LOG_EXTRA_FIELDS, SERVE_LOGGER_NAME
 from ray.serve._private.logging_utils import (
     ServeComponentFilter,
@@ -97,6 +99,97 @@ def test_log_rotation_config(monkeypatch, ray_shutdown):
     assert rotation_config["backup_count"] == backup_count
 
 
+def test_http_access_log(serve_instance):
+    name = "deployment_name"
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment(name=name)
+    @serve.ingress(fastapi_app)
+    class Handler:
+        def __init__(self):
+            self._replica_unique_id = serve.get_replica_context().replica_id.unique_id
+
+        @fastapi_app.get("/")
+        def get_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.post("/")
+        def post_root(self):
+            return PlainTextResponse(self._replica_unique_id)
+
+        @fastapi_app.get("/{status}")
+        def template(self, status: str):
+            return PlainTextResponse(self._replica_unique_id, status_code=int(status))
+
+        @fastapi_app.put("/fail")
+        def fail(self):
+            raise RuntimeError("OOPS!")
+
+    serve.run(Handler.bind())
+
+    f = io.StringIO()
+    with redirect_stderr(f):
+
+        def check_log(
+            replica_id: ReplicaID,
+            method: str,
+            route: str,
+            status_code: str,
+            fail: bool = False,
+        ):
+            s = f.getvalue()
+            return all(
+                [
+                    name in s,
+                    _get_expected_replica_log_content(replica_id) in s,
+                    f"-- {method} {route} {status_code}" in s,
+                    "ms" in s,
+                    ("OOPS!" in s and "RuntimeError" in s)
+                    if fail
+                    else True,  # Check for stacktrace.
+                ]
+            )
+
+        r = requests.get("http://localhost:8000/")
+        assert r.status_code == 200
+        replica_id = ReplicaID(unique_id=r.text, deployment_id=DeploymentID(name=name))
+        wait_for_condition(
+            check_log, replica_id=replica_id, method="GET", route="/", status_code="200"
+        )
+
+        r = requests.post("http://localhost:8000/")
+        assert r.status_code == 200
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="POST",
+            route="/",
+            status_code="200",
+        )
+
+        r = requests.get("http://localhost:8000/350")
+        assert r.status_code == 350
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="GET",
+            route="/{status}",
+            status_code="350",
+        )
+
+        r = requests.put("http://localhost:8000/fail")
+        assert r.status_code == 500
+        wait_for_condition(
+            check_log,
+            replica_id=replica_id,
+            method="PUT",
+            route="/fail",
+            status_code="500",
+            fail=True,
+        )
+
+
 def test_handle_access_log(serve_instance):
     name = "handler"
 
@@ -122,7 +215,7 @@ def test_handle_access_log(serve_instance):
                 [
                     name in s,
                     _get_expected_replica_log_content(replica_id) in s,
-                    method_name.upper() in s,
+                    method_name in s,
                     ("ERROR" if fail else "OK") in s,
                     "ms" in s,
                     ("blah blah blah" in s and "RuntimeError" in s)
@@ -294,15 +387,14 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
 
         # Check the component log
         expected_log_infos = [
-            f"{resp['request_id']} {resp['route']} replica.py",
-            f"{resp2['request_id']} {resp2['route']} replica.py",
+            f"{resp['request_id']} -- ",
+            f"{resp2['request_id']} -- ",
         ]
 
         # Check User log
         user_log_regexes = [
-            f".*{resp['request_id']} {resp['route']}.* user func.*",
-            f".*{resp2['request_id']} {resp2['route']}.* user log "
-            "message from class method.*",
+            f".*{resp['request_id']} -- user func.*",
+            f".*{resp2['request_id']} -- user log.*" "message from class method.*",
         ]
 
         def check_log():
@@ -355,12 +447,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"component_name": "replica".*'
             )
         else:
-            user_method_log_regex = (
-                f".*{resp['request_id']} {resp['route']}.* user func.*"
-            )
+            user_method_log_regex = f".*{resp['request_id']} -- user func.*"
             user_class_method_log_regex = (
-                f".*{resp2['request_id']} {resp2['route']}.* "
-                "user log message from class method.*"
+                f".*{resp2['request_id']} -- .*" "user log message from class method.*"
             )
 
         def check_log_file(log_file: str, expected_regex: list):
