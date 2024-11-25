@@ -492,7 +492,7 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             },
         ]
 
-    def test_inconsistent_pods_raycr(self):
+    def test_inconsistent_pods_raycr_scale_up(self):
         """
         Test the case where the cluster state has not yet reached the desired state.
         Specifically, the replicas field in the RayCluster CR does not match the actual
@@ -528,6 +528,55 @@ class KubeRayProviderIntegrationTest(unittest.TestCase):
             "path": "/spec/workerGroupSpecs/0/replicas",
             "value": desired_replicas + 1,
         }
+
+    def test_inconsistent_pods_raycr_scale_down(self):
+        """
+        Test the case where the cluster state has not yet reached the desired state.
+        Specifically, the replicas field in the RayCluster CR does not match the actual
+        number of Pods.
+        """
+        # Check the assumptions of the test
+        small_group = "small-group"
+        num_pods = 0
+        pod_to_delete = None
+        for pod in self.mock_client._pod_list["items"]:
+            if pod["metadata"]["labels"]["ray.io/group"] == small_group:
+                num_pods += 1
+                pod_to_delete = pod["metadata"]["name"]
+        assert pod_to_delete is not None
+
+        assert (
+            self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0]["groupName"]
+            == small_group
+        )
+        desired_replicas = num_pods + 1
+        self.mock_client._ray_cluster["spec"]["workerGroupSpecs"][0][
+            "replicas"
+        ] = desired_replicas
+
+        # Terminate a node. The replicas field should be decremented by 1, even though
+        # the cluster state has not yet reached the goal state.
+        self.provider.terminate(ids=[pod_to_delete], request_id="term-1")
+        patches = self.mock_client.get_patches(
+            f"rayclusters/{self.provider._cluster_name}"
+        )
+        assert len(patches) == 2
+        assert patches == [
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/replicas",
+                "value": desired_replicas - 1,
+            },
+            {
+                "op": "replace",
+                "path": "/spec/workerGroupSpecs/0/scaleStrategy",
+                "value": {
+                    "workersToDelete": [
+                        pod_to_delete,
+                    ]
+                },
+            },
+        ]
 
 
 if __name__ == "__main__":

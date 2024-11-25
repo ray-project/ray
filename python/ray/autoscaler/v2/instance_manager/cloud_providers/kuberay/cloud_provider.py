@@ -215,9 +215,7 @@ class KubeRayProvider(ICloudInstanceProvider):
             worker_groups_with_pending_deletes,
             worker_groups_without_pending_deletes,
             worker_to_delete_set,
-        ) = self._get_workers_groups_with_deletes(
-            ray_cluster, set(cur_instances.keys())
-        )
+        ) = self._get_workers_delete_info(ray_cluster, set(cur_instances.keys()))
 
         # Calculate the desired number of workers by type.
         num_workers_dict = defaultdict(int)
@@ -399,7 +397,7 @@ class KubeRayProvider(ICloudInstanceProvider):
         return copy.deepcopy(self._cached_instances)
 
     @staticmethod
-    def _get_workers_groups_with_deletes(
+    def _get_workers_delete_info(
         ray_cluster_spec: Dict[str, Any], node_set: Set[CloudInstanceId]
     ) -> Tuple[Set[NodeType], Set[NodeType]]:
         """
