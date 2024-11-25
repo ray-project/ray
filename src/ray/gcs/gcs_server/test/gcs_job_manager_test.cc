@@ -720,8 +720,4 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   EXPECT_TRUE(WaitForCondition(condition, 2000));
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 }  // namespace ray

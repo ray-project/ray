@@ -1648,6 +1648,7 @@ def test_stats_actor_datasets(ray_start_cluster):
     assert "Input0" in operators
     assert "ReadRange->MapBatches(<lambda>)1" in operators
     for value in operators.values():
+        assert value["name"] in ["Input", "ReadRange->MapBatches(<lambda>)"]
         assert value["progress"] == 20
         assert value["total"] == 20
         assert value["state"] == "FINISHED"

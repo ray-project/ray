@@ -65,7 +65,7 @@ config = (
         entropy_coeff=[[0, 0.05], [3000000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=5,
-        learner_queue_size=1,
+        circular_buffer_num_batches=1,
     )
     .rl_module(
         model_config=DefaultModelConfig(

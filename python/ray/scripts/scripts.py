@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
+import requests
 
 import click
 import psutil
@@ -2581,6 +2582,15 @@ def metrics_group():
 @metrics_group.command(name="launch-prometheus")
 def launch_prometheus():
     install_and_start_prometheus.main()
+
+
+@metrics_group.command(name="shutdown-prometheus")
+def shutdown_prometheus():
+    try:
+        requests.post("http://localhost:9090/-/quit")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
 
 
 def add_command_alias(command, name, hidden):

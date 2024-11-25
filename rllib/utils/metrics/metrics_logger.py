@@ -937,10 +937,10 @@ class MetricsLogger:
         assert self.tensor_mode
         self._tensor_mode = False
         # Return all logged tensors (logged during the tensor-mode phase).
-        ret = {key: self._get_key(key).peek() for key in self._tensor_keys}
+        logged_tensors = {key: self._get_key(key).peek() for key in self._tensor_keys}
         # Clear out logged tensor keys.
         self._tensor_keys.clear()
-        return ret
+        return logged_tensors
 
     def tensors_to_numpy(self, tensor_metrics):
         """Converts all previously logged and returned tensors back to numpy values."""

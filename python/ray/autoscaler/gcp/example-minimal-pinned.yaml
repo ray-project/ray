@@ -1,0 +1,36 @@
+auth:
+  ssh_user: ubuntu
+cluster_name: minimal
+provider:
+  availability_zone: us-west1-a
+  project_id: null # TODO: set your GCP project ID here
+  region: us-west1
+  type: gcp
+
+# Needs to pin the VM images for stability..
+available_node_types:
+    ray_head_default:
+        resources: {"CPU": 2}
+        node_config:
+            machineType: n1-standard-2
+            disks:
+              - boot: true
+                autoDelete: true
+                type: PERSISTENT
+                initializeParams:
+                  diskSizeGb: 50
+                  sourceImage: projects/deeplearning-platform-release/global/images/common-cpu-v20240922
+    ray_worker_small:
+        min_workers: 0
+        resources: {"CPU": 2}
+        node_config:
+            machineType: n1-standard-2
+            disks:
+              - boot: true
+                autoDelete: true
+                type: PERSISTENT
+                initializeParams:
+                  diskSizeGb: 50
+                  sourceImage: projects/deeplearning-platform-release/global/images/common-cpu-v20240922
+            scheduling:
+              - preemptible: true

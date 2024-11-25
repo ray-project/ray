@@ -58,7 +58,8 @@ class ASGIProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return self.scope.get("method", "websocket").upper()
+        # WebSocket messages don't have a 'method' field.
+        return self.scope.get("method", "WS").upper()
 
     @property
     def route_path(self) -> str:
