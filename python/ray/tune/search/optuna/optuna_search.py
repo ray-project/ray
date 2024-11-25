@@ -138,7 +138,7 @@ class OptunaSearch(Searcher):
         study_name: Optuna study name that uniquely identifies the trial
             results. Defaults to ``"optuna"``.
         storage: Optuna storage used for storing trial results to
-            storages other than in-momemory storage,
+            storages other than in-memory storage,
             for instance optuna.storages.RDBStorage.
         seed: Seed to initialize sampler with. This parameter is only
             used when ``sampler=None``. In all other cases, the sampler
