@@ -49,7 +49,7 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool AddObjectPrimaryCopyDeleteCallback(
+  virtual bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
   virtual bool SetObjectRefDeletedCallback(
@@ -320,7 +320,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Adds the callback that will be run when the object goes out of scope
   /// (Reference.OutOfScope() returns true).
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool AddObjectPrimaryCopyDeleteCallback(
+  bool AddObjectOutOfScopeOrFreedCallback(
       const ObjectID &object_id, const std::function<void(const ObjectID &)> callback)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
@@ -783,13 +783,13 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Callback that will be called when this Object's primary copy
-    /// should be deleted: out of scope or internal_api.free
+    /// Callback that will be called when this object
+    /// is out of scope or manually freed.
     /// Note: when an object is out of scope, it can still
     /// have lineage ref count and on_object_ref_delete
     /// will be called when lineage ref count is also 0.
     std::vector<std::function<void(const ObjectID &)>>
-        on_object_primary_copy_delete_callbacks;
+        on_object_out_of_scope_or_freed_callbacks;
     /// Callback that will be called when the object ref is deleted
     /// from the reference table (all refs including lineage ref count go to 0).
     std::function<void(const ObjectID &)> on_object_ref_delete;
@@ -847,9 +847,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Delete the object primary copy, if any. Also unsets the raylet address
-  /// that the object was pinned at, if the address was set.
-  void DeleteObjectPrimaryCopy(ReferenceTable::iterator it);
+  /// Unsets the raylet address
+  /// that the object was pinned at or spilled at, if the address was set.
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
+
+  /// This should be called whenever the object is out of scope or manually freed.
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.

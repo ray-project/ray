@@ -168,7 +168,7 @@ class ActorManagerTest : public ::testing::Test {
                                                        ray_namespace,
                                                        -1,
                                                        false);
-    EXPECT_CALL(*reference_counter_, AddObjectPrimaryCopyDeleteCallback(_, _))
+    EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
         .WillRepeatedly(testing::Return(true));
     actor_manager_->AddNewActorHandle(std::move(actor_handle),
                                       call_site,
@@ -207,7 +207,7 @@ TEST_F(ActorManagerTest, TestAddAndGetActorHandleEndToEnd) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, AddObjectPrimaryCopyDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
       .WillRepeatedly(testing::Return(true));
 
   // Add an actor handle.
@@ -284,7 +284,7 @@ TEST_F(ActorManagerTest, RegisterActorHandles) {
                                                      "",
                                                      -1,
                                                      false);
-  EXPECT_CALL(*reference_counter_, AddObjectPrimaryCopyDeleteCallback(_, _))
+  EXPECT_CALL(*reference_counter_, AddObjectOutOfScopeOrFreedCallback(_, _))
       .WillRepeatedly(testing::Return(true));
   ObjectID outer_object_id = ObjectID::Nil();
 
