@@ -169,7 +169,6 @@ class TestSelectNextNodes:
         mock_actor_to_candidates = {
             fake_actor_2: [mock_graph[task_idx_2]],
         }
-        visited = set()
         next_nodes = _select_next_nodes(mock_actor_to_candidates, mock_graph)
         assert len(next_nodes) == 2
         assert set(next_nodes) == {

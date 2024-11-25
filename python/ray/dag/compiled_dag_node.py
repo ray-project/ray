@@ -572,7 +572,11 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        input_data = self.reset_and_wait_intermediate_future()
+        if self.requires_nccl_read and overlap_gpu_communication:
+            input_data = self._intermediate_future
+            self._intermediate_future = None
+        else:
+            input_data = self.reset_and_wait_intermediate_future()
         try:
             _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
@@ -590,7 +594,7 @@ class ExecutableTask:
             resolved_inputs.append(task_input.resolve(input_data))
 
         if self.sync_group is not None:
-            # Run a NCCL collective operation.
+            # Run a synchronous NCCL operation.
             method = self.sync_group.execute
         else:
             # Run an actor method.
