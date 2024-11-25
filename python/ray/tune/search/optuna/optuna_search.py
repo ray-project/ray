@@ -374,9 +374,8 @@ class OptunaSearch(Searcher):
 
         if storage:
             assert isinstance(storage, BaseStorage), (
-                "You can only pass an instance of "
-                "`optuna.samplers.BaseStorage` "
-                "as a storage to `OptunaSearcher`."
+                "The `storage` parameter in `OptunaSearcher` must be an instance "
+                "of `optuna.samplers.BaseStorage`."
             )
             self._storage = storage
         else:
