@@ -232,15 +232,24 @@ class InvalidValuesTest(unittest.TestCase):
 
     def testOptuna(self):
         from optuna.samplers import RandomSampler
+        from optuna.storages import JournalStorage
+        from optuna.storages.journal import JournalFileBackend
 
         from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)  # At least one nan, inf, -inf and float
+        storage_file_path = "/tmp/my_test_study.log"
 
         with self.check_searcher_checkpoint_errors_scope():
             out = tune.run(
                 _invalid_objective,
-                search_alg=OptunaSearch(sampler=RandomSampler(seed=1234)),
+                search_alg=OptunaSearch(
+                    sampler=RandomSampler(seed=1234),
+                    study_name="my_test_study",
+                    storage=JournalStorage(
+                        JournalFileBackend(file_path=storage_file_path)
+                    ),
+                ),
                 config=self.config,
                 metric="_metric",
                 mode="max",
@@ -248,6 +257,7 @@ class InvalidValuesTest(unittest.TestCase):
                 reuse_actors=False,
             )
         self.assertCorrectExperimentOutput(out)
+        self.assertTrue(os.path.exists(storage_file_path))
 
     def testOptunaReportTooOften(self):
         from optuna.samplers import RandomSampler
@@ -358,12 +368,18 @@ class AddEvaluatedPointTest(unittest.TestCase):
         searcher_copy.suggest("1")
 
     def testOptuna(self):
+        from optuna.storages import JournalStorage
+        from optuna.storages.journal import JournalFileBackend
         from optuna.trial import TrialState
 
         from ray.tune.search.optuna import OptunaSearch
 
+        storage_file_path = "/tmp/my_test_study.log"
+
         searcher = OptunaSearch(
             space=self.space,
+            study_name="my_test_study",
+            storage=JournalStorage(JournalFileBackend(file_path=storage_file_path)),
             metric="metric",
             mode="max",
             points_to_evaluate=[{self.param_name: self.valid_value}],
@@ -373,6 +389,7 @@ class AddEvaluatedPointTest(unittest.TestCase):
         get_len = lambda s: len(s._ot_study.trials)  # noqa E731
 
         self.assertGreater(get_len(searcher), 0)
+        self.assertTrue(os.path.exists(storage_file_path))
 
         searcher = OptunaSearch(
             space=self.space,
@@ -608,9 +625,19 @@ class SaveRestoreCheckpointTest(unittest.TestCase):
         self._restore(searcher)
 
     def testOptuna(self):
+        from optuna.storages import JournalStorage
+        from optuna.storages.journal import JournalFileBackend
+
         from ray.tune.search.optuna import OptunaSearch
 
-        searcher = OptunaSearch(space=self.config, metric=self.metric_name, mode="max")
+        storage_file_path = "/tmp/my_test_study.log"
+        searcher = OptunaSearch(
+            space=self.config,
+            study_name="my_test_study",
+            storage=JournalStorage(JournalFileBackend(file_path=storage_file_path)),
+            metric=self.metric_name,
+            mode="max",
+        )
         self._save(searcher)
 
         searcher = OptunaSearch()
@@ -662,15 +689,20 @@ class MultiObjectiveTest(unittest.TestCase):
 
     def testOptuna(self):
         from optuna.samplers import RandomSampler
+        from optuna.storages import JournalStorage
+        from optuna.storages.journal import JournalFileBackend
 
         from ray.tune.search.optuna import OptunaSearch
 
         np.random.seed(1000)
+        storage_file_path = "/tmp/my_test_study.log"
 
         out = tune.run(
             _multi_objective,
             search_alg=OptunaSearch(
                 sampler=RandomSampler(seed=1234),
+                study_name="my_test_study",
+                storage=JournalStorage(JournalFileBackend(file_path=storage_file_path)),
                 metric=["a", "b", "c"],
                 mode=["max", "min", "max"],
             ),
@@ -685,6 +717,7 @@ class MultiObjectiveTest(unittest.TestCase):
         self.assertGreaterEqual(best_trial_b.config["b"], 0.8)
         best_trial_c = out.get_best_trial("c", "max")
         self.assertGreaterEqual(best_trial_c.config["c"], 0.8)
+        self.assertTrue(os.path.exists(storage_file_path))
 
 
 if __name__ == "__main__":
