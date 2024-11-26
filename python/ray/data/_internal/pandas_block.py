@@ -348,18 +348,24 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
+        sample_fraction = 0.01
         # Handle object columns separately
         for column in self._table.columns:
             # Check pandas object dtype and the extenstion dtype
             if is_object_dtype(self._table[column].dtype) or isinstance(
                 self._table[column].dtype, object_need_check
             ):
-                column_memory = 0
-                for element in self._table[column]:
-                    column_memory += get_deep_size(element)
+                sampled_column = self._table[column].sample(
+                    frac=sample_fraction, random_state=42
+                )
+                # Use pandas map for efficiency in calling get_deep_size
+                column_memory_sample = sampled_column.map(get_deep_size).sum()
+                # Scale back to the full column size
+                column_memory = column_memory_sample * (1 / sample_fraction)
                 memory_usage[column] = column_memory
 
         # Sum up total memory usage
+
         total_memory_usage = memory_usage.sum()
 
         return int(total_memory_usage)
