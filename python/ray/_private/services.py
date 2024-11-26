@@ -1443,8 +1443,6 @@ def start_gcs_server(
     redis_address: str,
     log_dir: str,
     session_name: str,
-    stdout_file: Optional[IO[AnyStr]] = None,
-    stderr_file: Optional[IO[AnyStr]] = None,
     redis_password: Optional[str] = None,
     config: Optional[dict] = None,
     fate_share: Optional[bool] = None,
@@ -1458,10 +1456,6 @@ def start_gcs_server(
         redis_address: The address that the Redis server is listening on.
         log_dir: The path of the dir where log files are created.
         session_name: The session name (cluster id) of this cluster.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
-        stderr_file: A file handle opened for writing to redirect stderr to. If
-            no redirection should happen, then this should be None.
         redis_password: The password of the redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
@@ -1494,6 +1488,11 @@ def start_gcs_server(
         ]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
+
+    # Logging is fully managed by C++ side spdlog, which supports rotation and file
+    # count limitation.
+    stdout_file = open("/dev/null")
+    stderr_file = open("/dev/null")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,

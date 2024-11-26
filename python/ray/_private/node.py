@@ -1154,14 +1154,10 @@ class Node:
         assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
-        # TODO(mwtian): append date time so restarted GCS uses different files.
-        stdout_file, stderr_file = self.get_log_file_handles("gcs_server", unique=True)
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
             self.session_name,
-            stdout_file=stdout_file,
-            stderr_file=stderr_file,
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,

@@ -59,7 +59,6 @@ constexpr char kLogFormatJsonPattern[] =
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::component_name_ = "";
-std::string RayLog::log_dir_ = "";
 bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
 
@@ -312,14 +311,30 @@ void RayLog::InitLogFormat() {
   }
 }
 
+/*static*/ std::string RayLog::GetLogOutputFilename(const std::string& log_dir, const std::string& log_file, const std::string& app_name) {
+  if (!log_file.empty()) {
+    return log_file;
+  }
+  if (!log_dir.empty()) {
+    #ifdef _WIN32
+      int pid = _getpid();
+    #else
+      pid_t pid = getpid();
+    #endif
+
+    return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
+  }
+  return "";
+}
+
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+                         const std::string &log_dir,
+                         const std::string &log_file) {
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
   app_name_ = app_name;
-  log_dir_ = log_dir;
 
   // All the logging sinks to add.
   // One for file/stdout, another for stderr.
@@ -337,13 +352,8 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  if (!log_dir_.empty()) {
-    // Enable log file if log_dir_ is not empty.
-#ifdef _WIN32
-    int pid = _getpid();
-#else
-    pid_t pid = getpid();
-#endif
+  const auto log_output_fname = GetLogOutputFilename(log_dir, log_file, app_name_without_path);
+  if (!log_output_fname.empty()) {
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
@@ -372,7 +382,7 @@ void RayLog::StartRayLog(const std::string &app_name,
       spdlog::drop(RayLog::GetLoggerName());
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
+        log_output_fname,
         log_rotation_max_size_,
         log_rotation_file_num_);
     file_sink->set_level(level);
