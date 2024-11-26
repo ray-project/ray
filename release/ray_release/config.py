@@ -85,11 +85,13 @@ def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
     tests = []
     for test_definition in test_definitions:
         if test_definition["name"] == "DEFAULTS":
-            default_definition = test_definition
+            default_definition = copy.deepcopy(test_definition)
             continue
 
         # Add default values to the test definition.
-        test_definition = copy.deepcopy(default_definition).deep_update(test_definition)
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
 
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
