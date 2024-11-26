@@ -14,7 +14,6 @@ from collections.abc import Mapping, MutableMapping, Sequence
 from typing import Optional
 
 import aiosignal  # noqa: F401
-from aiohttp.web import Request
 from frozenlist import FrozenList  # noqa: F401
 
 import ray
@@ -698,7 +697,3 @@ def compose_state_message(
 def close_logger_file_descriptor(logger_instance):
     for handler in logger_instance.handlers:
         handler.close()
-
-
-def is_browser_request(req: Request) -> bool:
-    return req.headers["User-Agent"].startswith("Mozilla")

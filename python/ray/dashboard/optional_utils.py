@@ -24,7 +24,7 @@ from ray._private.ray_constants import RAY_INTERNAL_DASHBOARD_NAMESPACE, env_boo
 # installation must be included in this file. This allows us to determine if
 # the agent has the necessary dependencies to be started.
 from ray.dashboard.optional_deps import PathLike, RouteDef, aiohttp, hdrs
-from ray.dashboard.utils import CustomEncoder, is_browser_request, to_google_style
+from ray.dashboard.utils import CustomEncoder, to_google_style
 
 try:
     create_task = asyncio.create_task
@@ -258,6 +258,10 @@ def aiohttp_cache(
         return _wrapper(target_func)
     else:
         return _wrapper
+
+
+def is_browser_request(req: Request) -> bool:
+    return req.headers["User-Agent"].startswith("Mozilla")
 
 
 def deny_browser_requests() -> Callable:
