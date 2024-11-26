@@ -142,6 +142,9 @@ if __name__ == "__main__":
         evaluation_config=PPOConfig.overrides(exploration=False),
     )
 
+    # Wait until all resources are released.
+    time.sleep(12.0)
+
     # Build the algorithm for evaluation.
     algo = config.build()
     # Load the checkpoint stored above.
@@ -160,7 +163,7 @@ if __name__ == "__main__":
     algo.stop()
 
     # Wait a bit until all actors have been stopped.
-    time.sleep(6.0)
+    time.sleep(12.0)
 
     # Check the number of rows in the dataset.
     ds = ray.data.read_parquet("local:///tmp/cartpole")
