@@ -262,7 +262,8 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
 async_task_name = contextvars.ContextVar('async_task_name', default=None)
-async_task_function_name = contextvars.ContextVar('async_task_function_name', default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name',
+                                                  default=None)
 
 
 class DynamicObjectRefGenerator:
