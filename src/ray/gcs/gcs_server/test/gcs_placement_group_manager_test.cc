@@ -89,7 +89,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
-        mock_placement_group_scheduler_,
+        mock_placement_group_scheduler_.get(),
         gcs_table_storage_,
         *gcs_resource_manager_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
@@ -1011,8 +1011,3 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
