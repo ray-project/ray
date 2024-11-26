@@ -7,7 +7,7 @@ ARG BUILD_TYPE
 ARG BUILDKITE_CACHE_READONLY
 
 ENV CC=clang
-ENV CXX=clang++-12
+ENV CXX=clang++-18
 
 RUN mkdir /rayci
 WORKDIR /rayci
