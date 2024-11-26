@@ -9,7 +9,6 @@ import ray.cluster_utils
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup, start_nccl_mock
-from ray.experimental.channel.gpu_communicator import TorchTensorAllocator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
 from ray.dag.output_node import MultiOutputNode
@@ -25,7 +24,7 @@ class CPUTorchTensorWorker:
         if not send_tensor:
             return 1
         return torch.ones(shape, dtype=dtype) * value
-    
+
     def send_dict(self, entries):
         results = {}
         for key, entry in entries.items():
@@ -47,17 +46,18 @@ class CPUTorchTensorWorker:
         for i, tensor in tensor_dict.items():
             vals[i] = self.recv(tensor)
         return vals
-    
+
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
         tensor = torch.ones(shape, dtype=dtype) * value
         return tensor
-    
+
     def recv_tensor(self, tensor):
         return tensor
-    
+
     def return_tensor(self, size: int) -> torch.Tensor:
         return torch.ones(size)
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -75,10 +75,12 @@ def test_p2p_basic(ray_start_cluster):
     receiver = CPUTorchTensorWorker.remote()
 
     cpu_group = CPUNcclGroup(2, [sender, receiver])
-    ray.get([
-        sender.start_cuda_and_torch_mock.remote(),
-        receiver.start_cuda_and_torch_mock.remote()
-    ])
+    ray.get(
+        [
+            sender.start_cuda_and_torch_mock.remote(),
+            receiver.start_cuda_and_torch_mock.remote(),
+        ]
+    )
 
     shape = (10,)
     dtype = torch.float16
@@ -87,11 +89,12 @@ def test_p2p_basic(ray_start_cluster):
         dag = sender.send.bind(inp.shape, inp.dtype, inp[0])
         dag = dag.with_type_hint(TorchTensorType(transport=cpu_group))
         dag = receiver.recv.bind(dag)
-    
+
     compiled_dag = dag.experimental_compile()
     for i in range(3):
         ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
         assert ray.get(ref) == (i, shape, dtype)
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -125,9 +128,9 @@ def test_allreduce_basic(ray_start_cluster):
             for worker, collective in zip(workers, collectives)
         ]
         dag = MultiOutputNode(recvs)
-    
+
     compiled_dag = dag.experimental_compile()
-    
+
     for i in range(3):
         i += 1
         shape = (i * 10,)
@@ -138,6 +141,7 @@ def test_allreduce_basic(ray_start_cluster):
         result = ray.get(ref)
         reduced_val = sum(i + idx for idx in range(num_workers))
         assert result == [(reduced_val, shape, dtype) for _ in workers]
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -169,9 +173,9 @@ def test_allreduce_get_partial(ray_start_cluster):
         recv = workers[0].recv.bind(collectives[0])
         tensor = workers[1].recv_tensor.bind(collectives[0])
         dag = MultiOutputNode([recv, tensor, collectives[1]])
-    
+
     compiled_dag = dag.experimental_compile()
-    
+
     for i in range(3):
         ref = compiled_dag.execute(
             [(shape, dtype, i + idx + 1) for idx in range(num_workers)]
@@ -182,6 +186,7 @@ def test_allreduce_get_partial(ray_start_cluster):
         assert metadata == (reduced_val, shape, dtype)
         expected_tensor_val = torch.ones(shape, dtype=dtype) * reduced_val
         assert torch.equal(tensor, expected_tensor_val)
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -234,6 +239,7 @@ def test_allreduce_wrong_shape(ray_start_cluster):
     ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
     with pytest.raises(RayChannelError):
         ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",
@@ -294,6 +300,7 @@ def test_allreduce_scheduling(ray_start_cluster):
     assert torch.equal(result[1], expected_tensor_val)
     assert result[2] == (value, shape, dtype)
 
+
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -330,6 +337,7 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
         ):
             collective.allreduce.bind(computes)
 
+
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -358,6 +366,7 @@ def test_allreduce_wrong_actors(ray_start_cluster):
             match="Expected actor handles to match the custom NCCL group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
+
 
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):

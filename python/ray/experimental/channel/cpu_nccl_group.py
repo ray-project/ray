@@ -1,13 +1,18 @@
 import asyncio
 from collections import defaultdict
-from typing import Optional, Tuple, List, Dict
+from typing import Dict, List, Optional, Tuple
+from unittest import mock
 
 import torch
 
 import ray
 import ray.experimental.channel as ray_channel
-from ray.experimental.channel.gpu_communicator import TorchTensorAllocator, ReduceOp, GPUCommunicator
-from unittest import mock
+from ray.experimental.channel.gpu_communicator import (
+    GPUCommunicator,
+    ReduceOp,
+    TorchTensorAllocator,
+)
+
 
 @ray.remote(num_cpus=0)
 class CPUCommunicator:
@@ -18,6 +23,7 @@ class CPUCommunicator:
     A CPUCommunicator which is used for collective ops will never be used for p2p ops,
     and vice versa.
     """
+
     def __init__(self, num_actors=2):
         self.num_actors = num_actors
         self.condition = asyncio.Condition()
@@ -29,7 +35,7 @@ class CPUCommunicator:
         self.num_actors_seen = defaultdict(int)
         # Number of actors who have read the result, and about the exit the function.
         # State is kept so we only garbage collect after the last actor has read the
-        # relevant data. 
+        # relevant data.
         self.num_actors_read = defaultdict(int)
 
     async def wait_p2p(self, op_id: int, data=None):
@@ -79,7 +85,9 @@ class CPUCommunicator:
                 self.collective_data[op_id] = data
                 self.condition.notify_all()
             else:
-                await self.condition.wait_for(lambda: self.num_actors_seen[op_id] == self.num_actors)
+                await self.condition.wait_for(
+                    lambda: self.num_actors_seen[op_id] == self.num_actors
+                )
 
             data = self.collective_data[op_id]
             self.num_actors_read[op_id] += 1
@@ -112,16 +120,14 @@ class CPUCommunicator:
             raise ValueError(f"Operation {op} not supported")
         return result
 
+
 class CPUNcclGroup(GPUCommunicator):
     """
     Mock the internal _NcclGroup to use a communicator actor instead of a NCCL group
     for communication.
     """
-    def __init__(
-        self,
-        world_size: int,
-        actor_handles: List["ray.actor.ActorHandle"]
-    ):
+
+    def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
         """We use the op index to synchronize the sender and receiver at the
         communicator actor."""
         self._world_size = world_size
@@ -152,7 +158,9 @@ class CPUNcclGroup(GPUCommunicator):
         self.communicators.add(comm)
 
         received_tensor = ray.get(comm.wait_p2p.remote(self.num_ops[comm_key]))
-        assert allocator is not None, "torch tensor allocator is required for CPUNcclGroup"
+        assert (
+            allocator is not None
+        ), "torch tensor allocator is required for CPUNcclGroup"
         buf = allocator(shape, dtype)
         buf[:] = received_tensor[:]
         self.num_ops[comm_key] += 1
@@ -162,14 +170,20 @@ class CPUNcclGroup(GPUCommunicator):
         self,
         send_buf: torch.Tensor,
         recv_buf: torch.Tensor,
-        op: ReduceOp = ReduceOp.SUM
+        op: ReduceOp = ReduceOp.SUM,
     ):
-        all_ranks = [self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()]
-        comm_key = "communicator-collective-"+"-".join(map(str, sorted(all_ranks)))
-        comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(self._world_size)
+        all_ranks = [
+            self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
+        ]
+        comm_key = "communicator-collective-" + "-".join(map(str, sorted(all_ranks)))
+        comm = CPUCommunicator.options(name=comm_key, get_if_exists=True).remote(
+            self._world_size
+        )
         self.communicators.add(comm)
 
-        result = ray.get(comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op))
+        result = ray.get(
+            comm.wait_collective.remote(self.num_ops[comm_key], send_buf, op)
+        )
         assert recv_buf is not None, "Receiving buffer required for CPUNcclGroup"
         recv_buf[:] = result[:]
         self.num_ops[comm_key] += 1
@@ -177,7 +191,7 @@ class CPUNcclGroup(GPUCommunicator):
     def destroy(self) -> None:
         for communicator in self.communicators:
             ray.kill(communicator)
-    
+
     def initialize(self, rank: int) -> None:
         self._rank = rank
 
@@ -213,9 +227,11 @@ class CPUNcclGroup(GPUCommunicator):
     def send_stream(self):
         pass
 
+
 class MockCudaStream:
     def __init__(self):
         self.cuda_stream = 0
+
 
 def start_nccl_mock():
     """

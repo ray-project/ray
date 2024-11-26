@@ -553,7 +553,7 @@ def _do_init_nccl_group(
     custom_nccl_group: Optional[GPUCommunicator] = None,
 ):
     import torch
-    
+
     if not custom_nccl_group or not isinstance(custom_nccl_group, CPUNcclGroup):
         assert (
             ray.get_gpu_ids()
