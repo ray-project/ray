@@ -1,0 +1,110 @@
+#pragma once
+
+#include <functional>
+#include <memory>
+#include <tuple>
+#include <type_traits>
+#include <utility>
+
+#include "ray/common/asio/instrumented_io_context.h"
+#include "ray/util/function_traits.h"
+
+namespace ray {
+
+template <typename FuncType>
+class Postable;
+
+namespace internal {
+
+template <typename FuncType>
+struct ToPostableHelper;
+
+template <typename FuncType>
+struct ToPostableHelper<std::function<FuncType>> {
+  using type = Postable<FuncType>;
+};
+
+}  // namespace internal
+
+template <typename FuncType>
+using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
+
+template <typename FuncType>
+class Postable {
+ public:
+  Postable(std::function<FuncType> func, instrumented_io_context &io_context)
+      : func_(std::move(func)), io_context_(io_context) {}
+
+  template <typename... Args>
+  void Post(const std::string &name, Args &&...args) const {
+    io_context_.post(
+        [func = func_,
+         args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+          std::apply(func, std::move(args_tuple));
+        },
+        name);
+  }
+
+  // OnInvocation
+  Postable &&OnInvocation(std::function<void()> observer) && {
+    auto original_func = std::move(func_);
+    func_ = [observer = std::move(observer),
+             func = std::move(original_func)](auto &&...args) {
+      observer();
+      return func(std::forward<decltype(args)>(args)...);
+    };
+    return std::move(*this);
+  }
+
+  // Transforms the argument by applying `arg_mapper` to the input argument.
+  // Basically, adds a arg_mapper and becomes io_context.Post(func(arg_mapper(input))).
+  //
+  // Constraints in template arguments:
+  // - `this->func_` must take exactly one argument.
+  // - `arg_mapper` must take one argument.
+  // - `arg_mapper` must return the same type as `this->func_`'s argument.
+  //
+  // Result:
+  // `this` is Postable<ret(OldInputType)>
+  // `arg_mapper` is lambda or std::function: NewInputType -> OldInputType
+  // The result is Postable<ret(NewInputType)>
+  template <typename ArgMapper>
+  auto TransformArg(ArgMapper arg_mapper) && {
+    // Ensure that func_ takes exactly one argument.
+    static_assert(function_traits<FuncType>::arity == 1,
+                  "TransformArg requires function taking exactly one argument");
+
+    // Ensure that arg_mapper takes exactly one argument.
+    static_assert(function_traits<ArgMapper>::arity == 1,
+                  "ArgMapper must be a function taking exactly one argument");
+    // Define type aliases for clarity.
+    using OldInputType = typename function_traits<FuncType>::arg1_type;
+    using NewInputType = typename function_traits<ArgMapper>::arg1_type;
+    using ArgMapperResultType = typename function_traits<ArgMapper>::result_type;
+
+    static_assert(std::is_same_v<ArgMapperResultType, OldInputType>,
+                  "ArgMapper's return value must == func_'s argument");
+
+    return std::move(*this).Rebind([arg_mapper = std::move(arg_mapper)](auto func) {
+      return [func = std::move(func), arg_mapper = std::move(arg_mapper)](
+                 NewInputType input) { return func(arg_mapper(std::move(input))); };
+    });
+  }
+
+  // Rebind the function.
+  // `func_converter`: func_ -> NewFuncType
+  // The result is ToPostable<NewFuncType>
+  //
+  // Changed func_converter to be a template parameter to accept lambdas.
+  template <typename FuncConverter>
+  auto Rebind(FuncConverter func_converter) && {  //  -> Postable<NewFuncType>
+    using NewFuncType = typename function_traits<decltype(func_converter(
+        std::declval<FuncType>()))>::type;
+    return Postable<NewFuncType>(func_converter(std::move(func_)), io_context_);
+  }
+
+  std::function<FuncType> func_;
+  instrumented_io_context &io_context_;
+};
+
+}  // namespace ray
