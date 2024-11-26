@@ -199,8 +199,6 @@ class CPUNcclGroup(GPUCommunicator):
         return rank
 
     def get_self_rank(self) -> Optional[int]:
-        if self._rank is None:
-            return None
         return self._rank
 
     def get_world_size(self) -> int:
