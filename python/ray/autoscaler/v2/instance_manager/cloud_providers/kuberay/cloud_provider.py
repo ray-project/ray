@@ -222,7 +222,12 @@ class KubeRayProvider(ICloudInstanceProvider):
         worker_groups = ray_cluster["spec"].get("workerGroupSpecs", [])
         for worker_group in worker_groups:
             node_type = worker_group["groupName"]
-            num_workers_dict[node_type] = worker_group["replicas"]
+            # Handle the case where users manually increase `minReplicas`
+            # to scale up the number of worker Pods. In this scenario,
+            # `replicas` will be smaller than `minReplicas`.
+            num_workers_dict[node_type] = max(
+                worker_group["replicas"], worker_group["minReplicas"]
+            )
 
         # Add to launch nodes.
         for node_type, count in to_launch.items():
