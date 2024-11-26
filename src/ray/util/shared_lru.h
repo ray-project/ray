@@ -129,6 +129,7 @@ class SharedLruCache final {
 template <typename K, typename V>
 using SharedLruConstCache = SharedLruCache<K, const V>;
 
+// Same interface and functionality as `SharedLruCache`, but thread-safe version.
 template <typename Key, typename Val>
 class ThreadSafeSharedLruCache final {
  public:
