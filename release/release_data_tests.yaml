@@ -40,18 +40,18 @@
   variations:
     - __suffix__: count
       run:
-        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate count
+        script: python groupby_benchmark.py s3://ray-benchmark-data/tpch/parquet/sf1000 --aggregate count
     - __suffix__: mean
       run:
-        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate mean
+        script: python groupby_benchmark.py s3://ray-benchmark-data/tpch/parquet/sf1000 --aggregate mean
     - __suffix__: std
       run:
-        script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --aggregate std
+        script: python groupby_benchmark.py s3://ray-benchmark-data/tpch/parquet/sf1000 --aggregate std
 
 - name: map_groups
   run:
     timeout: 3600
-    script: python groupby_benchmark.py s3://ray-benchmark-data/parquet/1GiB --map-groups
+    script: python groupby_benchmark.py s3://ray-benchmark-data/tpch/parquet/sf1000 --map-groups
 
 ###############
 # Dataset tests
