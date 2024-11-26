@@ -129,7 +129,7 @@ Status GcsTableWithJobId<Key, Data>::GetByJobId(
                 values[Key::FromBinary(item.first)].ParseFromString(item.second);
               }
             }
-            return std::move(values);
+            return values;
           }));
 }
 
@@ -144,7 +144,7 @@ Status GcsTableWithJobId<Key, Data>::DeleteByJobId(const JobID &job_id,
       keys.push_back(key);
     }
   }
-  return BatchDelete(keys, callback);
+  return BatchDelete(keys, std::move(callback));
 }
 
 template <typename Key, typename Data>
