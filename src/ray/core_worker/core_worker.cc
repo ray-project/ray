@@ -315,11 +315,11 @@ CoreWorker::CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_
                 return;
               }
 
-              auto raylet_client = std::make_shared<raylet::RayletClient>(
+              raylet::RayletClient raylet_client(
                   rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
                                                      node_info->node_manager_port(),
                                                      *client_call_manager_));
-              raylet_client->IsLocalWorkerDead(
+              raylet_client.IsLocalWorkerDead(
                   worker_id,
                   [this, worker_id](const Status &status,
                                     rpc::IsLocalWorkerDeadReply &&reply) {

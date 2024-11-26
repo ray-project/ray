@@ -14,13 +14,13 @@
 
 #pragma once
 
-#include <utility>
 #include <chrono>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 #include <string>
-#include <functional>
+#include <utility>
 
 #include "absl/container/btree_map.h"
 #include "absl/strings/str_format.h"
@@ -167,6 +167,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
             std::move(server_unavailable_timeout_callback)),
         server_name_(std::move(server_name)) {}
 
+  // Set up the timer to run CheckChannelStatus.
   void SetupCheckTimer();
 
   void CheckChannelStatus(bool reset_timer = true);

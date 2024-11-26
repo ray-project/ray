@@ -146,7 +146,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
   const auto timeout = request->GetTimeoutMs() == -1
                            ? absl::InfiniteFuture()
                            : now + absl::Milliseconds(request->GetTimeoutMs());
-  pending_requests_.emplace(timeout, request);
+  pending_requests_.emplace(timeout, std::move(request));
   if (!server_unavailable_timeout_time_.has_value()) {
     // First request to retry.
     server_unavailable_timeout_time_ =
