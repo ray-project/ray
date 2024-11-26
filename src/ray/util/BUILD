@@ -55,3 +55,11 @@ cc_library(
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
 )
+
+cc_binary(
+    name = "ray_logging_test",
+    srcs = ["ray_logging_test.cc"],
+    deps = [
+        ":util",
+    ],
+)
