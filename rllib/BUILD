@@ -2933,7 +2933,7 @@ py_test(
     name = "examples/offline_rl/cartpole_recording",
     main = "examples/offline_rl/cartpole_recording.py",
     tags = ["team:rllib", "examples", "exclusive"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/offline_rl/cartpole_recording.py"],
     args = ["--enable-new-api-stack", "--as-test", "--framework=torch"],
 )
