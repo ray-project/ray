@@ -70,7 +70,7 @@ class _NcclGroup(GPUCommunicator):
                 specified, then this must be specified too.
             use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
+                can be overlapped to improve performance.
         """
         self._world_size = world_size
         self._rank: Optional[int] = rank
@@ -98,6 +98,7 @@ class _NcclGroup(GPUCommunicator):
         self._cuda_stream: Optional["cp.cuda.ExternalStream"] = None
         self._send_stream: Optional["cp.cuda.ExternalStream"] = None
         self._recv_stream: Optional["cp.cuda.ExternalStream"] = None
+        self._device: Optional["torch.device"] = None
         if cuda_stream is not None:
             assert rank is not None, "NCCL actor has no rank assigned"
 
@@ -107,6 +108,7 @@ class _NcclGroup(GPUCommunicator):
 
             # TODO(swang): Allow default device to be overridden.
             device = torch_utils.get_devices()[0]
+            self._device = device
             self._cuda_stream = cp.cuda.ExternalStream(
                 cuda_stream, device_id=device.index
             )
@@ -287,6 +289,10 @@ class _NcclGroup(GPUCommunicator):
     @property
     def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
         return self._send_stream
+
+    @property
+    def device(self) -> Optional["torch.device"]:
+        return self._device
 
     def destroy(self) -> None:
         """
