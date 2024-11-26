@@ -100,16 +100,16 @@ Status RedisStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
     ToPostable<OptionalItemCallback<std::string>> callback) {
-  auto redis_callback = [callback = std::move(callback)](
-                            const std::shared_ptr<CallbackReply> &reply) {
-    std::optional<std::string> result;
-    if (!reply->IsNil()) {
-      result = reply->ReadAsString();
-    }
-    RAY_CHECK(!reply->IsError())
-        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-    callback.Post("RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
-  };
+  auto redis_callback =
+      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+        std::optional<std::string> result;
+        if (!reply->IsNil()) {
+          result = reply->ReadAsString();
+        }
+        RAY_CHECK(!reply->IsError())
+            << "Failed to get from Redis with status: " << reply->ReadAsStatus();
+        callback.Post("RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
+      };
 
   RedisCommand command{/*command=*/"HGET",
                        RedisKey{external_storage_namespace_, table_name},
@@ -120,7 +120,7 @@ Status RedisStoreClient::AsyncGet(
 
 Status RedisStoreClient::AsyncGetAll(
     const std::string &table_name,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   RedisScanner::ScanKeysAndValues(redis_client_,
                                   RedisKey{external_storage_namespace_, table_name},
                                   RedisMatchPattern::Any(),
@@ -131,10 +131,10 @@ Status RedisStoreClient::AsyncGetAll(
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
                                      Postable<void(bool)> callback) {
-  return AsyncBatchDelete(table_name,
-                          {key},
-                          std::move(callback).TransformArg<int64_t>(
-                              std::function{[](int64_t cnt) { return cnt > 0; }}));
+  return AsyncBatchDelete(
+      table_name, {key}, std::move(callback).TransformArg([](int64_t cnt) {
+        return cnt > 0;
+      }));
 }
 
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
@@ -150,7 +150,7 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
 Status RedisStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   if (keys.empty()) {
     callback.Post("RedisStoreClient.AsyncMultiGet",
                   absl::flat_hash_map<std::string, std::string>{});
@@ -337,7 +337,7 @@ RedisStoreClient::RedisScanner::RedisScanner(
     std::shared_ptr<RedisClient> redis_client,
     RedisKey redis_key,
     RedisMatchPattern match_pattern,
-    ToPostable<MapCallback<std::string, std::string>> callback)
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback)
     : redis_key_(std::move(redis_key)),
       match_pattern_(std::move(match_pattern)),
       redis_client_(std::move(redis_client)),
@@ -350,7 +350,7 @@ void RedisStoreClient::RedisScanner::ScanKeysAndValues(
     std::shared_ptr<RedisClient> redis_client,
     RedisKey redis_key,
     RedisMatchPattern match_pattern,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto scanner = std::make_shared<RedisScanner>(PrivateCtorTag(),
                                                 std::move(redis_client),
                                                 std::move(redis_key),
@@ -444,15 +444,14 @@ Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
       RedisKey{external_storage_namespace_, table_name},
       RedisMatchPattern::Prefix(prefix),
       std::move(callback).TransformArg(
-          std::function{[](absl::flat_hash_map<std::string, std::string> &&result)
-                            -> std::vector<std::string> {
+          [](absl::flat_hash_map<std::string, std::string> result) {
             std::vector<std::string> keys;
             keys.reserve(result.size());
             for (const auto &[k, v] : result) {
               keys.push_back(k);
             }
             return keys;
-          }}));
+          }));
   return Status::OK();
 }
 

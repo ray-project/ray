@@ -57,11 +57,11 @@ void StoreClientInternalKV::Get(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGet(
       table_name_,
       MakeKey(ns, key),
-      [callback = std::move(callback)](auto status, auto result) {
-        callback.Post("StoreClientInternalKV::Get",
-                      result.has_value() ? std::optional<std::string>(result.value())
-                                         : std::optional<std::string>());
-      }));
+      std::move(callback).Rebind([](std::function<void(std::optional<std::string>)> cb) {
+        return [cb = std::move(cb)](Status status, std::optional<std::string> &&result) {
+          cb(std::move(result));
+        };
+      })));
 }
 
 void StoreClientInternalKV::MultiGet(
@@ -74,13 +74,16 @@ void StoreClientInternalKV::MultiGet(
     prefixed_keys.emplace_back(MakeKey(ns, key));
   }
   RAY_CHECK_OK(delegate_->AsyncMultiGet(
-      table_name_, prefixed_keys, [callback = std::move(callback)](auto result) {
-        std::unordered_map<std::string, std::string> ret;
-        for (const auto &item : result) {
-          ret.emplace(ExtractKey(item.first), item.second);
-        }
-        callback.Post("StoreClientInternalKV::MultiGet", std::move(ret));
-      }));
+      table_name_,
+      prefixed_keys,
+      std::move(callback).TransformArg(
+          [](absl::flat_hash_map<std::string, std::string> result) {
+            std::unordered_map<std::string, std::string> ret;
+            for (const auto &item : result) {
+              ret.emplace(ExtractKey(item.first), item.second);
+            }
+            return ret;
+          })));
 }
 
 void StoreClientInternalKV::Put(const std::string &ns,
@@ -88,13 +91,8 @@ void StoreClientInternalKV::Put(const std::string &ns,
                                 const std::string &value,
                                 bool overwrite,
                                 Postable<void(bool)> callback) {
-  RAY_CHECK_OK(delegate_->AsyncPut(table_name_,
-                                   MakeKey(ns, key),
-                                   value,
-                                   overwrite,
-                                   [callback = std::move(callback)](bool success) {
-                                     callback.Post("StoreClientInternalKV::Put", success);
-                                   }));
+  RAY_CHECK_OK(delegate_->AsyncPut(
+      table_name_, MakeKey(ns, key), value, overwrite, std::move(callback)));
 }
 
 void StoreClientInternalKV::Del(const std::string &ns,
@@ -104,7 +102,8 @@ void StoreClientInternalKV::Del(const std::string &ns,
   if (!del_by_prefix) {
     RAY_CHECK_OK(delegate_->AsyncDelete(
         table_name_, MakeKey(ns, key), std::move(callback).TransformArg([](bool deleted) {
-          return deleted ? 1 : 0;
+          int64_t ret = deleted ? 1 : 0;
+          return ret;
         })));
     return;
   }
@@ -140,15 +139,14 @@ void StoreClientInternalKV::Keys(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGetKeys(
       table_name_,
       MakeKey(ns, prefix),
-      std::move(callback).TransformArg(
-          [](const std::vector<std::string> &keys) -> std::vector<std::string> {
-            std::vector<std::string> true_keys;
-            true_keys.reserve(keys.size());
-            for (auto &key : keys) {
-              true_keys.emplace_back(ExtractKey(key));
-            }
-            return true_keys;
-          })));
+      std::move(callback).TransformArg([](std::vector<std::string> keys) {
+        std::vector<std::string> true_keys;
+        true_keys.reserve(keys.size());
+        for (auto &key : keys) {
+          true_keys.emplace_back(ExtractKey(key));
+        }
+        return true_keys;
+      })));
 }
 
 }  // namespace gcs

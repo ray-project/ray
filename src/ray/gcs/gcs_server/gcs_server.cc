@@ -102,7 +102,9 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   ray::rpc::StoredConfig stored_config;
   stored_config.set_config(config_.raylet_config_list);
   RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(
-      ray::UniqueID::Nil(), stored_config, on_done));
+      ray::UniqueID::Nil(),
+      stored_config,
+      {on_done, io_context_provider_.GetDefaultIOContext()}));
   // Here we need to make sure the Put of internal config is happening in sync
   // way. But since the storage API is async, we need to run the default io context
   // to block current thread.
@@ -152,12 +154,14 @@ void GcsServer::Start() {
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
-  gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
-      rpc_server_.SetClusterId(cluster_id);
-      DoStart(*gcs_init_data);
-    });
-  });
+  gcs_init_data->AsyncLoad(
+      [this, gcs_init_data] {
+        GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
+          rpc_server_.SetClusterId(cluster_id);
+          DoStart(*gcs_init_data);
+        });
+      },
+      io_context_provider_.GetDefaultIOContext());
 }
 
 void GcsServer::GetOrGenerateClusterId(
@@ -301,10 +305,12 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_,
-                                                       gcs_table_storage_,
-                                                       raylet_client_pool_,
-                                                       rpc_server_.GetClusterId());
+  gcs_node_manager_ =
+      std::make_unique<GcsNodeManager>(gcs_publisher_,
+                                       gcs_table_storage_,
+                                       raylet_client_pool_,
+                                       io_context_provider_.GetDefaultIOContext(),
+                                       rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
   gcs_node_manager_->Initialize(gcs_init_data);
   // Register service.
@@ -489,6 +495,7 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       [this](const ActorID &actor_id) {
         gcs_placement_group_manager_->CleanPlacementGroupIfNeededWhenActorDead(actor_id);
       },
+      io_context_provider_.GetDefaultIOContext(),
       [this](const rpc::Address &address) {
         return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
       });
@@ -556,7 +563,8 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
 }
 
 void GcsServer::InitFunctionManager() {
-  function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+  function_manager_ = std::make_unique<GcsFunctionManager>(
+      kv_manager_->GetInstance(), io_context_provider_.GetDefaultIOContext());
 }
 
 void GcsServer::InitUsageStatsClient() {
@@ -579,9 +587,8 @@ void GcsServer::InitKVManager() {
         std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
     break;
   case (StorageType::IN_MEMORY):
-    instance =
-        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(io_context)));
+    instance = std::make_unique<StoreClientInternalKV>(
+        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>()));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -650,8 +657,8 @@ void GcsServer::InitRuntimeEnvManager() {
 }
 
 void GcsServer::InitGcsWorkerManager() {
-  gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+  gcs_worker_manager_ = std::make_unique<GcsWorkerManager>(
+      gcs_table_storage_, gcs_publisher_, io_context_provider_.GetDefaultIOContext());
   // Register service.
   worker_info_service_.reset(new rpc::WorkerInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));

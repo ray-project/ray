@@ -52,7 +52,7 @@ Status ObservableStoreClient::AsyncGet(
 
 Status ObservableStoreClient::AsyncGetAll(
     const std::string &table_name,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto start = absl::GetCurrentTimeNanos();
   STATS_gcs_storage_operation_count.Record(1, "GetAll");
   return delegate_->AsyncGetAll(table_name, std::move(callback).OnInvocation([start]() {
@@ -65,7 +65,7 @@ Status ObservableStoreClient::AsyncGetAll(
 Status ObservableStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto start = absl::GetCurrentTimeNanos();
   STATS_gcs_storage_operation_count.Record(1, "MultiGet");
   return delegate_->AsyncMultiGet(

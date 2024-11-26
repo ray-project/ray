@@ -118,13 +118,14 @@ class RedisStoreClient : public StoreClient {
                   const std::string &key,
                   ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     ToPostable<MapCallback<std::string, std::string>> callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   Status AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
-      ToPostable<MapCallback<std::string, std::string>> callback) override;
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,
@@ -160,17 +161,18 @@ class RedisStoreClient : public StoreClient {
 
    public:
     // Don't call this. Use ScanKeysAndValues instead.
-    explicit RedisScanner(PrivateCtorTag tag,
-                          std::shared_ptr<RedisClient> redis_client,
-                          RedisKey redis_key,
-                          RedisMatchPattern match_pattern,
-                          ToPostable<MapCallback<std::string, std::string>> callback);
+    explicit RedisScanner(
+        PrivateCtorTag tag,
+        std::shared_ptr<RedisClient> redis_client,
+        RedisKey redis_key,
+        RedisMatchPattern match_pattern,
+        Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
     static void ScanKeysAndValues(
         std::shared_ptr<RedisClient> redis_client,
         RedisKey redis_key,
         RedisMatchPattern match_pattern,
-        ToPostable<MapCallback<std::string, std::string>> callback);
+        Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
 
    private:
     // Scans the keys and values, one batch a time. Once all keys are scanned, the
@@ -200,7 +202,7 @@ class RedisStoreClient : public StoreClient {
 
     std::shared_ptr<RedisClient> redis_client_;
 
-    ToPostable<MapCallback<std::string, std::string>> callback_;
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback_;
 
     // Holds a self-ref until the scan is done.
     std::shared_ptr<RedisScanner> self_ref_;

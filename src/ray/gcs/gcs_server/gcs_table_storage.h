@@ -69,7 +69,7 @@ class GcsTable {
   ///
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  Status GetAll(ToPostable<MapCallback<Key, Data>> callback);
+  Status GetAll(Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete data from the table asynchronously.
   ///
@@ -120,7 +120,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id, ToPostable<MapCallback<Key, Data>> callback);
+  Status GetByJobId(const JobID &job_id,
+                    Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///
@@ -145,7 +146,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
                      Postable<void(Status)> callback) override;
 
   /// Rebuild the index during startup.
-  Status AsyncRebuildIndexAndGetAll(ToPostable<MapCallback<Key, Data>> callback);
+  Status AsyncRebuildIndexAndGetAll(
+      Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
@@ -304,8 +306,8 @@ class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
   explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
       : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-                            std::make_unique<InMemoryStoreClient>())
-                        ), io_service_(main_io_service) {}
+            std::make_unique<InMemoryStoreClient>())),
+        io_service_(main_io_service) {}
 
   // All methods are posted to this io_service.
   instrumented_io_context &io_service_;

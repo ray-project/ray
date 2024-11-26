@@ -36,13 +36,14 @@ class ObservableStoreClient : public StoreClient {
                   const std::string &key,
                   ToPostable<OptionalItemCallback<std::string>> callback) override;
 
-  Status AsyncGetAll(const std::string &table_name,
-                     ToPostable<MapCallback<std::string, std::string>> callback) override;
+  Status AsyncGetAll(
+      const std::string &table_name,
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   Status AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
-      ToPostable<MapCallback<std::string, std::string>> callback) override;
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) override;
 
   Status AsyncDelete(const std::string &table_name,
                      const std::string &key,

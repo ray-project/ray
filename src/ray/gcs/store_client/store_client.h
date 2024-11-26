@@ -68,7 +68,7 @@ class StoreClient {
   /// \return Status
   virtual Status AsyncGetAll(
       const std::string &table_name,
-      ToPostable<MapCallback<std::string, std::string>> callback) = 0;
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Get all data from the given table asynchronously.
   ///
@@ -79,7 +79,7 @@ class StoreClient {
   virtual Status AsyncMultiGet(
       const std::string &table_name,
       const std::vector<std::string> &keys,
-      ToPostable<MapCallback<std::string, std::string>> callback) = 0;
+      Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) = 0;
 
   /// Delete data from the given table asynchronously.
   ///

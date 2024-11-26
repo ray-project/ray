@@ -56,7 +56,7 @@ Status InMemoryStoreClient::AsyncGet(
 
 Status InMemoryStoreClient::AsyncGetAll(
     const std::string &table_name,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto result = absl::flat_hash_map<std::string, std::string>();
@@ -68,7 +68,7 @@ Status InMemoryStoreClient::AsyncGetAll(
 Status InMemoryStoreClient::AsyncMultiGet(
     const std::string &table_name,
     const std::vector<std::string> &keys,
-    ToPostable<MapCallback<std::string, std::string>> callback) {
+    Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   auto result = absl::flat_hash_map<std::string, std::string>();
