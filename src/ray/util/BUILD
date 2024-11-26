@@ -55,3 +55,12 @@ cc_library(
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
 )
+
+cc_library(
+    name = "shared_lru",
+    hdrs = ["shared_lru.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
+)
