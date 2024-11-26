@@ -54,11 +54,14 @@ class TestCoreContextFilter:
                 "worker_id": runtime_context.get_worker_id(),
                 "node_id": runtime_context.get_node_id(),
                 "task_id": runtime_context.get_task_id(),
+                "task_name": runtime_context.get_task_name(),
+                "task_func_name": runtime_context.get_task_function_name(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
+            assert not hasattr(record, "actor_name")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -77,7 +80,10 @@ class TestCoreContextFilter:
                     "worker_id": runtime_context.get_worker_id(),
                     "node_id": runtime_context.get_node_id(),
                     "actor_id": runtime_context.get_actor_id(),
+                    "actor_name": runtime_context.get_actor_name(),
                     "task_id": runtime_context.get_task_id(),
+                    "task_name": runtime_context.get_task_name(),
+                    "task_func_name": runtime_context.get_task_function_name(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)
