@@ -155,8 +155,8 @@ def do_exec_tasks(
 
         torch_device = ChannelContext.get_current().torch_device
         if torch_device.type == "cuda":
-            # External systems (e.g., vLLM) may not properly set the CUDA device.
-            # We explicitly set the device here.
+            # Compiled Graphs applications (e.g., vLLM) may not properly
+            # set the CUDA device. We explicitly set the device here.
             import torch
 
             torch.cuda.set_device(torch_device)
