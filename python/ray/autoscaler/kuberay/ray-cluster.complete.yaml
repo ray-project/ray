@@ -108,7 +108,7 @@ spec:
   workerGroupSpecs:
   # the pod replicas in this group typed worker
   - replicas: 1
-    minReplicas: 1
+    minReplicas: 0
     maxReplicas: 300
     # logical group name, for this called small-group, also can be functional
     groupName: small-group

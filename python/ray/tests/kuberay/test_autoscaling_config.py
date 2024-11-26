@@ -82,7 +82,7 @@ def _get_basic_autoscaling_config() -> dict:
             },
             "small-group": {
                 "max_workers": 300,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -95,7 +95,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers.
             "gpu-group": {
                 "max_workers": 200,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -109,7 +109,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers and node_config.
             "tpu-group": {
                 "max_workers": 4,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
