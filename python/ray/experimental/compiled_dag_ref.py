@@ -21,10 +21,15 @@ def _process_return_vals(return_vals: List[Any], return_single_output: bool):
 
     for i in range(len(return_vals)):
         val = return_vals[i]
+        if isinstance(val, DAGOperationFuture):
+            resolved_future = val.wait()
+            assert isinstance(resolved_future, list)
+            assert len(resolved_future) == 1
+            return_vals[i] = resolved_future[0]
+
+    for val in return_vals:
         if isinstance(val, RayTaskError):
             raise val.as_instanceof_cause()
-        if isinstance(val, DAGOperationFuture):
-            return_vals[i] = val.wait()
 
     if return_single_output:
         assert len(return_vals) == 1

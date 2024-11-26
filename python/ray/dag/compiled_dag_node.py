@@ -573,10 +573,9 @@ class ExecutableTask:
             True if system error occurs and exit the loop; otherwise, False.
         """
         if self.requires_nccl_read and overlap_gpu_communication:
-            input_data = self._intermediate_future
-            self._intermediate_future = None
-        else:
-            input_data = self.reset_and_wait_intermediate_future()
+            return
+
+        input_data = self.reset_and_wait_intermediate_future()
         try:
             _process_return_vals(input_data, return_single_output=False)
         except Exception as exc:
@@ -606,12 +605,9 @@ class ExecutableTask:
 
         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
         # so that this compute operation can be overlapped with communication.
-        if self.requires_nccl_read and overlap_gpu_communication:
-            self._intermediate_future = output_val
-        else:
-            self.wrap_and_set_intermediate_future(
-                output_val, wrap_in_gpu_future=overlap_gpu_communication
-            )
+        self.wrap_and_set_intermediate_future(
+            output_val, wrap_in_gpu_future=overlap_gpu_communication
+        )
         return False
 
     def _write(self, overlap_gpu_communication: bool) -> bool:
