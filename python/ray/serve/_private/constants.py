@@ -355,3 +355,17 @@ RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY = (
 RAY_SERVE_FORCE_LOCAL_TESTING_MODE = (
     os.environ.get("RAY_SERVE_FORCE_LOCAL_TESTING_MODE", "0") == "1"
 )
+
+# Run sync methods defined in the replica in a thread pool by default.
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL = (
+    os.environ.get("RAY_SERVE_RUN_SYNC_IN_THREADPOOL", "0") == "1"
+)
+
+RAY_SERVE_RUN_SYNC_IN_THREADPOOL_WARNING = (
+    "Calling sync method '{method_name}' directly on the "
+    "asyncio loop. In a future version, sync methods will be run in a "
+    "threadpool by default. Ensure your sync methods are thread safe "
+    "or keep the existing behavior by making them `async def`. Opt "
+    "into the new behavior by setting "
+    "RAY_SERVE_RUN_SYNC_IN_THREADPOOL=1."
+)
