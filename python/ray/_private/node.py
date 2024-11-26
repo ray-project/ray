@@ -865,7 +865,8 @@ class Node:
             or `(None, None)` if output redirection is disabled.
         """
         if not self.should_redirect_logs():
-            return None, None
+            null_handle = open("/dev/null")
+            return null_handle, null_handle
 
         log_stdout = None
         log_stderr = None
