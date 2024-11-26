@@ -73,7 +73,6 @@ from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
     import cupy as cp
-    import torch
 
 logger = logging.getLogger(__name__)
 
@@ -132,31 +131,6 @@ def do_allocate_channel(
     return output_channel
 
 
-def get_device(prepared_tasks: List["ExecutableTask"]) -> Optional["torch.device"]:
-    """
-    Get the device used for communication from the prepared tasks.
-
-    Args:
-        prepared_tasks: The prepared tasks of an actor. Each task must have
-            called `prepare()` before.
-
-    Returns:
-        The device used for communication, or None if no task requires
-        GPU communication.
-    """
-    device = None
-    for task in prepared_tasks:
-        if task._device is not None:
-            if device is None:
-                device = task._device
-            else:
-                assert device == task._device, (
-                    "All tasks of an actor should use the same device for "
-                    "communication."
-                )
-    return device
-
-
 @DeveloperAPI
 def do_exec_tasks(
     self,
@@ -179,13 +153,13 @@ def do_exec_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        device = get_device(tasks)
-        if device is not None:
+        torch_device = ChannelContext.get_current().torch_device
+        if torch_device.type == "cuda":
+            # External systems (e.g., vLLM) may not properly set the CUDA device.
+            # We explicitly set the device here.
             import torch
 
-            # Ray Compiled Graphs currently execute on a background thread,
-            # so we need to set the device on this thread.
-            torch.cuda.set_device(device)
+            torch.cuda.set_device(torch_device)
 
         done = False
         while True:
@@ -474,19 +448,6 @@ class ExecutableTask:
         self.input_reader.close()
         self.output_writer.close()
 
-    def _set_device(self, device: Optional["torch.device"]) -> None:
-        """
-        Set the device used for communication.
-        """
-        if device is None:
-            return
-        if self._device is None:
-            self._device = device
-        assert self._device == device, (
-            "Currently all torch tensor channels of a Compiled Graph task "
-            "should use the same device."
-        )
-
     def prepare(self, overlap_gpu_communication: bool = False):
         """
         Prepare the task for execution. The `exec_operation` function can only
@@ -504,7 +465,6 @@ class ExecutableTask:
 
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
-        self._device: Optional["torch.device"] = None
         if not overlap_gpu_communication:
             return
 
@@ -515,7 +475,6 @@ class ExecutableTask:
             nccl_group = ChannelContext.get_current().nccl_groups.get(nccl_group_id)
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
-            self._set_device(nccl_group.device)
         if self.input_type_hints:
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
@@ -530,7 +489,6 @@ class ExecutableTask:
                             "Compiled Graph task should use the same recv cuda stream."
                         )
                     self._recv_stream = nccl_group.recv_stream
-                    self._set_device(nccl_group.device)
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool

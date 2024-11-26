@@ -122,14 +122,6 @@ class GPUCommunicator(ABC):
         """
         raise NotImplementedError
 
-    @property
-    @abstractmethod
-    def device(self) -> Optional["torch.device"]:
-        """
-        Return the device used for communication.
-        """
-        raise NotImplementedError
-
     @abstractmethod
     def allreduce(
         self,
