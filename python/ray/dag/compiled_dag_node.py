@@ -146,11 +146,11 @@ def get_device(prepared_tasks: List["ExecutableTask"]) -> Optional["torch.device
     """
     device = None
     for task in prepared_tasks:
-        if task.device is not None:
+        if task._device is not None:
             if device is None:
-                device = task.device
+                device = task._device
             else:
-                assert device == task.device, (
+                assert device == task._device, (
                     "All tasks of an actor should use the same device for "
                     "communication."
                 )
