@@ -749,11 +749,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                "explicitly connect to this namespace with ray.init(namespace=\""
             << actor->GetRayNamespace() << "\", ...)";
 
-        auto error_data_ptr =
-            gcs::CreateErrorTableData("detached_actor_anonymous_namespace",
-                                      stream.str(),
-                                      absl::GetCurrentTimeNanos(),
-                                      job_id);
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
 
         RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
         RAY_CHECK_OK(

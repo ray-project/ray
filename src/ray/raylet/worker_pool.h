@@ -25,6 +25,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
@@ -200,7 +201,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time.
+  /// \param get_time A callback to get the current time in milliseconds.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
@@ -212,10 +213,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::string &native_library_path,
+             std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<double()> get_time);
+             std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool() override;
@@ -472,7 +473,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
+  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, absl::Time last_time_used);
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
@@ -587,7 +588,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes
   /// idle.
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, absl::Time>>
+      idle_of_all_languages_;
 
  private:
   /// A helper function that returns the reference of the pool state
@@ -792,7 +794,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   PeriodicalRunner periodical_runner_;
 
   /// A callback to get the current time.
-  const std::function<double()> get_time_;
+  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
   std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats
