@@ -81,11 +81,22 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = copy.deepcopy(test_definition)
+            continue
+
+        # Add default values to the test definition.
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
+
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
             continue
+
         variations = test_definition.pop("variations")
         _test_definition_invariant(
             test_definition,
