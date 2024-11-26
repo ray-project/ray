@@ -48,7 +48,7 @@ class SharedLruCache final {
     std::lock_guard lck(mu_);
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
-    cache_[key] = std::move(new_entry);
+    cache_[std::move(key)] = std::move(new_entry);
 
     if (max_entries_ > 0 && lru_list_.size() > max_entries_) {
       const auto &stale_key = lru_list_.back();
