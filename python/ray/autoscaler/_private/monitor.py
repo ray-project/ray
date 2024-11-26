@@ -605,16 +605,6 @@ if __name__ == "__main__":
         "--gcs-address", required=False, type=str, help="The address (ip:port) of GCS."
     )
     parser.add_argument(
-        "--redis-address", required=False, type=str, help="This is deprecated"
-    )
-    parser.add_argument(
-        "--redis-password",
-        required=False,
-        type=str,
-        default=None,
-        help="This is deprecated",
-    )
-    parser.add_argument(
         "--autoscaling-config",
         required=False,
         type=str,
