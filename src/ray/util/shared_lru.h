@@ -66,6 +66,7 @@ class SharedLruCache final {
     if (it == cache_.end()) {
       return false;
     }
+    lru_list_.erase(it->second.lru_iterator);
     cache_.erase(it);
     return true;
   }
