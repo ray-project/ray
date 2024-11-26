@@ -17,6 +17,7 @@
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
+#include "boost/compute/detail/lru_cache.hpp"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -1859,17 +1860,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 
   /// Serialized runtime info env are cached.
-  /// TODO(hjiang):
-  /// 1. Better to use hash value for serialized runtime (key), or cap a max serialized
-  /// string length to avoid too much memory consumption.
-  /// 2. Implement a LRU cache, to cap max number of key-value pairs to limit max memory
-  /// consumption.
   mutable std::mutex runtime_env_serialization_mutex_;
   /// Maps serialized runtime env to **immutable** deserialized protobuf.
-  mutable std::unordered_map<std::string, std::shared_ptr<rpc::RuntimeEnvInfo>>
+  mutable boost::compute::detail::lru_cache<std::string,
+                                            std::shared_ptr<rpc::RuntimeEnvInfo>>
       runtime_env_pb_serialization_cache_;
   /// Maps serialized runtime env to **immutable** deserialized json.
-  mutable std::unordered_map<std::string, std::shared_ptr<nlohmann::json>>
+  mutable boost::compute::detail::lru_cache<std::string, std::shared_ptr<nlohmann::json>>
       runtime_env_json_serialization_cache_;
 };
 

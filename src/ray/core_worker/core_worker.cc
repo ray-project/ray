@@ -41,23 +41,9 @@ using json = nlohmann::json;
 
 namespace ray::core {
 
-JobID GetProcessJobID(const CoreWorkerOptions &options) {
-  if (options.worker_type == WorkerType::DRIVER) {
-    RAY_CHECK(!options.job_id.IsNil());
-  } else {
-    RAY_CHECK(options.job_id.IsNil());
-  }
-
-  if (options.worker_type == WorkerType::WORKER) {
-    // For workers, the job ID is assigned by Raylet via an environment variable.
-    const std::string &job_id_env = RayConfig::instance().JOB_ID();
-    RAY_CHECK(!job_id_env.empty());
-    return JobID::FromHex(job_id_env);
-  }
-  return options.job_id;
-}
-
 namespace {
+// Default capacity for serialization caches.
+constexpr size_t kDefaultSerializationCacheCap = 500;
 
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
@@ -125,6 +111,22 @@ std::optional<ObjectLocation> TryGetLocalObjectLocation(
 }
 
 }  // namespace
+
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(!options.job_id.IsNil());
+  } else {
+    RAY_CHECK(options.job_id.IsNil());
+  }
+
+  if (options.worker_type == WorkerType::WORKER) {
+    // For workers, the job ID is assigned by Raylet via an environment variable.
+    const std::string &job_id_env = RayConfig::instance().JOB_ID();
+    RAY_CHECK(!job_id_env.empty());
+    return JobID::FromHex(job_id_env);
+  }
+  return options.job_id;
+}
 
 TaskCounter::TaskCounter() {
   counter_.SetOnChangeCallback(
@@ -262,7 +264,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
-      pid_(getpid()) {
+      pid_(getpid()),
+      runtime_env_pb_serialization_cache_(kDefaultSerializationCacheCap),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -2163,9 +2167,10 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
     const std::string &serialized_runtime_env_info) const {
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    auto iter = runtime_env_pb_serialization_cache_.find(serialized_runtime_env_info);
-    if (iter != runtime_env_pb_serialization_cache_.end()) {
-      return iter->second;
+    auto opt_runtime_info =
+        runtime_env_pb_serialization_cache_.get(serialized_runtime_env_info);
+    if (opt_runtime_info.has_value()) {
+      return *opt_runtime_info;
     }
   }
   auto pb_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
@@ -2174,8 +2179,8 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
                 .ok());
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    runtime_env_pb_serialization_cache_.emplace(serialized_runtime_env_info,
-                                                pb_runtime_env_info);
+    runtime_env_pb_serialization_cache_.insert(serialized_runtime_env_info,
+                                               pb_runtime_env_info);
   }
   return pb_runtime_env_info;
 }
@@ -2184,16 +2189,17 @@ std::shared_ptr<nlohmann::json> CoreWorker::GetCachedJsonRuntimeEnvOrParse(
     const std::string &serialized_runtime_env) const {
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    auto iter = runtime_env_json_serialization_cache_.find(serialized_runtime_env);
-    if (iter != runtime_env_json_serialization_cache_.end()) {
-      return iter->second;
+    auto opt_runtime_info =
+        runtime_env_json_serialization_cache_.get(serialized_runtime_env);
+    if (opt_runtime_info.has_value()) {
+      return *opt_runtime_info;
     }
   }
   auto parsed_json = std::make_shared<json>();
   *parsed_json = json::parse(serialized_runtime_env);
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    runtime_env_json_serialization_cache_.emplace(serialized_runtime_env, parsed_json);
+    runtime_env_json_serialization_cache_.insert(serialized_runtime_env, parsed_json);
   }
   return parsed_json;
 }
