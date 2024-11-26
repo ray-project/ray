@@ -40,12 +40,14 @@ class SharedLruCache final {
   // in the cache.
   explicit SharedLruCache(size_t max_entries) : max_entries_(max_entries) {}
 
+  SharedLruCache(const SharedLruCache &) = delete;
+  SharedLruCache &operator=(const SharedLruCache &) = delete;
+
   ~SharedLruCache() = default;
 
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
   void Put(Key key, Val value) {
-    std::lock_guard lck(mu_);
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
     cache_[std::move(key)] = std::move(new_entry);
@@ -61,7 +63,6 @@ class SharedLruCache final {
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
   bool Delete(const Key &key) {
-    std::lock_guard lck(mu_);
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -74,7 +75,6 @@ class SharedLruCache final {
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
   std::optional<Val> Get(const Key &key) {
-    std::lock_guard lck(mu_);
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
       return std::nullopt;
@@ -93,7 +93,6 @@ class SharedLruCache final {
 
   // Clear the cache.
   void Clear() {
-    std::lock_guard lck(mu_);
     cache_.clear();
     lru_list_.clear();
   }
@@ -116,9 +115,6 @@ class SharedLruCache final {
   // limit on entry count.
   const size_t max_entries_;
 
-  // Guards access to the cache and the LRU list.
-  std::mutex mu_;
-
   // All keys are stored as refernce (`std::reference_wrapper`), and the
   // ownership lies in `lru_list_`.
   EntryMap cache_;
@@ -132,5 +128,61 @@ class SharedLruCache final {
 // `const`-specified to avoid concurrent updates.
 template <typename K, typename V>
 using SharedLruConstCache = SharedLruCache<K, const V>;
+
+template <typename Key, typename Val>
+class ThreadSafeSharedLruCache final {
+ public:
+  using key_type = Key;
+  using mapped_type = Val;
+
+  // A `max_entries` of 0 means that there is no limit on the number of entries
+  // in the cache.
+  explicit ThreadSafeSharedLruCache(size_t max_entries) : cache_(max_entries) {}
+
+  ThreadSafeSharedLruCache(const ThreadSafeSharedLruCache &) = delete;
+  ThreadSafeSharedLruCache &operator=(const ThreadSafeSharedLruCache &) = delete;
+
+  ~ThreadSafeSharedLruCache() = default;
+
+  // Insert `value` with key `key`. This will replace any previous entry with
+  // the same key.
+  void Put(Key key, Val value) {
+    std::lock_guard lck(mtx_);
+    cache_.Put(std::move(key), std::move(value));
+  }
+
+  // Delete the entry with key `key`. Return true if the entry was found for
+  // `key`, false if the entry was not found. In both cases, there is no entry
+  // with key `key` existed after the call.
+  bool Delete(const Key &key) {
+    std::lock_guard lck(mtx_);
+    return cache_.Delete(key);
+  }
+
+  // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
+  // If found, return a copy for the value.
+  std::optional<Val> Get(const Key &key) {
+    std::lock_guard lck(mtx_);
+    return cache_.Get(key);
+  }
+
+  // Clear the cache.
+  void Clear() {
+    std::lock_guard lck(mtx_);
+    cache_.Clear();
+  }
+
+  // Accessors for cache parameters.
+  size_t max_entries() const { return cache_.max_entries(); }
+
+ private:
+  std::mutex mtx_;
+  SharedLruCache<Key, Val> cache_;
+};
+
+// Same interfaces as `SharedLruCache`, but all cached values are
+// `const`-specified to avoid concurrent updates.
+template <typename K, typename V>
+using ThreadSafeSharedLruConstCache = ThreadSafeSharedLruCache<K, const V>;
 
 }  // namespace ray::utils::container

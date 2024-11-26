@@ -11,7 +11,7 @@ constexpr size_t kTestCacheSz = 1;
 }  // namespace
 
 TEST(SharedLruCache, PutAndGet) {
-  SharedLruCache<std::string, std::string> cache{kTestCacheSz};
+  ThreadSafeSharedLruCache<std::string, std::string> cache{kTestCacheSz};
 
   // No value initially.
   auto val = cache.Get("1");
