@@ -606,12 +606,15 @@ class ExecutableTask:
 
         # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
         # so that this compute operation can be overlapped with communication.
-        self.wrap_and_set_intermediate_future(
-            output_val, wrap_in_gpu_future=overlap_gpu_communication
-        )
+        if self.requires_nccl_read and overlap_gpu_communication:
+            self._intermediate_future = output_val
+        else:
+            self.wrap_and_set_intermediate_future(
+                output_val, wrap_in_gpu_future=overlap_gpu_communication
+            )
         return False
 
-    def _write(self) -> bool:
+    def _write(self, overlap_gpu_communication: bool) -> bool:
         """
         Retrieve the intermediate result from the compute operation and write to its
         downstream DAG nodes. The caller must ensure that the last operation executed
@@ -620,7 +623,11 @@ class ExecutableTask:
         Returns:
             True if system error occurs and exit the loop; otherwise, False.
         """
-        output_val = self.reset_and_wait_intermediate_future()
+        if self.requires_nccl_read and overlap_gpu_communication:
+            output_val = self._intermediate_future
+            self._intermediate_future = None
+        else:
+            output_val = self.reset_and_wait_intermediate_future()
         exit = False
         try:
             self.output_writer.write(output_val)
@@ -652,7 +659,7 @@ class ExecutableTask:
         if self._compute(overlap_gpu_communication, class_handle):
             return True
         with self._send_stream:
-            if self._write():
+            if self._write(overlap_gpu_communication):
                 return True
         return False
 
