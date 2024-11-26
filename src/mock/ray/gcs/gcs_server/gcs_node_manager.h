@@ -18,7 +18,11 @@ namespace gcs {
 
 class MockGcsNodeManager : public GcsNodeManager {
  public:
-  MockGcsNodeManager() : GcsNodeManager(nullptr, nullptr, nullptr, ClusterID::Nil()) {}
+  MockGcsNodeManager()
+      : GcsNodeManager(/*gcs_publisher=*/nullptr,
+                       /*gcs_table_storage=*/nullptr,
+                       /*raylet_client_pool=*/nullptr,
+                       /*cluster_id=*/ClusterID::Nil()) {}
   MOCK_METHOD(void,
               HandleRegisterNode,
               (rpc::RegisterNodeRequest request,

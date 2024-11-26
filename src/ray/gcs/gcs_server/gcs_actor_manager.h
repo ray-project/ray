@@ -321,7 +321,7 @@ class GcsActorManager : public rpc::ActorInfoHandler {
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
       const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
-  ~GcsActorManager() = default;
+  ~GcsActorManager() override = default;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
