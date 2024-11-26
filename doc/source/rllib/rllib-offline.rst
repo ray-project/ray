@@ -774,6 +774,8 @@ How to tune performance
 
 In RLlib's Offline RL API the various key layers are managed by distinct modules and configurations, making it non-trivial to scale these layers effectively. It is important to understand the specific parameters and their respective impact on system performance. 
 
+.. _how-to-tune-reading-operations::
+
 How to tune Reading Operations
 ******************************
 As noted earlier, the **Reading Operations** layer is automatically handled and dynamically optimized by :ref:`Ray Data <data>`. It is strongly recommended to avoid modifying this process. However, there are certain parameters that can enhance performance on this 
@@ -857,6 +859,199 @@ Similarly, if you only require specific rows from your dataset, you can apply pu
 
 How to tune Post-processing (PreLearner)
 ****************************************
+When enabling high throughput in Read Operations, it is essential to ensure sufficient processing capacity in the Post-Processing (Pre-Learner) stage. Insufficient capacity in this stage can cause backpressure, leading to increased memory usage and, in severe cases, 
+object spilling to disk or even Out-Of-Memory (OOM, see :ref:`Out-Of-Memory Prevention <out-of-memory-prevention>`) errors.
+
+Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightforward than optimizing the **Read Operations** layer. Tuning the Post-Processing (Pre-Learner) layer is generally more straightforward than optimizing the Read Operations layer. The following parameters can be adjusted to optimize its performance:
+
+- Actor Pool Size
+- Allocated Resources.
+
+Actor Pool Size
+~~~~~~~~~~~~~~~
+Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` 
+instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's 
+throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``map_batches_kwargs`` parameter to define this pool size:
+
+.. code-block:: python
+
+    from ray.rllib.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 4,
+        },
+    )
+
+With the code above you would enable :ref:`Ray Data <data>` to start up to ``4`` parallel :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` actors that can post-process your data for training.
+
+.. note:: :ref:`Ray Data <data>` dynamically adjusts its read operations based on the parallelism of your **Post-Processing (Pre-Learner)** layer. It scales read operations up or down depending on the backpressure 
+    in the **Post-Processing (Pre-Learner)** stage. This means the throughput of your entire streaming pipeline is determined by the performance of the downstream tasks and the resources allocated to the 
+    **Reading Operations** layer (see :ref:`How to tune reading operations <how-to-tune-reading-operations>`). However, due to the overhead associated with scaling reading operations up or down, backpressure - and 
+    in severe cases, object spilling or Out-Of-Memory (OOM) errors - cannot always be entirely avoided.
+
+You can also enable autoscaling in your **Post-Processing (PreLearner)** by providing an interval instead of a straight number:
+
+.. code-block:: python
+
+    from ray.rllib.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": (4, 8),
+        },
+    )
+
+This allows :ref:`Ray Data <data>` to start up to ``8`` post-processing actors to downstream data faster, e.g. in case of backpressure.
+
+.. note:: Implementing an autoscaled actor pool in the **Post-Processing (Pre-Learner)** layer does not guarantee you the elimination of backpressure. Adding more :py:class:`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` instances introduces additional overhead to the system. RLlib's offline RL pipeline is 
+    optimized for streaming data, which typically exhibits stable throughput and resource usage, except in cases of imbalances between upstream and downstream tasks. As a rule of thumb, consider using autoscaling only under the following conditions: (1) throughput is expected to be highly variable, (2) Cluster resources 
+    are subject to fluctuations (e.g., in shared or dynamic environments), and/or (3) workload characteristics are highly unpredictable.
+
+Allocated resources
+~~~~~~~~~~~~~~~~~~~
+Other than the number of post-processing actors you can tune performance on the **Post-Processing (PreLearner)** layer via defining resources to be allocated to each :py:class:`~ray.rllib.offline.offline_prelearner.OffLinePreLearner` in the actor pool. Such resources can be defined either via ``num_cpus`` and ``num_gpus`` 
+or in the ``ray_remote_args``. 
+
+.. note:: Typically, increasing the number of CPUs is sufficient for performance tuning in the post-processing stage of your pipeline. GPUs are only needed in specialized cases, such as in customized pipelines. For example, RLlib’s :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the 
+    :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`_ on experience batches. In these calculations the value model of the algorithm's 
+    :py:class:`~ray.rllib.core.rl_module.RLModule` is applied, which you can accelerate by running on a GPU.
+
+As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` in the **Post-Processing (PreLearner)** ``2`` cpus you could use the following syntax:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .offline_data(
+        map_batches_kwargs={
+            "concurrency": 4,
+            "num_cpus": 2,
+        },
+    )
+
+.. warning:: Do not override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.batch_size_per_learner`: the former specifies the batch size in transformations of the streaming pipeline, while the 
+    latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`.
+
+How to tune Updating (Learner)
+******************************
+
+**Updating (Learner)**  is the final downstream task in RLlib's Offline RL pipeline, and its consumption speed determines the overall throughput of the data pipeline. If the learning process is slow, it can cause backpressure in upstream layers, potentially leading to object spilling or Out-Of-Memory (OOM) errors. Therefore, it is essential to fine-tune this 
+layer in coordination with the upstream components. Several parameters can be adjusted to optimize the learning speed in your Offline algorithm:
+
+- Actor Pool Size
+- Allocated Resources
+- Scheduling Strategy
+- Batch Sizing
+- Batch Prefetching.
+
+.. _actor-pool-size::
+
+Actor Pool Size
+***************
+
+RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_learners`. When this vcalue exceeds ``1``, scaling is implemented internally using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified 
+number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training and aggregates intermediate results across :py:class:`~ray.rllib.core.learner.learner.Learner` actors. :py:class:`~ray.rllib.core.learner.learner.Learner` scaling increases training throughput and you should only apply it, if the upstream components in your 
+Offline Data pipeline can supply data at a rate sufficient to match the increased training capacity. RLlib's Offline API offers powerful scalability at its final layer by utilizing :py:class:`~ray.data.Dataset.streaming_split`. This functionality divides the data stream into multiple substreams, which are then processed by individual 
+:py:class:`~ray.rllib.core.learner.learner.Learner` instances, enabling efficient parallel consumption and enhancing overall throughput.
+
+For example to set the number of learners to ``4``, you use the following syntax:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .learners(
+        num_learners=4,
+    )
+
+.. tip::For performance optimization you should choose between using a single local :py:class:`~ray.rllib.core.learner.learner.Learner` or multiple remote ones :py:class:`~ray.rllib.core.learner.learner.Learner`. In case your dataset is small, use scaling of :py:class:`~ray.rllib.core.learner.learner.Learner` instances with caution as it produces significant 
+    overhead and splits the data pipeline into multiple streams.
+
+Allocated resources
+~~~~~~~~~~~~~~~~~~~
+Just as with the Post-Processing (Pre-Learner) layer, allocating additional resources can help address slow training processes. In this case, the primary resource to leverage is the GPU, as training involves forward and backward passes through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, which GPUs can accelerate significantly. If your training is 
+already utilize GPUs and performance remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity, or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload. Additionally, ensure that data 
+throughput and upstream components are optimized to keep the learners fully utilized, as insufficient upstream capacity can bottleneck the training process.
+
+.. warning::Currently, you cannot set both :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.num_gpus_per_learner` and :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
+
+To provide your learners with more compute use ``num_gpus_per_learner`` or ``num_cpus_per_learner`` as follows:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .learners(
+        num_learners=4,
+        num_gpus_per_learner=2,
+    )
+
+.. tip::If you experience backpressure in the **Post-Processing (Pre-Learner)** stage of your pipeline, consider enabling GPU training before scaling up your :py:class:`~ray.rllib.core.learner.learner.Learner` instances.
+
+Scheduling Strategy
+~~~~~~~~~~~~~~~~~~~
+The scheduling strategy in Ray plays a key role in task and actor placement by attempting to distribute them across multiple nodes in a cluster, thereby maximizing resource utilization and fault tolerance. When running on a single-node cluster (i.e., one large head node), the scheduling strategy has little to no noticeable impact. However, in a multi-node cluster, 
+scheduling can significantly influence the performance of your Offline Data pipeline due to the importance of data locality. Data processing occurs across all nodes, and maintaining data locality during training can enhance performance.
+
+In such scenarios, you can improve data locality by changing RLlib's default scheduling strategy from ``"PACK"`` to ``"SPREAD"``. This strategy distributes the :py:class:`~ray.rllib.core.learner.learner.Learner` actors across the cluster, allowing `Ray Data <data>` to take advantage of locality-aware bundle selection, which can improve efficiency.
+
+Here is an example of how you can change the scheduling strategy:
+
+.. code-block:: python
+
+    """Just for show-casing, do not run."""
+    import os
+    from ray import data
+    from ray.rllib.algorithms.algorithm_config.AlgorithmConfig
+    
+    # Configure a "SPREAD" scheduling strategy for learners.
+    os.environ["TRAIN_ENABLE_WORKER_SPREAD_ENV"] = "1"
+
+    # Get the current data context.
+    data_context = data.DataContext.get_current()
+    # Set the execution options such that the Ray Data tries to match
+    # the locality of an output stream with where learners are located.
+    data_context.execution_options = data.ExecutionOptions(
+        locality_with_output=True,
+    )
+
+    # Build the config.
+    config = (
+        AlgorithmConfig()
+        .learners(
+            # Scale the learners.
+            num_learners=4,
+            num_gpus_per_learner=2,
+        )
+        .offline_data(
+            ...,
+            # Run in each RLlib training iteration 10 
+            # iterations per learner (each of them with 
+            # `train_batch_size_per_learner`).
+            dataset_num_iters_per_learner=20,
+        )
+    )
+
+    # Build the algorithm from the config.
+    algo = config.build()
+
+    # Train for 10 iterations.
+    for _ in range(10)
+        res = algo.train()
+
+.. warning::Changing scheduling strategies in RLlib's Offline RL API is experimental; use with caution.
+
+Batch Sizing
+~~~~~~~~~~~~
+
+Batch Prefetching
+~~~~~~~~~~~~~~~~~
 
 Input API
 ---------
