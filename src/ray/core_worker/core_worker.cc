@@ -2584,9 +2584,8 @@ Status CoreWorker::CreatePlacementGroup(
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
-  } else {
-    return status;
   }
+  return status;
 }
 
 Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_id) {
@@ -2600,9 +2599,8 @@ Status CoreWorker::RemovePlacementGroup(const PlacementGroupID &placement_group_
            << ". It is probably "
               "because GCS server is dead or there's a high load there.";
     return Status::TimedOut(stream.str());
-  } else {
-    return status;
   }
+  return status;
 }
 
 Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_group_id,
@@ -2614,9 +2612,8 @@ Status CoreWorker::WaitPlacementGroupReady(const PlacementGroupID &placement_gro
     stream << "There was timeout in waiting for placement group " << placement_group_id
            << " creation.";
     return Status::TimedOut(stream.str());
-  } else {
-    return status;
   }
+  return status;
 }
 
 Status CoreWorker::SubmitActorTask(
@@ -3863,7 +3860,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->AddObjectPrimaryCopyDeleteCallback(object_id, unpin_object)) {
+  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
