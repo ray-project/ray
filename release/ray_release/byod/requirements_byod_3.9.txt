@@ -657,9 +657,9 @@ cython==0.29.37 \
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
-dask[complete]==2022.10.1 ; python_version < "3.12" \
-    --hash=sha256:2e6765bb6011c97c59fd4792540df679c703100443fcd99c82b98d8697295822 \
-    --hash=sha256:79d283326045700af0de7e2be57fd663499958c63638bf5076839cbcde64aa3f
+dask[complete]==2022.10.2 ; python_version < "3.12" \
+    --hash=sha256:42cb43f601709575fa46ce09e74bea83fdd464187024f56954e09d9b428ceaab \
+    --hash=sha256:928003a97b890a14c8a09a01f15320d261053bda530a8bf191d84f33db4a63b8
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   -r release/ray_release/byod/requirements_byod_3.9.in
@@ -680,9 +680,9 @@ diskcache==5.6.3 \
     --hash=sha256:2c3a3fa2743d8535d832ec61c2054a1641f41775aa7c556758a109941e33e4fc \
     --hash=sha256:5e31b2d5fbad117cc363ebaf6b689474db18a1f6438bc82358b024abd4c2ca19
     # via petastorm
-distributed==2022.10.1 ; python_version < "3.12" \
-    --hash=sha256:31abab8ecc76951875828a3689d47dc4f20226b3ec99a0dc1af6183d02dbe5fe \
-    --hash=sha256:42c6fe7d3bea491e23ce020879c411f2ecfecdb4914a6cb6b4a63530a7b0fa70
+distributed==2022.10.2 ; python_version < "3.12" \
+    --hash=sha256:53f0a5bf6efab9a5ab3345cd913f6d3f3d4ea444ee2edbea331c7fef96fd67d0 \
+    --hash=sha256:ae4fffdb55c6cb510ba1cbdf2856563af80ebf93e5ceacb91c1ce79e7da108d8
     # via
     #   -c release/ray_release/byod/requirements_compiled.txt
     #   dask
