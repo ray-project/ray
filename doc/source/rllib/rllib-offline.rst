@@ -355,7 +355,7 @@ Using external expert experiences
 Your expert data is often already available, either recorded from an operational system or directly provided by human experts. Typically, 
 this data is stored in a tabular (columnar) format. RLlib's new Offline RL API simplifies the use of such data by allowing direct ingestion 
 via a specified schema that organizes the expert data. The API's default schema for reading data is provided in 
-:py:attr:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
+:py:data:`~ray.rllib.offline.offline_prelearner.SCHEMA`.
 
 Lets consider a simple example in which your expert data is stored with the schema: ``(o_t, a_t, r_t, o_tp1, d_t, i_t, logprobs_t)``. In this case 
 you provide this schema as follows:
@@ -670,7 +670,7 @@ The diagram below illustrates the layers and their scalability:
     :width: 500
     :alt: Key layers of RLlib's fully scalable Offline RL API.
 
-**Read operations** are executed exclusively on the CPU and are primarily scaled by allocating additional resources (see :ref:`How to tune performance` for details), as they are fully managed by Ray Data. **Post-processing** can be scaled by increasing 
+**Read operations** are executed exclusively on the CPU and are primarily scaled by allocating additional resources (see :ref:`How to tune performance <how-to-tune-performance>` for details), as they are fully managed by Ray Data. **Post-processing** can be scaled by increasing 
 the concurrency level specified in the keyword arguments for the mapping operation:
 
 .. code-block:: python
@@ -688,7 +688,7 @@ This initiates an actor pool with 10 ``DataWorker`` instances, each running an i
 
 .. note:: The ``num_cpus`` (and similarly the ``num_gpus``) attribute defines the resources **allocated to each** ``DataWorker`` not the full actor pool.
 
-You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithm.AlgorithmConfig.learners` configuration block:
+You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithm_config.AlgorithmConfig.learners` configuration block:
 
 .. code-block:: python
     
@@ -767,6 +767,8 @@ in denied write access, causing the recording process to stop.
 .. note:: When using cloud storage, Ray Data typically streams data, meaning it is consumed in chunks. This allows postprocessing and training to begin after a brief warmup phase. More specifically, even if your cloud storage is large, the same amount of 
     space is not required on the node(s) running RLlib.
 
+.. _how-to-tune-performance::
+
 How to tune performance 
 -----------------------
 
@@ -811,7 +813,7 @@ critical for balancing these trade-offs and maximizing throughput.
 
 Data Pruning
 ~~~~~~~~~~~~
-If your data is in **Parquet** format (the recommended offline data format for RLlib), you can leverage data pruning to optimize performance. :ref:`Ray Data <data>`` supports pruning in its :py:meth:`~ray.data.read_parquet` method through projection pushdown (column filtering) and filter pushdown (row filtering). These filters are applied directly during file 
+If your data is in **Parquet** format (the recommended offline data format for RLlib), you can leverage data pruning to optimize performance. :ref:`Ray Data <data>` supports pruning in its :py:meth:`~ray.data.read_parquet` method through projection pushdown (column filtering) and filter pushdown (row filtering). These filters are applied directly during file 
 scans, reducing the amount of unnecessary data loaded into memory.
 
 For instance, if you only require specific columns from your offline data (e.g., to avoid loading the ``infos`` column):
