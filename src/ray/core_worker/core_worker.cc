@@ -2161,14 +2161,10 @@ json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> par
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
     const std::string &serialized_runtime_env_info) const {
-  // RAY_LOG(ERROR) << "begin of pb parse";
-
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
     auto iter = runtime_env_pb_serialization_cache_.find(serialized_runtime_env_info);
     if (iter != runtime_env_pb_serialization_cache_.end()) {
-      // RAY_LOG(ERROR) << "pb parse cache hit";
-
       return iter->second;
     }
   }
@@ -2181,22 +2177,15 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
     runtime_env_pb_serialization_cache_.emplace(serialized_runtime_env_info,
                                                 pb_runtime_env_info);
   }
-
-  // RAY_LOG(ERROR) << "pb parse cache miss";
-
   return pb_runtime_env_info;
 }
 
 std::shared_ptr<nlohmann::json> CoreWorker::GetCachedJsonRuntimeEnvOrParse(
     const std::string &serialized_runtime_env) const {
-  // RAY_LOG(ERROR) << "begin of json parse";
-
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
     auto iter = runtime_env_json_serialization_cache_.find(serialized_runtime_env);
     if (iter != runtime_env_json_serialization_cache_.end()) {
-      // RAY_LOG(ERROR) << "json parse cache hit";
-
       return iter->second;
     }
   }
@@ -2206,9 +2195,6 @@ std::shared_ptr<nlohmann::json> CoreWorker::GetCachedJsonRuntimeEnvOrParse(
     std::lock_guard lck(runtime_env_serialization_mutex_);
     runtime_env_json_serialization_cache_.emplace(serialized_runtime_env, parsed_json);
   }
-
-  // RAY_LOG(ERROR) << "json parse csche miss";
-
   return parsed_json;
 }
 
@@ -2368,8 +2354,6 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        : task_options.name;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
-
-  //  RAY_LOG(ERROR) << "build common task spec " << ray::StackTrace{};
 
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),
