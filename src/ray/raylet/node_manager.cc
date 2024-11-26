@@ -1872,22 +1872,11 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
 void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                                         rpc::PrestartWorkersReply *reply,
                                         rpc::SendReplyCallback send_reply_callback) {
-  const uint64_t num_workers = std::min(
-      RayConfig::instance().restart_workers_api_max_num_workers(), request.num_workers());
-  if (num_workers < request.num_workers()) {
-    RAY_LOG(WARNING) << "Requested to prestart " << request.num_workers()
-                     << " workers, but only " << num_workers
-                     << " workers are allowed to prestart. See "
-                        "RAY_restart_workers_api_max_num_workers";
-  }
-
   auto pop_worker_request = std::make_shared<PopWorkerRequest>(
       request.language(),
       rpc::WorkerType::WORKER,
       request.has_job_id() ? JobID::FromBinary(request.job_id()) : JobID::Nil(),
-      request.has_root_detached_actor_id()
-          ? ActorID::FromBinary(request.root_detached_actor_id())
-          : ActorID::Nil(),
+      /*root_detached_actor_id=*/ActorID::Nil(),
       /*gpu=*/std::nullopt,
       /*actor_worker=*/std::nullopt,
       request.runtime_env_info(),
@@ -1906,7 +1895,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
         return false;
       });
 
-  for (int64_t i = 0; i < num_workers; i++) {
+  for (int64_t i = 0; i < request.num_workers(); i++) {
     worker_pool_.StartNewWorker(pop_worker_request);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);

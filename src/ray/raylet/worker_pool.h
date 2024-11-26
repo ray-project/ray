@@ -611,10 +611,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// workers in FIFO order.
   struct IdleWorkerEntry {
     std::shared_ptr<WorkerInterface> worker;
-    // The time when the worker was last released by a task or freshly registered.
-    absl::Time idle_since;
-    // Don't kill this worker until this time. Clears on task assignment by setting to
-    // absl::InfinitePast();
+    // Don't kill this worker until this time. Set by:
+    // - prestarted workers by Now() + keep alive duration from argument
+    // - idle workers by Now() + idle_worker_killing_time_threshold_ms
     absl::Time keep_alive_until;
   };
   void KillIdleWorker(const IdleWorkerEntry &node);

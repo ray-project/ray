@@ -98,14 +98,13 @@ message RequestWorkerLeaseReply {
 // Request to prestart workers. At this time we don't yet know the resource, or task type.
 message PrestartWorkersRequest {
   Language language = 1;
-  // Owner: job or root detached actor.
+  // Job ID for the workers. Note: root_detached_actor_id is not supported.
   optional bytes job_id = 2;
-  optional bytes root_detached_actor_id = 3;
-  RuntimeEnvInfo runtime_env_info = 4;
+  RuntimeEnvInfo runtime_env_info = 3;
   // Started idle workers will be kept alive for this duration. Reset on task assignment.
-  uint64 keep_alive_duration_secs = 5;
+  uint64 keep_alive_duration_secs = 4;
   // Raylet will try to start `num_workers` workers.
-  uint64 num_workers = 6;
+  uint64 num_workers = 5;
 }
 
 message PrestartWorkersReply {

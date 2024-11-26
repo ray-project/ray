@@ -1035,15 +1035,20 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       return PushWorker(worker);
     }
   } else {
+    // Worker pushed without suiting any pending request. Put to idle pool with
+    // keep_alive_until.
     state.idle.insert(worker);
     auto now = get_time_();
-    absl::Time keep_alive_until = absl::InfinitePast();
+    absl::Time keep_alive_until =
+        now +
+        absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
     if (worker->GetAssignedTaskTime() == absl::Time()) {
+      // Newly registered worker. Respect idle_worker_keep_alive_duration if any.
       const auto &keep_alive_duration =
           state.worker_processes.at(worker->GetStartupToken())
               .idle_worker_keep_alive_duration;
       if (keep_alive_duration.has_value()) {
-        keep_alive_until = now + *keep_alive_duration;
+        keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
       }
 
       // If the worker never held any tasks, then we should consider it first when
@@ -1052,11 +1057,9 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // See https://github.com/ray-project/ray/pull/36766
       //
       // Also, we set keep_alive_until w.r.t. idle_worker_keep_alive_duration.
-      idle_of_all_languages_.emplace_front(
-          IdleWorkerEntry{worker, /*idle_since=*/now, keep_alive_until});
+      idle_of_all_languages_.emplace_front(IdleWorkerEntry{worker, keep_alive_until});
     } else {
-      idle_of_all_languages_.emplace_back(
-          IdleWorkerEntry{worker, /*idle_since=*/now, keep_alive_until});
+      idle_of_all_languages_.emplace_back(IdleWorkerEntry{worker, keep_alive_until});
     }
   }
   // We either have an idle worker or a slot to start a new worker.
@@ -1072,12 +1075,7 @@ void WorkerPool::TryKillingIdleWorkers() {
   // jobs that have already finished.
   int64_t num_killable_idle_workers = 0;
   auto worker_killable = [now](const IdleWorkerEntry &entry) -> bool {
-    if (entry.keep_alive_until > now) {
-      return false;
-    }
-    return now - entry.idle_since >
-           absl::Milliseconds(
-               RayConfig::instance().idle_worker_killing_time_threshold_ms());
+    return entry.keep_alive_until < now;
   };
 
   // First, kill must-kill workers: dead ones, job finished ones. Also calculate killable
