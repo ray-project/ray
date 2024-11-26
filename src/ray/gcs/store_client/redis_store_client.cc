@@ -131,9 +131,10 @@ Status RedisStoreClient::AsyncGetAll(
 Status RedisStoreClient::AsyncDelete(const std::string &table_name,
                                      const std::string &key,
                                      Postable<void(bool)> callback) {
-  return AsyncBatchDelete(table_name, {key}, std::move(callback).Compose([](int64_t cnt) {
-    return cnt > 0;
-  }));
+  return AsyncBatchDelete(table_name,
+                          {key},
+                          std::move(callback).TransformArg<int64_t>(
+                              std::function{[](int64_t cnt) { return cnt > 0; }}));
 }
 
 Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
@@ -442,16 +443,16 @@ Status RedisStoreClient::AsyncGetKeys(const std::string &table_name,
       redis_client_,
       RedisKey{external_storage_namespace_, table_name},
       RedisMatchPattern::Prefix(prefix),
-      std::move(callback).Compose(
-          [](absl::flat_hash_map<std::string, std::string> &&result)
-              -> std::vector<std::string> {
+      std::move(callback).TransformArg(
+          std::function{[](absl::flat_hash_map<std::string, std::string> &&result)
+                            -> std::vector<std::string> {
             std::vector<std::string> keys;
             keys.reserve(result.size());
             for (const auto &[k, v] : result) {
               keys.push_back(k);
             }
             return keys;
-          }));
+          }}));
   return Status::OK();
 }
 

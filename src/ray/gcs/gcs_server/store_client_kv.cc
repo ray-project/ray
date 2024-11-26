@@ -58,10 +58,9 @@ void StoreClientInternalKV::Get(const std::string &ns,
       table_name_,
       MakeKey(ns, key),
       [callback = std::move(callback)](auto status, auto result) {
-        callback.PostIfNonNull("StoreClientInternalKV::Get",
-                               result.has_value()
-                                   ? std::optional<std::string>(result.value())
-                                   : std::optional<std::string>());
+        callback.Post("StoreClientInternalKV::Get",
+                      result.has_value() ? std::optional<std::string>(result.value())
+                                         : std::optional<std::string>());
       }));
 }
 
@@ -80,7 +79,7 @@ void StoreClientInternalKV::MultiGet(
         for (const auto &item : result) {
           ret.emplace(ExtractKey(item.first), item.second);
         }
-        callback.PostIfNonNull("StoreClientInternalKV::MultiGet", std::move(ret));
+        callback.Post("StoreClientInternalKV::MultiGet", std::move(ret));
       }));
 }
 
@@ -94,8 +93,7 @@ void StoreClientInternalKV::Put(const std::string &ns,
                                    value,
                                    overwrite,
                                    [callback = std::move(callback)](bool success) {
-                                     callback.PostIfNonNull("StoreClientInternalKV::Put",
-                                                            success);
+                                     callback.Post("StoreClientInternalKV::Put", success);
                                    }));
 }
 
@@ -103,38 +101,37 @@ void StoreClientInternalKV::Del(const std::string &ns,
                                 const std::string &key,
                                 bool del_by_prefix,
                                 Postable<void(int64_t)> callback) {
-  auto dispatch_and_call =
-      std::move(callback).AsDispatchedFunction("StoreClientInternalKV::Del");
   if (!del_by_prefix) {
     RAY_CHECK_OK(delegate_->AsyncDelete(
-        table_name_,
-        MakeKey(ns, key),
-        [dispatch_and_call = std::move(dispatch_and_call)](bool deleted) {
-          dispatch_and_call(deleted ? 1 : 0);
-        }));
+        table_name_, MakeKey(ns, key), std::move(callback).TransformArg([](bool deleted) {
+          return deleted ? 1 : 0;
+        })));
     return;
   }
-
+  // This one requires 2 async calls, so we can't just do `Rebind`, instead we need to
+  // manually use the io context.
   RAY_CHECK_OK(delegate_->AsyncGetKeys(
       table_name_,
       MakeKey(ns, key),
-      [this, ns, dispatch_and_call = std::move(dispatch_and_call)](auto keys) {
-        if (keys.empty()) {
-          dispatch_and_call(0);
-          return;
-        }
-        RAY_CHECK_OK(
-            delegate_->AsyncBatchDelete(table_name_, keys, std::move(dispatch_and_call)));
-      }));
+      Postable<void(std::vector<std::string>)>(
+          [this, ns, callback = std::move(callback)](
+              const std::vector<std::string> &keys) -> void {
+            if (keys.empty()) {
+              // We are directly calling this because we
+              // don't need another Post.
+              callback.func_(0);
+              return;
+            }
+            RAY_CHECK_OK(delegate_->AsyncBatchDelete(table_name_, keys, callback));
+          },
+          callback.io_context_)));
 }
 
 void StoreClientInternalKV::Exists(const std::string &ns,
                                    const std::string &key,
                                    Postable<void(bool)> callback) {
-  RAY_CHECK_OK(delegate_->AsyncExists(
-      table_name_,
-      MakeKey(ns, key),
-      std::move(callback).AsDispatchedFunction("StoreClientInternalKV::Exists")));
+  RAY_CHECK_OK(
+      delegate_->AsyncExists(table_name_, MakeKey(ns, key), std::move(callback)));
 }
 
 void StoreClientInternalKV::Keys(const std::string &ns,
@@ -143,7 +140,7 @@ void StoreClientInternalKV::Keys(const std::string &ns,
   RAY_CHECK_OK(delegate_->AsyncGetKeys(
       table_name_,
       MakeKey(ns, prefix),
-      std::move(callback).Compose(
+      std::move(callback).TransformArg(
           [](const std::vector<std::string> &keys) -> std::vector<std::string> {
             std::vector<std::string> true_keys;
             true_keys.reserve(keys.size());

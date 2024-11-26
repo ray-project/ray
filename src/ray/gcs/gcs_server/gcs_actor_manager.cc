@@ -329,12 +329,14 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
+    instrumented_io_context &io_context,
     const rpc::ClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
       worker_client_factory_(worker_client_factory),
       destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      io_context_(io_context),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {
@@ -1110,25 +1112,26 @@ void GcsActorManager::DestroyActor(const ActorID &actor_id,
   RAY_CHECK_OK(gcs_table_storage_->ActorTable().Put(
       actor->GetActorID(),
       *actor_table_data,
-      [this,
-       actor,
-       actor_id,
-       actor_table_data,
-       is_restartable,
-       done_callback = std::move(done_callback)](Status status) {
-        if (done_callback) {
-          done_callback();
-        }
-        RAY_CHECK_OK(gcs_publisher_->PublishActor(
-            actor_id, GenActorDataOnlyWithStates(*actor_table_data), nullptr));
-        if (!is_restartable) {
-          RAY_CHECK_OK(
-              gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
-        }
-        actor->WriteActorExportEvent();
-        // Destroy placement group owned by this actor.
-        destroy_owned_placement_group_if_needed_(actor_id);
-      }));
+      {[this,
+        actor,
+        actor_id,
+        actor_table_data,
+        is_restartable,
+        done_callback = std::move(done_callback)](Status status) {
+         if (done_callback) {
+           done_callback();
+         }
+         RAY_CHECK_OK(gcs_publisher_->PublishActor(
+             actor_id, GenActorDataOnlyWithStates(*actor_table_data), nullptr));
+         if (!is_restartable) {
+           RAY_CHECK_OK(
+               gcs_table_storage_->ActorTaskSpecTable().Delete(actor_id, nullptr));
+         }
+         actor->WriteActorExportEvent();
+         // Destroy placement group owned by this actor.
+         destroy_owned_placement_group_if_needed_(actor_id);
+       },
+       io_context_}));
 
   // Inform all creation callbacks that the actor was cancelled, not created.
   RunAndClearActorCreationCallbacks(
