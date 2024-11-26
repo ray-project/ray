@@ -1431,8 +1431,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
-                                           const std::shared_ptr<nlohmann::json> parent);
+  static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
+                                           std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1751,6 +1751,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
+  /// Get json deserialized runtime env in cache; parse and fill in if uncached.
+  std::shared_ptr<nlohmann::json> GetCachedJsonRuntimeEnvOrParse(
+      const std::string &serialized_runtime_env_info) const;
+
+  /// Get protobuf deserialized runtime env in cache; parse and fill in if uncached.
+  std::shared_ptr<rpc::RuntimeEnvInfo> GetCachedPbRuntimeEnvOrParse(
+      const std::string &serialized_runtime_env) const;
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1959,6 +1967,20 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   uint32_t pid_;
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+
+  /// Serialized runtime info env are cached.
+  /// TODO(hjiang):
+  /// 1. Better to use hash value for serialized runtime (key), or cap a max serialized
+  /// string length to avoid too much memory consumption.
+  /// 2. Implement a LRU cache, to cap max number of key-value pairs to limit max memory
+  /// consumption.
+  mutable std::mutex runtime_env_serialization_mutex_;
+  /// Maps serialized runtime env to **immutable** deserialized protobuf.
+  mutable std::unordered_map<std::string, std::shared_ptr<rpc::RuntimeEnvInfo>>
+      runtime_env_pb_serialization_cache_;
+  /// Maps serialized runtime env to **immutable** deserialized json.
+  mutable std::unordered_map<std::string, std::shared_ptr<nlohmann::json>>
+      runtime_env_json_serialization_cache_;
 };
 
 // Lease request rate-limiter based on cluster node size.

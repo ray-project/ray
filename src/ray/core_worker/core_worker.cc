@@ -2015,25 +2015,78 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
+json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables
   //       not specified by the child are still inherited from the parent.
   json result_runtime_env = *parent;
-  for (json::iterator it = child.begin(); it != child.end(); ++it) {
+  for (auto it = child.cbegin(); it != child.cend(); ++it) {
     if (it.key() == "env_vars" && result_runtime_env.contains("env_vars")) {
       json env_vars = it.value();
       json merged_env_vars = result_runtime_env["env_vars"];
       for (json::iterator nit = env_vars.begin(); nit != env_vars.end(); ++nit) {
         merged_env_vars[nit.key()] = nit.value();
       }
-      result_runtime_env["env_vars"] = merged_env_vars;
+      result_runtime_env["env_vars"] = std::move(merged_env_vars);
     } else {
       result_runtime_env[it.key()] = it.value();
     }
   }
   return result_runtime_env;
+}
+
+std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
+    const std::string &serialized_runtime_env_info) const {
+  // RAY_LOG(ERROR) << "begin of pb parse";
+
+  {
+    std::lock_guard lck(runtime_env_serialization_mutex_);
+    auto iter = runtime_env_pb_serialization_cache_.find(serialized_runtime_env_info);
+    if (iter != runtime_env_pb_serialization_cache_.end()) {
+      // RAY_LOG(ERROR) << "pb parse cache hit";
+
+      return iter->second;
+    }
+  }
+  auto pb_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
+  RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
+                                                        pb_runtime_env_info.get())
+                .ok());
+  {
+    std::lock_guard lck(runtime_env_serialization_mutex_);
+    runtime_env_pb_serialization_cache_.emplace(serialized_runtime_env_info,
+                                                pb_runtime_env_info);
+  }
+
+  // RAY_LOG(ERROR) << "pb parse cache miss";
+
+  return pb_runtime_env_info;
+}
+
+std::shared_ptr<nlohmann::json> CoreWorker::GetCachedJsonRuntimeEnvOrParse(
+    const std::string &serialized_runtime_env) const {
+  // RAY_LOG(ERROR) << "begin of json parse";
+
+  {
+    std::lock_guard lck(runtime_env_serialization_mutex_);
+    auto iter = runtime_env_json_serialization_cache_.find(serialized_runtime_env);
+    if (iter != runtime_env_json_serialization_cache_.end()) {
+      // RAY_LOG(ERROR) << "json parse cache hit";
+
+      return iter->second;
+    }
+  }
+  auto parsed_json = std::make_shared<json>();
+  *parsed_json = json::parse(serialized_runtime_env);
+  {
+    std::lock_guard lck(runtime_env_serialization_mutex_);
+    runtime_env_json_serialization_cache_.emplace(serialized_runtime_env, parsed_json);
+  }
+
+  // RAY_LOG(ERROR) << "json parse csche miss";
+
+  return parsed_json;
 }
 
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
@@ -2042,13 +2095,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> parent_runtime_env_info = nullptr;
-  std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
-  runtime_env_info.reset(new rpc::RuntimeEnvInfo());
-
+  auto runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
   if (!IsRuntimeEnvInfoEmpty(serialized_runtime_env_info)) {
-    RAY_CHECK(google::protobuf::util::JsonStringToMessage(serialized_runtime_env_info,
-                                                          runtime_env_info.get())
-                  .ok());
+    runtime_env_info = GetCachedPbRuntimeEnvOrParse(serialized_runtime_env_info);
   }
 
   if (options_.worker_type == WorkerType::DRIVER) {
@@ -2060,7 +2109,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     auto job_serialized_runtime_env =
         worker_context_.GetCurrentJobConfig().runtime_env_info().serialized_runtime_env();
     if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
-      parent = std::make_shared<json>(json::parse(job_serialized_runtime_env));
+      parent = GetCachedJsonRuntimeEnvOrParse(job_serialized_runtime_env);
     }
     parent_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>(
         worker_context_.GetCurrentJobConfig().runtime_env_info());
@@ -2074,9 +2123,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
   if (!parent) {
     return runtime_env_info;
   }
-  std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
-  json child_runtime_env = json::parse(serialized_runtime_env);
-  auto override_runtime_env = OverrideRuntimeEnv(child_runtime_env, parent);
+  auto child_runtime_env =
+      GetCachedJsonRuntimeEnvOrParse(runtime_env_info->serialized_runtime_env());
+  auto override_runtime_env = OverrideRuntimeEnv(*child_runtime_env, parent);
   auto serialized_override_runtime_env = override_runtime_env.dump();
   runtime_env_info->set_serialized_runtime_env(serialized_override_runtime_env);
   if (runtime_env_info->uris().working_dir_uri().empty() &&
@@ -2194,6 +2243,9 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        : task_options.name;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
+
+  //  RAY_LOG(ERROR) << "build common task spec " << ray::StackTrace{};
+
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),
                       task_id,
