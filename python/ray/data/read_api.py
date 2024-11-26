@@ -3247,7 +3247,7 @@ def read_lance(
 @PublicAPI
 def read_clickhouse(
     *,
-    entity: str,
+    table: str,
     dsn: str,
     columns: Optional[List[str]] = None,
     filters: Optional[Dict[str, Any]] = None,
@@ -3264,28 +3264,50 @@ def read_clickhouse(
     Examples:
         >>> import ray
         >>> ds = ray.data.read_clickhouse( # doctest: +SKIP
-        ...     entity="default.table",
+        ...     table="default.table",
         ...     dsn="clickhouse+http://username:password@host:8124/default",
-        ...     columns=["timestamp", "text", "label"],
-        ...     filters={"text": ("not", None)},
+        ...     columns=["timestamp", "age", "status", "text", "label"],
+        ...     filters={"text": ("!=", None), "age": (">", 25), "status": ("!=", "inactive")},
         ...     order_by=(["timestamp"], False),
         ... )
 
     Args:
-        entity: Fully qualified table or view identifier (e.g.,
+        table: Fully qualified table or view identifier (e.g.,
             "default.table_name").
-        dsn: A string in standard DSN (Data Source Name) format.
+        dsn: A string in standard DSN (Data Source Name) HTTP format (e.g.,
+            "clickhouse+http://username:password@host:8124/default").
+            For more information, see `ClickHouse Connection String doc
+            <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
         columns: Optional list of columns to select from the data source.
             If no columns are specified, all columns will be selected by default.
-        filters: Optional fields and values mapping to use to filter the data via WHERE clause. The value should
-            be a tuple where the first element is one of ('is', 'not', 'less', 'greater') and the second
-            element is the value to filter by. The default operator is 'is'. Only strings, ints, floats, booleans,
-            and None are allowed as values.
+        filters: Optional Dict of fields and values for filtering the
+            data via a WHERE clause. The value should be a tuple where the first element
+            is one of ('==', '!=', '<', '>') and the second element is the value to filter by.
+            The default operator is 'is'. Only strings, ints, floats, booleans, and None are
+            currently supported as values. All filter conditions will be joined using the
+            logical AND operation. For more information, see `ClickHouse WHERE Clause doc
+            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
+
+            Example:
+
+            .. code-block:: python
+
+                {
+                    "text": ("!=", None),
+                    "age": (">", 25),
+                    "status": ("!=", "inactive")
+                }
+
+            This example will filter rows where "text" IS NOT NULL, "age" is greater than 25,
+            and "status" is not equal to "inactive".
+
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC).
-        client_settings: Optional ClickHouse server settings to be used with the session/every request. For more information,
-            see `ClickHouse Connect doc <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
-        client_kwargs: Optional keyword arguments to pass to the ClickHouse client.
+        client_settings: Optional ClickHouse server settings to be used with the session/every request.
+            For more information, see `ClickHouse Client Settings
+            <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional additional arguments to pass to the ClickHouse client. For more information,
+            see `ClickHouse Core Settings <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
@@ -3300,7 +3322,7 @@ def read_clickhouse(
         A :class:`~ray.data.Dataset` producing records read from the ClickHouse table or view.
     """  # noqa: E501
     datasource = ClickHouseDatasource(
-        entity=entity,
+        table=table,
         dsn=dsn,
         columns=columns,
         filters=filters,

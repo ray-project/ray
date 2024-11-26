@@ -20,10 +20,10 @@ class TestClickHouseDatasource:
     @pytest.fixture
     def datasource(self, mock_clickhouse_client):
         datasource = ClickHouseDatasource(
-            entity="default.table_name",
+            table="default.table_name",
             dsn="clickhouse://user:password@localhost:8123/default",
             columns=["column1", "column2"],
-            filters={"column1": ("is", "value1"), "column2": ("greater", 10)},
+            filters={"column1": ("==", "value1"), "column2": (">", 10)},
             order_by=(["column1"], False),
             client_settings={"setting1": "value1"},
             client_kwargs={"arg1": "value1"},
@@ -35,18 +35,18 @@ class TestClickHouseDatasource:
         # Test query generation with columns, filters, and order_by
         expected_query = (
             "SELECT column1, column2 FROM default.table_name "
-            "WHERE column1 = 'value1' AND column2 > 10 ORDER BY column1"
+            "WHERE (column1 == 'value1') AND (column2 > 10) ORDER BY column1"
         )
         assert datasource._query == expected_query
 
     def test_estimate_inmemory_data_size(self, datasource):
         mock_client = mock.MagicMock()
-        datasource._client = mock_client
+        datasource._init_client = MagicMock(return_value=mock_client)
         mock_client.query.return_value.result_rows = [[12345]]
         size = datasource.estimate_inmemory_data_size()
         assert size == 12345
         mock_client.query.assert_called_once_with(
-            f"SELECT SUM(byteSize(*)) AS total_size FROM ({datasource._query})"
+            f"SELECT SUM(byteSize(*)) AS estimate FROM ({datasource._query})"
         )
 
     @pytest.mark.parametrize(
@@ -70,9 +70,9 @@ class TestClickHouseDatasource:
     @pytest.mark.parametrize(
         "filters, expected_query_part",
         [
-            ({"field1": ("is", "value1")}, "field1 = 'value1'"),
-            ({"field2": ("greater", 10)}, "field2 > 10"),
-            ({"field3": ("not", None)}, "field3 IS NOT NULL"),
+            ({"field1": ("==", "value1")}, "field1 == 'value1'"),
+            ({"field2": (">", 10)}, "field2 > 10"),
+            ({"field3": ("!=", None)}, "field3 IS NOT NULL"),
         ],
     )
     def test_generate_query_filters(self, datasource, filters, expected_query_part):
@@ -97,26 +97,44 @@ class TestClickHouseDatasource:
 
     @pytest.mark.parametrize("parallelism", [1, 2, 3, 4])
     def test_get_read_tasks(self, datasource, parallelism):
-        batch1 = pa.record_batch([pa.array([1, 2])], names=["field1"])
-        batch2 = pa.record_batch([pa.array([3, 4])], names=["field1"])
-        mock_stream = MagicMock()
-        datasource._client.query_arrow_stream.return_value.__enter__.return_value = (
-            mock_stream
+        batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field1"])
+        batch2 = pa.record_batch(
+            [pa.array([9, 10, 11, 12, 13, 14, 15, 16])], names=["field1"]
         )
+        mock_stream = MagicMock()
+        mock_client = mock.MagicMock()
+        mock_client.query_arrow_stream.return_value.__enter__.return_value = mock_stream
         mock_stream.__iter__.return_value = [batch1, batch2]
-        read_tasks = datasource.get_read_tasks(parallelism)
-        expected_num_tasks = min(parallelism, len([batch1, batch2]))
-        assert len(read_tasks) == expected_num_tasks
-        for i, read_task in enumerate(read_tasks):
-            expected_rows = sum(
-                batch.num_rows for batch in [batch1, batch2][i::parallelism]
-            )
-            assert read_task.metadata.num_rows == expected_rows
+        datasource.MIN_ROWS_PER_READ_TASK = 4
+        datasource._init_client = MagicMock(return_value=mock_client)
+        datasource._get_estimate = MagicMock(return_value=16)
+        mock_block_accessor = mock.MagicMock()
+        mock_block_accessor.size_bytes.return_value = 100
+        mock_block_accessor.num_rows.return_value = 4
+        mock_block_accessor.schema.return_value = batch1.schema
+        datasource._get_sample_block = MagicMock(return_value=mock_block_accessor)
+        with mock.patch(
+            "ray.data.block.BlockAccessor.for_block", return_value=mock_block_accessor
+        ):
+            read_tasks = datasource.get_read_tasks(parallelism)
+            expected_num_tasks = parallelism
+            assert len(read_tasks) == expected_num_tasks
+            total_rows = sum(batch.num_rows for batch in [batch1, batch2])
+            rows_per_task = total_rows // parallelism
+            extra_rows = total_rows % parallelism
+            for i, read_task in enumerate(read_tasks):
+                expected_rows = rows_per_task + (1 if i < extra_rows else 0)
+                assert read_task.metadata.num_rows == expected_rows
 
     def test_get_read_tasks_no_batches(self, datasource, mock_clickhouse_client):
         mock_reader = mock.MagicMock()
         mock_reader.__iter__.return_value = iter([])
-        mock_clickhouse_client.query_arrow_stream.return_value = mock_reader
+        datasource._init_client = MagicMock(return_value=mock_clickhouse_client)
+        datasource._get_estimate = MagicMock(return_value=0)
+        mock_block_accessor = mock.MagicMock()
+        mock_block_accessor.size_bytes.return_value = 0
+        mock_block_accessor.num_rows.return_value = 0
+        datasource._get_sample_block = MagicMock(return_value=mock_block_accessor)
         read_tasks = datasource.get_read_tasks(parallelism=2)
         assert len(read_tasks) == 0
 
