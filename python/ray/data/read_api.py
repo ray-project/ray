@@ -3290,13 +3290,18 @@ def read_clickhouse(
 
             Example:
 
-            .. code-block:: python
+            .. testcode::
 
                 {
                     "text": ("!=", None),
                     "age": (">", 25),
                     "status": ("!=", "inactive")
                 }
+
+            .. testoutput::
+                :options: +MOCK
+
+                ... WHERE (text IS NOT NULL) AND (age > 25) AND (status != 'inactive') ...
 
             This example will filter rows where "text" IS NOT NULL, "age" is greater than 25,
             and "status" is not equal to "inactive".
