@@ -622,6 +622,15 @@ Windows powershell users need additional escaping:
     type=str,
     help="a JSON serialized dictionary mapping label name to label value.",
 )
+@click.option(
+    "--include-log-monitor",
+    default=None,
+    type=bool,
+    help="If set to True or left unset, a log monitor will start monitoring "
+    "the log files of all processes on this node and push their contents to GCS. "
+    "Only one log monitor should be started per physical host to avoid log "
+    "duplication on the driver process.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -668,6 +677,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -757,6 +767,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        include_log_monitor=include_log_monitor,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
