@@ -1,8 +1,4 @@
-###############
-# Dataset tests
-###############
-
-- name: parquet_metadata_resolution
+- name: DEFAULTS
   group: data-tests
   working_dir: nightly_tests/dataset
 
@@ -12,22 +8,30 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
+    cluster_compute: multi_node_autoscaling_compute.yaml
+    
+###############
+# Reading tests
+###############
 
+- name: read_parquet
   run:
-    # Expect the test to finish around 40 seconds.
-    timeout: 100
-    script: python parquet_metadata_resolution.py --num-files 915 --cloud aws
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --iterate
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-      run:
-        script: python parquet_metadata_resolution.py --num-files 915 --cloud gcp
+- name: read_images
+  run:
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+
+###############
+# Dataset tests
+###############
+
+- name: count_parquet
+  run:
+    timeout: 600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: stable_diffusion_benchmark
   group: data-tests
@@ -136,106 +140,6 @@
       frequency: manual
       cluster:
         cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
-
-- name: aggregate_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python aggregate_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_parquet_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish in 400 seconds.
-    timeout: 400
-    script: python read_parquet_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: read_images_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python read_images_benchmark.py --single-node
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-# TODO: Re-enable this test once we fix https://github.com/ray-project/ray/issues/40686.
-# - name: read_images_benchmark_multi_node
-#   group: data-tests
-#   working_dir: nightly_tests/dataset
-
-#   frequency: nightly-3x
-#   team: data
-
-#   cluster:
-#     byod:
-#       type: gpu
-#     cluster_compute: multi_node_read_images_benchmark_compute.yaml
-
-#   run:
-#     timeout: 28800
-#     script: python read_images_benchmark.py --multi-node
-
-#   variations:
-#     - __suffix__: aws
-#     - __suffix__: gce
-#       env: gce
-#       frequency: manual
-#       cluster:
-#         cluster_compute: multi_node_read_images_benchmark_compute_gce.yaml
 
 - name: read_images_comparison_microbenchmark_single_node
   group: data-tests
@@ -640,99 +544,6 @@
       cluster:
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
-- name: dataset_shuffle_push_based_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_push_based_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
-  stable: False
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_push_based_random_shuffle_100tb
-  group: data-tests
-  working_dir: nightly_tests
-  stable: false
-
-  frequency: weekly
-  team: data
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_object_spilling_config={"type":"filesystem","params":{"directory_path":["/tmp/data0","/tmp/data1"]}}
-      post_build_script: byod_dataset_shuffle.sh
-    cluster_compute: shuffle/100tb_shuffle_compute.yaml
-
-  run:
-    timeout: 28800
-    script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=100000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 100
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/100tb_shuffle_compute_gce.yaml
-      run:
-        timeout: 28800
-        script: RAY_DATA_PUSH_BASED_SHUFFLE=1 python dataset/sort.py --num-partitions=40000 --partition-size=1e9 --shuffle
-        wait_for_nodes:
-          num_nodes: 100
 
 ############################
 # Batch Inference Benchmarks
