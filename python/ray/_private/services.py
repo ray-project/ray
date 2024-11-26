@@ -834,8 +834,8 @@ def start_ray_process(
     use_valgrind_profiler: bool = False,
     use_perftools_profiler: bool = False,
     use_tmux: bool = False,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_file: Optional[IO[AnyStr]] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
 ):
     """Start one of the Ray processes.
@@ -1443,8 +1443,8 @@ def start_gcs_server(
     redis_address: str,
     log_dir: str,
     session_name: str,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_file: Optional[IO[AnyStr]] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
     redis_password: Optional[str] = None,
     config: Optional[dict] = None,
     fate_share: Optional[bool] = None,
