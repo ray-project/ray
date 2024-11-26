@@ -91,7 +91,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        const std::vector<int> &worker_ports,
                        std::shared_ptr<gcs::GcsClient> gcs_client,
                        const WorkerCommandMap &worker_commands,
-                       const std::string &native_library_path,
+                       std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
                        const std::function<absl::Time()> get_time)
@@ -107,15 +107,15 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
               RayConfig::instance().worker_maximum_startup_concurrency()
               : maximum_startup_concurrency),
       gcs_client_(std::move(gcs_client)),
-      native_library_path_(native_library_path),
-      starting_worker_timeout_callback_(starting_worker_timeout_callback),
+      native_library_path_(std::move(native_library_path)),
+      starting_worker_timeout_callback_(std::move(starting_worker_timeout_callback)),
       ray_debugger_external(ray_debugger_external),
       first_job_registered_python_worker_count_(0),
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
       periodical_runner_(io_service),
-      get_time_(get_time) {
+      get_time_(std::move(get_time)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
   // processes have started before a task runs on the node (as opposed to the
@@ -604,7 +604,8 @@ void WorkerPool::MonitorPopWorkerRequestForRegistration(
     auto &requests = state.pending_registration_requests;
     auto it = std::find(requests.begin(), requests.end(), pop_worker_request);
     if (it != requests.end()) {
-      // Fail the task...
+      // Pop and fail the task...
+      requests.erase(it);
       PopWorkerStatus status = PopWorkerStatus::WorkerPendingRegistration;
       PopWorkerCallbackAsync(pop_worker_request->callback, nullptr, status);
     }
@@ -1069,7 +1070,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
 }
 
 void WorkerPool::TryKillingIdleWorkers() {
-  absl::Time now = get_time_();
+  const absl::Time now = get_time_();
 
   // Filter out all idle workers that are already dead and/or associated with
   // jobs that have already finished.
@@ -1582,6 +1583,7 @@ void WorkerPool::WarnAboutSize() {
           << "some discussion of workarounds).";
       std::string warning_message_str = warning_message.str();
       RAY_LOG(WARNING) << warning_message_str;
+
       auto error_data_ptr = gcs::CreateErrorTableData(
           "worker_pool_large", warning_message_str, absl::ToUnixMillis(get_time_()));
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));

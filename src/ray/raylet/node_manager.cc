@@ -1566,8 +1566,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
             << error_message_str;
-        auto error_data_ptr =
-            gcs::CreateErrorTableData(type, error_message_str, current_time_ms(), job_id);
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
@@ -1766,9 +1766,11 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
+  // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
-  auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  auto error_data_ptr = gcs::CreateErrorTableData(
+      type, error_message, absl::FromUnixMillis(timestamp), job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
@@ -2162,8 +2164,8 @@ void NodeManager::MarkObjectsAsFailed(
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(ERROR) << error_message;
-      auto error_data_ptr =
-          gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }

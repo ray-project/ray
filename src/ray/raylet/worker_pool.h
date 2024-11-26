@@ -27,6 +27,7 @@
 #include <utility>
 #include <vector>
 
+#include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
@@ -240,7 +241,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time.
+  /// \param get_time A callback to get the current time in milliseconds.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
@@ -252,10 +253,10 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::string &native_library_path,
+             std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<absl::Time()> get_time);
+             std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
   virtual ~WorkerPool() override;
