@@ -114,6 +114,7 @@ class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
@@ -295,7 +296,7 @@ class DeploymentStatusInfo:
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
@@ -346,16 +347,16 @@ class DeploymentStatusInfo:
                 )
 
             # Failures occurred
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
@@ -438,7 +439,7 @@ class DeploymentStatusInfo:
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
