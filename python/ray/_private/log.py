@@ -1,5 +1,4 @@
 import logging
-from logging.config import dictConfig
 import threading
 from typing import Union
 
