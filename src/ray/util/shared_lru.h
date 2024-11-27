@@ -41,6 +41,7 @@
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
+#include "src/ray/util/logging.h"
 
 namespace ray::utils::container {
 
@@ -62,6 +63,10 @@ class SharedLruCache final {
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
   void Put(Key key, Val value) {
+    auto iter = cache_.find(key);
+    if (iter != cache_.end()) {
+      lru_list_.erase(iter->second.lru_iterator);
+    }
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
     cache_[std::move(key)] = std::move(new_entry);
@@ -71,6 +76,8 @@ class SharedLruCache final {
       cache_.erase(stale_key);
       lru_list_.pop_back();
     }
+
+    RAY_CHECK_EQ(lru_list_.size(), cache_.size());
   }
 
   // Delete the entry with key `key`. Return true if the entry was found for
@@ -129,8 +136,7 @@ class SharedLruCache final {
   // limit on entry count.
   const size_t max_entries_;
 
-  // All keys are stored as refernce (`std::reference_wrapper`), and the
-  // ownership lies in `lru_list_`.
+  // Stores key-value pairs.
   EntryMap cache_;
 
   // The LRU list of entries. The front of the list identifies the most

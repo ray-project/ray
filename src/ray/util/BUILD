@@ -61,6 +61,7 @@ cc_library(
     hdrs = ["shared_lru.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":util",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
 )

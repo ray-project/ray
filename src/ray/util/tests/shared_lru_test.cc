@@ -52,4 +52,19 @@ TEST(SharedLruCache, PutAndGet) {
   EXPECT_FALSE(val.has_value());
 }
 
+// Testing senario: push multiple same keys into the cache.
+TEST(SharedLruCache, SameKeyTest) {
+  ThreadSafeSharedLruCache<int, int> cache{2};
+
+  cache.Put(1, 1);
+  auto val = cache.Get(1);
+  EXPECT_TRUE(val.has_value());
+  EXPECT_EQ(1, *val);
+
+  cache.Put(1, 2);
+  val = cache.Get(1);
+  EXPECT_TRUE(val.has_value());
+  EXPECT_EQ(2, *val);
+}
+
 }  // namespace ray::utils::container
