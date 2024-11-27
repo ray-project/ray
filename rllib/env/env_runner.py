@@ -87,6 +87,16 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         pass
 
+    # TODO: Make this an abstract method that must be implemented.
+    def make_module(self):
+        """Creates the RLModule for this EnvRunner and assigns it to `self.module`.
+
+        Note that users should be able to change the EnvRunner's config (e.g. change
+        `self.config.rl_module_spec`) and then call this method to create a new RLModule
+        with the updated configuration.
+        """
+        pass
+
     @abc.abstractmethod
     def sample(self, **kwargs) -> Any:
         """Returns experiences (of any form) sampled from this EnvRunner.
