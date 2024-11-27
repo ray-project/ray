@@ -19,7 +19,7 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 # Install Loki with single replica mode
-helm install loki grafana/loki -f https://raw.githubusercontent.com/grafana/loki/refs/heads/main/production/helm/loki/single-binary-values.yaml
+helm install loki grafana/loki --version 6.21.0 -f https://raw.githubusercontent.com/grafana/loki/refs/heads/main/production/helm/loki/single-binary-values.yaml
 ```
 
 ### Configure log processing
@@ -48,7 +48,7 @@ Deploy the Fluent Bit deployment with the [Helm chart repository](https://github
 helm repo add fluent https://fluent.github.io/helm-charts
 helm repo update
 
-helm install fluent-bit fluent/fluent-bit -f fluent-bit-config.yaml
+helm install fluent-bit fluent/fluent-bit --version 0.48.2 -f fluent-bit-config.yaml
 ```
 
 ### Install the KubeRay Operator
@@ -75,7 +75,7 @@ Deploy the Grafana deployment with the [Helm chart repository](https://github.co
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-helm install grafana grafana/grafana -f datasource-config.yaml
+helm install grafana grafana/grafana --version 8.6.2 -f datasource-config.yaml
 ```
 
 ### Check the Grafana Dashboard
