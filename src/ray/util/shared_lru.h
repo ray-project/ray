@@ -69,11 +69,13 @@ class SharedLruCache final {
     RAY_CHECK(value != nullptr);
     auto iter = cache_.find(key);
     if (iter != cache_.end()) {
-      lru_list_.erase(iter->second.lru_iterator);
+      lru_list_.splice(lru_list_.begin(), lru_list_, iter->second.lru_iterator);
+      iter->second.value = std::move(value);
+    } else {
+      lru_list_.emplace_front(key);
+      Entry new_entry{std::move(value), lru_list_.begin()};
+      cache_[std::move(key)] = std::move(new_entry);
     }
-    lru_list_.emplace_front(key);
-    Entry new_entry{std::move(value), lru_list_.begin()};
-    cache_[std::move(key)] = std::move(new_entry);
 
     if (max_entries_ > 0 && lru_list_.size() > max_entries_) {
       const auto &stale_key = lru_list_.back();
