@@ -2324,6 +2324,26 @@ def test_driver_as_actor_and_actor_reading(ray_start_cluster):
     class Replica:
         def __init__(self):
             self.w = TestWorker.remote()
+            self.w2 = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w2.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
+
+
+def test_driver_as_actor_and_intraprocess_read(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
             with InputNode() as inp:
                 x = self.w.add_one.bind(inp)
                 y = self.w.add_one.bind(x)
