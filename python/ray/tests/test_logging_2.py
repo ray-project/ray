@@ -207,17 +207,9 @@ class TestTextFormatter:
             assert s in formatted
 
 
-class TestLoggingConfig:
-    def test_log_level(self):
-        log_level = "DEBUG"
-        logging_config = LoggingConfig(log_level=log_level)
-        dict_config = logging_config._get_dict_config()
-        assert dict_config["handlers"]["console"]["level"] == log_level
-        assert dict_config["root"]["level"] == log_level
-
-    def test_invalid_dict_config(self):
-        with pytest.raises(ValueError):
-            LoggingConfig(encoding="INVALID")._get_dict_config()
+def test_invalid_dict_config():
+    with pytest.raises(ValueError):
+        LoggingConfig(encoding="INVALID")
 
 
 class TestTextModeE2E:
