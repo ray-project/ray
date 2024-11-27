@@ -268,10 +268,15 @@ def _device_context_manager():
     import torch
 
     device = ChannelContext.get_current().torch_device
-    if device.type == "cuda":
+
+    if device.type == "cuda" and torch.cuda.is_available():
+        # In the case of mocked NCCL, we may get a device with type "cuda"
+        # but CUDA is not available. We return nullcontext() in that case,
+        # otherwise torch raises a runtime error if the cuda device context
+        # manager is used.
+        # TODO(rui): consider better mocking NCCL to support device context.
         return torch.cuda.device(device)
-    else:
-        return nullcontext()
+    return nullcontext()
 
 
 @DeveloperAPI
