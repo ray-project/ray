@@ -102,16 +102,8 @@ class SharedLruCache final {
     if (cache_iter == cache_.end()) {
       return std::nullopt;
     }
-    Val value = std::move(cache_iter->second.value);
-    lru_list_.erase(cache_iter->second.lru_iterator);
-    cache_.erase(cache_iter);
-
-    // Re-insert into the cache, no need to check capacity.
-    lru_list_.emplace_front(key);
-    Entry new_entry{value, lru_list_.begin()};
-    cache_[key] = std::move(new_entry);
-
-    return value;
+    lru_list_.splice(lru_list_.begin(), lru_list_, cache_iter->second.lru_iterator);
+    return cache_iter->second.value;
   }
 
   // Clear the cache.
