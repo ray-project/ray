@@ -71,7 +71,7 @@ class LoggingConfig:
             )
 
     def _configure_logging(self):
-        """Set up the logging configuration for the driver process."""
+        """Set up the logging configuration for the current process."""
         _logging_configurator.configure_logging(self.encoding, self.log_level)
 
     def _setup_log_record_factory(self):
