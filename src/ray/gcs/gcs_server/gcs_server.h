@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/runtime_env_manager.h"
@@ -23,6 +26,7 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
@@ -205,22 +209,20 @@ class GcsServer {
 
   void TryGlobalGC();
 
+  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+
   /// Gcs server configuration.
   const GcsServerConfig config_;
   // Type of storage to use.
   const StorageType storage_type_;
-  /// The main io service to drive event posted from grpc threads.
-  instrumented_io_context &main_service_;
-  /// The io service used by Pubsub, for isolation from other workload.
-  instrumented_io_context pubsub_io_service_;
   /// The grpc server
   rpc::GrpcServer rpc_server_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
@@ -230,15 +232,17 @@ class GcsServer {
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
-  std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
+  std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
-  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
-  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
+  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
-  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  /// [gcs_placement_group_manager_] depends on [gcs_placement_group_scheduler_].
+  std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
@@ -254,8 +258,6 @@ class GcsServer {
   /// Ray Syncer related fields.
   std::unique_ptr<syncer::RaySyncer> ray_syncer_;
   std::unique_ptr<syncer::RaySyncerService> ray_syncer_service_;
-  std::unique_ptr<std::thread> ray_syncer_thread_;
-  instrumented_io_context ray_syncer_io_context_;
 
   /// The node id of GCS.
   NodeID gcs_node_id_;

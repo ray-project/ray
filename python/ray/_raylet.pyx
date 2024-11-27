@@ -106,6 +106,7 @@ from ray.includes.common cimport (
     CJobConfig,
     CConcurrencyGroup,
     CGrpcStatusCode,
+    CLineageReconstructionTask,
     move,
     LANGUAGE_CPP,
     LANGUAGE_JAVA,
@@ -133,7 +134,6 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kWorkerSetupHookKeyName,
-    PythonCheckGcsHealth,
     PythonGetNodeLabels,
     PythonGetResourcesTotal,
 )
@@ -156,11 +156,15 @@ from ray.includes.libcoreworker cimport (
     CFiberEvent,
     CActorHandle,
     CGeneratorBackpressureWaiter,
+    CReaderRefInfo,
 )
 
 from ray.includes.ray_config cimport RayConfig
 from ray.includes.global_state_accessor cimport CGlobalStateAccessor
-from ray.includes.global_state_accessor cimport RedisDelKeySync, RedisGetKeySync
+from ray.includes.global_state_accessor cimport (
+    RedisDelKeyPrefixSync,
+    RedisGetKeySync
+)
 from ray.includes.optional cimport (
     optional, nullopt
 )
@@ -196,7 +200,7 @@ from ray.util.scheduling_strategies import (
 import ray._private.ray_constants as ray_constants
 import ray.cloudpickle as ray_pickle
 from ray.core.generated.common_pb2 import ActorDiedErrorContext
-from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo
+from ray.core.generated.gcs_pb2 import JobTableData, GcsNodeInfo, ActorTableData
 from ray.core.generated.gcs_service_pb2 import GetAllResourceUsageReply
 from ray._private.async_compat import (
     sync_to_async,
@@ -257,6 +261,9 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
+async_task_name = contextvars.ContextVar('async_task_name', default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name',
+                                                  default=None)
 
 
 class DynamicObjectRefGenerator:
@@ -413,6 +420,8 @@ class ObjectRefGenerator:
                     return False
                 else:
                     return True
+        else:
+            return False
 
     """
     Private APIs
@@ -731,11 +740,26 @@ cdef class Language:
     JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
+cdef int prepare_labels(
+        dict label_dict,
+        unordered_map[c_string, c_string] *label_map) except -1:
+
+    if label_dict is None:
+        return 0
+
+    for key, value in label_dict.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Label key must be string, but got {type(key)}")
+        if not isinstance(value, str):
+            raise ValueError(f"Label value must be string, but got {type(value)}")
+        label_map[0][key.encode("utf-8")] = value.encode("utf-8")
+
+    return 0
+
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
     cdef:
-        unordered_map[c_string, double] out
         c_string resource_name
         list unit_resources
 
@@ -1022,7 +1046,7 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if ray.util.pdb._is_ray_debugger_enabled():
+    if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
         ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
@@ -1794,7 +1818,8 @@ cdef void execute_task(
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
                         name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
+                        task_name=task_name, func_args=(actor, *arguments),
+                        func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1906,7 +1931,8 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                                task_name=task_name)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -2906,18 +2932,31 @@ cdef class OldGcsClient:
         return result
 
     @_auto_reconnect
-    def get_all_job_info(self, timeout=None) -> Dict[JobID, JobTableData]:
+    def get_all_job_info(
+        self, *, job_or_submission_id: str = None, skip_submission_job_info_field=False,
+        skip_is_running_tasks_field=False, timeout=None
+    ) -> Dict[JobID, JobTableData]:
         # Ideally we should use json_format.MessageToDict(job_info),
         # but `job_info` is a cpp pb message not a python one.
         # Manually converting each and every protobuf field is out of question,
         # so we serialize the pb to string to cross the FFI interface.
         cdef:
+            c_string c_job_or_submission_id
+            optional[c_string] c_optional_job_or_submission_id = nullopt
             int64_t timeout_ms = round(1000 * timeout) if timeout else -1
+            c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+            c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
             CJobTableData c_job_info
             c_vector[CJobTableData] c_job_infos
             c_vector[c_string] serialized_job_infos
+        if job_or_submission_id:
+            c_job_or_submission_id = job_or_submission_id
+            c_optional_job_or_submission_id = \
+                make_optional[c_string](c_job_or_submission_id)
         with nogil:
-            check_status(self.inner.get().GetAllJobInfo(timeout_ms, c_job_infos))
+            check_status(self.inner.get().GetAllJobInfo(
+                c_optional_job_or_submission_id, c_skip_submission_job_info_field,
+                c_skip_is_running_tasks_field, timeout_ms, c_job_infos))
             for c_job_info in c_job_infos:
                 serialized_job_infos.push_back(c_job_info.SerializeAsString())
         result = {}
@@ -3256,53 +3295,10 @@ cdef class _TestOnly_GcsActorSubscriber(_GcsSubscriber):
             check_status(self.inner.get().PollActor(
                 &key_id, timeout_ms, &actor_data))
 
-        from ray.core.generated import gcs_pb2
-
-        info = gcs_pb2.ActorTableData.FromString(
+        info = ActorTableData.FromString(
             actor_data.SerializeAsString())
 
         return [(key_id, info)]
-
-
-def check_health(address: str, timeout=2, skip_version_check=False):
-    """Checks Ray cluster health, before / without actually connecting to the
-    cluster via ray.init().
-
-    Args:
-        address: Ray cluster / GCS address string, e.g. ip:port.
-        timeout: request timeout.
-        skip_version_check: If True, will skip comparision of GCS Ray version with local
-            Ray version. If False (default), will raise exception on mismatch.
-    Returns:
-        Returns True if the cluster is running and has matching Ray version.
-        Returns False if no service is running.
-        Raises an exception otherwise.
-    """
-
-    tokens = address.rsplit(":", 1)
-    if len(tokens) != 2:
-        raise ValueError("Invalid address: {}. Expect 'ip:port'".format(address))
-    gcs_address, gcs_port = tokens
-
-    cdef:
-        c_string c_gcs_address = gcs_address
-        int c_gcs_port = int(gcs_port)
-        int64_t timeout_ms = round(1000 * timeout) if timeout else -1
-        c_string c_ray_version = ray.__version__
-        c_bool c_skip_version_check = skip_version_check
-        c_bool c_is_healthy = True
-
-    try:
-        with nogil:
-            check_status(PythonCheckGcsHealth(
-                c_gcs_address, c_gcs_port, timeout_ms, c_ray_version,
-                c_skip_version_check, c_is_healthy))
-    except RpcError:
-        traceback.print_exc()
-    except RaySystemError as e:
-        raise RuntimeError(str(e))
-
-    return c_is_healthy
 
 
 cdef class CoreWorker:
@@ -3423,6 +3419,48 @@ cdef class CoreWorker:
         assert not self.is_driver
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
+
+    def get_current_task_name(self) -> str:
+        """Return the current task name.
+
+        If it is a normal task, it returns the task name from the main thread.
+        If it is a threaded actor, it returns the task name for the current thread.
+        If it is async actor, it returns the task name stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task name within asyncio task
+        # via async_task_name contextvar. We try this first.
+        # It is needed because the core worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task name.
+        task_name = async_task_name.get()
+        if task_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName() \
+                .decode("utf-8")
+        return task_name
+
+    def get_current_task_function_name(self) -> str:
+        """Return the current task function.
+
+        If it is a normal task, it returns the task function from the main thread.
+        If it is a threaded actor, it returns the task function for the current thread.
+        If it is async actor, it returns the task function stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task function within asyncio task
+        # via async_task_function_name contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task function.
+        task_function_name = async_task_function_name.get()
+        if task_function_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_function_name = CCoreWorkerProcess.GetCoreWorker() \
+                .GetCurrentTaskFunctionName().decode("utf-8")
+        return task_function_name
 
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
@@ -3688,37 +3726,37 @@ cdef class CoreWorker:
 
     def experimental_channel_register_writer(self,
                                              ObjectRef writer_ref,
-                                             ObjectRef reader_ref,
-                                             writer_node,
-                                             reader_node,
-                                             ActorID reader,
-                                             int64_t num_readers):
+                                             remote_reader_ref_info):
         cdef:
             CObjectID c_writer_ref = writer_ref.native()
-            CObjectID c_reader_ref = reader_ref.native()
-            CNodeID c_reader_node = CNodeID.FromHex(reader_node)
-            CNodeID *c_reader_node_id = NULL
-            CActorID c_reader_actor = reader.native()
+            c_vector[CNodeID] c_remote_reader_nodes
+            c_vector[CReaderRefInfo] c_remote_reader_ref_info
+            CReaderRefInfo c_reader_ref_info
 
-        if num_readers == 0:
-            return
-        if writer_node != reader_node:
-            c_reader_node_id = &c_reader_node
+        for node_id, reader_ref_info in remote_reader_ref_info.items():
+            c_reader_ref_info = CReaderRefInfo()
+            c_reader_ref_info.reader_ref_id = (
+                <ObjectRef>reader_ref_info.reader_ref).native()
+            c_reader_ref_info.owner_reader_actor_id = (
+                <ActorID>reader_ref_info.ref_owner_actor_id).native()
+            num_reader_actors = reader_ref_info.num_reader_actors
+            assert num_reader_actors != 0
+            c_reader_ref_info.num_reader_actors = num_reader_actors
+            c_remote_reader_ref_info.push_back(c_reader_ref_info)
+            c_remote_reader_nodes.push_back(CNodeID.FromHex(node_id))
 
         with nogil:
             check_status(CCoreWorkerProcess.GetCoreWorker()
-                         .ExperimentalRegisterMutableObjectWriter(c_writer_ref,
-                                                                  c_reader_node_id,
-                                                                  ))
-        if writer_node != reader_node:
-            with nogil:
-                check_status(
-                        CCoreWorkerProcess.GetCoreWorker()
-                        .ExperimentalRegisterMutableObjectReaderRemote(c_writer_ref,
-                                                                       c_reader_actor,
-                                                                       num_readers,
-                                                                       c_reader_ref
-                                                                       ))
+                         .ExperimentalRegisterMutableObjectWriter(
+                            c_writer_ref,
+                            c_remote_reader_nodes,
+                        ))
+            check_status(
+                    CCoreWorkerProcess.GetCoreWorker()
+                    .ExperimentalRegisterMutableObjectReaderRemote(
+                        c_writer_ref,
+                        c_remote_reader_ref_info,
+                    ))
 
     def experimental_channel_register_reader(self, ObjectRef object_ref):
         cdef:
@@ -3857,8 +3895,27 @@ cdef class CoreWorker:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only))
+            check_status(CCoreWorkerProcess.GetCoreWorker().
+                         Delete(free_ids, local_only))
+
+    def get_local_ongoing_lineage_reconstruction_tasks(self):
+        cdef:
+            unordered_map[CLineageReconstructionTask, uint64_t] tasks
+            unordered_map[CLineageReconstructionTask, uint64_t].iterator it
+
+        with nogil:
+            tasks = (CCoreWorkerProcess.GetCoreWorker().
+                     GetLocalOngoingLineageReconstructionTasks())
+
+        result = []
+        it = tasks.begin()
+        while it != tasks.end():
+            task = common_pb2.LineageReconstructionTask()
+            task.ParseFromString(dereference(it).first.SerializeAsString())
+            result.append((task, dereference(it).second))
+            postincrement(it)
+
+        return result
 
     def get_local_object_locations(self, object_refs):
         cdef:
@@ -4014,10 +4071,12 @@ cdef class CoreWorker:
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
                     int64_t generator_backpressure_num_objects,
-                    c_bool enable_task_events
+                    c_bool enable_task_events,
+                    labels,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
+            unordered_map[c_string, c_string] c_labels
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -4037,6 +4096,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4048,7 +4108,9 @@ cdef class CoreWorker:
                 b"",
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info,
-                enable_task_events)
+                enable_task_events,
+                c_labels,
+                )
 
             current_c_task_id = current_task.native()
 
@@ -4094,6 +4156,7 @@ cdef class CoreWorker:
                      int32_t max_pending_calls,
                      scheduling_strategy,
                      c_bool enable_task_events,
+                     labels,
                      ):
         cdef:
             CRayFunction ray_function
@@ -4106,6 +4169,7 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
+            unordered_map[c_string, c_string] c_labels
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4113,6 +4177,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4141,7 +4206,8 @@ cdef class CoreWorker:
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
-                        enable_task_events),
+                        enable_task_events,
+                        c_labels),
                     extension_data,
                     &c_actor_id)
 
@@ -4252,6 +4318,7 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
+            unordered_map[c_string, c_string] c_labels
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -4280,7 +4347,8 @@ cdef class CoreWorker:
                         concurrency_group_name,
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
-                        enable_task_events),
+                        enable_task_events,
+                        c_labels),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4374,6 +4442,16 @@ cdef class CoreWorker:
             CActorID c_actor_id = actor_id.native()
         CCoreWorkerProcess.GetCoreWorker().RemoveActorHandleReference(
             c_actor_id)
+
+    def get_local_actor_state(self, ActorID actor_id):
+        cdef:
+            CActorID c_actor_id = actor_id.native()
+            optional[int] state = nullopt
+        state = CCoreWorkerProcess.GetCoreWorker().GetLocalActorState(c_actor_id)
+        if state.has_value():
+            return state.value()
+        else:
+            return None
 
     cdef make_actor_handle(self, ActorHandleSharedPtr c_actor_handle,
                            c_bool weak_ref):
@@ -4791,6 +4869,7 @@ cdef class CoreWorker:
           specified_cgname: str,
           *,
           task_id: Optional[TaskID] = None,
+          task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
           func_kwargs: Optional[Dict] = None,
     ):
@@ -4837,6 +4916,9 @@ cdef class CoreWorker:
             try:
                 if task_id:
                     async_task_id.set(task_id)
+                if task_name is not None:
+                    async_task_name.set(task_name)
+                async_task_function_name.set(function_descriptor.repr)
 
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
@@ -5176,8 +5258,10 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         cpython.Py_DECREF(user_callback)
 
 
-def del_key_from_storage(host, port, password, use_ssl, key):
-    return RedisDelKeySync(host, port, password, use_ssl, key)
+# Note this deletes keys with prefix `RAY{key_prefix}@`
+# Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
+def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
 
 
 def get_session_key_from_storage(host, port, password, use_ssl, config, key):

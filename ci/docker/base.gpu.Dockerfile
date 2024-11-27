@@ -39,7 +39,7 @@ RUN ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
     ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
     ln -s /usr/bin/clang-12 /usr/bin/clang
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a

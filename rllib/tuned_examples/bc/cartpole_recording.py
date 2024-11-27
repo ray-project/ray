@@ -1,4 +1,5 @@
 from ray.rllib.algorithms.ppo import PPOConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -9,33 +10,26 @@ from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 config = (
     PPOConfig()
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         rollout_fragment_length=1000, num_env_runners=0, batch_mode="truncate_episodes"
     )
     .environment("CartPole-v1")
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [32],
-            "fcnet_activation": "linear",
-            "vf_share_layers": True,
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[32],
+            fcnet_activation="linear",
+            vf_share_layers=True,
+        ),
     )
     .training(
-        gamma=0.99,
         lr=0.0003,
-        num_sgd_iter=6,
+        num_epochs=6,
         vf_loss_coeff=0.01,
-        use_kl_loss=True,
     )
     .evaluation(
         evaluation_num_env_runners=1,

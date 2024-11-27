@@ -1568,6 +1568,10 @@ class ResourceDemandScheduler(IResourceScheduler):
         Args:
             ctx: The schedule context.
         """
+        count_by_node_type = ctx.get_cluster_shape()
+        node_type_configs = ctx.get_node_type_configs()
+        terminate_nodes_by_type: Dict[NodeType, int] = defaultdict(int)
+
         nodes = ctx.get_nodes()
         s_to_ms = 1000
         for node in nodes:
@@ -1580,6 +1584,11 @@ class ResourceDemandScheduler(IResourceScheduler):
                 continue
 
             idle_timeout_s = ctx.get_idle_timeout_s()
+            # Override the scheduler idle_timeout_s if set for this node_type.
+            node_type = node.node_type
+            if node_type in node_type_configs:
+                if node_type_configs[node_type].idle_timeout_s is not None:
+                    idle_timeout_s = node_type_configs[node_type].idle_timeout_s
             if idle_timeout_s is None:
                 # No idle timeout is set, skip the idle termination.
                 continue
@@ -1593,13 +1602,31 @@ class ResourceDemandScheduler(IResourceScheduler):
                 # Skip it.
                 if node.idle_duration_ms > ctx.get_idle_timeout_s() * s_to_ms:
                     logger.debug(
-                        "Node {}(idle for {} secs) is needed by the cluster resource "
+                        "Node {} (idle for {} secs) is needed by the cluster resource "
                         "constraints, skip idle termination.".format(
                             node.ray_node_id, node.idle_duration_ms / s_to_ms
                         )
                     )
                 continue
 
+            # Honor the min_worker_nodes setting for the node type.
+            min_count = 0
+            if node_type in node_type_configs:
+                min_count = node_type_configs[node_type].min_worker_nodes
+            if (
+                count_by_node_type.get(node_type, 0)
+                - terminate_nodes_by_type[node_type]
+                <= min_count
+            ):
+                logger.info(
+                    "Node {} (idle for {} secs) belongs to node_type {} and is "
+                    "required by min_worker_nodes, skipping idle termination.".format(
+                        node.ray_node_id, node.idle_duration_ms / s_to_ms, node_type
+                    )
+                )
+                continue
+
+            terminate_nodes_by_type[node.node_type] += 1
             # The node is idle for too long, terminate it.
             node.status = SchedulingNodeStatus.TO_TERMINATE
             node.termination_request = TerminationRequest(

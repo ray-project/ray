@@ -19,6 +19,9 @@
 #include "ray/core_worker/actor_creator.h"
 #include "mock/ray/core_worker/task_manager.h"
 #include "mock/ray/gcs/gcs_client/gcs_client.h"
+#include "mock/ray/core_worker/reference_count.h"
+#include "mock/ray/core_worker/memory_store.h"
+
 // clang-format on
 
 namespace ray {
@@ -35,9 +38,15 @@ class DirectTaskTransportTest : public ::testing::Test {
     task_finisher = std::make_shared<MockTaskFinisherInterface>();
     client_pool = std::make_shared<rpc::CoreWorkerClientPool>(
         [&](const rpc::Address &) { return nullptr; });
-    memory_store = std::make_unique<CoreWorkerMemoryStore>();
-    actor_task_submitter = std::make_unique<ActorTaskSubmitter>(
-        *client_pool, *memory_store, *task_finisher, *actor_creator, nullptr, io_context);
+    memory_store = DefaultCoreWorkerMemoryStoreWithThread::Create();
+    reference_counter = std::make_shared<MockReferenceCounter>();
+    actor_task_submitter = std::make_unique<ActorTaskSubmitter>(*client_pool,
+                                                                *memory_store,
+                                                                *task_finisher,
+                                                                *actor_creator,
+                                                                nullptr,
+                                                                io_context,
+                                                                reference_counter);
   }
 
   TaskSpecification GetActorTaskSpec(const ActorID &actor_id) {
@@ -74,6 +83,7 @@ class DirectTaskTransportTest : public ::testing::Test {
   std::shared_ptr<MockTaskFinisherInterface> task_finisher;
   std::unique_ptr<DefaultActorCreator> actor_creator;
   std::shared_ptr<ray::gcs::MockGcsClient> gcs_client;
+  std::shared_ptr<MockReferenceCounter> reference_counter;
 };
 
 TEST_F(DirectTaskTransportTest, ActorCreationOk) {
@@ -93,13 +103,10 @@ TEST_F(DirectTaskTransportTest, ActorCreationFail) {
   auto actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
   auto creation_task_spec = GetActorCreationTaskSpec(actor_id);
   EXPECT_CALL(*task_finisher, CompletePendingTask(_, _, _, _)).Times(0);
-  EXPECT_CALL(*task_finisher,
-              FailOrRetryPendingTask(creation_task_spec.TaskId(),
-                                     rpc::ErrorType::ACTOR_CREATION_FAILED,
-                                     _,
-                                     _,
-                                     true,
-                                     false));
+  EXPECT_CALL(
+      *task_finisher,
+      FailPendingTask(
+          creation_task_spec.TaskId(), rpc::ErrorType::ACTOR_CREATION_FAILED, _, _));
   rpc::ClientCallback<rpc::CreateActorReply> create_cb;
   EXPECT_CALL(*gcs_client->mock_actor_accessor,
               AsyncCreateActor(creation_task_spec, ::testing::_))
@@ -125,7 +132,11 @@ TEST_F(DirectTaskTransportTest, ActorRegisterFailure) {
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id,
+                                                 -1,
+                                                 /*execute_out_of_order*/ false,
+                                                 /*fail_if_actor_unreachable*/ true,
+                                                 /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(
       *task_finisher,
@@ -150,7 +161,11 @@ TEST_F(DirectTaskTransportTest, ActorRegisterOk) {
                                  ::testing::Return(Status::OK())));
   ASSERT_TRUE(actor_creator->AsyncRegisterActor(creation_task_spec, nullptr).ok());
   ASSERT_TRUE(actor_creator->IsActorInRegistering(actor_id));
-  actor_task_submitter->AddActorQueueIfNotExists(actor_id, -1);
+  actor_task_submitter->AddActorQueueIfNotExists(actor_id,
+                                                 -1,
+                                                 /*execute_out_of_order*/ false,
+                                                 /*fail_if_actor_unreachable*/ true,
+                                                 /*owned*/ false);
   ASSERT_TRUE(CheckSubmitTask(task_spec));
   EXPECT_CALL(*task_finisher, FailOrRetryPendingTask(_, _, _, _, _, _)).Times(0);
   register_cb(Status::OK());
