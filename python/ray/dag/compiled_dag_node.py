@@ -258,6 +258,22 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     return None
 
 
+def _device_context_manager():
+    """
+    Return a context manager for executing communication operations
+    (i.e., READ and WRITE). For NCCL operations, the context manager
+    uses the proper cuda device from channel context, otherwise,
+    nullcontext will be returned.
+    """
+    import torch
+
+    device = ChannelContext.get_current().torch_device
+    if device.type == "cuda":
+        return torch.cuda.device(device)
+    else:
+        return nullcontext()
+
+
 @DeveloperAPI
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
@@ -640,31 +656,15 @@ class ExecutableTask:
             True if the next operation should not be executed; otherwise, False.
         """
         if op_type == _DAGNodeOperationType.READ:
-            with ExecutableTask._device_context_manager():
+            with _device_context_manager():
                 with self._recv_stream:
                     return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            with ExecutableTask._device_context_manager():
+            with _device_context_manager():
                 with self._send_stream:
                     return self._write()
-
-    @staticmethod
-    def _device_context_manager():
-        """
-        Return a context manager for executing communication operations
-        (i.e., READ and WRITE). For NCCL operations, the context manager
-        uses the proper cuda device from channel context, otherwise,
-        nullcontext will be returned.
-        """
-        import torch
-
-        device = ChannelContext.get_current().torch_device
-        if device.type == "cuda":
-            return torch.cuda.device(device)
-        else:
-            return nullcontext()
 
 
 @dataclass
