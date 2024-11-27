@@ -647,14 +647,20 @@ class ExecutableTask:
         Returns:
             True if the next operation should not be executed; otherwise, False.
         """
+        import torch
+
         if op_type == _DAGNodeOperationType.READ:
-            with self._recv_stream:
-                return self._read(overlap_gpu_communication)
+            device = ChannelContext.get_current().torch_device
+            with torch.device(device):
+                with self._recv_stream:
+                    return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            with self._send_stream:
-                return self._write()
+            device = ChannelContext.get_current().torch_device
+            with torch.device(device):
+                with self._send_stream:
+                    return self._write()
 
 
 @dataclass
