@@ -526,111 +526,158 @@ class ExecutableTask:
         self._intermediate_future = None
         return future.wait()
 
-    def _read(self, overlap_gpu_communication: bool) -> bool:
-        """
-        Read input data from upstream DAG nodes and cache the intermediate result.
+    # [TODO:andyub] Replace by the all-in-one exec_operation function.
+    # def _read(self, overlap_gpu_communication: bool) -> bool:
+    #     """
+    #     Read input data from upstream DAG nodes and cache the intermediate result.
 
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
+    #     Args:
+    #         overlap_gpu_communication: Whether to overlap GPU communication with
+    #             computation during DAG execution to improve performance.
 
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        assert self._intermediate_future is None
-        exit = False
-        try:
-            input_data = self.input_reader.read()
-            # When overlap_gpu_communication is enabled, wrap the result in
-            # a GPUFuture so that this read operation (communication) can
-            # be overlapped with computation.
-            self.wrap_and_set_intermediate_future(
-                input_data, wrap_in_gpu_future=overlap_gpu_communication
-            )
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
+    #     Returns:
+    #         True if system error occurs and exit the loop; otherwise, False.
+    #     """
+    #     assert self._intermediate_future is None
+    #     exit = False
+    #     try:
+    #         input_data = self.input_reader.read()
+    #         # When overlap_gpu_communication is enabled, wrap the result in
+    #         # a GPUFuture so that this read operation (communication) can
+    #         # be overlapped with computation.
+    #         self.wrap_and_set_intermediate_future(
+    #             input_data, wrap_in_gpu_future=overlap_gpu_communication
+    #         )
+    #     except RayChannelError:
+    #         # Channel closed. Exit the loop.
+    #         exit = True
+    #     return exit
 
-    def _compute(
-        self,
-        overlap_gpu_communication: bool,
-        class_handle,
-    ) -> bool:
-        """
-        Retrieve the intermediate result from the read operation and perform the
-        computation. Then, cache the new intermediate result. The caller must ensure
-        that the last operation executed is read so that the function retrieves the
-        correct intermediate result.
+    # def _compute(
+    #     self,
+    #     overlap_gpu_communication: bool,
+    #     class_handle,
+    # ) -> bool:
+    #     """
+    #     Retrieve the intermediate result from the read operation and perform the
+    #     computation. Then, cache the new intermediate result. The caller must ensure
+    #     that the last operation executed is read so that the function retrieves the
+    #     correct intermediate result.
 
-        Args:
-            overlap_gpu_communication: Whether to overlap GPU communication with
-                computation during DAG execution to improve performance.
-            class_handle: An instance of the class to which the actor belongs. For
-                example, the type of `class_handle` is <class 'xxxx.Worker'> if the
-                actor belongs to the `class Worker` class.
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        if self.requires_nccl_read and overlap_gpu_communication:
-            return
+    #     Args:
+    #         overlap_gpu_communication: Whether to overlap GPU communication with
+    #             computation during DAG execution to improve performance.
+    #         class_handle: An instance of the class to which the actor belongs. For
+    #             example, the type of `class_handle` is <class 'xxxx.Worker'> if the
+    #             actor belongs to the `class Worker` class.
+    #     Returns:
+    #         True if system error occurs and exit the loop; otherwise, False.
+    #     """
 
-        input_data = self.reset_and_wait_intermediate_future()
-        try:
-            _process_return_vals(input_data, return_single_output=False)
-        except Exception as exc:
-            # Previous task raised an application-level exception.
-            # Propagate it and skip the actual task. We don't need to wrap the
-            # exception in a RayTaskError here because it has already been wrapped
-            # by the previous task.
-            self.wrap_and_set_intermediate_future(
-                exc, wrap_in_gpu_future=overlap_gpu_communication
-            )
-            return False
+    #     # To overlap GPU communication for NCCL read, launch the NCCL recv operation
+    #     # and return the future without waiting. The compute step can be skipped.
+    #     if self.requires_nccl_read and overlap_gpu_communication:
+    #         return
 
-        resolved_inputs = []
-        for task_input in self.task_inputs:
-            resolved_inputs.append(task_input.resolve(input_data))
+    #     input_data = self.reset_and_wait_intermediate_future()
+    #     try:
+    #         _process_return_vals(input_data, return_single_output=False)
+    #         # Wait for any future in the input data.
+    #         for i in range(len(input_data)):
+    #             val = input_data[i]
+    #             if isinstance(val, DAGOperationFuture):
+    #                 resolved_future = val.wait()
+    #                 # The only source of future is NCCL read.
+    #                 # The future wraps around a one-element list.
+    #                 assert isinstance(resolved_future, list)
+    #                 assert len(resolved_future) == 1
+    #                 resolved_future = resolved_future[0]
+    #                 # The resolved value can be an exception.
+    #                 if isinstance(resolved_future, RayTaskError):
+    #                     raise resolved_future.as_instanceof_cause()
+    #                 input_data[i] = resolved_future
+    #     except Exception as exc:
+    #         # Previous task raised an application-level exception.
+    #         # Propagate it and skip the actual task. We don't need to wrap the
+    #         # exception in a RayTaskError here because it has already been wrapped
+    #         # by the previous task.
+    #         self.wrap_and_set_intermediate_future(
+    #             exc, wrap_in_gpu_future=overlap_gpu_communication
+    #         )
+    #         return False
 
-        if self.sync_group is not None:
-            # Run a synchronous NCCL operation.
-            method = self.sync_group.execute
-        else:
-            # Run an actor method.
-            method = getattr(class_handle, self.method_name)
-        try:
-            output_val = method(*resolved_inputs, **self.resolved_kwargs)
-        except Exception as exc:
-            output_val = _wrap_exception(exc)
+    #     resolved_inputs = []
+    #     for task_input in self.task_inputs:
+    #         resolved_inputs.append(task_input.resolve(input_data))
 
-        # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
-        # so that this compute operation can be overlapped with communication.
-        self.wrap_and_set_intermediate_future(
-            output_val, wrap_in_gpu_future=overlap_gpu_communication
-        )
-        return False
+    #     if self.sync_group is not None:
+    #         # Run a synchronous NCCL operation.
+    #         method = self.sync_group.execute
+    #     else:
+    #         # Run an actor method.
+    #         method = getattr(class_handle, self.method_name)
+    #     try:
+    #         output_val = method(*resolved_inputs, **self.resolved_kwargs)
+    #     except Exception as exc:
+    #         output_val = _wrap_exception(exc)
 
-    def _write(self, overlap_gpu_communication: bool) -> bool:
-        """
-        Retrieve the intermediate result from the compute operation and write to its
-        downstream DAG nodes. The caller must ensure that the last operation executed
-        is compute so that the function retrieves the correct intermediate result.
+    #     # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
+    #     # so that this compute operation can be overlapped with communication.
+    #     self.wrap_and_set_intermediate_future(
+    #         output_val, wrap_in_gpu_future=overlap_gpu_communication
+    #     )
+    #     return False
 
-        Returns:
-            True if system error occurs and exit the loop; otherwise, False.
-        """
-        if self.requires_nccl_read and overlap_gpu_communication:
-            output_val = self._intermediate_future
-            self._intermediate_future = None
-        else:
-            output_val = self.reset_and_wait_intermediate_future()
-        exit = False
-        try:
-            self.output_writer.write(output_val)
-        except RayChannelError:
-            # Channel closed. Exit the loop.
-            exit = True
-        return exit
+    # def _write(self, overlap_gpu_communication: bool) -> bool:
+    #     """
+    #     Retrieve the intermediate result from the compute operation and write to its
+    #     downstream DAG nodes. The caller must ensure that the last operation executed
+    #     is compute so that the function retrieves the correct intermediate result.
+
+    #     Returns:
+    #         True if system error occurs and exit the loop; otherwise, False.
+    #     """
+    #     # To overlap GPU communication for NCCL read, write the future as output to
+    #     # the downstream task, which waits on the future in its compute operation.
+    #     if self.requires_nccl_read and overlap_gpu_communication:
+    #         output_val = self._intermediate_future
+    #         self._intermediate_future = None
+    #     else:
+    #         output_val = self.reset_and_wait_intermediate_future()
+    #     exit = False
+    #     try:
+    #         self.output_writer.write(output_val)
+    #     except RayChannelError:
+    #         # Channel closed. Exit the loop.
+    #         exit = True
+    #     return exit
+
+    # def exec_operation(
+    #     self,
+    #     class_handle,
+    #     overlap_gpu_communication: bool = False,
+    # ) -> bool:
+    #     """
+    #     An ExecutableTask corresponds to a DAGNode. It consists of three
+    #     operations: read, compute, and write, which should be executed in
+    #     order to ensure that each operation can read the correct intermediate
+    #     result.
+    #     Args:
+    #         class_handle: The handle of the class to which the actor belongs.
+    #         overlap_gpu_communication: Whether to overlap GPU communication with
+    #             computation during DAG execution to improve performance.
+    #     Returns:
+    #         True if the next operation should not be executed; otherwise, False.
+    #     """
+    #     with self._recv_stream:
+    #         if self._read(overlap_gpu_communication):
+    #             return True
+    #     if self._compute(overlap_gpu_communication, class_handle):
+    #         return True
+    #     with self._send_stream:
+    #         if self._write(overlap_gpu_communication):
+    #             return True
+    #     return False
 
     def exec_operation(
         self,
@@ -650,13 +697,83 @@ class ExecutableTask:
             True if the next operation should not be executed; otherwise, False.
         """
         with self._recv_stream:
-            if self._read(overlap_gpu_communication):
+            assert self._intermediate_future is None
+            try:
+                input_data = self.input_reader.read()
+                # When overlap_gpu_communication is enabled, wrap the result in
+                # a GPUFuture so that this read operation (communication) can
+                # be overlapped with computation.
+                self.wrap_and_set_intermediate_future(
+                    input_data, wrap_in_gpu_future=overlap_gpu_communication
+                )
+            except RayChannelError:
+                # Channel closed. Exit the loop.
                 return True
-        if self._compute(overlap_gpu_communication, class_handle):
-            return True
+
+        # To overlap GPU communication for NCCL read, launch the NCCL recv operation,
+        # skip the normal compute operation, and return the future without waiting.
+        if not self.requires_nccl_read or not overlap_gpu_communication:
+            input_data = self.reset_and_wait_intermediate_future()
+            try:
+                _process_return_vals(input_data, return_single_output=False)
+                # Wait for any future in the input data.
+                for i in range(len(input_data)):
+                    val = input_data[i]
+                    if isinstance(val, DAGOperationFuture):
+                        resolved_future = val.wait()
+                        # The only source of future is NCCL read.
+                        # The future wraps around a one-element list.
+                        assert isinstance(resolved_future, list)
+                        assert len(resolved_future) == 1
+                        resolved_future = resolved_future[0]
+                        # The resolved value can be an exception.
+                        if isinstance(resolved_future, RayTaskError):
+                            raise resolved_future.as_instanceof_cause()
+                        input_data[i] = resolved_future
+
+                resolved_inputs = []
+                for task_input in self.task_inputs:
+                    resolved_inputs.append(task_input.resolve(input_data))
+
+                if self.sync_group is not None:
+                    # Run a synchronous NCCL operation.
+                    method = self.sync_group.execute
+                else:
+                    # Run an actor method.
+                    method = getattr(class_handle, self.method_name)
+                try:
+                    output_val = method(*resolved_inputs, **self.resolved_kwargs)
+                except Exception as exc:
+                    output_val = _wrap_exception(exc)
+
+                # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
+                # so that this compute operation can be overlapped with communication.
+                self.wrap_and_set_intermediate_future(
+                    output_val, wrap_in_gpu_future=overlap_gpu_communication
+                )
+            except Exception as exc:
+                # Previous task raised an application-level exception.
+                # Propagate it and skip the actual task. We don't need to wrap the
+                # exception in a RayTaskError here because it has already been wrapped
+                # by the previous task.
+                self.wrap_and_set_intermediate_future(
+                    exc, wrap_in_gpu_future=overlap_gpu_communication
+                )
+
         with self._send_stream:
-            if self._write(overlap_gpu_communication):
+            # To overlap GPU communication for NCCL read, write the future as output to
+            # the downstream task, which waits on the future in its compute operation.
+            if self.requires_nccl_read and overlap_gpu_communication:
+                output_val = self._intermediate_future
+                self._intermediate_future = None
+            else:
+                output_val = self.reset_and_wait_intermediate_future()
+            try:
+                self.output_writer.write(output_val)
+            except RayChannelError:
+                # Channel closed. Exit the loop.
                 return True
+
         return False
 
 
