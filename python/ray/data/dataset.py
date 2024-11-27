@@ -2411,6 +2411,7 @@ class Dataset:
         boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
+        The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
             The `descending` parameter must be a boolean, or a list of booleans.
