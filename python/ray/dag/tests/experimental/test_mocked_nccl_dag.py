@@ -285,7 +285,9 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     # Test torch.Tensor sent between actors.
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
-        dag = dag.with_type_hint(TorchTensorType(transport="nccl", _direct_return=True))
+        dag = dag.with_type_hint(
+            TorchTensorType(transport="nccl", _static_tensor_schema=True)
+        )
         dag = receiver.recv.bind(dag)
 
     compiled_dag = dag.experimental_compile()
@@ -313,8 +315,8 @@ def test_p2p_direct_return_error(capsys, ray_start_cluster):
     wait_for_condition(
         lambda: error_logged(
             capsys,
-            "Task annotated with _direct_return=True must "
-            "return a CUDA torch.Tensor",
+            "Expected CUDA torch.Tensor as direct return value for task "
+            "annotated with _static_tensor_schema=True",
         )
     )
 
@@ -352,7 +354,9 @@ def test_p2p_static_shape_and_direct_return(
     with InputNode() as inp:
         dag = sender.send.bind(inp.shape, inp.dtype, inp.value, inp.send_as_dict)
         dag = dag.with_type_hint(
-            TorchTensorType(transport="nccl", _static_shape=True, _direct_return=True)
+            TorchTensorType(
+                transport="nccl", _static_shape=True, _static_tensor_schema=True
+            )
         )
         dag = receiver.recv.bind(dag)
 
@@ -393,7 +397,8 @@ def test_p2p_static_shape_and_direct_return(
         )
     else:
         msg = (
-            "Task annotated with _direct_return=True must " "return a CUDA torch.Tensor"
+            "Expected CUDA torch.Tensor as direct return value for task "
+            "annotated with _static_tensor_schema=True"
         )
     wait_for_condition(lambda: error_logged(capsys, msg))
 

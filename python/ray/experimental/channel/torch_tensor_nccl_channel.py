@@ -3,12 +3,12 @@ import logging
 import uuid
 from dataclasses import dataclass
 from types import ModuleType
-from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, NamedTuple, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.common import ChannelInterface
+from ray.experimental.channel.common import ChannelInterface, _SerializationContext
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
@@ -27,6 +27,26 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
+# _TensorKey represents a path of lookup keys in an arbitrary Python object.
+# Each element of the path is a dictionary or list key.
+# If an object is not a list or a dictionary, we try to lookup the key using
+# object.__dict__. These keys are added with a True flag, to differentiate from
+# direct lookup into a dictionary object.
+# Examples:
+# - obj=torch.Tensor; key=()
+# - obj=[1, [torch.Tensor(...)], 3]; key=(1, 0)
+# - obj={"x": [1, [torch.Tensor(...)], 3]}; key=(("x", False), 1, 0)
+# - obj.x=[1, [torch.Tensor(...)], 3]; key=(("x", True), 1, 0)
+_TensorKey = Tuple[Union[int, Tuple[str, bool]], ...]
+
+
+# TODO(swang): Get rid of this.
+class _TensorSchema(NamedTuple):
+    serialized_schema: Any
+    tensor_key_to_placeholder: Optional[Dict[_TensorKey, int]]
+    keylist: Optional[List[_TensorKey]]
+
+
 @dataclass
 class _TorchTensorMetadata:
     """
@@ -38,10 +58,217 @@ class _TorchTensorMetadata:
     dtype: "torch.dtype"
 
 
-def _extract_on_device_tensors(value: Any, device: Optional["torch.device"]):
+def _find_device_tensors(
+    value: Any,
+    device: Optional["torch.device"],
+    extracted_tensors=None,
+    tensor_key: Optional[Tuple[Any]] = None,
+    seen=None,
+    copy_value_and_replace_tensors=False,
+) -> Tuple[Any, Dict[Tuple[Any], "torch.Tensor"]]:
     import torch
 
-    return _TorchTensorMetadata((10,), torch.uint8), [value]
+    if extracted_tensors is None:
+        extracted_tensors = {}
+    if tensor_key is None:
+        tensor_key = ()
+    if seen is None:
+        seen = set()
+
+    obj_id = id(value)
+    if obj_id in seen:
+        return value, extracted_tensors
+    seen.add(obj_id)
+
+    if isinstance(value, torch.Tensor):
+        extracted_tensors[tensor_key] = value
+        return value, extracted_tensors
+
+    if isinstance(value, dict):
+        for k, v in value.items():
+            value[k], extracted_tensors = _find_device_tensors(
+                v, device, extracted_tensors, tensor_key + ((k, False),), seen
+            )
+    elif isinstance(value, list):
+        for i in range(len(value)):
+            value[i], extracted_tensors = _find_device_tensors(
+                value[i], device, extracted_tensors, tensor_key + (i,), seen
+            )
+    elif isinstance(value, tuple):
+        value = tuple(
+            _find_device_tensors(e, device, extracted_tensors, tensor_key + (i,), seen)[
+                0
+            ]
+            for i, e in enumerate(value)
+        )
+
+    elif hasattr(value, "__dict__"):
+        for k, v in value.__dict__.items():
+            setattr(
+                value,
+                k,
+                _find_device_tensors(
+                    v, device, extracted_tensors, tensor_key + ((k, True),), seen
+                )[0],
+            )
+    else:
+        raise TypeError("TODO")
+
+    return value, extracted_tensors
+
+
+def _format_tensor_key_string(tensor_key):
+    key_str = ""
+    for key in tensor_key:
+        if isinstance(key, int):
+            key_str.append(f"[{key}]")
+        else:
+            key, is_attr = key
+            if is_attr:
+                key_str.append(f'["{key}"]')
+            else:
+                key_str.append(f".{key}")
+    return key_str
+
+
+def _find_device_tensors_with_cached_schema(
+    value: Any, device: Optional["torch.device"], cached_schema: Optional[_TensorSchema]
+):
+    schema, extracted_tensors = _find_device_tensors(value, device)
+
+    tensor_to_placeholder: Dict["torch.Tensor", int] = {}
+    tensor_key_to_placeholder: Dict[_TensorKey, int] = {}
+    for key, tensor in extracted_tensors.items():
+        if tensor not in tensor_to_placeholder:
+            tensor_to_placeholder[tensor] = len(tensor_to_placeholder)
+        tensor_key_to_placeholder[key] = tensor_to_placeholder[tensor]
+
+    if cached_schema is not None:
+        # TODO(swang): Check that the extracted schema matches the cached
+        # schema at non-Tensor values?
+        cached_tensor_key_to_placeholder: Dict[
+            _TensorKey, int
+        ] = cached_schema.tensor_key_to_placeholder
+
+        extra_tensor_keys, extra_cached_tensor_keys = _compute_isomorphic_dict_diff(
+            tensor_key_to_placeholder, cached_tensor_key_to_placeholder
+        )
+        if extra_tensor_keys or extra_cached_tensor_keys:
+            direct_return_key = ()
+            if direct_return_key in extra_cached_tensor_keys:
+                error_msg = (
+                    "Expected CUDA torch.Tensor as direct return value "
+                    f"for task annotated with _static_tensor_schema=True, got {value}"
+                )
+            elif extra_cached_tensor_keys:
+                values = ", ".join(
+                    [
+                        "value" + _format_tensor_key_string(tensor_key)
+                        for tensor_key in extra_cached_tensor_keys
+                    ]
+                )
+                error_msg = (
+                    "Task annotated with _static_tensor_schema=True did not "
+                    f"return tensors at [{values}]."
+                )
+            elif extra_tensor_keys:
+                values = ", ".join(
+                    [
+                        "value" + _format_tensor_key_string(tensor_key)
+                        for tensor_key in extra_tensor_keys
+                    ]
+                )
+                error_msg = (
+                    "Task annotated with _static_tensor_schema=True returned "
+                    f"extra tensors at [{values}]."
+                )
+            raise ValueError(error_msg)
+
+    else:
+        tensor_key_list: List[_TensorKey] = [None] * len(tensor_to_placeholder)
+        for key, tensor in extracted_tensors.items():
+            tensor_key_list[tensor_to_placeholder[tensor]] = key
+        cached_schema = _TensorSchema(
+            serialized_schema=None,
+            tensor_key_to_placeholder=tensor_key_to_placeholder,
+            keylist=tensor_key_list,
+        )
+
+    extracted_tensors = [extracted_tensors[key] for key in cached_schema.keylist]
+
+    return schema, extracted_tensors, cached_schema
+
+
+def _extract_device_tensors_with_pickle(
+    serialization_ctx: _SerializationContext,
+    global_worker: ray._private.worker.Worker,
+    value: Any,
+):
+    with serialization_ctx.external_transport():
+        try:
+            # Serialize the data. All tensors that match our current device
+            # will be extracted into the serialization context and replaced
+            # with a placeholder.
+            cpu_data = global_worker.get_serialization_context().serialize(value)
+        except TypeError as e:
+            sio = io.StringIO()
+            ray.util.inspect_serializability(value, print_file=sio)
+            msg = (
+                "Could not serialize the put value "
+                f"{repr(value)}:\n"
+                f"{sio.getvalue()}"
+            )
+            raise TypeError(msg) from e
+
+        # Pop the tensors that were found during serialization of `value`.
+        gpu_tensors, _ = serialization_ctx.reset_out_of_band_tensors()
+
+    # Return the non-tensor data (with placeholders for the extracted
+    # tensors) and the extracted tensors.
+    return cpu_data, gpu_tensors
+
+
+def _compute_isomorphic_dict_diff(dict1, dict2):
+    diff1 = []
+    diff2 = []
+    if len(dict1) != len(dict2):
+        diff1 += [key for key in dict1 if key not in dict2]
+        diff2 += [key for key in dict2 if key not in dict1]
+        return diff1, diff2
+
+    # Mapping from values in dict1 to values in dict2.
+    map1_to_2 = {}
+    # Mapping from values in dict2 to values in dict1.
+    map2_to_1 = {}
+
+    # Find all keys in dict2 that are not in dict1.
+    for key, val2 in dict2.items():
+        if key not in dict1:
+            diff2.append(key)
+
+    # Find all keys in dict1 that are not in dict2.
+    for key, val1 in dict1.items():
+        if key not in dict2:
+            diff1.append(key)
+            continue
+
+        # The key exists in both dictionaries. Check that the dictionaries are
+        # isomorphic for these keys.
+        val2 = dict2[key]
+
+        if val1 not in map1_to_2:
+            map1_to_2[val1] = val2
+        if val2 not in map2_to_1:
+            map2_to_1[val2] = val1
+
+        if (map1_to_2[val1] != val2) or (map2_to_1[val2] != val1):
+            # The key is in both dictionaries, but there is no consistent
+            # mapping between val1 and val2.
+            diff1.append(key)
+            diff2.append(key)
+            break
+
+    return diff1, diff2
 
 
 def _bind_tensor_placeholders(schema: Any, device_tensors: List["torch.Tensor"]):
@@ -84,12 +311,13 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
         self._typ = typ
-        # The deserialized static tensor schema, with placeholders instead of torch.Tensors.
+        # The deserialized static tensor schema, with placeholders instead of
+        # torch.Tensors.
         self._cached_tensor_schema: Optional[Any] = None
 
         self._gpu_data_channel: _TorchTensorNcclChannel = gpu_data_channel
         assert cpu_data_channel is not None
-        self._tensor_schema_channel: Optional["Channel"] = cpu_data_channel
+        self._cpu_data_channel: Optional["Channel"] = cpu_data_channel
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
@@ -107,51 +335,17 @@ class TorchTensorNcclChannel(ChannelInterface):
                 None,
                 self._typ,
                 self._gpu_data_channel,
-                self._tensor_schema_channel,
+                self._cpu_data_channel,
             ),
         )
 
     def ensure_registered_as_writer(self):
         self._gpu_data_channel.ensure_registered_as_writer()
-        self._tensor_schema_channel.ensure_registered_as_writer()
+        self._cpu_data_channel.ensure_registered_as_writer()
 
     def ensure_registered_as_reader(self):
         self._gpu_data_channel.ensure_registered_as_reader()
-        self._tensor_schema_channel.ensure_registered_as_reader()
-
-    def _send_cpu_and_gpu_data(self, value: Any, timeout: Optional[float]):
-        self.serialization_ctx.reset_out_of_band_tensors([])
-        # All tensors found in `value` will be transferred via NCCL.
-        # TODO(swang): Instead, register and deregister custom
-        # serializer.
-        self.serialization_ctx.set_use_external_transport(True)
-
-        try:
-            # Serialize the data. All tensors that match our current device
-            # will be extracted into the serialization context and replaced
-            # with a placeholder.
-            cpu_data = self._worker.get_serialization_context().serialize(value)
-        except TypeError as e:
-            sio = io.StringIO()
-            ray.util.inspect_serializability(value, print_file=sio)
-            msg = (
-                "Could not serialize the put value "
-                f"{repr(value)}:\n"
-                f"{sio.getvalue()}"
-            )
-            raise TypeError(msg) from e
-        finally:
-            # Pop the tensors that were found during serialization of `value`.
-            gpu_tensors, _ = self.serialization_ctx.reset_out_of_band_tensors([])
-            # Reset the serialization method to now serialize torch.Tensors
-            # normally.
-            self.serialization_ctx.set_use_external_transport(False)
-
-        # First send the extracted tensors through a GPU-specific channel.
-        self._gpu_data_channel.write(gpu_tensors)
-        # Next send the non-tensor data through a CPU-specific channel. The
-        # data contains placeholders for the extracted tensors.
-        self._tensor_schema_channel.write(cpu_data)
+        self._cpu_data_channel.ensure_registered_as_reader()
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
         """
@@ -182,79 +376,44 @@ class TorchTensorNcclChannel(ChannelInterface):
                 # inferred sizes and tensor schemas.
                 raise value
 
-        # TODO: Catch error if schema type is not traversible.
-        ctx = ChannelContext.get_current()
-        schema, device_tensors = _extract_on_device_tensors(value, ctx.torch_device)
+        schema_to_cache = None
+        use_pickle = not self._typ.static_tensor_schema
+        if use_pickle:
+            schema, extracted_tensors = _extract_device_tensors_with_pickle(
+                self.serialization_ctx, self._worker, value
+            )
+        else:
+            ctx = ChannelContext.get_current()
+            (
+                schema,
+                extracted_tensors,
+                schema_to_cache,
+            ) = _find_device_tensors_with_cached_schema(
+                value, ctx.torch_device, self._cached_tensor_schema
+            )
+
+        for tensor in extracted_tensors:
+            assert tensor.is_cuda
 
         # First send the extracted tensors through a GPU-specific channel.
-        # These writes can happen in any order, but we do this first to avoid
-        # blocking the GPU on the following write.
-        self._gpu_data_channel.write(device_tensors)
-        # Next send the non-tensor data through a CPU-specific channel. The
-        # data contains placeholders for the extracted tensors.
+        # This could happen before or after the write of the non-tensor schema
+        # data, but we do this first to avoid blocking the GPU on CPU
+        # operation.
+        self._gpu_data_channel.write(extracted_tensors, timeout=timeout)
+
         if self._cached_tensor_schema is None:
-            self._tensor_schema_channel.write(schema)
+            if use_pickle:
+                # If using pickle, then the tensors have already been replaced
+                # with placeholders.
+                extracted_tensors = None
+
+            with self.serialization_ctx.external_transport(extracted_tensors):
+                # Send the non-tensor data through a CPU-specific channel. The
+                # data contains placeholders for the extracted tensors.
+                self._cpu_data_channel.write(schema, timeout=timeout)
+
             if self._typ.static_tensor_schema:
-                self._cached_tensor_schema = schema
-        else:
-            # TODO: Check that the extracted schema is equal to the past tensor
-            # schema.
-            pass
-
-        # if self._cpu_data_channel is None:
-        #    # Handle the case where _static_tensor_schema=True. In this case, we check
-        #    # that the task returned a CUDA torch.Tensor and just send it
-        #    # directly without trying to serialize it first.
-        #    import torch
-
-        #    if not isinstance(value, torch.Tensor):
-        #        # TODO(swang): These errors are currently fatal for the DAG
-        #        # because there is no way for the receiver to receive the
-        #        # exception. This could be improved by sending the exception
-        #        # through the gpu_data_channel's CPU-based metadata channel,
-        #        # if one exists.
-        #        raise ValueError(
-        #            "Task annotated with _static_tensor_schema=True must "
-        #            "return a CUDA torch.Tensor, instead found value "
-        #            f"`{value}`. DAG will shut down."
-        #        )
-        #    elif not value.is_cuda:
-        #        raise ValueError(
-        #            "Task annotated with _static_tensor_schema=True must "
-        #            "return a CUDA torch.Tensor, instead found CPU tensor. "
-        #            "DAG will shut down."
-        #        )
-        #    self._gpu_data_channel.write([value], timeout=timeout)
-        # else:
-        #    self._send_cpu_and_gpu_data(value, timeout)
-
-    def _recv_cpu_and_gpu_data(
-        self, tensors: List["torch.Tensor"], timeout: Optional[float] = None
-    ) -> Any:
-        """
-        Helper method to receive data that contains a mix of CPU and GPU data.
-
-        Args:
-            tensors: The GPU data. This is a list of the torch.Tensors that
-                were found in the sent data.
-            timeout: Timeout for channel receive.
-        """
-        self.serialization_ctx.reset_out_of_band_tensors(tensors)
-
-        # Next, read and deserialize the non-tensor data. The registered custom
-        # deserializer will replace the found tensor placeholders with
-        # `tensors`.
-        data = self._cpu_data_channel.read(
-            timeout=timeout,
-        )
-        # Check that all placeholders had a corresponding tensor.
-        (
-            _,
-            deserialized_tensor_placeholders,
-        ) = self.serialization_ctx.reset_out_of_band_tensors([])
-        assert deserialized_tensor_placeholders == set(range(len(tensors)))
-
-        return data
+                self._cached_tensor_schema = schema_to_cache
 
     def read(self, timeout: Optional[float] = None) -> Any:
         """
@@ -273,31 +432,23 @@ class TorchTensorNcclChannel(ChannelInterface):
         # First, read the tensor data.
         device_tensors = self._gpu_data_channel.read(timeout)
 
-        schema = self._cached_tensor_schema
-        if schema is None:
-            schema = self._tensor_schema_channel.read(timeout)
+        with self.serialization_ctx.external_transport(device_tensors):
+            # Next, read and deserialize the non-tensor data. The registered custom
+            # deserializer will replace the found tensor placeholders with
+            # `tensors`.
+            if self._cached_tensor_schema is None:
+                data = self._cpu_data_channel.read(timeout)
 
-        # Replace placeholders with actual tensors.
-        value = _bind_tensor_placeholders(schema, device_tensors)
+                if self._typ.static_tensor_schema:
+                    self._cached_tensor_schema = ray.put(data)
+            else:
+                data = ray.get(self._cached_tensor_schema)
 
-        if self._typ.static_tensor_schema:
-            self._cached_tensor_schema = schema
-
-        return value
-
-        # if self._cpu_data_channel is None:
-        #    # Handle _static_tensor_schema=True. In this case, we expect to receive
-        #    # only one tensor, and we return it directly.
-        #    assert len(tensors) == 1
-        #    data = tensors[0]
-        # else:
-        #    data = self._recv_cpu_and_gpu_data(tensors, timeout)
-
-        # return data
+        return data
 
     def close(self) -> None:
         self._gpu_data_channel.close()
-        self._tensor_schema_channel.close()
+        self._cpu_data_channel.close()
 
 
 def _torch_zeros_allocator(

@@ -1,8 +1,46 @@
-from typing import TYPE_CHECKING, Any, Dict, List, Set, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Set, Tuple, Union
 
 if TYPE_CHECKING:
     import numpy as np
     import torch
+
+
+class _ExternalTransportSerializationContext:
+    """
+    Helper context manager to set out-of-band tensors during
+    serialization/deserialization. During serialization, this can be used to
+    set the serialization context to extract torch.Tensors and replace them
+    with integer placeholders. During deserialization, this can be used to
+    replace the placeholders with out-of-band torch.Tensors.
+    """
+
+    def __init__(
+        self,
+        ctx: "_SerializationContext",
+        tensors: Optional[List["torch.Tensor"]] = None,
+    ):
+        self.ctx = ctx
+        self.tensors = tensors
+
+    def __enter__(self):
+        self.ctx.reset_out_of_band_tensors(self.tensors)
+        self.ctx.set_use_external_transport(True)
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.ctx.set_use_external_transport(False)
+        tensors, seen_tensor_placeholders = self.ctx.reset_out_of_band_tensors()
+
+        if self.tensors is not None:
+            # Check that the serialization context's out-of-band tensors was
+            # not modified.
+            assert self.tensors is tensors
+        if exc_type is None:
+            # If no exception was thrown, check that all tensors provided were
+            # found in the serialized/deserialized data.
+            assert seen_tensor_placeholders == set(range(len(tensors))), (
+                seen_tensor_placeholders,
+                tensors,
+            )
 
 
 class _SerializationContext:
@@ -14,9 +52,14 @@ class _SerializationContext:
         # the tensors that should be sent or received
         # out-of-band, through the external transport.
         self._out_of_band_tensors: List["torch.Tensor"] = []
-        # During serialization, tensors sent out-of-band are replaced with
-        # integer placeholders. This tracks the set of placeholders seen.
-        self._deserialized_tensor_placeholders: Set[int] = set()
+        # Reverse mapping of above. Used to deduplicate references to the same
+        # tensor and for cases where the tensor extraction and order of
+        # transfer is done before serialization.
+        self._out_of_band_tensors_to_placeholders: Dict["torch.Tensor", int] = {}
+        # During serialization/deserialization, tensors sent out-of-band are
+        # replaced with integer placeholders or vice versa. This tracks the set
+        # of placeholders seen.
+        self._seen_tensor_placeholders: Set[int] = set()
 
         # Buffer for transferring data between tasks in the same worker process.
         # The key is the channel ID, and the value is the data. We don't use a
@@ -65,31 +108,44 @@ class _SerializationContext:
     def set_use_external_transport(self, use_external_transport: bool) -> None:
         self._use_external_transport = use_external_transport
 
+    def external_transport(self, tensors: Optional[List["torch.Tensor"]] = None):
+        return _ExternalTransportSerializationContext(self, tensors)
+
     def reset_out_of_band_tensors(
-        self, tensors: List["torch.Tensor"]
+        self, tensors: Optional[List["torch.Tensor"]] = None
     ) -> Tuple[List["torch.Tensor"], Set[int]]:
         """
         Return and reset the out-of-band tensors and all tensor placeholders
         that were deserialized since the last call to reset.
         """
         prev_tensors = self._out_of_band_tensors
-        deserialized_tensor_placeholders = self._deserialized_tensor_placeholders
+        seen_tensor_placeholders = self._seen_tensor_placeholders
+        if tensors is None:
+            tensors = []
         self._out_of_band_tensors = tensors
-        self._deserialized_tensor_placeholders = set()
-        return prev_tensors, deserialized_tensor_placeholders
+        self._out_of_band_tensors_to_placeholders = {
+            tensor: idx for idx, tensor in enumerate(self._out_of_band_tensors)
+        }
+        self._seen_tensor_placeholders = set()
+        return prev_tensors, seen_tensor_placeholders
 
     def serialize_tensor(self, tensor: "torch.Tensor") -> Union[int, "np.ndarray"]:
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
         if self._use_external_transport and tensor.device == ctx.torch_device:
-            # External transport is enabled and we found a tensor that matches
-            # our device.  Add the actual tensor to a buffer. The buffer of
-            # tensors should later be popped by the caller and sent via
-            # external transport.
-            self._out_of_band_tensors.append(tensor)
-            # Return a placeholder.
-            return len(self._out_of_band_tensors) - 1
+            if tensor not in self._out_of_band_tensors_to_placeholders:
+                # External transport is enabled and we found a tensor that matches
+                # our device. Add the actual tensor to a buffer. The buffer of
+                # tensors should later be popped by the caller and sent via
+                # external transport.
+                idx = len(self._out_of_band_tensors)
+                self._out_of_band_tensors.append(tensor)
+                self._out_of_band_tensors_to_placeholders[tensor] = idx
+
+            placeholder = self._out_of_band_tensors_to_placeholders[tensor]
+            self._seen_tensor_placeholders.add(placeholder)
+            return placeholder
 
         return self.serialize_to_numpy(tensor)
 
@@ -109,7 +165,7 @@ class _SerializationContext:
         # Replace it with the corresponding deserialized tensor.
         if isinstance(val, int):
             placeholder = val
-            self._deserialized_tensor_placeholders.add(placeholder)
+            self._seen_tensor_placeholders.add(placeholder)
             assert placeholder < len(self._out_of_band_tensors)
             return self._out_of_band_tensors[placeholder]
 
