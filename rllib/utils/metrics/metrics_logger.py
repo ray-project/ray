@@ -1092,7 +1092,8 @@ class MetricsLogger:
         def _map(path, stats):
             stats_dict[force_tuple(path)] = stats.get_state()
 
-        tree.map_structure_with_path(_map, self.stats)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, self.stats)
 
         return {"stats": stats_dict}
 
