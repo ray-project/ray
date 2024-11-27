@@ -10,6 +10,7 @@ from ray.serve._private.utils import DEFAULT
 @dataclass(frozen=True)
 class _AnyscaleInitHandleOptions(InitHandleOptionsBase):
     _by_reference: bool = not ANYSCALE_RAY_SERVE_USE_GRPC_BY_DEFAULT
+    _run_router_in_separate_loop: bool = True
 
     @classmethod
     def create(cls, **kwargs) -> "_AnyscaleInitHandleOptions":

@@ -332,7 +332,7 @@ class Router(ABC):
         pass
 
     @abstractmethod
-    def shutdown(self):
+    def shutdown(self) -> concurrent.futures.Future:
         pass
 
 
@@ -704,7 +704,7 @@ class SingletonThreadRouter(Router):
             loop=self._asyncio_loop,
         )
 
-    def shutdown(self):
-        asyncio.run_coroutine_threadsafe(
+    def shutdown(self) -> concurrent.futures.Future:
+        return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
-        ).result()
+        )

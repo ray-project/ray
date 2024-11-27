@@ -50,17 +50,33 @@ class gRPCReplicaResult(ReplicaResult):
         # This is the asyncio event loop that the gRPC Call object is attached to
         self._grpc_call_loop = loop
         self._is_streaming = is_streaming
+
+        self._gen = None
+        self._fut = None
+
         # NOTE(zcin): for now, these two concepts will be synonymous.
         # In other words, using a queue means the router is running on
         # a separate thread/event loop, and vice versa not using a queue
         # means the router is running on the main event loop, where the
         # DeploymentHandle lives.
-        self._use_queue = False
         self._calling_from_same_loop = not on_separate_loop
+        if hasattr(self._call, "__aiter__"):
+            self._gen = self._call.__aiter__()
+            # If the grpc call IS streaming, AND it was created on a
+            # a separate loop, then use a queue to fetch the objects
+            self._use_queue = on_separate_loop
+        else:
+            self._use_queue = False
 
-        self._gen = None
-        self._fut = None
+        # Start a background task that continuously fetches from the
+        # streaming grpc call. This way callbacks will actually be
+        # called when the request finishes even without the user
+        # explicitly consuming the response.
         self._consume_task = None
+        if self._use_queue:
+            self._consume_task = self._grpc_call_loop.create_task(
+                self.consume_messages_from_gen()
+            )
 
         # keep track of in flight requests
         self._response_id = uuid.uuid4()
@@ -73,17 +89,6 @@ class gRPCReplicaResult(ReplicaResult):
                 request_context._internal_request_id, self._response_id
             )
         )
-
-        if hasattr(self._call, "__aiter__"):
-            self._gen = self._call.__aiter__()
-            # If the grpc call IS streaming, AND it was created on a
-            # a separate loop, then use a queue to fetch the objects
-            self._use_queue = on_separate_loop
-
-        if self._use_queue:
-            self._consume_task = self._grpc_call_loop.create_task(
-                self.consume_messages_from_gen()
-            )
 
     def _process_grpc_response(f: Union[Callable, Coroutine]):
         def deserialize_or_raise_error(

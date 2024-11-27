@@ -19,7 +19,7 @@ from ray.serve.generated import serve_proprietary_pb2, serve_proprietary_pb2_grp
 
 
 class gRPCReplicaWrapper(ReplicaWrapper):
-    def __init__(self, replica_info: RunningReplicaInfo):
+    def __init__(self, replica_info: RunningReplicaInfo, *, on_separate_loop: bool):
         super().__init__(replica_info)
 
         assert (
@@ -37,6 +37,7 @@ class gRPCReplicaWrapper(ReplicaWrapper):
         )
         self._stub = serve_proprietary_pb2_grpc.ASGIServiceStub(self._channel)
         self._loop = asyncio.get_running_loop()
+        self._on_separate_loop = on_separate_loop
 
     async def get_queue_len(self, *, deadline_s: float) -> int:
         # We can continue to use Ray remote calls to probe a replica's queue length
@@ -73,7 +74,7 @@ class gRPCReplicaWrapper(ReplicaWrapper):
             actor_id=self._actor_handle._actor_id,
             is_streaming=pr.metadata.is_streaming,
             loop=self._loop,
-            on_separate_loop=True,
+            on_separate_loop=self._on_separate_loop,
         )
 
     async def send_request_with_rejection(
@@ -94,7 +95,7 @@ class gRPCReplicaWrapper(ReplicaWrapper):
                     actor_id=self._actor_handle._actor_id,
                     is_streaming=pr.metadata.is_streaming,
                     loop=self._loop,
-                    on_separate_loop=True,
+                    on_separate_loop=self._on_separate_loop,
                 )
                 return replica_result, queue_len_info
         except asyncio.CancelledError as e:

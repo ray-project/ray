@@ -113,7 +113,7 @@ class FakeReplicaActor:
 
 
 @pytest.fixture
-def setup_fake_replica(ray_instance) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
+def setup_fake_replica(ray_instance, request) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
     actor_handle = FakeReplicaActor.remote()
     port = ray.get(actor_handle.start.remote())
 
@@ -133,7 +133,8 @@ def setup_fake_replica(ray_instance) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
                 is_cross_language=False,
                 # Get grpc port from FakeReplicaActor
                 port=port,
-            )
+            ),
+            **request.param,
         )
 
     return create_replica_wrapper, actor_handle
@@ -141,6 +142,11 @@ def setup_fake_replica(ray_instance) -> Tuple[gRPCReplicaWrapper, ActorHandle]:
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
+@pytest.mark.parametrize(
+    "setup_fake_replica",
+    [{"on_separate_loop": False}, {"on_separate_loop": True}],
+    indirect=True,
+)
 async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: bool):
     create_replica_wrapper, _ = setup_fake_replica
     replica = await create_replica_wrapper()
@@ -169,6 +175,11 @@ async def test_to_object_ref_not_supported(setup_fake_replica, is_streaming: boo
 
 @pytest.mark.asyncio
 @pytest.mark.parametrize("is_streaming", [False, True])
+@pytest.mark.parametrize(
+    "setup_fake_replica",
+    [{"on_separate_loop": False}, {"on_separate_loop": True}],
+    indirect=True,
+)
 async def test_send_request(setup_fake_replica, is_streaming: bool):
     create_replica_wrapper, _ = setup_fake_replica
     replica = await create_replica_wrapper()
@@ -193,6 +204,11 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
 @pytest.mark.asyncio
 @pytest.mark.parametrize("accepted", [False, True])
 @pytest.mark.parametrize("is_streaming", [False, True])
+@pytest.mark.parametrize(
+    "setup_fake_replica",
+    [{"on_separate_loop": False}, {"on_separate_loop": True}],
+    indirect=True,
+)
 async def test_send_request_with_rejection(
     setup_fake_replica, accepted: bool, is_streaming: bool
 ):
@@ -226,6 +242,11 @@ async def test_send_request_with_rejection(
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "setup_fake_replica",
+    [{"on_separate_loop": False}, {"on_separate_loop": True}],
+    indirect=True,
+)
 async def test_send_request_with_rejection_cancellation(setup_fake_replica):
     """
     Verify that the downstream actor method call is cancelled if the call to send the

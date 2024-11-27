@@ -222,12 +222,14 @@ def create_router(  # noqa: F811
     deployment_id: DeploymentID,
     handle_options: Any,
 ):
+    import asyncio
     from functools import partial
 
     # NOTE(edoakes): this is lazy due to a nasty circular import that should be fixed.
     from ray.anyscale.serve._private.replica_scheduler.replica_wrapper import (
         gRPCReplicaWrapper,
     )
+    from ray.anyscale.serve._private.router import CurrentLoopRouter
     from ray.anyscale.serve.utils import (
         asyncio_grpc_exception_handler,
         resolve_deployment_resp_and_ray_objects,
@@ -243,7 +245,9 @@ def create_router(  # noqa: F811
         if handle_options._by_reference:
             return ActorReplicaWrapper(r)
         else:
-            return gRPCReplicaWrapper(r)
+            return gRPCReplicaWrapper(
+                r, on_separate_loop=handle_options._run_router_in_separate_loop
+            )
 
     replica_scheduler = PowerOfTwoChoicesReplicaScheduler(
         deployment_id,
@@ -263,7 +267,24 @@ def create_router(  # noqa: F811
         create_replica_wrapper_func=create_replica_wrapper_func,
     )
 
-    router = SingletonThreadRouter(
+    if handle_options._run_router_in_separate_loop:
+        router_wrapper_cls = SingletonThreadRouter
+        SingletonThreadRouter._get_singleton_asyncio_loop().set_exception_handler(
+            asyncio_grpc_exception_handler
+        )
+    else:
+        try:
+            asyncio.get_running_loop()
+        except RuntimeError:
+            raise RuntimeError(
+                "No event loop running. You cannot use a handle initialized with "
+                "`_run_router_in_separate_loop=True` when not inside an asyncio event "
+                "loop."
+            )
+
+        router_wrapper_cls = CurrentLoopRouter
+
+    return router_wrapper_cls(
         controller_handle=controller_handle,
         deployment_id=deployment_id,
         handle_id=handle_id,
@@ -280,10 +301,6 @@ def create_router(  # noqa: F811
             by_reference=handle_options._by_reference,
         ),
     )
-    router._get_singleton_asyncio_loop().set_exception_handler(
-        asyncio_grpc_exception_handler
-    )
-    return router
 
 
 def add_grpc_address(grpc_server: gRPCServer, server_address: str):  # noqa: F811
@@ -302,3 +319,33 @@ def add_grpc_address(grpc_server: gRPCServer, server_address: str):  # noqa: F81
         grpc_server.add_secure_port(server_address, server_creds)
     else:
         grpc_server.add_insecure_port(server_address)
+
+
+def get_proxy_handle(endpoint: DeploymentID, info: EndpointInfo):  # noqa: F811
+    from ray.anyscale.serve._private.constants import (
+        ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP,
+        ANYSCALE_RAY_SERVE_PROXY_USE_GRPC,
+    )
+
+    # NOTE(zcin): needs to be lazy import due to a circular dependency.
+    # We should not be importing from application_state in context.
+    from ray.serve.context import _get_global_client
+
+    client = _get_global_client()
+    handle = client.get_handle(endpoint.name, endpoint.app_name, check_exists=True)
+
+    # NOTE(zcin): It's possible that a handle is already initialized
+    # if a deployment with the same name and application name was
+    # deleted, then redeployed later. However this is not an issue since
+    # we initialize all handles with the same init options.
+    if not handle.is_initialized:
+        # NOTE(zcin): since the router is eagerly initialized here, the
+        # proxy will receive the replica set from the controller early.
+        handle._init(
+            _prefer_local_routing=RAY_SERVE_PROXY_PREFER_LOCAL_NODE_ROUTING,
+            _source=DeploymentHandleSource.PROXY,
+            _by_reference=not ANYSCALE_RAY_SERVE_PROXY_USE_GRPC,
+            _run_router_in_separate_loop=ANYSCALE_RAY_SERVE_GRPC_RUN_PROXY_ROUTER_SEPARATE_LOOP,  # noqa
+        )
+
+    return handle.options(stream=not info.app_is_cross_language)
