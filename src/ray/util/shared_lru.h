@@ -29,6 +29,8 @@
 // 1. Add template arguments for key hash and key equal, to pass into absl::flat_hash_map.
 // 2. Provide a key hash wrapper to save a copy.
 // 3. flat hash map supports heterogeneous lookup, expose `KeyLike` templated interface.
+// 4. Add a `GetOrCreate` interface, which takes factory function to creation value.
+// 5. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
 #pragma once
 
