@@ -1103,8 +1103,9 @@ class MetricsLogger:
         Args:
             state: The state to set `self` to.
         """
-        for flat_key, stats_state in state["stats"].items():
-            self._set_key(flat_key, Stats.from_state(stats_state))
+        with self._threading_lock:
+            for flat_key, stats_state in state["stats"].items():
+                self._set_key(flat_key, Stats.from_state(stats_state))
 
     def _check_tensor(self, key: Tuple[str], value) -> None:
         # `value` is a tensor -> Log it in our keys set.
