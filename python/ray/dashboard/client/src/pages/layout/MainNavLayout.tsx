@@ -3,6 +3,7 @@ import React, { useContext } from "react";
 import { RiBookMarkLine, RiFeedbackLine } from "react-icons/ri/";
 import { Outlet, Link as RouterLink } from "react-router-dom";
 import { GlobalContext } from "../../App";
+import { SearchTimezone } from "../../components/SearchComponent";
 import Logo from "../../logo.svg";
 import { MainNavContext, useMainNavState } from "./mainNavContext";
 
@@ -106,7 +107,8 @@ const NAV_ITEMS = [
 const MainNavBar = () => {
   const { mainNavPageHierarchy } = useContext(MainNavContext);
   const rootRouteId = mainNavPageHierarchy[0]?.id;
-  const { metricsContextLoaded, grafanaHost } = useContext(GlobalContext);
+  const { metricsContextLoaded, grafanaHost, serverTimeZone, currentTimeZone } =
+    useContext(GlobalContext);
 
   let navItems = NAV_ITEMS;
   if (!metricsContextLoaded || grafanaHost === "DISABLED") {
@@ -179,6 +181,17 @@ const MainNavBar = () => {
           </IconButton>
         </Tooltip>
       </Box>
+      <Tooltip
+        placement="left-start"
+        title="The timezone of logs are not impacted by this selection."
+      >
+        <Box sx={{ marginRight: 3 }}>
+          <SearchTimezone
+            currentTimeZone={currentTimeZone}
+            serverTimeZone={serverTimeZone}
+          />
+        </Box>
+      </Tooltip>
     </Box>
   );
 };

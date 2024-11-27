@@ -124,7 +124,7 @@ class TestOfflineData(unittest.TestCase):
             num_samples=10, return_iterator=2, num_shards=2
         )
         self.assertIsInstance(batch, list)
-        # Ensure we have indeed two such `SStreamSplitDataIterator` instances.
+        # Ensure we have indeed two such `StreamSplitDataIterator` instances.
         self.assertEqual(len(batch), 2)
         from ray.data._internal.iterator.stream_split_iterator import (
             StreamSplitDataIterator,
