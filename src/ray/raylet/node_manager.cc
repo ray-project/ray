@@ -1889,11 +1889,10 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
                 PopWorkerStatus status,
                 const std::string &runtime_env_setup_error_message) {
         // This callback does not use the worker.
-        RAY_LOG(ERROR) << "Prestart worker started! token " <<
-
-            worker->GetStartupToken() << ", id " << worker->WorkerId() << ", status "
-                       << status << ", runtime_env_setup_error_message "
-                       << runtime_env_setup_error_message;
+        RAY_LOG(DEBUG).WithField(worker->WorkerId())
+            << "Prestart worker started! token " << worker->GetStartupToken()
+            << ", status " << status << ", runtime_env_setup_error_message "
+            << runtime_env_setup_error_message;
         return false;
       });
 

@@ -1088,7 +1088,7 @@ void WorkerPool::TryKillingIdleWorkers() {
     }
 
     const auto &job_id = it->worker->GetAssignedJobId();
-    if (finished_jobs_.count(job_id) > 0) {
+    if (finished_jobs_.contains(job_id)) {
       // The job has finished, so we should kill the worker immediately.
       KillIdleWorker(*it);
       it = idle_of_all_languages_.erase(it);
@@ -1585,7 +1585,7 @@ void WorkerPool::WarnAboutSize() {
       RAY_LOG(WARNING) << warning_message_str;
 
       auto error_data_ptr = gcs::CreateErrorTableData(
-          "worker_pool_large", warning_message_str, absl::ToUnixMillis(get_time_()));
+          "worker_pool_large", warning_message_str, get_time_());
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }
