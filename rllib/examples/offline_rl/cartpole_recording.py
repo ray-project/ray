@@ -48,7 +48,6 @@ Number of experiences recorded: 26644
 """
 
 import ray
-import time
 
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.core import COMPONENT_RL_MODULE
@@ -66,7 +65,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=200000,
     default_reward=350.0,
 )
-parser.set_defaults(checkpoint_at_end=True)
+parser.set_defaults(checkpoint_at_end=True, max_concurrent_trials=1)
 # Use `parser` to add your own custom command line options to this script
 # and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
@@ -93,7 +92,7 @@ config = (
         evaluation_num_env_runners=1,
         evaluation_interval=1,
         evaluation_parallel_to_training=True,
-        evaluation_config=PPOConfig.overrides(exploration=False),
+        evaluation_config=PPOConfig.overrides(explore=False),
     )
 )
 
@@ -139,11 +138,8 @@ if __name__ == "__main__":
         evaluation_duration_unit="episodes",
         evaluation_interval=1,
         evaluation_parallel_to_training=False,
-        evaluation_config=PPOConfig.overrides(exploration=False),
+        evaluation_config=PPOConfig.overrides(explore=False),
     )
-
-    # Wait until all resources are released.
-    time.sleep(12.0)
 
     # Build the algorithm for evaluation.
     algo = config.build()
@@ -161,9 +157,6 @@ if __name__ == "__main__":
 
     # Stop the algorithm.
     algo.stop()
-
-    # Wait a bit until all actors have been stopped.
-    time.sleep(12.0)
 
     # Check the number of rows in the dataset.
     ds = ray.data.read_parquet("local:///tmp/cartpole")

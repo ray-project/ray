@@ -29,6 +29,13 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         # Initialize the parent.
         super().__init__(config, **kwargs)
 
+        # Get the data context for this `EnvRunner`.
+        data_context = ray.data.DataContext.get_current()
+        # Limit the resources for Ray Data to the CPUs given to this `EnvRunner`.
+        data_context.execution_options.resource_limits.cpu = (
+            config.num_cpus_per_env_runner
+        )
+
         # Set the output write method.
         self.output_write_method = self.config.output_write_method
         self.output_write_method_kwargs = self.config.output_write_method_kwargs
