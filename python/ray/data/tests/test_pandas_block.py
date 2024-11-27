@@ -12,6 +12,9 @@ import ray.data
 from ray.data._internal.pandas_block import PandasBlockAccessor
 from ray.data.extensions.object_extension import _object_extension_type_allowed
 
+# Set seed for the test for size as it related to sampling
+np.random.seed(42)
+
 
 def test_append_column(ray_start_regular_shared):
     animals = ["Flamingo", "Centipede"]

@@ -1,5 +1,6 @@
 import collections
 import heapq
+import logging
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -16,6 +17,7 @@ from typing import (
 )
 
 import numpy as np
+from pandas.api.types import is_object_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
@@ -32,10 +34,8 @@ from ray.data.block import (
     KeyType,
     U,
 )
-from pandas.api.types import is_object_dtype
-
-from ray.data.extensions import TensorArrayElement, TensorDtype
 from ray.data.context import DataContext
+from ray.data.extensions import TensorArrayElement, TensorDtype
 
 if TYPE_CHECKING:
     import pandas
@@ -45,6 +45,8 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
+_PANDAS_SIZE_BYTES_MIN_COUNT = 50
+logger = logging.getLogger(__name__)
 
 _pandas = None
 
@@ -64,8 +66,6 @@ class PandasRow(TableRow):
     """
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
-        from ray.data.extensions import TensorArrayElement
-
         pd = lazy_import_pandas()
 
         def get_item(keys: List[str]) -> Any:
@@ -190,8 +190,6 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
-        from ray.data.extensions import TensorArrayElement
-
         tensor = row[TENSOR_COLUMN_NAME].iloc[0]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
@@ -316,6 +314,8 @@ class PandasBlockAccessor(TableBlockAccessor):
                     continue
 
                 # Check if the object has been seen before
+                # i.e. a = np.ndarray([1,2,3]), b = [a,a]
+                # The patten above will have only one memory copy
                 if id(current) in seen:
                     continue
                 seen.add(id(current))
@@ -347,7 +347,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
-        min_sample_size = 50
+        min_sample_size = _PANDAS_SIZE_BYTES_MIN_COUNT
 
         # Handle object columns separately
         for column in self._table.columns:
@@ -360,14 +360,20 @@ class PandasBlockAccessor(TableBlockAccessor):
 
                 # Determine the sample size based on min_count
                 sample_size = min(total_size, min_sample_size)
-                # Following codes can also handel the case that sample_size == total_size
-                sampled_indices = np.random.choice(total_size, sample_size, replace=False)
+                # Following codes can also handel case that sample_size == total_size
+                sampled_indices = np.random.choice(
+                    total_size, sample_size, replace=False
+                )
                 sampled_data = sampled_column[sampled_indices]
-                vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
-                column_memory_sample = np.sum(vectorized_size_calc(sampled_data))
-                # Scale back to the full column size if we sampled
-                column_memory = column_memory_sample * (total_size / sample_size)
-                memory_usage[column] = column_memory
+                try:
+                    vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
+                    column_memory_sample = np.sum(vectorized_size_calc(sampled_data))
+                    # Scale back to the full column size if we sampled
+                    column_memory = column_memory_sample * (total_size / sample_size)
+                    memory_usage[column] = column_memory
+                except Exception as e:
+                    # Handle or log the exception as needed
+                    logger.warning(f"Error calculating size for column '{column}': {e}")
 
         # Sum up total memory usage
         total_memory_usage = memory_usage.sum()
