@@ -469,6 +469,27 @@ ray.get(my_actor.print_message.remote())
     assert "(MyActor pid=" not in stderr
 
 
+def test_configure_both_structured_logging_and_lib_logging(shutdown_only):
+    """
+    Import `ray.data` to configure the `ray.data` logger. Then, configure the
+    `root` and `ray` loggers in `ray.init()`. Ensure that handlers are not reset.
+    """
+    script = """
+import ray
+import logging
+import ray.data
+
+old_data_logger = logging.getLogger("ray.data")
+assert len(old_data_logger.handlers) > 0
+
+ray.init(logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
+
+new_data_logger = logging.getLogger("ray.data")
+assert len(new_data_logger.handlers) == len(old_data_logger.handlers)
+"""
+    run_string_as_driver(script)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
