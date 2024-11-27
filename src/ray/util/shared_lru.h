@@ -13,8 +13,9 @@
 // limitations under the License.
 //
 // SharedLruCache is a LRU cache, with all entries shared, which means a single entry
-// could be accessed by multiple getters. When `Get`, a copy of the value is returned, so
-// for heavy-loaded types it's suggested to wrap with `std::shared_ptr<>`.
+// could be accessed by multiple getters. All values are wrapped with shared pointer to
+// avoid copy at get operation, meanwhile also useful to maintain memory validity at any
+// time.
 //
 // Example usage:
 // SharedLruCache<std::string, std::string> cache{cap};
