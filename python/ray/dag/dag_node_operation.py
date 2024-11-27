@@ -155,6 +155,7 @@ class _DAGOperationGraphNode:
     def in_degree(self) -> int:
         return len(self.in_edges)
 
+    @property
     def is_ready(self) -> bool:
         """
         If this node is not part of a synchronous group of tasks, it is ready
@@ -217,7 +218,7 @@ def _push_candidate_node_if_ready(
 ) -> None:
     if node.in_degree == 0 and node.sync_group is not None:
         node.sync_group.ready_task_idxs.add(node.task_idx)
-    if node.is_ready():
+    if node.is_ready:
         if node.sync_group is None or not node.sync_group.scheduled:
             heapq.heappush(
                 actor_to_candidates[node.actor_handle._actor_id],
@@ -271,10 +272,10 @@ def _select_next_nodes(
     }
 
     if top_priority_node.sync_group is not None:
-        for peer_idx in top_priority_node.sync_group.task_idxs:
-            peer_node = graph[peer_idx]
-            assert peer_node.is_ready()
-            next_nodes.add(peer_node)
+        for idx in top_priority_node.sync_group.task_idxs:
+            node = graph[idx]
+            assert node.is_ready
+            next_nodes.add(node)
 
     return list(next_nodes)
 
@@ -576,7 +577,7 @@ def _generate_actor_to_execution_schedule(
     num_nodes = len(graph)
     assert len(visited_nodes) == num_nodes, "Expected all nodes to be visited"
     for node in visited_nodes:
-        assert node.is_ready(), f"Expected {node} to be ready"
+        assert node.is_ready, f"Expected {node} to be ready"
     for candidates in actor_to_candidates.values():
         assert len(candidates) == 0, "Expected all candidates to be empty"
 

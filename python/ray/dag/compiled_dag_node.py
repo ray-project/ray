@@ -746,8 +746,9 @@ class ExecutableTask:
                 except Exception as exc:
                     output_val = _wrap_exception(exc)
 
-                # When overlap_gpu_communication is enabled, wrap the result in a GPUFuture
-                # so that this compute operation can be overlapped with communication.
+                # When overlap_gpu_communication is enabled, wrap the result in a
+                # GPUFuture so that this compute operation can be overlapped
+                # with communication.
                 self.wrap_and_set_intermediate_future(
                     output_val, wrap_in_gpu_future=overlap_gpu_communication
                 )
