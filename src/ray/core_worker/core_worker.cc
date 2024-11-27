@@ -793,6 +793,8 @@ void CoreWorker::Shutdown() {
   // it up.
   if (gcs_client_) {
     RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    // TODO(hjiang): Move the Disconnect() logic
+    // to GcsClient destructor.
     gcs_client_->Disconnect();
     gcs_client_.reset();
   }

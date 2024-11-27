@@ -126,6 +126,10 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
           now + absl::Seconds(server_unavailable_timeout_seconds_);
     }
     while (server_unavailable_timeout_time_.has_value()) {
+      // This is to implement backpressure and avoid OOM.
+      // Ideally we shouldn't block the event loop but
+      // for GCS client, if GCS is down for too long
+      // there is no much else we can do.
       std::this_thread::sleep_for(
           std::chrono::milliseconds(check_channel_status_interval_milliseconds_));
 
