@@ -32,6 +32,9 @@ from ray.data.block import (
     KeyType,
     U,
 )
+from pandas.api.types import is_object_dtype
+
+from ray.data.extensions import TensorArrayElement, TensorDtype
 from ray.data.context import DataContext
 
 if TYPE_CHECKING:
@@ -295,10 +298,6 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
-        from pandas.api.types import is_object_dtype
-
-        from ray.data.extensions import TensorArrayElement, TensorDtype
-
         pd = lazy_import_pandas()
 
         def get_deep_size(obj):
@@ -348,24 +347,29 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
-        sample_fraction = 0.01
+        min_sample_size = 50
+
         # Handle object columns separately
         for column in self._table.columns:
-            # Check pandas object dtype and the extenstion dtype
+            # Check pandas object dtype and the extension dtype
             if is_object_dtype(self._table[column].dtype) or isinstance(
                 self._table[column].dtype, object_need_check
             ):
-                sampled_column = self._table[column].sample(
-                    frac=sample_fraction, random_state=42
-                )
-                # Use pandas map for efficiency in calling get_deep_size
-                column_memory_sample = sampled_column.map(get_deep_size).sum()
-                # Scale back to the full column size
-                column_memory = column_memory_sample * (1 / sample_fraction)
+                sampled_column = self._table[column].values
+                total_size = len(sampled_column)
+
+                # Determine the sample size based on min_count
+                sample_size = min(total_size, min_sample_size)
+                # Following codes can also handel the case that sample_size == total_size
+                sampled_indices = np.random.choice(total_size, sample_size, replace=False)
+                sampled_data = sampled_column[sampled_indices]
+                vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
+                column_memory_sample = np.sum(vectorized_size_calc(sampled_data))
+                # Scale back to the full column size if we sampled
+                column_memory = column_memory_sample * (total_size / sample_size)
                 memory_usage[column] = column_memory
 
         # Sum up total memory usage
-
         total_memory_usage = memory_usage.sum()
 
         return int(total_memory_usage)
