@@ -24,31 +24,31 @@ namespace {
 constexpr size_t kTestCacheSz = 1;
 }  // namespace
 
-TEST(SharedLruCache, PutAndGet) {
+TEST(SharedLruCacheTest, PutAndGet) {
   ThreadSafeSharedLruCache<std::string, std::string> cache{kTestCacheSz};
 
   // No value initially.
-  auto val = cache.Get("1");
+  auto val = cache.Get(std::string_view{"1"});
   EXPECT_FALSE(val.has_value());
 
   // Check put and get.
   cache.Put("1", "1");
-  val = cache.Get("1");
+  val = cache.Get(std::string_view{"1"});
   EXPECT_TRUE(val.has_value());
-  EXPECT_EQ(*val, "1");
+  EXPECT_EQ(*val, std::string_view{"1"});
 
   // Check key eviction.
   cache.Put("2", "2");
-  val = cache.Get("1");
+  val = cache.Get(std::string_view{"1"});
   EXPECT_FALSE(val.has_value());
-  val = cache.Get("2");
+  val = cache.Get(std::string_view{"2"});
   EXPECT_TRUE(val.has_value());
-  EXPECT_EQ(*val, "2");
+  EXPECT_EQ(*val, std::string_view{"2"});
 
   // Check deletion.
-  EXPECT_FALSE(cache.Delete("1"));
-  EXPECT_TRUE(cache.Delete("2"));
-  val = cache.Get("2");
+  EXPECT_FALSE(cache.Delete(std::string_view{"1"}));
+  EXPECT_TRUE(cache.Delete(std::string_view{"2"}));
+  val = cache.Get(std::string_view{"2"});
   EXPECT_FALSE(val.has_value());
 }
 
