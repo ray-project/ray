@@ -260,8 +260,9 @@ class RayLog {
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_dir Logging output directory name.
   /// \param log_file Logging output file name.
-  /// Both [log_dir] and [log_file] are used to determine log output filename; if both empty, the log won't output to file, but to stdout.
-  /// If both set, [log_file] has higher priority than [log_dir].
+  /// Both [log_dir] and [log_file] are used to determine log output filename; if both
+  /// empty, the log won't output to file, but to stdout. If both set, [log_file] has
+  /// higher priority than [log_dir].
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_dir = "",
@@ -310,7 +311,9 @@ class RayLog {
       const std::vector<FatalLogCallback> &expose_log_callbacks);
 
   /// Get log outout filename.
-  static std::string GetLogOutputFilename(const std::string& log_dir, const std::string& log_file, const std::string& app_name);
+  static std::string GetLogOutputFilename(const std::string &log_dir,
+                                          const std::string &log_file,
+                                          const std::string &app_name);
 
   template <typename T>
   RayLog &operator<<(const T &t) {

@@ -12,9 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
 #include <limits>
-#include <cstdlib>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
@@ -44,19 +44,26 @@ DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 namespace {
 // GCS server output filename.
 constexpr std::string_view kGcsServerLog = "gcs_server.out";
-} // namespace
+}  // namespace
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   // Backward compatibility notes:
-  // Due to historical reason, GCS server flushes all logging and stdout/stderr to a single file called `gcs_server.out`.
-  // To keep backward compatibility at best effort, we use the same filename as output, and disable log rotation by default.
-  const int64_t log_rotation_max_size = FLAGS_log_rotation_size <= 0 ? std::numeric_limits<int64_t>::max() : FLAGS_log_rotation_size;
-  RAY_CHECK_EQ(setenv("RAY_ROTATION_MAX_BYTES", std::to_string(log_rotation_max_size), /*overwrite=*/1));
-  const std::string log_file = FLAGS_log_dir.empty() ? kGcsServerLog.data() : absl::StrFormat("%s/%s", FLAGS_log_dir, kGcsServerLog);
-  // TODO(hjiang): For the current implementation, we assume all logging are managed by spdlog, the caveat is there could be
-  // there's writing to stdout/stderr as well. The final solution is implement self-customized sink for spdlog, and redirect
+  // Due to historical reason, GCS server flushes all logging and stdout/stderr to a
+  // single file called `gcs_server.out`. To keep backward compatibility at best effort,
+  // we use the same filename as output, and disable log rotation by default.
+  const int64_t log_rotation_max_size = FLAGS_log_rotation_size <= 0
+                                            ? std::numeric_limits<int64_t>::max()
+                                            : FLAGS_log_rotation_size;
+  RAY_CHECK_EQ(setenv(
+      "RAY_ROTATION_MAX_BYTES", std::to_string(log_rotation_max_size), /*overwrite=*/1));
+  const std::string log_file =
+      FLAGS_log_dir.empty() ? kGcsServerLog.data()
+                            : absl::StrFormat("%s/%s", FLAGS_log_dir, kGcsServerLog);
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
   // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
 
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,

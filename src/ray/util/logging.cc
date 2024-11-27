@@ -311,16 +311,18 @@ void RayLog::InitLogFormat() {
   }
 }
 
-/*static*/ std::string RayLog::GetLogOutputFilename(const std::string& log_dir, const std::string& log_file, const std::string& app_name) {
+/*static*/ std::string RayLog::GetLogOutputFilename(const std::string &log_dir,
+                                                    const std::string &log_file,
+                                                    const std::string &app_name) {
   if (!log_file.empty()) {
     return log_file;
   }
   if (!log_dir.empty()) {
-    #ifdef _WIN32
-      int pid = _getpid();
-    #else
-      pid_t pid = getpid();
-    #endif
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
 
     return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
   }
@@ -352,7 +354,8 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  const auto log_output_fname = GetLogOutputFilename(log_dir, log_file, app_name_without_path);
+  const auto log_output_fname =
+      GetLogOutputFilename(log_dir, log_file, app_name_without_path);
   if (!log_output_fname.empty()) {
     // Reset log pattern and level and we assume a log file can be rotated with
     // 10 files in max size 512M by default.
@@ -382,9 +385,7 @@ void RayLog::StartRayLog(const std::string &app_name,
       spdlog::drop(RayLog::GetLoggerName());
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_output_fname,
-        log_rotation_max_size_,
-        log_rotation_file_num_);
+        log_output_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
