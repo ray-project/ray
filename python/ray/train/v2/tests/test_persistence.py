@@ -429,4 +429,4 @@ def test_trainer(
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-x", __file__]))

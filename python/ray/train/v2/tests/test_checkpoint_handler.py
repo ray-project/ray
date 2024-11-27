@@ -85,4 +85,6 @@ def test_checkpoint_handler(
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

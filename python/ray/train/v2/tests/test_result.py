@@ -58,4 +58,6 @@ def test_get_best_checkpoint():
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

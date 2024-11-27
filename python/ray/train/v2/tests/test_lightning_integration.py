@@ -82,6 +82,4 @@ def test_trainer_with_native_dataloader(
 if __name__ == "__main__":
     import sys
 
-    import pytest
-
     sys.exit(pytest.main(["-v", "-x", __file__]))

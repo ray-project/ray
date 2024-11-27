@@ -1,4 +1,4 @@
-from typing import List, Optional
+from typing import List
 from unittest.mock import MagicMock
 
 import pytest
@@ -25,6 +25,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.worker_group import (
     Worker,
+    WorkerGroup,
     WorkerGroupStatus,
     WorkerStatus,
 )
@@ -32,24 +33,23 @@ from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.config import ScalingConfig
 
 
-class DummyWorkerGroup:
-    def __init__(self, run_config=None, callbacks=None):
+class DummyWorkerGroup(WorkerGroup):
+    def __init__(self, *args, **kwargs):
         self._active = False
         self._num_workers = 0
         self._latest_start_time = float("-inf")
         self._worker_statuses = {}
-        self._callbacks = callbacks or []
 
         self._start_failure = None
 
-    def poll_status(self, timeout: Optional[float] = None) -> WorkerGroupStatus:
+    def poll_status(self, *args, **kwargs) -> WorkerGroupStatus:
         return WorkerGroupStatus(
             num_workers=self._num_workers,
             latest_start_time=self._latest_start_time,
             worker_statuses=self._worker_statuses,
         )
 
-    def start(self, train_fn, num_workers, resources_per_worker, checkpoint=None):
+    def start(self, train_fn, num_workers: int, resources_per_worker: dict, **kwargs):
         if self._start_failure:
             raise self._start_failure
 
@@ -90,6 +90,8 @@ class MockScalingPolicy(ScalingPolicy):
         self._recovery_decision_queue = []
         self._monitor_decision_queue = []
 
+        super().__init__(scaling_config)
+
     def make_decision_for_non_running_worker_group(
         self, worker_group_status: WorkerGroupStatus
     ) -> ScalingDecision:
@@ -115,6 +117,8 @@ class MockScalingPolicy(ScalingPolicy):
 class MockFailurePolicy(FailurePolicy):
     def __init__(self, failure_config):
         self._decision_queue = []
+
+        super().__init__(failure_config)
 
     def make_decision(self, worker_group_status: WorkerGroupStatus) -> FailureDecision:
         if self._decision_queue:
@@ -346,4 +350,6 @@ def test_controller_callback():
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

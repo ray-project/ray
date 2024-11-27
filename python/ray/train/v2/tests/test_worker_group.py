@@ -430,4 +430,6 @@ def test_shutdown_hook_with_dead_actors():
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

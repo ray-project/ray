@@ -94,4 +94,6 @@ def test_failure_on_preemption_errors():
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

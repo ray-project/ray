@@ -179,4 +179,6 @@ def test_setup_working_directory(tmp_path, monkeypatch, env_disabled):
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

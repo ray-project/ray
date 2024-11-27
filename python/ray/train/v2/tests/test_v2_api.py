@@ -75,4 +75,6 @@ def test_train_v2_import(monkeypatch, env_v2_enabled):
 
 
 if __name__ == "__main__":
-    pytest.main(["-v", __file__])
+    import sys
+
+    sys.exit(pytest.main(["-v", "-x", __file__]))

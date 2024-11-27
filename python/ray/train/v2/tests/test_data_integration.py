@@ -35,7 +35,7 @@ def test_e2e_single_dataset(ray_start_4_cpus, restore_data_context):  # noqa: F8
         except KeyError:
             pass
 
-        train_ds = ray.train.get_context().get_dataset_shard("train")
+        train_ds = ray.train.get_dataset_shard("train")
         num_rows = 0
         for batch in train_ds.iter_batches():
             num_rows += len(batch["id"])

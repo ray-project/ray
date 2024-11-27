@@ -146,4 +146,4 @@ def test_load_state_error(tmp_path, json_state):
 if __name__ == "__main__":
     import sys
 
-    sys.exit(pytest.main(["-v", __file__]))
+    sys.exit(pytest.main(["-v", "-x", __file__]))
