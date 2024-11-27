@@ -2459,7 +2459,12 @@ class Dataset:
 
         Returns:
             A new, sorted :class:`Dataset`.
+
+        Raises:
+            ``ValueError``: if the sort key is None.
         """
+        if key is None:
+            raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
         op = Sort(
