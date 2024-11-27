@@ -19,10 +19,10 @@
 // Example usage:
 // SharedLruCache<std::string, std::string> cache{cap};
 // // Put a key-value pair into cache.
-// cache.Put("key", "val");
+// cache.Put("key", std::make_shared<std::string>("val"));
 //
 // // Get a key-value pair from cache.
-// auto val = ache.Get("key");
+// auto val = cache.Get("key");
 // // Check and consume `val`.
 //
 // TODO(hjiang):
@@ -64,7 +64,8 @@ class SharedLruCache final {
 
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
-  void Put(Key key, Val value) {
+  void Put(Key key, std::shared_ptr<Val> value) {
+    RAY_CHECK(value != nullptr);
     auto iter = cache_.find(key);
     if (iter != cache_.end()) {
       lru_list_.erase(iter->second.lru_iterator);
@@ -95,12 +96,11 @@ class SharedLruCache final {
     return true;
   }
 
-  // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
-  // If found, return a copy for the value.
-  std::optional<Val> Get(const Key &key) {
+  // Look up the entry with key `key`. Return nullptr if key doesn't exist.
+  std::shared_ptr<Val> Get(const Key &key) {
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
-      return std::nullopt;
+      return nullptr;
     }
     lru_list_.splice(lru_list_.begin(), lru_list_, cache_iter->second.lru_iterator);
     return cache_iter->second.value;
@@ -118,7 +118,7 @@ class SharedLruCache final {
  private:
   struct Entry {
     // The entry's value.
-    Val value;
+    std::shared_ptr<Val> value;
 
     // A list iterator pointing to the entry's position in the LRU list.
     typename std::list<Key>::iterator lru_iterator;
@@ -161,8 +161,8 @@ class ThreadSafeSharedLruCache final {
 
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
-  void Put(Key key, Val value) {
-    std::lock_guard lck(mtx_);
+  void Put(Key key, std::shared_ptr<Val> value) {
+    std::lock_guard lck(mu_);
     cache_.Put(std::move(key), std::move(value));
   }
 
@@ -170,20 +170,20 @@ class ThreadSafeSharedLruCache final {
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
   bool Delete(const Key &key) {
-    std::lock_guard lck(mtx_);
+    std::lock_guard lck(mu_);
     return cache_.Delete(key);
   }
 
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
-  std::optional<Val> Get(const Key &key) {
-    std::lock_guard lck(mtx_);
+  std::shared_ptr<Val> Get(const Key &key) {
+    std::lock_guard lck(mu_);
     return cache_.Get(key);
   }
 
   // Clear the cache.
   void Clear() {
-    std::lock_guard lck(mtx_);
+    std::lock_guard lck(mu_);
     cache_.Clear();
   }
 
@@ -191,7 +191,7 @@ class ThreadSafeSharedLruCache final {
   size_t max_entries() const { return cache_.max_entries(); }
 
  private:
-  std::mutex mtx_;
+  std::mutex mu_;
   SharedLruCache<Key, Val> cache_;
 };
 

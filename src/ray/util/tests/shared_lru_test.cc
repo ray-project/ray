@@ -30,41 +30,41 @@ TEST(SharedLruCache, PutAndGet) {
 
   // No value initially.
   auto val = cache.Get("1");
-  EXPECT_FALSE(val.has_value());
+  EXPECT_EQ(val, nullptr);
 
   // Check put and get.
-  cache.Put("1", "1");
+  cache.Put("1", std::make_shared<std::string>("1"));
   val = cache.Get("1");
-  EXPECT_TRUE(val.has_value());
+  EXPECT_NE(val, nullptr);
   EXPECT_EQ(*val, "1");
 
   // Check key eviction.
-  cache.Put("2", "2");
+  cache.Put("2", std::make_shared<std::string>("2"));
   val = cache.Get("1");
-  EXPECT_FALSE(val.has_value());
+  EXPECT_EQ(val, nullptr);
   val = cache.Get("2");
-  EXPECT_TRUE(val.has_value());
+  EXPECT_NE(val, nullptr);
   EXPECT_EQ(*val, "2");
 
   // Check deletion.
   EXPECT_FALSE(cache.Delete("1"));
   EXPECT_TRUE(cache.Delete("2"));
   val = cache.Get("2");
-  EXPECT_FALSE(val.has_value());
+  EXPECT_EQ(val, nullptr);
 }
 
 // Testing senario: push multiple same keys into the cache.
 TEST(SharedLruCache, SameKeyTest) {
   ThreadSafeSharedLruCache<int, int> cache{2};
 
-  cache.Put(1, 1);
+  cache.Put(1, std::make_shared<int>(1));
   auto val = cache.Get(1);
-  EXPECT_TRUE(val.has_value());
+  EXPECT_NE(val, nullptr);
   EXPECT_EQ(1, *val);
 
-  cache.Put(1, 2);
+  cache.Put(1, std::make_shared<int>(2));
   val = cache.Get(1);
-  EXPECT_TRUE(val.has_value());
+  EXPECT_NE(val, nullptr);
   EXPECT_EQ(2, *val);
 }
 
