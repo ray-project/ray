@@ -33,7 +33,7 @@ class CPUCommunicator:
         self.collective_data: Dict[int, List[torch.Tensor]] = defaultdict(list)
         # Buffer for the number of actors seen, each entry is one p2p op.
         self.num_actors_seen = defaultdict(int)
-        # Number of actors who have read the result, and about the exit the function.
+        # Number of actors who have read the result, and are about the exit the function.
         # State is kept so we only garbage collect after the last actor has read the
         # relevant data.
         self.num_actors_read = defaultdict(int)
@@ -222,10 +222,10 @@ class CPUNcclGroup(GPUCommunicator):
         return self._world_size
 
     def recv_stream(self):
-        pass
+        raise NotImplementedError
 
     def send_stream(self):
-        pass
+        raise NotImplementedError
 
 
 class MockCudaStream:
