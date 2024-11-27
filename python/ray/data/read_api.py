@@ -347,6 +347,7 @@ def read_datasource(
         datasource: The :class:`~ray.data.Datasource` to read data from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -483,6 +484,7 @@ def read_mongo(
             the results of pipeline.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -572,6 +574,7 @@ def read_bigquery(
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to ray.remote in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -700,6 +703,7 @@ def read_parquet(
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to PyArrow tensors. This function
@@ -855,6 +859,7 @@ def read_images(
             and/or accurately. In most cases, you do not need to set this. If ``None``,
             this function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -986,6 +991,7 @@ def read_parquet_bulk(
             specified columns are read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1139,6 +1145,7 @@ def read_json(
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1308,6 +1315,7 @@ def read_csv(
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1425,7 +1433,8 @@ def read_text(
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
-            in the subsequent text decoding map task.
+            in the subsequent text decoding map task. See
+            :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1536,7 +1545,8 @@ def read_avro(
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
-            in the subsequent text decoding map task.
+            in the subsequent text decoding map task. See 
+            :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2010,6 +2020,7 @@ def read_binary_files(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -2146,6 +2157,7 @@ def read_sql(
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2228,6 +2240,7 @@ def read_databricks_tables(
         schema: (Optional) The default schema used by the query.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2340,6 +2353,7 @@ def read_hudi(
             endpoint, etc. See more explanation
             `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2775,6 +2789,7 @@ def read_delta_sharing_tables(
             details, see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control the number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3145,7 +3160,8 @@ def read_iceberg(
              `pyiceberg catalog
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
-        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks
+        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
@@ -3215,6 +3231,7 @@ def read_lance(
             see `LanceDB API doc <https://lancedb.github.io\
             /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,

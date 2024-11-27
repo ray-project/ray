@@ -326,7 +326,8 @@ def _rayify_task(
         ray_postsubmit_cbs: Post-task submission callbacks.
         ray_pretask_cbs: Pre-task execution callbacks.
         ray_posttask_cbs: Post-task execution callbacks.
-        ray_remote_args: Ray task options.
+        ray_remote_args: Ray task options. See
+            :meth:`~ray.runtime_env.RuntimeEnv` for details.
 
     Returns:
         A literal, a Ray object reference representing a submitted task, or a

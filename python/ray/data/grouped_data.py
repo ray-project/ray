@@ -189,7 +189,8 @@ class GroupedData:
                 example, specify `num_gpus=1` to request 1 GPU for each parallel map
                 worker.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
 
         Returns:
             The return type is determined by the return type of ``fn``, and the return
