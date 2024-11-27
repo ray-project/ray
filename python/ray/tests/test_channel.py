@@ -1011,7 +1011,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
     # actor1 writes data to CompositeChannel and actor1 and actor2 read it.
     actor1_output_channel = ray.get(
         actor1.create_composite_channel.remote(
-            actor1, [(actor1, node1), (actor2, node2)], None
+            actor1, [(actor1, node1), (actor2, node2)]
         )
     )
     ray.get(actor2.pass_channel.remote(actor1_output_channel))
@@ -1020,7 +1020,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 
     actor1_output_channel = ray.get(
         actor1.create_composite_channel.remote(
-            actor1, [(actor1, node1), (actor1, node1)], None
+            actor1, [(actor1, node1), (actor1, node1)]
         )
     )
     ray.get(actor1.write.remote("hello world"))
@@ -1031,12 +1031,19 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # are the same actor. Note that reading the channel multiple
         # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
-    """
-    TODO (kevin85421): Add tests for the following cases:
-    (1) actor1 writes data to CompositeChannel and two Ray tasks on actor2 read it.
-    (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
-    Currently, (1) is not supported, and (2) is blocked by the reference count issue.
-    """
+
+    # actor1 writes data to CompositeChannel and actor2 and the driver reads it.
+    driver_actor = create_driver_actor()
+    actor1_output_channel = ray.get(
+        actor1.create_composite_channel.remote(
+            actor1,
+            [(driver_actor, get_actor_node_id(driver_actor)), (actor2, node2)],
+        )
+    )
+    ray.get(actor2.pass_channel.remote(actor1_output_channel))
+    ray.get(actor1.write.remote("world hello"))
+    assert ray.get(actor2.read.remote()) == "world hello"
+    assert actor1_output_channel.read() == "world hello"
 
 
 @pytest.mark.skipif(
