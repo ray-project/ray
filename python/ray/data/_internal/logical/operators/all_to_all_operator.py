@@ -29,7 +29,7 @@ class AbstractAllToAll(LogicalOperator):
                 of `input_op` will be the inputs to this operator.
             num_outputs: The number of expected output bundles outputted by this
                 operator.
-            ray_remote_args: Args to provide to ray.remote. See 
+            ray_remote_args: Args to provide to ray.remote. See
                 :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """
         super().__init__(name, [input_op], num_outputs)

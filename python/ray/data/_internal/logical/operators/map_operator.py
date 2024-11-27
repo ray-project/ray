@@ -35,7 +35,7 @@ class AbstractMap(AbstractOneToOne):
                 of `input_op` will be the inputs to this operator.
             min_rows_per_bundled_input: The target number of rows to pass to
                 ``MapOperator._add_bundled_input()``.
-            ray_remote_args: Args to provide to ray.remote. See 
+            ray_remote_args: Args to provide to ray.remote. See
                 :meth:`~ray.runtime_env.RuntimeEnv` for details.
             ray_remote_args_fn: A function that returns a dictionary of remote args
                 passed to each map worker. The purpose of this argument is to generate
@@ -92,7 +92,7 @@ class AbstractUDFMap(AbstractMap):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Args to provide to ray.remote. See 
+            ray_remote_args: Args to provide to ray.remote. See
                 :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """
         name = self._get_operator_name(name, fn)
