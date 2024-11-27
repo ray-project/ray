@@ -688,7 +688,7 @@ This initiates an actor pool with 10 ``DataWorker`` instances, each running an i
 
 .. note:: The ``num_cpus`` (and similarly the ``num_gpus``) attribute defines the resources **allocated to each** ``DataWorker`` not the full actor pool.
 
-You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithm_config.AlgorithmConfig.learners` configuration block:
+You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.learners` configuration block:
 
 .. code-block:: python
     
@@ -870,7 +870,7 @@ Tuning the **Post-Processing (Pre-Learner)** layer is generally more straightfor
 Actor Pool Size
 ~~~~~~~~~~~~~~~
 Internally, the **Post-Processing (PreLearner)** layer is defined by a :py:meth:`~ray.data.Dataset.map_batches` operation that starts an :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool`. Each actor in this pool runs an :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` 
-instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's 
+instances to transform batches on their way from disk to RLlib's :py:class:`~ray.rllib.core.learner.learner.Learner`. Obviously, the size of this :py:class:`~ray.data._internal.execution.operators.actor_pool_map_operator._ActorPool` defines the throughput of this layer and needs to be fine-tuned in regard to the pervious layer's 
 throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``map_batches_kwargs`` parameter to define this pool size:
 
 .. code-block:: python
@@ -933,7 +933,7 @@ As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offli
         },
     )
 
-.. warning:: Do not override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.batch_size_per_learner`: the former specifies the batch size in transformations of the streaming pipeline, while the 
+.. warning:: Do not override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.batch_size_per_learner`: the former specifies the batch size in transformations of the streaming pipeline, while the 
     latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`.
 
 How to tune Updating (Learner)
@@ -946,7 +946,8 @@ layer in coordination with the upstream components. Several parameters can be ad
 - Allocated Resources
 - Scheduling Strategy
 - Batch Sizing
-- Batch Prefetching.
+- Batch Prefetching
+- Learner Iterations.
 
 .. _actor-pool-size::
 
@@ -978,7 +979,7 @@ Just as with the Post-Processing (Pre-Learner) layer, allocating additional reso
 already utilize GPUs and performance remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity, or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload. Additionally, ensure that data 
 throughput and upstream components are optimized to keep the learners fully utilized, as insufficient upstream capacity can bottleneck the training process.
 
-.. warning::Currently, you cannot set both :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.num_gpus_per_learner` and :py:attr:`~ray.rllib.algorithm.algorithm_config.AlgorithmConfig.num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
+.. warning::Currently, you cannot set both :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_gpus_per_learner` and :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
 
 To provide your learners with more compute use ``num_gpus_per_learner`` or ``num_cpus_per_learner`` as follows:
 
@@ -1049,9 +1050,66 @@ Here is an example of how you can change the scheduling strategy:
 
 Batch Sizing
 ~~~~~~~~~~~~
+Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may underutilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger 
+batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.train_batch_size_per_learner` attribute as shown below.
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .training(
+        train_batch_size_per_learner=1024,
+    )
+
+.. tip::A good starting point for batch size tuning is ``2048``.
+
+In `Ray Data <data>`, it is common practice to use batch sizes that are powers of two. However, you are free to select any integer value for the batch size based on your needs.
 
 Batch Prefetching
 ~~~~~~~~~~~~~~~~~
+Batch prefetching allows you to control data consumption on the downstream side of your offline data pipeline. The primary goal is to ensure that learners remain active, maintaining a continuous flow of data. This is achieved by preparing the next batch while the learner processes the current one. Prefetching determines how many batches are kept ready for learners 
+and should be tuned based on the time required to produce the next batch and the learner's update speed. Prefetching too many batches can lead to memory inefficiencies and, in some cases, backpressure in upstream tasks.
+
+.. tip::The default in RLlib's Offline RL API is to prefetch ``2`` batches per learner instance, which works well with most tested applications.
+
+You can configure batch prefetching in the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.iter_batches_kwargs`:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .offline_data(
+        iter_batches_kwargs={
+            "prefetch_batches": 2,
+        }
+    )
+
+.. warning:: Do not override the ``batch_size`` in RLlib's :py:attr:`~.ray.rllib.algorithms.algorithm_config.AlgorithmConfig.map_batches_kwargs`. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.train_batch_size_per_learner`: the former specifies the batch size 
+    in iterating over data output of the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`. 
+
+Learner Iterations
+~~~~~~~~~~~~~~~~~~
+This tuning parameter is available only when using multiple instances of ::py:class:`~ray.rllib.core.learner.learner.Learner`. In distributed learning, each :py:class:`~ray.rllib.core.learner.learner.Learner` instance processes a substream of the offline streaming pipeline, iterating over batches from that substream. You can control the number of iterations each 
+:py:class:`~ray.rllib.core.learner.learner.Learner` instance runs per RLlib training iteration. Result reporting occurs after each RLlib training iteration. Setting this parameter too low results in inefficiencies, while excessively high values can hinder training monitoring and, in some cases - such as in RLlib's :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` 
+implementation - lead to stale training data. This happens because some data transformations rely on the same :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` that the :py:class:`~ray.rllib.core.learner.learner.Learner` instances are training on. The number of iterations per substream is controlled by the attribute 
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner`, which has a default value of ``None``, meaning it runs one epoch on the substream.
+
+You can modify this value as follows:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    AlgorithmConfig()
+    .offline_data(
+        # Train on 20 batches from the substream in each learner.
+        dataset_num_iters_per_learner=20,
+    )
+
+.. note::The default value of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner` is None, which allows each :py:class:`~ray.rllib.core.learner.learner.Learner` instance to process a full epoch on its data substream. While this setting works well for small datasets, it may not be suitable for larger datasets. It's important 
+    to tune this parameter according to the size of your dataset to ensure optimal performance.
 
 Input API
 ---------
