@@ -1,5 +1,6 @@
 import collections
 import heapq
+import logging
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -16,7 +17,6 @@ from typing import (
 )
 
 import numpy as np
-from pandas.api.types import is_object_dtype
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import _is_ndarray_tensor
@@ -34,7 +34,6 @@ from ray.data.block import (
     U,
 )
 from ray.data.context import DataContext
-from ray.data.extensions import TensorArrayElement, TensorDtype
 
 if TYPE_CHECKING:
     import pandas
@@ -46,6 +45,8 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # The sample size when estiamte the data size
 _PANDAS_SIZE_BYTES_MIN_COUNT = 50
+
+logger = logging.getLogger(__name__)
 
 _pandas = None
 
@@ -65,6 +66,8 @@ class PandasRow(TableRow):
     """
 
     def __getitem__(self, key: Union[str, List[str]]) -> Any:
+        from ray.data.extensions import TensorArrayElement
+
         pd = lazy_import_pandas()
 
         def get_item(keys: List[str]) -> Any:
@@ -189,6 +192,8 @@ class PandasBlockAccessor(TableBlockAccessor):
 
     @staticmethod
     def _build_tensor_row(row: PandasRow) -> np.ndarray:
+        from ray.data.extensions import TensorArrayElement
+
         tensor = row[TENSOR_COLUMN_NAME].iloc[0]
         if isinstance(tensor, TensorArrayElement):
             # Getting an item in a Pandas tensor column may return a TensorArrayElement,
@@ -295,6 +300,10 @@ class PandasBlockAccessor(TableBlockAccessor):
         return self._table.shape[0]
 
     def size_bytes(self) -> int:
+        from pandas.api.types import is_object_dtype
+
+        from ray.data.extensions import TensorArrayElement, TensorDtype
+
         pd = lazy_import_pandas()
 
         def get_deep_size(obj):
@@ -372,7 +381,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     memory_usage[column] = column_memory
                 except Exception as e:
                     # Handle or log the exception as needed
-                    print(f"Error calculating size for column '{column}': {e}")
+                    logger.warning(f"Error calculating size for column '{column}': {e}")
 
         # Sum up total memory usage
         total_memory_usage = memory_usage.sum()
