@@ -1,5 +1,8 @@
 import logging
 import threading
+
+# TODO (kevin85421): It is not used, but a weird error occurs if it is removed.
+import logging.config
 from typing import Union
 
 
