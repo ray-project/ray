@@ -1545,7 +1545,7 @@ def read_avro(
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
-            in the subsequent text decoding map task. See 
+            in the subsequent text decoding map task. See
             :meth:`~ray.runtime_env.RuntimeEnv` for details.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
