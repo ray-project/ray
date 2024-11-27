@@ -17,6 +17,7 @@
 #include <gtest/gtest.h>
 
 #include <string>
+#include <type_traits>
 
 namespace ray::utils::container {
 
@@ -65,6 +66,11 @@ TEST(SharedLruCache, SameKeyTest) {
   val = cache.Get(1);
   EXPECT_TRUE(val.has_value());
   EXPECT_EQ(2, *val);
+}
+
+TEST(SharedLruConstCache, TypeAliasAssertion) {
+  static_assert(
+      std::is_same_v<SharedLruConstCache<int, int>, SharedLruCache<int, const int>>);
 }
 
 }  // namespace ray::utils::container
