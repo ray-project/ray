@@ -24,8 +24,8 @@ the :class:`~ray.train.ScalingConfig`:
     )
 
 
-Using GPUs or HPUs
-------------------
+Using GPUs or other accelerators
+--------------------------------
 To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
@@ -40,7 +40,7 @@ run on 8 GPUs (8 workers, each using one GPU).
     )
 
 
-To use HPUs, pass HPU resources in ``resources_per_worker`` parameter to the :class:`~ray.train.ScalingConfig`.
+For other types of accelerators such as HPUs, you can set HPU resources by ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
 In the example below, training will run on 8 HPUs (8 workers, each using one HPU).
 
 .. testcode::

@@ -12,7 +12,7 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 
 
-3. :class:`resources_per_worker <ray.train.ScalingConfig>` - You can also specify HPU resources by resources_per_worker parameter.
+3. :class:`resources_per_worker <ray.train.ScalingConfig>` - used to specify other resource requirements, such as non-GPU accelerators like HPUs
 
 .. testcode::
 
