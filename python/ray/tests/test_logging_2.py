@@ -207,7 +207,7 @@ class TestTextFormatter:
             assert s in formatted
 
 
-def test_invalid_dict_config():
+def test_invalid_encoding():
     with pytest.raises(ValueError):
         LoggingConfig(encoding="INVALID")
 
