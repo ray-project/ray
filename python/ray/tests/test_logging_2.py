@@ -471,8 +471,8 @@ ray.get(my_actor.print_message.remote())
 
 def test_configure_both_structured_logging_and_lib_logging(shutdown_only):
     """
-    Import `ray.data` to configure the `ray.data` logger. Then, configure the
-    `root` and `ray` loggers in `ray.init()`. Ensure that handlers are not reset.
+    Configure the `ray.test` logger. Then, configure the `root` and `ray`
+    loggers in `ray.init()`. Ensure that the `ray.test` logger is not affected.
     """
     script = """
 import ray
