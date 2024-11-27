@@ -735,7 +735,7 @@ class CompositeChannel(ChannelInterface):
         actor_id = ray.get_runtime_context().get_actor_id()
         # if actor_id is None, read was called by the driver
         # if the driver is an actor, driver_actor_id will be set to that actor id
-        if actor_id not in self._channel_dict:
+        if actor_id is None or actor_id == self._driver_actor_id:
             # actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
