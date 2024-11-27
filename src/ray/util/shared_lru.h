@@ -22,7 +22,7 @@
 // cache.Put("key", "val");
 //
 // // Get a key-value pair from cache.
-// auto val = ache.Get("key");
+// auto val = cache.Get("key");
 // // Check and consume `val`.
 //
 // TODO(hjiang): Write a wrapper around KeyHash and KeyEq, which takes
@@ -138,8 +138,7 @@ class SharedLruCache final {
   // limit on entry count.
   const size_t max_entries_;
 
-  // All keys are stored as refernce (`std::reference_wrapper`), and the
-  // ownership lies in `lru_list_`.
+  // Key-value pairs.
   EntryMap cache_;
 
   // The LRU list of entries. The front of the list identifies the most
