@@ -90,7 +90,7 @@ struct PopWorkerRequest {
   const rpc::RuntimeEnvInfo runtime_env_info;
   const int runtime_env_hash;
   const std::vector<std::string> dynamic_options;
-  std::optional<absl::Duration> idle_worker_keep_alive_duration;
+  std::optional<absl::Duration> worker_startup_keep_alive_duration;
 
   PopWorkerCallback callback;
 
@@ -102,7 +102,7 @@ struct PopWorkerRequest {
                    std::optional<bool> actor_worker,
                    rpc::RuntimeEnvInfo runtime_env_info,
                    std::vector<std::string> options,
-                   std::optional<absl::Duration> idle_worker_keep_alive_duration,
+                   std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
       : language(lang),
         worker_type(worker_type),
@@ -114,7 +114,7 @@ struct PopWorkerRequest {
         // this-> is needed to disambiguate the member variable from the ctor arg.
         runtime_env_hash(),
         dynamic_options(std::move(options)),
-        idle_worker_keep_alive_duration(idle_worker_keep_alive_duration),
+        worker_startup_keep_alive_duration(worker_startup_keep_alive_duration),
         callback(std::move(callback)) {}
 };
 
@@ -458,9 +458,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Get the NodeID of this worker pool.
   const NodeID &GetNodeID() const;
 
-  /// Returns a worker id if an idle worker is reused for this request. Otherwise,
-  /// asynchronously start a worker and return WorkerID::Nil().
-  WorkerID PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request);
+  /// Internal implementation of PopWorker.
+  void PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request);
 
   // Find an idle worker that can serve the task. If found, pop it out and return it.
   // Otherwise, return nullptr.
@@ -496,8 +495,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// \param runtime_env_hash The hash of runtime env.
   /// \param serialized_runtime_env_context The context of runtime env.
   /// \param runtime_env_info The raw runtime env info.
-  /// \param idle_worker_keep_alive_duration If set, the worker will be kept alive for
-  ///   this duration even if it's idle. This is reset after a task assignment.
+  /// \param worker_startup_keep_alive_duration If set, the worker will be kept alive for
+  ///   this duration even if it's idle. This is only applicable before a task is assigned
+  ///   to the worker.
   /// \return The process that we started and a token. If the token is less than 0,
   /// we didn't start a process.
   std::tuple<Process, StartupToken> StartWorkerProcess(
@@ -509,7 +509,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       int runtime_env_hash = 0,
       const std::string &serialized_runtime_env_context = "{}",
       const rpc::RuntimeEnvInfo &runtime_env_info = rpc::RuntimeEnvInfo(),
-      std::optional<absl::Duration> idle_worker_keep_alive_duration = std::nullopt);
+      std::optional<absl::Duration> worker_startup_keep_alive_duration = std::nullopt);
 
   /// The implementation of how to start a new worker process with command arguments.
   /// The lifetime of the process is tied to that of the returned object,
@@ -565,8 +565,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
     rpc::RuntimeEnvInfo runtime_env_info;
     /// The dynamic_options.
     std::vector<std::string> dynamic_options;
-    /// The duration to keep the worker alive even if it's idle.
-    std::optional<absl::Duration> idle_worker_keep_alive_duration;
+    /// The duration to keep the newly created worker alive before it's assigned a task.
+    std::optional<absl::Duration> worker_startup_keep_alive_duration;
   };
 
   /// An internal data structure that maintains the pool state per language.
@@ -745,7 +745,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
                         const std::chrono::high_resolution_clock::time_point &start,
                         const rpc::RuntimeEnvInfo &runtime_env_info,
                         const std::vector<std::string> &dynamic_options,
-                        std::optional<absl::Duration> idle_worker_keep_alive_duration);
+                        std::optional<absl::Duration> worker_startup_keep_alive_duration);
 
   void RemoveWorkerProcess(State &state, const StartupToken &proc_startup_token);
 

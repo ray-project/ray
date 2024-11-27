@@ -232,7 +232,7 @@ void WorkerPool::AddWorkerProcess(
     const std::chrono::high_resolution_clock::time_point &start,
     const rpc::RuntimeEnvInfo &runtime_env_info,
     const std::vector<std::string> &dynamic_options,
-    std::optional<absl::Duration> idle_worker_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
   state.worker_processes.emplace(worker_startup_token_counter_,
                                  WorkerProcessInfo{/*is_pending_registration=*/true,
                                                    worker_type,
@@ -240,7 +240,7 @@ void WorkerPool::AddWorkerProcess(
                                                    start,
                                                    runtime_env_info,
                                                    dynamic_options,
-                                                   idle_worker_keep_alive_duration});
+                                                   worker_startup_keep_alive_duration});
 }
 
 void WorkerPool::RemoveWorkerProcess(State &state,
@@ -448,7 +448,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
     const int runtime_env_hash,
     const std::string &serialized_runtime_env_context,
     const rpc::RuntimeEnvInfo &runtime_env_info,
-    std::optional<absl::Duration> idle_worker_keep_alive_duration) {
+    std::optional<absl::Duration> worker_startup_keep_alive_duration) {
   rpc::JobConfig *job_config = nullptr;
   if (!job_id.IsNil()) {
     auto it = all_jobs_.find(job_id);
@@ -515,7 +515,7 @@ std::tuple<Process, StartupToken> WorkerPool::StartWorkerProcess(
                    start,
                    runtime_env_info,
                    dynamic_options,
-                   idle_worker_keep_alive_duration);
+                   worker_startup_keep_alive_duration);
   StartupToken worker_startup_token = worker_startup_token_counter_;
   update_worker_startup_token_counter();
   if (IsIOWorkerType(worker_type)) {
@@ -1044,10 +1044,10 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         now +
         absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
     if (worker->GetAssignedTaskTime() == absl::Time()) {
-      // Newly registered worker. Respect idle_worker_keep_alive_duration if any.
+      // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
       const auto &keep_alive_duration =
           state.worker_processes.at(worker->GetStartupToken())
-              .idle_worker_keep_alive_duration;
+              .worker_startup_keep_alive_duration;
       if (keep_alive_duration.has_value()) {
         keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
       }
@@ -1057,7 +1057,7 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
       // than those workers who served tasks before.
       // See https://github.com/ray-project/ray/pull/36766
       //
-      // Also, we set keep_alive_until w.r.t. idle_worker_keep_alive_duration.
+      // Also, we set keep_alive_until w.r.t. worker_startup_keep_alive_duration.
       idle_of_all_languages_.emplace_front(IdleWorkerEntry{worker, keep_alive_until});
     } else {
       idle_of_all_languages_.emplace_back(IdleWorkerEntry{worker, keep_alive_until});
@@ -1250,7 +1250,7 @@ void WorkerPool::StartNewWorker(
                            pop_worker_request->runtime_env_hash,
                            serialized_runtime_env_context,
                            pop_worker_request->runtime_env_info,
-                           pop_worker_request->idle_worker_keep_alive_duration);
+                           pop_worker_request->worker_startup_keep_alive_duration);
     if (status == PopWorkerStatus::OK) {
       RAY_CHECK(proc.IsValid());
       WarnAboutSize();
@@ -1311,7 +1311,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       /*is_actor_worker=*/task_spec.IsActorCreationTask(),
       task_spec.RuntimeEnvInfo(),
       task_spec.DynamicWorkerOptionsOrEmpty(),
-      /*idle_worker_keep_alive_duration=*/std::nullopt,
+      /*worker_startup_keep_alive_duration=*/std::nullopt,
       [this, task_spec, callback](
           const std::shared_ptr<WorkerInterface> &worker,
           PopWorkerStatus status,
@@ -1335,11 +1335,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
         }
         return callback(worker, status, runtime_env_setup_error_message);
       });
-  WorkerID reused_worker_id = PopWorker(pop_worker_request);
-  if (!reused_worker_id.IsNil()) {
-    RAY_LOG(DEBUG).WithField(task_spec.TaskId()).WithField(reused_worker_id)
-        << "Re-using worker for task.";
-  }
+  PopWorker(std::move(pop_worker_request));
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
@@ -1381,19 +1377,18 @@ std::shared_ptr<WorkerInterface> WorkerPool::FindAndPopIdleWorker(
   return nullptr;
 }
 
-WorkerID WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
+void WorkerPool::PopWorker(std::shared_ptr<PopWorkerRequest> pop_worker_request) {
   // If there's an idle worker that fits the task, use it.
   // Else, start a new worker.
   auto worker = FindAndPopIdleWorker(*pop_worker_request);
   if (worker == nullptr) {
     StartNewWorker(pop_worker_request);
-    return WorkerID::Nil();
+    return;
   }
   RAY_CHECK(worker->GetAssignedJobId().IsNil() ||
             worker->GetAssignedJobId() == pop_worker_request->job_id);
   stats::NumWorkersStartedFromCache.Record(1);
   PopWorkerCallbackAsync(pop_worker_request->callback, worker, PopWorkerStatus::OK);
-  return worker->WorkerId();
 }
 
 void WorkerPool::PrestartWorkers(const TaskSpecification &task_spec,
