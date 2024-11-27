@@ -153,14 +153,6 @@ def do_exec_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        torch_device = ChannelContext.get_current().torch_device
-        if torch_device.type == "cuda":
-            # Compiled Graphs applications (e.g., vLLM) may not properly
-            # set the CUDA device. We explicitly set the device here.
-            import torch
-
-            torch.cuda.set_device(torch_device)
-
         done = False
         while True:
             if done:
