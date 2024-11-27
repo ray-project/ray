@@ -85,5 +85,7 @@ def generate_logging_config():
         ray_logger.addHandler(default_handler)
         ray_logger.propagate = False
 
+        # Special handling for ray.rllib: only warning-level messages passed through
+        # See https://github.com/ray-project/ray/pull/31858 for related PR
         rllib_logger = logging.getLogger("ray.rllib")
         rllib_logger.setLevel(logging.WARN)

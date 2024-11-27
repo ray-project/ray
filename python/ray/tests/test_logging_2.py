@@ -477,15 +477,15 @@ def test_configure_both_structured_logging_and_lib_logging(shutdown_only):
     script = """
 import ray
 import logging
-import ray.data
 
-old_data_logger = logging.getLogger("ray.data")
-assert len(old_data_logger.handlers) > 0
+old_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() != logging.DEBUG
+old_test_logger.setLevel(logging.DEBUG)
 
 ray.init(logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
 
-new_data_logger = logging.getLogger("ray.data")
-assert len(new_data_logger.handlers) == len(old_data_logger.handlers)
+new_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() == logging.DEBUG
 """
     run_string_as_driver(script)
 
