@@ -1,6 +1,7 @@
 import functools
-from typing import Any, Dict, List, Optional, Protocol
+from typing import Any, Dict, List, Optional, Protocol, Union
 
+from ray.anyscale.data._internal.logical.operators.join_operator import Join
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     PATH_COLUMN_NAME,
 )
@@ -89,6 +90,38 @@ class DatasetMixin:
             num_aggregators=num_aggregators,
         )
         logical_plan = LogicalPlan(agg_op, self.context)
+        return Dataset(plan, logical_plan)
+
+    def join(
+        self,
+        right: "Dataset",
+        join_type: str,
+        keys: Union[str, List[str]],
+    ) -> "Dataset":
+        """Join :class:`Datasets <ray.data.Dataset>` on join keys
+
+        Args:
+            left_input_op: The input operator at left hand side.
+            right_input_op: The input operator at right hand side.
+            keys: The columns from the left and right Datasets that should be used as
+              keys of the join operation.
+            join_type: The kind of join that should be performed, one of (“inner”,
+              “left_outer”, “right_outer”, “full_outer”)
+
+        Returns:
+            A :class:`Dataset` that holds join of input left Dataset with the right
+              Dataset based on join type and keys.
+        """
+
+        keys = keys if isinstance(keys, list) else [keys]
+        plan = self._plan.copy()
+        op = Join(
+            left_input_op=self._logical_plan.dag,
+            right_input_op=right._logical_plan.dag,
+            keys=keys,
+            join_type=join_type,
+        )
+        logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
 
     @functools.wraps(Dataset.input_files)

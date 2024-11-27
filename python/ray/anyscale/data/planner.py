@@ -1,8 +1,10 @@
 from typing import List
 
+from ray.anyscale.data._internal.execution.operators.join_operator import JoinOperator
 from ray.anyscale.data._internal.execution.operators.streaming_hash_aggregate import (
     StreamingHashAggregate,
 )
+from ray.anyscale.data._internal.logical.operators.join_operator import Join
 from ray.anyscale.data._internal.logical.operators.list_files_operator import ListFiles
 from ray.anyscale.data._internal.logical.operators.partition_files_operator import (
     PartitionFiles,
@@ -36,3 +38,16 @@ def _register_anyscale_plan_logical_op_fns():
     register_plan_logical_op_fn(ListFiles, plan_list_files_op)
     register_plan_logical_op_fn(PartitionFiles, plan_partition_files_op)
     register_plan_logical_op_fn(ReadFiles, plan_read_files_op)
+
+    def plan_join_op(
+        logical_op: Join, physical_children: List[PhysicalOperator]
+    ) -> PhysicalOperator:
+        assert len(physical_children) == 2
+        return JoinOperator(
+            left_input_op=physical_children[0],
+            right_input_op=physical_children[1],
+            join_type=logical_op._join_type,
+            keys=logical_op._keys,
+        )
+
+    register_plan_logical_op_fn(Join, plan_join_op)
