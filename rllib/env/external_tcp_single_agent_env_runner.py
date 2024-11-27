@@ -1,6 +1,7 @@
 import socket
 import struct
 import json
+import threading
 
 import gymnasium as gym
 
@@ -43,6 +44,10 @@ class ExternalTcpSingleAgentEnvRunner(EnvRunner):
         # Start listening on the configured port.
         self._setup_server_socket()
         self._accept_client()
+
+        # Start a background thread for client communication.
+        self.thread = threading.Thread(target=self._client_message_listener, daemon=True)
+        self.thread.start()
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -113,6 +118,7 @@ class ExternalTcpSingleAgentEnvRunner(EnvRunner):
         """Accepts a client connection."""
         print("Waiting for client to connect...")
         self.client_socket, self.address = self.server_socket.accept()
+
         print(f"Connected to client at {self.address}")
         self._handle_initial_ping()
 
@@ -166,3 +172,5 @@ class _DummyCartPoleClient:
 
     def __init__(self):
         self.env = gym.make("CartPole-v1")
+
+
