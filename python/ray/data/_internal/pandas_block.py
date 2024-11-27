@@ -1,6 +1,5 @@
 import collections
 import heapq
-import logging
 import sys
 from typing import (
     TYPE_CHECKING,
@@ -47,8 +46,6 @@ if TYPE_CHECKING:
 T = TypeVar("T")
 # The sample size when estiamte the data size
 _PANDAS_SIZE_BYTES_MIN_COUNT = 50
-
-logger = logging.getLogger(__name__)
 
 _pandas = None
 
@@ -375,7 +372,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                     memory_usage[column] = column_memory
                 except Exception as e:
                     # Handle or log the exception as needed
-                    logger.warning(f"Error calculating size for column '{column}': {e}")
+                    print(f"Error calculating size for column '{column}': {e}")
 
         # Sum up total memory usage
         total_memory_usage = memory_usage.sum()
