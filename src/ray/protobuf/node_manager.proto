@@ -107,9 +107,7 @@ message PrestartWorkersRequest {
   uint64 num_workers = 5;
 }
 
-message PrestartWorkersReply {
-}
-
+message PrestartWorkersReply {}
 
 message PrepareBundleResourcesRequest {
   // Bundles that containing the requested resources.
