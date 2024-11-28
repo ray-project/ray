@@ -2935,7 +2935,7 @@ py_test(
     tags = ["team:rllib", "examples", "exclusive"],
     size = "large",
     srcs = ["examples/offline_rl/cartpole_recording.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--framework=torch"],
+    args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--num-cpus=12"],
 )
 
 py_test(
