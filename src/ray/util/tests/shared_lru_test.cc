@@ -23,6 +23,19 @@ namespace ray::utils::container {
 
 namespace {
 constexpr size_t kTestCacheSz = 1;
+
+class TestClass {
+ public:
+  TestClass(std::string data) : data_(std::move(data)) {}
+  bool operator==(const TestClass &rhs) const { return data_ == rhs.data_; }
+  template <typename H>
+  friend H AbslHashValue(H h, const TestClass &obj) {
+    return H::combine(std::move(h), obj.data_);
+  }
+
+ private:
+  std::string data_;
+};
 }  // namespace
 
 TEST(SharedLruCache, PutAndGet) {
@@ -70,6 +83,15 @@ TEST(SharedLruCache, SameKeyTest) {
 TEST(SharedLruConstCache, TypeAliasAssertion) {
   static_assert(
       std::is_same_v<SharedLruConstCache<int, int>, SharedLruCache<int, const int>>);
+}
+
+TEST(SharedLruConstCache, CustomizedKey) {
+  TestClass obj1{"hello"};
+  TestClass obj2{"hello"};
+  SharedLruCache<TestClass, std::string> cache{2};
+  cache.Put(obj1, std::make_shared<std::string>("val"));
+  auto val = cache.Get(obj2);
+  EXPECT_EQ(*val, "val");
 }
 
 }  // namespace ray::utils::container
