@@ -68,7 +68,6 @@ class TestResultLogger:
                               f"Batch: {s.batch_size}\n")
             f.write("\n" + "=" * 50 + "\n")
 
-# [Previous TestResultLogger class code remains the same...]
 
 class RequestTracker:
     """
