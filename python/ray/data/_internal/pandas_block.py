@@ -302,6 +302,7 @@ class PandasBlockAccessor(TableBlockAccessor):
     def size_bytes(self) -> int:
         from pandas.api.types import is_object_dtype
 
+        from ray.air.util.tensor_extensions.pandas import TensorArray
         from ray.data.extensions import TensorArrayElement, TensorDtype
 
         pd = lazy_import_pandas()
@@ -364,6 +365,11 @@ class PandasBlockAccessor(TableBlockAccessor):
                 self._table[column].dtype, object_need_check
             ):
                 sampled_column = self._table[column].values
+                if isinstance(sampled_column, TensorArray):
+                    if np.issubdtype(sampled_column[0].numpy_dtype, np.number):
+                        memory_usage[column] = sampled_column.nbytes
+                        continue
+
                 total_size = len(sampled_column)
 
                 # Determine the sample size based on min_count
