@@ -23,8 +23,9 @@ import functools
 import numpy as np
 
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
@@ -125,10 +126,6 @@ if __name__ == "__main__":
             num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
-        .learners(
-            num_learners=args.num_gpus,
-            num_gpus_per_learner=1 if args.num_gpus else 0,
-        )
         .resources(
             num_cpus_for_main_process=1,
         )
@@ -160,12 +157,9 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_hiddens": [512, 512],
-                "uses_new_env_runners": args.enable_new_api_stack,
-            },
+            model_config=DefaultModelConfig(fcnet_hiddens=[512, 512]),
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     "main": RLModuleSpec(),
                     "random": RLModuleSpec(module_class=RandomRLModule),
                 }
@@ -173,9 +167,9 @@ if __name__ == "__main__":
         )
     )
 
-    # Only for PPO, change the `num_sgd_iter` setting.
+    # Only for PPO, change the `num_epochs` setting.
     if args.algo == "PPO":
-        config.training(num_sgd_iter=20)
+        config.training(num_epochs=20)
 
     stop = {
         NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,

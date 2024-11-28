@@ -18,6 +18,7 @@
 #include <thread>
 #include <utility>
 
+#include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_client/accessor.h"
 #include "ray/pubsub/subscriber.h"
@@ -501,13 +502,22 @@ Status PythonGcsClient::GetAllNodeInfo(int64_t timeout_ms,
   return Status::RpcError(status.error_message(), status.error_code());
 }
 
-Status PythonGcsClient::GetAllJobInfo(int64_t timeout_ms,
-                                      std::vector<rpc::JobTableData> &result) {
+Status PythonGcsClient::GetAllJobInfo(
+    const std::optional<std::string> &job_or_submission_id,
+    bool skip_submission_job_info_field,
+    bool skip_is_running_tasks_field,
+    int64_t timeout_ms,
+    std::vector<rpc::JobTableData> &result) {
   grpc::ClientContext context;
   PrepareContext(context, timeout_ms);
 
   absl::ReaderMutexLock lock(&mutex_);
   rpc::GetAllJobInfoRequest request;
+  request.set_skip_submission_job_info_field(skip_submission_job_info_field);
+  request.set_skip_is_running_tasks_field(skip_is_running_tasks_field);
+  if (job_or_submission_id.has_value()) {
+    request.set_job_or_submission_id(job_or_submission_id.value());
+  }
   rpc::GetAllJobInfoReply reply;
 
   grpc::Status status = job_info_stub_->GetAllJobInfo(&context, request, &reply);
@@ -664,7 +674,7 @@ Status PythonGcsClient::DrainNode(const std::string &node_id,
     }
     return Status::OK();
   }
-  return Status::RpcError(status.error_message(), status.error_code());
+  return GrpcStatusToRayStatus(status);
 }
 
 Status PythonGcsClient::DrainNodes(const std::vector<std::string> &node_ids,
@@ -708,77 +718,9 @@ std::unordered_map<std::string, std::string> PythonGetNodeLabels(
                                                       node_info.labels().end());
 }
 
-Status PythonCheckGcsHealth(const std::string &gcs_address,
-                            const int gcs_port,
-                            const int64_t timeout_ms,
-                            const std::string &ray_version,
-                            const bool skip_version_check,
-                            bool &is_healthy) {
-  auto channel = rpc::GcsRpcClient::CreateGcsChannel(gcs_address, gcs_port);
-  auto stub = rpc::NodeInfoGcsService::NewStub(channel);
-  grpc::ClientContext context;
-  if (timeout_ms != -1) {
-    context.set_deadline(std::chrono::system_clock::now() +
-                         std::chrono::milliseconds(timeout_ms));
-  }
-  rpc::CheckAliveRequest request;
-  rpc::CheckAliveReply reply;
-  grpc::Status status = stub->CheckAlive(&context, request, &reply);
-  if (!status.ok()) {
-    is_healthy = false;
-    return Status::RpcError(status.error_message(), status.error_code());
-  }
-  if (reply.status().code() != static_cast<int>(StatusCode::OK)) {
-    is_healthy = false;
-    return HandleGcsError(reply.status());
-  }
-  if (!skip_version_check) {
-    // Check for Ray version match
-    if (reply.ray_version() != ray_version) {
-      is_healthy = false;
-      std::ostringstream ss;
-      ss << "Ray cluster at " << gcs_address << ":" << gcs_port << " has version "
-         << reply.ray_version() << ", but this process "
-         << "is running Ray version " << ray_version << ".";
-      return Status::Invalid(ss.str());
-    }
-  }
-  is_healthy = true;
-  return Status::OK();
-}
-
-/// Creates a singleton thread that runs an io_service.
-/// All ConnectToGcsStandalone calls will share this io_service.
-class SingletonIoContext {
- public:
-  static SingletonIoContext &Instance() {
-    static SingletonIoContext instance;
-    return instance;
-  }
-
-  instrumented_io_context &GetIoService() { return io_service_; }
-
- private:
-  SingletonIoContext() : work_(io_service_) {
-    io_thread_ = std::thread([this] {
-      SetThreadName("singleton_io_context.gcs_client");
-      io_service_.run();
-    });
-  }
-  ~SingletonIoContext() {
-    io_service_.stop();
-    if (io_thread_.joinable()) {
-      io_thread_.join();
-    }
-  }
-
-  instrumented_io_context io_service_;
-  boost::asio::io_service::work work_;  // to keep io_service_ running
-  std::thread io_thread_;
-};
-
 Status ConnectOnSingletonIoContext(GcsClient &gcs_client, int64_t timeout_ms) {
-  instrumented_io_context &io_service = SingletonIoContext::Instance().GetIoService();
+  static InstrumentedIOContextWithThread io_context("gcs_client_io_service");
+  instrumented_io_context &io_service = io_context.GetIoService();
   return gcs_client.Connect(io_service, timeout_ms);
 }
 

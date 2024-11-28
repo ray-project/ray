@@ -1,7 +1,7 @@
 import inspect
 import logging
 import weakref
-from typing import Any, Dict, List, Literal, Optional, Union
+from typing import Any, Dict, List, Literal, Optional, Tuple, Union
 
 import ray._private.ray_constants as ray_constants
 import ray._private.signature as signature
@@ -235,9 +235,10 @@ class ActorMethod:
         num_returns=None,
         concurrency_group=None,
         _generator_backpressure_num_objects=None,
-    ):
+    ) -> Union["ray.dag.ClassMethodNode", Tuple["ray.dag.ClassMethodNode", ...]]:
         from ray.dag.class_node import (
             BIND_INDEX_KEY,
+            IS_CLASS_METHOD_OUTPUT_KEY,
             PARENT_CLASS_NODE_KEY,
             PREV_CLASS_METHOD_CALL_KEY,
             ClassMethodNode,
@@ -271,7 +272,21 @@ class ActorMethod:
             options,
             other_args_to_resolve=other_args_to_resolve,
         )
-        return node
+
+        if node.num_returns > 1:
+            output_nodes: List[ClassMethodNode] = []
+            for i in range(node.num_returns):
+                output_node = ClassMethodNode(
+                    f"return_idx_{i}",
+                    (node, i),
+                    dict(),
+                    dict(),
+                    {IS_CLASS_METHOD_OUTPUT_KEY: True},
+                )
+                output_nodes.append(output_node)
+            return tuple(output_nodes)
+        else:
+            return node
 
     @wrap_auto_init
     @_tracing_actor_method_invocation
@@ -909,6 +924,7 @@ class ActorClass:
             scheduling_strategy: Strategy about how to schedule this actor.
             enable_task_events: True if tracing is enabled, i.e., task events from
                 the actor should be reported. Defaults to True.
+            _labels: The key-value labels of the actor.
 
         Returns:
             A handle to the newly created actor.
@@ -950,7 +966,11 @@ class ActorClass:
         is_asyncio = has_async_methods(meta.modified_class)
 
         if actor_options.get("max_concurrency") is None:
-            actor_options["max_concurrency"] = 1000 if is_asyncio else 1
+            actor_options["max_concurrency"] = (
+                ray_constants.DEFAULT_MAX_CONCURRENCY_ASYNC
+                if is_asyncio
+                else ray_constants.DEFAULT_MAX_CONCURRENCY_THREADED
+            )
 
         if client_mode_should_convert():
             return client_mode_convert_actor(self, args, kwargs, **actor_options)
@@ -1178,6 +1198,7 @@ class ActorClass:
             max_pending_calls=max_pending_calls,
             scheduling_strategy=scheduling_strategy,
             enable_task_events=enable_task_events,
+            labels=actor_options.get("_labels"),
         )
 
         if _actor_launch_hook:
@@ -1542,6 +1563,20 @@ class ActorHandle:
     @property
     def _actor_id(self):
         return self._ray_actor_id
+
+    def _get_local_state(self):
+        """Get the local actor state.
+
+        NOTE: this method only returns accurate actor state
+        after a first actor method call is made against
+        this actor handle due to https://github.com/ray-project/ray/pull/24600.
+
+        Returns:
+           ActorTableData.ActorState or None if the state is unknown.
+        """
+        worker = ray._private.worker.global_worker
+        worker.check_connected()
+        return worker.core_worker.get_local_actor_state(self._ray_actor_id)
 
     def _serialization_helper(self):
         """This is defined in order to make pickling work.

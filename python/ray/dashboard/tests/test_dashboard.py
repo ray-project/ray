@@ -11,6 +11,7 @@ import sys
 import time
 import warnings
 from unittest.mock import MagicMock
+from urllib.parse import quote_plus
 
 import pytest
 import requests
@@ -370,7 +371,9 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
     while True:
         time.sleep(3)
         try:
-            response = requests.get(webui_url + "/test/http_get?url=" + target_url)
+            response = requests.get(
+                webui_url + "/test/http_get?url=" + quote_plus(target_url)
+            )
             response.raise_for_status()
             try:
                 dump_info = response.json()
@@ -385,7 +388,8 @@ def test_http_get(enable_test_module, ray_start_with_dashboard):
             http_port, grpc_port = ports
 
             response = requests.get(
-                f"http://{ip}:{http_port}" f"/test/http_get_from_agent?url={target_url}"
+                f"http://{ip}:{http_port}"
+                f"/test/http_get_from_agent?url={quote_plus(target_url)}"
             )
             response.raise_for_status()
             try:
@@ -918,6 +922,7 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
         f"--temp-dir={temp_dir}",
         f"--log-dir={log_dir}",
         f"--gcs-address={address_info['gcs_address']}",
+        f"--cluster-id-hex={gcs_client.cluster_id.hex()}",
         f"--session-dir={session_dir}",
         "--node-ip-address=127.0.0.1",
     ]
@@ -957,16 +962,17 @@ def test_dashboard_port_conflict(ray_start_with_dashboard):
     reason="This test is not supposed to work for minimal installation.",
 )
 def test_gcs_check_alive(
-    fast_gcs_failure_detection, ray_start_with_dashboard, call_ray_stop_only
+    fast_gcs_failure_detection, ray_start_cluster, call_ray_stop_only
 ):
     # call_ray_stop_only is used to ensure a clean environment (especially
     # killing dashboard agent in time) before the next test runs.
-    assert wait_until_server_available(ray_start_with_dashboard["webui_url"]) is True
+    cluster = ray_start_cluster
+    head = cluster.add_node(num_cpus=0)
+    assert wait_until_server_available(head.address_info["webui_url"]) is True
 
-    all_processes = ray._private.worker._global_node.all_processes
-    dashboard_info = all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
+    dashboard_info = head.all_processes[ray_constants.PROCESS_TYPE_DASHBOARD][0]
     dashboard_proc = psutil.Process(dashboard_info.process.pid)
-    gcs_server_info = all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
+    gcs_server_info = head.all_processes[ray_constants.PROCESS_TYPE_GCS_SERVER][0]
     gcs_server_proc = psutil.Process(gcs_server_info.process.pid)
 
     assert dashboard_proc.status() in [
@@ -978,8 +984,7 @@ def test_gcs_check_alive(
     gcs_server_proc.kill()
     gcs_server_proc.wait()
 
-    # The dashboard exits by os._exit(-1)
-    assert dashboard_proc.wait(10) == 255
+    assert dashboard_proc.wait(10) == 1
 
 
 @pytest.mark.skipif(
@@ -1150,6 +1155,7 @@ def test_dashboard_module_load(tmpdir):
         http_port_retries=1,
         node_ip_address="127.0.0.1",
         gcs_address="127.0.0.1:6379",
+        cluster_id_hex=ray.ClusterID.from_random().hex(),
         grpc_port=0,
         log_dir=str(tmpdir),
         temp_dir=str(tmpdir),

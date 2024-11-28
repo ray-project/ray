@@ -186,6 +186,24 @@ Delta Sharing
 
    read_delta_sharing_tables
 
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
+Iceberg
+-------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_iceberg
+
 Lance
 -----
 

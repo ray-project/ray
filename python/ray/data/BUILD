@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -221,6 +221,14 @@ py_test(
     name = "test_filename_provider",
     size = "small",
     srcs = ["tests/test_filename_provider.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -382,6 +390,14 @@ py_test(
     name = "test_huggingface",
     size = "medium",
     srcs = ["tests/test_huggingface.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_iceberg",
+    size = "medium",
+    srcs = ["tests/test_iceberg.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -575,6 +591,14 @@ py_test(
     name = "test_backpressure_e2e",
     size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_bundle_queue",
+    size = "small",
+    srcs = ["tests/test_bundle_queue.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

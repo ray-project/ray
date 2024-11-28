@@ -34,9 +34,8 @@
 namespace ray {
 namespace core {
 
-typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &ip_address,
-                                                            int port)>
-    LeaseClientFactoryFn;
+using LeaseClientFactoryFn =
+    std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &, int)>;
 
 // The task queues are keyed on resource shape & function descriptor
 // (encapsulated in SchedulingClass) to defer resource allocation decisions to the raylet
@@ -49,7 +48,7 @@ typedef std::function<std::shared_ptr<WorkerLeaseInterface>(const std::string &i
 // be aware of the actor and is not able to manage it.  It is also keyed on
 // RuntimeEnvHash, because a worker can only run a task if the worker's RuntimeEnvHash
 // matches the RuntimeEnvHash required by the task spec.
-typedef int RuntimeEnvHash;
+using RuntimeEnvHash = int;
 using SchedulingKey =
     std::tuple<SchedulingClass, std::vector<ObjectID>, ActorID, RuntimeEnvHash>;
 
@@ -64,7 +63,7 @@ class LeaseRequestRateLimiter {
 // Lease request rate-limiter with fixed number.
 class StaticLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
  public:
-  StaticLeaseRequestRateLimiter(size_t limit) : kLimit(limit) {}
+  explicit StaticLeaseRequestRateLimiter(size_t limit) : kLimit(limit) {}
   size_t GetMaxPendingLeaseRequestsPerSchedulingCategory() override { return kLimit; }
 
  private:
@@ -89,7 +88,7 @@ class NormalTaskSubmitter {
       const JobID &job_id,
       std::shared_ptr<LeaseRequestRateLimiter> lease_request_rate_limiter,
       absl::optional<boost::asio::steady_timer> cancel_timer = absl::nullopt)
-      : rpc_address_(rpc_address),
+      : rpc_address_(std::move(rpc_address)),
         local_lease_client_(lease_client),
         lease_client_factory_(lease_client_factory),
         lease_policy_(std::move(lease_policy)),
@@ -98,7 +97,6 @@ class NormalTaskSubmitter {
         lease_timeout_ms_(lease_timeout_ms),
         local_raylet_id_(local_raylet_id),
         worker_type_(worker_type),
-        actor_creator_(actor_creator),
         client_cache_(core_worker_client_pool),
         job_id_(job_id),
         lease_request_rate_limiter_(lease_request_rate_limiter),
@@ -268,9 +266,6 @@ class NormalTaskSubmitter {
 
   /// The type of this core worker process.
   const WorkerType worker_type_;
-
-  /// Interface for actor creation.
-  std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Protects task submission state below.
   absl::Mutex mu_;

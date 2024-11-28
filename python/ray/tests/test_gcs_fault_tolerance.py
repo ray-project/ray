@@ -20,6 +20,7 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     run_string_as_driver,
+    redis_sentinel_replicas,
 )
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
@@ -288,7 +289,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # Wait for the actor dead.
     wait_for_condition(condition, timeout=10)
 
-    # If `PollOwnerForActorOutOfScope` was successfully called,
+    # If `ReportActorOutOfScope` was successfully called,
     # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
@@ -872,6 +873,120 @@ print("DONE")
 
 
 @pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis_sentinel",
+    [
+        generate_system_config_map(
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+            redis_db_connect_retries=50,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_with_sentinel_failureover(
+    ray_start_cluster_head_with_external_redis_sentinel,
+):
+    """This test is to cover ray cluster's behavior with Redis sentinel.
+    The expectation is Redis sentinel should manage failover
+    automatically, and GCS can continue talking to the same address
+    without any human intervention on Redis.
+    For this test we ensure:
+    - When Redis master failed, Ray should crash (TODO: GCS should
+        autommatically try re-connect to sentinel).
+    - When restart Ray, it should continue talking to sentinel, which
+        should return information about new master.
+    """
+    cluster = ray_start_cluster_head_with_external_redis_sentinel
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    ip, port = redis_addr.split(":")
+    redis_cli = redis.Redis(ip, port)
+    print(redis_cli.info("sentinel"))
+    redis_name = redis_cli.info("sentinel")["master0"]["name"]
+
+    def get_sentinel_nodes():
+        leader_address = (
+            redis_cli.sentinel_master(redis_name)["ip"],
+            redis_cli.sentinel_master(redis_name)["port"],
+        )
+        follower_addresses = [
+            (x["ip"], x["port"]) for x in redis_cli.sentinel_slaves(redis_name)
+        ]
+        return [leader_address] + follower_addresses
+
+    wait_for_condition(lambda: len(get_sentinel_nodes()) == redis_sentinel_replicas())
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def r(self, v):
+            return v
+
+        def pid(self):
+            import os
+
+            return os.getpid()
+
+    c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
+    c_pid = ray.get(c.pid.remote())
+    c_process = psutil.Process(pid=c_pid)
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    leader_cli = redis.Redis(*get_sentinel_nodes()[0])
+    leader_pid = leader_cli.info()["process_id"]
+    follower_cli = [redis.Redis(*x) for x in get_sentinel_nodes()[1:]]
+
+    # Wait until all data is updated in the replica
+    leader_cli.set("_hole", "0")
+    wait_for_condition(lambda: all([b"_hole" in f.keys("*") for f in follower_cli]))
+    current_leader = get_sentinel_nodes()[0]
+
+    # Now kill pid
+    leader_process = psutil.Process(pid=leader_pid)
+    leader_process.kill()
+
+    print(">>> Waiting gcs server to exit", gcs_server_pid)
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    print("GCS killed")
+
+    wait_for_condition(lambda: current_leader != get_sentinel_nodes()[0])
+
+    # Kill Counter actor. It should restart after GCS is back
+    c_process.kill()
+    # Cleanup the in memory data and then start gcs
+    cluster.head_node.kill_gcs_server(False)
+
+    print("Start gcs")
+    sleep(2)
+    cluster.head_node.start_gcs_server()
+
+    assert len(ray.nodes()) == 1
+    assert ray.nodes()[0]["alive"]
+
+    driver_script = f"""
+import ray
+ray.init('{cluster.address}')
+@ray.remote
+def f():
+    return 10
+assert ray.get(f.remote()) == 10
+
+c = ray.get_actor("c", namespace="test")
+v = ray.get(c.r.remote(10))
+assert v == 10
+print("DONE")
+"""
+
+    # Make sure the cluster is usable
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+
+@pytest.mark.parametrize(
     "ray_start_regular",
     [
         generate_system_config_map(
@@ -1040,7 +1155,7 @@ def test_job_finished_after_head_node_restart(
 
     def get_job_info(submission_id):
         gcs_client = GcsClient(cluster.address)
-        all_job_info = gcs_client.get_all_job_info()
+        all_job_info = gcs_client.get_all_job_info(job_or_submission_id=submission_id)
 
         return list(
             filter(

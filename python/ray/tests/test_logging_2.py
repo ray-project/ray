@@ -54,11 +54,14 @@ class TestCoreContextFilter:
                 "worker_id": runtime_context.get_worker_id(),
                 "node_id": runtime_context.get_node_id(),
                 "task_id": runtime_context.get_task_id(),
+                "task_name": runtime_context.get_task_name(),
+                "task_func_name": runtime_context.get_task_function_name(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
+            assert not hasattr(record, "actor_name")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -77,7 +80,10 @@ class TestCoreContextFilter:
                     "worker_id": runtime_context.get_worker_id(),
                     "node_id": runtime_context.get_node_id(),
                     "actor_id": runtime_context.get_actor_id(),
+                    "actor_name": runtime_context.get_actor_name(),
                     "task_id": runtime_context.get_task_id(),
+                    "task_name": runtime_context.get_task_name(),
+                    "task_func_name": runtime_context.get_task_function_name(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)
@@ -387,6 +393,29 @@ ray.get(actor_instance.print_message.remote())
         for s in should_not_exist:
             assert s not in stderr
 
+    def test_text_mode_driver_system_log(self, shutdown_only):
+        script = """
+import ray
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+"""
+        stderr = run_string_as_driver(script)
+        should_exist = "timestamp_ns="
+        assert should_exist in stderr
+
+
+def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
+    working_dir = tmp_path / "test-working-dir"
+    working_dir.mkdir()
+    runtime_env = {
+        "working_dir": str(working_dir),
+    }
+    ray.init(
+        runtime_env=runtime_env,
+        logging_config=ray.LoggingConfig(encoding="TEXT"),
+    )
+
 
 class TestSetupLogRecordFactory:
     @pytest.fixture
@@ -422,6 +451,30 @@ class TestSetupLogRecordFactory:
             record = logging.makeLogRecord({})
             assert record.__dict__["timestamp_ns"] == ct
             assert record.__dict__["existing_factory"]
+
+
+def test_text_mode_no_prefix(shutdown_only):
+    """
+    If logging_config is set, remove the prefix that contains
+    the actor or task's name and their PIDs.
+    """
+    script = """
+import ray
+import logging
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+@ray.remote
+class MyActor:
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+my_actor = MyActor.remote()
+ray.get(my_actor.print_message.remote())
+"""
+    stderr = run_string_as_driver(script)
+    assert "This is a Ray actor" in stderr
+    assert "(MyActor pid=" not in stderr
 
 
 if __name__ == "__main__":

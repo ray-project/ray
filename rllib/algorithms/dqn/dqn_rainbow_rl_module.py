@@ -1,22 +1,21 @@
 import abc
-from typing import Any, Dict, List, Tuple, Type, Union
+from typing import Any, Dict, List, Tuple, Union
 
-from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
-from ray.rllib.models.distributions import Distribution
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     override,
     OverrideToImplementCustomLogic,
 )
 from ray.rllib.utils.schedules.scheduler import Scheduler
 from ray.rllib.utils.typing import NetworkType, TensorType
+from ray.util.annotations import DeveloperAPI
+
 
 ATOMS = "atoms"
 QF_LOGITS = "qf_logits"
@@ -26,33 +25,33 @@ QF_TARGET_NEXT_PREDS = "qf_target_next_preds"
 QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 
-@ExperimentalAPI
-class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
+@DeveloperAPI(stability="alpha")
+class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     @override(RLModule)
     def setup(self):
-        # Get the DQN Rainbow catalog.
-        catalog: DQNRainbowCatalog = self.config.get_catalog()
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
 
         # If a dueling architecture is used.
-        self.uses_dueling: bool = self.config.model_config_dict.get("dueling")
+        self.uses_dueling: bool = self.model_config.get("dueling")
         # If double Q learning is used.
-        self.uses_double_q: bool = self.config.model_config_dict.get("double_q")
+        self.uses_double_q: bool = self.model_config.get("double_q")
         # If we use noisy layers.
-        self.uses_noisy: bool = self.config.model_config_dict.get("noisy")
+        self.uses_noisy: bool = self.model_config.get("noisy")
         # If we use a noisy encoder.
         self.uses_noisy_encoder: bool = False
         # The number of atoms for a distribution support.
-        self.num_atoms: int = self.config.model_config_dict.get("num_atoms")
+        self.num_atoms: int = self.model_config.get("num_atoms")
         # If distributional learning is requested configure the support.
         if self.num_atoms > 1:
-            self.v_min: float = self.config.model_config_dict.get("v_min")
-            self.v_max: float = self.config.model_config_dict.get("v_max")
+            self.v_min: float = self.model_config.get("v_min")
+            self.v_max: float = self.model_config.get("v_max")
         # In case of noisy networks no need for epsilon greedy (see DQN Rainbow
         # paper).
         if not self.uses_noisy:
             # The epsilon scheduler for epsilon greedy exploration.
             self.epsilon_schedule = Scheduler(
-                fixed_value_or_schedule=self.config.model_config_dict["epsilon"],
+                fixed_value_or_schedule=self.model_config["epsilon"],
                 framework=self.framework,
             )
 
@@ -60,23 +59,13 @@ class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
         # the same encoder is used.
         # Note further, by using the base encoder the correct encoder
         # is chosen for the observation space used.
-        self.encoder = catalog.build_encoder(framework=self.framework)
-        # If not an inference-only module (e.g., for evaluation), set up the
-        # target networks and state dict keys to be taken care of when syncing.
-        if not self.config.inference_only or self.framework != "torch":
-            # Holds the parameter names to be removed or renamed when synching
-            # from the learner to the inference module.
-            self._inference_only_state_dict_keys = {}
+        self.encoder = self.catalog.build_encoder(framework=self.framework)
 
         # Build heads.
-        self.af = catalog.build_af_head(framework=self.framework)
+        self.af = self.catalog.build_af_head(framework=self.framework)
         if self.uses_dueling:
             # If in a dueling setting setup the value function head.
-            self.vf = catalog.build_vf_head(framework=self.framework)
-
-        # Define the action distribution for sampling the exploit action
-        # during exploration.
-        self.action_dist_cls = catalog.get_action_dist_cls(framework=self.framework)
+            self.vf = self.catalog.build_vf_head(framework=self.framework)
 
     @override(TargetNetworkAPI)
     def make_target_networks(self) -> None:
@@ -84,6 +73,12 @@ class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
         self._target_af = make_target_network(self.af)
         if self.uses_dueling:
             self._target_vf = make_target_network(self.vf)
+
+    @override(InferenceOnlyAPI)
+    def get_non_inference_attributes(self) -> List[str]:
+        return ["_target_encoder", "_target_af"] + (
+            ["_target_vf"] if self.uses_dueling else []
+        )
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
@@ -123,15 +118,6 @@ class DQNRainbowRLModule(RLModule, TargetNetworkAPI):
                 else self._target_af
             ),
         )
-
-    @override(RLModule)
-    def get_exploration_action_dist_cls(self) -> Type[Distribution]:
-        """Returns the action distribution class for exploration.
-
-        Note, this class is used to sample the exploit action during
-        exploration.
-        """
-        return self.action_dist_cls
 
     # TODO (simon): DQN Rainbow does not support RNNs, yet.
     @override(RLModule)
