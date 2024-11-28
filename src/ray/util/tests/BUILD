@@ -194,3 +194,15 @@ cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
+
+cc_test(
+    name = "shared_lru_test",
+    srcs = ["shared_lru_test.cc"],
+    deps = [
+        "//src/ray/util:shared_lru",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+)
