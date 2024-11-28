@@ -45,12 +45,15 @@ You should see results similar to the following in your console output:
 |          18.3034 | 28000 | 0.908918 |            12.9676 |
 +------------------+-------+----------+--------------------+
 """
+# Note(Artur): this lets us extract portions of the script on Anyscale
+# ws-template-imports-start
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
 import numpy as np
 import random
 
 from typing import Optional
+# ws-template-imports-end
 
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -70,7 +73,8 @@ parser.add_argument(
     "starting- and goal states.",
 )
 
-
+# Note(Artur): this lets us extract portions of the script on Anyscale
+# ws-template-code-start
 class SimpleCorridor(gym.Env):
     """Example of a custom env in which the agent has to walk down a corridor.
 
@@ -124,7 +128,7 @@ class SimpleCorridor(gym.Env):
             truncated,
             infos,
         )
-
+# ws-template-code-end
 
 if __name__ == "__main__":
     args = parser.parse_args()
