@@ -2,7 +2,7 @@
 
 # Image Resize Example
 
-In this guide, we show you how to run a sample Ray workload reading images from Google Cloud Storage and resizing them on Kubernetes infrastructure.
+In this guide, we show you how to run a sample Ray workload reading images from Google Cloud Storage and resizing them on Kubernetes infrastructure. The image resources are managed using Ray Data, a key component of the Ray ecosystem for handling large datasets.
 
 ## Step 1: Install the KubeRay operator
 
