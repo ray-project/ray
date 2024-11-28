@@ -160,7 +160,7 @@ class _DeploymentHandleBase:
         ):
             ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
-    def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
+    def _options(self, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
             raise RuntimeError(
                 "Streaming DeploymentHandles are not currently supported when "
@@ -168,11 +168,6 @@ class _DeploymentHandleBase:
             )
 
         new_handle_options = self.handle_options.copy_and_update(**kwargs)
-
-        # TODO(zcin): remove when _prefer_local_routing is removed from options() path
-        if _prefer_local_routing != DEFAULT.VALUE:
-            self._init(_prefer_local_routing=_prefer_local_routing)
-
         if not self.is_initialized:
             self._init()
 
@@ -658,8 +653,6 @@ class DeploymentHandle(_DeploymentHandleBase):
         method_name: Union[str, DEFAULT] = DEFAULT.VALUE,
         multiplexed_model_id: Union[str, DEFAULT] = DEFAULT.VALUE,
         stream: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        use_new_handle_api: Union[bool, DEFAULT] = DEFAULT.VALUE,
-        _prefer_local_routing: Union[bool, DEFAULT] = DEFAULT.VALUE,
     ) -> "DeploymentHandle":
         """Set options for this handle and return an updated copy of it.
 
@@ -672,23 +665,10 @@ class DeploymentHandle(_DeploymentHandleBase):
                 multiplexed_model_id="model:v1",
             ).remote()
         """
-        if use_new_handle_api is not DEFAULT.VALUE:
-            warnings.warn(
-                "Setting `use_new_handle_api` no longer has any effect. "
-                "This argument will be removed in a future version."
-            )
-
-        if _prefer_local_routing is not DEFAULT.VALUE:
-            warnings.warn(
-                "Modifying `_prefer_local_routing` with `options()` is "
-                "deprecated. Please use `init()` instead."
-            )
-
         return self._options(
             method_name=method_name,
             multiplexed_model_id=multiplexed_model_id,
             stream=stream,
-            _prefer_local_routing=_prefer_local_routing,
         )
 
     def remote(

@@ -61,7 +61,7 @@ async def test_serve_handle(ray_start_regular):
             def hello():
                 return "hello"
 
-            handle = serve.run(hello.bind()).options(use_new_handle_api=True)
+            handle = serve.run(hello.bind())
             assert await handle.remote() == "hello"
 
 
