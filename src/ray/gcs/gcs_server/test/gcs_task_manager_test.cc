@@ -70,8 +70,8 @@ class GcsTaskManagerTest : public ::testing::Test {
 
   void ExpectTaskEventsEq(google::protobuf::RepeatedPtrField<rpc::TaskEvents> *expected,
                           google::protobuf::RepeatedPtrField<rpc::TaskEvents> *actual) {
-    std::sort(expected->begin(), expected->end(), SortByTaskAttempt);
-    std::sort(actual->begin(), actual->end(), SortByTaskAttempt);
+    std::sort(expected->begin(), expected->end(), SortByTaskIdAndAttempt);
+    std::sort(actual->begin(), actual->end(), SortByTaskIdAndAttempt);
     EXPECT_EQ(expected->size(), actual->size());
     for (int i = 0; i < expected->size(); ++i) {
       // Equivalent ignores default values.
@@ -80,6 +80,16 @@ class GcsTaskManagerTest : public ::testing::Test {
           << "Expected: " << expected->at(i).DebugString()
           << "Actual: " << actual->at(i).DebugString();
     }
+  }
+
+  void ExpectTaskEventsEq(
+      std::vector<google::protobuf::RepeatedPtrField<rpc::TaskEvents> *> expected,
+      google::protobuf::RepeatedPtrField<rpc::TaskEvents> *actual) {
+    google::protobuf::RepeatedPtrField<rpc::TaskEvents> expectedMerged;
+    for (auto expectedEvent : expected) {
+      expectedMerged.MergeFrom(*expectedEvent);
+    }
+    ExpectTaskEventsEq(&expectedMerged, actual);
   }
 
   void SyncAddTaskEvent(
@@ -129,37 +139,53 @@ class GcsTaskManagerTest : public ::testing::Test {
     return reply;
   }
 
-  rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
-                                            absl::optional<JobID> job_id = absl::nullopt,
-                                            int64_t limit = -1,
-                                            bool exclude_driver = true,
-                                            const std::string &name = "",
-                                            const ActorID &actor_id = ActorID::Nil(),
-                                            const std::string &state = "") {
+  rpc::GetTaskEventsReply SyncGetTaskEvents(
+      const std::vector<TaskID> task_ids,
+      const std::vector<rpc::FilterPredicate> task_id_predicates,
+      const absl::optional<JobID> job_id = absl::nullopt,
+      const absl::optional<rpc::FilterPredicate> job_id_predicate = absl::nullopt,
+      int64_t limit = -1,
+      bool exclude_driver = true,
+      const std::string &name = "",
+      rpc::FilterPredicate name_predicate = rpc::FilterPredicate::EQUAL,
+      const ActorID &actor_id = ActorID::Nil(),
+      rpc::FilterPredicate actor_id_predicate = rpc::FilterPredicate::EQUAL,
+      const std::string &state = "",
+      rpc::FilterPredicate state_predicate = rpc::FilterPredicate::EQUAL) {
     rpc::GetTaskEventsRequest request;
     rpc::GetTaskEventsReply reply;
     std::promise<bool> promise;
 
     if (!task_ids.empty()) {
-      for (const auto &task_id : task_ids) {
-        request.mutable_filters()->add_task_ids(task_id.Binary());
+      for (int i = 0; i < task_ids.size(); i++) {
+        auto task_filter = request.mutable_filters()->add_task_filters();
+        task_filter->set_task_id(task_ids.at(i).Binary());
+        task_filter->set_predicate(task_id_predicates.at(i));
       }
     }
 
     if (!name.empty()) {
-      request.mutable_filters()->set_name(name);
+      auto name_filter = request.mutable_filters()->mutable_name_filter();
+      name_filter->set_name(name);
+      name_filter->set_predicate(name_predicate);
     }
 
     if (!state.empty()) {
-      request.mutable_filters()->set_state(state);
+      auto state_filter = request.mutable_filters()->mutable_state_filter();
+      state_filter->set_state(state);
+      state_filter->set_predicate(state_predicate);
     }
 
     if (!actor_id.IsNil()) {
-      request.mutable_filters()->set_actor_id(actor_id.Binary());
+      auto actor_id_filter = request.mutable_filters()->mutable_actor_filter();
+      actor_id_filter->set_actor_id(actor_id.Binary());
+      actor_id_filter->set_predicate(actor_id_predicate);
     }
 
     if (job_id) {
-      request.mutable_filters()->set_job_id(job_id->Binary());
+      auto job_id_filter = request.mutable_filters()->mutable_job_filter();
+      job_id_filter->set_job_id(job_id->Binary());
+      job_id_filter->set_predicate(job_id_predicate.value());
     }
 
     if (limit >= 0) {
@@ -183,6 +209,29 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     EXPECT_EQ(StatusCode(reply.status().code()), StatusCode::OK);
     return reply;
+  }
+
+  rpc::GetTaskEventsReply SyncGetTaskEvents(absl::flat_hash_set<TaskID> task_ids,
+                                            absl::optional<JobID> job_id = absl::nullopt,
+                                            int64_t limit = -1,
+                                            bool exclude_driver = true,
+                                            const std::string &name = "",
+                                            const ActorID &actor_id = ActorID::Nil(),
+                                            const std::string &state = "") {
+    std::vector<rpc::FilterPredicate> task_id_predicates(task_ids.size(),
+                                                         rpc::FilterPredicate::EQUAL);
+    return SyncGetTaskEvents(std::vector<TaskID>(task_ids.begin(), task_ids.end()),
+                             task_id_predicates,
+                             job_id,
+                             rpc::FilterPredicate::EQUAL,
+                             limit,
+                             exclude_driver,
+                             name,
+                             rpc::FilterPredicate::EQUAL,
+                             actor_id,
+                             rpc::FilterPredicate::EQUAL,
+                             state,
+                             rpc::FilterPredicate::EQUAL);
   }
 
   static rpc::TaskInfoEntry GenTaskInfo(
@@ -268,8 +317,12 @@ class GcsTaskManagerTest : public ::testing::Test {
     return result;
   }
 
-  static bool SortByTaskAttempt(const rpc::TaskEvents &a, const rpc::TaskEvents &b) {
-    return a.task_id() < b.task_id() || a.attempt_number() < b.attempt_number();
+  static bool SortByTaskIdAndAttempt(const rpc::TaskEvents &a, const rpc::TaskEvents &b) {
+    if (a.task_id() == b.task_id()) {
+      return a.attempt_number() < b.attempt_number();
+    } else {
+      return a.task_id() < b.task_id();
+    }
   }
 
   static std::vector<rpc::TaskEvents> ConcatTaskEvents(
@@ -383,9 +436,9 @@ TEST_F(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt) {
 
 TEST_F(GcsTaskManagerTest, TestGetTaskEvents) {
   // Add events
-  size_t num_profile_events = 10;
-  size_t num_status_events = 20;
-  size_t num_both_events = 30;
+  size_t num_profile_events = 1;
+  size_t num_status_events = 1;
+  size_t num_both_events = 1;
   size_t num_profile_task_events_dropped = 10;
   size_t num_status_task_events_dropped = 20;
 
@@ -435,6 +488,10 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEvents) {
 
     EXPECT_EQ(reply.num_profile_task_events_dropped(), num_profile_task_events_dropped);
     EXPECT_EQ(reply.num_status_task_events_dropped(), num_status_task_events_dropped);
+    EXPECT_EQ(reply.num_total_stored(),
+              num_profile_events + num_status_events + num_both_events);
+    EXPECT_EQ(reply.num_filtered_on_gcs(), 0);
+    EXPECT_EQ(reply.num_truncated(), 0);
   }
 }
 
@@ -455,6 +512,9 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithLimit) {
     EXPECT_EQ(reply.events_by_task_size(), 10);
     EXPECT_EQ(reply.num_profile_task_events_dropped(), num_task_events - 10);
     EXPECT_EQ(reply.num_status_task_events_dropped(), num_task_events - 10);
+    EXPECT_EQ(reply.num_total_stored(), num_task_events);
+    EXPECT_EQ(reply.num_filtered_on_gcs(), 0);
+    EXPECT_EQ(reply.num_truncated(), num_task_events - 10);
   }
 
   {
@@ -462,13 +522,19 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsWithLimit) {
     EXPECT_EQ(reply.events_by_task_size(), 0);
     EXPECT_EQ(reply.num_profile_task_events_dropped(), num_task_events);
     EXPECT_EQ(reply.num_status_task_events_dropped(), num_task_events);
+    EXPECT_EQ(reply.num_total_stored(), num_task_events);
+    EXPECT_EQ(reply.num_filtered_on_gcs(), 0);
+    EXPECT_EQ(reply.num_truncated(), num_task_events);
   }
 
   {
     auto reply = SyncGetTaskEvents(/* task_ids */ {}, /* job_id */ absl::nullopt, -1);
-    EXPECT_EQ(reply.events_by_task_size(), 100);
+    EXPECT_EQ(reply.events_by_task_size(), num_task_events);
     EXPECT_EQ(reply.num_profile_task_events_dropped(), 0);
     EXPECT_EQ(reply.num_status_task_events_dropped(), 0);
+    EXPECT_EQ(reply.num_total_stored(), num_task_events);
+    EXPECT_EQ(reply.num_filtered_on_gcs(), 0);
+    EXPECT_EQ(reply.num_truncated(), 0);
   }
 }
 
@@ -502,12 +568,76 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByTaskIDs) {
 
   auto reply_task1 = SyncGetTaskEvents({task_id1});
   auto reply_task2 = SyncGetTaskEvents({task_id2});
+  auto reply_not_task1 = SyncGetTaskEvents({task_id1}, {rpc::FilterPredicate::NOT_EQUAL});
+  auto reply_not_task2 = SyncGetTaskEvents({task_id2}, {rpc::FilterPredicate::NOT_EQUAL});
+  auto reply_task1_task2 = SyncGetTaskEvents({task_id1, task_id2});
+  auto reply_not_task1_task2 = SyncGetTaskEvents(
+      {task_id1, task_id2},
+      {rpc::FilterPredicate::NOT_EQUAL, rpc::FilterPredicate::NOT_EQUAL});
+  auto reply_task2_not_task1 =
+      SyncGetTaskEvents({task_id1, task_id2},
+                        {rpc::FilterPredicate::NOT_EQUAL, rpc::FilterPredicate::EQUAL});
 
   // Check matched
   ExpectTaskEventsEq(events_data_task1.mutable_events_by_task(),
                      reply_task1.mutable_events_by_task());
+  EXPECT_EQ(reply_task1.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task1.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task1.num_total_stored(), num_events_task_1);
+  EXPECT_EQ(reply_task1.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_task1.num_truncated(), 0);
+
   ExpectTaskEventsEq(events_data_task2.mutable_events_by_task(),
                      reply_task2.mutable_events_by_task());
+  EXPECT_EQ(reply_task2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task2.num_total_stored(), num_events_task_2);
+  EXPECT_EQ(reply_task2.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_task2.num_truncated(), 0);
+
+  ExpectTaskEventsEq(events_data_task2.mutable_events_by_task(),
+                     reply_not_task1.mutable_events_by_task());
+  EXPECT_EQ(reply_not_task1.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task1.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task1.num_total_stored(), num_events_task_1 + num_events_task_2);
+  EXPECT_EQ(reply_not_task1.num_filtered_on_gcs(), num_events_task_1);
+  EXPECT_EQ(reply_not_task1.num_truncated(), 0);
+
+  ExpectTaskEventsEq(events_data_task1.mutable_events_by_task(),
+                     reply_not_task2.mutable_events_by_task());
+  EXPECT_EQ(reply_not_task2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task2.num_total_stored(), num_events_task_1 + num_events_task_2);
+  EXPECT_EQ(reply_not_task2.num_filtered_on_gcs(), num_events_task_2);
+  EXPECT_EQ(reply_not_task2.num_truncated(), 0);
+
+  std::vector<google::protobuf::RepeatedPtrField<rpc::TaskEvents> *>
+      task_events_task1_and_task2 = {events_data_task1.mutable_events_by_task(),
+                                     events_data_task2.mutable_events_by_task()};
+  ExpectTaskEventsEq(task_events_task1_and_task2,
+                     reply_task1_task2.mutable_events_by_task());
+  EXPECT_EQ(reply_task1_task2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task1_task2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task1_task2.num_total_stored(), num_events_task_1 + num_events_task_2);
+  EXPECT_EQ(reply_task1_task2.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_task1_task2.num_truncated(), 0);
+
+  EXPECT_EQ(reply_not_task1_task2.events_by_task_size(), 0);
+  EXPECT_EQ(reply_not_task1_task2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task1_task2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_task1_task2.num_total_stored(),
+            num_events_task_1 + num_events_task_2);
+  EXPECT_EQ(reply_not_task1_task2.num_filtered_on_gcs(),
+            num_events_task_1 + num_events_task_2);
+  EXPECT_EQ(reply_not_task1_task2.num_truncated(), 0);
+
+  ExpectTaskEventsEq(events_data_task2.mutable_events_by_task(),
+                     reply_task2_not_task1.mutable_events_by_task());
+  EXPECT_EQ(reply_task2_not_task1.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task2_not_task1.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task2_not_task1.num_total_stored(), num_events_task_2);
+  EXPECT_EQ(reply_task2_not_task1.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_task2_not_task1.num_truncated(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
@@ -545,91 +675,200 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsByJob) {
 
   auto reply_job1 = SyncGetTaskEvents(/* task_ids */ {}, JobID::FromInt(1));
   auto reply_job2 = SyncGetTaskEvents({}, JobID::FromInt(2));
+  auto reply_not_job1 =
+      SyncGetTaskEvents({}, {}, JobID::FromInt(1), rpc::FilterPredicate::NOT_EQUAL);
+  auto reply_not_job2 =
+      SyncGetTaskEvents({}, {}, JobID::FromInt(2), rpc::FilterPredicate::NOT_EQUAL);
 
   // Check matched
   ExpectTaskEventsEq(events_data_job1.mutable_events_by_task(),
                      reply_job1.mutable_events_by_task());
+  EXPECT_EQ(reply_job1.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_job1.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_job1.num_total_stored(), num_task_job1);
+  EXPECT_EQ(reply_job1.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_job1.num_truncated(), 0);
+
   ExpectTaskEventsEq(events_data_job2.mutable_events_by_task(),
                      reply_job2.mutable_events_by_task());
+  EXPECT_EQ(reply_job2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_job2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_job2.num_total_stored(), num_task_job2);
+  EXPECT_EQ(reply_job2.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_job2.num_truncated(), 0);
+
+  ExpectTaskEventsEq(events_data_job2.mutable_events_by_task(),
+                     reply_not_job1.mutable_events_by_task());
+  EXPECT_EQ(reply_not_job1.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_job1.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_job1.num_total_stored(), num_task_job1 + num_task_job2);
+  EXPECT_EQ(reply_not_job1.num_filtered_on_gcs(), num_task_job1);
+  EXPECT_EQ(reply_not_job1.num_truncated(), 0);
+
+  ExpectTaskEventsEq(events_data_job1.mutable_events_by_task(),
+                     reply_not_job2.mutable_events_by_task());
+  EXPECT_EQ(reply_not_job2.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_job2.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_job2.num_total_stored(), num_task_job1 + num_task_job2);
+  EXPECT_EQ(reply_not_job2.num_filtered_on_gcs(), num_task_job2);
+  EXPECT_EQ(reply_not_job2.num_truncated(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
   // Generate task events
 
-  // A task event with actor id
+  // A task event with actor id, job id = 1
   ActorID actor_id = ActorID::Of(JobID::FromInt(1), TaskID::Nil(), 1);
+  std::vector<TaskID> task_ids_actor_id_job1;
+  rpc::TaskEventData event_data_actor_id_job1;
   {
-    auto task_ids = GenTaskIDs(1);
+    task_ids_actor_id_job1 = GenTaskIDs(1);
     auto task_info_actor_id =
         GenTaskInfo(JobID::FromInt(1), TaskID::Nil(), rpc::ACTOR_TASK, actor_id);
-    auto events = GenTaskEvents(task_ids,
+    auto events = GenTaskEvents(task_ids_actor_id_job1,
                                 /* attempt_number */
                                 0,
                                 /* job_id */ 1,
                                 absl::nullopt,
                                 absl::nullopt,
                                 task_info_actor_id);
-    auto data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(data);
+    event_data_actor_id_job1 = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(event_data_actor_id_job1);
   }
 
-  // A task event with name.
+  // A task event with name and job id = 1
+  std::string task_name = "task_name";
+  std::vector<TaskID> task_ids_task_name_job1;
+  rpc::TaskEventData event_data_task_name_job1;
   {
-    auto task_ids = GenTaskIDs(1);
+    task_ids_task_name_job1 = GenTaskIDs(1);
     auto task_info_name = GenTaskInfo(
         JobID::FromInt(1), TaskID::Nil(), rpc::NORMAL_TASK, ActorID::Nil(), "task_name");
-    auto events = GenTaskEvents(task_ids,
+    auto events = GenTaskEvents(task_ids_task_name_job1,
                                 /* attempt_number */
                                 0,
                                 /* job_id */ 1,
                                 absl::nullopt,
                                 absl::nullopt,
                                 task_info_name);
-    auto data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(data);
+    event_data_task_name_job1 = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(event_data_task_name_job1);
   }
 
-  // A task event with state transitions.
+  // A task event with state transitions and job id = 2
+  rpc::TaskStatus task_status = rpc::TaskStatus::RUNNING;
+  std::vector<TaskID> task_ids_task_status_job2;
+  rpc::TaskEventData event_data_task_state_job2;
   {
-    auto task_ids = GenTaskIDs(1);
-    auto task_info = GenTaskInfo(JobID::FromInt(1), TaskID::Nil(), rpc::NORMAL_TASK);
-    auto events =
-        GenTaskEvents(task_ids,
-                      /* attempt_number */
-                      0,
-                      /* job_id */ 1,
-                      absl::nullopt,
-                      GenStateUpdate({{rpc::TaskStatus::PENDING_NODE_ASSIGNMENT, 1},
-                                      {rpc::TaskStatus::RUNNING, 5}},
-                                     WorkerID::Nil()),
-                      task_info);
-    auto data = Mocker::GenTaskEventsData(events);
-    SyncAddTaskEventData(data);
+    task_ids_task_status_job2 = GenTaskIDs(1);
+    auto task_info = GenTaskInfo(JobID::FromInt(2), TaskID::Nil(), rpc::NORMAL_TASK);
+    auto events = GenTaskEvents(
+        task_ids_task_status_job2,
+        /* attempt_number */
+        0,
+        /* job_id */ 1,
+        absl::nullopt,
+        GenStateUpdate({{rpc::TaskStatus::PENDING_NODE_ASSIGNMENT, 1}, {task_status, 5}},
+                       WorkerID::Nil()),
+        task_info);
+    event_data_task_state_job2 = Mocker::GenTaskEventsData(events);
+    SyncAddTaskEventData(event_data_task_state_job2);
   }
 
+  // Test filter by task and job
+  auto reply_task_and_job = SyncGetTaskEvents({task_ids_task_status_job2},
+                                              {rpc::FilterPredicate::EQUAL},
+                                              JobID::FromInt(1),
+                                              rpc::FilterPredicate::EQUAL,
+                                              /* limit */ -1,
+                                              /* exclude_driver */ false);
+  EXPECT_EQ(reply_task_and_job.events_by_task_size(), 0);
+  EXPECT_EQ(reply_task_and_job.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task_and_job.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task_and_job.num_total_stored(), 1);
+  EXPECT_EQ(reply_task_and_job.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_task_and_job.num_truncated(), 0);
+
+  auto reply_task_and_not_job = SyncGetTaskEvents({task_ids_task_status_job2},
+                                                  {rpc::FilterPredicate::EQUAL},
+                                                  JobID::FromInt(2),
+                                                  rpc::FilterPredicate::NOT_EQUAL,
+                                                  /* limit */ -1,
+                                                  /* exclude_driver */ false);
+  EXPECT_EQ(reply_task_and_not_job.events_by_task_size(), 0);
+  EXPECT_EQ(reply_task_and_not_job.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task_and_not_job.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_task_and_not_job.num_total_stored(), 1);
+  EXPECT_EQ(reply_task_and_not_job.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_task_and_not_job.num_truncated(), 0);
+
+  // Test filter by task name
   auto reply_name = SyncGetTaskEvents({},
                                       /* job_id */ absl::nullopt,
                                       /* limit */ -1,
                                       /* exclude_driver */ false,
-                                      "task_name");
-  EXPECT_EQ(reply_name.events_by_task_size(), 1);
+                                      task_name);
+  ExpectTaskEventsEq(event_data_task_name_job1.mutable_events_by_task(),
+                     reply_name.mutable_events_by_task());
+  EXPECT_EQ(reply_name.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_name.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_name.num_total_stored(), 3);
+  EXPECT_EQ(reply_name.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_name.num_truncated(), 0);
 
+  auto reply_not_name = SyncGetTaskEvents({},
+                                          {},
+                                          /* job_id */ absl::nullopt,
+                                          /*job_id_predicate*/ absl::nullopt,
+                                          /* limit */ -1,
+                                          /* exclude_driver */ false,
+                                          task_name,
+                                          rpc::FilterPredicate::NOT_EQUAL);
+  ExpectTaskEventsEq({event_data_actor_id_job1.mutable_events_by_task(),
+                      event_data_task_state_job2.mutable_events_by_task()},
+                     reply_not_name.mutable_events_by_task());
+  EXPECT_EQ(reply_not_name.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_name.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_name.num_total_stored(), 3);
+  EXPECT_EQ(reply_not_name.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_not_name.num_truncated(), 0);
+
+  // Test filter by actor id
   auto reply_actor_id = SyncGetTaskEvents({},
                                           /* job_id */ absl::nullopt,
                                           /* limit */ -1,
                                           /* exclude_driver */ false,
                                           /* name */ "",
                                           actor_id);
-  EXPECT_EQ(reply_name.events_by_task_size(), 1);
+  ExpectTaskEventsEq(event_data_actor_id_job1.mutable_events_by_task(),
+                     reply_actor_id.mutable_events_by_task());
+  EXPECT_EQ(reply_actor_id.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_actor_id.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_actor_id.num_total_stored(), 3);
+  EXPECT_EQ(reply_actor_id.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_actor_id.num_truncated(), 0);
 
-  auto reply_both_and = SyncGetTaskEvents({},
-                                          /* job_id */ absl::nullopt,
-                                          /* limit */ -1,
-                                          /* exclude_driver */ false,
-                                          "task_name",
-                                          actor_id);
-  EXPECT_EQ(reply_both_and.events_by_task_size(), 0);
+  auto reply_not_actor_id =
+      SyncGetTaskEvents({},
+                        {},
+                        /* job_id */ absl::nullopt,
+                        /*job_id_predicate*/ absl::nullopt,
+                        /* limit */ -1,
+                        /* exclude_driver */ false,
+                        /* name */ "",
+                        /* name_predicate */ rpc::FilterPredicate::EQUAL,
+                        actor_id,
+                        rpc::FilterPredicate::NOT_EQUAL);
+  ExpectTaskEventsEq({event_data_task_name_job1.mutable_events_by_task(),
+                      event_data_task_state_job2.mutable_events_by_task()},
+                     reply_not_actor_id.mutable_events_by_task());
+  EXPECT_EQ(reply_not_actor_id.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_actor_id.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_actor_id.num_total_stored(), 3);
+  EXPECT_EQ(reply_not_actor_id.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_not_actor_id.num_truncated(), 0);
 
+  // Test filter by latest state
   auto reply_state = SyncGetTaskEvents({},
                                        /* job_id */ absl::nullopt,
                                        /* limit */ -1,
@@ -637,7 +876,37 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                        /* name */ "",
                                        ActorID::Nil(),
                                        "RUnnING");
-  EXPECT_EQ(reply_state.events_by_task_size(), 1);
+  ExpectTaskEventsEq(event_data_task_state_job2.mutable_events_by_task(),
+                     reply_state.mutable_events_by_task());
+  EXPECT_EQ(reply_name.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_name.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_name.num_total_stored(), 3);
+  EXPECT_EQ(reply_name.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_name.num_truncated(), 0);
+
+  auto reply_not_state =
+      SyncGetTaskEvents({},
+                        {},
+                        /* job_id */ absl::nullopt,
+                        /*job_id_predicate*/ absl::nullopt,
+                        /* limit */ -1,
+                        /* exclude_driver */ false,
+                        /* name */ "",
+                        /* name_predicate */ rpc::FilterPredicate::EQUAL,
+                        ActorID::Nil(),
+                        /* actor_id_predicate */ rpc::FilterPredicate::EQUAL,
+                        "RUnnING",
+                        /* state_predicate */ rpc::FilterPredicate::NOT_EQUAL);
+  ExpectTaskEventsEq(
+      {event_data_task_name_job1.mutable_events_by_task(),
+       event_data_actor_id_job1.mutable_events_by_task()},
+      reply_not_state
+          .mutable_events_by_task());  // TODO: adjust the actual vs expect place
+  EXPECT_EQ(reply_not_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_total_stored(), 3);
+  EXPECT_EQ(reply_not_state.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_not_state.num_truncated(), 0);
 
   reply_state = SyncGetTaskEvents({},
                                   /* job_id */ absl::nullopt,
@@ -646,7 +915,38 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                   /* name */ "",
                                   ActorID::Nil(),
                                   "NIL");
-  EXPECT_EQ(reply_state.events_by_task_size(), 2);
+  ExpectTaskEventsEq(
+      {event_data_task_name_job1.mutable_events_by_task(),
+       event_data_actor_id_job1.mutable_events_by_task()},
+      reply_state.mutable_events_by_task());  // TODO: adjust the actual vs expect place
+  EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_total_stored(), 3);
+  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 1);
+  EXPECT_EQ(reply_state.num_truncated(), 0);
+
+  reply_not_state =
+      SyncGetTaskEvents({},
+                        {},
+                        /* job_id */ absl::nullopt,
+                        /*job_id_predicate*/ absl::nullopt,
+                        /* limit */ -1,
+                        /* exclude_driver */ false,
+                        /* name */ "",
+                        /* name_predicate */ rpc::FilterPredicate::EQUAL,
+                        ActorID::Nil(),
+                        /* actor_id_predicate */ rpc::FilterPredicate::EQUAL,
+                        "NIL",
+                        /* state_predicate */ rpc::FilterPredicate::NOT_EQUAL);
+  ExpectTaskEventsEq(
+      event_data_task_state_job2.mutable_events_by_task(),
+      reply_not_state
+          .mutable_events_by_task());  // TODO: adjust the actual vs expect place
+  EXPECT_EQ(reply_not_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_total_stored(), 3);
+  EXPECT_EQ(reply_not_state.num_filtered_on_gcs(), 2);
+  EXPECT_EQ(reply_not_state.num_truncated(), 0);
 
   reply_state = SyncGetTaskEvents({},
                                   /* job_id */ absl::nullopt,
@@ -656,6 +956,54 @@ TEST_F(GcsTaskManagerTest, TestGetTaskEventsFilters) {
                                   ActorID::Nil(),
                                   "PENDING_NODE_ASSIGNMENT");
   EXPECT_EQ(reply_state.events_by_task_size(), 0);
+  EXPECT_EQ(reply_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_state.num_total_stored(), 3);
+  EXPECT_EQ(reply_state.num_filtered_on_gcs(), 3);
+  EXPECT_EQ(reply_state.num_truncated(), 0);
+
+  reply_not_state =
+      SyncGetTaskEvents({},
+                        {},
+                        /* job_id */ absl::nullopt,
+                        /*job_id_predicate*/ absl::nullopt,
+                        /* limit */ -1,
+                        /* exclude_driver */ false,
+                        /* name */ "",
+                        /* name_predicate */ rpc::FilterPredicate::EQUAL,
+                        ActorID::Nil(),
+                        /* actor_id_predicate */ rpc::FilterPredicate::EQUAL,
+                        "PENDING_NODE_ASSIGNMENT",
+                        /* state_predicate */ rpc::FilterPredicate::NOT_EQUAL);
+  ExpectTaskEventsEq({event_data_task_name_job1.mutable_events_by_task(),
+                      event_data_actor_id_job1.mutable_events_by_task(),
+                      event_data_task_state_job2.mutable_events_by_task()},
+                     reply_not_state.mutable_events_by_task());
+  EXPECT_EQ(reply_not_state.num_profile_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_status_task_events_dropped(), 0);
+  EXPECT_EQ(reply_not_state.num_total_stored(), 3);
+  EXPECT_EQ(reply_not_state.num_filtered_on_gcs(), 0);
+  EXPECT_EQ(reply_not_state.num_truncated(), 0);
+
+  RAY_LOG(INFO) << "State running with not equal4";
+
+  // Test multiple filters
+  auto reply_name_and_actor_id = SyncGetTaskEvents({},
+                                                   /* job_id */ absl::nullopt,
+                                                   /* limit */ -1,
+                                                   /* exclude_driver */ false,
+                                                   "task_name",
+                                                   actor_id);
+  EXPECT_EQ(reply_name_and_actor_id.events_by_task_size(), 0);
+
+  auto reply_actor_id_and_state = SyncGetTaskEvents({},
+                                                    /* job_id */ absl::nullopt,
+                                                    /* limit */ -1,
+                                                    /* exclude_driver */ false,
+                                                    "",
+                                                    actor_id,
+                                                    "Running");
+  EXPECT_EQ(reply_name_and_actor_id.events_by_task_size(), 0);
 }
 
 TEST_F(GcsTaskManagerTest, TestMarkTaskAttemptFailedIfNeeded) {
@@ -902,9 +1250,9 @@ TEST_F(GcsTaskManagerMemoryLimitedTest, TestLimitTaskEvents) {
     EXPECT_EQ(task_manager->GetNumTaskEventsStored(), num_limit);
     EXPECT_EQ(task_manager->GetTotalNumTaskEventsReported(), num_batch1 + num_batch2);
 
-    std::sort(expected_events.begin(), expected_events.end(), SortByTaskAttempt);
+    std::sort(expected_events.begin(), expected_events.end(), SortByTaskIdAndAttempt);
     auto actual_events = task_manager->task_event_storage_->GetTaskEvents();
-    std::sort(actual_events.begin(), actual_events.end(), SortByTaskAttempt);
+    std::sort(actual_events.begin(), actual_events.end(), SortByTaskIdAndAttempt);
     EXPECT_EQ(actual_events.size(), expected_events.size());
     for (size_t i = 0; i < actual_events.size(); ++i) {
       EXPECT_TRUE(google::protobuf::util::MessageDifferencer::Equals(actual_events[i],

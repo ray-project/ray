@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include <cstddef>
+
 #include "absl/strings/match.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
@@ -361,16 +363,21 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
   // Select candidate events by indexing if possible.
-  std::vector<rpc::TaskEvents> task_events;
+  std::optional<std::vector<rpc::TaskEvents>> task_events;
   const auto &filters = request.filters();
-  if (filters.task_ids_size() > 0) {
+  if (filters.task_filters_size() > 0) {
     absl::flat_hash_set<TaskID> task_ids;
-    for (const auto &task_id_str : filters.task_ids()) {
-      task_ids.insert(TaskID::FromBinary(task_id_str));
+    for (const auto &task_filter_obj : filters.task_filters()) {
+      if (task_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+        task_ids.insert(TaskID::FromBinary(task_filter_obj.task_id()));
+      }
     }
-    task_events = task_event_storage_->GetTaskEvents(task_ids);
-  } else if (filters.has_job_id()) {
-    const auto job_id = JobID::FromBinary(filters.job_id());
+    if (!task_ids.empty()) {
+      task_events = task_event_storage_->GetTaskEvents(task_ids);
+    }
+  } else if (filters.has_job_filter() &&
+             filters.job_filter().predicate() == rpc::FilterPredicate::EQUAL) {
+    const auto job_id = JobID::FromBinary(filters.job_filter().job_id());
     task_events = task_event_storage_->GetTaskEvents(job_id);
     // Populate per-job data loss.
     if (task_event_storage_->HasJob(job_id)) {
@@ -378,7 +385,9 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
       reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
     }
-  } else {
+  }
+
+  if (!task_events.has_value()) {
     task_events = task_event_storage_->GetTaskEvents();
     // Populate all jobs data loss
     reply->set_num_profile_task_events_dropped(
@@ -396,7 +405,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   int64_t num_limit_truncated = 0;
 
   // A lambda filter fn, where it returns true for task events to be included in the
-  // result. Task ids and job ids are already filtered by the storage with indexing above.
+  // result. Task ids or job ids with equal predicate are already filtered by the
+  // storage with indexing above.
   auto filter_fn = [&filters](const rpc::TaskEvents &task_event) {
     if (!task_event.has_task_info()) {
       // Skip task events w/o task info.
@@ -407,18 +417,47 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.has_actor_id() && task_event.task_info().has_actor_id() &&
-        ActorID::FromBinary(task_event.task_info().actor_id()) !=
-            ActorID::FromBinary(filters.actor_id())) {
+    if (filters.task_filters_size() > 0) {
+      for (const auto &task_filter_obj : filters.task_filters()) {
+        if (task_filter_obj.predicate() == rpc::FilterPredicate::NOT_EQUAL &&
+            TaskID::FromBinary(task_event.task_id()) ==
+                TaskID::FromBinary(task_filter_obj.task_id())) {
+          return false;
+        }
+      }
+    }
+
+    if (filters.has_job_filter() &&
+        ((filters.job_filter().predicate() == rpc::FilterPredicate::EQUAL &&
+          JobID::FromBinary(task_event.task_info().job_id()) !=
+              JobID::FromBinary(filters.job_filter().job_id())) ||
+         (filters.job_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
+          JobID::FromBinary(task_event.task_info().job_id()) ==
+              JobID::FromBinary(filters.job_filter().job_id())))) {
       return false;
     }
 
-    if (filters.has_name() &&
-        !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
+    if (filters.has_actor_filter() && task_event.task_info().has_actor_id() &&
+        ((filters.actor_filter().predicate() == rpc::FilterPredicate::EQUAL &&
+          ActorID::FromBinary(task_event.task_info().actor_id()) !=
+              ActorID::FromBinary(filters.actor_filter().actor_id())) ||
+         (filters.actor_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
+          ActorID::FromBinary(task_event.task_info().actor_id()) ==
+              ActorID::FromBinary(filters.actor_filter().actor_id())))) {
       return false;
     }
 
-    if (filters.has_state()) {
+    if (filters.has_name_filter() &&
+        ((filters.name_filter().predicate() == rpc::FilterPredicate::EQUAL &&
+          !absl::EqualsIgnoreCase(task_event.task_info().name(),
+                                  filters.name_filter().name())) ||
+         (filters.name_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
+          absl::EqualsIgnoreCase(task_event.task_info().name(),
+                                 filters.name_filter().name())))) {
+      return false;
+    }
+
+    if (filters.has_state_filter()) {
       const google::protobuf::EnumDescriptor *task_status_descriptor =
           ray::rpc::TaskStatus_descriptor();
 
@@ -435,9 +474,14 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         }
       }
 
-      if (!absl::EqualsIgnoreCase(
-              filters.state(),
-              task_status_descriptor->FindValueByNumber(state)->name())) {
+      if ((filters.state_filter().predicate() == rpc::FilterPredicate::EQUAL &&
+           !absl::EqualsIgnoreCase(
+               filters.state_filter().state(),
+               task_status_descriptor->FindValueByNumber(state)->name())) ||
+          (filters.state_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
+           absl::EqualsIgnoreCase(
+               filters.state_filter().state(),
+               task_status_descriptor->FindValueByNumber(state)->name()))) {
         return false;
       }
     }
@@ -446,7 +490,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   };
 
   int64_t num_filtered = 0;
-  for (auto itr = task_events.rbegin(); itr != task_events.rend(); ++itr) {
+  for (auto itr = task_events->rbegin(); itr != task_events->rend(); ++itr) {
     auto &task_event = *itr;
     if (!filter_fn(task_event)) {
       num_filtered++;
@@ -470,7 +514,7 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
                                             num_status_event_limit);
 
-  reply->set_num_total_stored(task_events.size());
+  reply->set_num_total_stored(task_events->size());
   reply->set_num_truncated(num_limit_truncated);
   reply->set_num_filtered_on_gcs(num_filtered);
 

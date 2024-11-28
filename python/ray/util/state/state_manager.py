@@ -18,6 +18,7 @@ from ray._raylet import ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
     GetAllNodeInfoReply,
@@ -293,20 +294,35 @@ class StateDataSourceClient:
         req_filters = GetTaskEventsRequest.Filters()
         for filter in filters:
             key, predicate, value = filter
-            if predicate != "=":
-                # We only support EQUAL predicate for source side filtering.
+            filterPredicate = None
+            if predicate == "=":
+                filterPredicate = FilterPredicate.EQUAL
+            elif predicate == "!=":
+                filterPredicate = FilterPredicate.NOT_EQUAL
+            else:
+                # We only support EQUAL and NOT_EQUAL predicate for source side
+                # filtering.
                 continue
 
             if key == "actor_id":
-                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+                req_filters.actor_filter.actor_id = ActorID(
+                    hex_to_binary(value)
+                ).binary()
+                req_filters.actor_filter.predicate = filterPredicate
             elif key == "job_id":
-                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+                req_filters.job_filter.job_id = JobID(hex_to_binary(value)).binary()
+                req_filters.job_filter.predicate = filterPredicate
             elif key == "task_id":
-                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+                task_id_filter = GetTaskEventsRequest.Filters.TaskIdFilter()
+                task_id_filter.task_id = TaskID(hex_to_binary(value)).binary()
+                task_id_filter.predicate = filterPredicate
+                req_filters.task_filters.append(task_id_filter)
             elif key == "name":
-                req_filters.name = value
+                req_filters.name_filter.name = value
+                req_filters.name_filter.predicate = filterPredicate
             elif key == "state":
-                req_filters.state = value
+                req_filters.state_filter.state = value
+                req_filters.state_filter.predicate = filterPredicate
             else:
                 continue
 
