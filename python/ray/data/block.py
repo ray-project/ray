@@ -254,8 +254,8 @@ class BlockAccessor:
         """Return a slice of this block.
 
         Args:
-            start: The starting index of the slice.
-            end: The ending index of the slice.
+            start: The starting index of the slice (inclusive).
+            end: The ending index of the slice (exclusive).
             copy: Whether to perform a data copy for the slice.
 
         Returns:
@@ -475,3 +475,34 @@ class BlockAccessor:
     def block_type(self) -> BlockType:
         """Return the block type of this block."""
         raise NotImplementedError
+
+
+def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
+    """Compute boundaries of the groups within a block, which is represented
+    by a list of sorted 1D numpy arrays for each column.
+
+    Args:
+        arrays: a list of sorted 1D numpy arrays. This is generally given by the
+        dictionary values of ``BlockAccessor.to_numpy()``.
+
+    Returns:
+        A list of starting indices of each group and an end index of the last
+        group, i.e., there are ``num_groups + 1`` entries and the first and last
+        entries are 0 and ``len(array)`` respectively.
+
+    Note:
+        This function is implemented as finding the row indices where any of the
+        columns is not equal to the previous row.
+    """
+    return np.hstack(
+        [
+            [0],
+            (
+                np.vstack([array[1:] != array[:-1] for array in arrays])
+                .any(axis=0)
+                .nonzero()[0]
+                + 1
+            ),
+            [len(arrays[0])],
+        ]
+    )
