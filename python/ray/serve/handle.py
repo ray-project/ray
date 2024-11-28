@@ -2,7 +2,6 @@ import asyncio
 import concurrent.futures
 import logging
 import time
-import warnings
 from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
