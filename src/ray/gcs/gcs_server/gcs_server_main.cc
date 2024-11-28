@@ -50,8 +50,8 @@ int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   // Backward compatibility notes:
-  // Due to historical reason, GCS server flushes all logging and stdout/stderr to a
-  // single file called `gcs_server.out`. To keep backward compatibility at best effort,
+  // By default, GCS server flushes all logging and stdout/stderr to a single filecalled
+  // gcs_server.out, without log rotations. To keep backward compatibility at best effort,
   // we use the same filename as output, and disable log rotation by default.
   const int64_t log_rotation_max_size = FLAGS_log_rotation_size <= 0
                                             ? std::numeric_limits<int64_t>::max()
