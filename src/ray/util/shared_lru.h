@@ -26,9 +26,9 @@
 // auto val = cache.Get("key");
 // // Check and consume `val`.
 //
-// TODO(hjiang): 
-// 1. Write a wrapper around KeyHash and KeyEq, which takes std::reference_wrapper<Key>, so we could store keys only in std::list, and reference in
-// absl::flat_hash_map.
+// TODO(hjiang):
+// 1. Write a wrapper around KeyHash and KeyEq, which takes std::reference_wrapper<Key>,
+// so we could store keys only in std::list, and reference in absl::flat_hash_map.
 // 2. Add a `GetOrCreate` interface, which takes factory function to creation value.
 // 3. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
@@ -38,13 +38,12 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <utility>
 
-#include "src/ray/util/logging.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/internal/hash_function_defaults.h"
+#include "src/ray/util/logging.h"
 
 namespace ray::utils::container {
 
@@ -111,7 +110,7 @@ class SharedLruCache final {
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
   template <typename KeyLike>
-  std::optional<Val> Get(KeyLike &&key) {
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
       return nullptr;
@@ -161,7 +160,10 @@ template <typename K,
 using SharedLruConstCache = SharedLruCache<K, const V, KeyHash, KeyEq>;
 
 // Same interface and functionality as `SharedLruCache`, but thread-safe version.
-template <typename Key, typename Val>
+template <typename Key,
+          typename Val,
+          typename KeyHash = absl::container_internal::hash_default_hash<Key>,
+          typename KeyEq = absl::container_internal::hash_default_eq<Key>>
 class ThreadSafeSharedLruCache final {
  public:
   using key_type = Key;
@@ -197,7 +199,7 @@ class ThreadSafeSharedLruCache final {
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
   template <typename KeyLike>
-  std::optional<Val> Get(KeyLike &&key) {
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     std::lock_guard lck(mu_);
     return cache_.Get(std::forward<KeyLike>(key));
   }

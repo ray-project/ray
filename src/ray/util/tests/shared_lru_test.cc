@@ -42,13 +42,12 @@ TEST(SharedLruCache, PutAndGet) {
   cache.Put("2", std::make_shared<std::string>("2"));
   val = cache.Get(std::string_view{"1"});
   EXPECT_EQ(val, nullptr);
-  val = cache.Get(std::string_view{"1"});
+  val = cache.Get(std::string_view{"2"});
   EXPECT_NE(val, nullptr);
   EXPECT_EQ(*val, "2");
 
   // Check deletion.
   EXPECT_FALSE(cache.Delete(std::string_view{"1"}));
-  EXPECT_TRUE(cache.Delete(std::string_view{"1"}));
   val = cache.Get(std::string_view{"1"});
   EXPECT_EQ(val, nullptr);
 }
