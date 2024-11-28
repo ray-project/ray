@@ -926,7 +926,7 @@ class CompiledDAG:
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
 
-                # handle unused keys:
+                # handle_unused_keys:
                 # Save accessed keys in an set
                 input_node = task.dag_node
                 accessed_keys.update(input_node.input_attribute_nodes.keys())
@@ -953,7 +953,6 @@ class CompiledDAG:
             self.output_task_idx = self.dag_node_to_idx[output_node]
         else:
             self._returns_list = True
-
 
         # TODO: Support no-input DAGs (use an empty object to signal).
         if self.input_task_idx is None:
@@ -1109,12 +1108,12 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
-        # handle unused keys
+        # handle_unused_keys
         used_keys = set()
         # keep track of visited nodes during backtracking
         visited_nodes = set()
         # Traverse backwards from output node to find all used input.
-        # An input is considered as used if there exists an path from 
+        # An input is considered as used if there exists an path from
         # that input node to output.
         def traverse(node):
             if node in visited_nodes:
@@ -1123,17 +1122,17 @@ class CompiledDAG:
 
             if isinstance(node, InputAttributeNode):
                 used_keys.add(node.key)
-                # print(f"Key of used input found: {node.key}")
 
             for upstream_node in node._upstream_nodes:
                 traverse(upstream_node)
+
         traverse(output_node)
 
         unused_keys = accessed_keys - used_keys
 
         if unused_keys:
-            unused_keys_str = ', '.join(str(key) for key in unused_keys)
-            accessed_keys_str = ', '.join(str(key) for key in accessed_keys)
+            unused_keys_str = ", ".join(str(key) for key in unused_keys)
+            accessed_keys_str = ", ".join(str(key) for key in accessed_keys)
             unused_phrase = "is unused" if len(unused_keys) == 1 else "are unused"
 
             raise ValueError(

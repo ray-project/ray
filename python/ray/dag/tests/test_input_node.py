@@ -378,6 +378,7 @@ def test_apply_recursive_caching(shared_ray_instance):
     assert counter == 40
     DAGNode.apply_recursive = original_apply_recursive
 
+
 def test_missing_input_node():
     @ray.remote
     class Actor:
@@ -399,9 +400,10 @@ def test_missing_input_node():
 
     with pytest.raises(
         ValueError,
-        match="DAG expects input: 0, 1, 2, but 1 is unused. Ensure all accessed inputs from InputNode are connected to the output."
+        match="DAG expects input: 0, 1, 2, but 1 is unused. Ensure all accessed inputs from InputNode are connected to the output.",
     ):
         adag = dag.experimental_compile()
+
 
 if __name__ == "__main__":
     import sys
