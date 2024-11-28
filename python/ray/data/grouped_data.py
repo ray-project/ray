@@ -1,3 +1,4 @@
+from functools import partial
 from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
 from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
@@ -261,7 +262,10 @@ class GroupedData:
 
         # Change the name of the wrapped function so that users see the name of their
         # function rather than `wrapped_fn` in the progress bar.
-        wrapped_fn.__name__ = fn.__name__
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
