@@ -141,9 +141,6 @@ if __name__ == "__main__":
         evaluation_config=PPOConfig.overrides(explore=False),
     )
 
-    
-    ray.shutdown()
-
     # Build the algorithm for evaluation.
     algo = config.build()
     # Load the checkpoint stored above.
