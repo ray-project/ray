@@ -53,7 +53,7 @@ class BatchRequest:
     arrival_time: float
 
 class RequestQueue:
-    """Enhanced request queue with monitoring capabilities using Ray's Queue"""
+    """Request queue with monitoring capabilities using Ray's Queue"""
     def __init__(self, model_name: str, max_size: int = 1000):
         self.model_name = model_name
         self.queue = RayQueue(maxsize=max_size)
@@ -130,7 +130,7 @@ class RequestQueue:
 
 @ray.remote(num_gpus=1)
 class GPUWorker:
-    """Enhanced Ray actor for GPU computation"""
+    """ Ray actor for GPU computation"""
     def __init__(self, node_id: str, gpu_id: int, sessions: List[Tuple], 
                  duty_cycle: float, model_registry: Dict):
         self.node_id = node_id
@@ -276,7 +276,7 @@ class GPUWorker:
         }
 
 class ScheduleExecutor:
-    """Enhanced schedule executor with monitoring and management capabilities"""
+    """schedule executor with monitoring and management capabilities"""
     def __init__(self, node_schedules: List[Dict], model_registry: Dict,
                  max_queue_size: int = 1000):
         '''if not ray.is_initialized():
