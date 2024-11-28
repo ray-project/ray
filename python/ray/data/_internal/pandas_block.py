@@ -364,24 +364,23 @@ class PandasBlockAccessor(TableBlockAccessor):
             if is_object_dtype(self._table[column].dtype) or isinstance(
                 self._table[column].dtype, object_need_check
             ):
-                sampled_column = self._table[column].values
-                if isinstance(sampled_column, TensorArray):
-                    if np.issubdtype(sampled_column[0].numpy_dtype, np.number):
-                        memory_usage[column] = sampled_column.nbytes
-                        continue
-
-                total_size = len(sampled_column)
+                total_size = len(self._table[column])
 
                 # Determine the sample size based on min_count
                 sample_size = min(total_size, min_sample_size)
                 # Following codes can also handel case that sample_size == total_size
-                sampled_indices = np.random.choice(
-                    total_size, sample_size, replace=False
-                )
-                sampled_data = sampled_column[sampled_indices]
+                sampled_data = self._table[column].sample(n=sample_size).values
+
                 try:
-                    vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
-                    column_memory_sample = np.sum(vectorized_size_calc(sampled_data))
+                    if isinstance(sampled_data, TensorArray) and np.issubdtype(
+                        sampled_data[0].numpy_dtype, np.number
+                    ):
+                        column_memory_sample = sampled_data.nbytes
+                    else:
+                        vectorized_size_calc = np.vectorize(lambda x: get_deep_size(x))
+                        column_memory_sample = np.sum(
+                            vectorized_size_calc(sampled_data)
+                        )
                     # Scale back to the full column size if we sampled
                     column_memory = column_memory_sample * (total_size / sample_size)
                     memory_usage[column] = column_memory
