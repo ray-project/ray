@@ -29,7 +29,6 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
-DEFINE_int64(log_rotation_max_size, 0, "Max size to rotate logs for GCS.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -49,15 +48,6 @@ constexpr std::string_view kGcsServerLog = "gcs_server.out";
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  // Backward compatibility notes:
-  // By default, GCS server flushes all logging and stdout/stderr to a single filecalled
-  // gcs_server.out, without log rotations. To keep backward compatibility at best effort,
-  // we use the same filename as output, and disable log rotation by default.
-  const int64_t log_rotation_max_size = FLAGS_log_rotation_size <= 0
-                                            ? std::numeric_limits<int64_t>::max()
-                                            : FLAGS_log_rotation_size;
-  RAY_CHECK_EQ(setenv(
-      "RAY_ROTATION_MAX_BYTES", std::to_string(log_rotation_max_size), /*overwrite=*/1));
   const std::string log_file =
       FLAGS_log_dir.empty() ? kGcsServerLog.data()
                             : absl::StrFormat("%s/%s", FLAGS_log_dir, kGcsServerLog);
@@ -65,7 +55,11 @@ int main(int argc, char *argv[]) {
   // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
   // final solution is implement self-customized sink for spdlog, and redirect
   // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
-
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
