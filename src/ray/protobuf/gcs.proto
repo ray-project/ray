@@ -165,6 +165,8 @@ message ErrorTableData {
   // The error message.
   string error_message = 3;
   // The timestamp of the error message.
+  // Unit: millisecond.
+  // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
 }
 
