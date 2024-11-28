@@ -13,21 +13,24 @@
 // limitations under the License.
 //
 // SharedLruCache is a LRU cache, with all entries shared, which means a single entry
-// could be accessed by multiple getters. When `Get`, a copy of the value is returned, so
-// for heavy-loaded types it's suggested to wrap with `std::shared_ptr<>`.
+// could be accessed by multiple getters. All values are wrapped with shared pointer to
+// avoid copy at get operation, meanwhile also useful to maintain memory validity at any
+// time.
 //
 // Example usage:
 // SharedLruCache<std::string, std::string> cache{cap};
 // // Put a key-value pair into cache.
-// cache.Put("key", "val");
+// cache.Put("key", std::make_shared<std::string>("val"));
 //
 // // Get a key-value pair from cache.
 // auto val = cache.Get("key");
 // // Check and consume `val`.
 //
-// TODO(hjiang): Write a wrapper around KeyHash and KeyEq, which takes
-// std::reference_wrapper<Key>, so we could store keys only in std::list, and reference in
+// TODO(hjiang): 
+// 1. Write a wrapper around KeyHash and KeyEq, which takes std::reference_wrapper<Key>, so we could store keys only in std::list, and reference in
 // absl::flat_hash_map.
+// 2. Add a `GetOrCreate` interface, which takes factory function to creation value.
+// 3. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
 #pragma once
 
@@ -39,6 +42,7 @@
 #include <string>
 #include <utility>
 
+#include "src/ray/util/logging.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/internal/hash_function_defaults.h"
 
@@ -68,7 +72,15 @@ class SharedLruCache final {
 
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
-  void Put(Key key, Val value) {
+  void Put(Key key, std::shared_ptr<Val> value) {
+    RAY_CHECK(value != nullptr);
+    auto iter = cache_.find(key);
+    if (iter != cache_.end()) {
+      lru_list_.splice(lru_list_.begin(), lru_list_, iter->second.lru_iterator);
+      iter->second.value = std::move(value);
+      return;
+    }
+
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
     cache_[std::move(key)] = std::move(new_entry);
@@ -78,6 +90,8 @@ class SharedLruCache final {
       cache_.erase(stale_key);
       lru_list_.pop_back();
     }
+
+    RAY_CHECK_EQ(lru_list_.size(), cache_.size());
   }
 
   // Delete the entry with key `key`. Return true if the entry was found for
@@ -100,18 +114,10 @@ class SharedLruCache final {
   std::optional<Val> Get(KeyLike &&key) {
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
-      return std::nullopt;
+      return nullptr;
     }
-    Val value = std::move(cache_iter->second.value);
-    lru_list_.erase(cache_iter->second.lru_iterator);
-    cache_.erase(cache_iter);
-
-    // Re-insert into the cache, no need to check capacity.
-    lru_list_.emplace_front(static_cast<Key>(key));
-    Entry new_entry{value, lru_list_.begin()};
-    cache_[static_cast<Key>(std::forward<KeyLike>(key))] = std::move(new_entry);
-
-    return value;
+    lru_list_.splice(lru_list_.begin(), lru_list_, cache_iter->second.lru_iterator);
+    return cache_iter->second.value;
   }
 
   // Clear the cache.
@@ -126,7 +132,7 @@ class SharedLruCache final {
  private:
   struct Entry {
     // The entry's value.
-    Val value;
+    std::shared_ptr<Val> value;
 
     // A list iterator pointing to the entry's position in the LRU list.
     typename std::list<Key>::iterator lru_iterator;
@@ -138,7 +144,7 @@ class SharedLruCache final {
   // limit on entry count.
   const size_t max_entries_;
 
-  // Key-value pairs.
+  // Stores key-value pairs.
   EntryMap cache_;
 
   // The LRU list of entries. The front of the list identifies the most
@@ -155,10 +161,7 @@ template <typename K,
 using SharedLruConstCache = SharedLruCache<K, const V, KeyHash, KeyEq>;
 
 // Same interface and functionality as `SharedLruCache`, but thread-safe version.
-template <typename Key,
-          typename Val,
-          typename KeyHash = absl::container_internal::hash_default_hash<Key>,
-          typename KeyEq = absl::container_internal::hash_default_eq<Key>>
+template <typename Key, typename Val>
 class ThreadSafeSharedLruCache final {
  public:
   using key_type = Key;
@@ -177,8 +180,8 @@ class ThreadSafeSharedLruCache final {
 
   // Insert `value` with key `key`. This will replace any previous entry with
   // the same key.
-  void Put(Key key, Val value) {
-    std::lock_guard lck(mtx_);
+  void Put(Key key, std::shared_ptr<Val> value) {
+    std::lock_guard lck(mu_);
     cache_.Put(std::move(key), std::move(value));
   }
 
@@ -187,7 +190,7 @@ class ThreadSafeSharedLruCache final {
   // with key `key` existed after the call.
   template <typename KeyLike>
   bool Delete(KeyLike &&key) {
-    std::lock_guard lck(mtx_);
+    std::lock_guard lck(mu_);
     return cache_.Delete(std::forward<KeyLike>(key));
   }
 
@@ -195,13 +198,13 @@ class ThreadSafeSharedLruCache final {
   // If found, return a copy for the value.
   template <typename KeyLike>
   std::optional<Val> Get(KeyLike &&key) {
-    std::lock_guard lck(mtx_);
+    std::lock_guard lck(mu_);
     return cache_.Get(std::forward<KeyLike>(key));
   }
 
   // Clear the cache.
   void Clear() {
-    std::lock_guard lck(mtx_);
+    std::lock_guard lck(mu_);
     cache_.Clear();
   }
 
@@ -209,7 +212,7 @@ class ThreadSafeSharedLruCache final {
   size_t max_entries() const { return cache_.max_entries(); }
 
  private:
-  std::mutex mtx_;
+  std::mutex mu_;
   SharedLruCache<Key, Val, KeyHash, KeyEq> cache_;
 };
 
