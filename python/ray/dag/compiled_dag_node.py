@@ -379,6 +379,10 @@ class ExecutableTask:
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
         # [TODO:andyub] One requires_nccl instead of three.
+        # We need a flag for NCCL read because currently we only support
+        # overlapping NCCL read with computation. The other two flags are kept
+        # for symmetry. We may be able to merge them into one flag after
+        # supporting overlapping NCCL collective with computation.
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
@@ -710,7 +714,7 @@ class ExecutableTask:
                 # Channel closed. Exit the loop.
                 return True
 
-        # To overlap GPU communication for NCCL read, launch the NCCL recv operation,
+        # To overlap GPU communication for NCCL recv, launch the NCCL recv operation,
         # skip the normal compute operation, and return the future without waiting.
         if not self.requires_nccl_read or not overlap_gpu_communication:
             input_data = self.reset_and_wait_intermediate_future()
@@ -721,7 +725,7 @@ class ExecutableTask:
                     val = input_data[i]
                     if isinstance(val, DAGOperationFuture):
                         resolved_future = val.wait()
-                        # The only source of future is NCCL read.
+                        # The only source of future is NCCL recv.
                         # The future wraps around a one-element list.
                         assert isinstance(resolved_future, list)
                         assert len(resolved_future) == 1
@@ -762,7 +766,7 @@ class ExecutableTask:
                 )
 
         with self._send_stream:
-            # To overlap GPU communication for NCCL read, write the future as output to
+            # To overlap GPU communication for NCCL recv, write the future as output to
             # the downstream task, which waits on the future in its compute operation.
             if self.requires_nccl_read and overlap_gpu_communication:
                 output_val = self._intermediate_future
@@ -1027,9 +1031,25 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def _add_nccl_p2p_nodes(self) -> None:
+    def _update_nccl_p2p_nodes(self) -> None:
         """
-        Add NCCL P2P send/recv nodes to the DAG.
+        Find DAG nodes that involve in NCCL send/recv operations. Create nodes
+        to represent these operations and add them to the DAG.
+
+        Check for errors as well:
+        1. The driver cannot participate in NCCL send/recv operations.
+        2. An actor must be present for a NCCL send/recv operation.
+        3. NcclSendNode and NcclRecvNode should not be directly added to the DAG.
+
+        Example:
+
+        a.foo -(NCCL)-> b.bar
+
+        is transformed to:
+
+        a.foo -(IPC)-> a.nccl_send -(NCCL)-> b.nccl_recv -(IPC)-> b.bar
+
+        where IPC is IntraProcessChannel.
         """
         from ray.dag import (
             DAGNode,
@@ -1055,12 +1075,13 @@ class CompiledDAG:
         nccl_send_nodes: Dict[DAGNode, _NcclSendNode] = dict()
         nccl_recv_nodes: Dict[DAGNode, Dict[int, _NcclRecvNode]] = defaultdict(dict)
 
-        # Gather NCCL P2P send nodes.
+        # Find all DAG nodes that are NCCL P2P senders. Create and cache a
+        # NcclSendNode for each of them.
         for task in self.idx_to_task.values():
             if isinstance(task.dag_node, _NcclP2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
-                    "adding NCCLSendNode or NCCLRecvNode to the DAG"
+                    "adding NcclSendNode or NcclRecvNode to the DAG"
                 )
 
             if not task.dag_node.type_hint.requires_nccl():
@@ -1096,7 +1117,8 @@ class CompiledDAG:
                 },
             )
 
-        # Gather NCCL P2P recv nodes.
+        # Find all DAG nodes that are NCCL P2P receivers. Create and cache a
+        # NcclRecvNode for each of them.
         for task in self.idx_to_task.values():
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode) or not arg.type_hint.requires_nccl():
@@ -1129,17 +1151,14 @@ class CompiledDAG:
                 )
                 nccl_recv_nodes[task.dag_node][arg_idx] = recv_node
 
-        # Add NCCL P2P send nodes to the DAG.
+        # Add the newly created NcclSendNodes to the DAG.
         for dag_node, send_node in nccl_send_nodes.items():
             type_hint = dag_node.type_hint
             dag_node.with_type_hint(ChannelOutputType())
             send_node.with_type_hint(type_hint)
-            if dag_node.is_adag_output_node:
-                dag_node.is_adag_output_node = False
-                send_node.is_adag_output_node = True
             self._add_node(send_node)
 
-        # Add NCCL P2P recv nodes to the DAG.
+        # Add the newly created NcclRecvNodes to the DAG.
         for dag_node in nccl_recv_nodes:
             new_args: List[Any] = list(dag_node._bound_args)
             for arg_idx, recv_node in nccl_recv_nodes[dag_node].items():
@@ -1165,7 +1184,9 @@ class CompiledDAG:
         )
         from ray.dag.collective_node import _CollectiveGroup
 
-        self._add_nccl_p2p_nodes()
+        # Because type hints can be added or removed, we need to update
+        # the nodes that involve in NCCL P2P operations at compile time.
+        self._update_nccl_p2p_nodes()
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()

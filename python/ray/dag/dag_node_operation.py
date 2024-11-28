@@ -267,17 +267,19 @@ def _select_next_nodes(
 
     if top_priority_node is None:
         return None
-    next_nodes: Set[_DAGOperationGraphNode] = {
-        heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
-    }
+
+    heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
 
     if top_priority_node.sync_group is not None:
+        next_nodes = []
         for idx in top_priority_node.sync_group.task_idxs:
             node = graph[idx]
             assert node.is_ready
-            next_nodes.add(node)
+            next_nodes.append(node)
+    else:
+        next_nodes = [top_priority_node]
 
-    return list(next_nodes)
+    return next_nodes
 
 
 def _build_dag_node_operation_graph(
@@ -342,8 +344,6 @@ def _build_dag_node_operation_graph(
             isinstance(task.dag_node, ClassMethodNode)
             and task.dag_node.is_class_method_output
         ):
-            # [CL]
-            # TODO(wxdeng): Handle the case where the task is a class method output.
             continue
         for downstream_task_idx in task.downstream_task_idxs:
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
@@ -353,9 +353,6 @@ def _build_dag_node_operation_graph(
                 isinstance(downstream_dag_node, ClassMethodNode)
                 and downstream_dag_node.is_class_method_output
             ):
-                # [CL]
-                # TODO(wxdeng): Handle the case where the downstream task is
-                # a class method output.
                 continue
             if graph[task_idx].requires_nccl_write:
                 assert graph[downstream_task_idx].requires_nccl_read
@@ -614,14 +611,14 @@ def _generate_overlapped_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
     for overlapped_schedule in actor_to_overlapped_schedule.values():
+        # Swap each NCCL read operation with its previous compute node to overlap
+        # the NCCL read operation with computation. The index starts at 1 because
+        # the first node has no previous node.
         for i in range(1, len(overlapped_schedule)):
             if (
                 overlapped_schedule[i].requires_nccl_read
                 and not overlapped_schedule[i - 1].requires_nccl_op
             ):
-                # For each NCCL read operation (i.e., recv), find the nearest
-                # compute node to swap with so that the NCCL read operation
-                # can be overlapped with computation.
                 overlapped_schedule[i], overlapped_schedule[i - 1] = (
                     overlapped_schedule[i - 1],
                     overlapped_schedule[i],
