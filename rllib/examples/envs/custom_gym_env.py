@@ -53,6 +53,7 @@ import numpy as np
 import random
 
 from typing import Optional
+
 # ws-template-imports-end
 
 from ray.rllib.utils.test_utils import (
@@ -128,6 +129,8 @@ class SimpleCorridor(gym.Env):
             truncated,
             infos,
         )
+
+
 # ws-template-code-end
 
 if __name__ == "__main__":
