@@ -237,7 +237,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param gcs_resource_manager Reference of GcsResourceManager.
   /// \param get_ray_namespace A callback to get the ray namespace.
   GcsPlacementGroupManager(instrumented_io_context &io_context,
-                           std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
+                           GcsPlacementGroupSchedulerInterface *scheduler,
                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
                            std::function<std::string(const JobID &)> get_ray_namespace);
@@ -480,8 +480,8 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   std::deque<std::shared_ptr<GcsPlacementGroup>> infeasible_placement_groups_;
 
   /// The scheduler to schedule all registered placement_groups.
-  std::shared_ptr<gcs::GcsPlacementGroupSchedulerInterface>
-      gcs_placement_group_scheduler_;
+  /// Scheduler's lifecycle lies in [GcsServer].
+  gcs::GcsPlacementGroupSchedulerInterface *gcs_placement_group_scheduler_ = nullptr;
 
   /// Used to update placement group information upon creation, deletion, etc.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;

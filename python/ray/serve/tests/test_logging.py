@@ -351,6 +351,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             "actor_id": ray.get_runtime_context().get_actor_id(),
             "worker_id": ray.get_runtime_context().get_worker_id(),
             "node_id": ray.get_runtime_context().get_node_id(),
+            "task_name": ray.get_runtime_context().get_task_name(),
+            "task_func_name": ray.get_runtime_context().get_task_function_name(),
+            "actor_name": ray.get_runtime_context().get_actor_name(),
         }
 
     @serve.deployment(
@@ -369,6 +372,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 "actor_id": ray.get_runtime_context().get_actor_id(),
                 "worker_id": ray.get_runtime_context().get_worker_id(),
                 "node_id": ray.get_runtime_context().get_node_id(),
+                "task_name": ray.get_runtime_context().get_task_name(),
+                "task_func_name": ray.get_runtime_context().get_task_function_name(),
+                "actor_name": ray.get_runtime_context().get_actor_name(),
             }
 
     serve.run(fn.bind(), name="app1", route_prefix="/fn")
@@ -418,6 +424,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp["worker_id"]}", '
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
+                f'"task_name": "{resp["task_name"]}", '
+                f'"task_func_name": "{resp["task_func_name"]}", '
+                f'"actor_name": "{resp["actor_name"]}", '
                 f'"deployment": "{resp["app_name"]}_fn", '
                 f'"replica": "{method_replica_id}", '
                 f'"component_name": "replica".*'
@@ -430,6 +439,9 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
                 f'"worker_id": "{resp2["worker_id"]}", '
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '
+                f'"task_name": "{resp2["task_name"]}", '
+                f'"task_func_name": "{resp2["task_func_name"]}", '
+                f'"actor_name": "{resp2["actor_name"]}", '
                 f'"deployment": "{resp2["app_name"]}_Model", '
                 f'"replica": "{class_method_replica_id}", '
                 f'"component_name": "replica".*'
