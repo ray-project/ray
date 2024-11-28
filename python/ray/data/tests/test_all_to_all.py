@@ -1167,7 +1167,6 @@ def test_groupby_map_groups_multicolumn(
     ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
 ):
     # Test built-in count aggregation
-    print(f"Seeding RNG for test_groupby_arrow_count with: {RANDOM_SEED}")
     random.seed(RANDOM_SEED)
     xs = list(range(100))
     random.shuffle(xs)
@@ -1188,6 +1187,33 @@ def test_groupby_map_groups_multicolumn(
         {"count": 17},
         {"count": 16},
     ]
+
+
+def test_groupby_map_groups_with_partial():
+    """
+    The partial function name should show up as
+    +- Sort
+       +- MapBatches(func)
+    """
+    from functools import partial
+
+    def func(x, y):
+        return {f"x_add_{y}": [len(x["id"]) + y]}
+
+    df = pd.DataFrame({"id": list(range(100))})
+    df["key"] = df["id"] % 5
+
+    ds = ray.data.from_pandas(df).groupby("key").map_groups(partial(func, y=5))
+    result = ds.take_all()
+
+    assert result == [
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+        {"x_add_5": 25},
+    ]
+    assert "MapBatches(func)" in ds.__repr__()
 
 
 def test_random_block_order_schema(ray_start_regular_shared):
