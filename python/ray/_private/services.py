@@ -1491,13 +1491,11 @@ def start_gcs_server(
 
     # Logging is fully managed by C++ side spdlog, which supports rotation and file
     # count limitation.
-    stdout_file = open("/dev/null")
-    stderr_file = open("/dev/null")
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        stdout_file=stdout_file,
-        stderr_file=stderr_file,
+        stdout_file=os.devnull,
+        stderr_file=os.devnull,
         fate_share=fate_share,
     )
     return process_info
