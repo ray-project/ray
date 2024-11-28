@@ -81,8 +81,9 @@ class SortKey:
             for column in self._columns:
                 if column not in schema_names_set:
                     raise ValueError(
-                        "The column '{}' does not exist in the "
-                        "schema '{}'.".format(column, schema)
+                        f"You specified the column '{column}', but there's no such "
+                        "column in the dataset. The dataset has columns: "
+                        f"{schema_names_set}"
                     )
 
     @property
