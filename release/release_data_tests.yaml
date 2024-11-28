@@ -9,7 +9,7 @@
     byod:
       type: gpu
     cluster_compute: multi_node_autoscaling_compute.yaml
-    
+
 ###############
 # Reading tests
 ###############
