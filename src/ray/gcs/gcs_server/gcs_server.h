@@ -288,13 +288,13 @@ class GcsServer {
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.

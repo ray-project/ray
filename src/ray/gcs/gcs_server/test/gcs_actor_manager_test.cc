@@ -149,8 +149,8 @@ class GcsActorManagerTest : public ::testing::Test {
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         mock_actor_scheduler_,
-        gcs_table_storage_,
-        gcs_publisher_,
+        *gcs_table_storage_,
+        *gcs_publisher_,
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},

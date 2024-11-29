@@ -73,11 +73,11 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(
+    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(
         io_context_provider_.GetDefaultIOContext());
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
@@ -123,7 +123,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
       /*publisher_id=*/NodeID::FromRandom());
 
-  gcs_publisher_ = std::make_shared<GcsPublisher>(std::move(inner_publisher));
+  gcs_publisher_ = std::make_unique<GcsPublisher>(std::move(inner_publisher));
 }
 
 GcsServer::~GcsServer() { Stop(); }
@@ -137,7 +137,7 @@ RedisClientOptions GcsServer::GetRedisClientOptions() const {
 
 void GcsServer::Start() {
   // Load gcs tables data asynchronously.
-  auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
+  auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
@@ -287,8 +287,8 @@ void GcsServer::Stop() {
 
 void GcsServer::InitGcsNodeManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_,
-                                                       gcs_table_storage_,
+  gcs_node_manager_ = std::make_unique<GcsNodeManager>(gcs_publisher_.get(),
+                                                       gcs_table_storage_.get(),
                                                        raylet_client_pool_.get(),
                                                        rpc_server_.GetClusterId());
   // Initialize by gcs tables data.
@@ -414,8 +414,8 @@ void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
     return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
-  gcs_job_manager_ = std::make_unique<GcsJobManager>(gcs_table_storage_,
-                                                     gcs_publisher_,
+  gcs_job_manager_ = std::make_unique<GcsJobManager>(*gcs_table_storage_,
+                                                     *gcs_publisher_,
                                                      *runtime_env_manager_,
                                                      *function_manager_,
                                                      kv_manager_->GetInstance(),
@@ -466,8 +466,8 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
       });
   gcs_actor_manager_ = std::make_unique<GcsActorManager>(
       std::move(scheduler),
-      gcs_table_storage_,
-      gcs_publisher_,
+      gcs_table_storage_.get(),
+      gcs_publisher_.get(),
       *runtime_env_manager_,
       *function_manager_,
       [this](const ActorID &actor_id) {
@@ -489,7 +489,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(gcs_table_storage_ && gcs_node_manager_);
   gcs_placement_group_scheduler_ = std::make_unique<GcsPlacementGroupScheduler>(
       io_context_provider_.GetDefaultIOContext(),
-      gcs_table_storage_,
+      *gcs_table_storage_,
       *gcs_node_manager_,
       *cluster_resource_scheduler_,
       *raylet_client_pool_);
@@ -497,7 +497,7 @@ void GcsServer::InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data) {
   gcs_placement_group_manager_ = std::make_unique<GcsPlacementGroupManager>(
       io_context_provider_.GetDefaultIOContext(),
       gcs_placement_group_scheduler_.get(),
-      gcs_table_storage_,
+      gcs_table_storage_.get(),
       *gcs_resource_manager_,
       [this](const JobID &job_id) {
         return gcs_job_manager_->GetJobConfig(job_id)->ray_namespace();
@@ -583,7 +583,7 @@ void GcsServer::InitKVService() {
 
 void GcsServer::InitPubSubHandler() {
   auto &io_context = io_context_provider_.GetIOContext<GcsPublisher>();
-  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, gcs_publisher_);
+  pubsub_handler_ = std::make_unique<InternalPubSubHandler>(io_context, *gcs_publisher_);
   pubsub_service_ =
       std::make_unique<rpc::InternalPubSubGrpcService>(io_context, *pubsub_handler_);
   // Register service.
@@ -631,7 +631,7 @@ void GcsServer::InitRuntimeEnvManager() {
 
 void GcsServer::InitGcsWorkerManager() {
   gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+      std::make_unique<GcsWorkerManager>(*gcs_table_storage_, *gcs_publisher_);
   // Register service.
   worker_info_service_.reset(new rpc::WorkerInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));
