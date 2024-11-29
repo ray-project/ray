@@ -74,6 +74,8 @@ extensions = [
 ]
 
 # Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
 docsearch_app_id = "LBHF0PABBL"
 docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
 docsearch_index_name = "docs-ray"
