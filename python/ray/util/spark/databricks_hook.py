@@ -163,16 +163,35 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
-        """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
-
-        Torch on DBR does not reliably detect the correct interface to use,
-        and ends up selecting the loopback interface, breaking cross-node
-        commnication."""
-        return {
+        from ray.air._internal.mlflow import (
+            verify_databricks_auth_env,
+            DATABRICKS_HOST,
+            DATABRICKS_TOKEN,
+            DATABRICKS_CLIENT_ID,
+            DATABRICKS_CLIENT_SECRET,
+        )
+        conf = {
             **super().custom_environment_variables(),
+            # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
+            # Torch on DBR does not reliably detect the correct interface to use,
+            # and ends up selecting the loopback interface, breaking cross-node
+            # commnication.
             "GLOO_SOCKET_IFNAME": "eth0",
+        }
+
+        if verify_databricks_auth_env():
+            conf[DATABRICKS_HOST] = os.environ[DATABRICKS_HOST]
+            if DATABRICKS_TOKEN in os.environ:
+                # PAT auth
+                conf[DATABRICKS_TOKEN] = os.environ[DATABRICKS_TOKEN]
+            else:
+                # OAuth
+                conf[DATABRICKS_CLIENT_ID] = os.environ[DATABRICKS_CLIENT_ID]
+                conf[DATABRICKS_CLIENT_SECRET] = os.environ[DATABRICKS_CLIENT_SECRET]
+        else:
             # Ray nodes runs as subprocess of spark UDF or spark driver,
             # in databricks, it doens't have MLflow service credentials
             # so it can't use MLflow.
-            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
-        }
+            conf["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
+
+        return conf
