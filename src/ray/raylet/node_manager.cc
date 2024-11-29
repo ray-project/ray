@@ -1896,7 +1896,7 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
         return false;
       });
 
-  for (int64_t i = 0; i < request.num_workers(); i++) {
+  for (uint64_t i = 0; i < request.num_workers(); i++) {
     worker_pool_.StartNewWorker(pop_worker_request);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
