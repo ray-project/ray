@@ -189,13 +189,13 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 conf[DATABRICKS_CLIENT_ID] = os.environ[DATABRICKS_CLIENT_ID]
                 conf[DATABRICKS_CLIENT_SECRET] = os.environ[DATABRICKS_CLIENT_SECRET]
         else:
-            # Ray nodes runs as subprocess of spark UDF or spark driver,
-            # in databricks, it doens't have MLflow service credentials
-            # so it can't use MLflow.
+            # 'DISABLE_MLFLOW_INTEGRATION' is the environmental variable to disable
+            # huggingface transformers MLflow integration.
             conf["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
 
             warn_msg = (
-                "MLflow integration is disabled in Ray tasks. To enable MLflow integration, "
+                "MLflow integration is not available in Ray tasks."
+                "To enable MLflow integration, "
                 "you need to set environmental variables DATABRICKS_HOST + DATABRICKS_TOKEN,"
                 "or set environmental variables "
                 "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
