@@ -36,7 +36,7 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 
 namespace ray {
 namespace gcs {
-// C wrappers for class member functions
+// Adaptor callback functions for hiredis redis_async_context->ev
 void CallbackAddRead(void *);
 void CallbackDelRead(void *);
 void CallbackAddWrite(void *);
@@ -118,9 +118,15 @@ class RedisAsyncContext {
   // A write is currently in progress
   bool write_in_progress_{false};
 
+  /// Issue async socket operations depending on the state of the redis async context.
   void Operate();
+  /// The callback function for socket operations
+  ///
+  /// \param error_code The error code of the socket operation.
+  /// \param write true if it is a write operation, false otherwise.
   void HandleIo(boost::system::error_code error_code, bool write);
 
+  // Real callback functions bound to RedisAsyncContext
   void AddRead();
   void DelRead();
   void AddWrite();
