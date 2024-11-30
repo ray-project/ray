@@ -63,6 +63,8 @@ class UvProcessor:
 
         logger.debug("Setting up uv for runtime_env: %s", runtime_env)
         self._target_dir = target_dir
+        # An empty directory is created to execute cmd.
+        self._exec_cwd = os.path.join(self._target_dir, "exec_cwd")
         self._runtime_env = runtime_env
         self._logger = logger
 
@@ -70,14 +72,22 @@ class UvProcessor:
         self._uv_env = os.environ.copy()
         self._uv_env.update(self._runtime_env.env_vars())
 
-    # TODO(hjiang): Check `uv` existence before installation, so we don't blindly
-    # install.
     async def _install_uv(
         self, path: str, cwd: str, pip_env: dict, logger: logging.Logger
     ):
-        """Before package install, make sure `uv` is installed."""
+        """Before package install, make sure the required version `uv` (if specifieds)
+        is installed.
+        """
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
+
+        def _get_uv_exec_to_install() -> str:
+            """Get `uv` executable with version to install."""
+            uv_version = self._uv_config.get("uv_version", None)
+            if uv_version:
+                return f"uv{uv_version}"
+            # Use default version.
+            return "uv"
 
         uv_install_cmd = [
             python,
@@ -86,10 +96,44 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
-            "uv",
+            _get_uv_exec_to_install(),
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+
+    async def _check_uv_existence(
+        self, path: str, cwd: str, env: dict, logger: logging.Logger
+    ) -> bool:
+        """Check and return the existence of `uv` in virtual env."""
+        python = virtualenv_utils.get_virtualenv_python(path)
+
+        check_existence_cmd = [
+            python,
+            "-m",
+            "uv",
+            "version",
+        ]
+
+        try:
+            # If `uv` doesn't exist, exception will be thrown.
+            await check_output_cmd(check_existence_cmd, logger=logger, cwd=cwd, env=env)
+            return True
+        except Exception:
+            return False
+
+    async def _uv_check(sef, python: str, cwd: str, logger: logging.Logger) -> None:
+        """Check virtual env dependency compatibility.
+        If any incompatibility detected, exception will be thrown.
+
+        param:
+            python: the path for python executable within virtual environment.
+        """
+        cmd = [python, "-m", "uv", "pip", "check"]
+        await check_output_cmd(
+            cmd,
+            logger=logger,
+            cwd=cwd,
+        )
 
     async def _install_uv_packages(
         self,
@@ -99,13 +143,18 @@ class UvProcessor:
         pip_env: Dict,
         logger: logging.Logger,
     ):
+        """Install required python packages via `uv`."""
         virtualenv_path = virtualenv_utils.get_virtualenv_path(path)
         python = virtualenv_utils.get_virtualenv_python(path)
         # TODO(fyrestone): Support -i, --no-deps, --no-cache-dir, ...
         requirements_file = dependency_utils.get_requirements_file(path, uv_packages)
 
+        # Check existence for `uv` and see if we could skip `uv` installation.
+        uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
+
         # Install uv, which acts as the default package manager.
-        await self._install_uv(path, cwd, pip_env, logger)
+        if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
+            await self._install_uv(path, cwd, pip_env, logger)
 
         # Avoid blocking the event loop.
         loop = get_running_loop()
@@ -131,6 +180,10 @@ class UvProcessor:
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
+        # Check python environment for conflicts.
+        if self._uv_config.get("uv_check", False):
+            await self._uv_check(python, cwd, logger)
+
     async def _run(self):
         path = self._target_dir
         logger = self._logger
@@ -138,17 +191,18 @@ class UvProcessor:
         # We create an empty directory for exec cmd so that the cmd will
         # run more stable. e.g. if cwd has ray, then checking ray will
         # look up ray in cwd instead of site packages.
-        exec_cwd = os.path.join(path, "exec_cwd")
-        os.makedirs(exec_cwd, exist_ok=True)
+        os.makedirs(self._exec_cwd, exist_ok=True)
         try:
-            await virtualenv_utils.create_or_get_virtualenv(path, exec_cwd, logger)
+            await virtualenv_utils.create_or_get_virtualenv(
+                path, self._exec_cwd, logger
+            )
             python = virtualenv_utils.get_virtualenv_python(path)
-            async with dependency_utils.check_ray(python, exec_cwd, logger):
+            async with dependency_utils.check_ray(python, self._exec_cwd, logger):
                 # Install packages with uv.
                 await self._install_uv_packages(
                     path,
                     uv_packages,
-                    exec_cwd,
+                    self._exec_cwd,
                     self._uv_env,
                     logger,
                 )

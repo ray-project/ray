@@ -147,23 +147,7 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
-        # Log off-policy'ness of this update.
-        off_policyness = {
-            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
-                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
-            )
-            for mid, module_batch in batch.items()
-            if WEIGHTS_SEQ_NO in module_batch
-        }
-        for key in off_policyness.keys():
-            mid = key[0]
-            if Columns.LOSS_MASK not in batch[mid]:
-                off_policyness[key] = torch.mean(off_policyness[key])
-            else:
-                mask = batch[mid][Columns.LOSS_MASK]
-                num_valid = torch.sum(mask)
-                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
-        self.metrics.log_dict(off_policyness, window=1)
+        self._compute_off_policyness(batch)
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
@@ -629,6 +613,25 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
 
     @override(Learner)
     def _get_tensor_variable(

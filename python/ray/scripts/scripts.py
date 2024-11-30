@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
+import requests
 
 import click
 import psutil
@@ -629,6 +630,15 @@ Windows powershell users need additional escaping:
     type=str,
     help="a JSON serialized dictionary mapping label name to label value.",
 )
+@click.option(
+    "--include-log-monitor",
+    default=None,
+    type=bool,
+    help="If set to True or left unset, a log monitor will start monitoring "
+    "the log files of all processes on this node and push their contents to GCS. "
+    "Only one log monitor should be started per physical host to avoid log "
+    "duplication on the driver process.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -676,6 +686,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -766,6 +777,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        include_log_monitor=include_log_monitor,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -2599,6 +2611,15 @@ def metrics_group():
 @metrics_group.command(name="launch-prometheus")
 def launch_prometheus():
     install_and_start_prometheus.main()
+
+
+@metrics_group.command(name="shutdown-prometheus")
+def shutdown_prometheus():
+    try:
+        requests.post("http://localhost:9090/-/quit")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
 
 
 def add_command_alias(command, name, hidden):

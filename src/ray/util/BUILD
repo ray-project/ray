@@ -44,8 +44,24 @@ cc_library(
 )
 
 cc_library(
+    name = "size_literals",
+    hdrs = ["size_literals.h"],
+    visibility = ["//visibility:public"],
+)
+
+cc_library(
     name = "thread_checker",
     hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],
     visibility = ["//visibility:public"],
+)
+
+cc_library(
+    name = "shared_lru",
+    hdrs = ["shared_lru.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        ":util",
+        "@com_google_absl//absl/container:flat_hash_map",
+    ],
 )

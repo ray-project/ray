@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -219,9 +221,9 @@ class GcsServer {
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
@@ -231,15 +233,17 @@ class GcsServer {
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
-  std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
+  std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
-  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
-  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
+  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
-  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  /// [gcs_placement_group_manager_] depends on [gcs_placement_group_scheduler_].
+  std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
