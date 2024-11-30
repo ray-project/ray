@@ -743,7 +743,7 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
         assert union_op.get_next() == data2[0]
         assert union_op.get_next() == data1[1]
 
-    assert all([len(b) == 0 for b in union_op._input_buffers])
+    assert all(len(b) == 0 for b in union_op._input_buffers)
 
     _take_outputs(union_op)
     union_op.all_inputs_done()
