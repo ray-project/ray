@@ -7,7 +7,7 @@ import os
 import warnings
 from functools import partial
 from pathlib import Path
-from typing import TYPE_CHECKING, Any, Callable, Dict, List, Optional, Type, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, List, Mapping, Optional, Type, Union
 
 import pyarrow.fs
 
@@ -223,7 +223,7 @@ class BaseTrainer(abc.ABC):
         *,
         scaling_config: Optional[ScalingConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
@@ -251,7 +251,7 @@ class BaseTrainer(abc.ABC):
         cls: Type["BaseTrainer"],
         path: Union[str, os.PathLike],
         storage_filesystem: Optional[pyarrow.fs.FileSystem] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         scaling_config: Optional[ScalingConfig] = None,
         **kwargs,
     ) -> "BaseTrainer":
