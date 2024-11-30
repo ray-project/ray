@@ -49,11 +49,11 @@ RedisAsyncContext::RedisAsyncContext(
   socket_.assign(boost::asio::ip::tcp::v4(), handle);
 
   // register hooks with the hiredis async context
-  redis_async_context_->ev.addRead = call_C_addRead;
-  redis_async_context_->ev.delRead = call_C_delRead;
-  redis_async_context_->ev.addWrite = call_C_addWrite;
-  redis_async_context_->ev.delWrite = call_C_delWrite;
-  redis_async_context_->ev.cleanup = call_C_cleanup;
+  redis_async_context_->ev.addRead = CallbackAddRead;
+  redis_async_context_->ev.delRead = CallbackDelRead;
+  redis_async_context_->ev.addWrite = CallbackAddWrite;
+  redis_async_context_->ev.delWrite = CallbackDelWrite;
+  redis_async_context_->ev.cleanup = CallbackCleanup;
 
   // C wrapper functions will use this pointer to call class members.
   redis_async_context_->ev.data = this;
@@ -118,14 +118,13 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
   return Status::OK();
 }
 
-void RedisAsyncContext::operate() {
+void RedisAsyncContext::Operate() {
   if (read_requested_ && !read_in_progress_) {
     read_in_progress_ = true;
-    socket_.async_read_some(boost::asio::null_buffers(),
-                            boost::bind(&RedisAsyncContext::handle_io,
-                                        this,
-                                        boost::asio::placeholders::error,
-                                        false));
+    socket_.async_read_some(
+        boost::asio::null_buffers(),
+        boost::bind(
+            &RedisAsyncContext::HandleIo, this, boost::asio::placeholders::error, false));
   }
 
   if (write_requested_ && !write_in_progress_) {
@@ -133,11 +132,11 @@ void RedisAsyncContext::operate() {
     socket_.async_write_some(
         boost::asio::null_buffers(),
         boost::bind(
-            &RedisAsyncContext::handle_io, this, boost::asio::placeholders::error, true));
+            &RedisAsyncContext::HandleIo, this, boost::asio::placeholders::error, true));
   }
 }
 
-void RedisAsyncContext::handle_io(boost::system::error_code error_code, bool write) {
+void RedisAsyncContext::HandleIo(boost::system::error_code error_code, bool write) {
   RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
             error_code == boost::asio::error::connection_reset ||
             error_code == boost::asio::error::operation_aborted)
@@ -155,62 +154,62 @@ void RedisAsyncContext::handle_io(boost::system::error_code error_code, bool wri
   }
 
   if (error_code == boost::asio::error::would_block) {
-    operate();
+    Operate();
   }
 }
 
-void RedisAsyncContext::addRead() {
+void RedisAsyncContext::AddRead() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
   io_service_.dispatch(
       [this] {
         read_requested_ = true;
-        operate();
+        Operate();
       },
       "RedisAsyncContext.addRead");
 }
 
-void RedisAsyncContext::addWrite() {
+void RedisAsyncContext::AddWrite() {
   // Because redis commands are non-thread safe, dispatch the operation to backend thread.
   io_service_.dispatch(
       [this] {
         write_requested_ = true;
-        operate();
+        Operate();
       },
       "RedisAsyncContext.addWrite");
 }
 
-void RedisAsyncContext::delRead() { read_requested_ = false; }
+void RedisAsyncContext::DelRead() { read_requested_ = false; }
 
-void RedisAsyncContext::delWrite() { write_requested_ = false; }
+void RedisAsyncContext::DelWrite() { write_requested_ = false; }
 
-void RedisAsyncContext::cleanup() {
-  delRead();
-  delWrite();
+void RedisAsyncContext::Cleanup() {
+  DelRead();
+  DelWrite();
 }
 
-void call_C_addRead(void *private_data) {
+void CallbackAddRead(void *private_data) {
   RAY_CHECK(private_data != nullptr);
-  static_cast<RedisAsyncContext *>(private_data)->addRead();
+  static_cast<RedisAsyncContext *>(private_data)->AddRead();
 }
 
-void call_C_delRead(void *private_data) {
+void CallbackDelRead(void *private_data) {
   RAY_CHECK(private_data != nullptr);
-  static_cast<RedisAsyncContext *>(private_data)->delRead();
+  static_cast<RedisAsyncContext *>(private_data)->DelRead();
 }
 
-void call_C_addWrite(void *private_data) {
+void CallbackAddWrite(void *private_data) {
   RAY_CHECK(private_data != nullptr);
-  static_cast<RedisAsyncContext *>(private_data)->addWrite();
+  static_cast<RedisAsyncContext *>(private_data)->AddWrite();
 }
 
-void call_C_delWrite(void *private_data) {
+void CallbackDelWrite(void *private_data) {
   RAY_CHECK(private_data != nullptr);
-  static_cast<RedisAsyncContext *>(private_data)->delWrite();
+  static_cast<RedisAsyncContext *>(private_data)->DelWrite();
 }
 
-void call_C_cleanup(void *private_data) {
+void CallbackCleanup(void *private_data) {
   RAY_CHECK(private_data != nullptr);
-  static_cast<RedisAsyncContext *>(private_data)->cleanup();
+  static_cast<RedisAsyncContext *>(private_data)->Cleanup();
 }
 }  // namespace gcs
 }  // namespace ray

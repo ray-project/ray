@@ -37,11 +37,11 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 namespace ray {
 namespace gcs {
 // C wrappers for class member functions
-void call_C_addRead(void *private_data);
-void call_C_delRead(void *private_data);
-void call_C_addWrite(void *private_data);
-void call_C_delWrite(void *private_data);
-void call_C_cleanup(void *private_data);
+void CallbackAddRead(void *);
+void CallbackDelRead(void *);
+void CallbackAddWrite(void *);
+void CallbackDelWrite(void *);
+void CallbackCleanup(void *);
 
 struct RedisContextDeleter {
   RedisContextDeleter(){};
@@ -118,20 +118,20 @@ class RedisAsyncContext {
   // A write is currently in progress
   bool write_in_progress_{false};
 
-  void operate();
-  void handle_io(boost::system::error_code error_code, bool write);
+  void Operate();
+  void HandleIo(boost::system::error_code error_code, bool write);
 
-  void addRead();
-  void delRead();
-  void addWrite();
-  void delWrite();
-  void cleanup();
+  void AddRead();
+  void DelRead();
+  void AddWrite();
+  void DelWrite();
+  void Cleanup();
 
-  friend void call_C_addRead(void *private_data);
-  friend void call_C_delRead(void *private_data);
-  friend void call_C_addWrite(void *private_data);
-  friend void call_C_delWrite(void *private_data);
-  friend void call_C_cleanup(void *private_data);
+  friend void CallbackAddRead(void *);
+  friend void CallbackDelRead(void *);
+  friend void CallbackAddWrite(void *);
+  friend void CallbackDelWrite(void *);
+  friend void CallbackCleanup(void *);
 };
 }  // namespace gcs
 }  // namespace ray
