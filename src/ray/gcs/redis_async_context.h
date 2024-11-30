@@ -37,11 +37,11 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 namespace ray {
 namespace gcs {
 // C wrappers for class member functions
-extern "C" void call_C_addRead(void *private_data);
-extern "C" void call_C_delRead(void *private_data);
-extern "C" void call_C_addWrite(void *private_data);
-extern "C" void call_C_delWrite(void *private_data);
-extern "C" void call_C_cleanup(void *private_data);
+void call_C_addRead(void *private_data);
+void call_C_delRead(void *private_data);
+void call_C_addWrite(void *private_data);
+void call_C_delWrite(void *private_data);
+void call_C_cleanup(void *private_data);
 
 struct RedisContextDeleter {
   RedisContextDeleter(){};

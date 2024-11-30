@@ -188,27 +188,27 @@ void RedisAsyncContext::cleanup() {
   delWrite();
 }
 
-extern "C" void call_C_addRead(void *private_data) {
+void call_C_addRead(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->addRead();
 }
 
-extern "C" void call_C_delRead(void *private_data) {
+void call_C_delRead(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->delRead();
 }
 
-extern "C" void call_C_addWrite(void *private_data) {
+void call_C_addWrite(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->addWrite();
 }
 
-extern "C" void call_C_delWrite(void *private_data) {
+void call_C_delWrite(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->delWrite();
 }
 
-extern "C" void call_C_cleanup(void *private_data) {
+void call_C_cleanup(void *private_data) {
   RAY_CHECK(private_data != nullptr);
   static_cast<RedisAsyncContext *>(private_data)->cleanup();
 }
