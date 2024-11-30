@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Type, Union
 
 import ray
 from ray._private.ray_constants import env_integer
