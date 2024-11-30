@@ -76,16 +76,6 @@ class _DeploymentHandleBase:
             extra={"log_to_stderr": False},
         )
 
-    def _get_or_create_router(self) -> Router:
-        if self._router is None:
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-            )
-
-        return self._router
-
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
         if app_name:
@@ -150,8 +140,13 @@ class _DeploymentHandleBase:
                 f"was initialized with {self.init_options}."
             )
 
-        self.init_options = create_init_handle_options(**kwargs)
-        self._get_or_create_router()
+        init_options = create_init_handle_options(**kwargs)
+        self._router = self._create_router(
+            handle_id=self.handle_id,
+            deployment_id=self.deployment_id,
+            handle_options=init_options,
+        )
+        self.init_options = init_options
 
         # Record handle api telemetry when not in the proxy
         if (
@@ -209,7 +204,13 @@ class _DeploymentHandleBase:
 
     def shutdown(self):
         if self._router:
-            self._router.shutdown()
+            shutdown_future = self._router.shutdown()
+            shutdown_future.result()
+
+    async def shutdown_async(self):
+        if self._router:
+            shutdown_future = self._router.shutdown()
+            await asyncio.wrap_future(shutdown_future)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"

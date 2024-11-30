@@ -472,5 +472,30 @@ async def test_max_ongoing_requests_enforced(serve_instance):
         tasks = pending
 
 
+def test_shutdown(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert h.remote().result() == "hi"
+
+    h.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert await h.remote() == "hi"
+
+    await h.shutdown_async()
+
+
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))
