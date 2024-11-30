@@ -1,6 +1,6 @@
 import logging
 from functools import partial
-from typing import Any, Dict, Optional
+from typing import Any, Dict, Mapping, Optional
 
 import lightgbm
 
@@ -143,7 +143,7 @@ class LightGBMTrainer(SimpleLightGBMTrainer):
     def __init__(
         self,
         *,
-        datasets: Dict[str, GenDataset],
+        datasets: Mapping[str, GenDataset],
         label_column: str,
         params: Dict[str, Any],
         num_boost_round: int = 10,
