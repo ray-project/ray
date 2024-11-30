@@ -15,7 +15,6 @@
 #include "ray/common/ray_config.h"
 
 #include <sstream>
-#include <typeinfo>
 
 #include "nlohmann/json.hpp"
 

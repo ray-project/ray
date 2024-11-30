@@ -40,7 +40,7 @@ class Buffer {
 
   virtual bool IsPlasmaBuffer() const = 0;
 
-  virtual ~Buffer(){};
+  virtual ~Buffer() = default;
 
   bool operator==(const Buffer &rhs) const {
     if (this->Size() != rhs.Size()) {
@@ -81,7 +81,7 @@ class LocalMemoryBuffer : public Buffer {
   }
 
   /// Construct a LocalMemoryBuffer of all zeros of the given size.
-  LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
+  explicit LocalMemoryBuffer(size_t size) : has_data_copy_(true) {
     buffer_ = reinterpret_cast<uint8_t *>(aligned_malloc(size, BUFFER_ALIGNMENT));
     data_ = buffer_;
     size_ = size;
@@ -102,12 +102,12 @@ class LocalMemoryBuffer : public Buffer {
     }
   }
 
- private:
   /// Disable copy constructor and assignment, as default copy will
   /// cause invalid data_.
   LocalMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   LocalMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
+ private:
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.
@@ -115,7 +115,7 @@ class LocalMemoryBuffer : public Buffer {
   /// Whether this buffer holds a copy of data.
   bool has_data_copy_ = false;
   /// This is only valid when `should_copy` is true.
-  uint8_t *buffer_ = NULL;
+  uint8_t *buffer_ = nullptr;
 };
 
 /// Represents a byte buffer in shared memory.
@@ -158,12 +158,12 @@ class SharedMemoryBuffer : public Buffer {
 
   ~SharedMemoryBuffer() = default;
 
- private:
   /// Disable copy constructor and assignment, as default copy will
   /// cause invalid data_.
   SharedMemoryBuffer &operator=(const LocalMemoryBuffer &) = delete;
   SharedMemoryBuffer(const LocalMemoryBuffer &) = delete;
 
+ private:
   /// Pointer to the data.
   uint8_t *data_;
   /// Size of the buffer.

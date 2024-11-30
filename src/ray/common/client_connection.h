@@ -135,7 +135,7 @@ class ServerConnection : public std::enable_shared_from_this<ServerConnection> {
 
  protected:
   /// A private constructor for a server connection.
-  ServerConnection(local_stream_socket &&socket);
+  explicit ServerConnection(local_stream_socket &&socket);
 
   /// A message that is queued for writing asynchronously.
   struct AsyncWriteBuffer {
@@ -229,7 +229,7 @@ class ClientConnection : public ServerConnection {
   /// ProcessClientMessage handler will be called.
   void ProcessMessages();
 
-  const std::string GetDebugLabel() const { return debug_label_; }
+  std::string GetDebugLabel() const { return debug_label_; }
 
  protected:
   /// A protected constructor for a node client connection.

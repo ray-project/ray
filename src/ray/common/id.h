@@ -74,7 +74,7 @@ class BaseID {
   std::string Hex() const;
 
  protected:
-  BaseID(const std::string &binary) {
+  explicit BaseID(const std::string &binary) {
     if (!binary.empty()) {
       RAY_CHECK(binary.size() == Size())
           << "expected size is " << Size() << ", but got data " << binary << " of size "
@@ -94,14 +94,13 @@ class UniqueID : public BaseID<UniqueID> {
  public:
   static constexpr size_t Size() { return kUniqueIDSize; }
 
-  UniqueID() : BaseID() {}
+  UniqueID() = default;
 
   MSGPACK_DEFINE(id_);
 
  protected:
-  UniqueID(const std::string &binary);
+  explicit UniqueID(const std::string &binary);
 
- protected:
   uint8_t id_[kUniqueIDSize];
 };
 
@@ -118,7 +117,7 @@ class JobID : public BaseID<JobID> {
   // Warning: this can duplicate IDs after a fork() call. We assume this never happens.
   static JobID FromRandom() = delete;
 
-  JobID() : BaseID() {}
+  JobID() = default;
 
   MSGPACK_DEFINE(id_);
 
@@ -161,7 +160,7 @@ class ActorID : public BaseID<ActorID> {
   static ActorID FromRandom() = delete;
 
   /// Constructor of `ActorID`.
-  ActorID() : BaseID() {}
+  ActorID() = default;
 
   /// Get the job id to which this actor belongs.
   ///
@@ -181,7 +180,7 @@ class TaskID : public BaseID<TaskID> {
  public:
   static constexpr size_t kLength = kUniqueBytesLength + ActorID::kLength;
 
-  TaskID() : BaseID() {}
+  TaskID() = default;
 
   static constexpr size_t Size() { return kLength; }
 
@@ -266,12 +265,13 @@ class ObjectID : public BaseID<ObjectID> {
 
  public:
   /// The maximum number of objects that can be returned or put by a task.
-  static constexpr int64_t kMaxObjectIndex = ((int64_t)1 << kObjectIdIndexSize) - 1;
+  static constexpr int64_t kMaxObjectIndex =
+      (static_cast<int64_t>(1) << kObjectIdIndexSize) - 1;
 
   /// The length of ObjectID in bytes.
   static constexpr size_t kLength = kIndexBytesLength + TaskID::kLength;
 
-  ObjectID() : BaseID() {}
+  ObjectID() = default;
 
   /// The maximum index of object.
   ///
@@ -333,7 +333,6 @@ class ObjectID : public BaseID<ObjectID> {
   static ObjectID GenerateObjectId(const std::string &task_id_binary,
                                    ObjectIDIndexType object_index = 0);
 
- private:
   uint8_t id_[kLength];
 };
 
@@ -360,7 +359,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   static PlacementGroupID FromRandom() = delete;
 
   /// Constructor of `PlacementGroupID`.
-  PlacementGroupID() : BaseID() {}
+  PlacementGroupID() = default;
 
   /// Get the job id to which this placement group belongs.
   ///
@@ -373,7 +372,7 @@ class PlacementGroupID : public BaseID<PlacementGroupID> {
   uint8_t id_[kLength];
 };
 
-typedef std::pair<PlacementGroupID, int64_t> BundleID;
+using BundleID = std::pair<PlacementGroupID, int64_t>;
 
 static_assert(sizeof(JobID) == JobID::kLength + sizeof(size_t),
               "JobID size is not as expected");
@@ -492,7 +491,7 @@ T BaseID<T>::FromHex(const std::string &hex_str) {
 
 template <typename T>
 const T &BaseID<T>::Nil() {
-  static const T nil_id;
+  static const T nil_id{};
   return nil_id;
 }
 
@@ -505,7 +504,7 @@ template <typename T>
 size_t BaseID<T>::Hash() const {
   // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
   // default value 0)
-  if (!hash_) {
+  if (hash_ == 0u) {
     hash_ = MurmurHash64A(Data(), T::Size(), 0);
   }
   return hash_;

@@ -44,6 +44,9 @@ class FileSystemMonitor {
   /// Creates a Noop monitor that never reports out of space.
   FileSystemMonitor();
 
+  FileSystemMonitor(const FileSystemMonitor &) = delete;
+  FileSystemMonitor &operator=(const FileSystemMonitor &) = delete;
+
   ~FileSystemMonitor();
 
   /// Returns the disk usage of a given path.
@@ -63,7 +66,6 @@ class FileSystemMonitor {
   bool OverCapacityImpl(const std::string &path,
                         const std::optional<std::filesystem::space_info> &info) const;
 
- private:
   FRIEND_TEST(FileSystemTest, TestOverCapacity);
   const std::vector<std::string> paths_;
   const double capacity_threshold_;

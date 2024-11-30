@@ -67,23 +67,21 @@ class MemoryMonitor {
                 uint64_t monitor_interval_ms,
                 MemoryUsageRefreshCallback monitor_callback);
 
- public:
   /// \param top_n the number of top memory-using processes
   /// \param system_memory the snapshot of memory usage
   /// \param proc_dir the directory to scan for the processes
   ///
   /// \return the debug string that contains up to the top N memory-using processes,
   /// empty if process directory is invalid
-  static const std::string TopNMemoryDebugString(
-      uint32_t top_n,
-      const MemorySnapshot system_memory,
-      const std::string proc_dir = kProcDirectory);
+  static std::string TopNMemoryDebugString(uint32_t top_n,
+                                           const MemorySnapshot &system_memory,
+                                           const std::string &proc_dir = kProcDirectory);
 
   /// \param proc_dir the directory to scan for the processes
   ///
   /// \return the pid to memory usage map for all the processes
-  static const absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
-      const std::string proc_dir = kProcDirectory);
+  static absl::flat_hash_map<pid_t, int64_t> GetProcessMemoryUsage(
+      const std::string &proc_dir = kProcDirectory);
 
  private:
   static constexpr char kCgroupsV1MemoryMaxPath[] =
@@ -107,7 +105,7 @@ class MemoryMonitor {
   /// \param system_memory snapshot of system memory information.
   /// \param threshold_bytes usage threshold in bytes.
   /// \return true if the memory usage of this node is above the threshold.
-  static bool IsUsageAboveThreshold(MemorySnapshot system_memory,
+  static bool IsUsageAboveThreshold(const MemorySnapshot &system_memory,
                                     int64_t threshold_bytes);
 
   /// \return the used and total memory in bytes.
@@ -134,22 +132,21 @@ class MemoryMonitor {
   ///
   /// \return the used memory in bytes from the given smap file or kNull if the file does
   /// not exist or if it fails to read a valid value.
-  static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string smap_path);
+  static int64_t GetLinuxProcessMemoryBytesFromSmap(const std::string &smap_path);
 
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return list of process ids found in the directory,
   /// or empty list if the directory doesn't exist
-  static const std::vector<pid_t> GetPidsFromDir(
-      const std::string proc_dir = kProcDirectory);
+  static std::vector<pid_t> GetPidsFromDir(const std::string &proc_dir = kProcDirectory);
 
   /// \param pid the process id
   /// \param proc_dir directory to scan for the process ids
   ///
   /// \return the command line for the executing process,
   /// or empty string if the processs doesn't exist
-  static const std::string GetCommandLineForPid(
-      pid_t pid, const std::string proc_dir = kProcDirectory);
+  static std::string GetCommandLineForPid(pid_t pid,
+                                          const std::string &proc_dir = kProcDirectory);
 
   /// Truncates string if it is too long and append '...'
   ///
@@ -157,7 +154,7 @@ class MemoryMonitor {
   /// \param max_length the max length of the string value to preserve
   ///
   /// \return the debug string that contains the top N memory using process
-  static const std::string TruncateString(const std::string value, uint32_t max_length);
+  static std::string TruncateString(const std::string &value, uint32_t max_length);
 
   /// \return the smaller of the two integers, kNull if both are kNull,
   /// or one of the values if the other is kNull.
@@ -183,14 +180,14 @@ class MemoryMonitor {
   /// \return the used memory in bytes for the process,
   /// kNull if the file doesn't exist or it fails to find the fields
   static int64_t GetProcessMemoryBytes(pid_t pid,
-                                       const std::string proc_dir = kProcDirectory);
+                                       const std::string &proc_dir = kProcDirectory);
 
   /// \param top_n the number of top memory-using processes
   /// \param all_usage process to memory usage map
   ///
   /// \return the top N memory-using processes
-  static const std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
-      uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> all_usage);
+  static std::vector<std::tuple<pid_t, int64_t>> GetTopNMemoryUsage(
+      uint32_t top_n, const absl::flat_hash_map<pid_t, int64_t> &all_usage);
 
  private:
   FRIEND_TEST(MemoryMonitorTest, TestThresholdZeroMonitorAlwaysAboveThreshold);
@@ -217,11 +214,11 @@ class MemoryMonitor {
   FRIEND_TEST(MemoryMonitorTest, TestTopNMoreThanNReturnsAllDesc);
 
   /// Memory usage fraction between [0, 1]
-  const float usage_threshold_;
+  float usage_threshold_;
 
   /// Indicates the minimum amount of free space to retain before it considers
   /// the usage as above threshold.
-  const int64_t min_memory_free_bytes_;
+  int64_t min_memory_free_bytes_;
 
   /// The computed threshold in bytes based on usage_threshold_ and
   /// min_memory_free_bytes_.
@@ -232,7 +229,7 @@ class MemoryMonitor {
 
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
-  const MemoryUsageRefreshCallback monitor_callback_;
+  MemoryUsageRefreshCallback monitor_callback_;
   PeriodicalRunner runner_;
 };
 

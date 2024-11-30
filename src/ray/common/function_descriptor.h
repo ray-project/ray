@@ -26,10 +26,17 @@ using FunctionDescriptorType = rpc::FunctionDescriptor::FunctionDescriptorCase;
 /// Wrap a protobuf message.
 class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescriptor> {
  public:
-  virtual ~FunctionDescriptorInterface() {}
+  virtual ~FunctionDescriptorInterface() = default;
 
   /// Construct an empty FunctionDescriptor.
-  FunctionDescriptorInterface() : MessageWrapper() {}
+  FunctionDescriptorInterface() = default;
+
+  FunctionDescriptorInterface(const FunctionDescriptorInterface &other) = default;
+  FunctionDescriptorInterface &operator=(const FunctionDescriptorInterface &other) =
+      default;
+
+  FunctionDescriptorInterface(FunctionDescriptorInterface &&other) = default;
+  FunctionDescriptorInterface &operator=(FunctionDescriptorInterface &&other) = default;
 
   /// Construct from a protobuf message object.
   /// The input message will be **copied** into this object.
@@ -76,7 +83,7 @@ class EmptyFunctionDescriptor : public FunctionDescriptorInterface {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit EmptyFunctionDescriptor() : FunctionDescriptorInterface() {
+  explicit EmptyFunctionDescriptor() {
     RAY_CHECK(message_->function_descriptor_case() ==
               ray::FunctionDescriptorType::FUNCTION_DESCRIPTOR_NOT_SET);
   }
@@ -204,10 +211,10 @@ class PythonFunctionDescriptor : public FunctionDescriptorInterface {
     const std::string &class_name = typed_message_->class_name();
     const std::string &function_name = typed_message_->function_name();
     if (class_name.empty()) {
-      return function_name.substr(function_name.find_last_of(".") + 1);
+      return function_name.substr(function_name.find_last_of('.') + 1);
     } else {
-      return class_name.substr(class_name.find_last_of(".") + 1) + "." +
-             function_name.substr(function_name.find_last_of(".") + 1);
+      return class_name.substr(class_name.find_last_of('.') + 1) + "." +
+             function_name.substr(function_name.find_last_of('.') + 1);
     }
   }
 
@@ -274,7 +281,7 @@ class CppFunctionDescriptor : public FunctionDescriptorInterface {
   const rpc::CppFunctionDescriptor *typed_message_;
 };
 
-typedef std::shared_ptr<FunctionDescriptorInterface> FunctionDescriptor;
+using FunctionDescriptor = std::shared_ptr<FunctionDescriptorInterface>;
 
 inline bool operator==(const FunctionDescriptor &left, const FunctionDescriptor &right) {
   if (left.get() == right.get()) {

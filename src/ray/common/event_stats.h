@@ -84,6 +84,9 @@ struct StatsHandle {
         global_stats(std::move(global_stats_)),
         end_or_execution_recorded(false) {}
 
+  StatsHandle(const StatsHandle &) = delete;
+  StatsHandle &operator=(const StatsHandle &) = delete;
+
   ~StatsHandle() {
     if (!end_or_execution_recorded) {
       // If handler execution was never recorded, we need to clean up some queueing
@@ -119,13 +122,13 @@ class EventTracker {
   /// \param fn The function to execute and instrument.
   /// \param handle An opaque stats handle returned by RecordStart().
   static void RecordExecution(const std::function<void()> &fn,
-                              std::shared_ptr<StatsHandle> handle);
+                              const std::shared_ptr<StatsHandle> &handle);
 
   /// Records the end of an event. This is used in conjunction
   /// with RecordStart() to manually instrument an event.
   ///
   /// \param handle An opaque stats handle returned by RecordStart().
-  static void RecordEnd(std::shared_ptr<StatsHandle> handle);
+  static void RecordEnd(const std::shared_ptr<StatsHandle> &handle);
 
   /// Returns a snapshot view of the global count, queueing, and execution statistics
   /// across all handlers.

@@ -166,7 +166,7 @@ void ServerConnection::WriteBufferAsync(
   if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    const auto stats_handle =
+    auto stats_handle =
         io_context.stats().RecordStart("ClientConnection.async_write.WriteBufferAsync");
     boost::asio::async_write(
         socket_,
@@ -174,8 +174,7 @@ void ServerConnection::WriteBufferAsync(
         [handler, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
           EventTracker::RecordExecution(
-              [handler, ec]() { handler(boost_to_ray_status(ec)); },
-              std::move(stats_handle));
+              [handler, ec]() { handler(boost_to_ray_status(ec)); }, stats_handle);
         });
   } else {
     boost::asio::async_write(
@@ -216,7 +215,7 @@ void ServerConnection::ReadBufferAsync(
   if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    const auto stats_handle =
+    auto stats_handle =
         io_context.stats().RecordStart("ServerConnection.async_read.ReadBufferAsync");
     boost::asio::async_read(
         socket_,
@@ -224,8 +223,7 @@ void ServerConnection::ReadBufferAsync(
         [handler, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
           EventTracker::RecordExecution(
-              [handler, ec]() { handler(boost_to_ray_status(ec)); },
-              std::move(stats_handle));
+              [handler, ec]() { handler(boost_to_ray_status(ec)); }, stats_handle);
         });
   } else {
     boost::asio::async_read(
@@ -352,7 +350,7 @@ void ServerConnection::DoAsyncWrites() {
   if (RayConfig::instance().event_stats()) {
     auto &io_context =
         static_cast<instrumented_io_context &>(socket_.get_executor().context());
-    const auto stats_handle =
+    auto stats_handle =
         io_context.stats().RecordStart("ClientConnection.async_write.DoAsyncWrites");
     boost::asio::async_write(
         socket_,
@@ -380,7 +378,7 @@ void ServerConnection::DoAsyncWrites() {
                 }
                 call_handlers(status, num_messages);
               },
-              std::move(stats_handle));
+              stats_handle);
         });
   } else {
     boost::asio::async_write(
@@ -453,7 +451,7 @@ void ClientConnection::ProcessMessages() {
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    const auto stats_handle = io_context.stats().RecordStart(
+    auto stats_handle = io_context.stats().RecordStart(
         "ClientConnection.async_read.ProcessMessageHeader");
     boost::asio::async_read(
         ServerConnection::socket_,
@@ -461,8 +459,7 @@ void ClientConnection::ProcessMessages() {
         [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
           EventTracker::RecordExecution(
-              [this, this_ptr, ec]() { ProcessMessageHeader(ec); },
-              std::move(stats_handle));
+              [this, this_ptr, ec]() { ProcessMessageHeader(ec); }, stats_handle);
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,
@@ -494,7 +491,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
     auto this_ptr = shared_ClientConnection_from_this();
     auto &io_context = static_cast<instrumented_io_context &>(
         ServerConnection::socket_.get_executor().context());
-    const auto stats_handle =
+    auto stats_handle =
         io_context.stats().RecordStart("ClientConnection.async_read.ProcessMessage");
     boost::asio::async_read(
         ServerConnection::socket_,
@@ -502,7 +499,7 @@ void ClientConnection::ProcessMessageHeader(const boost::system::error_code &err
         [this, this_ptr, stats_handle = std::move(stats_handle)](
             const boost::system::error_code &ec, size_t bytes_transferred) {
           EventTracker::RecordExecution([this, this_ptr, ec]() { ProcessMessage(ec); },
-                                        std::move(stats_handle));
+                                        stats_handle);
         });
   } else {
     boost::asio::async_read(ServerConnection::socket_,

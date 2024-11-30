@@ -16,11 +16,11 @@
 namespace ray {
 
 bool IsRuntimeEnvEmpty(const std::string &serialized_runtime_env) {
-  return serialized_runtime_env == "{}" || serialized_runtime_env == "";
+  return serialized_runtime_env == "{}" || serialized_runtime_env.empty();
 }
 
 bool IsRuntimeEnvInfoEmpty(const std::string &serialized_runtime_env_info) {
-  return serialized_runtime_env_info == "{}" || serialized_runtime_env_info == "";
+  return serialized_runtime_env_info == "{}" || serialized_runtime_env_info.empty();
 }
 
 }  // namespace ray

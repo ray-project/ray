@@ -51,7 +51,7 @@ const std::vector<std::string> &RuntimeEnvManager::GetReferences(
 
 void RuntimeEnvManager::RemoveURIReference(const std::string &hex_id) {
   RAY_LOG(DEBUG) << "Subtracting 1 from URI Reference for id " << hex_id;
-  if (!id_to_uris_.count(hex_id)) {
+  if (!id_to_uris_.contains(hex_id)) {
     return;
   }
 

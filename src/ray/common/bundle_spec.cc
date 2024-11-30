@@ -132,7 +132,7 @@ std::string GetOriginalResourceNameFromWildcardResource(const std::string &resou
   if (!data) {
     return "";
   } else {
-    RAY_CHECK(data->original_resource != "");
+    RAY_CHECK(!data->original_resource.empty());
     RAY_CHECK(data->bundle_index == -1);
     return data->original_resource;
   }

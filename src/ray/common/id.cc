@@ -14,16 +14,10 @@
 
 #include "ray/common/id.h"
 
-#include <limits.h>
-
 #include <algorithm>
-#include <chrono>
-#include <mutex>
-#include <random>
 
 #include "absl/time/clock.h"
 #include "ray/common/constants.h"
-#include "ray/common/status.h"
 #include "ray/util/macros.h"
 #include "ray/util/util.h"
 
@@ -35,8 +29,6 @@ extern "C" {
 #define DIGEST_SIZE SHA256_BLOCK_SIZE
 
 namespace ray {
-
-uint64_t MurmurHash64A(const void *key, int len, unsigned int seed);
 
 /// A helper function to generate the unique bytes by hash.
 __suppress_ubsan__("undefined") std::string
@@ -51,9 +43,12 @@ __suppress_ubsan__("undefined") std::string
   sha256_update(&ctx, reinterpret_cast<const BYTE *>(job_id.Data()), job_id.Size());
   sha256_update(
       &ctx, reinterpret_cast<const BYTE *>(parent_task_id.Data()), parent_task_id.Size());
-  sha256_update(&ctx, (const BYTE *)&parent_task_counter, sizeof(parent_task_counter));
+  sha256_update(&ctx,
+                reinterpret_cast<const BYTE *>(&parent_task_counter),
+                sizeof(parent_task_counter));
   if (extra_bytes > 0) {
-    sha256_update(&ctx, (const BYTE *)&extra_bytes, sizeof(extra_bytes));
+    sha256_update(
+        &ctx, reinterpret_cast<const BYTE *>(&extra_bytes), sizeof(extra_bytes));
   }
 
   BYTE buff[DIGEST_SIZE];
@@ -72,7 +67,9 @@ void FillNil(T *data) {
 WorkerID ComputeDriverIdFromJob(const JobID &job_id) {
   std::string data(WorkerID::Size(), '\0');
   std::memcpy(data.data(), job_id.Data(), JobID::Size());
-  std::fill_n(data.data() + JobID::Size(), WorkerID::Size() - JobID::Size(), (char)0xFF);
+  std::fill_n(data.data() + JobID::Size(),
+              WorkerID::Size() - JobID::Size(),
+              static_cast<char>(0xFF));
   return WorkerID::FromBinary(data);
 }
 
@@ -85,7 +82,7 @@ __suppress_ubsan__("undefined") uint64_t
 
   uint64_t h = seed ^ (len * m);
 
-  const uint64_t *data = reinterpret_cast<const uint64_t *>(key);
+  const auto *data = reinterpret_cast<const uint64_t *>(key);
   const uint64_t *end = data + (len / 8);
 
   while (data != end) {
@@ -99,23 +96,24 @@ __suppress_ubsan__("undefined") uint64_t
     h *= m;
   }
 
-  const unsigned char *data2 = reinterpret_cast<const unsigned char *>(data);
+  const auto *data2 = reinterpret_cast<const unsigned char *>(data);
 
+  // NOLINTNEXTLINE(bugprone-switch-missing-default-case)
   switch (len & 7) {
   case 7:
-    h ^= uint64_t(data2[6]) << 48;
+    h ^= static_cast<uint64_t>(data2[6]) << 48;
   case 6:
-    h ^= uint64_t(data2[5]) << 40;
+    h ^= static_cast<uint64_t>(data2[5]) << 40;
   case 5:
-    h ^= uint64_t(data2[4]) << 32;
+    h ^= static_cast<uint64_t>(data2[4]) << 32;
   case 4:
-    h ^= uint64_t(data2[3]) << 24;
+    h ^= static_cast<uint64_t>(data2[3]) << 24;
   case 3:
-    h ^= uint64_t(data2[2]) << 16;
+    h ^= static_cast<uint64_t>(data2[2]) << 16;
   case 2:
-    h ^= uint64_t(data2[1]) << 8;
+    h ^= static_cast<uint64_t>(data2[1]) << 8;
   case 1:
-    h ^= uint64_t(data2[0]);
+    h ^= static_cast<uint64_t>(data2[0]);
     h *= m;
   };
 
@@ -254,14 +252,14 @@ ObjectID ObjectID::FromIndex(const TaskID &task_id, ObjectIDIndexType index) {
 }
 
 ObjectID ObjectID::FromRandom() {
-  std::string task_id_bytes(TaskID::kLength, (char)0xFF);
+  std::string task_id_bytes(TaskID::kLength, static_cast<char>(0xFF));
   FillRandom(&task_id_bytes);
   return GenerateObjectId(task_id_bytes);
 }
 
 ObjectID ObjectID::ForActorHandle(const ActorID &actor_id) {
   return ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id),
-                             /*return_index=*/1);
+                             /*index=*/1);
 }
 
 bool ObjectID::IsActorID(const ObjectID &object_id) {

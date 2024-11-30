@@ -17,6 +17,7 @@
 #include <cstddef>
 #include <regex>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "absl/synchronization/mutex.h"
@@ -30,7 +31,7 @@ namespace ray {
 
 /// Arguments are the raylet ID to spill back to, the raylet's
 /// address and the raylet's port.
-typedef std::function<void()> SpillbackBundleCallback;
+using SpillbackBundleCallback = std::function<void()>;
 
 const std::string kGroupKeyword = "_group_";
 const size_t kGroupKeywordSize = kGroupKeyword.size();
@@ -41,14 +42,14 @@ class BundleSpecification : public MessageWrapper<rpc::Bundle> {
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(message) {
+  explicit BundleSpecification(rpc::Bundle message) : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
   /// Construct from a protobuf message shared_ptr.
   ///
   /// \param message The protobuf message.
   explicit BundleSpecification(std::shared_ptr<rpc::Bundle> message)
-      : MessageWrapper(message) {
+      : MessageWrapper(std::move(message)) {
     ComputeResources();
   }
   // Return the bundle_id

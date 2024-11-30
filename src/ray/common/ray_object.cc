@@ -100,9 +100,8 @@ RayObject::RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_err
     return;
   }
 
-  const auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
+  auto error_buffer = MakeSerializedErrorBuffer<rpc::RayErrorInfo>(*ray_error_info);
   Init(std::move(error_buffer), MakeErrorMetadataBuffer(error_type), {});
-  return;
 }
 
 bool RayObject::IsException(rpc::ErrorType *error_type) const {
@@ -115,7 +114,7 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   const std::string_view metadata(reinterpret_cast<const char *>(metadata_->Data()),
                                   metadata_->Size());
   if (metadata == kObjectInPlasmaStr) {
-    if (error_type) {
+    if (error_type != nullptr) {
       *error_type = rpc::ErrorType::OBJECT_IN_PLASMA;
     }
     return true;
@@ -124,8 +123,8 @@ bool RayObject::IsException(rpc::ErrorType *error_type) const {
   for (int i = 0; i < error_type_descriptor->value_count(); i++) {
     const auto error_type_number = error_type_descriptor->value(i)->number();
     if (metadata == std::to_string(error_type_number)) {
-      if (error_type) {
-        *error_type = rpc::ErrorType(error_type_number);
+      if (error_type != nullptr) {
+        *error_type = static_cast<rpc::ErrorType>(error_type_number);
       }
       return true;
     }

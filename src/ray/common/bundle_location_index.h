@@ -23,7 +23,14 @@ namespace ray {
 /// A data structure that helps fast bundle location lookup.
 class BundleLocationIndex {
  public:
-  BundleLocationIndex() {}
+  BundleLocationIndex() = default;
+
+  BundleLocationIndex(const BundleLocationIndex &other) = default;
+  BundleLocationIndex &operator=(const BundleLocationIndex &other) = default;
+
+  BundleLocationIndex(BundleLocationIndex &&other) noexcept = default;
+  BundleLocationIndex &operator=(BundleLocationIndex &&other) noexcept = default;
+
   ~BundleLocationIndex() = default;
 
   /// Add bundle locations to index.
@@ -66,14 +73,14 @@ class BundleLocationIndex {
   ///
   /// \param placement_group_id Placement group id of this bundle locations.
   /// \return Bundle locations that are associated with a given placement group id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
+  absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocations(
       const PlacementGroupID &placement_group_id) const;
 
   /// Get BundleLocation of node id.
   ///
   /// \param node_id Node id of this bundle locations.
   /// \return Bundle locations that are associated with a given node id.
-  const absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
+  absl::optional<std::shared_ptr<BundleLocations> const> GetBundleLocationsOnNode(
       const NodeID &node_id) const;
 
   std::optional<NodeID> GetBundleLocation(const BundleID &bundle_id) const;

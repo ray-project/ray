@@ -63,7 +63,7 @@ class MessageWrapper {
   Message &GetMutableMessage() { return *message_; }
 
   /// Serialize the message to a string.
-  const std::string Serialize() const { return message_->SerializeAsString(); }
+  std::string Serialize() const { return message_->SerializeAsString(); }
 
   bool operator==(const MessageWrapper<Message> &rhs) const {
     return google::protobuf::util::MessageDifferencer::Equivalent(GetMessage(),
@@ -116,7 +116,7 @@ inline Status GrpcStatusToRayStatus(const grpc::Status &grpc_status) {
 /// Statuses that are retried infinitely by the GcsClient.
 /// Now we only retry UNAVAILABLE and UNKNOWN statuses because that indicates the server
 /// may be down.
-inline bool IsGrpcRetryableStatus(Status status) {
+inline bool IsGrpcRetryableStatus(const Status &status) {
   return status.IsRpcError() && (status.rpc_code() == grpc::StatusCode::UNAVAILABLE ||
                                  status.rpc_code() == grpc::StatusCode::UNKNOWN);
 }
@@ -143,6 +143,7 @@ inline std::vector<ID> IdVectorFromProtobuf(
     const ::google::protobuf::RepeatedPtrField<::std::string> &pb_repeated) {
   auto str_vec = VectorFromProtobuf(pb_repeated);
   std::vector<ID> ret;
+  ret.reserve(str_vec.size());
   std::transform(
       str_vec.begin(), str_vec.end(), std::back_inserter(ret), &ID::FromBinary);
   return ret;

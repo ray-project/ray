@@ -79,7 +79,8 @@ class RayObject {
   ///
   /// \param[in] error_type Error type.
   /// \param[in] ray_error_info The error information that this object body contains.
-  RayObject(rpc::ErrorType error_type, const rpc::RayErrorInfo *ray_error_info = nullptr);
+  explicit RayObject(rpc::ErrorType error_type,
+                     const rpc::RayErrorInfo *ray_error_info = nullptr);
 
   /// Return the data of the ray object.
   std::shared_ptr<Buffer> GetData() const {

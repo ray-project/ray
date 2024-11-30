@@ -28,7 +28,7 @@ namespace {
 /// A helper for creating a snapshot view of the global stats.
 /// This acquires a reader lock on the provided global stats, and creates a
 /// lockless copy of the stats.
-GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
+GlobalStats to_global_stats_view(const std::shared_ptr<GuardedGlobalStats> &stats) {
   absl::MutexLock lock(&(stats->mutex));
   return GlobalStats(stats->stats);
 }
@@ -36,7 +36,7 @@ GlobalStats to_global_stats_view(std::shared_ptr<GuardedGlobalStats> stats) {
 /// A helper for creating a snapshot view of the stats for a event.
 /// This acquires a lock on the provided guarded event stats, and creates a
 /// lockless copy of the stats.
-EventStats to_event_stats_view(std::shared_ptr<GuardedEventStats> stats) {
+EventStats to_event_stats_view(const std::shared_ptr<GuardedEventStats> &stats) {
   absl::MutexLock lock(&(stats->mutex));
   return EventStats(stats->stats);
 }
@@ -82,7 +82,7 @@ std::shared_ptr<StatsHandle> EventTracker::RecordStart(
       global_stats_);
 }
 
-void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
+void EventTracker::RecordEnd(const std::shared_ptr<StatsHandle> &handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   absl::MutexLock lock(&(handle->handler_stats->mutex));
   const auto curr_count = --handle->handler_stats->stats.curr_count;
@@ -100,7 +100,7 @@ void EventTracker::RecordEnd(std::shared_ptr<StatsHandle> handle) {
 }
 
 void EventTracker::RecordExecution(const std::function<void()> &fn,
-                                   std::shared_ptr<StatsHandle> handle) {
+                                   const std::shared_ptr<StatsHandle> &handle) {
   RAY_CHECK(!handle->end_or_execution_recorded);
   int64_t start_execution = absl::GetCurrentTimeNanos();
   // Update running count
