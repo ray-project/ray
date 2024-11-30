@@ -20,13 +20,43 @@ extern "C" {
 }
 
 namespace ray {
-
 namespace gcs {
-
 RedisAsyncContext::RedisAsyncContext(
+    instrumented_io_context &io_service,
     std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context)
-    : redis_async_context_(std::move(redis_async_context)) {
+    : redis_async_context_(std::move(redis_async_context)),
+      io_service_(io_service),
+      socket_(io_service) {
   RAY_CHECK(redis_async_context_ != nullptr);
+
+  // gives access to c->fd
+  redisContext *c = &(redis_async_context_->c);
+
+#ifdef _WIN32
+  SOCKET sock = SOCKET_ERROR;
+  WSAPROTOCOL_INFO pi;
+  if (WSADuplicateSocket(c->fd, GetCurrentProcessId(), &pi) == 0) {
+    DWORD flag = WSA_FLAG_OVERLAPPED;
+    sock = WSASocket(pi.iAddressFamily, pi.iSocketType, pi.iProtocol, &pi, 0, flag);
+  }
+  const boost::asio::ip::tcp::socket::native_handle_type handle(sock);
+#else
+  const boost::asio::ip::tcp::socket::native_handle_type handle(dup(c->fd));
+#endif
+
+  // hiredis is already connected
+  // use the existing native socket
+  socket_.assign(boost::asio::ip::tcp::v4(), handle);
+
+  // register hooks with the hiredis async context
+  redis_async_context_->ev.addRead = call_C_addRead;
+  redis_async_context_->ev.delRead = call_C_delRead;
+  redis_async_context_->ev.addWrite = call_C_addWrite;
+  redis_async_context_->ev.delWrite = call_C_delWrite;
+  redis_async_context_->ev.cleanup = call_C_cleanup;
+
+  // C wrapper functions will use this pointer to call class members.
+  redis_async_context_->ev.data = this;
 }
 
 redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
@@ -38,27 +68,6 @@ void RedisAsyncContext::ResetRawRedisAsyncContext() {
   redis_async_context_.release();
 }
 
-void RedisAsyncContext::RedisAsyncHandleRead() {
-  // `redisAsyncHandleRead` will mutate `redis_async_context_`, use a lock to protect
-  // it.
-  // This function will execute the callbacks which are registered by
-  // `redisvAsyncCommand`, `redisAsyncCommandArgv` and so on.
-  std::lock_guard<std::mutex> lock(mutex_);
-  // TODO(mehrdadn): Remove this when the bug is resolved.
-  // Somewhat consistently reproducible via
-  // python/ray/tests/test_basic.py::test_background_tasks_with_max_calls
-  // with -c opt on Windows.
-  RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL here";
-  redisAsyncHandleRead(redis_async_context_.get());
-}
-
-void RedisAsyncContext::RedisAsyncHandleWrite() {
-  // `redisAsyncHandleWrite` will mutate `redis_async_context_`, use a lock to protect
-  // it.
-  std::lock_guard<std::mutex> lock(mutex_);
-  redisAsyncHandleWrite(redis_async_context_.get());
-}
-
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
                                             void *privdata,
                                             const char *format,
@@ -68,7 +77,7 @@ Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
 
   int ret_code = 0;
   {
-    // `redisvAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
+    // `redisAsyncCommand` will mutate `redis_async_context_`, use a lock to protect it.
     std::lock_guard<std::mutex> lock(mutex_);
     if (!redis_async_context_) {
       return Status::Disconnected("Redis is disconnected");
@@ -109,6 +118,99 @@ Status RedisAsyncContext::RedisAsyncCommandArgv(redisCallbackFn *fn,
   return Status::OK();
 }
 
-}  // namespace gcs
+void RedisAsyncContext::operate() {
+  if (read_requested_ && !read_in_progress_) {
+    read_in_progress_ = true;
+    socket_.async_read_some(boost::asio::null_buffers(),
+                            boost::bind(&RedisAsyncContext::handle_io,
+                                        this,
+                                        boost::asio::placeholders::error,
+                                        false));
+  }
 
+  if (write_requested_ && !write_in_progress_) {
+    write_in_progress_ = true;
+    socket_.async_write_some(
+        boost::asio::null_buffers(),
+        boost::bind(
+            &RedisAsyncContext::handle_io, this, boost::asio::placeholders::error, true));
+  }
+}
+
+void RedisAsyncContext::handle_io(boost::system::error_code error_code, bool write) {
+  RAY_CHECK(!error_code || error_code == boost::asio::error::would_block ||
+            error_code == boost::asio::error::connection_reset ||
+            error_code == boost::asio::error::operation_aborted)
+      << "handle_io(error_code = " << error_code << ")";
+  (write ? write_in_progress_ : read_in_progress_) = false;
+  if (error_code != boost::asio::error::operation_aborted) {
+    RAY_CHECK(redis_async_context_) << "redis_async_context_ must not be NULL";
+    {
+      // `redisAsyncHandleRead` and `redisAsyncHandleWrite` will mutate
+      // `redis_async_context_`, use a lock to protect it.
+      const std::lock_guard lock(mutex_);
+      write ? redisAsyncHandleWrite(redis_async_context_.get())
+            : redisAsyncHandleRead(redis_async_context_.get());
+    }
+  }
+
+  if (error_code == boost::asio::error::would_block) {
+    operate();
+  }
+}
+
+void RedisAsyncContext::addRead() {
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch(
+      [this] {
+        read_requested_ = true;
+        operate();
+      },
+      "RedisAsyncContext.addRead");
+}
+
+void RedisAsyncContext::addWrite() {
+  // Because redis commands are non-thread safe, dispatch the operation to backend thread.
+  io_service_.dispatch(
+      [this] {
+        write_requested_ = true;
+        operate();
+      },
+      "RedisAsyncContext.addWrite");
+}
+
+void RedisAsyncContext::delRead() { read_requested_ = false; }
+
+void RedisAsyncContext::delWrite() { write_requested_ = false; }
+
+void RedisAsyncContext::cleanup() {
+  delRead();
+  delWrite();
+}
+
+extern "C" void call_C_addRead(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  static_cast<RedisAsyncContext *>(private_data)->addRead();
+}
+
+extern "C" void call_C_delRead(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  static_cast<RedisAsyncContext *>(private_data)->delRead();
+}
+
+extern "C" void call_C_addWrite(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  static_cast<RedisAsyncContext *>(private_data)->addWrite();
+}
+
+extern "C" void call_C_delWrite(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  static_cast<RedisAsyncContext *>(private_data)->delWrite();
+}
+
+extern "C" void call_C_cleanup(void *private_data) {
+  RAY_CHECK(private_data != nullptr);
+  static_cast<RedisAsyncContext *>(private_data)->cleanup();
+}
+}  // namespace gcs
 }  // namespace ray
