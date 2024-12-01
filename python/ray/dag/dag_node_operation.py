@@ -89,6 +89,8 @@ class _DAGOperationGraphNode:
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         requires_nccl: bool,
+        upstream_nccl_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
+        downstream_nccl_actors: Optional[Set["ray.actor.ActorHandle"]] = None,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -107,6 +109,8 @@ class _DAGOperationGraphNode:
         self.task_idx = task_idx
         self.actor_handle = actor_handle
         self.requires_nccl = requires_nccl
+        self.upstream_nccl_actors = upstream_nccl_actors or set()
+        self.downstream_nccl_actors = downstream_nccl_actors or set()
         # The in_edges and out_edges are dicts of tuples to strings.
         # Each tuple (the key) contains an integer `task_idx`, which can be
         # used to index into `idx_to_task` to get the corresponding task,
@@ -200,6 +204,10 @@ class _DAGOperationGraphNode:
         return self.operation.type == _DAGNodeOperationType.READ
 
     @property
+    def is_compute(self) -> bool:
+        return self.operation.type == _DAGNodeOperationType.COMPUTE
+
+    @property
     def is_nccl_collective(self) -> bool:
         """
         A node is a NCCL collective if it is a compute node and requires NCCL.
@@ -214,6 +222,25 @@ class _DAGOperationGraphNode:
         A node is a NCCL write if it is a write node and requires NCCL.
         """
         return self.operation.type == _DAGNodeOperationType.WRITE and self.requires_nccl
+
+    @property
+    def is_nccl_read(self) -> bool:
+        """
+        Check if this is a NCCL read operation.
+        """
+        return self.operation.type == _DAGNodeOperationType.READ and self.requires_nccl
+
+    @property
+    def is_nccl_write_to_upstream_actor(self) -> bool:
+        """
+        Check if this is a NCCL write operation that writes to an actor
+        that is also one of its immediate upstream NCCL actors.
+        """
+        if self.operation.type != _DAGNodeOperationType.WRITE or not self.requires_nccl:
+            return False
+        return (
+            len(self.downstream_nccl_actors.intersection(self.upstream_nccl_actors)) > 0
+        )
 
     @property
     def is_nccl_op(self) -> bool:
@@ -744,18 +771,12 @@ def _generate_overlapped_execution_schedule(
     ] = copy.deepcopy(actor_to_execution_schedule)
     for overlapped_schedule in actor_to_overlapped_schedule.values():
         for i in range(len(overlapped_schedule)):
-            if (
-                overlapped_schedule[i].operation.type == _DAGNodeOperationType.READ
-                and overlapped_schedule[i].requires_nccl
-            ):
+            if overlapped_schedule[i].is_nccl_read:
                 # For each NCCL read operation (i.e., recv), scan backwards
                 # to find the nearest compute node to swap with so that
                 # the NCCL read operation can be overlapped with computation.
                 for j in range(i - 1, -1, -1):
-                    if (
-                        overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.COMPUTE
-                    ):
+                    if overlapped_schedule[j].is_compute:
                         # Found a desired compute operation, make the swap
                         nccl_read_op = overlapped_schedule[i]
                         prev_ops = overlapped_schedule[j:i]
@@ -763,13 +784,11 @@ def _generate_overlapped_execution_schedule(
                         overlapped_schedule[j] = nccl_read_op
                         break
                     if (
-                        overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.READ
-                        or overlapped_schedule[j].operation.type
-                        == _DAGNodeOperationType.WRITE
-                    ) and overlapped_schedule[j].requires_nccl:
-                        # Found a NCCL read/write operation, skip the overlap
-                        # optimization to keep relative order of NCCL operations
+                        overlapped_schedule[j].is_nccl_read
+                        or overlapped_schedule[j].is_nccl_write_to_upstream_actor
+                    ):
+                        # Skip the overlap optimization when the relative order
+                        # of NCCL operations cannot be changed.
                         break
     return actor_to_overlapped_schedule
 
