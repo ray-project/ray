@@ -104,6 +104,10 @@ class _DAGOperationGraphNode:
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
             requires_nccl: Whether this operation requires NCCL.
+            upstream_nccl_actors: The actors of the immediate upstream tasks
+                that this task reads from via a NCCL channel.
+            downstream_nccl_actors: The actors of the immediate downstream tasks
+                that this task writes to via a NCCL channel.
         """
         self.operation = operation
         self.task_idx = task_idx
