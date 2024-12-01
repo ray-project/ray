@@ -320,9 +320,9 @@ class Monitor:
             else:
                 ip = resource_message.node_manager_address
 
-            idle_duration_ms = 0.0
+            idle_duration_s = 0.0
             if node_id in ray_nodes_idle_duration_ms_by_id:
-                idle_duration_ms = ray_nodes_idle_duration_ms_by_id[node_id]
+                idle_duration_s = ray_nodes_idle_duration_ms_by_id[node_id] / 1000
             else:
                 logger.warning(
                     f"node_id {node_id} not found in ray_nodes_idle_duration_ms_by_id"
@@ -333,13 +333,11 @@ class Monitor:
                 node_id,
                 total_resources,
                 available_resources,
+                idle_duration_s,
                 waiting_bundles,
                 infeasible_bundles,
                 pending_placement_groups,
                 cluster_full,
-                time.time()
-                - idle_duration_ms
-                / 1000,  # node_last_used_time_s = now - idle_duration
             )
         if self.readonly_config:
             self.readonly_config["available_node_types"].update(mirror_node_types)
