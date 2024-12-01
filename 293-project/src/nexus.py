@@ -1,28 +1,62 @@
 from bisect import bisect, insort
 from collections import namedtuple
 from operator import attrgetter
+from datetime import datetime
+from typing import Dict, List, Optional, Tuple, Any
 import math, copy
 
-"""
-    Definition of a session Si is as follows: 
-        Si = < Mk, Li, Ri >
-        Mk: str,   model name
-        Li: float, SLO for model
-        Ri: float, request rate for the model
-"""
 class session:
-    batch_size: int  = 0 # batch when scheduled
+    """
+    Session class representing a model deployment request
 
-    def __init__(self, model_name: str, latency_SLO: float, request_rate: float, batch_size: int = None):
-        self.model_name   = model_name
-        self.latency_SLO  = latency_SLO
+    Attributes:
+       model_name (str): Name of the model to deploy
+       latency_SLO (float): Latency Service Level Objective in milliseconds
+       request_rate (float): Expected request rate for the model
+       batch_size (int): Current batch size when scheduled (default: 0)
+       creation_time (datetime): Timestamp when session was created
+    """
+    def __init__(self, model_name: str, latency_SLO: float, request_rate: float, batch_size: Optional[int] = None):
+        """
+        Initialize a new session with validation.
+
+        Args:
+            model_name (str): Name of model to deploy
+            latency_SLO (float): Latency SLO in milliseconds
+            request_rate (float): Expected request rate
+            batch_size (Optional[int]): Initial batch size
+            
+        Raises:
+            ValueError: If inputs fail validation
+        """
+        if not isinstance(model_name, str) or not model_name:
+            raise ValueError("Model name must be a non-empty string")
+        if not isinstance(latency_SLO, (int, float)) or latency_SLO <= 0:
+            raise ValueError("Latency SLO must be a positive number")
+        if not isinstance(request_rate, (int, float)) or request_rate < 0:
+            raise ValueError("Request rate must be a non-negative number")
+        if batch_size is not None and (not isinstance(batch_size, int) or batch_size <= 0):
+            raise ValueError("Batch size must be a positive integer")
+
+        self.model_name = model_name
+        self.latency_SLO = latency_SLO
         self.request_rate = request_rate
-        
-        if batch_size:
-            self.batch_size = batch_size
-        
+        self.batch_size = batch_size if batch_size is not None else 0
+        self.creation_time = datetime.now()
+
     def print_session_pretty(self):
-        print(f"Model name: {self.model_name}, SLO: {self.latency_SLO}ms, request rate: {self.request_rate}, batch size: {self.batch_size}")
+        print(f"Model name: {self.model_name}, SLO: {self.latency_SLO}ms, "
+              f"request rate: {self.request_rate}, batch size: {self.batch_size}")
+
+    def to_dict(self) -> dict:
+        """Convert session to dictionary for logging"""
+        return {
+            'model_name': self.model_name,
+            'latency_SLO': self.latency_SLO,
+            'request_rate': self.request_rate,
+            'batch_size': self.batch_size,
+            'creation_time': self.creation_time.isoformat()
+        }
 
 """
     Definition of a node:
@@ -45,7 +79,6 @@ class node:
 
     # def __copy__(self):
     #     return node(self.node_sessions, self.duty_cycle, self.gpu_type, self.gpu_mem)
-        
 
     def get_occupancy(self):
         node_occupancy = 0
@@ -64,8 +97,7 @@ class node:
             s.print_session_pretty()
         print(f"---------------------------------------------------------------------------")
 
-
-class NexusScheduler:
+class nexus:
     """
         This class implements the squishy bin packing algorithm described
         in section 6.1 of nexus paper
