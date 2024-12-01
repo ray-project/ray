@@ -762,7 +762,7 @@ def test_no_slash_route_prefix(serve_instance):
         ValueError,
         match=(
             r"Invalid route_prefix 'no_slash', "
-            "must start with a forward slash \('/'\)"
+            r"must start with a forward slash \('/'\)"
         ),
     ):
         serve.run(f.bind(), route_prefix="no_slash")

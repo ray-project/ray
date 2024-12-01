@@ -351,7 +351,7 @@ class GroupedData:
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped min aggregation.
+        r"""Compute grouped min aggregation.
 
         Examples:
             >>> import ray
@@ -390,7 +390,7 @@ class GroupedData:
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped max aggregation.
+        r"""Compute grouped max aggregation.
 
         Examples:
             >>> import ray
@@ -429,7 +429,7 @@ class GroupedData:
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
-        """Compute grouped mean aggregation.
+        r"""Compute grouped mean aggregation.
 
         Examples:
             >>> import ray
@@ -471,7 +471,7 @@ class GroupedData:
         ddof: int = 1,
         ignore_nulls: bool = True,
     ) -> Dataset:
-        """Compute grouped standard deviation aggregation.
+        r"""Compute grouped standard deviation aggregation.
 
         Examples:
             >>> import ray
