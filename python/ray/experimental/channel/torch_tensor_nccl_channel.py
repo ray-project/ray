@@ -9,7 +9,7 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
-from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
@@ -554,7 +554,7 @@ def _do_init_nccl_group(
 ):
     import torch
 
-    if not custom_nccl_group or not isinstance(custom_nccl_group, CPUNcclGroup):
+    if not custom_nccl_group:
         assert (
             ray.get_gpu_ids()
         ), "Actors participating in NCCL group must have at least one GPU assigned"
@@ -571,6 +571,26 @@ def _do_init_nccl_group(
             actor_handles,
             torch.cuda.current_stream().cuda_stream,
             use_communication_streams,
+        )
+
+
+def _do_init_cpu_group(
+    self,
+    group_id,
+    world_size,
+    rank,
+    actor_handles,
+    custom_cpu_group: Optional[CPUCommunicator] = None,
+):
+    ctx = ChannelContext.get_current()
+    if custom_cpu_group is not None:
+        custom_cpu_group.initialize(rank)
+        ctx.cpu_groups[group_id] = custom_cpu_group
+    else:
+        ctx.cpu_groups[group_id] = CPUCommunicator(
+            world_size,
+            rank,
+            actor_handles,
         )
 
 
@@ -650,7 +670,7 @@ def _init_nccl_group(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
     )
     for has_gpu, actor in zip(has_gpus, actors):
-        if not has_gpu and not isinstance(custom_nccl_group, CPUNcclGroup):
+        if not has_gpu:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
                 'TorchTensor(transport="nccl") or '
@@ -707,6 +727,72 @@ def _init_nccl_group(
             rank=None,
             actor_handles=actors,
             cuda_stream=None,
+        )
+    return group_id
+
+
+def _init_cpu_group(
+    actors: List[ray.actor.ActorHandle],
+    custom_cpu_group: Optional[CPUCommunicator] = None,
+    use_communication_streams: bool = False,
+) -> str:
+    """
+    Initialize a NCCL group with the given actors. If a custom NCCL group is
+    provided, then it will be used, otherwise a new NCCL group will be created.
+
+    Args:
+        actors: A list of actors that participate in the NCCL group.
+        custom_nccl_group: A custom NCCL group to initialize.
+        use_communication_streams: Whether to use dedicated send and recv
+                streams for communication. If True, communication and computation
+                can be overlapped to improve perfomrance.
+    """
+    assert (
+        use_communication_streams == False
+    ), "Overlapping communication and computation is not implemented for CPUCommunicator"
+
+    ctx = ChannelContext.get_current()
+
+    actor_ids = {actor._ray_actor_id for actor in actors}
+    assert len(actor_ids) == len(actors), "Actors must be unique"
+
+    # Used to uniquely identify this NCCL group.
+    group_id = str(uuid.uuid4())
+
+    if custom_cpu_group is not None:
+        logger.info(f"Initializing custom CPU group {group_id} on actors: {actors}")
+    else:
+        logger.info(f"Creating CPU group {group_id} on actors: {actors}")
+
+    world_size = len(actors)
+    ranks = _get_ranks(actors, custom_cpu_group)
+    init_tasks = [
+        actor.__ray_call__.remote(
+            _do_init_cpu_group,
+            group_id,
+            world_size,
+            rank,
+            actors,
+            custom_cpu_group,
+        )
+        for rank, actor in zip(ranks, actors)
+    ]
+    try:
+        ray.get(init_tasks, timeout=30)
+    except ray.exceptions.GetTimeoutError:
+        logger.warning(
+            "NCCL group creation not done after 30s. NCCL group creation may be hung."
+        )
+        ray.get(init_tasks)
+
+    logger.info("CPU group initialized.")
+
+    if custom_cpu_group is not None:
+        ctx.cpu_groups[group_id] = custom_cpu_group
+    else:
+        ctx.cpu_groups[group_id] = CPUCommunicator(
+            world_size,
+            actor_handles=actors,
         )
     return group_id
 

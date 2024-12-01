@@ -8,7 +8,7 @@ import ray
 import ray.cluster_utils
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
-from ray.experimental.channel.cpu_nccl_group import CPUNcclGroup, start_nccl_mock
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag import InputNode
 import ray.experimental.collective as collective
 from ray.dag.output_node import MultiOutputNode
@@ -17,8 +17,8 @@ from ray.tests.conftest import *  # noqa
 
 @ray.remote
 class CPUTorchTensorWorker:
-    def start_cuda_and_torch_mock(self):
-        start_nccl_mock()
+    def __init__(self):
+        self.device = torch.device(type="cpu")
 
     def send(self, shape, dtype, value: int, send_tensor=True):
         if not send_tensor:
@@ -38,12 +38,13 @@ class CPUTorchTensorWorker:
         return torch.ones(shape, dtype=dtype) * value
 
     def recv(self, tensor):
-        # assert tensor.device == self.device
+        assert tensor.device == self.device
         return (tensor[0].item(), tensor.shape, tensor.dtype)
 
     def recv_dict(self, tensor_dict):
         vals = {}
         for i, tensor in tensor_dict.items():
+            assert tensor.device == self.device
             vals[i] = self.recv(tensor)
         return vals
 
@@ -53,6 +54,7 @@ class CPUTorchTensorWorker:
         return tensor
 
     def recv_tensor(self, tensor):
+        assert tensor.device == self.device
         return tensor
 
     def return_tensor(self, size: int) -> torch.Tensor:
@@ -74,13 +76,7 @@ def test_p2p_basic(ray_start_cluster):
     sender = CPUTorchTensorWorker.remote()
     receiver = CPUTorchTensorWorker.remote()
 
-    cpu_group = CPUNcclGroup(2, [sender, receiver])
-    ray.get(
-        [
-            sender.start_cuda_and_torch_mock.remote(),
-            receiver.start_cuda_and_torch_mock.remote(),
-        ]
-    )
+    cpu_group = CPUCommunicator(2, [sender, receiver])
 
     shape = (10,)
     dtype = torch.float16
@@ -110,9 +106,8 @@ def test_p2p_basic(ray_start_cluster):
 def test_allreduce_basic(ray_start_cluster):
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
-    ray.get([worker.start_cuda_and_torch_mock.remote() for worker in workers])
 
-    cpu_group = CPUNcclGroup(num_workers, workers)
+    cpu_group = CPUCommunicator(num_workers, workers)
 
     shape = (10,)
     dtype = torch.float16
@@ -157,9 +152,8 @@ def test_allreduce_basic(ray_start_cluster):
 def test_allreduce_get_partial(ray_start_cluster):
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
-    ray.get([worker.start_cuda_and_torch_mock.remote() for worker in workers])
 
-    cpu_group = CPUNcclGroup(num_workers, workers)
+    cpu_group = CPUCommunicator(num_workers, workers)
 
     shape = (10,)
     dtype = torch.float16
@@ -202,9 +196,8 @@ def test_allreduce_get_partial(ray_start_cluster):
 def test_allreduce_wrong_shape(ray_start_cluster):
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
-    ray.get([worker.start_cuda_and_torch_mock.remote() for worker in workers])
 
-    cpu_group = CPUNcclGroup(num_workers, workers)
+    cpu_group = CPUCommunicator(num_workers, workers)
 
     dtype = torch.float16
 
@@ -269,9 +262,8 @@ def test_allreduce_scheduling(ray_start_cluster):
     """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
-    ray.get([worker.start_cuda_and_torch_mock.remote() for worker in workers])
 
-    cpu_group = CPUNcclGroup(num_workers, workers)
+    cpu_group = CPUCommunicator(num_workers, workers)
 
     shape = (10,)
     dtype = torch.float16
@@ -285,7 +277,7 @@ def test_allreduce_scheduling(ray_start_cluster):
         t = workers[0].send.bind(shape, dtype, inp)
         t.with_type_hint(TorchTensorType(transport=cpu_group))
 
-        collectives = collective.allreduce.bind([x, y])
+        collectives = collective.allreduce.bind([x, y], transport=cpu_group)
         recv = workers[1].recv.bind(t)
         dag = MultiOutputNode([collectives[0], collectives[1], recv])
 
@@ -317,8 +309,10 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
     Test an error is thrown when two input nodes from the same actor bind to
     an all-reduce.
     """
+    num_workers = 2
     worker = CPUTorchTensorWorker.remote()
-    ray.get(worker.start_cuda_and_torch_mock.remote())
+
+    cpu_group = CPUCommunicator(num_workers, [worker, worker])
 
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for _ in range(2)]
@@ -326,7 +320,7 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique actor handles for a collective operation",
         ):
-            collective.allreduce.bind(computes)
+            collective.allreduce.bind(computes, transport=cpu_group)
 
     with InputNode() as inp:
         compute = worker.return_tensor.bind(inp)
@@ -335,7 +329,7 @@ def test_allreduce_duplicate_actors(ray_start_cluster):
             ValueError,
             match="Expected unique input nodes for a collective operation",
         ):
-            collective.allreduce.bind(computes)
+            collective.allreduce.bind(computes, transport=cpu_group)
 
 
 @pytest.mark.parametrize(
@@ -355,15 +349,14 @@ def test_allreduce_wrong_actors(ray_start_cluster):
     """
     num_workers = 2
     workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers * 2)]
-    ray.get([worker.start_cuda_and_torch_mock.remote() for worker in workers])
 
-    cpu_group = CPUNcclGroup(num_workers, workers[:2])
+    cpu_group = CPUCommunicator(num_workers, workers[:2])
 
     with InputNode() as inp:
         computes = [worker.return_tensor.bind(inp) for worker in workers[2:]]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom NCCL group",
+            match="Expected actor handles to match the custom CPU group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 

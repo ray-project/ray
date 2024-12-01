@@ -10,8 +10,12 @@ from ray.dag import (
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
+from ray.experimental.channel.torch_tensor_nccl_channel import (
+    _init_nccl_group,
+    _init_cpu_group,
+)
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
 
@@ -71,6 +75,9 @@ class _CollectiveOperation:
                 raise ValueError(
                     "Expected actor handles to match the custom NCCL group"
                 )
+        if isinstance(transport, CPUCommunicator):
+            if set(transport.get_actor_handles()) != set(self._actor_handles):
+                raise ValueError("Expected actor handles to match the custom CPU group")
 
     def __str__(self) -> str:
         return (
@@ -103,6 +110,21 @@ class _CollectiveOperation:
         type_hint.set_nccl_group_id(nccl_group_id)
         return nccl_group_id
 
+    def init_cpu_group(self, cpu_group_id: Optional[str] = None) -> str:
+        """
+        Initialize the CPU group if it has not been initialized yet. If `cpu_group_id`
+        is provided, it means the CPU group has already been initialized.
+        """
+        type_hint = self._type_hint
+        if type_hint.cpu_group_id is not None:
+            return type_hint.cpu_group_id
+        if cpu_group_id is None:
+            cpu_group_id = _init_cpu_group(
+                self._actor_handles, type_hint.get_custom_cpu_group()
+            )
+        type_hint.set_cpu_group_id(cpu_group_id)
+        return cpu_group_id
+
     def get_nccl_group(self) -> GPUCommunicator:
         if self._type_hint.nccl_group_id is not None:
             ctx = ChannelContext.get_current()
@@ -113,6 +135,16 @@ class _CollectiveOperation:
             raise ValueError("Expected a NCCL group")
         return nccl_group
 
+    def get_cpu_group(self) -> CPUCommunicator:
+        if self._type_hint.cpu_group_id is not None:
+            ctx = ChannelContext.get_current()
+            cpu_group = ctx.cpu_groups[self._type_hint.cpu_group_id]
+        elif self._type_hint.get_custom_cpu_group() is not None:
+            nccl_group = self._type_hint.get_custom_cpu_group()
+        else:
+            raise ValueError("Expected a CPU group")
+        return cpu_group
+
     def execute(self, send_buf: "torch.Tensor") -> "torch.Tensor":
         """
         Call the collective operation on the input tensor. An output tensor is
@@ -120,11 +152,20 @@ class _CollectiveOperation:
         """
         import torch
 
-        if not isinstance(send_buf, torch.Tensor):
-            raise ValueError("Expected a torch tensor")
-        nccl_group = self.get_nccl_group()
-        recv_buf = torch.empty_like(send_buf)
-        nccl_group.allreduce(send_buf, recv_buf, self._op)
+        ctx = ChannelContext.get_current()
+        if ctx.nccl_groups:
+            if not isinstance(send_buf, torch.Tensor):
+                raise ValueError("Expected a torch tensor")
+            nccl_group = self.get_nccl_group()
+            recv_buf = torch.empty_like(send_buf)
+            nccl_group.allreduce(send_buf, recv_buf, self._op)
+        if ctx.cpu_groups:
+            if not isinstance(send_buf, torch.Tensor):
+                raise ValueError("Expected a torch tensor")
+            cpu_group = self.get_cpu_group()
+            recv_buf = torch.empty_like(send_buf)
+            cpu_group.allreduce(send_buf, recv_buf, self._op)
+
         return recv_buf
 
 

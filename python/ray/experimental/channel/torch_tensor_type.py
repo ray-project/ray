@@ -3,6 +3,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    CPU = "cpu"
 
     def __init__(
         self,
@@ -69,13 +71,19 @@ class TorchTensorType(ChannelOutputType):
             self._custom_nccl_group = transport
             transport = self.NCCL
 
-        if transport not in [self.AUTO, self.NCCL]:
+        self._custom_cpu_group: Optional[CPUCommunicator] = None
+        if isinstance(transport, CPUCommunicator):
+            self._custom_cpu_group = transport
+            transport = self.CPU
+
+        if transport not in [self.AUTO, self.NCCL, self.CPU]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                "`transport` must be TorchTensorType.AUTO, TorchTensorType.NCCL, or TorchTensorType.CPU"
             )
         self.transport = transport
 
         self._nccl_group_id: Optional[str] = None
+        self._cpu_group_id: Optional[str] = None
 
         if self._static_shape and self.transport == self.AUTO:
             logger.info(
@@ -170,12 +178,25 @@ class TorchTensorType(ChannelOutputType):
         """
         return self._custom_nccl_group
 
+    def get_custom_cpu_group(self) -> Optional[CPUCommunicator]:
+        """
+        Return the custom CPU group if one is specified.
+        """
+        return self._custom_cpu_group
+
     def set_nccl_group_id(self, group_id: str) -> None:
         self._nccl_group_id = group_id
+
+    def set_cpu_group_id(self, group_id: str) -> None:
+        self._cpu_group_id = group_id
 
     @property
     def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
+
+    @property
+    def cpu_group_id(self) -> Optional[str]:
+        return self._cpu_group_id
 
     def __deepcopy__(self, memo):
         """

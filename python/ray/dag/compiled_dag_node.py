@@ -24,6 +24,7 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
@@ -1136,10 +1137,16 @@ class CompiledDAG:
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
         custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
+        # Initialize and cache a CPU group for each custom CPU group.
+        custom_cpu_group_to_id: Dict[CPUCommunicator, str] = {}
         # Initialize and cache a NCCL group for each set of actors. A set of actors
         # can perform P2P send/recv and collective operations. If there are multiple
         # custom NCCL groups for a set of actors, only one is cached.
         actors_to_nccl_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
+        # Initialize and cache a CPU group for each set of actors. A set of actors
+        # can perform P2P send/recv and collective operations. If there are multiple
+        # custom CPU groups for a set of actors, only one is cached.
+        actors_to_cpu_group_id: Dict[FrozenSet["ray.actor.ActorHandle"], str] = {}
 
         # If a custom NCCL group is specified for P2P actors, initialize and cache
         # the NCCL group ID.
@@ -1175,6 +1182,22 @@ class CompiledDAG:
                 if actors not in actors_to_nccl_group_id:
                     actors_to_nccl_group_id[actors] = nccl_group_id
 
+        # If a custom CPU group is specified for collective actors, initialize and
+        # cache the CPU group ID.
+        for collective_op in nccl_collective_ops:
+            type_hint = collective_op.type_hint
+            custom_cpu_group = type_hint.get_custom_cpu_group()
+            if custom_cpu_group:
+                if type_hint.get_custom_nccl_group():
+                    raise ValueError("Mix of custom nccl group and custom cpu group")
+                cpu_group_id = collective_op.init_cpu_group(
+                    custom_cpu_group_to_id.get(custom_cpu_group, None)
+                )
+                custom_cpu_group_to_id[custom_cpu_group] = cpu_group_id
+                actors = frozenset(collective_op.actor_handles)
+                if actors not in actors_to_cpu_group_id:
+                    actors_to_cpu_group_id[actors] = cpu_group_id
+
         # If a NCCL group for P2P actors is not initialized, initialize and cache
         # the NCCL group ID.
         if nccl_actors_p2p and self._nccl_group_id_p2p is None:
@@ -1192,7 +1215,10 @@ class CompiledDAG:
         # If a NCCL group for collective actors is not initialized, initialize and
         # cache the NCCL group ID.
         for collective_op in nccl_collective_ops:
-            if collective_op.type_hint.nccl_group_id is None:
+            if (
+                collective_op.type_hint.nccl_group_id is None
+                and collective_op.type_hint.cpu_group_id is None
+            ):
                 actors = frozenset(collective_op.actor_handles)
                 nccl_group_id = collective_op.init_nccl_group(
                     actors_to_nccl_group_id.get(actors, None)
