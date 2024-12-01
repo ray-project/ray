@@ -1203,8 +1203,8 @@ You can modify this value as follows:
 Customization
 -------------
 
-Customization of the Offline RL components in RLlib, such as the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, :py:class:`~ray.rllib.core.learner.learner.Learner`, or :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to that of their Online RL counterparts. For detailed guidance, refer to the documentation on `Algorithms <rllib-algorithms-doc>`, 
-`Learners <learner-guide>`, and RLlib's `RLModule <rlmodule-guide>`. The new stack Offline RL streaming pipeline in RLlib supports customization at various levels and locations within the dataflow, allowing for tailored solutions to meet the specific requirements of your offline RL algorithm.
+Customization of the Offline RL components in RLlib, such as the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, :py:class:`~ray.rllib.core.learner.learner.Learner`, or :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, follows a similar process to that of their Online RL counterparts. For detailed guidance, refer to the documentation on :ref:`Algorithms <rllib-algorithms-doc>`, 
+:ref:`Learners <learner-guide>`, and RLlib's :ref:`RLModule <rlmodule-guide>`. The new stack Offline RL streaming pipeline in RLlib supports customization at various levels and locations within the dataflow, allowing for tailored solutions to meet the specific requirements of your offline RL algorithm.
 
 - Connector Level
 - PreLearner Level
@@ -1213,21 +1213,21 @@ Customization of the Offline RL components in RLlib, such as the :py:class:`~ray
 Connector Level
 ***************
 Small data transformations on instances of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be easily implemented by modifying the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. You can leverage any connector from 
-RLlib's library (see `RLlib's default connectors <https://github.com/ray-project/ray/blob/master/rllib/connectors>`) or create a custom connector (see `RLlib's ConnectorV2 examples <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors>`) to integrate into the :py:class:`~ray.rllib.core.learner.learner.Learner`'s :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. 
-Careful consideration must be given to the order in which :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances are applied, as demonstrated in the implementation of `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`.
+RLlib's library (see `RLlib's default connectors <https://github.com/ray-project/ray/blob/master/rllib/connectors>`_) or create a custom connector (see `RLlib's ConnectorV2 examples <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors>`_) to integrate into the :py:class:`~ray.rllib.core.learner.learner.Learner`'s :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. 
+Careful consideration must be given to the order in which :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances are applied, as demonstrated in the implementation of `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ (see the MARWIL paper `here <https://www.nematilab.info/bmijc/assets/012819_paper.pdf>`_).
 
-The `MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>` computes a loss that extends beyond behavior cloning by improving the expert's strategy during training using advantages. These advantages are calculated via `General Advantage Estimation (GAE) <https://arxiv.org/abs/1506.02438>` using a value model. GAE is computed on-the-fly through the 
+The `MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ computes a loss that extends beyond behavior cloning by improving the expert's strategy during training using advantages. These advantages are calculated via `General Advantage Estimation (GAE) <https://arxiv.org/abs/1506.02438>`_ using a value model. GAE is computed on-the-fly through the 
 :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements: it processes a list of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. This is because 
 it relies on fully prepared batches containing `OBS`, `REWARDS`, `NEXT_OBS`, `TERMINATED`, and `TRUNCATED` fields. Additionally, the incoming :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances must already include one artificially elongated timestep.
 
 To meet these requirements, the pipeline must include the following sequence of :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances:
 
 1. :py:class:`ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate.AddOneTsToEpisodesAndTruncate` ensures the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects are elongated by one timestep.
-2. :py:class:`ray.rllib.connectors.learner.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch` incorporates the observations (`OBS`) into the batch.
-3. :py:class:`ray.rllib.connectors.learner.add_next_observations_from_episodes_to_batch.AddNextObservationsFromEpisodesToTrainBatch` adds the next observations (`NEXT_OBS`).
+2. :py:class:`ray.rllib.connectors.common.add_observations_from_episodes_to_batch.AddObservationsFromEpisodesToBatch` incorporates the observations (`OBS`) into the batch.
+3. :py:class:`ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch.AddNextObservationsFromEpisodesToTrainBatch` adds the next observations (`NEXT_OBS`).
 4. Finally, the :py:class:`ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector piece is applied.
 
-Below is an example code snippet demonstrating this setup:
+Below is the example code snippet from `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ demonstrating this setup:
 
 .. code-block:: python
 
@@ -1267,8 +1267,10 @@ Below is an example code snippet demonstrating this setup:
 
         return pipeline
 
-There are multiple ways to customize the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`. One approach, as demonstrated above, is to override the `build_learner_connector` method in the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`. Alternatively, you can directly define a custom learner connector pipeline by utilizing the 
-`learner_connector` attribute: 
+Define a Primer Learner Connector Pipeline
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+There are multiple ways to customize the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`. One approach, as demonstrated above, is to override the `build_learner_connector` method in the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`. Alternatively, you can directly define a custom :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the 
+:py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` by utilizing the `learner_connector` attribute: 
 
 .. code-block:: python
 
@@ -1288,6 +1290,335 @@ There are multiple ways to customize the :py:class:`~ray.rllib.connectors.learne
 
 As noted in the comments, this approach to adding a :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` is suitable only if you intend to manipulate raw episodes, as your :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece will serve as the foundation for building the remainder of the pipeline (including batching and other processing 
 steps). If your goal is to modify data further along in the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, you should either override the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`'s `build_learner_connector` method or consider the third option: overriding the entire :py:class:`~ray.rllib.offline.offline_prelearner.PreLearner`.
+
+PreLearner Level
+****************
+If you need to change data transformation on deeper levels - that is before your data is in :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` form - you should consider overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. As shown above the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` manages the complete data transformation process from raw ingest data to ready-to-train 
+:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects. If for example your data is stored in specific formats that need primer parsing and restructuring, e.g. XML, HTML, Protobuf, image or video formats (see for example `Ray Data's custom datasources <custom_datasource>`, specifically :py:meth:`~ray.data.read_binary_files`), and/or specific handling for sorting it into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` you should consider 
+overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and specifically its `_map_to_episodes` static method. Rewriting its `__call__` method offers even wider customization by defining different transformation steps, a full :py:ref:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` and constructing :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the :py:ref:`~ray.rllib.core.learner.learner.Learner`.
+
+The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to read text and construct batches from it:
+
+.. testcode::
+
+    import gymnasium as gym
+    import numpy as np
+    import uuid
+    from typing import Dict, List, Optional, Union
+
+    from ray import data
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+    from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+
+    from ray.rllib.utils.annotations import override
+    from ray.rllib.utils.typing import EpisodeType
+
+    class TextOfflinePreLearner(OfflinePreLearner):
+
+        @staticmethod
+        @override(OfflinePreLearner)
+        def _map_to_episodes(
+            is_multi_agent: bool,
+            batch: Dict[str, Union[list, np.ndarray]],
+            schema: Dict[str, str] = SCHEMA,
+            finalize: bool = False,
+            input_compress_columns: Optional[List[str]] = None,
+            observation_space: gym.Space = None,
+            action_space: gym.Space = None,
+        ) -> Dict[str, List[EpisodeType]]:
+
+            # Define container for episodes.
+            episodes = []
+
+            # Data comes in batches of string arrays under the `"text"` key.
+            for text in batch["text"]:
+                # Split the text for tokenizing.
+                tokens = text.split(" ")
+                # Encode tokens.
+                vocab = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+                encoded = [vocab[token] for token in tokens]
+                
+                episode = SingleAgentEpisode(
+                    # Generate a unique ID.
+                    id_=uuid.uuid4().hex,
+                    # We use the starting token with all added tokens as observations.
+                    observations=encoded,
+                    # Actions are defined to be the "chosen" follow-up token after 
+                    # given the observation.
+                    actions=encoded[1:],
+                    # Rewards are zero until the end of a sequence.
+                    rewards=[0.0 for i in range(len(encoded) - 2)] + [1.0],
+                    # The episode is always terminated (as sentences in the dataset are).
+                    terminated=True,
+                    truncated=False,
+                    # No lookback. You want the episode to start at timestep zero.
+                    len_lookback_buffer=0,
+                    t_started=0,
+                )
+
+                # If episodes should be finalized. Some connectors need this.
+                if finalize:
+                    episode.finalize()
+                
+                # Append the episode to the list of episodes.
+                episodes.append(episode)
+            
+            # Return a batch with key `"episodes"`.
+            return {"episodes": episodes}
+
+    # Define the dataset.
+    ds = data.read_text("s3://anonymous@ray-example-data/this.txt")
+
+    # Take a small batch of 10 from the dataset.
+    batch = ds.take_batch(10)
+
+    # Create a vocabulary.
+    tokens = []
+    for b in ds.iter_rows(): 
+        tokens.extend(b["text"].split(" "))
+    vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+
+    # Now use your `OfflinePreLearner`.
+    episodes = TextOfflinePreLearner._map_to_episodes(
+        is_multi_agent=False,
+        batch=batch,
+        finalize=True,
+        schema=None,
+        input_compress_columns=False,
+        action_space=None,
+        observation_space=None,
+    )
+
+    # Show the constructed episodes.
+    print(f"Episodes: {episodes}")      
+
+The example above shows how easy no data transformation in RLlib's new Offline RL API is. The customized :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` takes a batch of text data - sorted into sentences - and converts each sentence in the batch into a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`. The return value of this static method is a dictionary of holding a list of these :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` 
+instances. In the same form you can follow up on overriding the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__` method to implement for example a learner connector pipeline that stacks multiple observations - here tokens - together using RLlib's :py:class:`~ray.rllib.connectors.learner.frame_stacking.FrameStackingLearner`:
+
+.. testcode::
+
+    import gymnasium as gym
+    import numpy as np
+    import uuid
+    from typing import Any, Dict, List, Optional, Tuple, Union
+
+    from ray import data
+    from ray.actor import ActorHandle
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
+    from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
+    from ray.rllib.connectors.common import AddObservationsFromEpisodesToBatch, BatchIndividualItems, NumpyToTensor, AgentToModuleMapping
+    from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import AddColumnsFromEpisodesToTrainBatch
+    from ray.rllib.connectors.learner.frame_stacking import FrameStackingLearner
+    from ray.rllib.connectors.learner.learner_connector_pipeline import LearnerConnectorPipeline
+    from ray.rllib.core.learner.learner import Learner
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+    from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
+    from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+
+    from ray.rllib.utils.annotations import override
+    from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+    class TextOfflinePreLearner(OfflinePreLearner):
+
+        @override(OfflinePreLearner)
+        def __init__(
+            self,
+            config: "AlgorithmConfig",
+            learner: Union[Learner, List[ActorHandle]] = None,
+            locality_hints: Optional[List[str]] = None,
+            spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
+            module_spec: Optional[MultiRLModuleSpec] = None,
+            module_state: Optional[Dict[ModuleID, Any]] = None,
+            vocabulary: Dict[str, Any] = None,
+            **kwargs: Dict[str, Any],
+        ):
+            self.config = config
+            self.spaces = spaces
+            self.vocabulary = vocabulary
+            self.vocabulary_size = len(self.vocabulary)
+
+            # Build the `RLModule`.
+            self._module = module_spec.build()
+            if module_state:
+                self._module.set_state(module_state)
+
+            # Build the learner connector pipeline.
+            self._learner_connector = LearnerConnectorPipeline(
+                connectors=[
+                    FrameStackingLearner(
+                        num_frames=4,
+                    )
+                ],
+                input_action_space=module_spec.action_space,
+                input_observation_space=module_spec.observation_space,
+            )
+            self._learner_connector.append(
+                AddObservationsFromEpisodesToBatch(as_learner_connector=True),
+            )
+            self._learner_connector.append(
+                AddColumnsFromEpisodesToTrainBatch(),
+            )
+            self._learner_connector.append(
+                BatchIndividualItems(multi_agent=False),
+            )
+            # Let us run exclusively on CPU, then we can convert here to Tensor.
+            self._learner_connector.append(
+                NumpyToTensor(as_learner_connector=True),
+            )
+
+        @override(OfflinePreLearner)
+        def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
+
+            # Convert raw data to episodes.
+            episodes = TextOfflinePreLearner._map_to_episodes(
+                is_multi_agent=False,
+                batch=batch,
+                finalize=True,
+                schema=None,
+                input_compress_columns=False,
+                action_space=self.spaces[0],
+                observation_space=self.spaces[1],
+                vocabulary=self.vocabulary,
+            )["episodes"]
+
+            # Run the learner connector pipeline with the 
+            # `FrameStackLearner` piece.
+            batch = self._learner_connector(
+                rl_module=self._module,
+                batch={},
+                episodes=episodes,
+                shared_data={},
+            )
+
+            # Convert to `MultiAgentBatch` for the learner.
+            batch = MultiAgentBatch(
+                {
+                    module_id: SampleBatch(module_data)
+                    for module_id, module_data in batch.items()
+                },
+                # TODO (simon): This can be run once for the batch and the
+                # metrics, but we run it twice: here and later in the learner.
+                env_steps=sum(e.env_steps() for e in episodes),
+            )
+
+            # Return the `MultiAgentBatch` under the `"batch"` key.
+            return {"batch": batch}
+            
+        @staticmethod
+        @override(OfflinePreLearner)
+        def _map_to_episodes(
+            is_multi_agent: bool,
+            batch: Dict[str, Union[list, np.ndarray]],
+            schema: Dict[str, str] = SCHEMA,
+            finalize: bool = False,
+            input_compress_columns: Optional[List[str]] = None,
+            observation_space: gym.Space = None,
+            action_space: gym.Space = None,
+            vocabulary: Dict[str, Any] = None,
+            **kwargs: Dict[str, Any],
+        ) -> Dict[str, List[EpisodeType]]:
+
+            # If we have no vocabulary raise an error.
+            if not vocabulary:
+                raise ValueError(
+                    "No `vocabulary`. It needs a vocabulary in form of dictionary ",
+                    "mapping tokens to their IDs."
+                )
+            # Define container for episodes.
+            episodes = []
+
+            # Data comes in batches of string arrays under the `"text"` key.
+            for text in batch["text"]:
+                # Split the text and tokenize.
+                tokens = text.split(" ")
+                # Encode tokens.
+                encoded = [vocabulary[token] for token in tokens]
+                one_hot_vectors = np.zeros((len(tokens), len(vocabulary), 1, 1))
+                for i, token in enumerate(tokens):
+                    if token in vocabulary:
+                        one_hot_vectors[i][vocabulary[token] - 1] = 1.0
+
+                # Build the `SingleAgentEpisode`.
+                episode = SingleAgentEpisode(
+                    # Generate a unique ID.
+                    id_=uuid.uuid4().hex,
+                    # agent_id="default_policy",
+                    # module_id="default_policy",
+                    # We use the starting token with all added tokens as observations.
+                    observations=[ohv for ohv in one_hot_vectors],
+                    observation_space=observation_space,
+                    # Actions are defined to be the "chosen" follow-up token after 
+                    # given the observation.
+                    actions=encoded[1:],
+                    action_space=action_space,
+                    # Rewards are zero until the end of a sequence.
+                    rewards=[0.0 for i in range(len(encoded) - 2)] + [1.0],
+                    # The episode is always terminated (as sentences in the dataset are).
+                    terminated=True,
+                    truncated=False,
+                    # No lookback. You want the episode to start at timestep zero.
+                    len_lookback_buffer=0,
+                    t_started=0,
+                )
+
+                # If episodes should be finalized. Some connectors need this.
+                if finalize:
+                    episode.finalize()
+                
+                # Append the episode to the list of episodes.
+                episodes.append(episode)
+            
+            # Return a batch with key `"episodes"`.
+            return {"episodes": episodes}
+
+    # Define dataset on sample data.
+    ds = data.read_text("s3://anonymous@ray-example-data/this.txt")
+
+    # Create a vocabulary.
+    tokens = []
+    for b in ds.iter_rows(): 
+        tokens.extend(b["text"].split(" "))
+    vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+
+    module_spec = MultiRLModuleSpec(
+        rl_module_specs={
+            "default_policy": RLModuleSpec(
+                model_config=DefaultModelConfig(
+                    conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                    conv_activation="relu",
+                ),
+                inference_only=False,
+                module_class=BCTorchRLModule,
+                catalog_class=BCCatalog,
+                action_space = gym.spaces.Discrete(len(vocabulary)),
+                observation_space=gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32),
+            ),
+        },
+    )
+
+    # Take a small batch.
+    batch = ds.take_batch(10)
+
+    # Build and instance your `OfflinePreLearner`.
+    oplr = TextOfflinePreLearner(
+        config=AlgorithmConfig(),
+        spaces=(
+            gym.spaces.Discrete(len(vocabu)), 
+            gym.spaces.Box(0.0, 1.0, (len(vocabulary), 1, 1), np.float32)),
+        module_spec=module_spec,
+        vocabulary=vocabulary,
+    )
+
+    # Run your `OfflinePreLearner`.
+    transformed = oplr(batch)
+
+    print(f"Batch: {batch}")
+
+
 
 Input API
 ---------
