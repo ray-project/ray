@@ -201,7 +201,7 @@ if __name__ == "__main__":
                 RAY_CI_JAVA_AFFECTED = 1
                 if (
                     changed_file.startswith("python/setup.py")
-                    or re.match(".*requirements.*\.txt", changed_file)
+                    or re.match(r".*requirements.*\.txt", changed_file)
                     or changed_file == "python/requirements_compiled.txt"
                 ):
                     RAY_CI_PYTHON_DEPENDENCIES_AFFECTED = 1

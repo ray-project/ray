@@ -66,7 +66,7 @@ class TorchDistribution(Distribution, abc.ABC):
 
 @DeveloperAPI
 class TorchCategorical(TorchDistribution):
-    """Wrapper class for PyTorch Categorical distribution.
+    r"""Wrapper class for PyTorch Categorical distribution.
 
     Creates a categorical distribution parameterized by either :attr:`probs` or
     :attr:`logits` (but not both).

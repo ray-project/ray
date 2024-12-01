@@ -843,7 +843,7 @@ class LearnerGroup(Checkpointable):
         mark_healthy: bool = True,
         **kwargs,
     ) -> RemoteCallResults:
-        """Calls the given function on each Learner L with the args: (L, \*\*kwargs).
+        r"""Calls the given function on each Learner L with the args: (L, \*\*kwargs).
 
         Args:
             func: The function to call on each Learner L with args: (L, \*\*kwargs).

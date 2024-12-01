@@ -57,7 +57,7 @@ def run(access_token, prev_release_commit, curr_release_commit):
         (
             f"git log {prev_release_commit}..{curr_release_commit} "
             f'--pretty=format:"%s" '
-            f' | grep -Eo "#(\d+)"'
+            fr' | grep -Eo "#(\d+)"'
         )
     )
     joined = " && ".join(cmd)
