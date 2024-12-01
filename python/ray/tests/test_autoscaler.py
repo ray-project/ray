@@ -3593,6 +3593,54 @@ class AutoscalingTest(unittest.TestCase):
                     break
             assert status_log_found is bool(status_log_enabled_env)
 
+    def testScaleDownIdleTimeOut(self):
+        config = copy.deepcopy(SMALL_CLUSTER)
+        config["available_node_types"]["worker"]["min_workers"] = 1
+        config_path = self.write_config(config)
+
+        self.provider = MockProvider()
+        self.provider.create_node(
+            {},
+            {
+                TAG_RAY_NODE_KIND: NODE_KIND_HEAD,
+                TAG_RAY_NODE_STATUS: STATUS_UP_TO_DATE,
+                TAG_RAY_USER_NODE_TYPE: "head",
+            },
+            1,
+        )
+
+        runner = MockProcessRunner()
+        lm = LoadMetrics()
+        mock_gcs_client = MockGcsClient()
+        autoscaler = MockAutoscaler(
+            config_path,
+            lm,
+            mock_gcs_client,
+            max_failures=0,
+            process_runner=runner,
+            update_interval_s=0,
+        )
+
+        autoscaler.update()
+        self.waitForNodes(1, tag_filters=WORKER_FILTER)
+
+        # Reduce cluster size to 1
+        new_config = copy.deepcopy(SMALL_CLUSTER)
+        new_config["available_node_types"]["worker"]["min_workers"] = 0
+        new_config["idle_timeout_minutes"] = 0.1
+        self.write_config(new_config)
+        autoscaler.update()
+
+        worker_ip = self.provider.non_terminated_node_ips(WORKER_FILTER)[0]
+        # Mark the node as idle
+        lm.update(worker_ip, mock_raylet_id(), {"CPU": 1}, {"CPU": 1}, 20)
+        autoscaler.update()
+        assert self.provider.internal_ip("1") == worker_ip
+        events = autoscaler.event_summarizer.summary()
+        assert "Removing 1 nodes of type worker (idle)." in events, events
+        autoscaler.update()
+        assert mock_gcs_client.drain_node_call_count == 1
+
 
 def test_import():
     """This test ensures that all the autoscaler imports work as expected to
