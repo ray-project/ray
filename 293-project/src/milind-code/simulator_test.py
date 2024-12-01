@@ -4,6 +4,7 @@ import threading
 
 def process_request(request):
     print(f"Received request: {request}")
+    print(type(request))
 
 def listen_for_requests():
     context = zmq.Context()

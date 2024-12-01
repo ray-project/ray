@@ -33,7 +33,7 @@ class RequestSimulator:
             request = {
                 'timestamp': time.time(),
                 'model_name': self.model_name,
-                'request_id': str(self.model_name + self.request_counter),
+                'request_id': str(self.model_name + str(self.request_counter)),
                 'SLO': self.SLO,
                 'image_path': self.dataset[random.randint(0, self.dataset_size - 1)]
             }
@@ -59,7 +59,7 @@ class RequestSimulator:
         self.request_rate = new_request_rate
 
     def print_state(self):
-        return f"Model: {self.model_name} Request Rate: {self.request_rate}"
+        return f"Model: {self.model_name}, SLO: {self.SLO}, Request Rate: {self.request_rate}"
 
 allowed_model_list = [
     'resnet',
@@ -76,7 +76,7 @@ def get_user_input():
     while True:
         try:
             SLO = float(input("Enter SLO in milliseconds: "))
-            if request_rate < 0:
+            if SLO < 0:
                 raise ValueError(f"SLO can't be negative")
             else:
                 break
