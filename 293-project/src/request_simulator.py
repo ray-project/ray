@@ -1,5 +1,5 @@
 """
-    Dynamic request simulator. Allows to change request rate through terminal commands
+    Dynamic request simulator. Allows to change request rate through terminal
 """
 
 import os
@@ -9,7 +9,7 @@ import random
 import threading
 
 class RequestSimulator:
-    def __init__(self, model_name: str, request_rate: float = 0, dataset: str = '../dataset'):
+    def __init__(self, model_name: str, request_rate: float = 0, SLO: float = 0, dataset: str = '../dataset'):
         # ipc info
         self.context = zmq.Context()
         self.socket  = self.context.socket(zmq.PUSH)
@@ -20,15 +20,21 @@ class RequestSimulator:
         self.dataset      = [os.path.join(dataset, f) for f in os.listdir(dataset)]
         self.dataset_size = len(self.dataset)
         self.request_rate = request_rate
+        self.SLO          = SLO # in ms
 
         # state info
-        self.is_running = False
+        self.is_running      = False
+        self.request_counter = 0
 
     def send_requests(self):
         while self.is_running:
+            self.request_counter += 1
+
             request = {
                 'timestamp': time.time(),
                 'model_name': self.model_name,
+                'request_id': str(self.model_name + self.request_counter),
+                'SLO': self.SLO,
                 'image_path': self.dataset[random.randint(0, self.dataset_size - 1)]
             }
 
@@ -66,6 +72,17 @@ def get_user_input():
     if model_name not in allowed_model_list:
         raise ValueError(f"{model_name} not in allowed model list\nPlease choose model from: {allowed_model_list}")
     
+    # get SLO
+    while True:
+        try:
+            SLO = float(input("Enter SLO in milliseconds: "))
+            if request_rate < 0:
+                raise ValueError(f"SLO can't be negative")
+            else:
+                break
+        except ValueError:
+            raise ValueError("Invalid SLO, please enter valid number")
+
     # get and verify request rate
     while True:
         try:
@@ -75,9 +92,9 @@ def get_user_input():
             else:
                 break
         except ValueError:
-            raise ValueError("Invalid input, please enter valid number")
+            raise ValueError("Invalid request rate, please enter valid number")
 
-    return model_name, request_rate
+    return model_name, SLO, request_rate
 
 def clear_screen():
     os.system('cls' if os.name == 'nt' else 'clear')
@@ -94,13 +111,16 @@ def main():
     simulator_list = {}
     while True:
         try:
-            model_name, request_rate = get_user_input()
+            model_name, SLO, request_rate = get_user_input()
 
             if model_name not in simulator_list:
-                simulator_list[model_name] = RequestSimulator(model_name, request_rate)
+                simulator_list[model_name] = RequestSimulator(model_name, request_rate, SLO)
                 simulator_list[model_name].start()
             else:
                 simulator_list[model_name].update_request_rate(request_rate)
+
+            if request_rate == 0:
+                del simulator_list[model_name]
 
             print_current_state(simulator_list)
 
