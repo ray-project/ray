@@ -36,8 +36,8 @@ def scrub_traceback(ex):
     ex = re.sub("line .*,", "line ZZ,", ex)
     ex = re.sub('".*"', '"FILE"', ex)
     # These are used to coloring the string.
-    ex = re.sub(r"\\x1b\[36m", "", ex)
-    ex = re.sub(r"\\x1b\[39m", "", ex)
+    ex = re.sub(r"\x1b\[36m", "", ex)
+    ex = re.sub(r"\x1b\[39m", "", ex)
     # When running bazel test with pytest 6.x, the module name becomes
     # "python.ray.tests.test_traceback" instead of just "test_traceback"
     # Also remove the "com_github_ray_project_ray" prefix, which may appear on Windows.
@@ -53,7 +53,7 @@ def scrub_traceback(ex):
         r"=[\s\S]*Checking Serializability of[\s\S]*=", "INSPECT_SERIALIZABILITY", ex
     )
     # Clean up underscore in stack trace, which is new in python 3.12
-    ex = re.sub(r"^\s+~*\^+~*\n", "", ex, flags=re.MULTILINE)
+    ex = re.sub("^\\s+~*\\^+~*\n", "", ex, flags=re.MULTILINE)
     return ex
 
 
