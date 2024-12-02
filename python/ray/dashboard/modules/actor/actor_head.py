@@ -268,8 +268,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     def _process_updated_actor_table(
         self, actor_id: str, actor_table_data: Dict[str, Any]
     ):
-        """NOTE: This method has to be executed on the event-loop, provided that it accesses
-        DataSource data structures (to follow its thread-safety model)"""
+        """NOTE: This method has to be executed on the event-loop, provided that it
+        accesses DataSource data structures (to follow its thread-safety model)"""
 
         # If actor is not new registered but updated, we only update
         # states related fields.
