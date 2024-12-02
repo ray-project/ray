@@ -635,6 +635,9 @@ class IMPALA(Algorithm):
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
         data_packages_for_learner_group = self._pre_queue_episode_refs(episode_refs)
+
+        time.sleep(0.01)
+
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
         if self.config.num_aggregation_workers:
@@ -643,8 +646,6 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
-
-        time.sleep(0.01)
 
         # TODO (sven): When and how long to sleep best is an ongoing investigation.
         #  We observe
