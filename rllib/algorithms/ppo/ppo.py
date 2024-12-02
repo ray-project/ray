@@ -414,6 +414,7 @@ class PPO(Algorithm):
                         self.config.enable_env_runner_and_connector_v2
                     ),
                     _return_metrics=True,
+                    _return_episode_refs=True,
                 )
             else:
                 episodes, env_runner_results = synchronous_parallel_sample(
@@ -424,6 +425,7 @@ class PPO(Algorithm):
                         self.config.enable_env_runner_and_connector_v2
                     ),
                     _return_metrics=True,
+                    _return_episode_refs=True,
                 )
             # Return early if all our workers failed.
             if not episodes:
@@ -466,7 +468,7 @@ class PPO(Algorithm):
             self.env_runner_group.sync_weights(
                 # Sync weights from learner_group to all EnvRunners.
                 from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
+                policies=list(modules_to_update),
                 inference_only=True,
             )
 

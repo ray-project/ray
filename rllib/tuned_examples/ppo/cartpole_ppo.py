@@ -12,7 +12,8 @@ config = (
     PPOConfig()
     .environment("CartPole-v1")
     .training(
-        lr=0.0003,
+        # train_batch_size_per_learner=4000,
+        lr=0.0003 * (args.num_gpus or 1) ** 0.5,
         num_epochs=6,
         vf_loss_coeff=0.01,
     )
