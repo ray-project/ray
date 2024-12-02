@@ -223,7 +223,7 @@ NodeManager::NodeManager(
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -394,7 +394,7 @@ NodeManager::NodeManager(
                                        "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
