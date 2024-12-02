@@ -2158,7 +2158,7 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    if parallelism != -1 or parallelism != 1:
+    if parallelism != -1 and parallelism != 1:
         raise ValueError(
             "To ensure correctness, 'read_sql' always launches one task. The "
             "'parallelism' argument you specified can't be used."
