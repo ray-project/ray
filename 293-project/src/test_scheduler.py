@@ -74,9 +74,10 @@ class WorkloadGenerator:
             if pattern['type'] == 'step':
                 rate = pattern['base'] if elapsed_time < pattern['time'] else pattern['step']
                 input_tensor = torch.randn(3, 224, 224)
+                print(f"calling submit request")
                 self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
 
-            # print(f"Inside resnet step request generator: rate is {rate}")
+            print(f"Inside resnet step request generator: rate is {rate}")
             time.sleep(1 / rate)
         
 def main():
