@@ -934,7 +934,7 @@ As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offli
         },
     )
 
-.. warning:: Do not override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.train_batch_size_per_learner`: the former specifies the batch size in transformations of 
+.. warning:: Do not override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size in transformations of 
     the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`.
 
 Read Batch and Buffer Sizes
@@ -1043,7 +1043,7 @@ layer in coordination with the upstream components. Several parameters can be ad
 Actor Pool Size
 ***************
 
-RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_learners`. When this vcalue exceeds ``1``, scaling is implemented internally using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified 
+RLlib supports scaling :py:class:`~ray.rllib.core.learner.learner.Learner` instances through the parameter `num_learners`. When this vcalue exceeds ``1``, scaling is implemented internally using a :py:class:`~ray.train._internals.backend_executor_BackendExecutor`. This executor spawns your specified 
 number of :py:class:`~ray.rllib.core.learner.learner.Learner` instances, manages distributed training and aggregates intermediate results across :py:class:`~ray.rllib.core.learner.learner.Learner` actors. :py:class:`~ray.rllib.core.learner.learner.Learner` scaling increases training throughput and you should only apply it, if the upstream components in your 
 Offline Data pipeline can supply data at a rate sufficient to match the increased training capacity. RLlib's Offline API offers powerful scalability at its final layer by utilizing :py:class:`~ray.data.Dataset.streaming_split`. This functionality divides the data stream into multiple substreams, which are then processed by individual 
 :py:class:`~ray.rllib.core.learner.learner.Learner` instances, enabling efficient parallel consumption and enhancing overall throughput.
@@ -1068,7 +1068,7 @@ Just as with the Post-Processing (Pre-Learner) layer, allocating additional reso
 already utilize GPUs and performance remains an issue, consider scaling up by either adding more GPUs to each :py:class:`~ray.rllib.core.learner.learner.Learner` to increase GPU memory and computational capacity, or by adding additional :py:class:`~ray.rllib.core.learner.learner.Learner` workers to further distribute the workload. Additionally, ensure that data 
 throughput and upstream components are optimized to keep the learners fully utilized, as insufficient upstream capacity can bottleneck the training process.
 
-.. warning::Currently, you cannot set both :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_gpus_per_learner` and :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
+.. warning::Currently, you cannot set both `num_gpus_per_learner` and `num_cpus_per_learner` due to placement group (PG) fragmentation in Ray.
 
 To provide your learners with more compute use ``num_gpus_per_learner`` or ``num_cpus_per_learner`` as follows:
 
@@ -1140,7 +1140,7 @@ Here is an example of how you can change the scheduling strategy:
 Batch Sizing
 ~~~~~~~~~~~~
 Batch size is one of the simplest parameters to adjust for optimizing performance in RLlib's new Offline RL API. Small batch sizes may underutilize hardware, leading to inefficiencies, while overly large batch sizes can exceed memory limits. In a streaming pipeline, the selected batch size impacts how data is partitioned and processed across parallel workers. Larger 
-batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.train_batch_size_per_learner` attribute as shown below.
+batch sizes reduce the overhead of frequent task coordination, but if they exceed hardware constraints, they can slow down the entire pipeline. You can configure the training batch size using the `train_batch_size_per_learner` attribute as shown below.
 
 .. code-block:: python
 
@@ -1162,7 +1162,7 @@ and should be tuned based on the time required to produce the next batch and the
 
 .. tip::The default in RLlib's Offline RL API is to prefetch ``2`` batches per learner instance, which works well with most tested applications.
 
-You can configure batch prefetching in the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.iter_batches_kwargs`:
+You can configure batch prefetching in the `iter_batches_kwargs`:
 
 .. code-block:: python
 
@@ -1175,7 +1175,7 @@ You can configure batch prefetching in the :py:attr:`~ray.rllib.algorithms.algor
         }
     )
 
-.. warning:: Do not override the ``batch_size`` in RLlib's :py:attr:`~.ray.rllib.algorithms.algorithm_config.AlgorithmConfig.map_batches_kwargs`. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the :py:attr:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.train_batch_size_per_learner`: the former specifies the batch size 
+.. warning:: Do not override the ``batch_size`` in RLlib's `map_batches_kwargs`. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size 
     in iterating over data output of the streaming pipeline, while the latter defines the batch size used for training within each :py:class:`~ray.rllib.core.learner.learner.Learner`. 
 
 Learner Iterations
@@ -1293,11 +1293,13 @@ steps). If your goal is to modify data further along in the :py:class:`~ray.rlli
 
 PreLearner Level
 ****************
-If you need to change data transformation on deeper levels - that is before your data is in :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` form - you should consider overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. As shown above the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` manages the complete data transformation process from raw ingest data to ready-to-train 
-:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects. If for example your data is stored in specific formats that need primer parsing and restructuring, e.g. XML, HTML, Protobuf, image or video formats (see for example `Ray Data's custom datasources <custom_datasource>`, specifically :py:meth:`~ray.data.read_binary_files`), and/or specific handling for sorting it into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` you should consider 
-overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and specifically its `_map_to_episodes` static method. Rewriting its `__call__` method offers even wider customization by defining different transformation steps, a full :py:ref:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` and constructing :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the :py:ref:`~ray.rllib.core.learner.learner.Learner`.
+If you need to perform data transformations at a deeper level - before your data reaches the :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` stage - consider overriding the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`. This class orchestrates the complete data transformation pipeline, converting raw input data into 
+:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects ready for training. For instance, if your data is stored in specialized formats requiring pre-parsing and restructuring (e.g., XML, HTML, Protobuf, images, or videos), you may need to handle these custom formats directly. You can leverage tools such as `Ray Data's custom datasources <custom_datasource>` (e.g., :py:meth:`~ray.data.read_binary_files`) to manage the ingestion process. To ensure 
+this data is appropriately structured and sorted into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects, you can override the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes` static method.
 
-The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to read text and construct batches from it:
+For more extensive customization, you can rewrite the `__call__` method to define custom transformation steps, implement a unique :py:ref:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, and construct :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the :py:ref:`~ray.rllib.core.learner.learner.Learner`.
+
+The following example demonstrates how to use a custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to process text data and construct training batches:
 
 .. testcode::
 
@@ -1309,7 +1311,6 @@ The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline
     from ray import data
     from ray.rllib.env.single_agent_episode import SingleAgentEpisode
     from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
-
     from ray.rllib.utils.annotations import override
     from ray.rllib.utils.typing import EpisodeType
 
@@ -1325,27 +1326,43 @@ The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline
             input_compress_columns: Optional[List[str]] = None,
             observation_space: gym.Space = None,
             action_space: gym.Space = None,
+            vocabulary: Dict[str, Any] = None,
+            **kwargs: Dict[str, Any],
         ) -> Dict[str, List[EpisodeType]]:
 
+            # If we have no vocabulary raise an error.
+            if not vocabulary:
+                raise ValueError(
+                    "No `vocabulary`. It needs a vocabulary in form of dictionary ",
+                    "mapping tokens to their IDs."
+                )
             # Define container for episodes.
             episodes = []
 
             # Data comes in batches of string arrays under the `"text"` key.
             for text in batch["text"]:
-                # Split the text for tokenizing.
+                # Split the text and tokenize.
                 tokens = text.split(" ")
                 # Encode tokens.
-                vocab = {token: idx for idx, token in enumerate(set(tokens), start=1)}
-                encoded = [vocab[token] for token in tokens]
-                
+                encoded = [vocabulary[token] for token in tokens]
+                one_hot_vectors = np.zeros((len(tokens), len(vocabulary), 1, 1))
+                for i, token in enumerate(tokens):
+                    if token in vocabulary:
+                        one_hot_vectors[i][vocabulary[token] - 1] = 1.0
+
+                # Build the `SingleAgentEpisode`.
                 episode = SingleAgentEpisode(
                     # Generate a unique ID.
                     id_=uuid.uuid4().hex,
+                    # agent_id="default_policy",
+                    # module_id="default_policy",
                     # We use the starting token with all added tokens as observations.
-                    observations=encoded,
+                    observations=[ohv for ohv in one_hot_vectors],
+                    observation_space=observation_space,
                     # Actions are defined to be the "chosen" follow-up token after 
                     # given the observation.
                     actions=encoded[1:],
+                    action_space=action_space,
                     # Rewards are zero until the end of a sequence.
                     rewards=[0.0 for i in range(len(encoded) - 2)] + [1.0],
                     # The episode is always terminated (as sentences in the dataset are).
@@ -1369,14 +1386,14 @@ The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline
     # Define the dataset.
     ds = data.read_text("s3://anonymous@ray-example-data/this.txt")
 
-    # Take a small batch of 10 from the dataset.
-    batch = ds.take_batch(10)
-
     # Create a vocabulary.
     tokens = []
     for b in ds.iter_rows(): 
         tokens.extend(b["text"].split(" "))
     vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
+
+    # Take a small batch of 10 from the dataset.
+    batch = ds.take_batch(10)
 
     # Now use your `OfflinePreLearner`.
     episodes = TextOfflinePreLearner._map_to_episodes(
@@ -1387,13 +1404,15 @@ The next example shows how to use a custom :py:class:`~ray.rllib.offline.offline
         input_compress_columns=False,
         action_space=None,
         observation_space=None,
+        vocabulary=vocabulary,
     )
 
     # Show the constructed episodes.
     print(f"Episodes: {episodes}")      
 
-The example above shows how easy no data transformation in RLlib's new Offline RL API is. The customized :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` takes a batch of text data - sorted into sentences - and converts each sentence in the batch into a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`. The return value of this static method is a dictionary of holding a list of these :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` 
-instances. In the same form you can follow up on overriding the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__` method to implement for example a learner connector pipeline that stacks multiple observations - here tokens - together using RLlib's :py:class:`~ray.rllib.connectors.learner.frame_stacking.FrameStackingLearner`:
+The example above illustrates the flexibility of RLlib's Offline RL API for custom data transformation. In this case, a customized :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` processes a batch of text data - organized as sentences - and converts each sentence into a :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`. The static method returns a dictionary containing a list of these 
+:py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances. Similarly, you can extend this functionality by overriding the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner.__call__` method. For instance, you could implement a :py:class:`ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` that stacks multiple observations (e.g., tokens) together. This can be achieved using RLlib's 
+:py:class:`~ray.rllib.connectors.learner.frame_stacking.FrameStackingLearner` and is shown in the example below.
 
 .. testcode::
 
@@ -1584,6 +1603,8 @@ instances. In the same form you can follow up on overriding the :py:meth:`~ray.r
         tokens.extend(b["text"].split(" "))
     vocabulary = {token: idx for idx, token in enumerate(set(tokens), start=1)}
 
+    # Specify an `RLModule` and wrap it with a `MultiRLModuleSpec`. Note,
+    # on `Learner`` side any `RLModule` is an `MultiRLModule`.
     module_spec = MultiRLModuleSpec(
         rl_module_specs={
             "default_policy": RLModuleSpec(
@@ -1616,9 +1637,240 @@ instances. In the same form you can follow up on overriding the :py:meth:`~ray.r
     # Run your `OfflinePreLearner`.
     transformed = oplr(batch)
 
+    # Show the generated batch.
     print(f"Batch: {batch}")
 
+The ability to fully customize the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` empowers you to design tailored data transformation workflows. This includes defining a specific learner connector pipeline and implementing raw data mapping, enabling multi-step processing of text data from its raw format to a :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`.
 
+To integrate your custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner`, simply specify it within your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
+
+.. code-block:: python
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            # Provide your custom `OfflinePreLearner`.
+            prelearner_class=TextOfflinePreLearner,
+            # Provide special keyword arguments your `OfflinePreLearner` needs.
+            prelearner_kwargs={
+                "vocabulary": vocabulary,
+            },
+        )
+    )
+
+If these customization capabilities still do not meet your requirements, consider moving to the **Pipeline Level** for even greater flexibility.
+
+Pipeline Level
+~~~~~~~~~~~~~~
+On this level of RLlib's Offline RL API you can redefine your complete pipeline from data reading to batch iteration by overriding the :py:class:`~®ay.rllib.offline.offline_data.OfflineData` class. In most cases however the other two levels should be sufficient for your requirements. Manipulating the complete pipeline needs sensible handling because it could degrade performance of your 
+pipeline to a high degree. Study carefully the :py:class:`~ray.rllib.offline.offline_data.OfflineData` class to reach a good understanding of how the default pipeline works before going over to program your own one. There are mainly two methods that define this pipeline:
+
+- The :py:meth:`~ray.rllib.offline.offline_data.OfflineData.__init__` method that defines the data reading process.
+- The :py:meth:`~ray.rllib.offline.offline_data.OfflineData.sample` method that defines the data mapping and batch iteration.
+
+For example consider overriding the :py:meth:`~ray.rllib.offline.offline_data.OfflineData.__init__` method, if you have some foundational data transformations as for example transforming image files into numpy arrays.
+
+.. testcode:: 
+
+    import gymnasium as gym
+    import io
+    import logging
+    import numpy as np
+    import random
+    import uuid
+
+    from PIL import Image
+    from typing import Any, Dict, List, Optional, Tuple, Union
+
+    from ray.actor import ActorHandle
+    from ray import data
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+    from ray.rllib.algorithms.bc import BCConfig
+    from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
+    from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
+    from ray.rllib.core.learner.learner import Learner
+    from ray.rllib.core.rl_module.rl_module import RLModuleSpec, DefaultModelConfig
+    from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+    from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+    from ray.rllib.offline.offline_data import OfflineData
+    from ray.rllib.offline.offline_prelearner import OfflinePreLearner, SCHEMA
+    from ray.rllib.utils.annotations import override
+    from ray.rllib.utils.typing import EpisodeType, ModuleID
+
+    logger = logging.getLogger(__name__)
+
+    class ImageOfflinePreLearner(OfflinePreLearner):
+        
+        def __init__(
+            self,
+            config: "AlgorithmConfig",
+            learner: Union[Learner, List[ActorHandle]],
+            locality_hints: Optional[List[str]] = None,
+            spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
+            module_spec: Optional[MultiRLModuleSpec] = None,
+            module_state: Optional[Dict[ModuleID, Any]] = None,
+            **kwargs: Dict[str, Any],
+        ):
+            # Set up necessary class attributes.
+            self.config = config
+            self.action_space = spaces[1]
+            self.observation_space = spaces[0]
+            self.input_read_episodes = self.config.input_read_episodes
+            self.input_read_sample_batches = self.config.input_read_sample_batches
+            self._policies_to_train = "default_policy"
+            self._is_multi_agent = False
+
+            # Build the `MultiRLModule` needed for the learner connector.
+            self._module = module_spec.build()
+            
+            # Build the learner connector pipeline.
+            self._learner_connector = self.config.build_learner_connector(
+                input_observation_space=self.observation_space,
+                input_action_space=self.action_space,
+            )
+
+        @override(OfflinePreLearner)
+        @staticmethod
+        def _map_to_episodes(
+            is_multi_agent: bool,
+            batch: Dict[str, Union[list, np.ndarray]],
+            schema: Dict[str, str] = SCHEMA,
+            finalize: bool = False,
+            input_compress_columns: Optional[List[str]] = None,
+            observation_space: gym.Space = None,
+            action_space: gym.Space = None,
+            **kwargs: Dict[str, Any],
+        ) -> Dict[str, List[EpisodeType]]:
+        
+            # Define a container for the episodes.
+            episodes = []
+
+            # Batches come in as numpy arrays.
+            for i, obs in enumerate(batch["array"]):
+                
+                # Construct your episode.
+                episode = SingleAgentEpisode(
+                    id_=uuid.uuid4().hex,
+                    observations=[obs, obs],
+                    observation_space=observation_space,
+                    actions=[action_space.sample()],
+                    action_space=action_space,
+                    rewards=[random.random()],
+                    terminated=True,
+                    truncated=False,
+                    len_lookback_buffer=0,
+                    t_started=0,
+                )
+
+                # Finalize, if necessary. Note, some connectors
+                # need finalized episodes.
+                if finalize:
+                    episode.finalize()
+
+                # Store the episode in the container.
+                episodes.append(episode)
+        
+            return {"episodes": episodes}
+
+    class ImageOfflineData(OfflineData):
+
+        @override(OfflineData)
+        def __init__(self, config: AlgorithmConfig):
+            
+            # Set class attributes.
+            self.config = config
+            self.is_multi_agent = self.config.is_multi_agent()
+            self.materialize_mapped_data=False
+            self.path = self.config.input_
+
+            self.data_read_batch_size = self.config.input_read_batch_size
+            self.data_is_mapped = False
+
+            # Define your function to map images to numpy arrays.
+            def map_to_numpy(row: Dict[str, Any]) -> Dict[str, Any]:
+                # Convert to byte stream.
+                bytes_stream = io.BytesIO(row["bytes"])
+                # Convert to image.
+                image = Image.open(bytes_stream)
+                # Return an array of the image.
+                return {"array": np.array(image)}
+                
+            try:
+                # Load the dataset and transform to arrays on-the-fly.
+                self.data = (
+                    data
+                    .read_binary_files(self.path)
+                    .map(map_to_numpy)
+                )
+            except Exception as e:
+                logger.error(e)
+            
+            # Define further attributes needed in the `sample` method.
+            self.batch_iterator = None
+            self.map_batches_kwargs = self.config.map_batches_kwargs
+            self.iter_batches_kwargs = self.config.iter_batches_kwargs
+            # Use a custom OfflinePreLearner if needed.
+            self.prelearner_class = self.config.prelearner_class or OfflinePreLearner
+
+    # Create an Algorithm configuration.
+    config = (
+        BCConfig()
+        .environment(
+            action_space=gym.spaces.Discrete(2),
+            observation_space=gym.spaces.Box(0, 255, (32, 32, 3), np.float32),
+        )
+        .offline_data(
+            input_=["s3://anonymous@ray-example-data/batoidea/JPEGImages/"],
+            prelearner_class=ImageOfflinePreLearner,
+        )
+    )
+
+    # Specify an `RLModule` and wrap it with a `MultiRLModuleSpec`. Note,
+    # on `Learner`` side any `RLModule` is an `MultiRLModule`.
+    module_spec = MultiRLModuleSpec(
+        rl_module_specs={
+            "default_policy": RLModuleSpec(
+                model_config=DefaultModelConfig(
+                    conv_filters=[[16, 4, 2], [32, 4, 2], [64, 4, 2], [128, 4, 2]],
+                    conv_activation="relu",
+                ),
+                inference_only=False,
+                module_class=BCTorchRLModule,
+                catalog_class=BCCatalog,
+                action_space = gym.spaces.Discrete(2),
+                observation_space=gym.spaces.Box(0, 255, (32, 32, 3), np.float32),
+            ),
+        },
+    )
+
+    # Construct your `OfflineData` class instance.
+    offline_data = ImageOfflineData(config)
+
+    # Check, how the data is transformed.
+    batch = offline_data.data.take_batch(128)
+
+    # Construct your `OfflinePreLearner`.
+    offline_prelearner = ImageOfflinePreLearner(
+        config=config,
+        learner=None,
+        spaces=(
+            config.observation_space,
+            config.action_space,
+        ),
+        module_spec=module_spec,
+    )
+
+    # Transform the raw data to `MultiAgentBatch` data.
+    batch = offline_prelearner(batch)
+
+    # Show the transformed batch.
+    print(f"Batch: {batch}")
+
+In the code example provided, you define a custom :py:class:`~ray.rllib.offline.offline_data.OfflineData` class to handle the reading and preprocessing of image data, converting it from a binary encoding format into `numpy` arrays. Additionally, you implement a custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to process this data further, transforming it into a learner-ready :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` format. This demonstrates how the entire Offline Data Pipeline can be customized with your own logic. 
+
+.. tip:: Consider this approach carefully: in many cases, fully transforming your data into a suitable format before engaging RLlib's offline RL API can be more efficient. For instance, in the example above, you could preprocess the entire image dataset into `numpy` arrays beforehand and utilize RLlib's default :py:class:`~ray.rllib.offline.offline_data.OfflineData` class for subsequent steps. 
 
 Input API
 ---------
