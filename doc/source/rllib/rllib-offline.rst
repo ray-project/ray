@@ -1872,6 +1872,12 @@ In the code example provided, you define a custom :py:class:`~ray.rllib.offline.
 
 .. tip:: Consider this approach carefully: in many cases, fully transforming your data into a suitable format before engaging RLlib's offline RL API can be more efficient. For instance, in the example above, you could preprocess the entire image dataset into `numpy` arrays beforehand and utilize RLlib's default :py:class:`~ray.rllib.offline.offline_data.OfflineData` class for subsequent steps. 
 
+Monitoring
+----------
+To effectively monitor your offline data pipeline, leverage :ref:`Ray Data's built-in monitoring capacities <monitoring-your-workload>`. Focus on ensuring that all stages of your offline data streaming pipeline are actively processing data. Additionally, keep an eye on the Learner instance, particularly the `learner_update_timer`, which should maintain low values - around `0.02` for small models - to indicate efficient data processing and model updates.
+
+.. note:: RLlib does not include :ref:`Ray Data <data>`  metrics in its results or display them in `Tensorboard` via :ref:`Ray Tune <tune-main>`'s :py:class:`~ray.tune.logger.tensorboardx.TBXLoggerCallback`. It is strongly recommended to enable the :ref:`Ray Dashboard <observability-getting-started>`, accessible at `127.0.0.1:8265`, for comprehensive monitoring and insights.
+
 Input API
 ---------
 
