@@ -206,6 +206,7 @@ class RequestQueue:
             return True
         except Exception as e:
             self._logger.error(f"Error adding request: {e}")
+            print(f"Error adding request: {e}")
             return False
     
     def get_batch(self, batch_size: int) -> Optional[BatchRequest]:
@@ -530,36 +531,20 @@ class NexusScheduler:
         required_gpus = len(self.nodes)
         if required_gpus > available_gpus:
             raise RuntimeError(f"Schedule requires {required_gpus} GPUs but only {available_gpus} available")
-        
-        node_count = 0
-        for node in self.nodes:
+
+        # initialise two ndoes
+        for i in range(2):
             try:
                 worker = GPUWorker.remote(
-                    node_id='A6000_' + str(node_count),
+                    node_id='A6000_' + str(i),
                     gpu_id=0,
-                    sessions=node.node_sessions,
-                    duty_cycle=node.duty_cycle,
+                    sessions=[],
+                    duty_cycle=1,
                     model_registry=self.model_registry
                 )
                 self.workers.append(worker)
-                node_count += 1
             except Exception as e:
                 self.logger.error(f"Error initializing worker: {e}")
-        
-        # hack if 2 nodes have not started, start them with empty sessions
-        if node_count < 2:
-            for i in range(node_count, 2):
-                try:
-                    worker = GPUWorker.remote(
-                        node_id='A6000_' + str(i),
-                        gpu_id=0,
-                        sessions=[],
-                        duty_cycle=1,
-                        model_registry=self.model_registry
-                    )
-                    self.workers.append(worker)
-                except Exception as e:
-                    self.logger.error(f"Error initializing worker: {e}")
                     
 
     def _start_workers(self):
