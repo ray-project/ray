@@ -221,10 +221,10 @@ class RequestQueue:
                 return None
                 
             
-            # batch = self.queue.get_batch(available, timeout=0)
-            # for (request_id, input_tensor, arrival_time) in batch:
-            for _ in range(available):
-                request_id, input_tensor, arrival_time = self.queue.get_nowait()
+            batch = self.queue.get_batch(available, timeout=0)
+            for (request_id, input_tensor, arrival_time) in batch:
+            # for _ in range(available):
+            #     request_id, input_tensor, arrival_time = self.queue.get_nowait()
                 requests.append((request_id, input_tensor))
                 request_ids.append(request_id)
                 inputs.append(input_tensor)
