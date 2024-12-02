@@ -128,6 +128,9 @@ def main():
         }
     }
     
+    while True:
+        time.sleep(1)
+
     test1 = WorkloadGenerator(scheduler, model_patterns)
     test1._start_load()
 
