@@ -1,11 +1,12 @@
-import ray
 import argparse
 
 import pandas as pd
+import pyarrow as pa
+from pyarrow import types
+import pyarrow.compute as pc
+import ray
 
 from benchmark import Benchmark
-
-import pyarrow as pa
 
 
 def parse_args() -> argparse.Namespace:
@@ -44,11 +45,33 @@ def normalize_group(group: pd.DataFrame) -> pd.DataFrame:
 
 
 def _normalize_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    return (df - df.mean()) / df.std()
+    normalized_columns = []
+    for column_name in df.columns:
+        column = df[column_name]
+        if column.dtype.kind != "f":
+            normalized_columns.append(column)
+            continue
+
+        normalized_column = (column - column.mean()) / column.std()
+        normalized_columns.append(normalized_column)
+
+    return pd.DataFrame(normalized_columns)
 
 
 def _normalize_table(table: pa.Table) -> pa.Table:
-    return ...
+    normalized_columns = []
+    for column_name in table.column_names:
+        column = table[column_name]
+        if not types.is_floating(column.type):
+            normalized_columns.append(column)
+            continue
+
+        normalized_column = pc.divide(
+            pc.subtract(column, pc.mean(column)), pc.stddev(column)
+        )
+        normalized_columns.append(normalized_column)
+
+    return pa.Table.from_arrays(normalized_columns, schema=table.schema)
 
 
 if __name__ == "__main__":
