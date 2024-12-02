@@ -372,16 +372,19 @@ def test_autoscaling_config_fetch_retries(exception, num_exceptions):
     AutoscalingConfigProducer._fetch_ray_cr_from_k8s_with_retries.
     """
 
-    class MockAutoscalingConfigProducer(AutoscalingConfigProducer):
-        def __init__(self, *args, **kwargs):
+    class MockKubernetesHttpApiClient:
+        def __init__(self):
             self.exception_counter = 0
 
-        def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
-            if self.exception_counter < num_exceptions:
-                self.exception_counter += 1
-                raise exception
-            else:
-                return {"ok-key": "ok-value"}
+        def get(self, *args, **kwargs):
+            self.exception_counter += 1
+            if self.exception_counter <= num_exceptions:
+                raise requests.HTTPError("Mock HTTP Error")
+            return {"ok-key": "ok-value"}
+
+    class MockAutoscalingConfigProducer(AutoscalingConfigProducer):
+        def __init__(self, *args, **kwargs):
+            self.kubernetes_api_client = MockKubernetesHttpApiClient()
 
     config_producer = MockAutoscalingConfigProducer()
     # Patch retry backoff period.
