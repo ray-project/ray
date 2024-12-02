@@ -115,7 +115,7 @@ def main():
         num_gpus=2
     )
 
-    scheduler = NexusScheduler(batching_profile)
+    scheduler = NexusScheduler(batching_profile, monitoring_interval=0.2)
     scheduler.start_monitoring()
 
     model_patterns = {
