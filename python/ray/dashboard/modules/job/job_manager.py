@@ -30,6 +30,7 @@ from ray.dashboard.modules.job.common import (
 from ray.dashboard.modules.job.job_log_storage_client import JobLogStorageClient
 from ray.dashboard.modules.job.job_supervisor import JobSupervisor
 from ray.dashboard.modules.job.utils import get_head_node_id
+from ray.dashboard.utils import close_logger_file_descriptor
 from ray.exceptions import ActorUnschedulableError, RuntimeEnvSetupError
 from ray.job_submission import JobStatus
 from ray.runtime_env import RuntimeEnvConfig
@@ -70,7 +71,8 @@ class JobManager:
 
     def __init__(self, gcs_aio_client: GcsAioClient, logs_dir: str):
         self._gcs_aio_client = gcs_aio_client
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        self._logs_dir = logs_dir
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
         self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
@@ -504,6 +506,7 @@ class JobManager:
                 "Please use a different submission_id."
             )
 
+        driver_logger = self._get_job_driver_logger(submission_id)
         # Wait for the actor to start up asynchronously so this call always
         # returns immediately and we can catch errors with the actor starting
         # up.
@@ -524,7 +527,6 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
-            driver_logger = self._get_job_driver_logger(submission_id)
             driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
@@ -544,6 +546,7 @@ class JobManager:
                 metadata or {},
                 self._gcs_address,
                 self._cluster_id_hex,
+                self._logs_dir,
             )
             supervisor.run.remote(
                 _start_signal_actor=_start_signal_actor,
@@ -557,8 +560,7 @@ class JobManager:
             )
         except Exception as e:
             tb_str = traceback.format_exc()
-
-            logger.warning(
+            driver_logger.warning(
                 f"Failed to start supervisor actor for job {submission_id}: '{e}'"
                 f". Full traceback:\n{tb_str}"
             )
@@ -570,6 +572,8 @@ class JobManager:
                     f". Full traceback:\n{tb_str}"
                 ),
             )
+        finally:
+            close_logger_file_descriptor(driver_logger)
 
         return submission_id
 

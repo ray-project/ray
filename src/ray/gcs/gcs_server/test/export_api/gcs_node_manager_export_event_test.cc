@@ -26,6 +26,8 @@
 #include "ray/util/event.h"
 // clang-format on
 
+using json = nlohmann::json;
+
 namespace ray {
 
 std::string GenerateLogDir() {
@@ -39,7 +41,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  public:
   GcsNodeManagerExportAPITest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
@@ -70,7 +72,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
  protected:
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
   std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
   instrumented_io_context io_service_;
   std::string log_dir_;
@@ -79,7 +81,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   // Test export event is written when a node is added with HandleRegisterNode
   gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+      gcs_publisher_, gcs_table_storage_, client_pool_.get(), ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
 
   rpc::RegisterNodeRequest register_request;
@@ -92,7 +94,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "ALIVE");
@@ -101,7 +103,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventRegisterNode) {
 TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   // Test export event is written when a node is removed with HandleUnregisterNode
   gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+      gcs_publisher_, gcs_table_storage_, client_pool_.get(), ClusterID::Nil());
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
   node_manager.AddNode(node);
@@ -120,7 +122,7 @@ TEST_F(GcsNodeManagerExportAPITest, TestExportEventUnregisterNode) {
   io_service_.poll();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_NODE.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_NODE.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["state"], "DEAD");

@@ -12,6 +12,7 @@ export type DatasetMetrics = DataMetrics & {
 
 export type OperatorMetrics = DataMetrics & {
   operator: string;
+  name: string;
 };
 
 export type DataMetrics = {

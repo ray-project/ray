@@ -18,6 +18,7 @@
 
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
+#include "ray/common/asio/asio_util.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
 
@@ -36,9 +37,15 @@ class GcsTaskManagerTest : public ::testing::Test {
   )");
   }
 
-  virtual void SetUp() { task_manager.reset(new GcsTaskManager()); }
+  virtual void SetUp() {
+    io_context_ = std::make_unique<InstrumentedIOContextWithThread>("GcsTaskManagerTest");
+    task_manager = std::make_unique<GcsTaskManager>(io_context_->GetIoService());
+  }
 
-  virtual void TearDown() { task_manager->Stop(); }
+  virtual void TearDown() {
+    task_manager.reset();
+    io_context_.reset();
+  }
 
   std::vector<TaskID> GenTaskIDs(size_t num_tasks) {
     std::vector<TaskID> task_ids;
@@ -104,7 +111,7 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     request.mutable_data()->CopyFrom(events_data);
     // Dispatch so that it runs in GcsTaskManager's io service.
-    task_manager->GetIoContext().dispatch(
+    io_context_->GetIoService().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleAddTaskEventData(
               request,
@@ -161,7 +168,7 @@ class GcsTaskManagerTest : public ::testing::Test {
 
     request.mutable_filters()->set_exclude_driver(exclude_driver);
 
-    task_manager->GetIoContext().dispatch(
+    io_context_->GetIoService().dispatch(
         [this, &promise, &request, &reply]() {
           task_manager->HandleGetTaskEvents(
               request,
@@ -275,6 +282,7 @@ class GcsTaskManagerTest : public ::testing::Test {
   }
 
   std::unique_ptr<GcsTaskManager> task_manager = nullptr;
+  std::unique_ptr<InstrumentedIOContextWithThread> io_context_ = nullptr;
 };
 
 class GcsTaskManagerMemoryLimitedTest : public GcsTaskManagerTest {

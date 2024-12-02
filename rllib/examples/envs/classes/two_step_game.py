@@ -114,9 +114,7 @@ class TwoStepGameWithGroupedAgents(MultiAgentEnv):
             act_space=tuple_act_space,
         )
         self.observation_space = Dict({"agents": self.env.observation_space})
-        self._obs_space_in_preferred_format = True
         self.action_space = Dict({"agents": self.env.action_space})
-        self._action_space_in_preferred_format = True
 
     def reset(self, *, seed=None, options=None):
         return self.env.reset(seed=seed, options=options)

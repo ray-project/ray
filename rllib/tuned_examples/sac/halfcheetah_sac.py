@@ -1,6 +1,7 @@
 from torch import nn
 
 from ray.rllib.algorithms.sac.sac import SACConfig
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.utils.test_utils import add_rllib_example_script_args
 
 parser = add_rllib_example_script_args(
@@ -15,18 +16,14 @@ args = parser.parse_args()
 
 config = (
     SACConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .environment("HalfCheetah-v4")
     .training(
         initial_alpha=1.001,
         # lr=0.0006 is very high, w/ 4 GPUs -> 0.0012
         # Might want to lower it for better stability, but it does learn well.
-        actor_lr=2e-4 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=8e-4 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=9e-4 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=2e-4 * (args.num_learners or 1) ** 0.5,
+        critic_lr=8e-4 * (args.num_learners or 1) ** 0.5,
+        alpha_lr=9e-4 * (args.num_learners or 1) ** 0.5,
         lr=None,
         target_entropy="auto",
         n_step=(1, 5),  # 1?
@@ -42,15 +39,15 @@ config = (
         num_steps_sampled_before_learning_starts=10000,
     )
     .rl_module(
-        model_config_dict={
-            "fcnet_hiddens": [256, 256],
-            "fcnet_activation": "relu",
-            "fcnet_weights_initializer": nn.init.xavier_uniform_,
-            "post_fcnet_hiddens": [],
-            "post_fcnet_activation": None,
-            "post_fcnet_weights_initializer": "orthogonal_",
-            "post_fcnet_weights_initializer_config": {"gain": 0.01},
-        }
+        model_config=DefaultModelConfig(
+            fcnet_hiddens=[256, 256],
+            fcnet_activation="relu",
+            fcnet_kernel_initializer=nn.init.xavier_uniform_,
+            head_fcnet_hiddens=[],
+            head_fcnet_activation=None,
+            head_fcnet_kernel_initializer="orthogonal_",
+            head_fcnet_kernel_initializer_kwargs={"gain": 0.01},
+        ),
     )
     .reporting(
         metrics_num_episodes_for_smoothing=5,

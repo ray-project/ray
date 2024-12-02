@@ -14,8 +14,10 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include "absl/time/time.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -26,9 +28,8 @@
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;
-namespace ray {
 
-namespace raylet {
+namespace ray::raylet {
 
 int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
@@ -44,7 +45,7 @@ std::vector<Language> LANGUAGES = {Language::PYTHON, Language::JAVA};
 
 class MockWorkerClient : public rpc::CoreWorkerClientInterface {
  public:
-  MockWorkerClient() {}
+  MockWorkerClient() = default;
 
   void Exit(const rpc::ExitRequest &request,
             const rpc::ClientCallback<rpc::ExitReply> &callback) {
@@ -84,7 +85,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 static std::unordered_map<std::string, int> runtime_env_reference;
 
-static int GetReferenceCount(const std::string serialized_runtime_env) {
+static int GetReferenceCount(const std::string &serialized_runtime_env) {
   auto it = runtime_env_reference.find(serialized_runtime_env);
   return it == runtime_env_reference.end() ? 0 : it->second;
 }
@@ -105,7 +106,7 @@ class MockRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       } else {
         runtime_env_reference[serialized_runtime_env] += 1;
       }
-      callback(true, "{\"dummy\":\"dummy\"}", "");
+      callback(true, R"({"dummy":"dummy"})", "");
     }
   };
 
@@ -140,7 +141,7 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return current_time_ms_; }),
+            [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -159,17 +160,16 @@ class WorkerPoolMock : public WorkerPool {
   using WorkerPool::PopWorkerCallbackInternal;
 
   // Mock `PopWorkerCallbackAsync` to synchronized function.
-  void PopWorkerCallbackAsync(const TaskSpecification &task_spec,
-                              const PopWorkerCallback &callback,
+  void PopWorkerCallbackAsync(PopWorkerCallback callback,
                               std::shared_ptr<WorkerInterface> worker,
                               PopWorkerStatus status = PopWorkerStatus::OK) override {
-    PopWorkerCallbackInternal(task_spec, callback, worker, status);
+    PopWorkerCallbackInternal(callback, worker, status);
   }
 
   Process StartProcess(const std::vector<std::string> &worker_command_args,
                        const ProcessEnvironment &env) override {
     // Use a bogus process ID that won't conflict with those in the system
-    pid_t pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
+    auto pid = static_cast<pid_t>(PID_MAX_LIMIT + 1 + worker_commands_by_proc_.size());
     last_worker_process_ = Process::FromPid(pid);
     worker_commands_by_proc_[last_worker_process_] = worker_command_args;
     startup_tokens_by_proc_[last_worker_process_] =
@@ -195,10 +195,18 @@ class WorkerPoolMock : public WorkerPool {
     return total;
   }
 
-  int NumPendingPopWorkerRequests() const {
+  int NumPendingStartRequests() const {
     int total = 0;
     for (auto &entry : states_by_lang_) {
-      total += entry.second.pending_pop_worker_requests.size();
+      total += entry.second.pending_start_requests.size();
+    }
+    return total;
+  }
+
+  int NumPendingRegistrationRequests() const {
+    int total = 0;
+    for (auto &entry : states_by_lang_) {
+      total += entry.second.pending_registration_requests.size();
     }
     return total;
   }
@@ -234,7 +242,7 @@ class WorkerPoolMock : public WorkerPool {
 
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
 
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> &GetIdleWorkers() {
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, absl::Time>> &GetIdleWorkers() {
     return idle_of_all_languages_;
   }
 
@@ -297,7 +305,7 @@ class WorkerPoolMock : public WorkerPool {
   // Create workers for processes and push them to worker pool.
   // \param[in] timeout_worker_number Don't register some workers to simulate worker
   // registration timeout.
-  void PushWorkers(int timeout_worker_number = 0) {
+  void PushWorkers(int timeout_worker_number, JobID job_id) {
     auto processes = GetProcesses();
     for (auto it = processes.begin(); it != processes.end(); ++it) {
       auto pushed_it = pushedProcesses_.find(it->first);
@@ -326,7 +334,7 @@ class WorkerPoolMock : public WorkerPool {
           auto worker = CreateWorker(
               it->first,
               is_java ? Language::JAVA : Language::PYTHON,
-              JOB_ID,
+              job_id,
               rpc::WorkerType::WORKER,
               runtime_env_hash,
               startup_tokens_by_proc_[it->first],
@@ -372,7 +380,7 @@ class WorkerPoolMock : public WorkerPool {
                       return true;
                     });
     if (push_workers) {
-      PushWorkers(timeout_worker_number);
+      PushWorkers(timeout_worker_number, task_spec.JobId());
     }
     promise.get_future().get();
     return popped_worker;
@@ -839,7 +847,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
     started_processes.push_back(last_process);
   }
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
-  ASSERT_EQ(0, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(0, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
 
   // Can't start a new worker process at this point.
   worker_pool_->PopWorker(
@@ -848,7 +857,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
-  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
 
   std::vector<std::shared_ptr<WorkerInterface>> workers;
   // Call `RegisterWorker` to emulate worker registration.
@@ -860,7 +870,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
         }));
     // Calling `RegisterWorker` won't affect the counter of starting worker processes.
     ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
-    ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
+    ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
+    ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY,
+              worker_pool_->NumPendingRegistrationRequests());
+
     workers.push_back(worker);
   }
 
@@ -872,7 +885,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
          PopWorkerStatus status,
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
-  ASSERT_EQ(2, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(2, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
 
   // Call `OnWorkerStarted` to emulate worker port announcement.
   worker_pool_->OnWorkerStarted(workers[0]);
@@ -881,7 +895,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
   // One pending pop worker request now can be fulfilled.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
-  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
 
   // Can't start a new worker process at this point.
   worker_pool_->PopWorker(
@@ -891,22 +906,28 @@ TEST_F(WorkerPoolDriverRegisteredTest, MaximumStartupConcurrency) {
          const std::string &runtime_env_setup_error_message) -> bool { return true; });
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
-  ASSERT_EQ(2, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(2, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
 
   // Return a worker.
   worker_pool_->PushWorker(workers[0]);
-  // One more pending pop worker request can be fulfilled.
+  // The pushed worker fulfills a pending registration request, not a pending start
+  // request.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 1, worker_pool_->GetProcessSize());
-  ASSERT_EQ(1, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(2, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY - 1,
+            worker_pool_->NumPendingRegistrationRequests());
+
   ASSERT_EQ(0, worker_pool_->GetIdleWorkerSize());
 
   // Disconnect a worker.
   worker_pool_->DisconnectWorker(workers[1], rpc::WorkerExitType::SYSTEM_ERROR);
-  // One more pending pop worker request can be fulfilled.
+  // We have 1 more slot to start a new worker process.
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumWorkersStarting());
   ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY + 2, worker_pool_->GetProcessSize());
-  ASSERT_EQ(0, worker_pool_->NumPendingPopWorkerRequests());
+  ASSERT_EQ(1, worker_pool_->NumPendingStartRequests());
+  ASSERT_EQ(MAXIMUM_STARTUP_CONCURRENCY, worker_pool_->NumPendingRegistrationRequests());
   ASSERT_EQ(0, worker_pool_->GetIdleWorkerSize());
 
   worker_pool_->ClearProcesses();
@@ -1189,6 +1210,11 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
     auto task_spec =
         ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
     auto worker = worker_pool_->PopWorkerSync(task_spec, false);
+    // Simulate running the task and finish. This is to set task_assign_time_.
+    RayTask task(task_spec);
+    worker->SetAssignedTask(task);
+    worker->AssignTaskId(TaskID::Nil());
+
     popped_workers.push_back(worker);
     ASSERT_TRUE(worker);
     ASSERT_EQ(worker->GetAssignedJobId(), job_id);
@@ -1217,7 +1243,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   // Since the idle workers are killed in FIFO, we can assume the first entry in the idle
   // workers will be killed.
   auto mock_rpc_client_it = mock_worker_rpc_clients_.find(popped_workers[0]->WorkerId());
-  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1);
+  ASSERT_EQ(mock_rpc_client_it->second->exit_count, 1)
+      << " expected pid " << popped_workers[0]->GetProcess().GetId();
   ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
   mock_rpc_client_it->second->ExitReplySucceed();
   worker_pool_->TryKillingIdleWorkers();
@@ -1420,19 +1447,22 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   task_spec = ExampleTaskSpec(/*actor_id=*/ActorID::Nil(), Language::PYTHON, job_id);
   pop_worker_status = PopWorkerStatus::OK;
   // This will start a new worker.
+  std::promise<bool> promise;
   worker_pool_->PopWorker(
       task_spec,
       [&](const std::shared_ptr<WorkerInterface> worker,
           PopWorkerStatus status,
           const std::string &runtime_env_setup_error_message) -> bool {
         pop_worker_status = status;
+        promise.set_value(true);
         return false;
       });
   auto process = worker_pool_->LastStartedWorkerProcess();
   RAY_CHECK(process.IsValid());
   ASSERT_EQ(1, worker_pool_->NumWorkersStarting());
 
-  worker = worker_pool_->CreateWorker(Process());
+  // Starts a worker for JOB_ID2.
+  worker = worker_pool_->CreateWorker(Process(), Language::PYTHON, job_id);
   worker->SetStartupToken(worker_pool_->GetStartupToken(process));
   RAY_CHECK_OK(worker_pool_->RegisterWorker(
       worker, process.GetId(), worker_pool_->GetStartupToken(process), [](Status, int) {
@@ -1446,8 +1476,10 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker) {
   // Finish the job.
   worker_pool_->HandleJobFinished(job_id);
 
-  // This will trigger the PopWorker callback.
+  // This will trigger the PopWorker callback in async.
   worker_pool_->PushWorker(worker);
+  promise.get_future().get();
+
   ASSERT_EQ(pop_worker_status, PopWorkerStatus::JobFinished);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
 
@@ -1807,7 +1839,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerNoLeaks) {
   // No idle workers because no workers pushed.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
   // push workers.
-  worker_pool_->PushWorkers();
+  worker_pool_->PushWorkers(0, task_spec.JobId());
   // The worker has been pushed but not dispatched.
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
   // Pop a worker and don't dispatch.
@@ -1894,6 +1926,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
   // PopWorker failed while the timer was triggered and the status is
   // `WorkerPendingRegistration`.
   ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
+  worker_pool_->ClearProcesses();
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerPendingRegistrationErasesRequest) {
+  std::shared_ptr<WorkerInterface> popped_worker;
+  PopWorkerStatus status;
+  auto task_spec = ExampleTaskSpec();
+  // Create a task without push worker. It should time out (WorkerPendingRegistration).
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
+  // The request should be erased.
+  ASSERT_EQ(worker_pool_->NumPendingRegistrationRequests(), 0);
   worker_pool_->ClearProcesses();
 }
 
@@ -2012,7 +2057,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, WorkerReuseForPrestartedWorker) {
   const auto task_spec = ExampleTaskSpec();
 
   worker_pool_->PrestartDefaultCpuWorkers(ray::Language::PYTHON, 1);
-  worker_pool_->PushWorkers();
+  worker_pool_->PushWorkers(0, task_spec.JobId());
   // One worker process has been prestarted.
   ASSERT_EQ(worker_pool_->GetProcessSize(), 1);
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 1);
@@ -2107,9 +2152,7 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   ASSERT_TRUE(callback_called);
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(

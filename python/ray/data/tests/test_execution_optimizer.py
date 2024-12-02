@@ -45,10 +45,17 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.write_operator import Write
-from ray.data._internal.logical.optimizers import PhysicalOptimizer
+from ray.data._internal.logical.optimizers import (
+    PhysicalOptimizer,
+    get_logical_rules,
+    get_physical_rules,
+    register_logical_rule,
+    register_physical_rule,
+)
 from ray.data._internal.logical.util import (
     _op_name_white_list,
     _recorded_operators,
@@ -98,19 +105,20 @@ def _check_valid_plan_and_result(
 
 
 def test_read_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
     planner = Planner()
     op = get_parquet_read_logical_op()
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "ReadParquet"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], InputDataBuffer)
-    assert (
-        physical_op.actual_target_max_block_size
-        == DataContext.get_current().target_max_block_size
-    )
+    assert physical_op.actual_target_max_block_size == ctx.target_max_block_size
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+    assert physical_op.input_dependencies[0]._logical_operators == [op]
 
 
 def test_read_operator_emits_warning_for_large_read_tasks():
@@ -132,9 +140,11 @@ def test_read_operator_emits_warning_for_large_read_tasks():
 
 
 def test_split_blocks_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     op = get_parquet_read_logical_op(parallelism=10)
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -154,7 +164,7 @@ def test_split_blocks_operator(ray_start_regular_shared):
         op,
         lambda x: x,
     )
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -166,6 +176,8 @@ def test_split_blocks_operator(ray_start_regular_shared):
 
 
 def test_from_operators(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     op_classes = [
         FromArrow,
         FromItems,
@@ -175,12 +187,15 @@ def test_from_operators(ray_start_regular_shared):
     for op_cls in op_classes:
         planner = Planner()
         op = op_cls([], [])
-        plan = LogicalPlan(op)
+        plan = LogicalPlan(op, ctx)
         physical_op = planner.plan(plan).dag
 
         assert op.name == op_cls.__name__
         assert isinstance(physical_op, InputDataBuffer)
         assert len(physical_op.input_dependencies) == 0
+
+        # Check that the linked logical operator is the same the input op.
+        assert physical_op._logical_operators == [op]
 
 
 def test_from_items_e2e(ray_start_regular_shared):
@@ -239,19 +254,24 @@ def test_map_operator_udf_name(ray_start_regular_shared):
 
 
 def test_map_batches_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(
         read_op,
         lambda x: x,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "MapBatches(<lambda>)"
     assert isinstance(physical_op, MapOperator)
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 def test_map_batches_e2e(ray_start_regular_shared):
@@ -262,13 +282,15 @@ def test_map_batches_e2e(ray_start_regular_shared):
 
 
 def test_map_rows_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = MapRows(
         read_op,
         lambda x: x,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Map(<lambda>)"
@@ -285,13 +307,15 @@ def test_map_rows_e2e(ray_start_regular_shared):
 
 
 def test_filter_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Filter(
         read_op,
         lambda x: x,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Filter(<lambda>)"
@@ -311,14 +335,36 @@ def test_filter_e2e(ray_start_regular_shared):
     _check_usage_record(["ReadRange", "Filter"])
 
 
+def test_project_operator(ray_start_regular_shared):
+    """Checks that the physical plan is properly generated for the Project operator."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    cols = ["sepal.length", "petal.width"]
+    ds = ds.select_columns(cols)
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+    assert op.cols == cols
+
+    physical_plan = Planner().plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+
+
 def test_flat_map(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = FlatMap(
         read_op,
         lambda x: x,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "FlatMap(<lambda>)"
@@ -375,13 +421,15 @@ def test_random_sample_e2e(ray_start_regular_shared):
 
 
 def test_random_shuffle_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = RandomShuffle(
         read_op,
         seed=0,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "RandomShuffle"
@@ -392,6 +440,9 @@ def test_random_shuffle_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_shuffle_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
@@ -409,10 +460,12 @@ def test_random_shuffle_e2e(ray_start_regular_shared, use_push_based_shuffle):
     [True, False],
 )
 def test_repartition_operator(ray_start_regular_shared, shuffle):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Repartition(read_op, num_outputs=5, shuffle=shuffle)
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Repartition"
@@ -429,6 +482,9 @@ def test_repartition_operator(ray_start_regular_shared, shuffle):
             physical_op.actual_target_max_block_size
             == DataContext.get_current().target_max_block_size
         )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 @pytest.mark.parametrize(
@@ -483,6 +539,8 @@ def test_repartition_e2e(ray_start_regular_shared, use_push_based_shuffle, shuff
 
 @pytest.mark.parametrize("preserve_order", (True, False))
 def test_union_operator(ray_start_regular_shared, preserve_order):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_parquet_op1 = get_parquet_read_logical_op()
     read_parquet_op2 = get_parquet_read_logical_op()
@@ -492,7 +550,7 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
         read_parquet_op2,
         read_parquet_op3,
     )
-    plan = LogicalPlan(union_op)
+    plan = LogicalPlan(union_op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert union_op.name == "Union"
@@ -505,6 +563,9 @@ def test_union_operator(ray_start_regular_shared, preserve_order):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [union_op]
 
 
 @pytest.mark.parametrize("preserve_order", (True, False))
@@ -555,6 +616,8 @@ def test_union_e2e(ray_start_regular_shared, preserve_order):
 
 
 def test_read_map_batches_operator_fusion(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     # Test that Read is fused with MapBatches.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
@@ -562,7 +625,7 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared):
         read_op,
         lambda x: x,
     )
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -578,22 +641,25 @@ def test_read_map_batches_operator_fusion(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    assert physical_op._logical_operators == [read_op, op]
 
 
 def test_read_map_chain_operator_fusion(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     # Test that a chain of different map operators are fused.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
-    op = MapRows(read_op, lambda x: x)
-    op = MapBatches(op, lambda x: x)
-    op = FlatMap(op, lambda x: x)
-    op = Filter(op, lambda x: x)
-    logical_plan = LogicalPlan(op)
+    map1 = MapRows(read_op, lambda x: x)
+    map2 = MapBatches(map1, lambda x: x)
+    map3 = FlatMap(map2, lambda x: x)
+    map4 = Filter(map3, lambda x: x)
+    logical_plan = LogicalPlan(map4, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
 
-    assert op.name == "Filter(<lambda>)"
+    assert map4.name == "Filter(<lambda>)"
     assert (
         physical_op.name == "ReadParquet->Map(<lambda>)->MapBatches(<lambda>)"
         "->FlatMap(<lambda>)->Filter(<lambda>)"
@@ -605,11 +671,14 @@ def test_read_map_chain_operator_fusion(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+    assert physical_op._logical_operators == [read_op, map1, map2, map3, map4]
 
 
 def test_read_map_batches_operator_fusion_compatible_remote_args(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that map operators are stilled fused when remote args are compatible.
     compatiple_remote_args_pairs = [
         # Empty remote args are compatible.
@@ -636,10 +705,11 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
         )
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, ctx)
+
         physical_plan = planner.plan(logical_plan)
-        physical_plan = PhysicalOptimizer().optimize(physical_plan)
-        physical_op = physical_plan.dag
+        optimized_physical_plan = PhysicalOptimizer().optimize(physical_plan)
+        physical_op = optimized_physical_plan.dag
 
         assert op.name == "MapBatches(<lambda>)", (up_remote_args, down_remote_args)
         assert physical_op.name == "MapBatches(<lambda>)->MapBatches(<lambda>)", (
@@ -660,8 +730,10 @@ def test_read_map_batches_operator_fusion_compatible_remote_args(
 def test_read_map_batches_operator_fusion_incompatible_remote_args(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that map operators won't get fused if the remote args are incompatible.
-    incompatiple_remote_args_pairs = [
+    incompatible_remote_args_pairs = [
         # Use different resources.
         ({"num_cpus": 2}, {"num_gpus": 2}),
         # Same resource, but different values.
@@ -670,16 +742,16 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
         ({"resources": {"custom": 2}}, {"resources": {"custom": 1}}),
         ({"resources": {"custom1": 1}}, {"resources": {"custom2": 1}}),
         # Different scheduling strategies.
-        ({"scheduling_strategy": "SPREAD"}, {"scheduing_strategy": "PACK"}),
+        ({"scheduling_strategy": "SPREAD"}, {"scheduling_strategy": "PACK"}),
     ]
-    for up_remote_args, down_remote_args in incompatiple_remote_args_pairs:
+    for up_remote_args, down_remote_args in incompatible_remote_args_pairs:
         planner = Planner()
         read_op = get_parquet_read_logical_op(
             ray_remote_args={"resources": {"non-existent": 1}}
         )
         op = MapBatches(read_op, lambda x: x, ray_remote_args=up_remote_args)
         op = MapBatches(op, lambda x: x, ray_remote_args=down_remote_args)
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, ctx)
         physical_plan = planner.plan(logical_plan)
         physical_plan = PhysicalOptimizer().optimize(physical_plan)
         physical_op = physical_plan.dag
@@ -703,13 +775,15 @@ def test_read_map_batches_operator_fusion_incompatible_remote_args(
 def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that a task-based map operator is fused into an actor-based map operator when
     # the former comes before the latter.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x)
     op = MapBatches(op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -724,11 +798,13 @@ def test_read_map_batches_operator_fusion_compute_tasks_to_actors(
 def test_read_map_batches_operator_fusion_compute_read_to_actors(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that reads fuse into an actor-based map operator.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -743,12 +819,14 @@ def test_read_map_batches_operator_fusion_compute_read_to_actors(
 def test_read_map_batches_operator_fusion_incompatible_compute(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that map operators are not fused when compute strategies are incompatible.
     planner = Planner()
     read_op = get_parquet_read_logical_op(parallelism=1)
     op = MapBatches(read_op, lambda x: x, compute=ray.data.ActorPoolStrategy())
     op = MapBatches(op, lambda x: x)
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -766,6 +844,8 @@ def test_read_map_batches_operator_fusion_incompatible_compute(
 def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     # Test that fusion of map operators merges their block sizes in the expected way
     # (taking the max).
     planner = Planner()
@@ -773,7 +853,7 @@ def test_read_map_batches_operator_fusion_min_rows_per_bundled_input(
     op = MapBatches(read_op, lambda x: x, min_rows_per_bundled_input=2)
     op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=5)
     op = MapBatches(op, lambda x: x, min_rows_per_bundled_input=3)
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)
     physical_op = physical_plan.dag
@@ -991,6 +1071,8 @@ def test_write_fusion(ray_start_regular_shared, tmp_path):
 
 
 def test_write_operator(ray_start_regular_shared, tmp_path):
+    ctx = DataContext.get_current()
+
     concurrency = 2
     planner = Planner()
     datasink = ParquetDatasink(tmp_path)
@@ -1000,7 +1082,7 @@ def test_write_operator(ray_start_regular_shared, tmp_path):
         datasink,
         concurrency=concurrency,
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Write"
@@ -1009,17 +1091,22 @@ def test_write_operator(ray_start_regular_shared, tmp_path):
     assert len(physical_op.input_dependencies) == 1
     assert isinstance(physical_op.input_dependencies[0], MapOperator)
 
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
+
 
 def test_sort_operator(
     ray_start_regular_shared,
 ):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Sort(
         read_op,
         sort_key=SortKey("col1"),
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Sort"
@@ -1058,9 +1145,7 @@ def test_sort_validate_keys(ray_start_regular_shared):
     assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
     invalid_col_name = "invalid_column"
-    with pytest.raises(
-        ValueError, match=f"The column '{invalid_col_name}' does not exist"
-    ):
+    with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds.sort(invalid_col_name).take_all()
 
     ds_named = ray.data.from_items(
@@ -1078,14 +1163,82 @@ def test_sort_validate_keys(ray_start_regular_shared):
     assert [d["col1"] for d in r1] == [7, 5, 3, 1]
     assert [d["col2"] for d in r2] == [8, 6, 4, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=f"The column '{invalid_col_name}' does not exist in the schema",
-    ):
+    with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds_named.sort(invalid_col_name).take_all()
 
 
+def test_inherit_batch_format_rule():
+    from ray.data._internal.logical.rules.inherit_batch_format import (
+        InheritBatchFormatRule,
+    )
+
+    ctx = DataContext.get_current()
+
+    operator1 = get_parquet_read_logical_op()
+    operator2 = MapBatches(operator1, fn=lambda g: g, batch_format="pandas")
+    sort_key = SortKey("number", descending=True)
+    operator3 = Sort(operator2, sort_key)
+    original_plan = LogicalPlan(dag=operator3, context=ctx)
+
+    rule = InheritBatchFormatRule()
+    optimized_plan = rule.apply(original_plan)
+    assert optimized_plan.dag._batch_format == "pandas"
+
+
+def test_batch_format_on_sort(ray_start_regular_shared):
+    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    df_expected = pd.DataFrame(
+        {
+            "col1": [7, 5, 1, 1],
+            "col2": [8, 6, 4, 2],
+        }
+    )
+    df_actual = (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .sort("col2", descending=True)
+        .to_pandas()
+    )
+    pd.testing.assert_frame_equal(df_actual, df_expected)
+
+
+def test_batch_format_on_aggregate(ray_start_regular_shared):
+    """Checks that the Aggregate op can inherit batch_format
+    from upstream ops correctly."""
+    from ray.data.aggregate import AggregateFn
+
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    aggregation = AggregateFn(
+        init=lambda column: 1,
+        accumulate_row=lambda a, row: a * row["col2"],
+        merge=lambda a1, a2: a1 * a2,
+        name="prod",
+    )
+    assert (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .aggregate(aggregation)
+    ) == {"prod": 384}
+
+
 def test_aggregate_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = Aggregate(
@@ -1093,7 +1246,7 @@ def test_aggregate_operator(ray_start_regular_shared):
         key="col1",
         aggs=[Count()],
     )
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Aggregate"
@@ -1104,6 +1257,9 @@ def test_aggregate_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_shuffle_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
@@ -1118,9 +1274,7 @@ def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
 def test_aggregate_validate_keys(ray_start_regular_shared):
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
-    with pytest.raises(
-        ValueError, match=f"The column '{invalid_col_name}' does not exist"
-    ):
+    with pytest.raises(ValueError):
         ds.groupby(invalid_col_name).count()
 
     ds_named = ray.data.from_items(
@@ -1147,17 +1301,19 @@ def test_aggregate_validate_keys(ray_start_regular_shared):
 
     with pytest.raises(
         ValueError,
-        match=f"The column '{invalid_col_name}' does not exist in the schema",
+        match="there's no such column in the dataset",
     ):
         ds_named.groupby(invalid_col_name).count()
 
 
 def test_zip_operator(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     planner = Planner()
     read_op1 = get_parquet_read_logical_op()
     read_op2 = get_parquet_read_logical_op()
     op = Zip(read_op1, read_op2)
-    plan = LogicalPlan(op)
+    plan = LogicalPlan(op, ctx)
     physical_op = planner.plan(plan).dag
 
     assert op.name == "Zip"
@@ -1170,6 +1326,9 @@ def test_zip_operator(ray_start_regular_shared):
         physical_op.actual_target_max_block_size
         == DataContext.get_current().target_max_block_size
     )
+
+    # Check that the linked logical operator is the same the input op.
+    assert physical_op._logical_operators == [op]
 
 
 @pytest.mark.parametrize(
@@ -1577,11 +1736,13 @@ def check_transform_fns(op, expected_types):
 
 @pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
 def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared):
+    ctx = DataContext.get_current()
+
     # Test the EliminateBuildOutputBlocks optimization rule.
     planner = Planner()
     read_op = get_parquet_read_logical_op()
     op = MapBatches(read_op, lambda x: x)
-    logical_plan = LogicalPlan(op)
+    logical_plan = LogicalPlan(op, ctx)
     physical_plan = planner.plan(logical_plan)
 
     # Before optimization, there should be a map op and and read op.
@@ -1618,6 +1779,46 @@ def test_zero_copy_fusion_eliminate_build_output_blocks(ray_start_regular_shared
             BuildOutputBlocksMapTransformFn,
         ],
     )
+
+
+def test_insert_logical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    # By default, add the rule to the end of the list.
+    register_logical_rule(FakeRule1)
+    assert get_logical_rules()[-1] == FakeRule1
+
+    register_logical_rule(FakeRule2, 0)
+    assert get_logical_rules()[0] == FakeRule2
+
+    # 'FakeRule1' is already registered, so it shouldn't be added again.
+    register_logical_rule(FakeRule1, 0)
+    assert get_logical_rules()[-1] == FakeRule1
+    assert get_logical_rules()[0] == FakeRule2
+
+
+def test_insert_physical_optimization_rules():
+    class FakeRule1:
+        pass
+
+    class FakeRule2:
+        pass
+
+    # By default, add the rule to the end of the list.
+    register_physical_rule(FakeRule1)
+    assert get_physical_rules()[-1] == FakeRule1
+
+    register_physical_rule(FakeRule2, 0)
+    assert get_physical_rules()[0] == FakeRule2
+
+    # 'FakeRule1' is already registered, so it shouldn't be added again.
+    register_physical_rule(FakeRule1, 0)
+    assert get_physical_rules()[-1] == FakeRule1
+    assert get_physical_rules()[0] == FakeRule2
 
 
 if __name__ == "__main__":
