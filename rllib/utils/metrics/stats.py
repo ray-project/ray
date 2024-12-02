@@ -534,9 +534,9 @@ class Stats:
 
         self.values = list(reversed(new_values))
 
-        # Update our throughput as the sum over all others' current throughputs.
-        if self._throughput is not False:
-            self._throughput = sum(o.peek(throughput=True) for o in others)
+        ## Update our throughput as the sum over all others' current throughputs.
+        #if self._throughput is not False:
+        #    self._throughput = sum(o.peek(throughput=True) for o in others)
 
     def set_to_numpy_values(self, values) -> None:
         """Converts `self.values` from tensors to actual numpy values.
