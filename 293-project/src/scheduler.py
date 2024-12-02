@@ -672,7 +672,7 @@ class NexusScheduler:
         if requires_update:
             self._update_schedule(update_info)
 
-    def get_transfers(old_nodes: List[node], new_nodes: List[node]):
+    def get_transfers(self, old_nodes: List[node], new_nodes: List[node]):
         transfers = 0
 
         for old_node, new_node in zip(old_nodes, new_nodes):
