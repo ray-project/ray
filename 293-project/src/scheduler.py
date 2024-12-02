@@ -198,18 +198,14 @@ class RequestQueue:
         try:
             if self.queue.full():
                 self._logger.warning(f"Queue full for {self.model_name}")
-                print(f"Queue full for {self.model_name}")
                 return False
                 
-            print(f"calling put on queue")
             self.queue.put((request_id, input_tensor, time.time()))
-            print(f"finished calling put on queue")
             self._pending_count += 1
             self._total_requests += 1
             return True
         except Exception as e:
             self._logger.error(f"Error adding request: {e}")
-            print(f"Error adding request: {e}")
             return False
     
     def get_batch(self, batch_size: int) -> Optional[BatchRequest]:
@@ -497,7 +493,7 @@ class NexusScheduler:
 
         # Initialize request queues
         self.request_queues = {}
-        self._init_queues(200)
+        self._init_queues(2000)
         
         # Initialize workers
         self.model_registry = model_registry
@@ -597,24 +593,17 @@ class NexusScheduler:
         try:
             if model_name not in self.request_queues:
                 self.logger.error(f"No queue found for model {model_name}")
-                print(f"No queue found for model {model_name}")
                 return False
             
-            print(f"adding to request queue")
             success = self.request_queues[model_name].add_request(
                 request_id, input_tensor
             )
 
-            print(f"done adding request to queue")
-
-            print(f"adding to request tracker")
             self.request_trackers[model_name].record_request()
-            print(f"adding to request tracker done")
-
+            
             return success
         except Exception as e:
             self.logger.error(f"Error submitting request: {e}")
-            print(f"Error submitting request: {e}")
             return False
 
     # def record_request(self, model_name: str) -> None:
