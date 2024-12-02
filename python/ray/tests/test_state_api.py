@@ -2463,6 +2463,83 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
+def test_list_get_tasks_invocation_stacktrace(shutdown_only):
+    """
+    Call chain: Driver -> caller -> callee.
+    Verify that the invocation stacktrace is captured in callee, and it contains string
+    "caller".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}},
+    )
+
+    @ray.remote
+    def callee():
+        import time
+
+        time.sleep(30)
+
+    @ray.remote
+    def caller():
+        return callee.remote()
+
+    caller_ref = caller.remote()
+    callee_ref = ray.get(caller_ref)
+
+    def verify():
+        callee_task = get_task(callee_ref)
+        assert callee_task["invocation_stacktrace"] is not None
+        assert "caller" in callee_task["invocation_stacktrace"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
+def test_list_actor_tasks_invocation_stacktrace(shutdown_only):
+    """
+    Call chain: Driver -> create_actor -> (Actor, Actor.method).
+
+    Verify that the invocation stacktraces are captured in both Actor and Actor.method,
+    and they contain string "create_actor".
+    """
+    ray.init(
+        num_cpus=2,
+        runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}},
+    )
+
+    @ray.remote
+    class Actor:
+        def method(self):
+            import time
+
+            time.sleep(30)
+
+    @ray.remote
+    def create_actor():
+        a = Actor.remote()
+        m_ref = a.method.remote()
+        return a, m_ref
+
+    actor_ref, method_ref = ray.get(create_actor.remote())
+
+    def verify():
+        method_task = get_task(method_ref)
+        assert method_task["invocation_stacktrace"] is not None
+        assert "create_actor" in method_task["invocation_stacktrace"]
+
+        actors = list_actors(detail=True)
+        assert len(actors) == 1
+        actor = actors[0]
+        assert actor["invocation_stacktrace"] is not None
+        assert "create_actor" in actor["invocation_stacktrace"]
+        return True
+
+    wait_for_condition(verify)
+    print(list_tasks())
+
+
 def test_pg_worker_id_tasks(shutdown_only):
     ray.init(num_cpus=1)
     pg = ray.util.placement_group(bundles=[{"CPU": 1}])

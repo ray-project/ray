@@ -467,6 +467,8 @@ class ActorState(StateSchema):
     num_restarts_due_to_lineage_reconstruction: int = state_column(
         filterable=False, detail=True
     )
+    #: The invocation stacktrace of the actor creation.
+    invocation_stacktrace: Optional[str] = state_column(detail=True, filterable=False)
 
 
 @dataclass(init=not IS_PYDANTIC_2)
