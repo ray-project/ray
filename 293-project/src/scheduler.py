@@ -199,7 +199,7 @@ class RequestQueue:
         self.current_window_violations = 0
         self.current_window_requests = 0
         self.window_start_time = time.time()
-        
+
         self.dropped_requests = 0
 
         
@@ -909,10 +909,11 @@ class MetricsDisplay:
                 print(f"SLO Violations: {stats['slo_violations']}")
                 
                 # Calculate SLO compliance percentage
+                compliance = 100.0  # Default to 100% if no requests
                 if stats['total_requests'] > 0:
                     compliance = ((stats['total_requests'] - stats['slo_violations']) / 
                                 stats['total_requests'] * 100)
-                    print(f"SLO Compliance: {compliance:.2f}%")
+                print(f"SLO Compliance: {compliance:.2f}%")
                 
                 # Display latency metrics
                 print(f"Average Latency: {stats['avg_latency']:.2f}ms")
