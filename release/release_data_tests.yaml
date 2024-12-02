@@ -34,31 +34,6 @@
     timeout: 600
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
-- name: stable_diffusion_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_stable_diffusion.sh
-    cluster_compute: stable_diffusion_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python stable_diffusion_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
-
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
   working_dir: nightly_tests/dataset
