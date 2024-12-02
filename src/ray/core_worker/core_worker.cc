@@ -3860,7 +3860,7 @@ void CoreWorker::ProcessSubscribeForObjectEviction(
   // Returns true if the object was present and the callback was added. It might have
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the raylet unpins the object.
-  if (!reference_counter_->AddObjectPrimaryCopyDeleteCallback(object_id, unpin_object)) {
+  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(object_id, unpin_object)) {
     // If the object is already evicted (callback cannot be set), unregister the
     // subscription & publish the message so that the subscriber knows it.
     unpin_object(object_id);
