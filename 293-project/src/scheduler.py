@@ -182,7 +182,7 @@ class BatchRequest:
 
 class RequestQueue:
     """Request queue with monitoring capabilities using Ray's Queue"""
-    def __init__(self, model_name: str, max_size: int = 10000):
+    def __init__(self, model_name: str, max_size: int = 100):
         self.model_name = model_name
         self.queue = RayQueue(maxsize=max_size)
         self._pending_count = 0
@@ -490,7 +490,7 @@ class NexusScheduler:
 
         # Initialize request queues
         self.request_queues = {}
-        self._init_queues(10000)
+        self._init_queues(2000)
         
         # Initialize workers
         self.model_registry = model_registry
