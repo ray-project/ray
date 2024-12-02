@@ -118,8 +118,8 @@ class _MLflowLoggerUtil:
                     "before calling `ray.util.spark.setup_ray_cluster`, these variables "
                     "are used to set up authentication with Databricks MLflow "
                     "service. For details, you can refer to Databricks document "
-                    "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>Databricks PAT auth</a> or "
-                    "<a href='https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'>Databricks OAuth</a>."
+                    "'https://docs.databricks.com/en/dev-tools/auth/pat.html' or "
+                    "'https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'."
                 )
 
         self._mlflow.set_tracking_uri(tracking_uri)

@@ -202,8 +202,8 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "before calling `ray.util.spark.setup_ray_cluster`, these variables "
                 "are used to set up authentication with Databricks MLflow "
                 "service. For details, you can refer to Databricks document "
-                "'https://docs.databricks.com/en/dev-tools/auth/pat.html' or "
-                "'https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'."
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>Databricks PAT auth</a> or "
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'>Databricks OAuth</a>."
             )
             get_databricks_display_html_function()(
                 f"<b style='color:red;'>{warn_msg}</b>"
