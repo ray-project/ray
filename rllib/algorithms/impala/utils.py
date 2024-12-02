@@ -90,7 +90,7 @@ class _SleepTimeController:
 
 
 if __name__ == "__main__":
-    controller = SleepTimeController()
+    controller = _SleepTimeController()
     for _ in range(1000):
         performance = np.random.random()
         controller.log_result(performance)
