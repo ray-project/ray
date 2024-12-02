@@ -32,7 +32,7 @@ namespace gcs {
 GcsNodeManager::GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                                std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                                rpc::NodeManagerClientPool *raylet_client_pool,
-    instrumented_io_context &io_context,
+                               instrumented_io_context &io_context,
                                const ClusterID &cluster_id)
     : gcs_publisher_(std::move(gcs_publisher)),
       gcs_table_storage_(std::move(gcs_table_storage)),
