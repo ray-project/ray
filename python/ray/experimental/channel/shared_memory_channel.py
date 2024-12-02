@@ -736,14 +736,11 @@ class CompositeChannel(ChannelInterface):
         # if actor_id is None, read was called by the driver
         # if the driver is an actor, driver_actor_id will be set to that actor id
         if actor_id is None or actor_id == self._driver_actor_id:
-            # actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
-            print("reading from driver, driver_actor_id: ", self._driver_actor_id)
             assert len(self._reader_and_node_list) >= 1
             driver_proxy_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_proxy_actor)
-        print("reading actor:", actor_id)
         return self._channel_dict[actor_id].read(timeout)
 
     def close(self) -> None:
