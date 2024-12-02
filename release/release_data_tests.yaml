@@ -8,7 +8,7 @@
   cluster:
     byod:
       type: gpu
-    cluster_compute: multi_node_autoscaling_compute.yaml
+    cluster_compute: autoscaling_cpu_compute.yaml
 
 ###############
 # Reading tests
@@ -36,9 +36,12 @@
 # NOTE: 'column08', 'column09', and 'column05' correspond to the 'l_orderkey', 
 # 'l_partkey', and 'l_extendedprice' columns of the TPC-H lineitem table, respectively.
 
-# TODO: Test against sf1000 or sf10000 once we're confident we can handle that scale.
-
 - name: aggregate_groups
+  stable: False
+
+  cluster:
+    cluster_compute: autoscaling_cpu_compute_with_extra_disk.yaml
+
   run:
     timeout: 3600
 
@@ -64,6 +67,10 @@
     
 - name: map_groups
   stable: False
+
+  cluster:
+    cluster_compute: autoscaling_cpu_compute_with_extra_disk.yaml
+
   run:
     timeout: 3600
 
