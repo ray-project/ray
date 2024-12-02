@@ -183,9 +183,10 @@ class RayClusterOnSpark:
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
                         if cur_alive_worker_count == 0:
-                            job_server_url = ":".join(self.spark_job_server.server_address[:2])
+                            job_server_host, job_server_port = self.spark_job_server.server_address[:2]
                             response = requests.post(
-                                url=f"http://{job_server_url}/query_last_worker_err",
+                                url=f"http://{job_server_host}:{job_server_port}/query_last_worker_err",
+                                json={"spark_job_group_id": None},
                             )
                             response.raise_for_status()
 
