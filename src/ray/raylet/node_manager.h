@@ -224,7 +224,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
   /// Get the local drain request.
-  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
@@ -776,9 +776,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// Wrapper client for RuntimeEnvManager. Always non-null.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

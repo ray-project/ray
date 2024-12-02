@@ -556,6 +556,8 @@ message TaskSpec {
   // this field contains the detached actor id.
   // Otherwise it's empty and is originated from a driver.
   bytes root_detached_actor_id = 40;
+  // The key-value labels for task and actor.
+  map<string, string> labels = 41;
 }
 
 message TaskInfoEntry {
@@ -589,13 +591,6 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
-  // Tasks arguments passed in as (object) references.
-  //
-  // NOTE: This list only contains `ObjectReference`s passed in as arguments
-  //       this task is dependent on and does NOT contain
-  //        - Args passed by value (inlined)
-  //        - ObjectRefs of the args passed by value
-  repeated bytes args_object_ids = 27;
 }
 
 message Bundle {
@@ -993,6 +988,10 @@ message NamedActorInfo {
 
 message LineageReconstructionTask {
   string name = 1;
-  map<string, double> resources = 2;
-  TaskStatus status = 3;
+  TaskStatus status = 2;
+  // If the task is a normal task,
+  // this has the labels of the normal task.
+  // If the task is an actor task,
+  // this has the labels of the corresponding actor.
+  map<string, string> labels = 3;
 }

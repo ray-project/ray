@@ -261,6 +261,9 @@ cdef optional[ObjectIDIndexType] NULL_PUT_INDEX = nullopt
 # https://docs.python.org/3/library/contextvars.html#contextvars.ContextVar
 # It is thread-safe.
 async_task_id = contextvars.ContextVar('async_task_id', default=None)
+async_task_name = contextvars.ContextVar('async_task_name', default=None)
+async_task_function_name = contextvars.ContextVar('async_task_function_name',
+                                                  default=None)
 
 
 class DynamicObjectRefGenerator:
@@ -417,6 +420,8 @@ class ObjectRefGenerator:
                     return False
                 else:
                     return True
+        else:
+            return False
 
     """
     Private APIs
@@ -735,11 +740,26 @@ cdef class Language:
     JAVA = Language.from_native(LANGUAGE_JAVA)
 
 
+cdef int prepare_labels(
+        dict label_dict,
+        unordered_map[c_string, c_string] *label_map) except -1:
+
+    if label_dict is None:
+        return 0
+
+    for key, value in label_dict.items():
+        if not isinstance(key, str):
+            raise ValueError(f"Label key must be string, but got {type(key)}")
+        if not isinstance(value, str):
+            raise ValueError(f"Label value must be string, but got {type(value)}")
+        label_map[0][key.encode("utf-8")] = value.encode("utf-8")
+
+    return 0
+
 cdef int prepare_resources(
         dict resource_dict,
         unordered_map[c_string, double] *resource_map) except -1:
     cdef:
-        unordered_map[c_string, double] out
         c_string resource_name
         list unit_resources
 
@@ -1026,7 +1046,7 @@ cdef store_task_errors(
         CoreWorker core_worker = worker.core_worker
 
     # If the debugger is enabled, drop into the remote pdb here.
-    if ray.util.pdb._is_ray_debugger_enabled():
+    if ray.util.pdb._is_ray_debugger_post_mortem_enabled():
         ray.util.pdb._post_mortem()
 
     backtrace = ray._private.utils.format_error_message(
@@ -1798,7 +1818,8 @@ cdef void execute_task(
                     return core_worker.run_async_func_or_coro_in_event_loop(
                         async_function, function_descriptor,
                         name_of_concurrency_group_to_execute, task_id=task_id,
-                        func_args=(actor, *arguments), func_kwargs=kwarguments)
+                        task_name=task_name, func_args=(actor, *arguments),
+                        func_kwargs=kwarguments)
 
             return function(actor, *arguments, **kwarguments)
 
@@ -1910,7 +1931,8 @@ cdef void execute_task(
                                 execute_streaming_generator_async(context),
                                 function_descriptor,
                                 name_of_concurrency_group_to_execute,
-                                task_id=task_id)
+                                task_id=task_id,
+                                task_name=task_name)
                         else:
                             execute_streaming_generator_sync(context)
 
@@ -3398,6 +3420,48 @@ cdef class CoreWorker:
         with nogil:
             CCoreWorkerProcess.GetCoreWorker().Exit(c_exit_type, detail, null_ptr)
 
+    def get_current_task_name(self) -> str:
+        """Return the current task name.
+
+        If it is a normal task, it returns the task name from the main thread.
+        If it is a threaded actor, it returns the task name for the current thread.
+        If it is async actor, it returns the task name stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task name within asyncio task
+        # via async_task_name contextvar. We try this first.
+        # It is needed because the core worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task name.
+        task_name = async_task_name.get()
+        if task_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_name = CCoreWorkerProcess.GetCoreWorker().GetCurrentTaskName() \
+                .decode("utf-8")
+        return task_name
+
+    def get_current_task_function_name(self) -> str:
+        """Return the current task function.
+
+        If it is a normal task, it returns the task function from the main thread.
+        If it is a threaded actor, it returns the task function for the current thread.
+        If it is async actor, it returns the task function stored in contextVar for
+        the current asyncio task.
+        """
+        # We can only obtain the correct task function within asyncio task
+        # via async_task_function_name contextvar. We try this first.
+        # It is needed because the core Worker's GetCurrentTask API
+        # doesn't have asyncio context, thus it cannot return the
+        # correct task function.
+        task_function_name = async_task_function_name.get()
+        if task_function_name is None:
+            # if it is not within asyncio context, fallback to TaskName
+            # obtainable from core worker.
+            task_function_name = CCoreWorkerProcess.GetCoreWorker() \
+                .GetCurrentTaskFunctionName().decode("utf-8")
+        return task_function_name
+
     def get_current_task_id(self) -> TaskID:
         """Return the current task ID.
 
@@ -3831,8 +3895,8 @@ cdef class CoreWorker:
             c_vector[CObjectID] free_ids = ObjectRefsToVector(object_refs)
 
         with nogil:
-            check_status(CCoreWorkerProcess.GetCoreWorker().Delete(
-                free_ids, local_only))
+            check_status(CCoreWorkerProcess.GetCoreWorker().
+                         Delete(free_ids, local_only))
 
     def get_local_ongoing_lineage_reconstruction_tasks(self):
         cdef:
@@ -4007,10 +4071,12 @@ cdef class CoreWorker:
                     c_string debugger_breakpoint,
                     c_string serialized_runtime_env_info,
                     int64_t generator_backpressure_num_objects,
-                    c_bool enable_task_events
+                    c_bool enable_task_events,
+                    labels,
                     ):
         cdef:
             unordered_map[c_string, double] c_resources
+            unordered_map[c_string, c_string] c_labels
             CRayFunction ray_function
             CTaskOptions task_options
             c_vector[unique_ptr[CTaskArg]] args_vector
@@ -4030,6 +4096,7 @@ cdef class CoreWorker:
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4041,7 +4108,9 @@ cdef class CoreWorker:
                 b"",
                 generator_backpressure_num_objects,
                 serialized_runtime_env_info,
-                enable_task_events)
+                enable_task_events,
+                c_labels,
+                )
 
             current_c_task_id = current_task.native()
 
@@ -4087,6 +4156,7 @@ cdef class CoreWorker:
                      int32_t max_pending_calls,
                      scheduling_strategy,
                      c_bool enable_task_events,
+                     labels,
                      ):
         cdef:
             CRayFunction ray_function
@@ -4099,6 +4169,7 @@ cdef class CoreWorker:
             CSchedulingStrategy c_scheduling_strategy
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
+            unordered_map[c_string, c_string] c_labels
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4106,6 +4177,7 @@ cdef class CoreWorker:
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
             prepare_resources(placement_resources, &c_placement_resources)
+            prepare_labels(labels, &c_labels)
             ray_function = CRayFunction(
                 language.lang, function_descriptor.descriptor)
             prepare_args_and_increment_put_refs(
@@ -4134,7 +4206,8 @@ cdef class CoreWorker:
                         # async or threaded actors.
                         is_asyncio or max_concurrency > 1,
                         max_pending_calls,
-                        enable_task_events),
+                        enable_task_events,
+                        c_labels),
                     extension_data,
                     &c_actor_id)
 
@@ -4245,6 +4318,7 @@ cdef class CoreWorker:
             TaskID current_task = self.get_current_task_id()
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
+            unordered_map[c_string, c_string] c_labels
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
@@ -4273,7 +4347,8 @@ cdef class CoreWorker:
                         concurrency_group_name,
                         generator_backpressure_num_objects,
                         serialized_runtime_env,
-                        enable_task_events),
+                        enable_task_events,
+                        c_labels),
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
@@ -4794,6 +4869,7 @@ cdef class CoreWorker:
           specified_cgname: str,
           *,
           task_id: Optional[TaskID] = None,
+          task_name: Optional[str] = None,
           func_args: Optional[Tuple] = None,
           func_kwargs: Optional[Dict] = None,
     ):
@@ -4840,6 +4916,9 @@ cdef class CoreWorker:
             try:
                 if task_id:
                     async_task_id.set(task_id)
+                if task_name is not None:
+                    async_task_name.set(task_name)
+                async_task_function_name.set(function_descriptor.repr)
 
                 if inspect.isawaitable(func_or_coro):
                     coroutine = func_or_coro
@@ -5181,11 +5260,11 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
 
 # Note this deletes keys with prefix `RAY{key_prefix}@`
 # Example: with key_prefix = `default`, we remove all `RAYdefault@...` keys.
-def del_key_prefix_from_storage(host, port, password, use_ssl, key_prefix):
-    return RedisDelKeyPrefixSync(host, port, password, use_ssl, key_prefix)
+def del_key_prefix_from_storage(host, port, username, password, use_ssl, key_prefix):
+    return RedisDelKeyPrefixSync(host, port, username, password, use_ssl, key_prefix)
 
 
-def get_session_key_from_storage(host, port, password, use_ssl, config, key):
+def get_session_key_from_storage(host, port, username, password, use_ssl, config, key):
     """
     Get the session key from the storage.
     Intended to be used for session_name only.
@@ -5193,14 +5272,16 @@ def get_session_key_from_storage(host, port, password, use_ssl, config, key):
         host: The address of the owner (caller) of the
             generator task.
         port: The task ID of the generator task.
-        password: The redis password.
+        username: The Redis username.
+        password: The Redis password.
         use_ssl: Whether to use SSL.
         config: The Ray config. Used to get storage namespace.
         key: The key to retrieve.
     """
     cdef:
         c_string data
-    result = RedisGetKeySync(host, port, password, use_ssl, config, key, &data)
+    result = RedisGetKeySync(
+        host, port, username, password, use_ssl, config, key, &data)
     if result:
         return data
     else:

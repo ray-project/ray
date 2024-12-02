@@ -26,13 +26,13 @@ GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool)
+    rpc::NodeManagerClientPool &raylet_client_pool)
     : io_context_(io_context),
       return_timer_(io_context),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
-      raylet_client_pool_(std::move(raylet_client_pool)) {}
+      raylet_client_pool_(raylet_client_pool) {}
 
 void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
     const SchedulePgRequest &request) {
@@ -279,7 +279,7 @@ void GcsPlacementGroupScheduler::CancelResourceReserve(
 
 std::shared_ptr<ResourceReserveInterface>
 GcsPlacementGroupScheduler::GetOrConnectLeaseClient(const rpc::Address &raylet_address) {
-  return raylet_client_pool_->GetOrConnectByAddress(raylet_address);
+  return raylet_client_pool_.GetOrConnectByAddress(raylet_address);
 }
 
 std::shared_ptr<ResourceReserveInterface>

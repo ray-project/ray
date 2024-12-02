@@ -19,12 +19,14 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <queue>
+#include <string_view>
 #include <unordered_set>
 #include <utility>
 #include <vector>
 
-#include "gtest/gtest.h"
+#include "absl/time/time.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/client_connection.h"
@@ -117,7 +119,7 @@ class WorkerPoolInterface {
   virtual const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
       bool filter_dead_workers = false, bool filter_io_workers = false) const = 0;
 
-  virtual ~WorkerPoolInterface(){};
+  virtual ~WorkerPoolInterface() = default;
 };
 
 /// \class IOWorkerPoolInterface
@@ -140,7 +142,7 @@ class IOWorkerPoolInterface {
   virtual void PopDeleteWorker(
       std::function<void(std::shared_ptr<WorkerInterface>)> callback) = 0;
 
-  virtual ~IOWorkerPoolInterface(){};
+  virtual ~IOWorkerPoolInterface() = default;
 };
 
 class WorkerInterface;
@@ -153,7 +155,7 @@ enum class WorkerUnfitForTaskReason {
   DYNAMIC_OPTIONS_MISMATCH = 3,  // dynamic options mismatch
   OTHERS = 4,                    // reasons we don't do stats for (e.g. language)
 };
-static constexpr absl::string_view kWorkerUnfitForTaskReasonDebugName[] = {
+static constexpr std::string_view kWorkerUnfitForTaskReasonDebugName[] = {
     "NONE",
     "ROOT_MISMATCH",
     "RUNTIME_ENV_MISMATCH",
@@ -200,7 +202,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// it times out to start a worker.
   /// \param ray_debugger_external Ray debugger in workers will be started in a way
   /// that they are accessible from outside the node.
-  /// \param get_time A callback to get the current time.
+  /// \param get_time A callback to get the current time in milliseconds.
   WorkerPool(instrumented_io_context &io_service,
              const NodeID node_id,
              const std::string node_address,
@@ -212,13 +214,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
              const std::vector<int> &worker_ports,
              std::shared_ptr<gcs::GcsClient> gcs_client,
              const WorkerCommandMap &worker_commands,
-             const std::string &native_library_path,
+             std::string native_library_path,
              std::function<void()> starting_worker_timeout_callback,
              int ray_debugger_external,
-             const std::function<double()> get_time);
+             std::function<absl::Time()> get_time);
 
   /// Destructor responsible for freeing a set of workers owned by this class.
-  virtual ~WorkerPool();
+  virtual ~WorkerPool() override;
 
   /// Start the worker pool. Could only be called once.
   void Start();
@@ -229,7 +231,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set Runtime Env Manager Client.
   void SetRuntimeEnvAgentClient(
-      std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client);
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client);
 
   /// Handles the event that a job is started.
   ///
@@ -317,7 +319,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// Add an idle spill I/O worker to the pool.
   ///
   /// \param worker The idle spill I/O worker to add.
-  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushSpillWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle spill I/O worker from the pool and trigger a callback when
   /// an spill I/O worker is available.
@@ -325,12 +327,13 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// pool once the worker has completed its work.
   ///
   /// \param callback The callback that returns an available spill I/O worker.
-  void PopSpillWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopSpillWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// Add an idle restore I/O worker to the pool.
   ///
   /// \param worker The idle I/O worker to add.
-  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushRestoreWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle restore I/O worker from the pool and trigger a callback when
   /// an restore I/O worker is available.
@@ -338,7 +341,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// pool once the worker has completed its work.
   ///
   /// \param callback The callback that returns an available restore I/O worker.
-  void PopRestoreWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopRestoreWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// Add an idle delete I/O worker to the pool.
   ///
@@ -347,20 +351,22 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// This method is just a higher level abstraction to hide that implementation detail.
   ///
   /// \param worker The idle I/O worker. It could be either spill or restore I/O worker.
-  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushDeleteWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// Pop an idle delete I/O worker from the pool and trigger a callback when
   /// when delete I/O worker is available.
   /// NOTE: There's currently no concept of delete workers or delete worker pools.
   /// This method just finds more available I/O workers from either spill or restore pool
   /// and pop them out.
-  void PopDeleteWorker(std::function<void(std::shared_ptr<WorkerInterface>)> callback);
+  void PopDeleteWorker(
+      std::function<void(std::shared_ptr<WorkerInterface>)> callback) override;
 
   /// See interface.
-  void PushWorker(const std::shared_ptr<WorkerInterface> &worker);
+  void PushWorker(const std::shared_ptr<WorkerInterface> &worker) override;
 
   /// See interface.
-  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback);
+  void PopWorker(const TaskSpecification &task_spec,
+                 const PopWorkerCallback &callback) override;
 
   /// Try to prestart a number of workers suitable the given task spec. Prestarting
   /// is needed since core workers request one lease at a time, if starting is slow,
@@ -390,7 +396,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   ///
   /// \return A list containing all the workers.
   const std::vector<std::shared_ptr<WorkerInterface>> GetAllRegisteredWorkers(
-      bool filter_dead_workers = false, bool filter_io_workers = false) const;
+      bool filter_dead_workers = false, bool filter_io_workers = false) const override;
 
   /// Get all the registered drivers.
   ///
@@ -468,7 +474,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// TODO(scv119): replace dynamic options by runtime_env.
   const std::vector<std::string> &LookupWorkerDynamicOptions(StartupToken token) const;
 
-  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, int64_t last_time_used_ms);
+  void KillIdleWorker(std::shared_ptr<WorkerInterface> worker, absl::Time last_time_used);
 
   /// Gloabl startup token variable. Incremented once assigned
   /// to a worker process and is added to
@@ -583,7 +589,8 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// The pool of idle non-actor workers of all languages. This is used to kill idle
   /// workers in FIFO order. The second element of std::pair is the time a worker becomes
   /// idle.
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> idle_of_all_languages_;
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, absl::Time>>
+      idle_of_all_languages_;
 
  private:
   /// A helper function that returns the reference of the pool state
@@ -788,9 +795,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   PeriodicalRunner periodical_runner_;
 
   /// A callback to get the current time.
-  const std::function<double()> get_time_;
+  const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
+  std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
   int64_t process_failed_rate_limited_ = 0;

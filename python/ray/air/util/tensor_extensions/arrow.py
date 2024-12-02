@@ -10,10 +10,14 @@ import pyarrow as pa
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
+from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.air.util.tensor_extensions.utils import (
+    _is_ndarray_tensor,
     _is_ndarray_variable_shaped_tensor,
     create_ragged_ndarray,
 )
+from ray.data._internal.util import GiB
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 PYARROW_VERSION = _get_pyarrow_version()
@@ -25,8 +29,14 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
+# Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
+MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
+#       its offsets
+INT32_OVERFLOW_THRESHOLD = 2 * GiB
 
 logger = logging.getLogger(__name__)
 
@@ -85,14 +95,152 @@ def pyarrow_table_from_pydict(
         raise ArrowConversionError(str(pydict)) from e
 
 
-@DeveloperAPI
-def convert_list_to_pyarrow_array(
-    val: List[Any], enclosing_dict: Dict[str, Any]
-) -> pa.Array:
+@DeveloperAPI(stability="alpha")
+def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.Array:
+    """Converts provided NumPy `ndarray` into PyArrow's `array` while utilizing
+    both Arrow's natively supported types as well as custom extension types:
+
+        - ArrowTensorArray (for tensors)
+        - ArrowPythonObjectArray (for user-defined python class objects, as well as
+        any python object that aren't represented by a corresponding Arrow's native
+        scalar type)
+    """
+
     try:
-        return pa.array(val)
+        # Since Arrow does NOT support tensors (aka multidimensional arrays) natively,
+        # we have to make sure that we handle this case utilizing `ArrowTensorArray`
+        # extension type
+        if column_name == TENSOR_COLUMN_NAME or _is_ndarray_tensor(column_values):
+            from ray.data.extensions.tensor_extension import ArrowTensorArray
+
+            return ArrowTensorArray.from_numpy(column_values, column_name)
+        else:
+            return _convert_to_pyarrow_native_array(column_values, column_name)
+
+    except ArrowConversionError as ace:
+        from ray.data.extensions.object_extension import (
+            ArrowPythonObjectArray,
+            _object_extension_type_allowed,
+        )
+
+        if not _object_extension_type_allowed():
+            should_serialize_as_object_ext_type = False
+            object_ext_type_detail = (
+                "skipping fallback to serialize as pickled python"
+                f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
+                f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
+            )
+        else:
+            from ray.data import DataContext
+
+            if not DataContext.get_current().enable_fallback_to_arrow_object_ext_type:
+                should_serialize_as_object_ext_type = False
+                object_ext_type_detail = (
+                    "skipping fallback to serialize as pickled python objects "
+                    "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
+                    "= False)"
+                )
+            else:
+                should_serialize_as_object_ext_type = True
+                object_ext_type_detail = (
+                    "falling back to serialize as pickled python objects"
+                )
+
+        # NOTE: To avoid logging following warning for every block it's
+        #       only going to be logged in following cases
+        #           - When fallback is disabled, or
+        #           - It's being logged for the first time
+        if not should_serialize_as_object_ext_type or log_once(
+            "_fallback_to_arrow_object_extension_type_warning"
+        ):
+            logger.warning(
+                f"Failed to convert column '{column_name}' into pyarrow "
+                f"array due to: {ace}; {object_ext_type_detail}",
+                exc_info=ace,
+            )
+
+        # If `ArrowPythonObjectType` is not supported raise original exception
+        if not should_serialize_as_object_ext_type:
+            raise
+
+        # Otherwise, attempt to fall back to serialize as python objects
+        return ArrowPythonObjectArray.from_objects(column_values)
+
+
+def _convert_to_pyarrow_native_array(
+    column_values: np.ndarray, column_name: str
+) -> pa.Array:
+    """Converts provided NumPy `ndarray` into PyArrow's `array` while only utilizing
+    Arrow's natively supported types (ie no custom extension types)"""
+
+    try:
+        # NOTE: We explicitly infer PyArrow `DataType` so that
+        #       we can perform upcasting to be able to accommodate
+        #       blocks that are larger than 2Gb in size (limited
+        #       by int32 offsets used by Arrow internally)
+        dtype = _infer_pyarrow_type(column_values)
+
+        logger.log(
+            logging.getLevelName("TRACE"),
+            f"Inferred dtype of '{dtype}' for column '{column_name}'",
+        )
+
+        return pa.array(column_values, type=dtype)
     except Exception as e:
-        raise ArrowConversionError(str(enclosing_dict)) from e
+        raise ArrowConversionError(str(column_values)) from e
+
+
+def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
+    """Infers target Pyarrow `DataType` based on the provided
+    columnar values.
+
+    NOTE: This is a wrapper on top of `pa.infer_type(...)` utility
+          performing up-casting of `binary` and `string` types to
+          corresponding `large_binary` and `large_string` types in case
+          any of the array elements exceeds 2Gb in size therefore
+          making it impossible for original types to accommodate such
+          values.
+
+          Unfortunately, for unknown reasons PA doesn't perform
+          that upcasting itself henceforth we have to do perform
+          it manually
+
+    Args:
+        column_values: List of columnar values
+
+    Returns:
+        Instance of PyArrow's `DataType` based on the provided
+        column values
+    """
+
+    if len(column_values) == 0:
+        return None
+
+    inferred_pa_dtype = pa.infer_type(column_values)
+
+    def _len_gt_overflow_threshold(obj: Any) -> bool:
+        # NOTE: This utility could be seeing objects other than strings or bytes in
+        #       cases when column contains non-scalar non-homogeneous object types as
+        #       column values, therefore making Arrow unable to infer corresponding
+        #       column type appropriately, therefore falling back to assume the type
+        #       of the first element in the list.
+        #
+        #       Check out test cases for this method for an additional context.
+        if isinstance(obj, (str, bytes)):
+            return len(obj) > INT32_OVERFLOW_THRESHOLD
+
+        return False
+
+    if pa.types.is_binary(inferred_pa_dtype) and any(
+        [_len_gt_overflow_threshold(v) for v in column_values]
+    ):
+        return pa.large_binary()
+    elif pa.types.is_string(inferred_pa_dtype) and any(
+        [_len_gt_overflow_threshold(v) for v in column_values]
+    ):
+        return pa.large_string()
+
+    return inferred_pa_dtype
 
 
 @DeveloperAPI
@@ -100,7 +248,26 @@ def get_arrow_extension_tensor_types():
     """Returns list of extension types of Arrow Array holding
     multidimensional tensors
     """
-    return ArrowTensorType, ArrowTensorTypeV2, ArrowVariableShapedTensorType
+    return (
+        *get_arrow_extension_fixed_shape_tensor_types(),
+        *get_arrow_extension_variable_shape_tensor_types(),
+    )
+
+
+@DeveloperAPI
+def get_arrow_extension_fixed_shape_tensor_types():
+    """Returns list of Arrow extension types holding multidimensional
+    tensors of *fixed* shape
+    """
+    return ArrowTensorType, ArrowTensorTypeV2
+
+
+@DeveloperAPI
+def get_arrow_extension_variable_shape_tensor_types():
+    """Returns list of Arrow extension types holding multidimensional
+    tensors of *fixed* shape
+    """
+    return (ArrowVariableShapedTensorType,)
 
 
 class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
@@ -225,7 +392,7 @@ class _BaseFixedShapeArrowTensorType(pa.ExtensionType, abc.ABC):
             # short-circuit since we require a variable-shaped representation.
             if isinstance(arr_type, ArrowVariableShapedTensorType):
                 return True
-            if not isinstance(arr_type, (ArrowTensorType, ArrowTensorTypeV2)):
+            if not isinstance(arr_type, get_arrow_extension_fixed_shape_tensor_types()):
                 raise ValueError(
                     "All provided array types must be an instance of either "
                     "ArrowTensorType or ArrowVariableShapedTensorType, but "
@@ -408,7 +575,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
                 arr = np.stack(arr, axis=0)
-            except ValueError:
+            except ValueError as ve:
+                logger.warning(
+                    f"Failed to stack lists due to: {ve}; "
+                    f"falling back to using np.array(..., dtype=object)",
+                    exc_info=ve,
+                )
+
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
                 arr = np.array(arr, dtype=object)
         if not isinstance(arr, np.ndarray):
@@ -469,9 +642,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
 
         from ray.data import DataContext
 
-        should_use_tensor_v2 = DataContext.get_current().use_arrow_tensor_v2
-
-        if should_use_tensor_v2:
+        if DataContext.get_current().use_arrow_tensor_v2:
             pa_type_ = ArrowTensorTypeV2(element_shape, scalar_dtype)
         else:
             pa_type_ = ArrowTensorType(element_shape, scalar_dtype)
@@ -635,7 +806,7 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         if ArrowTensorType._need_variable_shaped_tensor_array(arrs_types):
             new_arrs = []
             for a in arrs:
-                if isinstance(a.type, (ArrowTensorType, ArrowTensorTypeV2)):
+                if isinstance(a.type, get_arrow_extension_fixed_shape_tensor_types()):
                     a = a.to_variable_shaped_tensor_array()
                 assert isinstance(a.type, ArrowVariableShapedTensorType)
                 new_arrs.append(a)

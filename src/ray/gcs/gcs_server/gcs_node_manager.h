@@ -50,7 +50,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// \param gcs_table_storage GCS table external storage accessor.
   explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+                          rpc::NodeManagerClientPool *raylet_client_pool,
                           instrumented_io_context &io_context,
                           const ClusterID &cluster_id);
 
@@ -249,7 +249,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   /// Storage for GCS tables.
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
   /// IO context.
   instrumented_io_context &io_context_;
   /// Cluster ID to be shared with clients when connecting.

@@ -14,9 +14,7 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 
-namespace ray {
-
-namespace gcs {
+namespace ray::gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      const std::string &key,
@@ -59,7 +57,7 @@ Status InMemoryStoreClient::AsyncGetAll(
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  auto result = absl::flat_hash_map<std::string, std::string>();
+  result.reserve(table->records_.size());
   result.insert(table->records_.begin(), table->records_.end());
   callback.Post("GcsInMemoryStore.GetAll", std::move(result));
   return Status::OK();
@@ -71,8 +69,7 @@ Status InMemoryStoreClient::AsyncMultiGet(
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
-  auto result = absl::flat_hash_map<std::string, std::string>();
-  for (auto &key : keys) {
+  for (const auto &key : keys) {
     auto it = table->records_.find(key);
     if (it == table->records_.end()) {
       continue;
@@ -118,11 +115,10 @@ std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCr
   auto iter = tables_.find(table_name);
   if (iter != tables_.end()) {
     return iter->second;
-  } else {
-    auto table = std::make_shared<InMemoryTable>();
-    tables_[table_name] = table;
-    return table;
   }
+  auto table = std::make_shared<InMemoryTable>();
+  tables_[table_name] = table;
+  return table;
 }
 
 Status InMemoryStoreClient::AsyncGetKeys(
@@ -130,11 +126,10 @@ Status InMemoryStoreClient::AsyncGetKeys(
     const std::string &prefix,
     Postable<void(std::vector<std::string>)> callback) {
   auto table = GetOrCreateTable(table_name);
-  std::vector<std::string> result;
   absl::MutexLock lock(&(table->mutex_));
-  for (auto &pair : table->records_) {
-    if (pair.first.find(prefix) == 0) {
-      result.push_back(pair.first);
+  for (const auto &[key, _] : table->records_) {
+    if (key.find(prefix) == 0) {
+      result.emplace_back(key);
     }
   }
   callback.Post("GcsInMemoryStore.Keys", std::move(result));
@@ -151,6 +146,4 @@ Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
   return Status::OK();
 }
 
-}  // namespace gcs
-
-}  // namespace ray
+}  // namespace ray::gcs

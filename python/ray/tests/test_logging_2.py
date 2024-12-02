@@ -54,11 +54,14 @@ class TestCoreContextFilter:
                 "worker_id": runtime_context.get_worker_id(),
                 "node_id": runtime_context.get_node_id(),
                 "task_id": runtime_context.get_task_id(),
+                "task_name": runtime_context.get_task_name(),
+                "task_func_name": runtime_context.get_task_function_name(),
             }
             for attr in should_exist:
                 assert hasattr(record, attr)
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
+            assert not hasattr(record, "actor_name")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -77,7 +80,10 @@ class TestCoreContextFilter:
                     "worker_id": runtime_context.get_worker_id(),
                     "node_id": runtime_context.get_node_id(),
                     "actor_id": runtime_context.get_actor_id(),
+                    "actor_name": runtime_context.get_actor_name(),
                     "task_id": runtime_context.get_task_id(),
+                    "task_name": runtime_context.get_task_name(),
+                    "task_func_name": runtime_context.get_task_function_name(),
                 }
                 for attr in should_exist:
                     assert hasattr(record, attr)
@@ -201,17 +207,9 @@ class TestTextFormatter:
             assert s in formatted
 
 
-class TestLoggingConfig:
-    def test_log_level(self):
-        log_level = "DEBUG"
-        logging_config = LoggingConfig(log_level=log_level)
-        dict_config = logging_config._get_dict_config()
-        assert dict_config["handlers"]["console"]["level"] == log_level
-        assert dict_config["root"]["level"] == log_level
-
-    def test_invalid_dict_config(self):
-        with pytest.raises(ValueError):
-            LoggingConfig(encoding="INVALID")._get_dict_config()
+def test_invalid_encoding():
+    with pytest.raises(ValueError):
+        LoggingConfig(encoding="INVALID")
 
 
 class TestTextModeE2E:
@@ -469,6 +467,27 @@ ray.get(my_actor.print_message.remote())
     stderr = run_string_as_driver(script)
     assert "This is a Ray actor" in stderr
     assert "(MyActor pid=" not in stderr
+
+
+def test_configure_both_structured_logging_and_lib_logging(shutdown_only):
+    """
+    Configure the `ray.test` logger. Then, configure the `root` and `ray`
+    loggers in `ray.init()`. Ensure that the `ray.test` logger is not affected.
+    """
+    script = """
+import ray
+import logging
+
+old_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() != logging.DEBUG
+old_test_logger.setLevel(logging.DEBUG)
+
+ray.init(logging_config=ray.LoggingConfig(encoding="TEXT", log_level="INFO"))
+
+new_test_logger = logging.getLogger("ray.test")
+assert old_test_logger.getEffectiveLevel() == logging.DEBUG
+"""
+    run_string_as_driver(script)
 
 
 if __name__ == "__main__":

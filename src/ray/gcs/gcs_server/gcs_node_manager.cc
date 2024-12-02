@@ -29,15 +29,14 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
+GcsNodeManager::GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
+                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                               rpc::NodeManagerClientPool *raylet_client_pool,
     instrumented_io_context &io_context,
-    const ClusterID &cluster_id)
+                               const ClusterID &cluster_id)
     : gcs_publisher_(std::move(gcs_publisher)),
       gcs_table_storage_(std::move(gcs_table_storage)),
-      raylet_client_pool_(std::move(raylet_client_pool)),
+      raylet_client_pool_(raylet_client_pool),
       io_context_(io_context),
       cluster_id_(cluster_id) {}
 
@@ -93,7 +92,8 @@ void GcsNodeManager::HandleRegisterNode(rpc::RegisterNodeRequest request,
     RAY_LOG(INFO).WithField(node_id)
         << "Finished registering node info, address = "
         << request.node_info().node_manager_address()
-        << ", node name = " << request.node_info().node_name();
+        << ", node name = " << request.node_info().node_name()
+        << ", is_head_node = " << request.node_info().is_head_node();
     RAY_CHECK_OK(gcs_publisher_->PublishNodeInfo(node_id, request.node_info(), nullptr));
     AddNode(std::make_shared<rpc::GcsNodeInfo>(request.node_info()));
     WriteNodeExportEvent(request.node_info());
@@ -395,8 +395,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
 

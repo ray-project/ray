@@ -28,7 +28,11 @@ class instrumented_io_context : public boost::asio::io_context {
  public:
   /// Initializes the global stats struct after calling the base contructor.
   /// TODO(ekl) allow taking an externally defined event tracker.
-  instrumented_io_context() : event_stats_(std::make_shared<EventTracker>()) {}
+  ///
+  /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
+  /// probe to measure the event loop lag. After a probe is done, it schedules another one
+  /// so a io_context.run() call will never return.
+  explicit instrumented_io_context(bool enable_lag_probe = false);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.

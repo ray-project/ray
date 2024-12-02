@@ -83,14 +83,17 @@ Done performing action inference through 10 Episodes
 """
 import os
 
-from ray.rllib.connectors.env_to_module import (
-    EnvToModulePipeline,
-    AddObservationsFromEpisodesToBatch,
-    AddStatesFromEpisodesToBatch,
-    BatchIndividualItems,
-    NumpyToTensor,
+from ray.rllib.connectors.env_to_module import EnvToModulePipeline
+from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
+from ray.rllib.core import (
+    COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -144,10 +147,6 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
@@ -163,50 +162,54 @@ if __name__ == "__main__":
     print("Training LSTM-policy until desired reward/timesteps/iterations. ...")
     results = run_rllib_example_script_experiment(base_config, args)
 
-    print("Training completed. Creating an env-loop for inference ...")
-
-    print("Env ...")
-    env = _env_creator(base_config.env_config)
-
-    # We build the env-to-module pipeline here manually, but feel also free to build it
-    # through the even easier:
-    # `env_to_module = base_config.build_env_to_module_connector(env=env)`, which will
-    # automatically add all default pieces necessary (for example the
-    # `AddStatesFromEpisodesToBatch` component b/c we are using a stateful RLModule
-    # here).
-    print("Env-to-module ConnectorV2 ...")
-    env_to_module = EnvToModulePipeline(
-        input_observation_space=env.observation_space,
-        input_action_space=env.action_space,
-        connectors=[
-            AddObservationsFromEpisodesToBatch(),
-            AddStatesFromEpisodesToBatch(),
-            BatchIndividualItems(multi_agent=args.num_agents > 0),
-            NumpyToTensor(),
-        ],
-    )
-
-    # Create the RLModule.
     # Get the last checkpoint from the above training run.
-    best_result = results.get_best_result(
-        metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
+    metric_key = metric = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+    best_result = results.get_best_result(metric=metric_key, mode="max")
+
+    print(
+        "Training completed (R="
+        f"{best_result.metrics[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}). "
+        "Creating an env-loop for inference ..."
     )
 
+    print("Env ...", end="")
+    env = _env_creator(base_config.env_config)
+    print(" ok")
+
+    # Create the env-to-module pipeline from the checkpoint.
+    print("Restore env-to-module connector from checkpoint ...", end="")
+    env_to_module = EnvToModulePipeline.from_checkpoint(
+        os.path.join(
+            best_result.checkpoint.path,
+            COMPONENT_ENV_RUNNER,
+            COMPONENT_ENV_TO_MODULE_CONNECTOR,
+        )
+    )
+    print(" ok")
+
+    print("Restore RLModule from checkpoint ...", end="")
     # Create RLModule from a checkpoint.
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
-            "learner_group",
-            "learner",
-            "rl_module",
+            COMPONENT_LEARNER_GROUP,
+            COMPONENT_LEARNER,
+            COMPONENT_RL_MODULE,
             DEFAULT_MODULE_ID,
         )
     )
-    print("RLModule restored ...")
+    print(" ok")
 
     # For the module-to-env pipeline, we will use the convenient config utility.
-    print("Module-to-env ConnectorV2 ...")
-    module_to_env = base_config.build_module_to_env_connector(env=env)
+    print("Restore module-to-env connector from checkpoint ...", end="")
+    module_to_env = ModuleToEnvPipeline.from_checkpoint(
+        os.path.join(
+            best_result.checkpoint.path,
+            COMPONENT_ENV_RUNNER,
+            COMPONENT_MODULE_TO_ENV_CONNECTOR,
+        )
+    )
+    print(" ok")
 
     # Now our setup is complete:
     # [gym.Env] -> env-to-module -> [RLModule] -> module-to-env -> [gym.Env] ... repeat
@@ -246,6 +249,7 @@ if __name__ == "__main__":
         # is not vectorized here, so we need to use `action[0]`.
         action = to_env.pop(Columns.ACTIONS)[0]
         obs, reward, terminated, truncated, _ = env.step(action)
+        # Keep our `SingleAgentEpisode` instance updated at all times.
         episode.add_env_step(
             obs,
             action,
