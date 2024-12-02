@@ -47,18 +47,11 @@
 
 namespace ray::utils::container {
 
-// TODO(hjiang): `absl::container_internal::hash_default_` has been promoted to stable
-// public interface in the latest abseil, update after we bump up abseil version.
-template <typename Key,
-          typename Val,
-          typename KeyHash = absl::container_internal::hash_default_hash<Key>,
-          typename KeyEq = absl::container_internal::hash_default_eq<Key>>
+template <typename Key, typename Val>
 class SharedLruCache final {
  public:
   using key_type = Key;
   using mapped_type = Val;
-  using hasher = KeyHash;
-  using key_equal = KeyEq;
 
   // A `max_entries` of 0 means that there is no limit on the number of entries
   // in the cache.
@@ -137,7 +130,7 @@ class SharedLruCache final {
     typename std::list<Key>::iterator lru_iterator;
   };
 
-  using EntryMap = absl::flat_hash_map<Key, Entry, KeyHash, KeyEq>;
+  using EntryMap = absl::flat_hash_map<Key, Entry>;
 
   // The maximum number of entries in the cache. A value of 0 means there is no
   // limit on entry count.
@@ -153,23 +146,15 @@ class SharedLruCache final {
 
 // Same interfaces as `SharedLruCache`, but all cached values are
 // `const`-specified to avoid concurrent updates.
-template <typename K,
-          typename V,
-          typename KeyHash = absl::container_internal::hash_default_hash<K>,
-          typename KeyEq = absl::container_internal::hash_default_eq<K>>
-using SharedLruConstCache = SharedLruCache<K, const V, KeyHash, KeyEq>;
+template <typename K, typename V>
+using SharedLruConstCache = SharedLruCache<K, const V>;
 
 // Same interface and functionality as `SharedLruCache`, but thread-safe version.
-template <typename Key,
-          typename Val,
-          typename KeyHash = absl::container_internal::hash_default_hash<Key>,
-          typename KeyEq = absl::container_internal::hash_default_eq<Key>>
+template <typename Key, typename Val>
 class ThreadSafeSharedLruCache final {
  public:
   using key_type = Key;
   using mapped_type = Val;
-  using hasher = KeyHash;
-  using key_equal = KeyEq;
 
   // A `max_entries` of 0 means that there is no limit on the number of entries
   // in the cache.
@@ -215,16 +200,12 @@ class ThreadSafeSharedLruCache final {
 
  private:
   std::mutex mu_;
-  SharedLruCache<Key, Val, KeyHash, KeyEq> cache_;
+  SharedLruCache<Key, Val> cache_;
 };
 
 // Same interfaces as `SharedLruCache`, but all cached values are
 // `const`-specified to avoid concurrent updates.
-template <typename K,
-          typename V,
-          typename KeyHash = absl::container_internal::hash_default_hash<K>,
-          typename KeyEq = absl::container_internal::hash_default_eq<K>>
-using ThreadSafeSharedLruConstCache =
-    ThreadSafeSharedLruCache<K, const V, KeyHash, KeyEq>;
+template <typename K, typename V>
+using ThreadSafeSharedLruConstCache = ThreadSafeSharedLruCache<K, const V>;
 
 }  // namespace ray::utils::container
