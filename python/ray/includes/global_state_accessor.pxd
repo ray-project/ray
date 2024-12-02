@@ -74,6 +74,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
     bool RedisGetKeySync(const std::string& host,
                          int32_t port,
+                         const std::string& username,
                          const std::string& password,
                          bool use_ssl,
                          const std::string& config,
@@ -85,7 +86,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                                              ray::RayLogLevel::WARNING,
                                              "" /* log_dir */);
 
-      RedisClientOptions options(host, port, password, use_ssl);
+      RedisClientOptions options(host, port, username, password, use_ssl);
 
       std::string config_list;
       RAY_CHECK(absl::Base64Unescape(config, &config_list));
@@ -121,6 +122,7 @@ cdef extern from * namespace "ray::gcs" nogil:
     """
     c_bool RedisGetKeySync(const c_string& host,
                            c_int32_t port,
+                           const c_string& username,
                            const c_string& password,
                            c_bool use_ssl,
                            const c_string& config,
@@ -131,6 +133,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 cdef extern from * namespace "ray::gcs" nogil:
     c_bool RedisDelKeyPrefixSync(const c_string& host,
                                  c_int32_t port,
+                                 const c_string& username,
                                  const c_string& password,
                                  c_bool use_ssl,
                                  const c_string& key_prefix)

@@ -380,6 +380,7 @@ class Node:
         return get_session_key_from_storage(
             redis_ip_address,
             int(redis_port),
+            self._ray_params.redis_username,
             self._ray_params.redis_password,
             enable_redis_ssl,
             serialize_config(self._config),
@@ -623,8 +624,13 @@ class Node:
         return self._redis_address
 
     @property
+    def redis_username(self):
+        """Get the cluster Redis username."""
+        return self._ray_params.redis_username
+
+    @property
     def redis_password(self):
-        """Get the cluster Redis password"""
+        """Get the cluster Redis password."""
         return self._ray_params.redis_password
 
     @property
@@ -1162,6 +1168,7 @@ class Node:
             self.session_name,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             config=self._config,
             fate_share=self.kernel_fate_share,
@@ -1220,6 +1227,7 @@ class Node:
             max_worker_port=self._ray_params.max_worker_port,
             worker_port_list=self._ray_params.worker_port_list,
             object_manager_port=self._ray_params.object_manager_port,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             metrics_agent_port=self._ray_params.metrics_agent_port,
             runtime_env_agent_port=self._ray_params.runtime_env_agent_port,
@@ -1284,6 +1292,7 @@ class Node:
             self._ray_params.ray_client_server_port,
             stdout_file=stdout_file,
             stderr_file=stderr_file,
+            redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             fate_share=self.kernel_fate_share,
             runtime_env_agent_address=self.runtime_env_agent_address,

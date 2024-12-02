@@ -30,6 +30,7 @@ using ray::core::WorkerType;
 
 void ProcessHelper::StartRayNode(const std::string node_id_address,
                                  const int port,
+                                 const std::string redis_username,
                                  const std::string redis_password,
                                  const std::vector<std::string> &head_args) {
   std::vector<std::string> cmdargs({"ray",
@@ -37,6 +38,8 @@ void ProcessHelper::StartRayNode(const std::string node_id_address,
                                     "--head",
                                     "--port",
                                     std::to_string(port),
+                                    "--redis-username",
+                                    redis_username,
                                     "--redis-password",
                                     redis_password,
                                     "--node-ip-address",
@@ -82,6 +85,7 @@ void ProcessHelper::RayStart(CoreWorkerOptions::TaskExecutionCallback callback) 
     bootstrap_ip = GetNodeIpAddress();
     StartRayNode(bootstrap_ip,
                  bootstrap_port,
+                 ConfigInternal::Instance().redis_username,
                  ConfigInternal::Instance().redis_password,
                  ConfigInternal::Instance().head_args);
   }

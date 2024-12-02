@@ -57,7 +57,9 @@ def pre_envs(monkeypatch):
     yield
 
 
-def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=None):
+def wait_for_redis_to_start(
+    redis_ip_address: str, redis_port: bool, password=None, username=None
+):
     """Wait for a Redis server to be available.
 
     This is accomplished by creating a Redis client and sending a random
@@ -66,7 +68,8 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     Args:
         redis_ip_address: The IP address of the redis server.
         redis_port: The port of the redis server.
-        password: The password of the redis server.
+        username: The username of the Redis server.
+        password: The password of the Redis server.
 
     Raises:
         Exception: An exception is raised if we could not connect with Redis.
@@ -74,7 +77,7 @@ def wait_for_redis_to_start(redis_ip_address: str, redis_port: bool, password=No
     import redis
 
     redis_client = redis.StrictRedis(
-        host=redis_ip_address, port=redis_port, password=password
+        host=redis_ip_address, port=redis_port, username=username, password=password
     )
     # Wait for the Redis server to start.
     num_retries = START_REDIS_WAIT_RETRIES
