@@ -691,7 +691,7 @@ class NexusScheduler:
         self.logger.info("Request rate monitoring stopped")
 
     def submit_request(self, model_name: str, request_id: str, 
-                      input_tensor: torch.Tensor, batch_profile: dict) -> bool:
+                      input_tensor: torch.Tensor) -> bool:
         """Submit request with error handling"""
         try:
             if model_name not in self.request_queues:
