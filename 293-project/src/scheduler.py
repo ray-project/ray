@@ -198,9 +198,12 @@ class RequestQueue:
         try:
             if self.queue.full():
                 self._logger.warning(f"Queue full for {self.model_name}")
+                print(f"Queue full for {self.model_name}")
                 return False
                 
+            print(f"calling put on queue")
             self.queue.put((request_id, input_tensor, time.time()))
+            print(f"finished calling put on queue")
             self._pending_count += 1
             self._total_requests += 1
             return True
