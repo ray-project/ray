@@ -30,6 +30,8 @@
 
 // clang-format on
 
+using json = nlohmann::json;
+
 namespace ray {
 
 class MockInMemoryStoreClient : public gcs::InMemoryStoreClient {
@@ -83,7 +85,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -130,7 +132,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   promise.get_future().get();
 
   std::vector<std::string> vc;
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
+  Mocker::ReadContentFromFile(vc,
+                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 1);
   json event_data = json::parse(vc[0])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], false);
@@ -149,7 +152,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
   job_finished_promise.get_future().get();
 
   vc.clear();
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_DRIVER_JOB.log");
+  Mocker::ReadContentFromFile(vc,
+                              log_dir_ + "/export_events/event_EXPORT_DRIVER_JOB.log");
   ASSERT_EQ((int)vc.size(), 2);
   event_data = json::parse(vc[1])["event_data"].get<json>();
   ASSERT_EQ(event_data["is_dead"], true);

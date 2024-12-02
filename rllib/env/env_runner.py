@@ -103,11 +103,7 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
 
     @abc.abstractmethod
     def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
-        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space.
-
-        The returned dict might also contain an extra key `__env__`, which maps to
-        a 2-tuple of the bare Env's observation- and action spaces.
-        """
+        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""
 
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner.

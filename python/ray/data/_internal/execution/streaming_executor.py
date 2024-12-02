@@ -188,11 +188,9 @@ class StreamingExecutor(Executor, threading.Thread):
                 state="FINISHED" if execution_completed else "FAILED",
                 force_update=True,
             )
-            # Clears metrics for this dataset so that they do
-            # not persist in the grafana dashboard after execution
-            StatsManager.clear_execution_metrics(
-                self._dataset_tag, self._get_operator_tags()
-            )
+            # Once Dataset execution completes, mark it as complete
+            # and remove last cached execution stats.
+            StatsManager.clear_last_execution_stats(self._dataset_tag)
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
@@ -363,15 +361,28 @@ class StreamingExecutor(Executor, threading.Thread):
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Active & requested resources: "
-            f"{running_usage.cpu:.4g} of {limits.cpu:.4g} available CPU, "
-            f"{running_usage.gpu:.4g} of {limits.gpu:.4g} available GPU, "
-            f"{running_usage.object_store_memory_str()} of "
-            f"{limits.object_store_memory_str()} available object_store_memory "
-            "(pending: "
-            f"{pending_usage.cpu:.4g} CPU, "
-            f"{pending_usage.gpu:.4g} GPU)"
+            # TODO(scottjlee): Add dataset name/ID to progress bar output.
+            "Running Dataset. Active & requested resources: "
+            f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
         )
+        if running_usage.gpu > 0:
+            resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+        resources_status += (
+            f"{running_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object store"
+        )
+
+        # Only include pending section when there are pending resources.
+        if pending_usage.cpu or pending_usage.gpu:
+            if pending_usage.cpu and pending_usage.gpu:
+                pending_str = (
+                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
+                )
+            elif pending_usage.cpu:
+                pending_str = f"{pending_usage.cpu:.4g} CPU"
+            else:
+                pending_str = f"{pending_usage.gpu:.4g} GPU"
+            resources_status += f" (pending: {pending_str})"
         if self._global_info:
             self._global_info.set_description(resources_status)
 
@@ -388,6 +399,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "end_time": time.time() if state != "RUNNING" else None,
             "operators": {
                 f"{op.name}{i}": {
+                    "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "state": state,
