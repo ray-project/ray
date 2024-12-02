@@ -5,6 +5,7 @@ import itertools
 import logging
 import time
 import warnings
+from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -764,19 +765,20 @@ class Dataset:
                 f"got: {batch_format}"
             )
 
+        def _raise_duplicate_column_error(col: str):
+            raise ValueError(f"Trying to add an existing column with name {col!r}")
+
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
                 import pandas as pd
 
-                assert isinstance(column, pd.Series), (
+                assert isinstance(column, (pd.Series, Sequence)), (
                     f"For pandas batch format, the function must return a pandas "
-                    f"Series, got: {type(column)}"
+                    f"Series or sequence, got: {type(column)}"
                 )
                 if col in batch:
-                    raise ValueError(
-                        f"Trying to add an existing column with name" f" {col}"
-                    )
+                    _raise_duplicate_column_error(col)
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
@@ -798,9 +800,7 @@ class Dataset:
                     # Append the column to the table
                     return batch.append_column(col, column)
                 else:
-                    raise ValueError(
-                        f"Trying to add an existing column with name {col}"
-                    )
+                    _raise_duplicate_column_error(col)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -810,9 +810,7 @@ class Dataset:
                     f"numpy.ndarray, got: {type(column)}"
                 )
                 if col in batch:
-                    raise ValueError(
-                        f"Trying to add an existing column with name" f" {col}"
-                    )
+                    _raise_duplicate_column_error(col)
                 batch[col] = column
                 return batch
 
@@ -1181,7 +1179,8 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], bool],
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
+        expr: Optional[str] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -1190,7 +1189,8 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class to perform the transformation.
+        You can use either a function or a callable class or an expression string to
+        perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
@@ -1218,6 +1218,8 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
+            expr: An expression string that will be
+                converted to pyarrow.dataset.Expression type.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1232,16 +1234,41 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        compute = get_compute_strategy(
-            fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
+        # Ensure exactly one of fn or expr is provided
+        resolved_expr = None
+        if not ((fn is None) ^ (expr is None)):
+            raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
+        elif expr is not None:
+            from ray.data._internal.compute import TaskPoolStrategy
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
+                ExpressionEvaluator,
+            )
+
+            # TODO: (srinathk) bind the expression to the actual schema.
+            # If fn is a string, convert it to a pyarrow.dataset.Expression
+            # Initialize ExpressionEvaluator with valid columns, if available
+            evaluator = ExpressionEvaluator()
+            resolved_expr = evaluator.get_filters(expression=expr)
+
+            compute = TaskPoolStrategy(size=concurrency)
+        else:
+            if callable(fn):
+                compute = get_compute_strategy(
+                    fn=fn,
+                    compute=compute,
+                    concurrency=concurrency,
+                )
+            else:
+                raise ValueError(
+                    f"fn must be a UserDefinedFunction, but got "
+                    f"{type(fn).__name__} instead."
+                )
 
         plan = self._plan.copy()
         op = Filter(
             input_op=self._logical_plan.dag,
             fn=fn,
+            filter_expr=resolved_expr,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
