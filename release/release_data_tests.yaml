@@ -525,44 +525,44 @@
 # Batch inference tests
 #######################
 
-# 300 GB image classification parquet data with 0-10 GPUs
-# 0-10 g4dn.12xlarge.
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
 - name: batch_inference
 
   cluster:
-    byod:
-      type: gpu
     cluster_compute: autoscaling_gpu_compute.yaml
 
   run:
     timeout: 1000
-    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+    script: >
+      python gpu_batch_inference.py 
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_chaos
-  # Don't use 'dataset' as the working directory because we need to run the 
-  # 'setup_chaos.py' script.
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run 
+  # the 'setup_chaos.py' script.
   working_dir: nightly_tests
 
   cluster:
-    byod:
-      type: gpu
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
     timeout: 1000
     prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
-    script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+    script: >
+      python dataset/gpu_batch_inference.py 
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-# 10 TB image classification parquet data with heterogenous cluster
+# 10 TB image classification parquet data with autoscaling heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: batch_inference_hetero
   frequency: weekly
 
   cluster:
-    byod:
-      type: gpu
     cluster_compute: autoscaling_hetero_compute.yaml
 
   run:
     timeout: 2000
-    script: python gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+    script: >
+      python gpu_batch_inference.py 
+      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
