@@ -325,6 +325,7 @@ class GPUWorker:
     def process_batch(self, batch: BatchRequest) -> Dict:
         """Process batch with enhanced monitoring"""
         try:
+            print(f"process_batch")
             model = self.models[batch.model_name]
             #inputs = torch.stack(batch.inputs).to(f'cuda:{self.gpu_id}')
             inputs = torch.stack(batch.inputs).cuda()  # Just use cuda() since only one GPU is visible
@@ -409,8 +410,10 @@ class GPUWorker:
                     queue = request_queues[s.model_name]
 
                     # Try to get batch from queue
+                    print(f"calling get batch for {s.model_name}")
                     batch = queue.get_batch(s.batch_size)
                     if batch:
+                        print(f"valid batch found")
                         # Process batch and measure timing
                         result = self.process_batch(batch)
                         processing_time = result['processing_time']
