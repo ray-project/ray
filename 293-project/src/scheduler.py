@@ -188,6 +188,15 @@ class RequestQueue:
         self._pending_count = 0
         self._total_requests = 0
         self._logger = logging.getLogger(f"Queue-{model_name}")
+
+        self.slo_target = models_config[model_name]['SLO']
+        self.profile = batch_profile[model_name]
+
+        # Simple metrics tracking
+        self.dropped_requests = 0
+        self.slo_violations = 0
+        self.latencies = deque(maxlen=1000)
+
         
     def empty(self) -> bool:
         """Check if queue is empty"""
@@ -198,6 +207,7 @@ class RequestQueue:
         try:
             if self.queue.full():
                 self._logger.warning(f"Queue full for {self.model_name}")
+                self.dropped_requests += 1
                 return False
                 
             self.queue.put((request_id, input_tensor, time.time()))
@@ -216,7 +226,7 @@ class RequestQueue:
         earliest_arrival = float('inf')
         
         try:
-            available = min(batch_size, self.queue.qsize())
+            '''available = min(batch_size, self.queue.qsize())
             if available == 0:
                 return None
                 
@@ -237,7 +247,15 @@ class RequestQueue:
             #     request_ids.append(request_id)
             #     inputs.append(input_tensor)
             #     earliest_arrival = min(earliest_arrival, arrival_time)
-            #     self._pending_count -= 1
+            #     self._pending_count -= 1'''
+            batch = self.queue.get_nowait_batch(batch_size)
+            if not batch:
+                return None
+            
+            for rid, tensor, arrival_time in batch:
+                request_ids.append(rid)
+                inputs.append(tensor)
+                earliest_arrival = min(earliest_arrival, arrival_time)
                     
             if inputs:
                 return BatchRequest(
@@ -255,13 +273,31 @@ class RequestQueue:
             
         return None
     
+    def record_batch_completion(self, batch: BatchRequest, completion_time: float):
+        """Record batch completion and update SLO metrics"""
+        latency = (completion_time - batch.arrival_time) * 1000  # Convert to ms
+        
+        # Check SLO violation
+        if latency > self.slo_target:
+            self.slo_violations += batch.batch_size
+            self._logger.warning(
+                f"SLO violation - Batch size: {batch.batch_size}, "
+                f"Latency: {latency:.2f}ms, Target: {self.slo_target}ms"
+            )
+        
+        self.latencies.append(latency)
+    
     def get_stats(self) -> Dict:
-        """Get queue statistics"""
+        """Get current queue statistics"""
+        latencies = list(self.latencies)
         return {
-            'pending_requests': self._pending_count,
-            'total_requests': self._total_requests,
+            'total_requests': self.total_requests,
+            'dropped_requests': self.dropped_requests,
+            'slo_violations': self.slo_violations,
             'queue_size': self.queue.qsize(),
-            'queue_capacity': self.queue.maxsize
+            'avg_latency': sum(latencies) / len(latencies) if latencies else 0,
+            'p95_latency': sorted(latencies)[int(len(latencies) * 0.95)] 
+                          if len(latencies) > 20 else 0
         }
 
 @ray.remote(num_gpus=1)
@@ -328,6 +364,9 @@ class GPUWorker:
     def process_batch(self, batch: BatchRequest) -> Dict:
         """Process batch with enhanced monitoring"""
         try:
+            
+            start_time = time.time()
+
             print(f"process_batch")
             model = self.models[batch.model_name]
             #inputs = torch.stack(batch.inputs).to(f'cuda:{self.gpu_id}')
@@ -336,17 +375,24 @@ class GPUWorker:
             #with torch.cuda.device(self.gpu_id):
             with torch.cuda.device(0):  # Always use device 0
                 torch.cuda.synchronize()  # Ensure GPU is ready
-                start_time = time.time()
                 
                 with torch.no_grad():  # Disable gradient computation
                     outputs = model(inputs)
                 
                 torch.cuda.synchronize()  # Wait for completion
-                processing_time = (time.time() - start_time) * 1000  # ms
+                
+                completion_time = time.time()
+                processing_time = (completion_time - start_time) * 1000  # ms
                 
                 self.stats['processed_batches'] += 1
                 self.stats['total_requests'] += len(batch.request_ids)
                 self.stats['processing_times'].append(processing_time)
+
+                
+                # Record completion
+                self.request_queues[batch.model_name].record_batch_completion(
+                    batch, completion_time
+                )
                 
                 return {
                     'outputs': outputs.cpu(),
@@ -501,6 +547,10 @@ class NexusScheduler:
         self.futures = []
         self._init_workers()
         self._start_workers()
+
+        # Initialize metrics display
+        self.metrics_display = MetricsDisplay(update_interval=5.0)
+        self.metrics_display.start(self.request_queues)
 
         # Add metrics tracking
         self.metrics: Dict[str, Dict] = {
@@ -757,6 +807,74 @@ class NexusScheduler:
             pass
         
 
+
+class MetricsDisplay:
+    """Real-time display of SLO metrics for all model queues"""
+    def __init__(self, update_interval: float = 1.0):
+        self.update_interval = update_interval
+        self.stop_display = False
+        self.display_thread = None
+        self.lock = Lock()
+        
+    def start(self, request_queues: Dict[str, RequestQueue]):
+        """Start metrics display thread"""
+        self.stop_display = False
+        self.display_thread = Thread(
+            target=self._display_loop, 
+            args=(request_queues,),
+            daemon=True
+        )
+        self.display_thread.start()
+        
+    def stop(self):
+        """Stop metrics display"""
+        self.stop_display = True
+        if self.display_thread:
+            self.display_thread.join()
+            
+    def _display_loop(self, request_queues: Dict[str, RequestQueue]):
+        """Main display loop"""
+        while not self.stop_display:
+            # Clear screen
+            os.system('clear' if os.name == 'posix' else 'cls')
+            
+            print("\n=== Real-time SLO Metrics ===")
+            print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+            print("=" * 50)
+            
+            # Display metrics for each model
+            for model_name, queue in request_queues.items():
+                stats = queue.get_stats()
+                slo_target = queue.slo_target
+                
+                print(f"\nModel: {model_name}")
+                print("-" * 30)
+                print(f"SLO Target: {slo_target}ms")
+                print(f"Queue Size: {stats['queue_size']}")
+                print(f"Total Requests: {stats['total_requests']}")
+                print(f"Dropped Requests: {stats['dropped_requests']}")
+                print(f"SLO Violations: {stats['slo_violations']}")
+                
+                # Calculate SLO compliance percentage
+                if stats['total_requests'] > 0:
+                    compliance = ((stats['total_requests'] - stats['slo_violations']) / 
+                                stats['total_requests'] * 100)
+                    print(f"SLO Compliance: {compliance:.2f}%")
+                
+                # Display latency metrics
+                print(f"Average Latency: {stats['avg_latency']:.2f}ms")
+                print(f"P95 Latency: {stats['p95_latency']:.2f}ms")
+                
+                # Visual indicators
+                queue_status = "🟢" if stats['queue_size'] < queue.queue.maxsize * 0.8 else "🔴"
+                slo_status = "🟢" if compliance >= 95 else "🔴" if compliance < 90 else "🟡"
+                print(f"Queue Status: {queue_status}  SLO Status: {slo_status}")
+            
+            print("\n" + "=" * 50)
+            print("🟢 Good  🟡 Warning  🔴 Critical")
+            print(f"Display updating every {self.update_interval} seconds...")
+            
+            time.sleep(self.update_interval)
 def main():
     """
     Main function for running the dynamic scheduling system.
