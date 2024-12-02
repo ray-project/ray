@@ -11,7 +11,7 @@ head_node_type:
 
 worker_node_types:
     - name: worker_node_gpu
-      instance_type: g4dn.12xlarge
+      instance_type: g4dn.2xlarge
       min_workers: 0
       max_workers: 10
       use_spot: false
