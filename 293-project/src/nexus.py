@@ -284,7 +284,7 @@ def main():
         for c in column_list:
             batching_profile['vit'][batch][c] /= 2
 
-    scheduler = NexusScheduler(batching_profile)
+    scheduler = nexus(batching_profile)
 
     # create sessions
     sessions: list [session] = []

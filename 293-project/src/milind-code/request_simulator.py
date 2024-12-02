@@ -9,7 +9,7 @@ import random
 import threading
 
 class RequestSimulator:
-    def __init__(self, model_name: str, request_rate: float = 0, SLO: float = 0, dataset: str = '../dataset'):
+    def __init__(self, model_name: str, request_rate: float = 0, SLO: float = 0, dataset: str = '../../dataset'):
         # ipc info
         self.context = zmq.Context()
         self.socket  = self.context.socket(zmq.PUSH)

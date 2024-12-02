@@ -6,8 +6,10 @@ import itertools
 import traceback
 import logging
 import os, csv, json
+from collections import deque
 from datetime import datetime, timedelta
 from ray.util.queue import Queue as RayQueue
+import threading
 from threading import Lock, Thread
 from queue import Queue, Empty
 from typing import Dict, List, Optional, Tuple, Any
@@ -269,6 +271,11 @@ class GPUWorker:
         self.duty_cycle = duty_cycle
         self.sessions = deque(sessions)
         self.models = {}
+        self.new_sessions = None
+        self.new_duty_cycle = None
+        self.lock = Lock()
+        self.model_registry = model_registry
+        self.device = 'cuda:0'
         self.logger = logging.getLogger(f"Worker-{node_id}")
         # Add diagnostic information
         print(f"Worker {node_id} initialization:")
@@ -347,6 +354,42 @@ class GPUWorker:
             self.logger.error(f"Error processing batch: {e}")
             raise
     
+    def _update_schedule(self, new_sessions: List[session], new_duty_cycle: float):
+        with self.lock:
+            self.new_sessions   = new_sessions
+            self.new_duty_cycle = new_duty_cycle
+
+    def _check_for_updates(self):
+        with self.lock:
+            if self.new_sessions:
+                # transition from old schedule to new one
+                new_model_list = [s.model_name for s, _ in self.new_sessions]
+                old_model_list = [s.model_name for s, _ in self.sessions]
+
+                # first unload all models not present in the new session
+                for model_name in old_model_list:
+                    if model_name not in new_model_list:
+                        # unload model
+                        self.models[model_name].cpu()
+                        del self.models[model_name]
+                        torch.cuda.empty_cache()
+
+                # load new models to gpu
+                for model_name in new_model_list:
+                    if model_name not in old_model_list:
+                        # load model to gpu
+                        model = self.model_registry[model_name]
+                        model = model.cpu()
+                        model = model.to(self.device)
+                        model.eval()
+                        self.models[model_name] = model
+
+                self.sessions   = self.new_sessions.copy()
+                self.duty_cycle = self.new_duty_cycle.copy()
+
+                self.new_sessions   = None
+                self.new_duty_cycle = None
+
 
     def execute_schedule(self, request_queues: Dict[str, RequestQueue]):
         """Execute round-robin schedule with enhanced monitoring"""
@@ -354,41 +397,50 @@ class GPUWorker:
     
         while self.active:
             try:
-                # Get current session and its occupancy
-                session, occupancy = self.sessions[0]
-                self.sessions.rotate(-1)
-            
-                 # Calculate time slice
-                time_slice = self.duty_cycle * occupancy
-                start_time = time.time()
-            
-                # Get queue for current model
-                queue = request_queues[session.model_name]
-            
-                # Try to get batch from queue
-                batch = queue.get_batch(session.batch_size)
-                if batch:
-                    # Process batch and measure timing
-                    result = self.process_batch(batch)
-                    processing_time = result['processing_time']
+                total_time       = self.duty_cycle
+                cycle_start_time = time.time()
+
+                for s, occupancy in self.sessions:
+                    # calculate current time slice
+                    time_slice         = total_time * occupancy
+                    session_start_time = time.time()
+
+                    # Get queue for current model
+                    queue = request_queues[s.model_name]
+
+                    # Try to get batch from queue
+                    batch = queue.get_batch(s.batch_size)
+                    if batch:
+                        # Process batch and measure timing
+                        result = self.process_batch(batch)
+                        processing_time = result['processing_time']
+                    
+                        # Log processing metrics
+                        self.logger.info(
+                            f"Processed batch of {batch.batch_size} requests for {session.model_name} "
+                            f"in {processing_time:.2f}ms"
+                        )
+                    
+                        # Sleep for remaining time if any
+                        remaining_time = time_slice - processing_time
+                        if remaining_time > 0:
+                            time.sleep(remaining_time / 1000)
+                    else:
+                        # No requests, sleep for time slice
+                        time.sleep(time_slice / 1000)
+
+                    # Log execution stats periodically
+                    if self.stats['processed_batches'] % 100 == 0:
+                        self.logger.info(f"Node {self.node_id} stats: {self.get_stats()}")
                 
-                    # Log processing metrics
-                    self.logger.info(
-                        f"Processed batch of {batch.batch_size} requests for {session.model_name} "
-                        f"in {processing_time:.2f}ms"
-                    )
-                
-                    # Sleep for remaining time if any
-                    remaining_time = time_slice - processing_time
-                    if remaining_time > 0:
-                        time.sleep(remaining_time / 1000)
-                else:
-                    # No requests, sleep for time slice
-                    time.sleep(time_slice / 1000)
-                
-                # Log execution stats periodically
-                if self.stats['processed_batches'] % 100 == 0:
-                    self.logger.info(f"Node {self.node_id} stats: {self.get_stats()}")
+                # wait for duty cycle to finish
+                current_time    = time.time()
+                remaining_cycle = current_time - (cycle_start_time + total_time) 
+                if remaining_cycle > 0:
+                    time.sleep(remaining_cycle / 1000)
+
+                # check if worker needs to update node session at the end of the duty cycle
+                self._check_for_updates()
                 
             except Exception as e:
                 self.logger.error(f"Error in schedule execution: {e}")
@@ -433,8 +485,16 @@ class NexusScheduler:
         self._stop_monitoring = False
         self.logger = logging.getLogger("NexusScheduler")
 
-        # TO DO !!!!!
-        # add instances of GPU worker nodes
+        # Initialize request queues
+        self.request_queues = {}
+        self._init_queues(1000)
+        
+        # Initialize workers
+        self.model_registry = model_registry
+        self.workers: List[GPUWorker] = []
+        self.futures = []
+        self._init_workers()
+        self._start_workers()
 
         # Add metrics tracking
         self.metrics: Dict[str, Dict] = {
@@ -444,6 +504,80 @@ class NexusScheduler:
             'node_changes': {}
         }
     
+    def _init_queues(self, max_queue_size: int):
+        """Initialize request queues for all models"""
+        for model in models_config.keys():
+            self.request_queues[model] = RequestQueue(
+                model_name=model,
+                max_size=max_queue_size
+            )
+
+            self.request_trackers[model] = RequestTracker(5)
+        # for schedule in self.node_schedules:
+        #     for session, _ in schedule['sessions']:
+        #         if session.model_name not in self.request_queues:
+        #             self.request_queues[session.model_name] = RequestQueue(
+        #                 model_name=session.model_name,
+        #                 max_size=max_queue_size
+        #             )
+
+    def _init_workers(self):
+        """Initialize GPU workers"""
+        available_gpus = torch.cuda.device_count()
+        required_gpus = len(self.nodes)
+        if required_gpus > available_gpus:
+            raise RuntimeError(f"Schedule requires {required_gpus} GPUs but only {available_gpus} available")
+        
+        node_count = 0
+        for node in self.nodes:
+            try:
+                worker = GPUWorker.remote(
+                    node_id='A6000_' + str(node_count),
+                    gpu_id=0,
+                    sessions=node.node_sessions,
+                    duty_cycle=node.duty_cycle,
+                    model_registry=self.model_registry
+                )
+                self.workers.append(worker)
+                node_count += 1
+            except Exception as e:
+                self.logger.error(f"Error initializing worker: {e}")
+        
+        # hack if 2 nodes have not started, start them with empty sessions
+        if node_count < 2:
+            for i in range(node_count, 2):
+                try:
+                    worker = GPUWorker.remote(
+                        node_id='A6000_' + str(i),
+                        gpu_id=0,
+                        sessions=[],
+                        duty_cycle=1,
+                        model_registry=self.model_registry
+                    )
+                    self.workers.append(worker)
+                except Exception as e:
+                    self.logger.error(f"Error initializing worker: {e}")
+                    
+
+    def _start_workers(self):
+        """Start schedule execution with monitoring"""
+        self.start_time = time.time()
+        self.logger.info("Starting schedule execution")
+
+        try:
+            # Create ray actors and start execution
+            for worker in self.workers:
+                self.futures.append(worker.execute_schedule.remote(self.request_queues))
+        
+            # Start monitoring thread
+            # self.monitoring_thread = threading.Thread(target=self._monitor_system)
+            # self.monitoring_thread.daemon = True
+            # self.monitoring_thread.start()
+        
+        except Exception as e:
+            self.logger.error(f"Error starting execution: {e}")
+            raise
+
     def start_monitoring(self) -> None:
         """Start the monitoring thread"""
         if self.monitoring_thread is not None:
@@ -462,15 +596,33 @@ class NexusScheduler:
             self.monitoring_thread = None
         self.logger.info("Request rate monitoring stopped")
 
-    def record_request(self, model_name: str) -> None:
-        """Record an incoming request for a model"""
-        if model_name not in self.request_trackers:
-            with self.lock:
-                if model_name not in self.request_trackers:
-                    self.request_trackers[model_name] = RequestTracker()
-                    self.metrics['total_requests'][model_name] = 0
-        self.request_trackers[model_name].record_request()
-        self.metrics['total_requests'][model_name] += 1
+    def submit_request(self, model_name: str, request_id: str, 
+                      input_tensor: torch.Tensor) -> bool:
+        """Submit request with error handling"""
+        try:
+            if model_name not in self.request_queues:
+                self.logger.error(f"No queue found for model {model_name}")
+                return False
+            
+            success = self.request_queues[model_name].add_request(
+                request_id, input_tensor
+            )
+
+            self.request_trackers[model_name].record_request()
+            return success
+        except Exception as e:
+            self.logger.error(f"Error submitting request: {e}")
+            return False
+
+    # def record_request(self, model_name: str) -> None:
+    #     """Record an incoming request for a model"""
+    #     if model_name not in self.request_trackers:
+    #         with self.lock:
+    #             if model_name not in self.request_trackers:
+    #                 self.request_trackers[model_name] = RequestTracker()
+    #                 self.metrics['total_requests'][model_name] = 0
+    #     self.request_trackers[model_name].record_request()
+    #     self.metrics['total_requests'][model_name] += 1
     
     def _monitor_request_rates(self) -> None:
         """Background monitoring loop"""
@@ -519,14 +671,16 @@ class NexusScheduler:
         if requires_update:
             self._update_schedule(update_info)
 
-    def get_transfers(old_node: node, new_node: node):
+    def get_transfers(old_nodes: List[node], new_nodes: List[node]):
         transfers = 0
-        new_node_models = [s.model_name for s, _ in new_node.node_sessions]
-        old_node_models = [s.model_name for s, _ in old_node.node_sessions]
+
+        for old_node, new_node in zip(old_nodes, new_nodes):
+            new_node_models = [s.model_name for s, _ in new_node.node_sessions]
+            old_node_models = [s.model_name for s, _ in old_node.node_sessions]
         
-        for model in new_node_models:
-            if model not in old_node_models:
-                transfers += 1
+            for model in new_node_models:
+                if model not in old_node_models:
+                    transfers += 1
         
         return transfers
 
@@ -558,12 +712,12 @@ class NexusScheduler:
             arrangments = list(itertools.permutations(numbers, l))
 
             best_arrangment = None
-            max_transfers   = None
+            min_transfers   = None
             for arrangement in arrangments:
                 current_transfers = self.get_transfers(old_nodes, [new_nodes[i-1] for i in arrangement])
-                if max_transfers is None or max_transfers > current_transfers:
+                if min_transfers is None or min_transfers > current_transfers:
                     best_arrangment = arrangement
-                    max_transfers   = current_transfers
+                    min_transfers   = current_transfers
             
             final_nodes = [new_nodes[i-1] for i in best_arrangment]
             for i in range(1, n+1):
@@ -574,12 +728,12 @@ class NexusScheduler:
             arrangments = list(itertools.permutations(numbers, l))
 
             best_arrangment = None
-            max_transfers   = None
+            min_transfers   = None
             for arrangement in arrangments:
                 current_transfers = self.get_transfers(old_nodes[:n], [new_nodes[i-1] for i in arrangement])
-                if max_transfers is None or max_transfers > current_transfers:
+                if min_transfers is None or min_transfers > current_transfers:
                     best_arrangment = arrangement
-                    max_transfers   = current_transfers
+                    min_transfers   = current_transfers
 
             final_nodes = [new_nodes[i-1] for i in best_arrangment]
 
@@ -592,7 +746,21 @@ class NexusScheduler:
         # get workers and set new nodes for them
         # they should load and unload models at the end of duty cycle
         # and then carry on executing the new node
-        pass
+
+        l = len(self.workers)
+        n = len(new_nodes)
+
+        for i in range(min(l, n)):
+            self.workers[i]._update_schedule(new_nodes[i].node_sessions, new_nodes[i].duty_cycle)
+
+        if l > n:
+            # stop all worker from n:l-1
+            for i in range(n, l):
+                self.workers[i]._update_schedule([], 1)
+
+        if n < l:
+            # launch new worker node
+            pass
         
 
 def main():
@@ -662,4 +830,6 @@ def main():
 
     # Register initial models
 
+if __name__ == '__main__':
+    main()
 

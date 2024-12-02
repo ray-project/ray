@@ -127,7 +127,7 @@ def main():
         request_rate = request_handle.get_request_rate()
         for model in request_rate:
             print(f"{model}, {request_rate[model]}")
-        time.sleep(100 / 1000)
+        time.sleep(0 / 1000)
 
 if __name__ == "__main__":
     main()
