@@ -76,6 +76,7 @@ class WorkloadGenerator:
                 input_tensor = torch.randn(3, 224, 224)
                 self.scheduler.submit_request(model_name, str(model_name) + str(time.time() / 1000), input_tensor)
 
+            print(f"Inside resnet step request generator: rate is {rate}")
             time.sleep(1 / rate)
         
 def main():
