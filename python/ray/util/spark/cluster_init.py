@@ -183,8 +183,9 @@ class RayClusterOnSpark:
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
                         if cur_alive_worker_count == 0:
+                            job_server_url = ":".join(self.spark_job_server.server_address[:2])
                             response = requests.post(
-                                url=self.spark_job_server_url + "/query_last_worker_err",
+                                url=f"http://{job_server_url}/query_last_worker_err",
                             )
                             response.raise_for_status()
 
@@ -1676,6 +1677,9 @@ def _start_ray_worker_nodes(
     )
     if not is_task_reschedule_failure:
         spark_job_server.last_worker_error = err_msg
+        return err_msg
+
+    return None
 
 
 @PublicAPI

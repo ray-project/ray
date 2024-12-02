@@ -47,7 +47,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
 
             def start_ray_worker_thread_fn():
                 try:
-                    _start_ray_worker_nodes(
+                    err_msg = _start_ray_worker_nodes(
                         spark_job_server=self.server,
                         spark_job_group_id=spark_job_group_id,
                         spark_job_group_desc=spark_job_group_desc,
@@ -64,13 +64,19 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         collect_log_to_path=collect_log_to_path,
                         node_id=node_id,
                     )
-                except Exception:
+                    if err_msg:
+                        _logger.warning(
+                            f"Spark job {spark_job_group_id} hosting Ray worker node "
+                            f"launching failed, error:\n{err_msg}"
+                        )
+                except Exception as e:
                     if spark_job_group_id in self.server.task_status_dict:
                         self.server.task_status_dict.pop(spark_job_group_id)
 
                     # TODO: Refine error handling.
                     _logger.warning(
-                        f"Spark job {spark_job_group_id} hosting Ray worker node exit."
+                        f"Spark job {spark_job_group_id} hosting Ray worker node exit, "
+                        f"exception: {repr(e)}"
                     )
 
             threading.Thread(
