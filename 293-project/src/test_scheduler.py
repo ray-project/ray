@@ -55,7 +55,7 @@ class BatchProfiler:
 
 class WorkloadGenerator:
     """Generates synthetic workload for testing"""
-    def __init__(self, scheduler: NexusScheduler, model_patterns: dict = {}, pattern_period: float = 60.0):
+    def __init__(self, scheduler: NexusScheduler, model_patterns: dict = {}, pattern_period: float = 80.0):
         self.scheduler = scheduler
         self.patterns  = model_patterns
         self.pattern_period = pattern_period
@@ -73,14 +73,16 @@ class WorkloadGenerator:
 
             if pattern['type'] == 'slope':
                 if elapsed_time < 20:
-                    rate = pattern['base']
-                elif elapsed_time > 40:
-                    rate = pattern['final']
-                else:
-                    rate = pattern['base'] + (elapsed_time - 20) * pattern['slope']
+                    rate = (elapsed_time) * pattern['slope']
+                elif elapsed_time < 40:
+                    rate = 20 * pattern['slope']
+                elif elapsed_time < 60:
+                    rate = 20 * pattern['slope'] + (elapsed_time - 40) * pattern['slope']
+                elif elapsed_time < 80:
+                    rate = 40 * pattern['slope']
                 
                 second_start_time = time.time()
-                for i in range(rate):
+                for i in range(int(rate)):
                     input_tensor = torch.randn(3, 224, 224)
                     self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
                 second_end_time = time.time()
@@ -139,6 +141,7 @@ def main():
         }
     }
 
+    # time.sleep(30)
 
     test1 = WorkloadGenerator(scheduler, model_patterns)
     test1._start_load()
