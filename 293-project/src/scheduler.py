@@ -228,8 +228,6 @@ class RequestQueue:
             
             current_time = time.time()
             self.queue.put((request_id, input_tensor, current_time))
-            self._pending_count += 1
-            self._total_requests += 1
             self.request_timestamps.append(current_time)
             self._update_window_metrics(current_time)
             self.total_requests += 1
