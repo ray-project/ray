@@ -383,7 +383,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                         )
                     # Scale back to the full column size if we sampled
                     column_memory = column_memory_sample * (total_size / sample_size)
-                    memory_usage[column] = column_memory
+                    memory_usage[column] = int(column_memory)
                 except Exception as e:
                     # Handle or log the exception as needed
                     logger.warning(f"Error calculating size for column '{column}': {e}")
