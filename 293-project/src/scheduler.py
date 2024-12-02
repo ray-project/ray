@@ -518,7 +518,7 @@ class NexusScheduler:
                 max_size=max_queue_size
             )
 
-            self.request_trackers[model] = RequestTracker(5)
+            self.request_trackers[model] = RequestTracker(1)
         # for schedule in self.node_schedules:
         #     for session, _ in schedule['sessions']:
         #         if session.model_name not in self.request_queues:
