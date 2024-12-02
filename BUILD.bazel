@@ -1627,7 +1627,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1649,7 +1649,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1883,7 +1883,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -2403,11 +2403,43 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_export_event_test",
+    name = "gcs_job_manager_export_event_test",
     size = "small",
-    srcs = glob([
-        "src/ray/gcs/gcs_server/test/export_api/*.cc",
-    ]),
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_job_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_actor_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_actor_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core"
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_node_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_node_manager_export_event_test.cc"],
     tags = [
         "no_windows",
         "team:core"

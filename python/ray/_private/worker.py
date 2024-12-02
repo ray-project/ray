@@ -532,6 +532,14 @@ class Worker:
         return self.core_worker.get_current_task_id()
 
     @property
+    def current_task_name(self):
+        return self.core_worker.get_current_task_name()
+
+    @property
+    def current_task_function_name(self):
+        return self.core_worker.get_current_task_function_name()
+
+    @property
     def current_node_id(self):
         return self.core_worker.get_current_node_id()
 
@@ -3549,7 +3557,7 @@ def remote(
             for more details.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
+        _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
