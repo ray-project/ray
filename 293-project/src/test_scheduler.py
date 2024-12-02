@@ -82,7 +82,7 @@ class WorkloadGenerator:
                     rate = 40 * pattern['slope']
                 
                 second_start_time = time.time()
-                for i in range(rate):
+                for i in range(int(rate)):
                     input_tensor = torch.randn(3, 224, 224)
                     self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
                 second_end_time = time.time()
