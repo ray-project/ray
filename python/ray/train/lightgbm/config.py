@@ -10,6 +10,35 @@ logger = logging.getLogger(__name__)
 
 
 NETWORK_PARAMS_KEY = "LIGHTGBM_NETWORK_PARAMS"
+network_params = None
+
+
+def set_network_params(
+    num_machines: int,
+    local_listen_port: int,
+    machines: str,
+):
+    global network_params
+    assert network_params is None, "LightGBM context is already initialized."
+    network_params = dict(
+        num_machines=num_machines,
+        local_listen_port=local_listen_port,
+        machines=machines,
+    )
+
+
+def get_network_params() -> dict:
+    global network_params
+    if network_params is None:
+        logger.warning(
+            "`ray.train.lightgbm.get_network_params` was called outside the "
+            " context of a `ray.train.lightgbm.LightGBMTrainer`. "
+            "The current process has no knowledge of the distributed training "
+            "group, so returning an empty dict. Please call this within the "
+            "training loop of a `ray.train.lightgbm.LightGBMTrainer`."
+        )
+        return {}
+    return network_params.copy()
 
 
 @dataclass
@@ -36,22 +65,6 @@ class _LightGBMBackend(Backend):
             [f"{node_ip}:{port}" for node_ip, port in node_ips_and_ports]
         )
         num_machines = len(worker_group)
-
-        def set_network_params(
-            num_machines: int, local_listen_port: int, machines: str
-        ):
-            from ray.train._internal.session import get_session
-
-            session = get_session()
-            session.set_state(
-                NETWORK_PARAMS_KEY,
-                dict(
-                    num_machines=num_machines,
-                    local_listen_port=local_listen_port,
-                    machines=machines,
-                ),
-            )
-
         ray.get(
             [
                 worker_group.execute_single_async(
