@@ -31,16 +31,21 @@ class RedisClientOptions {
  public:
   RedisClientOptions(const std::string &ip,
                      int port,
+                     const std::string &username,
                      const std::string &password,
                      bool enable_ssl = false)
       : server_ip_(ip),
         server_port_(port),
+        username_(username),
         password_(password),
         enable_ssl_(enable_ssl) {}
 
   // Redis server address
   std::string server_ip_;
   int server_port_;
+
+  // Username of Redis.
+  std::string username_;
 
   // Password of Redis.
   std::string password_;

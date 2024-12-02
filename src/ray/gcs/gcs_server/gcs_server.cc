@@ -131,6 +131,7 @@ GcsServer::~GcsServer() { Stop(); }
 RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
+                            config_.redis_username,
                             config_.redis_password,
                             config_.enable_redis_ssl);
 }

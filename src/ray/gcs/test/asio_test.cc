@@ -74,6 +74,7 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
   ASSERT_TRUE(shard_context
                   ->Connect(std::string("127.0.0.1"),
                             TEST_REDIS_SERVER_PORTS.front(),
+                            /*username=*/std::string(),
                             /*password=*/std::string())
                   .ok());
 

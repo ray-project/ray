@@ -347,6 +347,14 @@ def debug(address: str, verbose: bool):
     "Defaults to the node's ip_address",
 )
 @click.option(
+    "--redis-username",
+    required=False,
+    hidden=True,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_USERNAME,
+    help="If provided, secure Redis ports with this username",
+)
+@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -638,6 +646,7 @@ def start(
     address,
     port,
     node_name,
+    redis_username,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -741,6 +750,7 @@ def start(
         node_manager_port=node_manager_port,
         memory=memory,
         object_store_memory=object_store_memory,
+        redis_username=redis_username,
         redis_password=redis_password,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
@@ -820,6 +830,14 @@ def start(
 
             ray_params.update_if_absent(external_addresses=external_addresses)
             num_redis_shards = len(external_addresses) - 1
+            if redis_username == ray_constants.REDIS_DEFAULT_USERNAME:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external Redis server(s) `{}` points to requires "
+                    "username.",
+                    cf.bold("--redis-username"),
+                    cf.bold("--address"),
+                )
             if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                 cli_logger.warning(
                     "`{}` should not be specified as empty string if "
