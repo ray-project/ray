@@ -185,6 +185,7 @@ class RequestQueue:
     def __init__(self, model_name: str, max_size: int = 100):
         self.model_name = model_name
         self.queue = RayQueue(maxsize=max_size)
+        self.lock = Lock()
         self._pending_count = 0
         self._total_requests = 0
         self._logger = logging.getLogger(f"Queue-{model_name}")
@@ -202,7 +203,8 @@ class RequestQueue:
                 return False
                 
             print(f"calling put on queue")
-            self.queue.put((request_id, input_tensor, time.time()))
+            with self.lock:
+                self.queue.put((request_id, input_tensor, time.time()))
             print(f"finished calling put on queue")
             self._pending_count += 1
             self._total_requests += 1
@@ -224,7 +226,8 @@ class RequestQueue:
             if available == 0:
                 return None
                 
-            batch = self.queue.get_batch(available, timeout=0)
+            with self.lock:
+                batch = self.queue.get_batch(available, timeout=0)
             for (request_id, input_tensor, arrival_time) in batch:
                 requests.append((request_id, input_tensor))
                 request_ids.append(request_id)
