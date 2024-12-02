@@ -155,7 +155,7 @@ class ActorMethod:
         generator_backpressure_num_objects: int,
         enable_task_events: bool,
         decorator=None,
-        signature: List[inspect.Parameter] = None,
+        signature: Optional[List[inspect.Parameter]] = None,
         hardref=False,
     ):
         self._actor_ref = weakref.ref(actor)
@@ -267,9 +267,11 @@ class ActorMethod:
         }
         actor._ray_dag_bind_index += 1
 
-        # Run it to verify if args match signature.
+        assert (
+            self._signature is not None
+        ), "self._signature should be set for .bind API."
         try:
-            signature.flatten_args(self._signature, args, kwargs)
+            signature.validate_args(self._signature, args, kwargs)
         except TypeError as e:
             signature_copy = self._signature.copy()
             if len(signature_copy) > 0 and signature_copy[-1].name == "_ray_trace_ctx":
