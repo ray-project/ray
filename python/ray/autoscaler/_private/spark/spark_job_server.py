@@ -69,14 +69,13 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                             f"Spark job {spark_job_group_id} hosting Ray worker node "
                             f"launching failed, error:\n{err_msg}"
                         )
-                except Exception as e:
+                except Exception:
                     if spark_job_group_id in self.server.task_status_dict:
                         self.server.task_status_dict.pop(spark_job_group_id)
 
                     # TODO: Refine error handling.
                     _logger.warning(
-                        f"Spark job {spark_job_group_id} hosting Ray worker node exit, "
-                        f"exception: {repr(e)}"
+                        f"Spark job {spark_job_group_id} hosting Ray worker node exit."
                     )
 
             threading.Thread(
@@ -188,7 +187,7 @@ class SparkJobServer(ThreadingHTTPServer):
     handler must be running in current process.
     """
 
-    def __init__(self, server_address, spark):
+    def __init__(self, server_address, spark, ray_node_custom_env):
         super().__init__(server_address, SparkJobServerRequestHandler)
         self.spark = spark
 
@@ -204,6 +203,7 @@ class SparkJobServer(ThreadingHTTPServer):
         # each spark task holds a ray worker node.
         self.task_status_dict = {}
         self.last_worker_error = None
+        self.ray_node_custom_env = ray_node_custom_env
 
     def shutdown(self) -> None:
         super().shutdown()
@@ -218,8 +218,8 @@ class SparkJobServer(ThreadingHTTPServer):
         time.sleep(1)
 
 
-def _start_spark_job_server(host, port, spark):
-    server = SparkJobServer((host, port), spark)
+def _start_spark_job_server(host, port, spark, ray_node_custom_env):
+    server = SparkJobServer((host, port), spark, ray_node_custom_env)
 
     def run_server():
         server.serve_forever()

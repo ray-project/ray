@@ -619,8 +619,9 @@ def _setup_ray_cluster(
         _start_spark_job_server,
     )
 
+    ray_node_custom_env = start_hook.custom_environment_variables()
     spark_job_server = _start_spark_job_server(
-        ray_head_ip, spark_job_server_port, spark
+        ray_head_ip, spark_job_server_port, spark, ray_node_custom_env
     )
     autoscaling_cluster = AutoscalingCluster(
         head_resources={
@@ -663,6 +664,7 @@ def _setup_ray_cluster(
         dashboard_options,
         head_node_options,
         collect_log_to_path,
+        ray_node_custom_env,
     )
     ray_head_node_cmd = autoscaling_cluster.ray_head_node_cmd
 
@@ -1495,6 +1497,7 @@ def _start_ray_worker_nodes(
     #     worker node.
     spark = spark_job_server.spark
     spark_job_server_port = spark_job_server.server_address[1]
+    ray_node_custom_env = spark_job_server.ray_node_custom_env
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
@@ -1529,13 +1532,11 @@ def _start_ray_worker_nodes(
         if ray_temp_dir is not None:
             ray_worker_node_cmd.append(f"--temp-dir={ray_temp_dir}")
 
-        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
-
         ray_worker_node_extra_envs = {
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
             "RAY_ENABLE_WINDOWS_OR_OSX_CLUSTER": "1",
-            **hook_entry.custom_environment_variables(),
+            **ray_node_custom_env,
         }
 
         if num_gpus_per_node > 0:
@@ -1773,6 +1774,7 @@ class AutoscalingCluster:
         dashboard_options,
         head_node_options,
         collect_log_to_path,
+        ray_node_custom_env,
     ):
         """Start the cluster.
 
@@ -1841,13 +1843,11 @@ class AutoscalingCluster:
         )
         ray_head_node_cmd.extend(_convert_ray_node_options(head_node_options))
 
-        hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
-
         extra_env = {
             "AUTOSCALER_UPDATE_INTERVAL_S": "1",
             RAY_ON_SPARK_COLLECT_LOG_TO_PATH: collect_log_to_path or "",
             RAY_ON_SPARK_START_RAY_PARENT_PID: str(os.getpid()),
-            **hook_entry.custom_environment_variables(),
+            **ray_node_custom_env,
         }
 
         self.ray_head_node_cmd = ray_head_node_cmd
