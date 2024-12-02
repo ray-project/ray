@@ -564,6 +564,9 @@
     script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_chaos
+  # Don't use 'dataset' as the working directory because we need to run the 
+  # 'setup_chaos.py' script.
+  working_dir: nightly_tests
 
   cluster:
     byod:
