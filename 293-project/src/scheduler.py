@@ -199,6 +199,8 @@ class RequestQueue:
         self.current_window_violations = 0
         self.current_window_requests = 0
         self.window_start_time = time.time()
+        
+        self.dropped_requests = 0
 
         
     def empty(self) -> bool:
