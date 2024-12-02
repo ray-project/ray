@@ -62,7 +62,7 @@ class WorkloadGenerator:
 
     def _start_load(self):
         for model in self.patterns:
-            threading.Thread(target=self._run_pattern, args=(model, self.patterns[model]), daemon=True).start()
+            threading.Thread(target=self._run_pattern(model, self.patterns[model]), daemon=True).start()
 
     def _run_pattern(self, model_name: str, pattern: dict):
         start_time = time.time()
