@@ -609,11 +609,17 @@ class NexusScheduler:
                 print(f"No queue found for model {model_name}")
                 return False
             
+            print(f"adding to request queue")
             success = self.request_queues[model_name].add_request(
                 request_id, input_tensor
             )
 
+            print(f"done adding request to queue")
+
+            print(f"adding to request tracker")
             self.request_trackers[model_name].record_request()
+            print(f"adding to request tracker done")
+
             return success
         except Exception as e:
             self.logger.error(f"Error submitting request: {e}")
