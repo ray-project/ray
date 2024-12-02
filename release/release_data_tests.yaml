@@ -485,12 +485,11 @@
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
 
-- name: dataset_shuffle_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
+########################
+# Sort and shuffle tests
+########################
 
-  frequency: nightly
-  team: data
+- name: random_shuffle
 
   cluster:
     byod:
@@ -498,28 +497,14 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+    cluster_compute: autoscaling_cpu_compute_large.yaml
 
   run:
     timeout: 7200
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
+    script: >
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
 
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: dataset_shuffle_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: data
+- name: sort
   stable: False
 
   cluster:
@@ -528,22 +513,11 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
+    cluster_compute: autoscaling_cpu_compute_large.yaml
 
   run:
     timeout: 7200
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 ############################
 # Batch Inference Benchmarks
