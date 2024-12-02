@@ -18,6 +18,7 @@
 #include <boost/date_time/posix_time/posix_time.hpp>
 #include <fstream>
 #include <optional>
+#include <utility>
 
 #include "absl/strings/str_split.h"
 #include "ray/common/constants.h"
@@ -81,9 +82,9 @@ namespace ray {
 namespace raylet {
 
 WorkerPool::WorkerPool(instrumented_io_context &io_service,
-                       const NodeID node_id,
-                       const std::string node_address,
-                       const std::function<int64_t()> &get_num_cpus_available,
+                       const NodeID &node_id,
+                       std::string node_address,
+                       std::function<int64_t()> get_num_cpus_available,
                        int num_prestarted_python_workers,
                        int maximum_startup_concurrency,
                        int min_worker_port,
@@ -94,12 +95,12 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
                        std::string native_library_path,
                        std::function<void()> starting_worker_timeout_callback,
                        int ray_debugger_external,
-                       const std::function<absl::Time()> get_time)
+                       std::function<absl::Time()> get_time)
     : worker_startup_token_counter_(0),
       io_service_(&io_service),
       node_id_(node_id),
-      node_address_(node_address),
-      get_num_cpus_available_(get_num_cpus_available),
+      node_address_(std::move(node_address)),
+      get_num_cpus_available_(std::move(get_num_cpus_available)),
       maximum_startup_concurrency_(
           RayConfig::instance().worker_maximum_startup_concurrency() > 0
               ?
@@ -1045,11 +1046,12 @@ void WorkerPool::PushWorker(const std::shared_ptr<WorkerInterface> &worker) {
         absl::Milliseconds(RayConfig::instance().idle_worker_killing_time_threshold_ms());
     if (worker->GetAssignedTaskTime() == absl::Time()) {
       // Newly registered worker. Respect worker_startup_keep_alive_duration if any.
-      const auto &keep_alive_duration =
-          state.worker_processes.at(worker->GetStartupToken())
-              .worker_startup_keep_alive_duration;
-      if (keep_alive_duration.has_value()) {
-        keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
+      auto it = state.worker_processes.find(worker->GetStartupToken());
+      if (it != state.worker_processes.end()) {
+        const auto &keep_alive_duration = it->second.worker_startup_keep_alive_duration;
+        if (keep_alive_duration.has_value()) {
+          keep_alive_until = std::max(keep_alive_until, now + *keep_alive_duration);
+        }
       }
 
       // If the worker never held any tasks, then we should consider it first when
@@ -1310,6 +1312,7 @@ void WorkerPool::PopWorker(const TaskSpecification &task_spec,
       /*is_gpu=*/task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
       /*is_actor_worker=*/task_spec.IsActorCreationTask(),
       task_spec.RuntimeEnvInfo(),
+      task_spec.GetRuntimeEnvHash(),
       task_spec.DynamicWorkerOptionsOrEmpty(),
       /*worker_startup_keep_alive_duration=*/std::nullopt,
       [this, task_spec, callback](

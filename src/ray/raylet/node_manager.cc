@@ -1882,6 +1882,8 @@ void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
       /*gpu=*/std::nullopt,
       /*actor_worker=*/std::nullopt,
       request.runtime_env_info(),
+      /*runtime_env_hash=*/
+      CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
       /*options=*/std::vector<std::string>{},
       absl::Seconds(request.keep_alive_duration_secs()),
       /*callback=*/

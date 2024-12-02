@@ -101,6 +101,7 @@ struct PopWorkerRequest {
                    std::optional<bool> gpu,
                    std::optional<bool> actor_worker,
                    rpc::RuntimeEnvInfo runtime_env_info,
+                   int runtime_env_hash,
                    std::vector<std::string> options,
                    std::optional<absl::Duration> worker_startup_keep_alive_duration,
                    PopWorkerCallback callback)
@@ -112,7 +113,7 @@ struct PopWorkerRequest {
         is_actor_worker(actor_worker),
         runtime_env_info(std::move(runtime_env_info)),
         // this-> is needed to disambiguate the member variable from the ctor arg.
-        runtime_env_hash(),
+        runtime_env_hash(runtime_env_hash),
         dynamic_options(std::move(options)),
         worker_startup_keep_alive_duration(worker_startup_keep_alive_duration),
         callback(std::move(callback)) {}
@@ -243,9 +244,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// that they are accessible from outside the node.
   /// \param get_time A callback to get the current time in milliseconds.
   WorkerPool(instrumented_io_context &io_service,
-             const NodeID node_id,
-             const std::string node_address,
-             const std::function<int64_t()> &get_num_cpus_available,
+             const NodeID &node_id,
+             std::string node_address,
+             std::function<int64_t()> get_num_cpus_available,
              int num_prestarted_python_workers,
              int maximum_startup_concurrency,
              int min_worker_port,

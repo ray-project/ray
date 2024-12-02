@@ -783,6 +783,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
       /*gpu=*/std::nullopt,
       /*actor_worker=*/std::nullopt,
       runtime_env_info,
+      CalculateRuntimeEnvHash(runtime_env_info.serialized_runtime_env()),
       /*options=*/std::vector<std::string>{},
       keep_alive_duration,
       /*callback=*/
