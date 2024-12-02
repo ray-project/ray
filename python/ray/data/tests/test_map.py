@@ -436,6 +436,113 @@ def test_rename_columns(ray_start_regular_shared, names):
     assert renamed_ds.schema().names == ["foo", "bar"]
 
 
+def test_filter_mutex(ray_start_regular_shared, tmp_path):
+    """Test filter op."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    # Filter using lambda (UDF)
+    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
+        parquet_ds.filter(
+            fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
+        )
+
+    with pytest.raises(ValueError, match="must be a UserDefinedFunction"):
+        parquet_ds.filter(fn="sepal.length > 5.0")
+
+
+def test_filter_with_expressions(ray_start_regular_shared, tmp_path):
+    """Test filtering with expressions."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    # Filter using lambda (UDF)
+    filtered_udf_ds = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0)
+    filtered_udf_data = filtered_udf_ds.to_pandas()
+
+    # Filter using expressions
+    filtered_expr_ds = parquet_ds.filter(expr="sepal.length > 5.0")
+    filtered_expr_data = filtered_expr_ds.to_pandas()
+
+    # Assert the filtered data is the same
+    assert set(filtered_udf_data["sepal.length"]) == set(
+        filtered_expr_data["sepal.length"]
+    )
+    assert len(filtered_udf_data) == len(filtered_expr_data)
+
+    # Verify correctness of filtered results: only rows with 'sepal.length' > 5.0
+    assert all(
+        filtered_expr_data["sepal.length"] > 5.0
+    ), "Filtered data contains rows with 'sepal.length' <= 5.0"
+    assert all(
+        filtered_udf_data["sepal.length"] > 5.0
+    ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
+
+
+def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
+    """Test filtering with invalid expressions."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    with pytest.raises(ValueError, match="Invalid syntax in the expression"):
+        parquet_ds.filter(expr="fake_news super fake")
+
+    fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
+    with pytest.raises(UserCodeException):
+        fake_column_ds.to_pandas()
+
+
 def test_drop_columns(ray_start_regular_shared, tmp_path):
     df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
     ds1 = ray.data.from_pandas(df)

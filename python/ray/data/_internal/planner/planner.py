@@ -43,6 +43,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.logical.operators.input_data_operator import InputData
     from ray.data._internal.logical.operators.map_operator import (
         AbstractUDFMap,
+        Filter,
         Project,
     )
     from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
@@ -52,6 +53,7 @@ def _register_default_plan_logical_op_fns():
     from ray.data._internal.planner.plan_all_to_all_op import plan_all_to_all_op
     from ray.data._internal.planner.plan_read_op import plan_read_op
     from ray.data._internal.planner.plan_udf_map_op import (
+        plan_filter_op,
         plan_project_op,
         plan_udf_map_op,
     )
@@ -80,6 +82,10 @@ def _register_default_plan_logical_op_fns():
         return InputDataBuffer(op.input_data)
 
     register_plan_logical_op_fn(AbstractFrom, plan_from_op)
+    # Filter is also a AbstractUDFMap, so it needs to resolve
+    # before the AbstractUDFMap plan
+    # TODO(rliaw): Break up plan_udf_map_op
+    register_plan_logical_op_fn(Filter, plan_filter_op)
     register_plan_logical_op_fn(AbstractUDFMap, plan_udf_map_op)
     register_plan_logical_op_fn(AbstractAllToAll, plan_all_to_all_op)
 

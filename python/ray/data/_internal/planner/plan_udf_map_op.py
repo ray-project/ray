@@ -108,6 +108,47 @@ def plan_project_op(
         name=op.name,
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
+def plan_filter_op(
+    op: Filter, physical_children: List[PhysicalOperator]
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    expression = op._filter_expr
+    compute = get_compute(op._compute)
+    if expression is not None:
+
+        def filter_batch_fn(block: "pa.Table") -> "pa.Table":
+            try:
+                return block.filter(expression)
+            except Exception as e:
+                _handle_debugger_exception(e)
+
+        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
+        map_transformer = _create_map_transformer_for_map_batches_op(
+            transform_fn,
+            batch_size=None,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+        )
+    else:
+        filter_fn, init_fn = _parse_op_fn(op)
+        transform_fn = _generate_transform_fn_for_filter(filter_fn)
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, init_fn
+        )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
     )
 
 
@@ -139,8 +180,6 @@ def plan_udf_map_op(
             transform_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
             transform_fn = _generate_transform_fn_for_flat_map(fn)
-        elif isinstance(op, Filter):
-            transform_fn = _generate_transform_fn_for_filter(fn)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -531,29 +570,6 @@ def generate_flat_map_fn(
     ) -> Iterator[Block]:
         DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
-        map_transformer.set_target_max_block_size(target_max_block_size)
-        yield from map_transformer.apply_transform(blocks, ctx)
-
-    return fn
-
-
-def generate_filter_fn(
-    target_max_block_size: int,
-) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
-    """Generate function to apply the UDF to each record of blocks,
-    and filter out records that do not satisfy the given predicate.
-    """
-
-    context = DataContext.get_current()
-
-    def fn(
-        blocks: Iterator[Block],
-        ctx: TaskContext,
-        row_fn: UserDefinedFunction,
-    ) -> Iterator[Block]:
-        DataContext._set_current(context)
-        transform_fn = _generate_transform_fn_for_filter(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
         map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
