@@ -223,7 +223,7 @@ class OfflineData:
     @property
     def default_read_method_kwargs(self):
         return {
-            "override_num_blocks": max(self.config.num_learners * 2, 2),
+            # "override_num_blocks": max(self.config.num_learners * 2, 2),
         }
 
     @property
