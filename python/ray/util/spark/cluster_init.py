@@ -1631,7 +1631,7 @@ def _start_ray_worker_nodes(
             # For either case (1) or case (2),
             # to avoid Spark triggers more spark task retries, we swallow
             # exception here to make spark the task exit normally.
-            err_msg = f"Ray worker node process exit, reason: {repr(e)}."
+            err_msg = f"Ray worker node process exit, reason: {e}."
             _logger.warning(err_msg)
 
             yield err_msg, is_task_reschedule_failure
@@ -1675,7 +1675,7 @@ def _start_ray_worker_nodes(
     hook_entry.on_spark_job_created(spark_job_group_id)
 
     err_msg, is_task_reschedule_failure = (
-        job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
+        job_rdd.mapPartitions(ray_cluster_job_mapper).collect()[0]
     )
     if not is_task_reschedule_failure:
         spark_job_server.last_worker_error = err_msg

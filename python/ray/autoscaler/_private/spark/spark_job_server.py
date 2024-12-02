@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import threading
 import time
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -9,15 +10,17 @@ from pyspark.util import inheritable_thread_target
 
 from ray.util.spark.cluster_init import _start_ray_worker_nodes
 
-_logger = logging.getLogger(__name__)
-_logger.setLevel(logging.WARN)
-
 
 class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
     def setup(self) -> None:
         super().setup()
         self._handler_lock = threading.RLock()
         self._created_node_id_set = set()
+        self._logger = logging.getLogger(__name__)
+        if "RAY_ON_SPARK_JOB_SERVER_VERBOSE" in os.environ:
+            self._logger.setLevel(logging.DEBUG)
+        else:
+            self._logger.setLevel(logging.WARN)
 
     def _set_headers(self):
         self.send_response(200)
@@ -65,7 +68,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         node_id=node_id,
                     )
                     if err_msg:
-                        _logger.warning(
+                        self._logger.warning(
                             f"Spark job {spark_job_group_id} hosting Ray worker node "
                             f"launching failed, error:\n{err_msg}"
                         )
@@ -73,10 +76,19 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                     if spark_job_group_id in self.server.task_status_dict:
                         self.server.task_status_dict.pop(spark_job_group_id)
 
-                    # TODO: Refine error handling.
-                    _logger.warning(
-                        f"Spark job {spark_job_group_id} hosting Ray worker node exit."
-                    )
+                    msg = f"Spark job {spark_job_group_id} hosting Ray worker node exit."
+                    if self._logger.level > logging.DEBUG:
+                        self._logger.warning(
+                            f"{msg} To see details, you can set "
+                            "'RAY_ON_SPARK_JOB_SERVER_VERBOSE' environmental variable "
+                            "to '1' before calling 'ray.util.spark.setup_ray_cluster'."
+                        )
+                    else:
+                        # This branch is only for debugging Ray-on-Spark purpose.
+                        # User can configure 'RAY_ON_SPARK_JOB_SERVER_VERBOSE' environment
+                        # variable to make the spark job server logging showing
+                        # full exceptional stack here.
+                        self._logger.debug(msg, exc_info=True)
 
             threading.Thread(
                 target=inheritable_thread_target(start_ray_worker_thread_fn),
@@ -114,7 +126,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                 # Note that if `spark_job_group_id` not in task_status_dict,
                 # the task has been terminated
                 self.server.task_status_dict[spark_job_group_id] = "running"
-                _logger.info(f"Spark task in {spark_job_group_id} has started.")
+                self._logger.info(f"Spark task in {spark_job_group_id} has started.")
             return {}
 
         elif path_parts[0] == "query_task_status":
