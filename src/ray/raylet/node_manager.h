@@ -777,9 +777,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
 
-  /// Wrapper client for RuntimeEnvManager. Always non-null.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
-
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
   LocalObjectManager local_object_manager_;

@@ -426,7 +426,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_shared<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
