@@ -131,6 +131,7 @@ jmethodID java_placement_group_creation_options_strategy_value;
 jclass java_gcs_client_options_class;
 jfieldID java_gcs_client_options_ip;
 jfieldID java_gcs_client_options_port;
+jfieldID java_gcs_client_options_username;
 jfieldID java_gcs_client_options_password;
 
 jclass java_native_ray_object_class;
@@ -398,6 +399,8 @@ jint JNI_OnLoad(JavaVM *vm, void *reserved) {
       env->GetFieldID(java_gcs_client_options_class, "ip", "Ljava/lang/String;");
   java_gcs_client_options_port =
       env->GetFieldID(java_gcs_client_options_class, "port", "I");
+  java_gcs_client_options_username =
+      env->GetFieldID(java_gcs_client_options_class, "username", "Ljava/lang/String;");
   java_gcs_client_options_password =
       env->GetFieldID(java_gcs_client_options_class, "password", "Ljava/lang/String;");
 
