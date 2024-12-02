@@ -427,10 +427,10 @@ class GPUWorker:
                         # Sleep for remaining time if any
                         remaining_time = time_slice - processing_time
                         if remaining_time > 0:
-                            time.sleep(remaining_time * 1000)
+                            time.sleep(remaining_time / 1000)
                     else:
                         # No requests, sleep for time slice
-                        time.sleep(time_slice * 1000)
+                        time.sleep(time_slice / 1000)
 
                     # Log execution stats periodically
                     if self.stats['processed_batches'] % 100 == 0:
@@ -587,6 +587,7 @@ class NexusScheduler:
             return
         
         self._stop_monitoring = False
+        print(f"")
         self.monitoring_thread = Thread(target=self._monitor_request_rates, daemon=True)
         self.monitoring_thread.start()
         self.logger.info("Request rate monitoring started")

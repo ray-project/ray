@@ -68,9 +68,8 @@ class WorkloadGenerator:
         start_time = time.time()
         while True:
             elapsed_time = (time.time() - start_time)
-            print(elapsed_time)
-            # if elapsed_time > self.pattern_period:
-            #     break
+            if elapsed_time > self.pattern_period:
+                break
 
             if pattern['type'] == 'step':
                 rate = pattern['base'] if elapsed_time < pattern['time'] else pattern['step']
