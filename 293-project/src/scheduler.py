@@ -397,7 +397,6 @@ class GPUWorker:
     
         while self.active:
             try:
-                print(f"GPU Worker runnign")
                 total_time       = self.duty_cycle
                 cycle_start_time = time.time()
 
