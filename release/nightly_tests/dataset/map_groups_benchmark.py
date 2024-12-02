@@ -12,7 +12,7 @@ from benchmark import Benchmark
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=str)
-    parser.add_argument("--keys", required=True, nargs="+", type=str)
+    parser.add_argument("--group-by", required=True, nargs="+", type=str)
     parser.add_argument("--batch-format", choices=["pyarrow", "pandas"], required=True)
     return parser.parse_args()
 
@@ -23,7 +23,7 @@ def main(args):
     def benchmark_fn():
         ds = (
             ray.data.read_parquet(args.path)
-            .groupby(args.keys)
+            .groupby(args.group_by)
             .map_groups(normalize_group, batch_format=args.batch_format)
         )
         for _ in ds.iter_internal_ref_bundles():

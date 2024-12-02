@@ -33,8 +33,8 @@
 # Groupby tests
 ###############
 
-# NOTE: 'column08' and 'column09' correspond to the 'l_returnflag' and 'l_linestatus' 
-# columns of the TPC-H lineitem table, respectively.
+# NOTE: 'column08', 'column09', and 'column05' correspond to the 'l_orderkey', 
+# 'l_partkey', and 'l_extendedprice' columns of the TPC-H lineitem table, respectively.
 
 # TODO: Test against sf1000 or sf10000 once we're confident we can handle that scale.
 
@@ -48,19 +48,19 @@
         script: > 
           python aggregate_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --aggregation count
+          --group-by column08 column09 --aggregation count
     - __suffix__: mean
       run:
         script: >
           python aggregate_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --aggregation mean
+          --group-by column08 column09 --aggregation mean --aggregate-on column05
     - __suffix__: std
       run:
         script: >
           python aggregate_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --aggregation std
+          --keys column08 column09 --aggregation std --aggregate-on column05
     
 - name: map_groups
   run:
@@ -72,13 +72,13 @@
         script: >
           python map_groups_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --batch-format pandas
+          --group-by column08 column09 --batch-format pandas
     - __suffix__: pyarrow
       run:
         script: >
           python map_groups_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --batch-format pyarrow
+          --group-by column08 column09 --batch-format pyarrow
 
 ###############
 # Dataset tests
