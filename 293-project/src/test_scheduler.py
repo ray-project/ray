@@ -71,8 +71,14 @@ class WorkloadGenerator:
             if elapsed_time > self.pattern_period:
                 break
 
-            if pattern['type'] == 'step':
-                rate = pattern['base'] if elapsed_time < pattern['time'] else pattern['step']
+            if pattern['type'] == 'slope':
+                if elapsed_time < 20:
+                    rate = pattern['base']
+                elif elapsed_time > 40:
+                    rate = pattern['final']
+                else:
+                    rate = pattern['base'] + (elapsed_time - 20) * pattern['slope']
+                
                 input_tensor = torch.randn(3, 224, 224)
                 self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
 
@@ -115,15 +121,15 @@ def main():
         num_gpus=2
     )
 
-    scheduler = NexusScheduler(batching_profile, monitoring_interval=0.2)
+    scheduler = NexusScheduler(batching_profile, monitoring_interval=1)
     scheduler.start_monitoring()
 
     model_patterns = {
         'resnet': {
-            'type': 'step',
+            'type': 'slope',
             'base': 500,
-            'step': 1000,
-            'time': 30
+            'final': 1000,
+            'slope': 25
         }
     }
 
