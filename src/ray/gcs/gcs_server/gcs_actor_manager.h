@@ -475,14 +475,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// Get the created actors.
   ///
   /// \return The created actors.
-  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>> &
-  GetCreatedActors() const;
+  const absl::flat_hash_map<NodeID, absl::flat_hash_map<WorkerID, ActorID>>
+      &GetCreatedActors() const;
 
   const absl::flat_hash_map<ActorID, std::shared_ptr<GcsActor>> &GetRegisteredActors()
       const;
 
-  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>> &
-  GetActorRegisterCallbacks() const;
+  const absl::flat_hash_map<ActorID, std::vector<RegisterActorCallback>>
+      &GetActorRegisterCallbacks() const;
 
   std::string DebugString() const;
 

@@ -212,7 +212,10 @@ const ActorDetailPage = () => {
               <Box display="inline-block">
                 <CodeDialogButton
                   title="Invocation stacktrace"
-                  code={actorDetail.invocationStacktrace || "Invocation stacktrace not enabled. To enable, set environment variable \"RAY_enable_invocation_stacktrace\" to \"true\"."}
+                  code={
+                    actorDetail.invocationStacktrace ||
+                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_enable_invocation_stacktrace" to "true".'
+                  }
                 />
               </Box>
             ),

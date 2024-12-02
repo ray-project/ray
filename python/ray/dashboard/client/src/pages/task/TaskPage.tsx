@@ -1,7 +1,10 @@
 import { Box, Typography } from "@mui/material";
 import React from "react";
 import { useParams } from "react-router-dom";
-import { CodeDialogButton, CodeDialogButtonWithPreview } from "../../common/CodeDialogButton";
+import {
+  CodeDialogButton,
+  CodeDialogButtonWithPreview,
+} from "../../common/CodeDialogButton";
 import { CollapsibleSection } from "../../common/CollapsibleSection";
 import { DurationText } from "../../common/DurationText";
 import { formatDateFromTimeMs } from "../../common/formatUtils";
@@ -249,7 +252,10 @@ const TaskPageContents = ({
               <Box display="inline-block">
                 <CodeDialogButton
                   title="Invocation stacktrace"
-                  code={invocation_stacktrace || "Invocation stacktrace not enabled. To enable, set environment variable \"RAY_enable_invocation_stacktrace\" to \"true\"."}
+                  code={
+                    invocation_stacktrace ||
+                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_enable_invocation_stacktrace" to "true".'
+                  }
                 />
               </Box>
             ),
