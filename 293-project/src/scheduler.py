@@ -867,6 +867,7 @@ class MetricsDisplay:
         self.update_interval = update_interval
         self.stop_display = False
         self.display_thread = None
+        self.clear_status = False
         self.lock = Lock()
         
     def start(self, request_queues: Dict[str, RequestQueue]):
@@ -889,7 +890,8 @@ class MetricsDisplay:
         """Main display loop"""
         while not self.stop_display:
             # Clear screen
-            os.system('clear' if os.name == 'posix' else 'cls')
+            if self.clear_status:
+                os.system('clear' if os.name == 'posix' else 'cls')
             
             print("\n=== Real-time SLO Metrics ===")
             print(f"Timestamp: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
