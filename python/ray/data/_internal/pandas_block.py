@@ -369,7 +369,7 @@ class PandasBlockAccessor(TableBlockAccessor):
                 # Determine the sample size based on min_count
                 sample_size = min(total_size, min_sample_size)
                 # Following codes can also handel case that sample_size == total_size
-                sampled_data = self._table[column].sample(n=sample_size, random_state = 42).values
+                sampled_data = self._table[column].sample(n=sample_size).values
 
                 try:
                     if isinstance(sampled_data, TensorArray) and np.issubdtype(
