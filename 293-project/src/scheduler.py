@@ -616,6 +616,7 @@ class NexusScheduler:
             return success
         except Exception as e:
             self.logger.error(f"Error submitting request: {e}")
+            print(f"Error submitting request: {e}")
             return False
 
     # def record_request(self, model_name: str) -> None:
