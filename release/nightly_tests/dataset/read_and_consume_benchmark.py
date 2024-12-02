@@ -6,6 +6,9 @@ import argparse
 from typing import Callable
 
 
+WRITE_PATH = "s3://ray-data-write-benchmark"
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser()
     parser.add_argument("path", type=str)
@@ -18,6 +21,7 @@ def parse_args() -> argparse.Namespace:
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
     consume_group.add_argument("--iterate", action="store_true")
+    consume_group.add_argument("--write", action="store_true")
 
     return parser.parse_args()
 
@@ -57,6 +61,11 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
         def consume_fn(ds):
             for _ in ds.iter_internal_ref_bundles():
                 pass
+
+    elif args.write:
+
+        def consume_fn(ds):
+            ds.write_parquet(WRITE_PATH)
 
     else:
         assert False, f"Invalid consume arguments: {args}"
