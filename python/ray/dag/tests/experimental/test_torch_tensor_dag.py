@@ -20,9 +20,6 @@ from ray.experimental.channel.gpu_communicator import (
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
-import socket
-import torch
-import time
 from ray._private.test_utils import (
     get_log_message,
     init_log_pubsub,
