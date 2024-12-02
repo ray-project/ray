@@ -399,12 +399,12 @@ class GPUWorker:
         while self.active:
             try:
                 total_time       = self.duty_cycle
-                cycle_start_time = time.time()
+                cycle_start_time = time.time() * 1000
 
                 for s, occupancy in self.sessions:
                     # calculate current time slice
                     time_slice         = total_time * occupancy
-                    session_start_time = time.time()
+                    session_start_time = time.time() * 1000
 
                     # Get queue for current model
                     queue = request_queues[s.model_name]
@@ -427,20 +427,20 @@ class GPUWorker:
                         # Sleep for remaining time if any
                         remaining_time = time_slice - processing_time
                         if remaining_time > 0:
-                            time.sleep(remaining_time / 1000)
+                            time.sleep(remaining_time * 1000)
                     else:
                         # No requests, sleep for time slice
-                        time.sleep(time_slice / 1000)
+                        time.sleep(time_slice * 1000)
 
                     # Log execution stats periodically
                     if self.stats['processed_batches'] % 100 == 0:
                         self.logger.info(f"Node {self.node_id} stats: {self.get_stats()}")
                 
                 # wait for duty cycle to finish
-                current_time    = time.time()
+                current_time    = time.time() * 1000
                 remaining_cycle = current_time - (cycle_start_time + total_time) 
                 if remaining_cycle > 0:
-                    time.sleep(remaining_cycle / 1000)
+                    time.sleep(remaining_cycle)
 
                 # check if worker needs to update node session at the end of the duty cycle
                 self._check_for_updates()

@@ -62,21 +62,21 @@ class WorkloadGenerator:
 
     def _start_load(self):
         for model in self.patterns:
-            threading.Thread(target=self._run_pattern(model, self.patterns[model]), daemon=True).start()
+            threading.Thread(target=self._run_pattern, args=(model, self.patterns[model]), daemon=True).start()
 
     def _run_pattern(self, model_name: str, pattern: dict):
         start_time = time.time()
         while True:
-            elapsed_time = (time.time() - start_time) / 1000
+            elapsed_time = (time.time() - start_time)
             if elapsed_time > self.pattern_period:
                 break
 
             if pattern['type'] == 'step':
                 rate = pattern['base'] if elapsed_time < pattern['time'] else pattern['step']
                 input_tensor = torch.randn(3, 224, 224)
-                self.scheduler.submit_request(model_name, str(model_name) + str(time.time() / 1000), input_tensor)
+                self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
 
-            print(f"Inside resnet step request generator: rate is {rate}")
+            # print(f"Inside resnet step request generator: rate is {rate}")
             time.sleep(1 / rate)
         
 def main():
