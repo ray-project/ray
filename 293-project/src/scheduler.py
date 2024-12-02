@@ -490,7 +490,7 @@ class NexusScheduler:
 
         # Initialize request queues
         self.request_queues = {}
-        self._init_queues(1000)
+        self._init_queues(200)
         
         # Initialize workers
         self.model_registry = model_registry
