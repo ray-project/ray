@@ -19,7 +19,6 @@ from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
 )
-from ray.rllib.algorithms.impala.utils import SleepTimeController
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.execution.buffers.mixin_replay_buffer import MixInMultiAgentReplayBuffer
 from ray.rllib.execution.learner_thread import LearnerThread
@@ -598,13 +597,7 @@ class IMPALA(Algorithm):
         # update of the learner group
         self._results = {}
 
-        if self.config.enable_rl_module_and_learner:
-            # Set up auto-sleep time adjustment procedure. It is absolutely critical for
-            # this Algorithm's learning success that we sleep the correct amount of time
-            # in each training_step to establish a healthy balance between sample
-            # collection and training.
-            self._sleep_time_controller = SleepTimeController()
-        else:
+        if not self.config.enable_rl_module_and_learner:
             # Create and start the learner thread.
             self._learner_thread = make_learner_thread(self.env_runner, self.config)
             self._learner_thread.start()
@@ -636,6 +629,8 @@ class IMPALA(Algorithm):
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
 
+        time.sleep(0.01)
+
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
@@ -648,6 +643,16 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
+
+        time.sleep(0.01)
+
+        # TODO (sven): When and how long to sleep best is an ongoing investigation.
+        #  We observe
+        # Balance the backpressures: Sampling vs training through sleeping a small
+        # amount of time. The sleep time is adjusted automatically based on trying
+        # to reach a maximum training throughput.
+        # with self.metrics.log_time((TIMERS, "_balance_backpressure")):
+        #    self.balance_backpressure()
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -725,6 +730,8 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
+        time.sleep(0.01)
+
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -740,11 +747,7 @@ class IMPALA(Algorithm):
                     rl_module_state=rl_module_state,
                 )
 
-        # Balance the backpressures: Sampling vs training through sleeping a small
-        # amount of time. The sleep time is adjusted automatically based on trying
-        # to reach a maximum training throughput.
-        with self.metrics.log_time((TIMERS, "_balance_backpressure")):
-            self.balance_backpressure()
+        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -885,33 +888,33 @@ class IMPALA(Algorithm):
 
         return list(waiting_processed_sample_batches.ignore_errors())
 
-    def balance_backpressure(self):
-        # Sleep for n seconds to balance backpressure.
-        time.sleep(self._sleep_time_controller.current)
-
-        # Adjust the sleep time once every iteration (on the first `training_step()`
-        # call in each iteration).
-        if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
-            train_throughput = self.metrics.peek(
-                (
-                    LEARNER_RESULTS,
-                    ALL_MODULES,
-                    NUM_ENV_STEPS_TRAINED_LIFETIME,
-                ),
-                default=0.0,
-                throughput=True,
-            )
-            self.metrics.log_value(
-                "_measured_train_throughput",
-                train_throughput,
-                window=1,
-            )
-            self._sleep_time_controller.log_result(train_throughput)
-            self.metrics.log_value(
-                "_current_sleep_time",
-                self._sleep_time_controller.current,
-                window=1,
-            )
+    # def balance_backpressure(self):
+    #    # Sleep for n seconds to balance backpressure.
+    #    time.sleep(0.2)#self._sleep_time_controller.current)
+    #
+    #    # Adjust the sleep time once every iteration (on the first `training_step()`
+    #    # call in each iteration).
+    #    if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
+    #        train_throughput = self.metrics.peek(
+    #            (
+    #                LEARNER_RESULTS,
+    #                ALL_MODULES,
+    #                NUM_ENV_STEPS_TRAINED_LIFETIME,
+    #            ),
+    #            default=0.0,
+    #            throughput=True,
+    #        )
+    #        self.metrics.log_value(
+    #            "_measured_train_throughput",
+    #            train_throughput,
+    #            window=1,
+    #        )
+    #        self._sleep_time_controller.log_result(train_throughput)
+    #        self.metrics.log_value(
+    #            "_current_sleep_time",
+    #            self._sleep_time_controller.current,
+    #            window=1,
+    #        )
 
     @classmethod
     @override(Algorithm)

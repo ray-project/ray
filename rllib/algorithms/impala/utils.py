@@ -3,7 +3,7 @@ from collections import defaultdict, deque
 import numpy as np
 
 
-class SleepTimeController:
+class _SleepTimeController:
     def __init__(self):
         self.L = 0.0
         self.H = 0.4
