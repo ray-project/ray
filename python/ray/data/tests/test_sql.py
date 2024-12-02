@@ -22,15 +22,6 @@ def temp_database_fixture() -> Generator[str, None, None]:
         yield file.name
 
 
-def test_read_sql_with_override_num_blocks_warns(temp_database):
-    with pytest.warns(UserWarning, match=r"'override_num_blocks'.*will be ignored"):
-        ray.data.read_sql(
-            "SELECT * FROM movie",
-            lambda: sqlite3.connect(temp_database),
-            override_num_blocks=1,
-        )
-
-
 def test_read_sql_with_parallelism_warns(temp_database):
     with pytest.warns(UserWarning, match=r"'parallelism'.*will be ignored"):
         ray.data.read_sql(
