@@ -642,3 +642,11 @@ py_test(
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
+
+py_test(
+    name = "test_expression_evaluator",
+    size = "small",
+    srcs = ["tests/test_expression_evaluator.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
