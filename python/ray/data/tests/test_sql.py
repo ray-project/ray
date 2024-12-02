@@ -25,7 +25,7 @@ def temp_database_fixture() -> Generator[str, None, None]:
 def test_read_sql_with_parallelism_warns(temp_database):
     with pytest.raises(ValueError):
         ray.data.read_sql(
-            "SELECT * FROM movie", lambda: sqlite3.connect(temp_database), parallelism=1
+            "SELECT * FROM movie", lambda: sqlite3.connect(temp_database), parallelism=2
         )
 
 
