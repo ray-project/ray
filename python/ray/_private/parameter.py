@@ -69,6 +69,8 @@ class RayParams:
             the primary Redis shard.
         redis_max_clients: If provided, attempt to configure Redis with this
             maxclients number.
+        redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         plasma_directory: A directory where the Plasma memory mapped files will
@@ -161,6 +163,7 @@ class RayParams:
         external_addresses: Optional[List[str]] = None,
         num_redis_shards: Optional[int] = None,
         redis_max_clients: Optional[int] = None,
+        redis_username: Optional[str] = ray_constants.REDIS_DEFAULT_USERNAME,
         redis_password: Optional[str] = ray_constants.REDIS_DEFAULT_PASSWORD,
         plasma_directory: Optional[str] = None,
         worker_path: Optional[str] = None,
@@ -219,6 +222,7 @@ class RayParams:
         self.external_addresses = external_addresses
         self.num_redis_shards = num_redis_shards
         self.redis_max_clients = redis_max_clients
+        self.redis_username = redis_username
         self.redis_password = redis_password
         self.plasma_directory = plasma_directory
         self.worker_path = worker_path
