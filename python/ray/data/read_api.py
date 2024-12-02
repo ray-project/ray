@@ -2158,16 +2158,10 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
-    if override_num_blocks is not None:
-        warnings.warn(
-            "To ensure correctness, 'read_sql' always produces one block. The "
-            "'override_num_blocks' argument you specified will be ignored."
-        )
-
-    if parallelism != -1:
-        warnings.warn(
+    if parallelism != -1 or parallelism != 1:
+        raise ValueError(
             "To ensure correctness, 'read_sql' always launches one task. The "
-            "'parallelism' argument you specified will be ignored."
+            "'parallelism' argument you specified can't be used."
         )
 
     datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
