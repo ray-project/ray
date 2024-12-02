@@ -1,5 +1,5 @@
 - name: DEFAULTS
-  group: data-tests
+  group: :database: Data tests
   working_dir: nightly_tests/dataset
 
   frequency: nightly
