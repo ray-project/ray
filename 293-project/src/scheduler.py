@@ -397,6 +397,7 @@ class GPUWorker:
     
         while self.active:
             try:
+                print(f"GPU Worker runnign")
                 total_time       = self.duty_cycle
                 cycle_start_time = time.time()
 
@@ -691,13 +692,15 @@ class NexusScheduler:
             new_session = copy.deepcopy(old_session)
             if model in update_info:
                 new_session.request_rate = update_info[model]
-            new_sessions.append(new_session)
+            if new_session.request_rate > 0:
+                new_sessions.append(new_session)
         
         # also add sessions that have been created for new models
         for model, request_rate in update_info.items():
             if model not in self.sessions:
                 new_session = session(model, models_config[model]['SLO'], request_rate)
-                new_sessions.append(new_session)
+                if new_session.request_rate > 0:
+                    new_sessions.append(new_session)
 
         old_nodes = self.nodes
         new_nodes = self.nexus_instance.squishyBinPacking(new_sessions)
