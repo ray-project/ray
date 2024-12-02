@@ -2602,6 +2602,14 @@ class AlgorithmConfig(_Config):
                 `ray.rllib.offline.InputReader`.
                 - A string key that indexes a callable with
                 `tune.registry.register_input`
+            offline_data_class: An optional `OfflineData` class that is used to define
+                the offline data pipeline, including the dataset and the sampling
+                methodology. Override the `OfflineData` class and pass your derived
+                class here, if you need some primer transformations specific to your
+                data or your loss. Usually overriding the `OfflinePreLearner` and using
+                the resulting customization via `prelearner_class` suffices for most
+                cases. The default is `None` which uses the base `OfflineData` defined
+                in `ray.rllib.offline.offline_data`.
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
