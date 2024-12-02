@@ -45,7 +45,7 @@ You should see results similar to the following in your console output:
 |          18.3034 | 28000 | 0.908918 |            12.9676 |
 +------------------+-------+----------+--------------------+
 """
-# Note(Artur): this lets us extract portions of the script on Anyscale
+# These tags allow extracting portions of this script on Anyscale.
 # ws-template-imports-start
 import gymnasium as gym
 from gymnasium.spaces import Discrete, Box
@@ -75,7 +75,7 @@ parser.add_argument(
 )
 
 
-# Note(Artur): this lets us extract portions of the script on Anyscale
+# These tags allow extracting portions of this script on Anyscale.
 # ws-template-code-start
 class SimpleCorridor(gym.Env):
     """Example of a custom env in which the agent has to walk down a corridor.
