@@ -2056,7 +2056,7 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
-    def _release_output_channel_buffers(self, execution_index: int):
+    def release_output_channel_buffers(self, execution_index: int):
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
