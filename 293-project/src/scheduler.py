@@ -185,7 +185,6 @@ class RequestQueue:
     def __init__(self, model_name: str, max_size: int = 100):
         self.model_name = model_name
         self.queue = RayQueue(maxsize=max_size)
-        self.lock = Lock()
         self._pending_count = 0
         self._total_requests = 0
         self._logger = logging.getLogger(f"Queue-{model_name}")
