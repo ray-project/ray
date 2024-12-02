@@ -43,6 +43,11 @@ struct ToPostableHelper<std::function<FuncType>> {
 template <typename FuncType>
 using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
 
+/// Postable wraps a std::function and an instrumented_io_context together, ensuring the
+/// function can only be Post()ed or Dispatch()ed to that specific io_context. This
+/// provides type safety and prevents accidentally running the function on the wrong
+/// io_context.
+///
 template <typename FuncType>
 class Postable {
  public:
@@ -59,8 +64,19 @@ class Postable {
         name);
   }
 
+  template <typename... Args>
+  void Dispatch(const std::string &name, Args &&...args) const {
+    io_context_.dispatch(
+        [func = func_,
+         args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
+          std::apply(func, std::move(args_tuple));
+        },
+        name);
+  }
+
   // OnInvocation
-  Postable &&OnInvocation(std::function<void()> observer) && {
+  // Adds an observer that will be called on the io_context before the original function.
+  Postable OnInvocation(std::function<void()> observer) && {
     auto original_func = std::move(func_);
     func_ = [observer = std::move(observer),
              func = std::move(original_func)](auto &&...args) {

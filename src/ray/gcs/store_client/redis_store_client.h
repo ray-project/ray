@@ -249,6 +249,13 @@ class RedisStoreClient : public StoreClient {
   // hence command.args may become empty.
   void SendRedisCmdArgsAsKeys(RedisCommand command, RedisCallback redis_callback);
 
+  // HMGET external_storage_namespace@table_name key1 key2 ...
+  // `keys` are chunked to multiple HMGET commands by
+  // RAY_maximum_gcs_storage_operation_batch_size.
+  void MGetValues(const std::string &table_name,
+                  const std::vector<std::string> &keys,
+                  Postable<void(absl::flat_hash_map<std::string, std::string>)> callback);
+
   std::string external_storage_namespace_;
   std::shared_ptr<RedisClient> redis_client_;
   absl::Mutex mu_;
