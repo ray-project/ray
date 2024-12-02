@@ -47,22 +47,23 @@
       run:
         script: > 
           python aggregate_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
+          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --aggregation count
     - __suffix__: mean
       run:
         script: >
           python aggregate_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
+          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --aggregation mean --aggregate-on column05
     - __suffix__: std
       run:
         script: >
           python aggregate_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
-          --keys column08 column09 --aggregation std --aggregate-on column05
+          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
+          --group-by column08 column09 --aggregation std --aggregate-on column05
     
 - name: map_groups
+  stable: False
   run:
     timeout: 3600
 
@@ -71,13 +72,13 @@
       run:
         script: >
           python map_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
+          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --batch-format pandas
     - __suffix__: pyarrow
       run:
         script: >
           python map_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem 
+          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --batch-format pyarrow
 
 ###############
