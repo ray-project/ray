@@ -111,6 +111,15 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
+    # TODO (sven): Make this an abstract method that must be overridden.
+    def get_metrics(self) -> Any:
+        """Returns metrics (in any form) of the thus far collected, completed episodes.
+
+        Returns:
+            Metrics of any form.
+        """
+        pass
+
     @abc.abstractmethod
     def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
         """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""

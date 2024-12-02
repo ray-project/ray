@@ -65,7 +65,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
     """The generic environment runner for the single agent case."""
 
     @override(EnvRunner)
-    def __init__(self, config: AlgorithmConfig, **kwargs):
+    def __init__(self, *, config: AlgorithmConfig, **kwargs):
         """Initializes a SingleAgentEnvRunner instance.
 
         Args:
@@ -386,7 +386,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     )
 
         # Return done episodes ...
-        # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
         # ... and all ongoing episode chunks.
 
@@ -429,6 +428,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             ),
         }
 
+    @override(EnvRunner)
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:

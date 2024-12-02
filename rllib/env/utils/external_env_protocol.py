@@ -8,18 +8,26 @@ class MessageTypes(Enum):
     # Requests: Client (external env) -> Server (RLlib).
     # ----
     # Ping command (initial handshake).
-    PING = "ping"
+    PING = "PING"
     # List of episodes (similar to what an EnvRunner.sample() call would return).
-    EPISODES = "episodes"
+    EPISODES = "EPISODES"
     # Request state (e.g. model weights).
-    GET_STATE = "get_state"
+    GET_STATE = "GET_STATE"
+    # Request (relevant) config.
+    GET_CONFIG = "GET_CONFIG"
+    # Send episodes and request the next state update right after that.
+    # Clients sending this message should wait for a SET_STATE message as an immediate
+    # response. Useful for external samplers that must collect on-policy data.
+    EPISODES_AND_GET_STATE = "EPISODES_AND_GET_STATE"
 
     # Responses: Server (RLlib) -> Client (external env).
     # ----
     # Pong response (initial handshake).
-    PONG = "pong"
+    PONG = "PONG"
     # Set state (e.g. model weights).
-    SET_STATE = "set_state"
+    SET_STATE = "SET_STATE"
+    # Set (relevant) config.
+    SET_CONFIG = "SET_CONFIG"
 
     # @OldAPIStack
     ACTION_SPACE = "ACTION_SPACE"
@@ -32,3 +40,6 @@ class MessageTypes(Enum):
     LOG_ACTION = "LOG_ACTION"
     LOG_RETURNS = "LOG_RETURNS"
     END_EPISODE = "END_EPISODE"
+
+    def __str__(self):
+        return self.name

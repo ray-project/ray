@@ -615,6 +615,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
         }
 
+    @override(EnvRunner)
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
