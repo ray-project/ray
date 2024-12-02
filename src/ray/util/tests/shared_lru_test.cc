@@ -24,12 +24,12 @@ namespace ray::utils::container {
 namespace {
 constexpr size_t kTestCacheSz = 1;
 
-class TestClass {
+class TestClassWithHashAndEq {
  public:
-  TestClass(std::string data) : data_(std::move(data)) {}
-  bool operator==(const TestClass &rhs) const { return data_ == rhs.data_; }
+  TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
+  bool operator==(const TestClassWithHashAndEq &rhs) const { return data_ == rhs.data_; }
   template <typename H>
-  friend H AbslHashValue(H h, const TestClass &obj) {
+  friend H AbslHashValue(H h, const TestClassWithHashAndEq &obj) {
     return H::combine(std::move(h), obj.data_);
   }
 
@@ -86,9 +86,9 @@ TEST(SharedLruConstCache, TypeAliasAssertion) {
 }
 
 TEST(SharedLruConstCache, CustomizedKey) {
-  TestClass obj1{"hello"};
-  TestClass obj2{"hello"};
-  SharedLruCache<TestClass, std::string> cache{2};
+  TestClassWithHashAndEq obj1{"hello"};
+  TestClassWithHashAndEq obj2{"hello"};
+  SharedLruCache<TestClassWithHashAndEq, std::string> cache{2};
   cache.Put(obj1, std::make_shared<std::string>("val"));
   auto val = cache.Get(obj2);
   EXPECT_EQ(*val, "val");
