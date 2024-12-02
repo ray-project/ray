@@ -77,12 +77,15 @@ class ParquetBaseDatasource(FileBasedDatasource):
         # Parquet requires `open_input_file` due to random access reads
         return filesystem.open_input_file(path, **open_args)
     
-    def calculate_nulls(self, table):
-        total = 0
-        null = 0
-        for column in table.columns:
-            null += column.null_count
-            total += len(column)
-            
-        percent = (total - null) / total
+    def calculate_nulls(self, table):  
+        total = 0  
+        null = 0  
+        for column in table.columns:  
+            null += column.null_count  
+            total += len(column)  
+    
+        if total == 0:  
+            return 
+
+        percent = (total - null) / total      
         self.null_count_metric.observe(percent)
