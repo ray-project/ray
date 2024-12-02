@@ -1,3 +1,5 @@
+import gymnasium as gym
+import numpy as np
 from pathlib import Path
 
 from ray.air.constants import TRAINING_ITERATION
@@ -32,7 +34,16 @@ print(f"data_path={data_path}")
 # Define the BC config.
 config = (
     BCConfig()
-    .environment(env="CartPole-v1")
+    .environment(
+        env="CartPole-v1",
+        observation_space=gym.spaces.Box(
+            np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+            np.array([4.8, np.inf, 0.41887903, np.inf]),
+            shape=(4,),
+            dtype=np.float32,
+        ),
+        action_space=gym.spaces.Discrete(2),
+    )
     .api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,

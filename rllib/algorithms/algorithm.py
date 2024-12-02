@@ -667,33 +667,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             self.config.off_policy_estimation_methods = ope_dict
 
-        # Create a set of env runner actors via a EnvRunnerGroup.
-        self.env_runner_group = EnvRunnerGroup(
-            env_creator=self.env_creator,
-            validate_env=self.validate_env,
-            default_policy_class=self.get_default_policy_class(self.config),
-            config=self.config,
-            num_env_runners=(
-                0
-                if (
-                    self.config.input_
-                    and (
-                        isinstance(self.config.input_, str)
-                        or (
-                            isinstance(self.config.input_, list)
-                            and isinstance(self.config.input_[0], str)
-                        )
-                    )
-                    and self.config.input_ != "sampler"
-                    and self.config.enable_rl_module_and_learner
-                )
-                else self.config.num_env_runners
-            ),
-            local_env_runner=True,
-            logdir=self.logdir,
-            tune_trial_id=self.trial_id,
-        )
-
         # If an input path is available and we are on the new API stack generate
         # an `OfflineData` instance.
         if (
@@ -714,6 +687,34 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Otherwise set the attribute to `None`.
         else:
             self.offline_data = None
+
+        if not self.offline_data:
+            # Create a set of env runner actors via a EnvRunnerGroup.
+            self.env_runner_group = EnvRunnerGroup(
+                env_creator=self.env_creator,
+                validate_env=self.validate_env,
+                default_policy_class=self.get_default_policy_class(self.config),
+                config=self.config,
+                num_env_runners=(
+                    0
+                    if (
+                        self.config.input_
+                        and (
+                            isinstance(self.config.input_, str)
+                            or (
+                                isinstance(self.config.input_, list)
+                                and isinstance(self.config.input_[0], str)
+                            )
+                        )
+                        and self.config.input_ != "sampler"
+                        and self.config.enable_rl_module_and_learner
+                    )
+                    else self.config.num_env_runners
+                ),
+                local_env_runner=True,
+                logdir=self.logdir,
+                tune_trial_id=self.trial_id,
+            )
 
         # Compile, validate, and freeze an evaluation config.
         self.evaluation_config = self.config.get_evaluation_config_object()
@@ -796,8 +797,26 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
+            if self.env_runner_group:
+                spaces = self.env_runner_group.get_spaces()
+            elif self.eval_env_runner_group:
+                spaces = self.eval_env_runner_group.get_spaces()
+            else:
+                from ray.rllib.env import INPUT_ENV_SPACES
+
+                spaces = {
+                    INPUT_ENV_SPACES: (
+                        self.config.observation_space,
+                        self.config.action_space,
+                    ),
+                    DEFAULT_MODULE_ID: (
+                        self.config.observation_space,
+                        self.config.action_space,
+                    ),
+                }
+
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                spaces=self.env_runner_group.get_spaces(),
+                spaces=spaces,
                 inference_only=False,
             )
             self.learner_group = self.config.build_learner_group(
@@ -823,14 +842,25 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                 inference_only=True,
             )[COMPONENT_LEARNER]
-            self.env_runner.set_state(rl_module_state)
-            self.env_runner_group.sync_env_runner_states(
-                config=self.config,
-                env_steps_sampled=self.metrics.peek(
-                    (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                ),
-                rl_module_state=rl_module_state,
-            )
+            if self.env_runner_group:
+                self.env_runner.set_state(rl_module_state)
+                self.env_runner_group.sync_env_runner_states(
+                    config=self.config,
+                    env_steps_sampled=self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    ),
+                    rl_module_state=rl_module_state,
+                )
+            elif self.eval_env_runner_group:
+                self.eval_env_runner.set_state(rl_module_state)
+                self.eval_env_runner_group.sync_env_runner_states(
+                    config=self.config,
+                    env_steps_sampled=self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    ),
+                    rl_module_state=rl_module_state,
+                )
+            # TODO (simon): Update modules in DataWorkers.
 
             if self.offline_data:
                 # If the learners are remote we need to provide specific
@@ -857,7 +887,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
                 # Provide the `OfflineData` instance with space information. It might
                 # need it for reading recorded experiences.
-                self.offline_data.spaces = self.env_runner_group.get_spaces()
+                self.offline_data.spaces = spaces
 
         # Run `on_algorithm_init` callback after initialization is done.
         self.callbacks.on_algorithm_init(algorithm=self, metrics_logger=self.metrics)
@@ -952,7 +982,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         #  in special key in result dict and perform the connector merge/broadcast
         #  inside the `training_step` as well. See the new IMPALA for an example.
         if self.config.enable_env_runner_and_connector_v2:
-            if not self.config._dont_auto_sync_env_runner_states:
+            if (
+                not self.config._dont_auto_sync_env_runner_states
+                and self.env_runner_group
+            ):
                 # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
                 # new states back to all EnvRunners.
                 with self.metrics.log_time((TIMERS, SYNCH_ENV_CONNECTOR_STATES_TIMER)):
@@ -1031,20 +1064,22 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
             self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.env_runner_group.local_env_runner,
+                from_worker_or_learner_group=self.learner_group,
+                # self.env_runner_group.local_env_runner,
                 inference_only=True,
             )
 
             if self.config.enable_env_runner_and_connector_v2:
-                # Synchronize EnvToModule and ModuleToEnv connector states and broadcast
-                # new states back to all eval EnvRunners.
-                with self.metrics.log_time(
-                    (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
-                ):
-                    self.eval_env_runner_group.sync_env_runner_states(
-                        config=self.evaluation_config,
-                        from_worker=self.env_runner_group.local_env_runner,
-                    )
+                if self.env_runner_group:
+                    # Synchronize EnvToModule and ModuleToEnv connector states
+                    # and broadcast new states back to all eval EnvRunners.
+                    with self.metrics.log_time(
+                        (TIMERS, SYNCH_EVAL_ENV_CONNECTOR_STATES_TIMER)
+                    ):
+                        self.eval_env_runner_group.sync_env_runner_states(
+                            config=self.evaluation_config,
+                            from_worker=self.env_runner_group.local_env_runner,
+                        )
             else:
                 self._sync_filters_if_needed(
                     central_worker=self.env_runner_group.local_env_runner,
@@ -3535,18 +3570,21 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             results.update(eval_results)
 
-        # Fault tolerance stats.
-        results[FAULT_TOLERANCE_STATS] = {
-            "num_healthy_workers": self.env_runner_group.num_healthy_remote_workers(),
-            "num_remote_worker_restarts": (
-                self.env_runner_group.num_remote_worker_restarts()
-            ),
-        }
-        results["env_runner_group"] = {
-            "actor_manager_num_outstanding_async_reqs": (
-                self.env_runner_group.num_in_flight_async_reqs()
-            ),
-        }
+        if self.env_runner_group:
+            # Fault tolerance stats.
+            results[FAULT_TOLERANCE_STATS] = {
+                "num_healthy_workers": (
+                    self.env_runner_group.num_healthy_remote_workers()
+                ),
+                "num_remote_worker_restarts": (
+                    self.env_runner_group.num_remote_worker_restarts()
+                ),
+            }
+            results["env_runner_group"] = {
+                "actor_manager_num_outstanding_async_reqs": (
+                    self.env_runner_group.num_in_flight_async_reqs()
+                ),
+            }
 
         # Resolve all `Stats` leafs by peeking (get their reduced values).
         return tree.map_structure(
