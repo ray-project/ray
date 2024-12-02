@@ -14,8 +14,10 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include "absl/time/time.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -26,9 +28,8 @@
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;
-namespace ray {
 
-namespace raylet {
+namespace ray::raylet {
 
 int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
@@ -140,7 +141,7 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return current_time_ms_; }),
+            [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -241,7 +242,7 @@ class WorkerPoolMock : public WorkerPool {
 
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
 
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> &GetIdleWorkers() {
+  std::list<std::pair<std::shared_ptr<WorkerInterface>, absl::Time>> &GetIdleWorkers() {
     return idle_of_all_languages_;
   }
 
@@ -425,7 +426,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_shared<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
@@ -2151,9 +2152,7 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   ASSERT_TRUE(callback_called);
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(
