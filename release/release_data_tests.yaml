@@ -539,6 +539,7 @@
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_chaos
+  stable: False
   # Don't use 'nightly_tests/dataset' as the working directory because we need to run 
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
