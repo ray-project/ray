@@ -68,6 +68,7 @@ class WorkloadGenerator:
         start_time = time.time()
         while True:
             elapsed_time = (time.time() - start_time)
+            print(elapsed_time)
             if elapsed_time > self.pattern_period:
                 break
 
