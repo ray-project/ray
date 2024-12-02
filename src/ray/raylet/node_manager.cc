@@ -377,7 +377,7 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
-  runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
+  auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
       config.runtime_env_agent_port, /*delay_executor=*/
@@ -387,7 +387,7 @@ NodeManager::NodeManager(
       },
       shutdown_raylet_gracefully_);
 
-  worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
+  worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
