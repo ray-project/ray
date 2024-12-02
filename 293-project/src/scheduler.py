@@ -606,6 +606,7 @@ class NexusScheduler:
         try:
             if model_name not in self.request_queues:
                 self.logger.error(f"No queue found for model {model_name}")
+                print(f"No queue found for model {model_name}")
                 return False
             
             success = self.request_queues[model_name].add_request(
