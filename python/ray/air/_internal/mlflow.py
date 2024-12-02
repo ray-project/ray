@@ -25,13 +25,12 @@ def is_in_databricks_runtime():
 
 
 def verify_databricks_auth_env():
-    if not (
+    return (
         DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ
-    ) and not (
+    ) or (
         DATABRICKS_HOST in os.environ and DATABRICKS_CLIENT_ID in os.environ
         and DATABRICKS_CLIENT_SECRET in os.environ
-    ):
-        return False
+    )
 
 
 class _MLflowLoggerUtil:
