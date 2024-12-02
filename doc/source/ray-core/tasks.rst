@@ -299,6 +299,42 @@ to disable task events, which reduces the overhead of task execution, and the am
 Nested tasks don't inherit the task events settings from the parent task. You need to set the task events settings for each task separately.
 
 
+Invocation Stacktrace
+---------------------
+
+Ray can optionally capture and display the stacktrace of where tasks are invoked from in your code. This can help with debugging and understanding the execution flow of your application.
+
+To enable invocation stacktrace capture, set the environment variable ``RAY_enable_invocation_stacktrace=true``. When enabled:
+
+- The stacktrace will be captured when creating and invoking tasks
+- The stacktrace will be visible in:
+  - Ray Dashboard UI under the task details
+  - ``ray list task --detail`` CLI command output
+  - State API responses
+
+Note that stacktrace capture is disabled by default to avoid any performance overhead. Only enable it when needed for debugging purposes.
+
+Example:
+
+.. code-block:: python
+
+    import ray
+
+    # Enable stacktrace capture
+    ray.init(runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}})
+
+    @ray.remote
+    def my_task():
+        return 42
+
+    # Stacktrace will be captured for task invocation
+    future = my_task.remote()
+    result = ray.get(future)
+
+The stacktrace will show the exact line numbers and call stack where the task was created and invoked.
+
+This feature is currently only supported for Python and C++ tasks.
+
 
 More about Ray Tasks
 --------------------

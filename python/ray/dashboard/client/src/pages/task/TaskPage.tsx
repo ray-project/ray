@@ -245,13 +245,11 @@ const TaskPageContents = ({
               },
           {
             label: "Invocation stacktrace",
-            content: !invocation_stacktrace ? {
-              value: "Invocation stacktrace not enabled. To enable, set environment variable \"RAY_enable_invocation_stacktrace\" to \"true\"."
-            } : (
+            content: (
               <Box display="inline-block">
                 <CodeDialogButton
                   title="Invocation stacktrace"
-                  code={invocation_stacktrace}
+                  code={invocation_stacktrace || "Invocation stacktrace not enabled. To enable, set environment variable \"RAY_enable_invocation_stacktrace\" to \"true\"."}
                 />
               </Box>
             ),

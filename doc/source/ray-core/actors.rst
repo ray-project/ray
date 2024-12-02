@@ -482,6 +482,47 @@ Method settings override the actor setting:
     :start-after: __enable_task_events_start__
     :end-before: __enable_task_events_end__
 
+Invocation Stacktrace
+---------------------
+
+Ray can optionally capture and display the stacktrace of where actors are created and actor tasks are invoked from in your code. This can help with debugging and understanding the execution flow of your application.
+
+To enable invocation stacktrace capture, set the environment variable ``RAY_enable_invocation_stacktrace=true``. When enabled:
+
+- The stacktrace will be captured when creating actors or calling actor methods
+- The stacktrace will be visible in:
+  - Ray Dashboard UI under the actor details
+  - ``ray list task --detail`` CLI command output
+  - State API responses
+
+Note that stacktrace capture is disabled by default to avoid any performance overhead. Only enable it when needed for debugging purposes.
+
+Example:
+
+.. code-block:: python
+    import ray
+
+    # Enable stacktrace capture
+    ray.init(runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}})
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
+
+        def increment(self):
+            self.value += 1
+            return self.value
+
+    # Stacktrace will be captured for actor creation
+    counter = Counter.remote()
+
+    # Stacktrace will be captured for method invocation
+    counter.increment.remote()
+
+The stacktrace will show the exact line numbers and call stack where the actor was created and methods were invoked.
+
+This feature is currently only supported for Python and C++ tasks.
 
 More about Ray Actors
 ---------------------
