@@ -49,19 +49,19 @@
     - __suffix__: count
       run:
         script: > 
-          python aggregate_benchmark.py 
+          python aggregate_groups_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --aggregation count
     - __suffix__: mean
       run:
         script: >
-          python aggregate_benchmark.py 
+          python aggregate_groups_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --aggregation mean --aggregate-on column05
     - __suffix__: std
       run:
         script: >
-          python aggregate_benchmark.py 
+          python aggregate_groups_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
           --group-by column08 column09 --aggregation std --aggregate-on column05
     
