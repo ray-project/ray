@@ -5,6 +5,7 @@ import pyarrow as pa
 from pyarrow import types
 import pyarrow.compute as pc
 import ray
+from ray.data.block import DataBatch
 
 from benchmark import Benchmark
 
@@ -33,7 +34,7 @@ def main(args):
     benchmark.write_result()
 
 
-def normalize_group(group: pd.DataFrame) -> pd.DataFrame:
+def normalize_group(group: DataBatch) -> DataBatch:
     assert isinstance(
         group, (pd.DataFrame, pa.Table)
     ), f"Invalid group type: {type(group)}"
