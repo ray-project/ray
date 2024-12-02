@@ -79,10 +79,16 @@ class WorkloadGenerator:
                 else:
                     rate = pattern['base'] + (elapsed_time - 20) * pattern['slope']
                 
-                input_tensor = torch.randn(3, 224, 224)
-                self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
+                second_start_time = time.time()
+                for i in range(rate):
+                    input_tensor = torch.randn(3, 224, 224)
+                    self.scheduler.submit_request(model_name, str(model_name) + str(time.time()), input_tensor)
+                second_end_time = time.time()
 
-            time.sleep(1 / rate)
+            time_left = 1 - (second_end_time - second_start_time)
+            print(f"Time it took to send register requests: {second_end_time - second_start_time}")
+            if time_left>0:
+                time.sleep(time_left)
         
 def main():
     # Load batch profiles
