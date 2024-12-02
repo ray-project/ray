@@ -11,7 +11,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--aggregation", required=True, choices=["count", "mean", "std"]
     )
-    parser.add_argument("--aggregate-on", type=str, help="Which column to aggregate on")
+    parser.add_argument("--aggregate-on", type=str)
 
     return parser.parse_args()
 
