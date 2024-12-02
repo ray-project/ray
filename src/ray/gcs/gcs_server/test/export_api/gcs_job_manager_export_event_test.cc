@@ -107,8 +107,8 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
