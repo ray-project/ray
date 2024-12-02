@@ -203,8 +203,7 @@ class RequestQueue:
                 return False
                 
             print(f"calling put on queue")
-            with self.lock:
-                self.queue.put((request_id, input_tensor, time.time()))
+            self.queue.put((request_id, input_tensor, time.time()))
             print(f"finished calling put on queue")
             self._pending_count += 1
             self._total_requests += 1
@@ -226,9 +225,11 @@ class RequestQueue:
             if available == 0:
                 return None
                 
-            with self.lock:
-                batch = self.queue.get_batch(available, timeout=0)
-            for (request_id, input_tensor, arrival_time) in batch:
+            
+            # batch = self.queue.get_batch(available, timeout=0)
+            # for (request_id, input_tensor, arrival_time) in batch:
+            for _ in range(available):
+                request_id, input_tensor, arrival_time = self.queue.get_nowait()
                 requests.append((request_id, input_tensor))
                 request_ids.append(request_id)
                 inputs.append(input_tensor)
