@@ -123,8 +123,8 @@ def main():
     model_patterns = {
         'resnet': {
             'type': 'step',
-            'base': 500,
-            'step': 1000,
+            'base': 5,
+            'step': 10,
             'time': 30
         }
     }
