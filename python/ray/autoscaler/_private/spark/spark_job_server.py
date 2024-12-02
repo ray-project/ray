@@ -48,7 +48,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
             def start_ray_worker_thread_fn():
                 try:
                     _start_ray_worker_nodes(
-                        spark=self.server.spark,
+                        spark_job_server=self.server,
                         spark_job_group_id=spark_job_group_id,
                         spark_job_group_desc=spark_job_group_desc,
                         num_worker_nodes=1,
@@ -62,7 +62,6 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         object_store_memory_per_node=object_store_memory_per_node,
                         worker_node_options=worker_node_options,
                         collect_log_to_path=collect_log_to_path,
-                        spark_job_server_port=self.server.server_address[1],
                         node_id=node_id,
                     )
                 except Exception:
@@ -118,6 +117,9 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                 return {"status": self.server.task_status_dict[spark_job_group_id]}
             else:
                 return {"status": "terminated"}
+
+        elif path_parts[0] == "query_last_worker_err":
+            return {"last_worker_err": self.server.last_worker_error}
 
         else:
             raise ValueError(f"Illegal request path: {path}")
@@ -195,6 +197,7 @@ class SparkJobServer(ThreadingHTTPServer):
         # and value is the corresponding spark task status.
         # each spark task holds a ray worker node.
         self.task_status_dict = {}
+        self.last_worker_error = None
 
     def shutdown(self) -> None:
         super().shutdown()

@@ -183,10 +183,25 @@ class RayClusterOnSpark:
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
                         if cur_alive_worker_count == 0:
-                            raise RuntimeError(
-                                "Current spark cluster has no resources to launch "
-                                "Ray worker nodes."
+                            response = requests.post(
+                                url=self.spark_job_server_url + "/query_last_worker_err",
                             )
+                            response.raise_for_status()
+
+                            decoded_resp = response.content.decode("utf-8")
+                            json_res = json.loads(decoded_resp)
+                            last_worker_err = json_res["last_worker_err"]
+
+                            if last_worker_err:
+                                raise RuntimeError(
+                                    "Starting Ray worker node failed, error:\n"
+                                    f"{last_worker_err}"
+                                )
+                            else:
+                                raise RuntimeError(
+                                    "Current spark cluster has no resources to launch "
+                                    "Ray worker nodes."
+                                )
                         _logger.warning(
                             "Timeout in waiting for minimal ray workers to start. "
                             "Started / Total requested: "
@@ -1442,7 +1457,7 @@ def setup_global_ray_cluster(
 
 def _start_ray_worker_nodes(
     *,
-    spark,
+    spark_job_server,
     spark_job_group_id,
     spark_job_group_desc,
     num_worker_nodes,
@@ -1456,7 +1471,6 @@ def _start_ray_worker_nodes(
     object_store_memory_per_node,
     worker_node_options,
     collect_log_to_path,
-    spark_job_server_port,
     node_id,
 ):
     # NB:
@@ -1477,6 +1491,8 @@ def _start_ray_worker_nodes(
     #     SIGKILL signal to all spark tasks. Once the spark tasks are killed,
     #     `ray_start_node` process detects parent died event then it kills ray
     #     worker node.
+    spark = spark_job_server.spark
+    spark_job_server_port = spark_job_server.server_address[1]
 
     def ray_cluster_job_mapper(_):
         from pyspark.taskcontext import TaskContext
@@ -1547,6 +1563,7 @@ def _start_ray_worker_nodes(
         )
 
         try:
+            is_task_reschedule_failure = False
             # Check node id availability
             response = requests.post(
                 url=(
@@ -1568,6 +1585,7 @@ def _start_ray_worker_nodes(
                 # and Ray autoscaler will trigger a new node creation
                 # with new node id, and a new spark job will be created
                 # for holding it.
+                is_task_reschedule_failure = True
                 raise RuntimeError(
                     "Starting Ray worker node twice with the same node id "
                     "is not allowed."
@@ -1610,9 +1628,10 @@ def _start_ray_worker_nodes(
             # For either case (1) or case (2),
             # to avoid Spark triggers more spark task retries, we swallow
             # exception here to make spark the task exit normally.
-            _logger.warning(f"Ray worker node process exit, reason: {repr(e)}.")
+            err_msg = f"Ray worker node process exit, reason: {repr(e)}."
+            _logger.warning(err_msg)
 
-        yield 0
+            yield err_msg, is_task_reschedule_failure
 
     spark.sparkContext.setJobGroup(
         spark_job_group_id,
@@ -1652,7 +1671,11 @@ def _start_ray_worker_nodes(
     hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
     hook_entry.on_spark_job_created(spark_job_group_id)
 
-    job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
+    err_msg, is_task_reschedule_failure = (
+        job_rdd.mapPartitions(ray_cluster_job_mapper).collect()
+    )
+    if not is_task_reschedule_failure:
+        spark_job_server.last_worker_error = err_msg
 
 
 @PublicAPI
