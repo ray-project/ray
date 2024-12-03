@@ -22,13 +22,19 @@
 #include <string_view>
 #include <vector>
 
+#include "src/ray/util/filesystem.h"
 #include "src/ray/util/logging.h"
+#include "src/ray/util/util.h"
 
 namespace ray {
 
 namespace {
 // Cgroup path for ray system components.
-constexpr std::string_view kSystemCgroupFolder = "/sys/fs/cgroup/system";
+const std::string kSystemCgroupFolder = []() {
+  // Append UUID to system cgroup path to avoid conflict.
+  // Chances are that multiple ray cluster runs on the same filesystem.
+  return JoinPaths("/sys/fs/cgroup/system", GenerateUUIDV4());
+}();
 // Cgroup PID path for ray system components.
 constexpr std::string_view kSystemCgroupProcs = "/sys/fs/cgroup/system/cgroup.procs";
 // Parent cgroup path.
