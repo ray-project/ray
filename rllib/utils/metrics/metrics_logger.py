@@ -110,7 +110,14 @@ class MetricsLogger:
         self.stats = {}
         self._tensor_mode = False
         self._tensor_keys = set()
-        self._threading_lock = threading.RLock()
+        # TODO (sven): We use a dummy RLock here for most RLlib algos, however, APPO
+        #  and IMPALA require this to be an actual RLock (b/c of thread safety reasons).
+        #  An actual RLock, however, breaks our current OfflineData and
+        #  OfflinePreLearner logic, in which the Learner (which contains a
+        #  MetricsLogger) is serialized and deserialized. We will have to fix this
+        #  offline RL logic first, then can remove this hack here and return to always
+        #  using the RLock.
+        self._threading_lock = _DummyRLock()  # threading.RLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.
@@ -1169,3 +1176,17 @@ class MetricsLogger:
         except KeyError as e:
             if key_error:
                 raise e
+
+
+class _DummyRLock:
+    def acquire(self, blocking=True, timeout=-1):
+        return True
+
+    def release(self):
+        pass
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        pass

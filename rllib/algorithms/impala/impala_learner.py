@@ -50,6 +50,14 @@ class IMPALALearner(Learner):
     def build(self) -> None:
         super().build()
 
+        # TODO (sven): We replace the dummy RLock here for APPO/IMPALA, b/c these algos
+        #  require this for thread safety reasons.
+        #  An RLock breaks our current OfflineData and OfflinePreLearner logic, in which
+        #  the Learner (which contains a MetricsLogger) is serialized and deserialized.
+        #  We will have to fix this offline RL logic first, then can remove this hack
+        #  here and return to always using the RLock.
+        self.metrics._threading_lock = threading.RLock()
+
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
             ModuleID, Scheduler
