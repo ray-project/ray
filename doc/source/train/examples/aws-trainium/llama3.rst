@@ -37,7 +37,7 @@ When the EKS cluster is ready, create an Amazon ECR repository for building and 
 
 ::
 
-   chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh 
+   chmod +x 0-kuberay-trn1-llama3-finetune-build-image.sh
    ./0-kuberay-trn1-llama3-finetune-build-image.sh
 
 4. Enter the zone your cluster is running in, for example: us-east-2.
@@ -61,7 +61,7 @@ Configuring Ray Cluster
 
 The ``llama3.1_8B_finetune_ray_ptl_neuron`` directory in the AWS Neuron samples repository simplifies the
 Ray configuration. KubeRay provides a manifest that you can apply
-to the cluster to set up the head and worker pods. 
+to the cluster to set up the head and worker pods.
 
 Run the following command to set up the Ray cluster:
 
