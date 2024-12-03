@@ -12,11 +12,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 //
-// SharedLruCache is a LRU cache, with all entries shared, which means a single entry
-// could be accessed by multiple getters. All values are wrapped with shared pointer to
-// avoid copy at get operation, meanwhile also useful to maintain memory validity at any
-// time.
-//
 // This file provides utils for hash map related utils.
 
 #pragma once
