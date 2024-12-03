@@ -40,7 +40,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
           std::make_unique<ray::gcs::RedisStoreClient>(client));
     } else if (GetParam() == "memory") {
       kv_instance = std::make_unique<ray::gcs::StoreClientInternalKV>(
-          std::make_unique<ray::gcs::InMemoryStoreClient>(io_service));
+          std::make_unique<ray::gcs::InMemoryStoreClient>());
     }
   }
 
@@ -58,62 +58,82 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
 };
 
 TEST_P(GcsKVManagerTest, TestInternalKV) {
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Put("N1", "A", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A", "C", false, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("B", *b); });
-  kv_instance->Put("N1", "A", "C", true, [](auto b) { ASSERT_FALSE(b); });
-  kv_instance->Get("N1", "A", [](auto b) { ASSERT_EQ("C", *b); });
-  kv_instance->Put("N1", "A_1", "B", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A_2", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Put("N1", "A_3", "C", false, [](auto b) { ASSERT_TRUE(b); });
-  kv_instance->Keys("N1", "A_", [](std::vector<std::string> keys) {
-    auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
-    ASSERT_EQ(expected, std::set<std::string>(keys.begin(), keys.end()));
-  });
-  kv_instance->Get("N2", "A_1", [](auto b) { ASSERT_FALSE(b.has_value()); });
-  kv_instance->Get("N1", "A_1", [](auto b) { ASSERT_TRUE(b.has_value()); });
-  kv_instance->MultiGet("N1", {"A_1", "A_2", "A_3"}, [](auto b) {
-    ASSERT_EQ(3, b.size());
-    ASSERT_EQ("B", b["A_1"]);
-    ASSERT_EQ("C", b["A_2"]);
-    ASSERT_EQ("C", b["A_3"]);
-  });
+  kv_instance->Get("N1", "A", {[](auto b) { ASSERT_FALSE(b.has_value()); }, io_service});
+  kv_instance->Put("N1", "A", "B", false, {[](auto b) { ASSERT_TRUE(b); }, io_service});
+  kv_instance->Put("N1", "A", "C", false, {[](auto b) { ASSERT_FALSE(b); }, io_service});
+  kv_instance->Get("N1", "A", {[](auto b) { ASSERT_EQ("B", *b); }, io_service});
+  kv_instance->Put("N1", "A", "C", true, {[](auto b) { ASSERT_FALSE(b); }, io_service});
+  kv_instance->Get("N1", "A", {[](auto b) { ASSERT_EQ("C", *b); }, io_service});
+  kv_instance->Put("N1", "A_1", "B", false, {[](auto b) { ASSERT_TRUE(b); }, io_service});
+  kv_instance->Put("N1", "A_2", "C", false, {[](auto b) { ASSERT_TRUE(b); }, io_service});
+  kv_instance->Put("N1", "A_3", "C", false, {[](auto b) { ASSERT_TRUE(b); }, io_service});
+  kv_instance->Keys("N1",
+                    "A_",
+                    {[](std::vector<std::string> keys) {
+                       auto expected = std::set<std::string>{"A_1", "A_2", "A_3"};
+                       ASSERT_EQ(expected,
+                                 std::set<std::string>(keys.begin(), keys.end()));
+                     },
+                     io_service});
+  kv_instance->Get(
+      "N2", "A_1", {[](auto b) { ASSERT_FALSE(b.has_value()); }, io_service});
+  kv_instance->Get("N1", "A_1", {[](auto b) { ASSERT_TRUE(b.has_value()); }, io_service});
+  kv_instance->MultiGet("N1",
+                        {"A_1", "A_2", "A_3"},
+                        {[](auto b) {
+                           ASSERT_EQ(3, b.size());
+                           ASSERT_EQ("B", b["A_1"]);
+                           ASSERT_EQ("C", b["A_2"]);
+                           ASSERT_EQ("C", b["A_3"]);
+                         },
+                         io_service});
   // MultiGet with empty keys.
-  kv_instance->MultiGet("N1", {}, [](auto b) { ASSERT_EQ(0, b.size()); });
+  kv_instance->MultiGet("N1", {}, {[](auto b) { ASSERT_EQ(0, b.size()); }, io_service});
   // MultiGet with non-existent keys.
-  kv_instance->MultiGet("N1", {"A_4", "A_5"}, [](auto b) { ASSERT_EQ(0, b.size()); });
+  kv_instance->MultiGet(
+      "N1", {"A_4", "A_5"}, {[](auto b) { ASSERT_EQ(0, b.size()); }, io_service});
   {
     // Delete by prefix are two steps in redis mode, so we need sync here.
     std::promise<void> p;
-    kv_instance->Del("N1", "A_", true, [&p](auto b) {
-      ASSERT_EQ(3, b);
-      p.set_value();
-    });
+    kv_instance->Del("N1",
+                     "A_",
+                     true,
+                     {[&p](auto b) {
+                        ASSERT_EQ(3, b);
+                        p.set_value();
+                      },
+                      io_service});
     p.get_future().get();
   }
   {
     // Delete by prefix are two steps in redis mode, so we need sync here.
     std::promise<void> p;
-    kv_instance->Del("NX", "A_", true, [&p](auto b) {
-      ASSERT_EQ(0, b);
-      p.set_value();
-    });
+    kv_instance->Del("NX",
+                     "A_",
+                     true,
+                     {[&p](auto b) {
+                        ASSERT_EQ(0, b);
+                        p.set_value();
+                      },
+                      io_service});
     p.get_future().get();
   }
 
   {
     // Make sure the last cb is called.
     std::promise<void> p;
-    kv_instance->Get("N1", "A_1", [&p](auto b) {
-      ASSERT_FALSE(b.has_value());
-      p.set_value();
-    });
+    kv_instance->Get("N1",
+                     "A_1",
+                     {[&p](auto b) {
+                        ASSERT_FALSE(b.has_value());
+                        p.set_value();
+                      },
+                      io_service});
     p.get_future().get();
   }
   // Check the keys are deleted.
   kv_instance->MultiGet(
-      "N1", {"A_1", "A_2", "A_3"}, [](auto b) { ASSERT_EQ(0, b.size()); });
+      "N1", {"A_1", "A_2", "A_3"}, {[](auto b) { ASSERT_EQ(0, b.size()); }, io_service});
 }
 
 INSTANTIATE_TEST_SUITE_P(GcsKVManagerTestFixture,

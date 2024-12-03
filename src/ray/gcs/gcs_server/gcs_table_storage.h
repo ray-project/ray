@@ -56,27 +56,27 @@ class GcsTable {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes.
   /// \return Status
-  virtual Status Put(const Key &key, const Data &value, const StatusCallback &callback);
+  virtual Status Put(const Key &key, const Data &value, Postable<void(Status)> callback);
 
   /// Get data from the table asynchronously.
   ///
   /// \param key The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status Get(const Key &key, const OptionalItemCallback<Data> &callback);
+  Status Get(const Key &key, ToPostable<OptionalItemCallback<Data>> callback);
 
   /// Get all data from the table asynchronously.
   ///
   /// \param callback Callback that will be called after data has been received.
   /// \return Status
-  Status GetAll(const MapCallback<Key, Data> &callback);
+  Status GetAll(Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete data from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  virtual Status Delete(const Key &key, const StatusCallback &callback);
+  virtual Status Delete(const Key &key, Postable<void(Status)> callback);
 
   /// Delete a batch of data from the table asynchronously.
   ///
@@ -84,7 +84,7 @@ class GcsTable {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   virtual Status BatchDelete(const std::vector<Key> &keys,
-                             const StatusCallback &callback);
+                             Postable<void(Status)> callback);
 
  protected:
   std::string table_name_;
@@ -113,28 +113,29 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param value The value of the key that will be written to the table.
   /// \param callback Callback that will be called after write finishes, whether it
   /// succeeds or not. \return Status for issuing the asynchronous write operation.
-  Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
+  Status Put(const Key &key, const Data &value, Postable<void(Status)> callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key to lookup from the table.
   /// \param callback Callback that will be called after read finishes.
   /// \return Status
-  Status GetByJobId(const JobID &job_id, const MapCallback<Key, Data> &callback);
+  Status GetByJobId(const JobID &job_id,
+                    Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
   /// Delete all the data of the specified job id from the table asynchronously.
   ///
   /// \param job_id The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status DeleteByJobId(const JobID &job_id, const StatusCallback &callback);
+  Status DeleteByJobId(const JobID &job_id, Postable<void(Status)> callback);
 
   /// Delete data and index from the table asynchronously.
   ///
   /// \param key The key that will be deleted from the table.
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
-  Status Delete(const Key &key, const StatusCallback &callback) override;
+  Status Delete(const Key &key, Postable<void(Status)> callback) override;
 
   /// Delete a batch of data and index from the table asynchronously.
   ///
@@ -142,10 +143,11 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param callback Callback that will be called after delete finishes.
   /// \return Status
   Status BatchDelete(const std::vector<Key> &keys,
-                     const StatusCallback &callback) override;
+                     Postable<void(Status)> callback) override;
 
   /// Rebuild the index during startup.
-  Status AsyncRebuildIndexAndGetAll(const MapCallback<Key, Data> &callback);
+  Status AsyncRebuildIndexAndGetAll(
+      Postable<void(absl::flat_hash_map<Key, Data>)> callback);
 
  protected:
   virtual JobID GetJobIdFromKey(const Key &key) = 0;
@@ -292,7 +294,8 @@ class GcsTableStorage {
 /// that uses redis as storage.
 class RedisGcsTableStorage : public GcsTableStorage {
  public:
-  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client)
+  explicit RedisGcsTableStorage(std::shared_ptr<RedisClient> redis_client,
+                                instrumented_io_context &io_context)
       : GcsTableStorage(std::make_shared<RedisStoreClient>(std::move(redis_client))) {}
 };
 
@@ -301,9 +304,9 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+  explicit InMemoryGcsTableStorage()
       : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>(main_io_service))) {}
+            std::make_unique<InMemoryStoreClient>())) {}
 };
 
 }  // namespace gcs

@@ -410,16 +410,16 @@ struct GcsServerMocker {
 
     Status Put(const ActorID &key,
                const rpc::ActorTableData &value,
-               const gcs::StatusCallback &callback) override {
+               Postable<void(Status)> callback) override {
       auto status = Status::OK();
-      callback(status);
+      std::move(callback).Post("MockedGcsActorTable::Put", status);
       return status;
     }
 
    private:
     instrumented_io_context main_io_service_;
     std::shared_ptr<gcs::StoreClient> store_client_ =
-        std::make_shared<gcs::InMemoryStoreClient>(main_io_service_);
+        std::make_shared<gcs::InMemoryStoreClient>();
   };
 
   class MockedNodeInfoAccessor : public gcs::NodeInfoAccessor {

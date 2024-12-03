@@ -20,47 +20,46 @@ namespace gcs {
 
 class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
  public:
-  MockInternalKVInterface() {}
+  explicit MockInternalKVInterface() = default;
 
   MOCK_METHOD(void,
               Get,
               (const std::string &ns,
                const std::string &key,
-               std::function<void(std::optional<std::string>)> callback),
+               Postable<void(std::optional<std::string>)> callback),
               (override));
-  MOCK_METHOD(
-      void,
-      MultiGet,
-      (const std::string &ns,
-       const std::vector<std::string> &keys,
-       std::function<void(std::unordered_map<std::string, std::string>)> callback),
-      (override));
+  MOCK_METHOD(void,
+              MultiGet,
+              (const std::string &ns,
+               const std::vector<std::string> &keys,
+               Postable<void(std::unordered_map<std::string, std::string>)> callback),
+              (override));
   MOCK_METHOD(void,
               Put,
               (const std::string &ns,
                const std::string &key,
                const std::string &value,
                bool overwrite,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(void,
               Del,
               (const std::string &ns,
                const std::string &key,
                bool del_by_prefix,
-               std::function<void(int64_t)> callback),
+               Postable<void(int64_t)> callback),
               (override));
   MOCK_METHOD(void,
               Exists,
               (const std::string &ns,
                const std::string &key,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(void,
               Keys,
               (const std::string &ns,
                const std::string &prefix,
-               std::function<void(std::vector<std::string>)> callback),
+               Postable<void(std::vector<std::string>)> callback),
               (override));
 };
 
@@ -68,30 +67,31 @@ class MockInternalKVInterface : public ray::gcs::InternalKVInterface {
 // Only supports Put and Get.
 // Warning: Naively prepends the namespace to the key, so e.g.
 // the (namespace, key) pairs ("a", "bc") and ("ab", "c") will collide which is a bug.
-
+// TODO(ryw): DO NOT SUBMIT. Get and Put used to be sync, now it's async. We need to use
+// promise wait.
 class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
  public:
-  FakeInternalKVInterface() {}
+  explicit FakeInternalKVInterface() = default;
 
   // The C++ map.
   std::unordered_map<std::string, std::string> kv_store_ = {};
 
   void Get(const std::string &ns,
            const std::string &key,
-           std::function<void(std::optional<std::string>)> callback) override {
+           Postable<void(std::optional<std::string>)> callback) override {
     std::string full_key = ns + key;
     auto it = kv_store_.find(full_key);
     if (it == kv_store_.end()) {
-      callback(std::nullopt);
+      std::move(callback).Post("FakeInternalKVInterface::Get", std::nullopt);
     } else {
-      callback(it->second);
+      std::move(callback).Post("FakeInternalKVInterface::Get", it->second);
     }
   }
 
-  void MultiGet(const std::string &ns,
-                const std::vector<std::string> &keys,
-                std::function<void(std::unordered_map<std::string, std::string>)>
-                    callback) override {
+  void MultiGet(
+      const std::string &ns,
+      const std::vector<std::string> &keys,
+      Postable<void(std::unordered_map<std::string, std::string>)> callback) override {
     std::unordered_map<std::string, std::string> result;
     for (const auto &key : keys) {
       std::string full_key = ns + key;
@@ -100,20 +100,20 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
         result[key] = it->second;
       }
     }
-    callback(result);
+    std::move(callback).Post("FakeInternalKVInterface::MultiGet", result);
   }
 
   void Put(const std::string &ns,
            const std::string &key,
            const std::string &value,
            bool overwrite,
-           std::function<void(bool)> callback) override {
+           Postable<void(bool)> callback) override {
     std::string full_key = ns + key;
     if (kv_store_.find(full_key) != kv_store_.end() && !overwrite) {
-      callback(false);
+      std::move(callback).Post("FakeInternalKVInterface::Put", false);
     } else {
       kv_store_[full_key] = value;
-      callback(true);
+      std::move(callback).Post("FakeInternalKVInterface::Put", true);
     }
   }
 
@@ -122,19 +122,19 @@ class FakeInternalKVInterface : public ray::gcs::InternalKVInterface {
               (const std::string &ns,
                const std::string &key,
                bool del_by_prefix,
-               std::function<void(int64_t)> callback),
+               Postable<void(int64_t)> callback),
               (override));
   MOCK_METHOD(void,
               Exists,
               (const std::string &ns,
                const std::string &key,
-               std::function<void(bool)> callback),
+               Postable<void(bool)> callback),
               (override));
   MOCK_METHOD(void,
               Keys,
               (const std::string &ns,
                const std::string &prefix,
-               std::function<void(std::vector<std::string>)> callback),
+               Postable<void(std::vector<std::string>)> callback),
               (override));
 };
 

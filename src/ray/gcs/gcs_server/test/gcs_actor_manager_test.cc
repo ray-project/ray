@@ -143,10 +143,10 @@ class GcsActorManagerTest : public ::testing::Test {
         /*batch_size=*/100);
 
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
-    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_, io_service_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         mock_actor_scheduler_,
         gcs_table_storage_,
@@ -154,6 +154,7 @@ class GcsActorManagerTest : public ::testing::Test {
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
+        io_service_,
         [this](const rpc::Address &addr) { return worker_client_; });
 
     for (int i = 1; i <= 10; i++) {

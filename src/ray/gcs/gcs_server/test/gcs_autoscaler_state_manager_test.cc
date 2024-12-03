@@ -64,15 +64,17 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
     client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
-    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
+    gcs_node_manager_ = std::make_shared<MockGcsNodeManager>(io_service_);
     kv_manager_ = std::make_unique<GcsInternalKVManager>(
         std::make_unique<StoreClientInternalKV>(std::make_unique<MockStoreClient>()),
-        kRayletConfig);
-    function_manager_ = std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance());
+        kRayletConfig,
+        io_service_);
+    function_manager_ =
+        std::make_unique<GcsFunctionManager>(kv_manager_->GetInstance(), io_service_);
     runtime_env_manager_ = std::make_unique<RuntimeEnvManager>(
         [](const std::string &, std::function<void(bool)>) {});
-    gcs_actor_manager_ =
-        std::make_unique<MockGcsActorManager>(*runtime_env_manager_, *function_manager_);
+    gcs_actor_manager_ = std::make_unique<MockGcsActorManager>(
+        *runtime_env_manager_, *function_manager_, io_service_);
     gcs_resource_manager_ =
         std::make_shared<GcsResourceManager>(io_service_,
                                              *cluster_resource_manager_,

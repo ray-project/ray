@@ -43,7 +43,7 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
     for (int index = 0; index < 3; ++index) {
       raylet_clients_.push_back(std::make_shared<GcsServerMocker::MockRayletClient>());
     }
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     auto local_node_id = NodeID::FromRandom();
@@ -54,14 +54,17 @@ class GcsPlacementGroupSchedulerTest : public ::testing::Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_.get(), ClusterID::Nil());
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_,
+                                                              gcs_table_storage_,
+                                                              raylet_client_pool_.get(),
+                                                              io_service_,
+                                                              ClusterID::Nil());
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id);
-    store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
+    store_client_ = std::make_shared<gcs::InMemoryStoreClient>();
     raylet_client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &addr) { return raylet_clients_[addr.port()]; });
     scheduler_ = std::make_shared<GcsServerMocker::MockedGcsPlacementGroupScheduler>(

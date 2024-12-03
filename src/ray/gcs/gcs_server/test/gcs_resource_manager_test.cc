@@ -30,7 +30,7 @@ class GcsResourceManagerTest : public ::testing::Test {
  public:
   GcsResourceManagerTest()
       : cluster_resource_manager_(io_service_),
-        gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>()) {
+        gcs_node_manager_(std::make_unique<gcs::MockGcsNodeManager>(io_service_)) {
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
   }

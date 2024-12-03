@@ -45,7 +45,7 @@ class GcsNodeManagerExportAPITest : public ::testing::Test {
         [this](const rpc::Address &) { return raylet_client_; });
     gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>();
 
     RayConfig::instance().initialize(
         R"(

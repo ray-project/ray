@@ -27,21 +27,27 @@ class UsageStatsClientTest : public ::testing::Test {
   void SetUp() override { fake_kv_ = std::make_unique<gcs::FakeInternalKVInterface>(); }
   void TearDown() override { fake_kv_.reset(); }
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
+  InstrumentedIOContextWithThread io_context_{"UsageStatsClientTest"};
+  instrumented_io_context &io_service_ = io_context_.GetIoService();
 };
 
 TEST_F(UsageStatsClientTest, TestRecordExtraUsageTag) {
-  gcs::UsageStatsClient usage_stats_client(*fake_kv_);
+  gcs::UsageStatsClient usage_stats_client(*fake_kv_, io_service_);
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST1, "value1");
-  fake_kv_->Get(
-      "usage_stats", "extra_usage_tag__test1", [](std::optional<std::string> value) {
-        ASSERT_TRUE(value.has_value());
-        ASSERT_EQ(value.value(), "value1");
-      });
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test1",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "value1");
+                 },
+                 io_service_});
   // Make sure the value is overriden for the same key.
   usage_stats_client.RecordExtraUsageTag(usage::TagKey::_TEST2, "value2");
-  fake_kv_->Get(
-      "usage_stats", "extra_usage_tag__test2", [](std::optional<std::string> value) {
-        ASSERT_TRUE(value.has_value());
-        ASSERT_EQ(value.value(), "value2");
-      });
+  fake_kv_->Get("usage_stats",
+                "extra_usage_tag__test2",
+                {[](std::optional<std::string> value) {
+                   ASSERT_TRUE(value.has_value());
+                   ASSERT_EQ(value.value(), "value2");
+                 },
+                 io_service_});
 }

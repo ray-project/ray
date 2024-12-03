@@ -25,14 +25,7 @@ class MockRedisStoreClient : public RedisStoreClient {
                const std::string &data,
                const StatusCallback &callback),
               (override));
-  MOCK_METHOD(Status,
-              AsyncPutWithIndex,
-              (const std::string &table_name,
-               const std::string &key,
-               const std::string &index_key,
-               const std::string &data,
-               const StatusCallback &callback),
-              (override));
+
   MOCK_METHOD(Status,
               AsyncGet,
               (const std::string &table_name,

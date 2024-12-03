@@ -28,7 +28,8 @@ namespace gcs {
 class MockGcsActorManager : public GcsActorManager {
  public:
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
-                      GcsFunctionManager &function_manager)
+                      GcsFunctionManager &function_manager,
+                      instrumented_io_context &io_service)
       : GcsActorManager(
             nullptr,
             nullptr,
@@ -36,6 +37,7 @@ class MockGcsActorManager : public GcsActorManager {
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},
+            io_service,
             [](const rpc::Address &) { return nullptr; }) {}
 
   MOCK_METHOD(void,

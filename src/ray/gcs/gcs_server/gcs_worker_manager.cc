@@ -104,7 +104,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         // message, so we delete the get operation. Related issues:
         // https://github.com/ray-project/ray/pull/11599
         Status status = gcs_table_storage_->WorkerTable().Put(
-            worker_id, *worker_failure_data, on_done);
+            worker_id, *worker_failure_data, {on_done, io_context_});
         if (!status.ok()) {
           on_done(status);
         }
@@ -196,7 +196,7 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     RAY_LOG(DEBUG) << "Finished getting all worker info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
+  Status status = gcs_table_storage_->WorkerTable().GetAll({on_done, io_context_});
   if (!status.ok()) {
     on_done(absl::flat_hash_map<WorkerID, WorkerTableData>());
   }
@@ -220,7 +220,8 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
+  Status status = gcs_table_storage_->WorkerTable().Put(
+      worker_id, *worker_data, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status);
   }
@@ -258,14 +259,15 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
           worker_data->CopyFrom(*result);
           worker_data->set_debugger_port(debugger_port);
           Status status = gcs_table_storage_->WorkerTable().Put(
-              worker_id, *worker_data, on_worker_update_done);
+              worker_id, *worker_data, {on_worker_update_done, io_context_});
           if (!status.ok()) {
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
           }
         }
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  Status status =
+      gcs_table_storage_->WorkerTable().Get(worker_id, {on_worker_get_done, io_context_});
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
@@ -314,14 +316,15 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
       worker_data->set_num_paused_threads(current_num_paused_threads +
                                           num_paused_threads_delta);
       Status status = gcs_table_storage_->WorkerTable().Put(
-          worker_id, *worker_data, on_worker_update_done);
+          worker_id, *worker_data, {on_worker_update_done, io_context_});
       if (!status.ok()) {
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       }
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  Status status =
+      gcs_table_storage_->WorkerTable().Get(worker_id, {on_worker_get_done, io_context_});
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
@@ -347,7 +350,8 @@ void GcsWorkerManager::GetWorkerInfo(
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_done);
+  Status status =
+      gcs_table_storage_->WorkerTable().Get(worker_id, {on_done, io_context_});
   if (!status.ok()) {
     on_done(status, std::nullopt);
   }
