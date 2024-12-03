@@ -105,16 +105,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._cached_to_module = None
 
         # Construct the MultiRLModule.
-        try:
-            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
-                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
-            )
-            # Build the module from its spec.
-            self.module = module_spec.build()
-        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
-        # will not have an RLModule, but might still be usable with random actions.
-        except NotImplementedError:
-            self.module = None
+        self.make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
         self._module_to_env = self.config.build_module_to_env_connector(
@@ -624,6 +615,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             },
         }
 
+    @override(EnvRunner)
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
         for eps in self._done_episodes_for_metrics:
@@ -874,6 +866,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             env=self.env.unwrapped,
             env_context=env_ctx,
         )
+
+    @override(EnvRunner)
+    def make_module(self):
+        try:
+            module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
+                env=self.env.unwrapped, spaces=self.get_spaces(), inference_only=True
+            )
+            # Build the module from its spec.
+            self.module = module_spec.build()
+        # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
+        # will not have an RLModule, but might still be usable with random actions.
+        except NotImplementedError:
+            self.module = None
 
     @override(EnvRunner)
     def stop(self):
