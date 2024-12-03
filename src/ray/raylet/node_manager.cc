@@ -18,7 +18,10 @@
 #include <csignal>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/time/clock.h"
@@ -40,6 +43,7 @@
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
+#include "src/ray/raylet/worker_pool.h"
 
 namespace {
 
@@ -227,7 +231,7 @@ NodeManager::NodeManager(
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
+      store_client_(std::make_unique<plasma::PlasmaClient>()),
       periodical_runner_(io_service),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
@@ -381,7 +385,7 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
-  runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
+  auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
       config.runtime_env_agent_port, /*delay_executor=*/
@@ -391,14 +395,14 @@ NodeManager::NodeManager(
       },
       shutdown_raylet_gracefully_);
 
-  worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
+  worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
   periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
                                        RayConfig::instance().task_failure_entry_ttl_ms(),
                                        "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
@@ -1869,6 +1873,39 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
+}
+
+void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                                        rpc::PrestartWorkersReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto pop_worker_request = std::make_shared<PopWorkerRequest>(
+      request.language(),
+      rpc::WorkerType::WORKER,
+      request.has_job_id() ? JobID::FromBinary(request.job_id()) : JobID::Nil(),
+      /*root_detached_actor_id=*/ActorID::Nil(),
+      /*gpu=*/std::nullopt,
+      /*actor_worker=*/std::nullopt,
+      request.runtime_env_info(),
+      /*runtime_env_hash=*/
+      CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
+      /*options=*/std::vector<std::string>{},
+      absl::Seconds(request.keep_alive_duration_secs()),
+      /*callback=*/
+      [request](const std::shared_ptr<WorkerInterface> &worker,
+                PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) {
+        // This callback does not use the worker.
+        RAY_LOG(DEBUG).WithField(worker->WorkerId())
+            << "Prestart worker started! token " << worker->GetStartupToken()
+            << ", status " << status << ", runtime_env_setup_error_message "
+            << runtime_env_setup_error_message;
+        return false;
+      });
+
+  for (uint64_t i = 0; i < request.num_workers(); i++) {
+    worker_pool_.StartNewWorker(pop_worker_request);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePrepareBundleResources(
