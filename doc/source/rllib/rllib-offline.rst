@@ -15,11 +15,9 @@ also log new agent experiences produced during online training for future use.
 
 RLlib represents trajectory sequences (for example, ``(s, a, r, s', ...)`` tuples) with :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
 objects (multi-agent offline training is currently not supported). Using this episode format 
-enables efficient encoding and compression of experiences, rewriting trajectories, and user-friendly data access through getters.
+allows for efficient encoding and compression of experiences, rewriting trajectories, and user-friendly data access through getter methods.
 During online training, RLlib uses :py:class:`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` actors to generate episodes of experiences 
-in parallel using the current policy. RLlib can also uses this same episode format for reading and writing experiences to offline storage. For offline 
-writing RLlib uses the :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` that samples episodes and writes them to offline 
-storage. 
+in parallel using the current policy. However, RLlib uses this same episode format for reading experiences from and writing experiences to offline storage (see :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`).
 
 You can store experiences either directly in RLlib's episode format or in table (columns) 
 format. You should use the episode format when 
@@ -32,16 +30,16 @@ Contrary, you should prefer the table (columns) format, if
 #. You need to read the data easily with other data tools or ML libraries.
 #. You don't need full (usually complete) trajectories in training.
 
-.. note:: RLlib's redesigned API stack incorporates principles that support standalone applications. Consequently, the 
+.. note:: RLlib's new API stack incorporates principles that support standalone applications. Consequently, the 
     :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is available for use independently of RLlib. To enable faster 
     access through external data tools (for example, for data transformations), it's recommended to use the table record format in these scenarios.
 
 Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and 
 write methods supported by Ray Data (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
 :py:class:`~ray.data.read_parquet` and :py:class:`~ray.data.Dataset.write_parquet` being the default read and write methods. A core design principle 
-of the API is to apply as many data transformations as possible on-the-fly to the learner, allowing the learner to focus exclusively on model updates. 
+of the API is to apply as many data transformations as possible on-the-fly prior to engaging the learner, allowing the latter to focus exclusively on model updates. 
 
-.. hint:: During the transition phase from old to new API stack you can use the new offline RL API also with your 
+.. hint:: During the transition phase from old- to new API stack you can use the new offline RL API also with your 
     :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data recorded with the old API stack. To enable this feature set 
     ``input_read_sample_batches=True``.
 
@@ -209,8 +207,8 @@ You use these data in the next example to train a new policy through Offline RL 
     # Run 10 evaluation iterations and record the data.
     for i in range(10):
         print(f"Iteration {i + 1}")
-        res_eval = algo.evaluate()
-        print(res_eval)
+        eval_results = algo.evaluate()
+        print(eval_results)
 
     # Stop the algorithm. Note, this is important for when
     # defining `output_max_rows_per_file`. Otherwise,
@@ -237,8 +235,8 @@ evaluation, enabling parallel data writing. You can explore the folder to review
     drwxr-xr-x.  2 user user 540 21. Nov 17:23 run-000002-00007
 
 
-.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see for each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` 
-    and write operation one folder of Parquet files. The write operation count is given in the second numbering. For example: above, env-runner 1 has sampled 25 episodes at 
+.. hint:: RLlib stores records under a folder named by the RL environment. Therein, you see one folder of Parquet files for each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` 
+    and write operation. The write operation count is given in the second numbering. For example: above, env-runner 1 has sampled 25 episodes at 
     its 4th :py:meth:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner.sample` call and writes then (because ``output_max_rows_per_file=25``) all sampled episodes 
     to disk into file ``run-000001-00004``.
 
@@ -369,7 +367,7 @@ you provide this schema as follows:
         ...
         .offline_data(
             input_=[<input_path>],
-            # Provide the schema of your data.
+            # Provide the schema of your data (map to column names known to RLlib).
             input_read_schema={
                 Columns.OBS: "o_t",
                 Columns.ACTIONS: "a_t",
@@ -392,12 +390,12 @@ As briefly mentioned earlier, such scenarios typically arise when full expert tr
 .. note::
     RLlib processes tabular data in batches, converting each row into a *single-step episode*. This approach is primarily for procedural simplicity, as data can't
     generally be assumed to arrive in time-ordered rows grouped by episodes, though this may occasionally be the case (however knowledge of such a structure resides  
-    with the user as RLlib can't easily infer it automatically). While it's possible to concatenate :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
-    chunks, this can't be done with fragmented chunks.
+    with the user as RLlib can't easily infer it automatically). While it's possible to concatenate consecutive :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode`
+    chunks, this can't be done with chunks arriving in some scrambled order.
 
 If you require full trajectories you can transform your tabular data into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects and store these in Parquet format. The next example shows 
 how to do this. 
-First, you store experiences of the preceding trained expert policy in tabular format:
+First, you store experiences of the preceding trained expert policy in tabular format (note the `output_write_episodes=False` setting below to activate tabular data output):
 
 .. testcode:: python
 
@@ -455,7 +453,7 @@ First, you store experiences of the preceding trained expert policy in tabular f
 
     # Build the algorithm.
     algo = config.build()
-    # Load now the PPO-trained `RLModule` to use in recording.
+    # Load the PPO-trained `RLModule` to use in recording.
     algo.restore_from_path(
         best_checkpoint,
         # Load only the `RLModule` component here.
