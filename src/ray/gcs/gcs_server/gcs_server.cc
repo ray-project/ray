@@ -221,7 +221,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   InitGcsActorManager(gcs_init_data);
 
   // Init gcs worker manager.
-  InitGcsWorkerManager();
+  InitGcsWorkerManager(gcs_init_data);
 
   // Init GCS task manager.
   InitGcsTaskManager();
@@ -630,9 +630,13 @@ void GcsServer::InitRuntimeEnvManager() {
   rpc_server_.RegisterService(*runtime_env_service_);
 }
 
-void GcsServer::InitGcsWorkerManager() {
+
+void GcsServer::InitGcsWorkerManager(const GcsInitData &gcs_init_data) {
   gcs_worker_manager_ =
-      std::make_unique<GcsWorkerManager>(gcs_table_storage_, gcs_publisher_);
+      std::make_unique<GcsWorkerManager>(RayConfig::instance().maximum_gcs_dead_worker_cached_count(), gcs_table_storage_, gcs_publisher_);
+
+  // Initialize by gcs tables data.
+  gcs_worker_manager_->Initialize(gcs_init_data);
   // Register service.
   worker_info_service_.reset(new rpc::WorkerInfoGrpcService(
       io_context_provider_.GetDefaultIOContext(), *gcs_worker_manager_));

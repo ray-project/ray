@@ -27,6 +27,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
     }
   };
 
+  AsyncLoadWorkerTableData(on_load_finished);
+
   AsyncLoadJobTableData(on_load_finished);
 
   AsyncLoadNodeTableData(on_load_finished);
@@ -36,6 +38,18 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadActorTaskSpecTableData(on_load_finished);
 
   AsyncLoadPlacementGroupTableData(on_load_finished);
+}
+
+void GcsInitData::AsyncLoadWorkerTableData(const EmptyCallback &on_done) {
+  RAY_LOG(INFO) << "Loading worker table data.";
+  auto load_worker_table_data_callback =
+      [this, on_done](absl::flat_hash_map<WorkerID, rpc::WorkerTableData> &&result) {
+        worker_table_data_ = std::move(result);
+        RAY_LOG(INFO) << "Finished loading worker table data, size = "
+                      << worker_table_data_.size();
+        on_done();
+  };
+  RAY_CHECK_OK(gcs_table_storage_->WorkerTable().GetAll(load_worker_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
