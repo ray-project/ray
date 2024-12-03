@@ -161,6 +161,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
+  /// TODO(hjiang): Use reference instead of shared pointer.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Function to get the node information of a given node id.

@@ -29,12 +29,11 @@ class GcsResourceManager;
 
 class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler {
  public:
-  GcsAutoscalerStateManager(
-      const std::string &session_name,
-      GcsNodeManager &gcs_node_manager,
-      GcsActorManager &gcs_actor_manager,
-      const GcsPlacementGroupManager &gcs_placement_group_manager,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool);
+  GcsAutoscalerStateManager(const std::string &session_name,
+                            GcsNodeManager &gcs_node_manager,
+                            GcsActorManager &gcs_actor_manager,
+                            const GcsPlacementGroupManager &gcs_placement_group_manager,
+                            rpc::NodeManagerClientPool &raylet_client_pool);
 
   void HandleGetClusterResourceState(
       rpc::autoscaler::GetClusterResourceStateRequest request,
@@ -152,7 +151,7 @@ class GcsAutoscalerStateManager : public rpc::autoscaler::AutoscalerStateHandler
   const GcsPlacementGroupManager &gcs_placement_group_manager_;
 
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
 
   // The default value of the last seen version for the request is 0, which indicates
   // no version has been reported. So the first reported version should be 1.
