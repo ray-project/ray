@@ -22,8 +22,14 @@ def temp_database_fixture() -> Generator[str, None, None]:
         yield file.name
 
 
-@pytest.mark.parametrize("parallelism", [-1, 1])
-def test_read_sql(temp_database: str, parallelism: int):
+def test_read_sql_with_parallelism_warns(temp_database):
+    with pytest.raises(ValueError):
+        ray.data.read_sql(
+            "SELECT * FROM movie", lambda: sqlite3.connect(temp_database), parallelism=2
+        )
+
+
+def test_read_sql(temp_database: str):
     connection = sqlite3.connect(temp_database)
     connection.execute("CREATE TABLE movie(title, year, score)")
     expected_values = [
@@ -37,7 +43,6 @@ def test_read_sql(temp_database: str, parallelism: int):
     dataset = ray.data.read_sql(
         "SELECT * FROM movie",
         lambda: sqlite3.connect(temp_database),
-        override_num_blocks=parallelism,
     )
     actual_values = [tuple(record.values()) for record in dataset.take_all()]
 
