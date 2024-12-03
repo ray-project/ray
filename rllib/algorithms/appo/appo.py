@@ -32,7 +32,8 @@ logger = logging.getLogger(__name__)
 
 LEARNER_RESULTS_KL_KEY = "mean_kl_loss"
 LEARNER_RESULTS_CURR_KL_COEFF_KEY = "curr_kl_coeff"
-TARGET_ACTION_DIST_LOGITS_KEY = "target_action_dist_logits"
+OLD_ACTION_DIST_KEY = "old_action_dist"
+OLD_ACTION_DIST_LOGITS_KEY = "old_action_dist_logits"
 
 
 class APPOConfig(IMPALAConfig):

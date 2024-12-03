@@ -4,6 +4,7 @@ import logging
 import platform
 import queue
 import random
+import time
 from typing import List, Optional, Set, Tuple, Type, Union
 
 import numpy as np
@@ -46,6 +47,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_ENV_STEPS_TRAINED,
+    NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_MODULE_STEPS_TRAINED,
     NUM_SYNCH_WORKER_WEIGHTS,
     NUM_TRAINING_STEP_CALLS_SINCE_LAST_SYNCH_WORKER_WEIGHTS,
@@ -112,11 +114,6 @@ class IMPALAConfig(AlgorithmConfig):
             param_space=config,
             run_config=air.RunConfig(stop={"training_iteration": 1}),
         ).fit()
-
-    .. testoutput::
-        :hide:
-
-        ...
     """
 
     def __init__(self, algo_class=None):
@@ -631,10 +628,15 @@ class IMPALA(Algorithm):
             # Log the average number of sample results (list of episodes) received.
             self.metrics.log_value(MEAN_NUM_EPISODE_LISTS_RECEIVED, len(episode_refs))
 
+        time.sleep(0.01)
+
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
         data_packages_for_learner_group = self._pre_queue_episode_refs(episode_refs)
+
+        time.sleep(0.01)
+
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
         if self.config.num_aggregation_workers:
@@ -643,6 +645,14 @@ class IMPALA(Algorithm):
                     data_packages_for_learner_group
                 )
             )
+
+        # TODO (sven): When and how long to sleep best is an ongoing investigation.
+        #  We observe
+        # Balance the backpressures: Sampling vs training through sleeping a small
+        # amount of time. The sleep time is adjusted automatically based on trying
+        # to reach a maximum training throughput.
+        # with self.metrics.log_time((TIMERS, "_balance_backpressure")):
+        #    self.balance_backpressure()
 
         # Call the LearnerGroup's `update_from_episodes` method.
         with self.metrics.log_time((TIMERS, LEARNER_UPDATE_TIMER)):
@@ -661,17 +671,21 @@ class IMPALA(Algorithm):
                     )
                     >= self.config.broadcast_interval
                 )
+                timesteps = {
+                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
+                        (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
+                    ),
+                    NUM_ENV_STEPS_TRAINED_LIFETIME: self.metrics.peek(
+                        (LEARNER_RESULTS, ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
+                        default=0,
+                    ),
+                }
                 if self.config.num_aggregation_workers:
                     learner_results = self.learner_group.update_from_batch(
                         batch=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -681,12 +695,7 @@ class IMPALA(Algorithm):
                         episodes=batch_ref_or_episode_list_ref,
                         async_update=do_async_updates,
                         return_state=return_state,
-                        timesteps={
-                            NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                                (ENV_RUNNER_RESULTS, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-                                default=0,
-                            ),
-                        },
+                        timesteps=timesteps,
                         num_epochs=self.config.num_epochs,
                         minibatch_size=self.config.minibatch_size,
                         shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
@@ -721,6 +730,8 @@ class IMPALA(Algorithm):
         # Update LearnerGroup's own stats.
         self.metrics.log_dict(self.learner_group.get_stats(), key=LEARNER_GROUP)
 
+        time.sleep(0.01)
+
         # Figure out, whether we should sync/broadcast the (remote) EnvRunner states.
         # Note: `learner_results` is a List of n (num async calls) Lists of m
         # (num Learner workers) ResultDicts each.
@@ -735,6 +746,8 @@ class IMPALA(Algorithm):
                     connector_states=connector_states,
                     rl_module_state=rl_module_state,
                 )
+
+        time.sleep(0.01)
 
     def _sample_and_get_connector_states(self):
         def _remote_sample_get_state_and_metrics(_worker):
@@ -874,6 +887,34 @@ class IMPALA(Algorithm):
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
+
+    # def balance_backpressure(self):
+    #    # Sleep for n seconds to balance backpressure.
+    #    time.sleep(0.2)#self._sleep_time_controller.current)
+    #
+    #    # Adjust the sleep time once every iteration (on the first `training_step()`
+    #    # call in each iteration).
+    #    if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
+    #        train_throughput = self.metrics.peek(
+    #            (
+    #                LEARNER_RESULTS,
+    #                ALL_MODULES,
+    #                NUM_ENV_STEPS_TRAINED_LIFETIME,
+    #            ),
+    #            default=0.0,
+    #            throughput=True,
+    #        )
+    #        self.metrics.log_value(
+    #            "_measured_train_throughput",
+    #            train_throughput,
+    #            window=1,
+    #        )
+    #        self._sleep_time_controller.log_result(train_throughput)
+    #        self.metrics.log_value(
+    #            "_current_sleep_time",
+    #            self._sleep_time_controller.current,
+    #            window=1,
+    #        )
 
     @classmethod
     @override(Algorithm)
