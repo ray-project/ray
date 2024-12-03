@@ -1,12 +1,13 @@
+import argparse
+from typing import Callable
+import uuid
+
 import ray
 
 from benchmark import Benchmark
 
-import argparse
-from typing import Callable
-
-
-WRITE_PATH = "s3://ray-data-write-benchmark"
+# Add a random prefix to avoid conflicts between different runs.
+WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 
 def parse_args() -> argparse.Namespace:
