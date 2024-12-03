@@ -356,7 +356,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         # TensorDtype for ray.air.util.tensor_extensions.pandas.TensorDtype
         object_need_check = (TensorDtype,)
-        min_sample_size = _PANDAS_SIZE_BYTES_MIN_COUNT
+        max_sample_count = _PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT
 
         # Handle object columns separately
         for column in self._table.columns:
@@ -366,8 +366,8 @@ class PandasBlockAccessor(TableBlockAccessor):
             ):
                 total_size = len(self._table[column])
 
-                # Determine the sample size based on min_count
-                sample_size = min(total_size, min_sample_size)
+                # Determine the sample size based on max_sample_count
+                sample_size = min(total_size, max_sample_count)
                 # Following codes can also handel case that sample_size == total_size
                 sampled_data = self._table[column].sample(n=sample_size).values
 
