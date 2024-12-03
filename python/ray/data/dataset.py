@@ -2435,11 +2435,12 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,
-        key: Union[str, List[str], None] = None,
+        key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
         boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
+        The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
             The `descending` parameter must be a boolean, or a list of booleans.
@@ -2488,7 +2489,12 @@ class Dataset:
 
         Returns:
             A new, sorted :class:`Dataset`.
+
+        Raises:
+            ``ValueError``: if the sort key is None.
         """
+        if key is None:
+            raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
         op = Sort(
