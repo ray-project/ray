@@ -1,7 +1,7 @@
 import logging
 from typing import Optional
 import ray
-from ray._raylet import NewGcsClient
+from ray._raylet import InnerGcsClient
 
 logger = logging.getLogger(__name__)
 
@@ -25,7 +25,7 @@ class GcsAioClient:
     ):
         # This must be consistent with GcsClient.__cinit__ in _raylet.pyx
         timeout_ms = ray._config.py_gcs_connect_timeout_s() * 1000
-        self.inner = NewGcsClient.standalone(
+        self.inner = InnerGcsClient.standalone(
             str(address), cluster_id=cluster_id, timeout_ms=timeout_ms
         )
         # Forwarded Methods. Not using __getattr__ because we want one fewer layer of

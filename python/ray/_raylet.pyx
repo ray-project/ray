@@ -2698,15 +2698,10 @@ cdef class GcsClient:
     Client to the GCS server. Only contains synchronous methods. For async methods,
     see GcsAioClient.
 
-    This is a thin wrapper around NewGcsClient with only call frequency collection.
-
-    Historical note: there was a `ray::gcs::PythonGcsClient` C++ binding which contains
-    some Python specific logic. It's been removed in favor of `ray::gcs::GcsClient`
-    which is consistent with other language bindings as well as what CoreWorker itself
-    uses.
+    This is a thin wrapper around InnerGcsClient with only call frequency collection.
     """
 
-    cdef NewGcsClient inner
+    cdef InnerGcsClient inner
 
     def __cinit__(self, address,
                   nums_reconnect_retry=RayConfig.instance().nums_py_gcs_reconnect_retry(
@@ -2717,7 +2712,7 @@ cdef class GcsClient:
         # For other RpcError (UNAVAILABLE, UNKNOWN): retries indefinitely until it
         # thinks GCS is down and kills the whole process.
         timeout_ms = RayConfig.instance().py_gcs_connect_timeout_s() * 1000
-        self.inner = NewGcsClient.standalone(address, cluster_id, timeout_ms)
+        self.inner = InnerGcsClient.standalone(address, cluster_id, timeout_ms)
 
     def __getattr__(self, name):
         # We collect the frequency of each method call.
