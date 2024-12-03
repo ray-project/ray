@@ -64,7 +64,7 @@ class SharedLruCache final {
   // the same key.
   void Put(Key key, std::shared_ptr<Val> value) {
     RAY_CHECK(value != nullptr);
-    auto iter = cache_.find(std::cref(key));
+    auto iter = cache_.find(key);
     if (iter != cache_.end()) {
       lru_list_.splice(lru_list_.begin(), lru_list_, iter->second.lru_iterator);
       iter->second.value = std::move(value);
@@ -89,7 +89,7 @@ class SharedLruCache final {
   // with key `key` existed after the call.
   template <typename KeyLike>
   bool Delete(KeyLike &&key) {
-    auto it = cache_.find(std::cref(key));
+    auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
     }

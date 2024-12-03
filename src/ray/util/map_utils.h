@@ -21,6 +21,7 @@
 
 namespace ray::utils::container {
 
+// A hash wrapper made for `std::reference_wrapper`.
 template <typename Hash>
 struct RefHash : Hash {
   RefHash() = default;
@@ -45,6 +46,7 @@ struct RefHash : Hash {
 template <typename Hash>
 RefHash(Hash &&) -> RefHash<std::remove_reference_t<Hash>>;
 
+// A hash equal wrapper made for `std::reference_wrapper`.
 template <typename Equal>
 struct RefEq : Equal {
   RefEq() = default;
