@@ -28,8 +28,11 @@ class PushdownCountFiles(Rule):
         assert len(count.input_dependencies) == 1, len(count.input_dependencies)
         read_files = count.input_dependencies[0]
 
+        # If `ReadFiles` op was optimized by predicate pushdown, this
+        # PushdownCountFiles based on file stats won't work, so skip this rule.
         if (
             not isinstance(read_files, ReadFiles)
+            or read_files.filter_expr is not None
             or not read_files.reader.supports_count_rows()
         ):
             return plan

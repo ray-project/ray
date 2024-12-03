@@ -49,6 +49,7 @@ class NativeFileReader(FileReader):
         paths: List[str],
         *,
         columns: Optional[List[str]] = None,
+        filter_expr: Optional["pyarrow.dataset.Expression"] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
         num_threads = self._NUM_THREADS_PER_TASK

@@ -1,5 +1,5 @@
 import logging
-from typing import Iterable, List
+from typing import TYPE_CHECKING, Iterable, List
 
 import pyarrow as pa
 
@@ -17,10 +17,31 @@ from ray.data._internal.execution.operators.map_transformer import (
     BuildOutputBlocksMapTransformFn,
     MapTransformer,
     MapTransformFn,
+    MapTransformFnDataType,
 )
+from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, DataBatch
 
+if TYPE_CHECKING:
+    import pyarrow.dataset
+
 logger = logging.getLogger(__name__)
+
+
+class FilterMapTransformFn(MapTransformFn):
+    """A MapTransformFn that filters input blocks."""
+
+    def __init__(self, filter_expr: "pyarrow.dataset.Expression"):
+        self._filter_expr = filter_expr
+        super().__init__(MapTransformFnDataType.Block, MapTransformFnDataType.Block)
+
+    def __call__(self, blocks: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            block = TableBlockAccessor.normalize_block_types([block], "arrow")[0]
+            yield block.filter(self._filter_expr)
+
+    def __repr__(self) -> str:
+        return f"FilterMapTransformFn(filter_expr={self._filter_expr})"
 
 
 def plan_read_files_op(
@@ -33,8 +54,12 @@ def plan_read_files_op(
         for block in blocks:
             assert isinstance(block, pa.Table), type(block)
             paths = block[PATH_COLUMN_NAME].to_pylist()
+            # For some readers, we need to filter the rows in-memory.
             yield from op.reader.read_paths(
-                paths, columns=op.columns, filesystem=op.filesystem
+                paths,
+                columns=op.columns,
+                filter_expr=op.filter_expr,
+                filesystem=op.filesystem,
             )
 
     transform_fns: List[MapTransformFn] = [
@@ -42,6 +67,11 @@ def plan_read_files_op(
         BatchMapTransformFn(read_paths),
         BuildOutputBlocksMapTransformFn.for_batches(),
     ]
+
+    # Operator fusion *should* take care of the in-memory filtering
+    # instead - but needs https://github.com/anyscale/rayturbo/pull/881
+    if op.filter_expr is not None and not op.reader.supports_predicate_pushdown():
+        transform_fns.append(FilterMapTransformFn(op.filter_expr))
 
     map_transformer = MapTransformer(transform_fns)
     return MapOperator.create(

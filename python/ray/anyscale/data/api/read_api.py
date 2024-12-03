@@ -43,6 +43,7 @@ from ray.data.read_api import _resolve_parquet_args, _validate_shuffle_arg
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
+    import pyarrow
     import pyarrow.fs
 
 
@@ -91,6 +92,10 @@ def read_parquet(
     concurrency: Optional[int] = None,
     **arrow_parquet_args,
 ) -> Dataset:
+    import pyarrow as pa
+    import pyarrow.parquet as pq
+    from packaging.version import parse as parse_version
+
     if ray_remote_args is None:
         ray_remote_args = {}
 
@@ -129,6 +134,17 @@ def read_parquet(
     schema = arrow_parquet_args.pop("schema", None)
     batch_size = arrow_parquet_args.pop("batch_size", None)
     use_threads = arrow_parquet_args.pop("use_threads", False)
+
+    filters = arrow_parquet_args.pop("filter", None)
+    filter_expr = None
+    if filters is not None:
+        if parse_version(pa.__version__) < parse_version("10.0.0"):
+            # pyarrow < 10 uses a different API for converting filters to expressions
+            # TODO: Remove after we drop support for pyarrow < 10.0.0
+            filter_expr = pq._filters_to_expression(filters)
+        else:
+            filter_expr = pq.filters_to_expression(filters)
+
     to_batches_kwargs = arrow_parquet_args
 
     if "partitioning" in dataset_kwargs:
@@ -153,6 +169,7 @@ def read_parquet(
         filesystem=filesystem,
         columns=columns,
         partition_filter=partition_filter,
+        filter_expr=filter_expr,
         ignore_missing_paths=False,
         file_extensions=file_extensions,
         shuffle=shuffle,
@@ -673,6 +690,7 @@ def read_files(
     filesystem: Optional["pyarrow.fs.FileSystem"],
     columns: Optional[List[str]],
     partition_filter: Optional[PathPartitionFilter],
+    filter_expr: Optional["pyarrow.dataset.Expression"] = None,
     ignore_missing_paths: bool,
     file_extensions: Optional[List[str]],
     shuffle: Union[Literal["files"], None],
@@ -701,6 +719,7 @@ def read_files(
         partition_files_op,
         reader=reader,
         filesystem=filesystem,
+        filter_expr=filter_expr,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         columns=columns,

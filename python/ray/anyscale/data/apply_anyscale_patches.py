@@ -8,6 +8,7 @@ from ray.anyscale.data._internal.execution.rules.insert_checkpointing import (
 from ray.anyscale.data._internal.logging import configure_anyscale_logging
 from ray.anyscale.data._internal.logical.rules import (
     ApplyLocalLimitRule,
+    PredicatePushdown,
     ProjectionPushdown,
     PushdownCountFiles,
 )
@@ -47,6 +48,7 @@ def apply_anyscale_patches():
 
     _register_anyscale_plan_logical_op_fns()
 
+    register_logical_rule(PredicatePushdown)
     register_logical_rule(PushdownCountFiles)
     register_logical_rule(ProjectionPushdown)
 

@@ -87,9 +87,11 @@ class ParquetReader(FileReader):
         self,
         paths: List[str],
         *,
+        filter_expr: Optional[pyarrow.dataset.Expression] = None,
         columns: Optional[List[str]] = None,
         filesystem,
     ) -> Iterable[DataBatch]:
+
         fragments, schema = self._create_fragments(paths, filesystem=filesystem)
         if self._user_provided_schema is not None:
             schema = self._user_provided_schema
@@ -98,14 +100,24 @@ class ParquetReader(FileReader):
         if num_threads > 0:
             yield from make_async_gen(
                 iter(fragments),
-                functools.partial(self._read_fragments, schema=schema, columns=columns),
+                functools.partial(
+                    self._read_fragments,
+                    filter_expr=filter_expr,
+                    schema=schema,
+                    columns=columns,
+                ),
                 num_workers=num_threads,
             )
         else:
-            yield from self._read_fragments(fragments, schema=schema, columns=columns)
+            yield from self._read_fragments(
+                fragments, filter_expr=filter_expr, schema=schema, columns=columns
+            )
 
     def _create_fragments(
-        self, paths: List[str], *, filesystem: pa.fs.FileSystem
+        self,
+        paths: List[str],
+        *,
+        filesystem: pa.fs.FileSystem,
     ) -> Tuple[List[pyarrow.dataset.ParquetFileFragment], pyarrow.Schema]:
         ctx = DataContext.get_current()
         parquet_dataset = call_with_retry(
@@ -132,6 +144,7 @@ class ParquetReader(FileReader):
     def _read_fragments(
         self,
         fragments: List[pyarrow.dataset.ParquetFileFragment],
+        filter_expr: pyarrow.dataset.Expression,
         schema: pyarrow.Schema,
         columns: Optional[List[str]],
     ) -> Iterable["pyarrow.Table"]:
@@ -141,7 +154,7 @@ class ParquetReader(FileReader):
                 parse = PathPartitionParser(self._partitioning)
                 partitions = parse(fragment.path)
 
-            for batch in self._read_batches(fragment, schema, columns):
+            for batch in self._read_batches(fragment, filter_expr, schema, columns):
                 if self._include_paths:
                     batch = batch.append_column(
                         "path", pa.array([fragment.path] * len(batch))
@@ -156,6 +169,7 @@ class ParquetReader(FileReader):
     def _read_batches(
         self,
         fragment: pyarrow.dataset.ParquetFileFragment,
+        filter_expr: pyarrow.dataset.Expression,
         schema: pyarrow.Schema,
         columns: Optional[List[str]],
     ) -> Iterable[pyarrow.Table]:
@@ -171,6 +185,7 @@ class ParquetReader(FileReader):
             return fragment.to_batches(
                 use_threads=self._use_threads,
                 columns=columns,
+                filter=filter_expr,
                 schema=schema,
                 batch_size=self._batch_size,
                 **self._to_batches_kwargs,
@@ -221,3 +236,6 @@ class ParquetReader(FileReader):
 
     def supports_count_rows(self) -> bool:
         return "filter" not in self._to_batches_kwargs
+
+    def supports_predicate_pushdown(self) -> bool:
+        return True

@@ -21,6 +21,7 @@ class FileReader(abc.ABC):
         self,
         paths: List[str],
         *,
+        filter_expr: "pyarrow.dataset.Expression",
         columns: Optional[List[str]],
         filesystem: "pyarrow.fs.FileSystem"
     ) -> Iterable[DataBatch]:
@@ -28,6 +29,7 @@ class FileReader(abc.ABC):
 
         Args:
             paths: A list of file paths to read.
+            filter_expr: pyarrow.dataset.Expression for predicate pushdown.
             columns: The columns that will be read. If None, all columns will be read.
             filesystem: The filesystem to read from.
 
@@ -73,4 +75,8 @@ class FileReader(abc.ABC):
 
     def supports_count_rows(self) -> bool:
         """Return whether other objects can call `count_rows`."""
+        return False
+
+    def supports_predicate_pushdown(self) -> bool:
+        """Whether expressions can be handled upon reading"""
         return False
