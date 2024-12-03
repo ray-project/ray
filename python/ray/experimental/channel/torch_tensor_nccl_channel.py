@@ -596,10 +596,10 @@ def _do_init_cpu_group(
 
 def _do_destroy_nccl_group(self, group_id):
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
-        return
-
-    ctx.nccl_groups[group_id].destroy()
+    if group_id in ctx.nccl_groups:
+        ctx.nccl_groups[group_id].destroy()
+    elif group_id in ctx.cpu_groups:
+        ctx.cpu_groups[group_id].destroy()
 
     # Keep the NCCL group in the map after destruction in case there is still a
     # task loop running.
@@ -802,10 +802,10 @@ def _destroy_nccl_group(group_id: str) -> None:
     Destroy the NCCL group with the given ID.
     """
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
+    if group_id not in ctx.nccl_groups and group_id not in ctx.cpu_groups:
         return
 
-    group = ctx.nccl_groups[group_id]
+    group = ctx.nccl_groups[group_id] if group_id in ctx.nccl_groups else ctx.cpu_groups[group_id]
     actors = group.get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
@@ -822,4 +822,7 @@ def _destroy_nccl_group(group_id: str) -> None:
             "may be hung."
         )
 
-    del ctx.nccl_groups[group_id]
+    if group_id in ctx.nccl_groups:
+        del ctx.nccl_groups[group_id]
+    else:
+        del ctx.cpu_groups[group_id]
