@@ -19,6 +19,7 @@
 #include <algorithm>
 #include <boost/asio/io_service.hpp>
 #include <boost/functional/hash.hpp>
+#include <memory>
 #include <queue>
 #include <string_view>
 #include <unordered_set>
@@ -230,7 +231,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
 
   /// Set Runtime Env Manager Client.
   void SetRuntimeEnvAgentClient(
-      std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client);
+      std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client);
 
   /// Handles the event that a job is started.
   ///
@@ -796,7 +797,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   /// A callback to get the current time.
   const std::function<absl::Time()> get_time_;
   /// Runtime env manager client.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
+  std::unique_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
   /// Stats
   int64_t process_failed_job_config_missing_ = 0;
   int64_t process_failed_rate_limited_ = 0;
