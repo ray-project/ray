@@ -194,14 +194,14 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             conf["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
 
             warn_msg = (
-                "MLflow integration is not available in Ray tasks."
+                "MLflow support is not correctly configured within Ray tasks."
                 "To enable MLflow integration, "
                 "you need to set environmental variables DATABRICKS_HOST + DATABRICKS_TOKEN,"
                 "or set environmental variables "
                 "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
                 "before calling `ray.util.spark.setup_ray_cluster`, these variables "
                 "are used to set up authentication with Databricks MLflow "
-                "service. For details, you can refer to Databricks document "
+                "service. For details, you can refer to Databricks documentation at "
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>Databricks PAT auth</a> or "
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'>Databricks OAuth</a>."
             )

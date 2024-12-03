@@ -87,7 +87,7 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         # This branch is only for debugging Ray-on-Spark purpose.
                         # User can configure 'RAY_ON_SPARK_JOB_SERVER_VERBOSE' environment
                         # variable to make the spark job server logging showing
-                        # full exceptional stack here.
+                        # full exception stack here.
                         self._logger.debug(msg, exc_info=True)
 
             threading.Thread(

@@ -117,7 +117,7 @@ class _MLflowLoggerUtil:
                     "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
                     "before calling `ray.util.spark.setup_ray_cluster`, these variables "
                     "are used to set up authentication with Databricks MLflow "
-                    "service. For details, you can refer to Databricks document "
+                    "service. For details, you can refer to Databricks documentation at "
                     "'https://docs.databricks.com/en/dev-tools/auth/pat.html' or "
                     "'https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'."
                 )
