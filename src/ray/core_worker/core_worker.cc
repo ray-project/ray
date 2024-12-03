@@ -429,12 +429,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
               if (node_info == nullptr) {
                 RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                     << "Disconnect core worker client since its node is dead";
-                io_service_.post(
-                    [this, worker_id]() {
-                      core_worker_client_pool_->Disconnect(worker_id);
-                    },
-                    "CoreWorkerClientPool.Disconnect");
-
+                core_worker_client_pool_->Disconnect(worker_id);
                 return;
               }
 
