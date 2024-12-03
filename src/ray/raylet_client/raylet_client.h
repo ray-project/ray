@@ -86,6 +86,13 @@ class WorkerLeaseInterface {
                                    const std::string &disconnect_worker_error_detail,
                                    bool worker_exiting) = 0;
 
+  /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
+  /// runtime env info and number of workers.
+  ///
+  virtual void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) = 0;
+
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
@@ -448,6 +455,11 @@ class RayletClient : public RayletClientInterface {
                            bool disconnect_worker,
                            const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override;
+
+  /// Implements WorkerLeaseInterface.
+  void PrestartWorkers(
+      const ray::rpc::PrestartWorkersRequest &request,
+      const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
 
   void GetTaskFailureCause(
       const TaskID &task_id,

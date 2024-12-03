@@ -97,6 +97,12 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Request a prestart worker.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PrestartWorkers,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Report task backlog information
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReportWorkerBacklog,
