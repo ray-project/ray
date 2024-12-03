@@ -142,6 +142,7 @@ class RedisContext {
 
   Status Connect(const std::string &address,
                  int port,
+                 const std::string &username,
                  const std::string &password,
                  bool enable_ssl = false);
 

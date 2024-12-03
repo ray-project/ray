@@ -24,7 +24,7 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ```{admonition} Note
 :class: note
-If you need to change the root temporary directory by using "--temp-dir" in your Ray 
+If you need to change the root temporary directory by using "--temp-dir" in your Ray
 cluster setup, follow these [manual steps](#optional-manual-running-prometheus-locally) to set up Prometheus locally.
 ```
 
