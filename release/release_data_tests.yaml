@@ -26,6 +26,15 @@
     script: python read_and_consume_benchmark.py s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
 
 ###############
+# Writing tests
+###############
+
+- name: write_parquet
+  run:
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
+
+###############
 # Dataset tests
 ###############
 
