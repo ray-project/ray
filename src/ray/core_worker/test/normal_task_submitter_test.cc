@@ -248,6 +248,11 @@ class MockRayletClient : public WorkerLeaseInterface {
     }
     callbacks.push_back(callback);
   }
+  void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+    RAY_LOG(FATAL) << "Not implemented";
+  }
 
   void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,

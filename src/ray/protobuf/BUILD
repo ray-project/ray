@@ -118,6 +118,7 @@ proto_library(
         ":autoscaler_proto",
         ":common_proto",
         ":gcs_proto",
+        ":runtime_env_common_proto",
     ],
 )
 
@@ -249,7 +250,7 @@ proto_library(
     name = "export_event_proto",
     srcs = ["export_api/export_event.proto"],
     deps = [
-        ":export_task_event_proto", 
+        ":export_task_event_proto",
         ":export_node_event_proto",
         ":export_actor_event_proto",
         ":export_driver_job_event_proto",

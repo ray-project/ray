@@ -18,7 +18,10 @@
 #include <csignal>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/time/clock.h"
@@ -40,6 +43,7 @@
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
+#include "src/ray/raylet/worker_pool.h"
 
 namespace {
 
@@ -1865,6 +1869,39 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
+}
+
+void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                                        rpc::PrestartWorkersReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto pop_worker_request = std::make_shared<PopWorkerRequest>(
+      request.language(),
+      rpc::WorkerType::WORKER,
+      request.has_job_id() ? JobID::FromBinary(request.job_id()) : JobID::Nil(),
+      /*root_detached_actor_id=*/ActorID::Nil(),
+      /*gpu=*/std::nullopt,
+      /*actor_worker=*/std::nullopt,
+      request.runtime_env_info(),
+      /*runtime_env_hash=*/
+      CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
+      /*options=*/std::vector<std::string>{},
+      absl::Seconds(request.keep_alive_duration_secs()),
+      /*callback=*/
+      [request](const std::shared_ptr<WorkerInterface> &worker,
+                PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) {
+        // This callback does not use the worker.
+        RAY_LOG(DEBUG).WithField(worker->WorkerId())
+            << "Prestart worker started! token " << worker->GetStartupToken()
+            << ", status " << status << ", runtime_env_setup_error_message "
+            << runtime_env_setup_error_message;
+        return false;
+      });
+
+  for (uint64_t i = 0; i < request.num_workers(); i++) {
+    worker_pool_.StartNewWorker(pop_worker_request);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePrepareBundleResources(

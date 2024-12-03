@@ -44,7 +44,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
@@ -824,6 +823,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                    const std::string &type,
                    const std::string &error_message,
                    double timestamp);
+
+  // Prestart workers. The workers:
+  // - uses current language.
+  // - uses current JobID.
+  // - does NOT support root_detached_actor_id.
+  // - uses provided runtime_env_info applied to the job runtime env, as if it's a task
+  // request.
+  //
+  // This API is async. It provides no guarantee that the workers are actually started.
+  void PrestartWorkers(const std::string &serialized_runtime_env_info,
+                       uint64_t keep_alive_duration_secs,
+                       size_t num_workers);
 
   /// Submit a normal task.
   ///
