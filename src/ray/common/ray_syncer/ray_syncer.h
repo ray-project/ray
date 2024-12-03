@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+
 #include <grpcpp/server.h>
 #include <gtest/gtest_prod.h>
 
@@ -22,21 +23,15 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/id.h"
+#include "ray/common/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
-namespace ray {
-namespace syncer {
+namespace ray::syncer {
 
 using ray::rpc::syncer::CommandsSyncMessage;
 using ray::rpc::syncer::MessageType;
 using ray::rpc::syncer::RaySyncMessage;
 using ray::rpc::syncer::ResourceViewSyncMessage;
-
-using ServerBidiReactor = grpc::ServerBidiReactor<RaySyncMessage, RaySyncMessage>;
-using ClientBidiReactor = grpc::ClientBidiReactor<RaySyncMessage, RaySyncMessage>;
-
-static constexpr size_t kComponentArraySize =
-    static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
 
 /// The interface for a reporter. Reporter is defined to be a local module which would
 /// like to let the other nodes know its state. For example, local cluster resource
@@ -213,7 +208,4 @@ class RaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackService {
   RaySyncer &syncer_;
 };
 
-}  // namespace syncer
-}  // namespace ray
-
-#include "ray/common/ray_syncer/ray_syncer-inl.h"
+}  // namespace ray::syncer
