@@ -8,5 +8,4 @@ __all__ = [
     "LightGBMCheckpoint",
     "LightGBMPredictor",
     "LightGBMTrainer",
-    "get_network_params",
 ]
