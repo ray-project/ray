@@ -362,4 +362,9 @@ class WebDatasetDatasource(FileBasedDatasource):
         for sample in samples:
             if self.decoder is not None:
                 sample = _apply_list(self.decoder, sample, default=_default_decoder)
-            yield pd.DataFrame({k: [v] for k, v in sample.items()})
+            yield pd.DataFrame(
+                {
+                    k: v if isinstance(v, list) and len(v) == 1 else [v]
+                    for k, v in sample.items()
+                }
+            )
