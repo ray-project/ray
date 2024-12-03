@@ -7,6 +7,7 @@ import io.ray.runtime.config.RayConfig;
 public class GcsClientOptions {
   public String ip;
   public int port;
+  public String username;
   public String password;
 
   public GcsClientOptions(RayConfig rayConfig) {
@@ -14,6 +15,7 @@ public class GcsClientOptions {
     Preconditions.checkArgument(ipAndPort.length == 2, "Invalid bootstrap address.");
     ip = ipAndPort[0];
     port = Integer.parseInt(ipAndPort[1]);
+    username = rayConfig.redisUsername;
     password = rayConfig.redisPassword;
   }
 }

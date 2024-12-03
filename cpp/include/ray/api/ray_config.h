@@ -58,6 +58,9 @@ class RayConfig {
 
   /* The following are unstable parameters and their use is discouraged. */
 
+  // Prevents external clients without the username from connecting to Redis if provided.
+  boost::optional<std::string> redis_username_;
+
   // Prevents external clients without the password from connecting to Redis if provided.
   boost::optional<std::string> redis_password_;
 

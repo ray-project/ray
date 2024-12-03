@@ -468,6 +468,7 @@ class AlgorithmConfig(_Config):
         self.output_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.output_max_file_size = 64 * 1024 * 1024
         self.output_max_rows_per_file = None
+        self.output_write_remaining_data = False
         self.output_write_method = "write_parquet"
         self.output_write_method_kwargs = {}
         self.output_filesystem = None
@@ -1812,9 +1813,11 @@ class AlgorithmConfig(_Config):
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
                 slowly as well. You can inspect the object store during your experiment
-                via a call to `ray memory` on your head node, and by using the Ray
+                through a call to `ray memory` on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight or enable compression.
+                turn down the number of remote requests in flight or enable compression
+                or increase the object store memory through, for example:
+                `ray.init(object_store_memory=10 * 1024 * 1024 * 1024)  # =10 GB`
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -2143,9 +2146,14 @@ class AlgorithmConfig(_Config):
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
             max_requests_in_flight_per_learner: Max number of in-flight requests
-                to each Learner (actor)). See the
-                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
-                details.
+                to each Learner (actor). You normally do not have to tune this setting
+                (default is 3), however, for asynchronous algorithms, this determines
+                the "queue" size for incoming batches (or lists of episodes) into each
+                Learner worker, thus also determining, how much off-policy'ness would be
+                acceptable. The off-policy'ness is the difference between the numbers of
+                updates a policy has undergone on the Learner vs the EnvRunners.
+                See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
+                for more details.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2579,6 +2587,7 @@ class AlgorithmConfig(_Config):
         output_compress_columns: Optional[List[str]] = NotProvided,
         output_max_file_size: Optional[float] = NotProvided,
         output_max_rows_per_file: Optional[int] = NotProvided,
+        output_write_remaining_data: Optional[bool] = NotProvided,
         output_write_method: Optional[str] = NotProvided,
         output_write_method_kwargs: Optional[Dict] = NotProvided,
         output_filesystem: Optional[str] = NotProvided,
@@ -2748,6 +2757,15 @@ class AlgorithmConfig(_Config):
                 to a new file.
             output_max_rows_per_file: Max output row numbers before rolling over to a
                 new file.
+            output_write_remaining_data: Determines whether any remaining data in the
+                recording buffers should be stored to disk. It is only applicable if
+                `output_max_rows_per_file` is defined. When sampling data, it is
+                buffered until the threshold specified by `output_max_rows_per_file`
+                is reached. Only complete multiples of `output_max_rows_per_file` are
+                written to disk, while any leftover data remains in the buffers. If a
+                recording session is stopped, residual data may still reside in these
+                buffers. Setting `output_write_remaining_data` to `True` ensures this
+                data is flushed to disk. By default, this attribute is set to `False`.
             output_write_method: Write method for the `ray.data.Dataset` to write the
                 offline data to `output`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2855,6 +2873,8 @@ class AlgorithmConfig(_Config):
             self.output_max_file_size = output_max_file_size
         if output_max_rows_per_file is not NotProvided:
             self.output_max_rows_per_file = output_max_rows_per_file
+        if output_write_remaining_data is not NotProvided:
+            self.output_write_remaining_data = output_write_remaining_data
         if output_write_method is not NotProvided:
             self.output_write_method = output_write_method
         if output_write_method_kwargs is not NotProvided:

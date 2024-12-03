@@ -30,9 +30,10 @@ DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
-DEFINE_string(redis_password, "", "The password of redis.");
-DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
-DEFINE_string(node_ip_address, "", "The ip address of the node.");
+DEFINE_string(redis_username, "", "The username of Redis.");
+DEFINE_string(redis_password, "", "The password of Redis.");
+DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
+DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
@@ -63,6 +64,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list))
       << "config_list is not a valid base64-encoded string.";
   const std::string redis_password = FLAGS_redis_password;
+  const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string session_name = FLAGS_session_name;
@@ -115,6 +117,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;
   gcs_server_config.redis_password = redis_password;
+  gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;
