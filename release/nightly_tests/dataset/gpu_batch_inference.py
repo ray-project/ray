@@ -88,16 +88,17 @@ def main(args):
     start_time_without_metadata_fetching = time.time()
 
     if smoke_test:
-        actor_pool_size = 4
+        compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        actor_pool_size = int(ray.cluster_resources().get("GPU"))
+        # Autoscale to use as many GPUs as possible.
+        compute = ActorPoolStrategy(min_size=1, max_size=None)
         num_gpus = 1
     ds = ds.map_batches(preprocess)
     ds = ds.map_batches(
         Predictor,
         batch_size=BATCH_SIZE,
-        compute=ActorPoolStrategy(size=actor_pool_size),
+        compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
         max_concurrency=2,
