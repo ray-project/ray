@@ -16,6 +16,6 @@ rllib.env.utils
    :nosignatures:
    :toctree: env/
 
-   ~utils.external_env_protocol.MessageTypes
-   ~utils.try_import_open_spiel
-   ~utils.try_import_pyspiel
+   ~external_env_protocol.MessageTypes
+   ~try_import_open_spiel
+   ~try_import_pyspiel
