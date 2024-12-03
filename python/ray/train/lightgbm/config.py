@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import logging
 import threading
+from dataclasses import dataclass
 from typing import Any, Dict, Optional
 
 import ray
@@ -45,9 +45,9 @@ def _set_network_params(
 
     with _lightgbm_network_params_lock:
         assert (
-            network_params is None
+            _lightgbm_network_params is None
         ), "LightGBM network params are already initialized."
-        network_params = dict(
+        _lightgbm_network_params = dict(
             num_machines=num_machines,
             local_listen_port=local_listen_port,
             machines=machines,
