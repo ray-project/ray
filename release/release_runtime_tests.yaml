@@ -107,44 +107,6 @@
 # Data tests
 ###############
 
-- name: video_batch_inference_benchmark
-  group: data-tests
-  working_dir: anyscale/data
-
-  frequency: nightly
-  stable: False
-  team: data
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: video_batch_inference_benchmark_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python video_batch_inference_benchmark.py
-
-  variations:
-    - __suffix__: aws
-
-- name: audio_batch_inference_benchmark
-  group: data-tests
-  working_dir: anyscale/data
-
-  frequency: nightly
-  team: data
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_install_soundfile.sh
-    cluster_compute: audio_batch_inference_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python audio_batch_inference_benchmark.py
-
-  variations:
-    - __suffix__: aws
-
 - name: cpu_job_autoscaling_benchmark
   group: data-tests
   working_dir: anyscale/data
@@ -159,27 +121,6 @@
   run:
     timeout: 3600
     script: python cpu_job_autoscaling_benchmark.py
-
-  variations:
-    - __suffix__: aws
-
-- name: batch_inference_job_autoscaling_benchmark
-  group: data-tests
-  working_dir: anyscale/data
-
-  frequency: nightly
-  team: data
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: batch_inference_job_autoscaling_benchmark_compute.yaml
-
-  run:
-    timeout: 3600
-    script: python video_batch_inference_benchmark.py --min-gpus 1 --max-gpus 32
-
-  variations:
-    - __suffix__: aws
 
 ###############
 # Rllib tests
