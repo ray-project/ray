@@ -144,18 +144,17 @@ Status RedisStoreClient::AsyncGet(
     const std::string &table_name,
     const std::string &key,
     ToPostable<OptionalItemCallback<std::string>> callback) {
-  auto redis_callback =
-      [callback =
-           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
-        std::optional<std::string> result;
-        if (!reply->IsNil()) {
-          result = reply->ReadAsString();
-        }
-        RAY_CHECK(!reply->IsError())
-            << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-        std::move(callback).Dispatch(
-            "RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
-      };
+  auto redis_callback = [callback = std::move(callback)](
+                            const std::shared_ptr<CallbackReply> &reply) mutable {
+    std::optional<std::string> result;
+    if (!reply->IsNil()) {
+      result = reply->ReadAsString();
+    }
+    RAY_CHECK(!reply->IsError())
+        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
+    std::move(callback).Dispatch(
+        "RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
+  };
 
   RedisCommand command{/*command=*/"HGET",
                        RedisKey{external_storage_namespace_, table_name},
