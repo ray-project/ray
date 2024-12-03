@@ -1,6 +1,5 @@
 import copy
 import logging
-import threading
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import tree  # pip install dm_tree
