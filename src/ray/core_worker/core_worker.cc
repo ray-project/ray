@@ -750,7 +750,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Tell the raylet the port that we are listening on.
   // NOTE: This also marks the worker as available in Raylet. We do this at the
   // very end in case there is a problem during construction.
-  if (options.connect_on_start) {
+  if (true) {
     ConnectToRayletInternal();
   }
   // Used to detect if the object is in the plasma store.
@@ -909,6 +909,8 @@ void CoreWorker::ConnectToRayletInternal() {
 }
 
 void CoreWorker::ConnectToRaylet() {
+  return;
+
   RAY_CHECK(!options_.connect_on_start);
   ConnectToRayletInternal();
 }
