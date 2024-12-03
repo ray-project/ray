@@ -35,7 +35,7 @@ from cython.operator import dereference, postincrement
 cimport cpython
 
 
-cdef class NewGcsClient:
+cdef class InnerGcsClient:
     cdef:
         shared_ptr[CGcsClient] inner
 
@@ -45,7 +45,7 @@ cdef class NewGcsClient:
     @staticmethod
     def standalone(gcs_address: str,
                    cluster_id: Optional[str],
-                   timeout_ms: int) -> "NewGcsClient":
+                   timeout_ms: int) -> "InnerGcsClient":
         cdef GcsClientOptions gcs_options = None
         if cluster_id:
             gcs_options = GcsClientOptions.create(
@@ -64,7 +64,7 @@ cdef class NewGcsClient:
             check_status_timeout_as_rpc_error(
                 ConnectOnSingletonIoContext(dereference(inner), c_timeout_ms))
 
-        gcs_client = NewGcsClient()
+        gcs_client = InnerGcsClient()
         gcs_client.inner = inner
         return gcs_client
 

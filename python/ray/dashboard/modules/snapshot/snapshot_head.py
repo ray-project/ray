@@ -14,7 +14,6 @@ from ray import ActorID
 from ray._private.gcs_aio_client import GcsAioClient
 from ray._private.pydantic_compat import BaseModel, Extra, Field, validator
 from ray._private.storage import _load_class
-from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.consts import RAY_CLUSTER_ACTIVITY_HOOK
 from ray.dashboard.modules.job.common import JobInfoStorageClient
 
@@ -74,62 +73,9 @@ class RayActivityResponse(BaseModel, extra=Extra.allow):
         return v
 
 
-class KillActor:
-    """
-    Kill an actor via GCS using gRPC ActorInfoGcsService.KillActorViaGcs.
-    It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
-    RAY_USE_OLD_GCS_CLIENT.
-    """
-
-    def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
-        if use_old_client:
-            return KillActorViaGcsFromGrpc(*args, **kwargs)
-        else:
-            return KillActorViaGcsFromNewGcsClient(*args, **kwargs)
-
-
-class KillActorViaGcsFromNewGcsClient:
-    def __init__(self, dashboard_head):
-        self.gcs_aio_client = dashboard_head.gcs_aio_client
-
-    async def async_kill_actor(
-        self,
-        actor_id: ActorID,
-        force_kill: bool,
-        no_restart: bool,
-        timeout: Optional[float] = None,
-    ):
-        return await self.gcs_aio_client.kill_actor(
-            actor_id, force_kill, no_restart, timeout
-        )
-
-
-class KillActorViaGcsFromGrpc:
-    def __init__(self, dashboard_head):
-        gcs_channel = dashboard_head.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
-
-    async def async_kill_actor(
-        self,
-        actor_id: ActorID,
-        force_kill: bool,
-        no_restart: bool,
-        timeout: Optional[float] = None,
-    ):
-        request = gcs_service_pb2.KillActorViaGcsRequest()
-        request.actor_id = actor_id.binary()
-        request.force_kill = force_kill
-        request.no_restart = no_restart
-        await self._gcs_actor_info_stub.KillActorViaGcs(request, timeout=timeout)
-
-
 class APIHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._kill_actor = None
         self._gcs_aio_client: GcsAioClient = dashboard_head.gcs_aio_client
         self._job_info_client = None
         # For offloading CPU intensive work.
@@ -147,7 +93,7 @@ class APIHead(dashboard_utils.DashboardHeadModule):
                 success=False, message="actor_id is required."
             )
 
-        await self._kill_actor.async_kill_actor(
+        await self._gcs_aio_client.kill_actor(
             ActorID.from_hex(actor_id),
             force_kill,
             no_restart,
@@ -286,7 +232,6 @@ class APIHead(dashboard_utils.DashboardHeadModule):
             )
 
     async def run(self, server):
-        self._kill_actor = KillActor(self._dashboard_head)
         # Lazily constructed because dashboard_head's gcs_aio_client
         # is lazily constructed
         if not self._job_info_client:
