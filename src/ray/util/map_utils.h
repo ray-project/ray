@@ -24,6 +24,8 @@
 #include <functional>
 #include <utility>
 
+namespace ray::utils::container {
+
 template <typename Hash>
 struct RefHash : Hash {
   RefHash() = default;
@@ -80,3 +82,5 @@ struct RefEq : Equal {
 
 template <typename Equal>
 RefEq(Equal &&) -> RefEq<std::remove_reference_t<Equal>>;
+
+}  // namespace ray::utils::container
