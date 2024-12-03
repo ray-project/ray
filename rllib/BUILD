@@ -1161,36 +1161,6 @@ py_test(
     srcs = ["env/tests/test_infinite_lookback_buffer.py"]
 )
 
-# CI all of a sudden has problems with accessing the ports.
-# sh_test(
-#    name = "env/tests/test_local_inference_cartpole",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["local", "cartpole", "8800"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_local_inference_unity3d",
-#     tags = ["team:rllib", "env"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["local", "unity3d", "8850"],
-#     data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
 py_test(
     name = "env/tests/test_multi_agent_env",
     tags = ["team:rllib", "tests_dir"],
@@ -1211,45 +1181,6 @@ py_test(
     size = "medium",
     srcs = ["env/tests/test_multi_agent_episode.py"]
 )
-
-# CI all of a sudden has problems with accessing the ports.
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole", "8810"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole_lstm",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole_lstm", "8820"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_remote_inference_unity3d",
-#     tags = ["team:rllib", "env", "exclusive"],
-#     size = "small",
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["remote", "unity3d", "8860"],
-#     data = glob(["examples/envs/external_envs/*.py"]),
-# )
 
 py_test(
     name = "env/tests/test_single_agent_env_runner",
@@ -2447,15 +2378,6 @@ py_test(
 # subdirectory: envs/
 # ....................................
 py_test(
-    name = "examples/envs/custom_gym_env",
-    main = "examples/envs/custom_gym_env.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
-)
-
-py_test(
     name = "examples/envs/custom_env_render_method",
     main = "examples/envs/custom_env_render_method.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2474,11 +2396,38 @@ py_test(
 )
 
 py_test(
+    name = "examples/envs/custom_gym_env",
+    main = "examples/envs/custom_gym_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_gym_env.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+
+py_test(
+    name = "examples/envs/env_connecting_to_rllib_w_tcp_client",
+    main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/env_connecting_to_rllib_w_tcp_client.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--port=12346"]
+)
+
+py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=2"]
+)
+
+py_test(
+    name = "examples/envs/env_w_protobuf_observations",
+    main = "examples/envs/env_w_protobuf_observations.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/env_w_protobuf_observations.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
 )
 
 #@OldAPIStack
