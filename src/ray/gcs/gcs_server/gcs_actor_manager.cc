@@ -329,7 +329,7 @@ GcsActorManager::GcsActorManager(
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-    const rpc::ClientFactoryFn &worker_client_factory)
+    const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
       gcs_table_storage_(std::move(gcs_table_storage)),
       gcs_publisher_(std::move(gcs_publisher)),
@@ -749,11 +749,8 @@ Status GcsActorManager::RegisterActor(const ray::rpc::RegisterActorRequest &requ
                "explicitly connect to this namespace with ray.init(namespace=\""
             << actor->GetRayNamespace() << "\", ...)";
 
-        auto error_data_ptr =
-            gcs::CreateErrorTableData("detached_actor_anonymous_namespace",
-                                      stream.str(),
-                                      absl::GetCurrentTimeNanos(),
-                                      job_id);
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            "detached_actor_anonymous_namespace", stream.str(), absl::Now(), job_id);
 
         RAY_LOG(WARNING) << error_data_ptr->SerializeAsString();
         RAY_CHECK_OK(

@@ -36,8 +36,6 @@
 #include "src/ray/protobuf/event.pb.h"
 #include "src/ray/protobuf/export_api/export_event.pb.h"
 
-using json = nlohmann::json;
-
 namespace ray {
 
 // RAY_EVENT_EVERY_N/RAY_EVENT_EVERY_MS, adaped from
@@ -85,7 +83,7 @@ class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
-  virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
+  virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
 
   virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
 
@@ -106,14 +104,16 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual ~LogEventReporter();
 
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
+  virtual void Report(const rpc::Event &event,
+                      const nlohmann::json &custom_fields) override;
 
   virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
 
  private:
   virtual std::string replaceLineFeed(std::string message);
 
-  virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
+  virtual std::string EventToString(const rpc::Event &event,
+                                    const nlohmann::json &custom_fields);
 
   virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
@@ -147,7 +147,7 @@ class EventManager final {
   // fields.
   // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
-  void Publish(const rpc::Event &event, const json &custom_fields);
+  void Publish(const rpc::Event &event, const nlohmann::json &custom_fields);
 
   void PublishExportEvent(const rpc::ExportEvent &export_event);
 
@@ -318,7 +318,7 @@ class RayEvent {
   std::string label_;
   const char *file_name_;
   int line_number_;
-  json custom_fields_;
+  nlohmann::json custom_fields_;
   std::ostringstream osstream_;
 };
 

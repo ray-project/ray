@@ -64,7 +64,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
 
     replica_version_hash = None
     for replica in deployment_dict[id]:
-        ref = replica.actor_handle._get_metadata.remote()
+        ref = replica.actor_handle.initialize_and_get_metadata.remote()
         _, version, _, _ = ray.get(ref)
         if replica_version_hash is None:
             replica_version_hash = hash(version)
@@ -116,7 +116,7 @@ def test_recover_start_from_replica_actor_names(serve_instance, deployment_optio
     # Ensure recovered replica version has are the same
     for replica_name in recovered_replica_names:
         actor_handle = ray.get_actor(replica_name, namespace=SERVE_NAMESPACE)
-        ref = actor_handle._get_metadata.remote()
+        ref = actor_handle.initialize_and_get_metadata.remote()
         _, version, _, _ = ray.get(ref)
         assert replica_version_hash == hash(
             version
@@ -487,7 +487,7 @@ def test_controller_crashes_with_logging_config(serve_instance):
     resp = requests.get("http://127.0.0.1:8000")
     assert resp.status_code == 200
     wait_for_condition(
-        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET 200.*']
+        check_log_file, log_file=file_path, expected_regex=['.*"message":.*GET / 200.*']
     )
 
 

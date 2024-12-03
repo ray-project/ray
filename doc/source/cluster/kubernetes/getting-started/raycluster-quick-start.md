@@ -35,11 +35,12 @@ kubectl get pods
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          27s
 ```
 
-KubeRay offers multiple options for operator installations, such as Helm, Kustomize, and a single-namespaced operator. For further information, please refer to [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+KubeRay offers multiple options for operator installations, such as Helm, Kustomize, and a single-namespaced operator. For further information, see [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
 
+(raycluster-deploy)=
 ## Step 3: Deploy a RayCluster custom resource
 
-Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do so, we create a RayCluster Custom Resource (CR) in the `default` namespace.
+Once the KubeRay operator is running, you're ready to deploy a RayCluster. Create a RayCluster Custom Resource (CR) in the `default` namespace.
 
   ::::{tab-set}
 

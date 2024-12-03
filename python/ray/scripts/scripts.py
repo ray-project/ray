@@ -15,6 +15,7 @@ from datetime import datetime
 from typing import Optional, Set, List, Tuple
 from ray.dashboard.modules.metrics import install_and_start_prometheus
 from ray.util.check_open_ports import check_open_ports
+import requests
 
 import click
 import psutil
@@ -346,6 +347,14 @@ def debug(address: str, verbose: bool):
     "Defaults to the node's ip_address",
 )
 @click.option(
+    "--redis-username",
+    required=False,
+    hidden=True,
+    type=str,
+    default=ray_constants.REDIS_DEFAULT_USERNAME,
+    help="If provided, secure Redis ports with this username",
+)
+@click.option(
     "--redis-password",
     required=False,
     hidden=True,
@@ -621,6 +630,15 @@ Windows powershell users need additional escaping:
     type=str,
     help="a JSON serialized dictionary mapping label name to label value.",
 )
+@click.option(
+    "--include-log-monitor",
+    default=None,
+    type=bool,
+    help="If set to True or left unset, a log monitor will start monitoring "
+    "the log files of all processes on this node and push their contents to GCS. "
+    "Only one log monitor should be started per physical host to avoid log "
+    "duplication on the driver process.",
+)
 @add_click_logging_options
 @PublicAPI
 def start(
@@ -628,6 +646,7 @@ def start(
     address,
     port,
     node_name,
+    redis_username,
     redis_password,
     redis_shard_ports,
     object_manager_port,
@@ -667,6 +686,7 @@ def start(
     ray_debugger_external,
     disable_usage_stats,
     labels,
+    include_log_monitor,
 ):
     """Start Ray processes manually on the local machine."""
 
@@ -730,6 +750,7 @@ def start(
         node_manager_port=node_manager_port,
         memory=memory,
         object_store_memory=object_store_memory,
+        redis_username=redis_username,
         redis_password=redis_password,
         redirect_output=redirect_output,
         num_cpus=num_cpus,
@@ -756,6 +777,7 @@ def start(
         no_monitor=no_monitor,
         tracing_startup_hook=tracing_startup_hook,
         ray_debugger_external=ray_debugger_external,
+        include_log_monitor=include_log_monitor,
     )
 
     if ray_constants.RAY_START_HOOK in os.environ:
@@ -808,6 +830,14 @@ def start(
 
             ray_params.update_if_absent(external_addresses=external_addresses)
             num_redis_shards = len(external_addresses) - 1
+            if redis_username == ray_constants.REDIS_DEFAULT_USERNAME:
+                cli_logger.warning(
+                    "`{}` should not be specified as empty string if "
+                    "external Redis server(s) `{}` points to requires "
+                    "username.",
+                    cf.bold("--redis-username"),
+                    cf.bold("--address"),
+                )
             if redis_password == ray_constants.REDIS_DEFAULT_PASSWORD:
                 cli_logger.warning(
                     "`{}` should not be specified as empty string if "
@@ -2581,6 +2611,15 @@ def metrics_group():
 @metrics_group.command(name="launch-prometheus")
 def launch_prometheus():
     install_and_start_prometheus.main()
+
+
+@metrics_group.command(name="shutdown-prometheus")
+def shutdown_prometheus():
+    try:
+        requests.post("http://localhost:9090/-/quit")
+    except requests.exceptions.RequestException as e:
+        print(f"An error occurred: {e}")
+        sys.exit(1)
 
 
 def add_command_alias(command, name, hidden):

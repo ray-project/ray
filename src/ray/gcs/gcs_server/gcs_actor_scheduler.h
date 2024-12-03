@@ -129,14 +129,14 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
       instrumented_io_context &io_context,
       GcsActorTable &gcs_actor_table,
       const GcsNodeManager &gcs_node_manager,
-      std::shared_ptr<ClusterTaskManager> cluster_task_manager_,
+      ClusterTaskManager &cluster_task_manager_,
       GcsActorSchedulerFailureCallback schedule_failure_handler,
       GcsActorSchedulerSuccessCallback schedule_success_handler,
-      std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-      rpc::ClientFactoryFn client_factory = nullptr,
+      rpc::NodeManagerClientPool &raylet_client_pool,
+      rpc::CoreWorkerClientFactoryFn client_factory = nullptr,
       std::function<void(const NodeID &, const rpc::ResourcesData &)>
           normal_task_resources_changed_callback = nullptr);
-  virtual ~GcsActorScheduler() = default;
+  ~GcsActorScheduler() override = default;
 
   /// Schedule the specified actor.
   /// If there is no available nodes then the actor would be queued in the
@@ -377,7 +377,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// Reference of GcsNodeManager.
   const GcsNodeManager &gcs_node_manager_;
   /// The cluster task manager.
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  ClusterTaskManager &cluster_task_manager_;
   /// The handler to handle the scheduling failures.
   GcsActorSchedulerFailureCallback schedule_failure_handler_;
   /// The handler to handle the successful scheduling.
@@ -385,7 +385,7 @@ class GcsActorScheduler : public GcsActorSchedulerInterface {
   /// The nodes which are releasing unused workers.
   absl::flat_hash_set<NodeID> nodes_of_releasing_unused_workers_;
   /// The cached raylet clients used to communicate with raylet.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool &raylet_client_pool_;
   /// The cached core worker clients which are used to communicate with leased worker.
   rpc::CoreWorkerClientPool core_worker_clients_;
 
