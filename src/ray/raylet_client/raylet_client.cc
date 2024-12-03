@@ -22,6 +22,7 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
+#include "src/ray/raylet_client/raylet_client.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -357,6 +358,12 @@ void raylet::RayletClient::RequestWorkerLease(
   request->set_backlog_size(backlog_size);
   request->set_is_selected_based_on_locality(is_selected_based_on_locality);
   grpc_client_->RequestWorkerLease(*request, callback);
+}
+
+void raylet::RayletClient::PrestartWorkers(
+    const rpc::PrestartWorkersRequest &request,
+    const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) {
+  grpc_client_->PrestartWorkers(request, callback);
 }
 
 std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {

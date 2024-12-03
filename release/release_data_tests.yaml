@@ -7,8 +7,9 @@
 
   cluster:
     byod:
+      # 'type: gpu' means: use the 'ray-ml' image.
       type: gpu
-    cluster_compute: multi_node_autoscaling_compute.yaml
+    cluster_compute: autoscaling_cpu_compute.yaml
 
 ###############
 # Reading tests
@@ -32,31 +33,6 @@
   run:
     timeout: 600
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
-
-- name: stable_diffusion_benchmark
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-      post_build_script: byod_stable_diffusion.sh
-    cluster_compute: stable_diffusion_benchmark_compute.yaml
-
-  run:
-    timeout: 1800
-    script: python stable_diffusion_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: stable_diffusion_benchmark_compute_gce.yaml
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -545,177 +521,49 @@
         cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
 
 
-############################
-# Batch Inference Benchmarks
-############################
+#######################
+# Batch inference tests
+#######################
 
-# 10 GB image classification raw images with 1 GPU.
-# 1 g4dn.4xlarge
-- name: torch_batch_inference_1_gpu_10gb_raw
-  group: data-tests
-  working_dir: nightly_tests/dataset
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
+- name: batch_inference
 
-  frequency: nightly
-  team: data
   cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
+    cluster_compute: autoscaling_gpu_compute.yaml
 
   run:
-    timeout: 500
-    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw --data-format raw
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py 
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
-
-# 10 GB image classification parquet with 1 GPU.
-# 1 g4dn.4xlarge
-- name: torch_batch_inference_1_gpu_10gb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_gpu_1_cpu_16_aws.yaml
-
-  run:
-    timeout: 500
-    script: python gpu_batch_inference.py --data-directory=10G-image-data-synthetic-raw-parquet --data-format parquet
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_1_cpu_16_gce.yaml
-
-
-# 300 GB image classification raw images with 16 GPUs
-# 4 g4dn.12xlarge
-- name: torch_batch_inference_16_gpu_300gb_raw
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_gpu_4x4_aws.yaml
-
-  run:
-    timeout: 1000
-    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
-
-    wait_for_nodes:
-        num_nodes: 4
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_4x4_gce.yaml
-
-
-- name: chaos_torch_batch_inference_16_gpu_300gb_raw
-  group: data-tests
+- name: batch_inference_chaos
+  stable: False
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run 
+  # the 'setup_chaos.py' script.
   working_dir: nightly_tests
-  stable: false
 
-  frequency: nightly
-  team: data
   cluster:
-    byod:
-      type: gpu
-    cluster_compute: dataset/compute_gpu_4x4_aws.yaml
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
-    timeout: 1000
+    timeout: 1800
     prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
-    script: python dataset/gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw --data-format raw
+    script: >
+      python dataset/gpu_batch_inference.py 
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
-    wait_for_nodes:
-        num_nodes: 4
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: dataset/compute_gpu_4x4_gce.yaml
-
-
-# 300 GB image classification parquet data with 16 GPUs
-# 4 g4dn.12xlarge
-- name: torch_batch_inference_16_gpu_300gb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_gpu_4x4_aws.yaml
-
-  run:
-    timeout: 1000
-    script: python gpu_batch_inference.py --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
-
-    wait_for_nodes:
-        num_nodes: 4
-
-  alert: default
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: compute_gpu_4x4_gce.yaml
-
-# 10 TB image classification parquet data with heterogenous cluster
+# 10 TB image classification parquet data with autoscaling heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
-- name: torch_batch_inference_hetero_10tb_parquet
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
+- name: batch_inference_hetero
   frequency: weekly
-  team: data
 
   cluster:
-    byod:
-      type: gpu
-    cluster_compute: compute_hetero_10x10_aws.yaml
+    cluster_compute: autoscaling_hetero_compute.yaml
 
   run:
-    timeout: 2000
-    script: python gpu_batch_inference.py --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
-
-    wait_for_nodes:
-      num_nodes: 20
-
-  alert: default
+    timeout: 3600
+    script: >
+      python gpu_batch_inference.py 
+      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet

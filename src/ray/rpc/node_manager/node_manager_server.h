@@ -32,6 +32,7 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetResourceLoad)           \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(NotifyGCSRestart)          \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(RequestWorkerLease)        \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(PrestartWorkers)           \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReportWorkerBacklog)       \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReturnWorker)              \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedActorWorkers) \
@@ -78,6 +79,10 @@ class NodeManagerServiceHandler {
   virtual void HandleRequestWorkerLease(RequestWorkerLeaseRequest request,
                                         RequestWorkerLeaseReply *reply,
                                         SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandlePrestartWorkers(PrestartWorkersRequest request,
+                                     PrestartWorkersReply *reply,
+                                     SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandleReportWorkerBacklog(ReportWorkerBacklogRequest request,
                                          ReportWorkerBacklogReply *reply,
