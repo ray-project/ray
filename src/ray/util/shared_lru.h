@@ -27,11 +27,10 @@
 // // Check and consume `val`.
 //
 // TODO(hjiang):
-// 1. Add template arguments for key hash and key equal, to pass into absl::flat_hash_map.
-// 2. Provide a key hash wrapper to save a copy.
-// 3. flat hash map supports heterogeneous lookup, expose `KeyLike` templated interface.
-// 4. Add a `GetOrCreate` interface, which takes factory function to creation value.
-// 5. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
+// 1. Write a wrapper around KeyHash and KeyEq, which takes std::reference_wrapper<Key>,
+// so we could store keys only in std::list, and reference in absl::flat_hash_map.
+// 2. Add a `GetOrCreate` interface, which takes factory function to creation value.
+// 3. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
 #pragma once
 
@@ -39,7 +38,6 @@
 #include <list>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <string>
 #include <utility>
 
@@ -90,7 +88,8 @@ class SharedLruCache final {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const Key &key) {
+  template <typename KeyLike>
+  bool Delete(KeyLike &&key) {
     auto it = cache_.find(key);
     if (it == cache_.end()) {
       return false;
@@ -100,8 +99,10 @@ class SharedLruCache final {
     return true;
   }
 
-  // Look up the entry with key `key`. Return nullptr if key doesn't exist.
-  std::shared_ptr<Val> Get(const Key &key) {
+  // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
+  // If found, return a copy for the value.
+  template <typename KeyLike>
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     const auto cache_iter = cache_.find(key);
     if (cache_iter == cache_.end()) {
       return nullptr;
@@ -173,16 +174,18 @@ class ThreadSafeSharedLruCache final {
   // Delete the entry with key `key`. Return true if the entry was found for
   // `key`, false if the entry was not found. In both cases, there is no entry
   // with key `key` existed after the call.
-  bool Delete(const Key &key) {
+  template <typename KeyLike>
+  bool Delete(KeyLike &&key) {
     std::lock_guard lck(mu_);
-    return cache_.Delete(key);
+    return cache_.Delete(std::forward<KeyLike>(key));
   }
 
   // Look up the entry with key `key`. Return std::nullopt if key doesn't exist.
   // If found, return a copy for the value.
-  std::shared_ptr<Val> Get(const Key &key) {
+  template <typename KeyLike>
+  std::shared_ptr<Val> Get(KeyLike &&key) {
     std::lock_guard lck(mu_);
-    return cache_.Get(key);
+    return cache_.Get(std::forward<KeyLike>(key));
   }
 
   // Clear the cache.

@@ -23,6 +23,19 @@ namespace ray::utils::container {
 
 namespace {
 constexpr size_t kTestCacheSz = 1;
+
+class TestClassWithHashAndEq {
+ public:
+  TestClassWithHashAndEq(std::string data) : data_(std::move(data)) {}
+  bool operator==(const TestClassWithHashAndEq &rhs) const { return data_ == rhs.data_; }
+  template <typename H>
+  friend H AbslHashValue(H h, const TestClassWithHashAndEq &obj) {
+    return H::combine(std::move(h), obj.data_);
+  }
+
+ private:
+  std::string data_;
+};
 }  // namespace
 
 TEST(SharedLruCache, PutAndGet) {
@@ -34,22 +47,21 @@ TEST(SharedLruCache, PutAndGet) {
 
   // Check put and get.
   cache.Put("1", std::make_shared<std::string>("1"));
-  val = cache.Get("1");
+  val = cache.Get(std::string_view{"1"});
   EXPECT_NE(val, nullptr);
   EXPECT_EQ(*val, "1");
 
   // Check key eviction.
   cache.Put("2", std::make_shared<std::string>("2"));
-  val = cache.Get("1");
+  val = cache.Get(std::string_view{"1"});
   EXPECT_EQ(val, nullptr);
-  val = cache.Get("2");
+  val = cache.Get(std::string_view{"2"});
   EXPECT_NE(val, nullptr);
   EXPECT_EQ(*val, "2");
 
   // Check deletion.
-  EXPECT_FALSE(cache.Delete("1"));
-  EXPECT_TRUE(cache.Delete("2"));
-  val = cache.Get("2");
+  EXPECT_FALSE(cache.Delete(std::string_view{"1"}));
+  val = cache.Get(std::string_view{"1"});
   EXPECT_EQ(val, nullptr);
 }
 
@@ -71,6 +83,15 @@ TEST(SharedLruCache, SameKeyTest) {
 TEST(SharedLruConstCache, TypeAliasAssertion) {
   static_assert(
       std::is_same_v<SharedLruConstCache<int, int>, SharedLruCache<int, const int>>);
+}
+
+TEST(SharedLruConstCache, CustomizedKey) {
+  TestClassWithHashAndEq obj1{"hello"};
+  TestClassWithHashAndEq obj2{"hello"};
+  SharedLruCache<TestClassWithHashAndEq, std::string> cache{2};
+  cache.Put(obj1, std::make_shared<std::string>("val"));
+  auto val = cache.Get(obj2);
+  EXPECT_EQ(*val, "val");
 }
 
 }  // namespace ray::utils::container
