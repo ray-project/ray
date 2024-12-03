@@ -131,6 +131,7 @@ GcsServer::~GcsServer() { Stop(); }
 RedisClientOptions GcsServer::GetRedisClientOptions() const {
   return RedisClientOptions(config_.redis_address,
                             config_.redis_port,
+                            config_.redis_username,
                             config_.redis_password,
                             config_.enable_redis_ssl);
 }
@@ -411,7 +412,9 @@ void GcsServer::InitClusterTaskManager() {
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
   auto client_factory = [this](const rpc::Address &address) {
-    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_);
+    return std::make_shared<rpc::CoreWorkerClient>(address, client_call_manager_, []() {
+      RAY_LOG(FATAL) << "GCS doesn't call any retryable core worker grpc methods.";
+    });
   };
   RAY_CHECK(gcs_table_storage_ && gcs_publisher_);
   gcs_job_manager_ = std::make_unique<GcsJobManager>(*gcs_table_storage_,
