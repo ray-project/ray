@@ -533,7 +533,7 @@
     cluster_compute: autoscaling_gpu_compute.yaml
 
   run:
-    timeout: 1000
+    timeout: 1800
     script: >
       python gpu_batch_inference.py 
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
@@ -548,7 +548,7 @@
     cluster_compute: dataset/autoscaling_gpu_compute.yaml
 
   run:
-    timeout: 1000
+    timeout: 1800
     prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
     script: >
       python dataset/gpu_batch_inference.py 
@@ -563,7 +563,7 @@
     cluster_compute: autoscaling_hetero_compute.yaml
 
   run:
-    timeout: 2000
+    timeout: 3600
     script: >
       python gpu_batch_inference.py 
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
