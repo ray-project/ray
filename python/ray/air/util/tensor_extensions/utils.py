@@ -48,12 +48,12 @@ def _create_possibly_ragged_ndarray(
             # More details: https://stackoverflow.com/q/63097829
             if np.lib.NumpyVersion(np.__version__) >= "2.0.0":
                 copy_if_needed = None
-                visibleDeprecationWarning = np.exceptions.VisibleDeprecationWarning
+                warning_type = np.exceptions.VisibleDeprecationWarning
             else:
                 copy_if_needed = False
-                visibleDeprecationWarning = np.VisibleDeprecationWarning
+                warning_type = np.VisibleDeprecationWarning
 
-            warnings.simplefilter("ignore", category=visibleDeprecationWarning)
+            warnings.simplefilter("ignore", category=warning_type)
             arr = np.array(values, copy=copy_if_needed)
             return arr
     except ValueError as e:
