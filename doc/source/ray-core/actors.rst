@@ -499,7 +499,8 @@ Note that stacktrace capture is disabled by default to avoid any performance ove
 
 Example:
 
-.. code-block:: python
+.. testcode::
+
     import ray
 
     # Enable stacktrace capture

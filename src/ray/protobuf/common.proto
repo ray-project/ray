@@ -595,7 +595,7 @@ message TaskInfoEntry {
   // If the task/actor is created within a placement group,
   // this value is configured.
   optional bytes placement_group_id = 26;
-    // Human readable stacktrace of the task invocation, or actor creation. The exact data
+  // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if the flag is enabled.
   optional string invocation_stacktrace = 27;
 }
