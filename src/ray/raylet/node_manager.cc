@@ -340,7 +340,7 @@ NodeManager::NodeManager(
   }
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
       [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
         return !this->IsWorkerDead(owner_worker_id, owner_node_id);
