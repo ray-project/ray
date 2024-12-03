@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -1655,13 +1658,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
-  /// Get json deserialized runtime env in cache; parse and fill in if uncached.
-  std::shared_ptr<nlohmann::json> GetCachedJsonRuntimeEnvOrParse(
-      const std::string &serialized_runtime_env_info) const;
-
-  /// Get protobuf deserialized runtime env in cache; parse and fill in if uncached.
-  std::shared_ptr<rpc::RuntimeEnvInfo> GetCachedPbRuntimeEnvOrParse(
-      const std::string &serialized_runtime_env) const;
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success,
+                      std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id,
+                      void *py_future);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -1839,12 +1840,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success,
-                      std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id,
-                      void *py_future);
-
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
@@ -1873,12 +1868,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 
   /// Serialized runtime info env are cached.
-  mutable std::mutex runtime_env_serialization_mutex_;
-  /// Maps serialized runtime env to **immutable** deserialized protobuf.
+  mutable std::mutex job_runtime_env_serialization_mutex_;
+  /// For a job, [job_runtime_env_] never changes. non-`nullptr` if cached, otherwise
+  /// nullptr.
+  mutable std::shared_ptr<nlohmann::json> job_runtime_env_;
+  /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::SharedLruCache<std::string, rpc::RuntimeEnvInfo>
-      runtime_env_pb_serialization_cache_;
-  /// Maps serialized runtime env to **immutable** deserialized json.
-  mutable utils::container::SharedLruCache<std::string, nlohmann::json>
       runtime_env_json_serialization_cache_;
 };
 
