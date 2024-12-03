@@ -80,7 +80,10 @@ class GcsAutoscalerStateManager;
 /// For more details, please see the design document.
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
 ///
-/// Gcs server contains a lot of data member, gcs server outlives all of them.
+/// Notes on lifecycle:
+/// 1. Gcs server contains a lot of data member, gcs server outlives all of them.
+/// 2. Gcs table storage and all gcs managers share a lifetime, that starts from a
+/// `DoStart` call to `Stop`.
 class GcsServer {
  public:
   GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
