@@ -356,7 +356,8 @@ class Stats:
             self.values = self.values[-self._window :]
 
         # Adopt `other`'s current throughput estimate (it's the newer one).
-        self._throughput = other._throughput
+        if self._throughput is not False:
+            self._throughput = other._throughput
 
     def merge_in_parallel(self, *others: "Stats") -> None:
         """Merges all internal values of `others` into `self`'s internal values list.
