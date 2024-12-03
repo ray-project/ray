@@ -129,6 +129,7 @@ from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_TRAINED_LIFETIME,
     NUM_EPISODES,
     NUM_EPISODES_LIFETIME,
+    NUM_TRAINING_STEP_CALLS_PER_ITERATION,
     RESTORE_WORKERS_TIMER,
     RESTORE_EVAL_WORKERS_TIMER,
     SYNCH_ENV_CONNECTOR_STATES_TIMER,
@@ -3215,7 +3216,17 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                             "one single result dict per training iteration."
                         )
 
-        # Only here, reduce the results into a single result dict.
+                    # TODO (sven): Resolve this metric through log_time's future
+                    #  ability to compute throughput.
+                    self.metrics.log_value(
+                        NUM_TRAINING_STEP_CALLS_PER_ITERATION,
+                        1,
+                        reduce="sum",
+                        clear_on_reduce=True,
+                    )
+
+        # Only here (at the end of the iteration), reduce the results into a single
+        # result dict.
         return self.metrics.reduce(), train_iter_ctx
 
     def _run_one_evaluation(
@@ -3527,13 +3538,16 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Fault tolerance stats.
         results[FAULT_TOLERANCE_STATS] = {
             "num_healthy_workers": self.env_runner_group.num_healthy_remote_workers(),
-            "num_in_flight_async_reqs": (
-                self.env_runner_group.num_in_flight_async_reqs()
-            ),
             "num_remote_worker_restarts": (
                 self.env_runner_group.num_remote_worker_restarts()
             ),
         }
+        results["env_runner_group"] = {
+            "actor_manager_num_outstanding_async_reqs": (
+                self.env_runner_group.num_in_flight_async_reqs()
+            ),
+        }
+
         # Resolve all `Stats` leafs by peeking (get their reduced values).
         return tree.map_structure(
             lambda s: s.peek() if isinstance(s, Stats) else s,

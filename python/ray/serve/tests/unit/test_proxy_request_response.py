@@ -57,7 +57,7 @@ class TestASGIProxyRequest:
         """
         proxy_request = self.create_asgi_proxy_request(scope={})
         assert isinstance(proxy_request, ProxyRequest)
-        assert proxy_request.method == "WEBSOCKET"
+        assert proxy_request.method == "WS"
 
         method = "fake-method"
         proxy_request = self.create_asgi_proxy_request(scope={"method": method})

@@ -67,7 +67,7 @@ class GcsResourceManager : public rpc::NodeResourceInfoHandler,
       NodeID local_node_id,
       std::shared_ptr<ClusterTaskManager> cluster_task_manager = nullptr);
 
-  virtual ~GcsResourceManager() {}
+  virtual ~GcsResourceManager() = default;
 
   /// Handle the resource update.
   void ConsumeSyncMessage(std::shared_ptr<const syncer::RaySyncMessage> message) override;

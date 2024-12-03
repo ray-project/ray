@@ -1134,6 +1134,9 @@ class Learner(Checkpointable):
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 batch.policy_batches
             )
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             self._set_slicing_by_batch_id(batch, value=False)
             # If `num_iters` is reached break and return.
@@ -1143,9 +1146,6 @@ class Learner(Checkpointable):
         logger.info(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -1349,15 +1349,6 @@ class Learner(Checkpointable):
             batch = MultiAgentBatch(
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
-
-        # TODO (sven): Remove this leftover hack here for the situation in which we
-        #  did not go through the learner connector.
-        #  Options:
-        #  a) Either also pass given batches through the learner connector (even if
-        #     episodes is None). (preferred solution)
-        #  b) Get rid of the option to pass in a batch altogether.
-        # if episodes is None:
-        #    batch = self._convert_batch_type(batch)
 
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.

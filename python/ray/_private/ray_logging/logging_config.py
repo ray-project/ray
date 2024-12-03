@@ -12,68 +12,47 @@ import logging
 import time
 
 
-class DictConfigProvider(ABC):
+class LoggingConfigurator(ABC):
     @abstractmethod
     def get_supported_encodings(self) -> Set[str]:
         raise NotImplementedError
 
     @abstractmethod
-    def get_dict_config(self, encoding: str, log_level: str) -> dict:
+    def configure_logging(self, encoding: str, log_level: str):
         raise NotImplementedError
 
 
-class DefaultDictConfigProvider(DictConfigProvider):
+class DefaultLoggingConfigurator(LoggingConfigurator):
     def __init__(self):
-        self._dict_configs = {
-            "TEXT": lambda log_level: {
-                "version": 1,
-                "disable_existing_loggers": False,
-                "formatters": {
-                    "text": {
-                        "()": (
-                            f"{TextFormatter.__module__}."
-                            f"{TextFormatter.__qualname__}"
-                        ),
-                    },
-                },
-                "filters": {
-                    "core_context": {
-                        "()": (
-                            f"{CoreContextFilter.__module__}."
-                            f"{CoreContextFilter.__qualname__}"
-                        ),
-                    },
-                },
-                "handlers": {
-                    "console": {
-                        "level": log_level,
-                        "class": "logging.StreamHandler",
-                        "formatter": "text",
-                        "filters": ["core_context"],
-                    },
-                },
-                "root": {
-                    "level": log_level,
-                    "handlers": ["console"],
-                },
-                "loggers": {
-                    "ray": {
-                        "level": log_level,
-                        "handlers": ["console"],
-                        "propagate": False,
-                    }
-                },
-            }
+        self._encoding_to_formatter = {
+            "TEXT": TextFormatter(),
         }
 
     def get_supported_encodings(self) -> Set[str]:
-        return self._dict_configs.keys()
+        return self._encoding_to_formatter.keys()
 
-    def get_dict_config(self, encoding: str, log_level: str) -> dict:
-        return self._dict_configs[encoding](log_level)
+    def configure_logging(self, encoding: str, log_level: str):
+        formatter = self._encoding_to_formatter[encoding]
+        core_context_filter = CoreContextFilter()
+        handler = logging.StreamHandler()
+        handler.setLevel(log_level)
+        handler.setFormatter(formatter)
+        handler.addFilter(core_context_filter)
+
+        root_logger = logging.getLogger()
+        root_logger.setLevel(log_level)
+        root_logger.addHandler(handler)
+
+        ray_logger = logging.getLogger("ray")
+        ray_logger.setLevel(log_level)
+        # Remove all existing handlers added by `ray/__init__.py`.
+        for h in ray_logger.handlers[:]:
+            ray_logger.removeHandler(h)
+        ray_logger.addHandler(handler)
+        ray_logger.propagate = False
 
 
-_dict_config_provider: DictConfigProvider = default_impl.get_dict_config_provider()
+_logging_configurator: LoggingConfigurator = default_impl.get_logging_configurator()
 
 
 @PublicAPI(stability="alpha")
@@ -84,19 +63,16 @@ class LoggingConfig:
     log_level: str = "INFO"
 
     def __post_init__(self):
-        if self.encoding not in _dict_config_provider.get_supported_encodings():
+        if self.encoding not in _logging_configurator.get_supported_encodings():
             raise ValueError(
                 f"Invalid encoding type: {self.encoding}. "
                 "Valid encoding types are: "
-                f"{list(_dict_config_provider.get_supported_encodings())}"
+                f"{list(_logging_configurator.get_supported_encodings())}"
             )
 
-    def _get_dict_config(self) -> dict:
-        """Get the logging configuration based on the encoding type.
-        Returns:
-            dict: The logging configuration.
-        """
-        return _dict_config_provider.get_dict_config(self.encoding, self.log_level)
+    def _configure_logging(self):
+        """Set up the logging configuration for the current process."""
+        _logging_configurator.configure_logging(self.encoding, self.log_level)
 
     def _setup_log_record_factory(self):
         old_factory = logging.getLogRecordFactory()
@@ -121,7 +97,7 @@ class LoggingConfig:
     def _apply(self):
         """Set up both the LogRecord factory and the logging configuration."""
         self._setup_log_record_factory()
-        logging.config.dictConfig(self._get_dict_config())
+        self._configure_logging()
 
 
 LoggingConfig.__doc__ = f"""
@@ -153,7 +129,7 @@ LoggingConfig.__doc__ = f"""
 
     Args:
         encoding: Encoding type for the logs. The valid values are
-            {list(_dict_config_provider.get_supported_encodings())}
+            {list(_logging_configurator.get_supported_encodings())}
         log_level: Log level for the logs. Defaults to 'INFO'. You can set
             it to 'DEBUG' to receive more detailed debug logs.
     """  # noqa: E501

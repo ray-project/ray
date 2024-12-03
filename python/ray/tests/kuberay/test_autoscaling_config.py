@@ -69,7 +69,7 @@ def _get_basic_autoscaling_config() -> dict:
             "type": "kuberay",
         },
         "available_node_types": {
-            "head-group": {
+            "headgroup": {
                 "max_workers": 0,
                 "min_workers": 0,
                 "node_config": {},
@@ -82,7 +82,7 @@ def _get_basic_autoscaling_config() -> dict:
             },
             "small-group": {
                 "max_workers": 300,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -95,7 +95,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers.
             "gpu-group": {
                 "max_workers": 200,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -109,7 +109,7 @@ def _get_basic_autoscaling_config() -> dict:
             # and modified max_workers and node_config.
             "tpu-group": {
                 "max_workers": 4,
-                "min_workers": 1,
+                "min_workers": 0,
                 "node_config": {},
                 "resources": {
                     "CPU": 1,
@@ -125,7 +125,7 @@ def _get_basic_autoscaling_config() -> dict:
         "cluster_synced_files": [],
         "file_mounts": {},
         "file_mounts_sync_continuously": False,
-        "head_node_type": "head-group",
+        "head_node_type": "headgroup",
         "head_setup_commands": [],
         "head_start_ray_commands": [],
         "idle_timeout_minutes": 1.0,
