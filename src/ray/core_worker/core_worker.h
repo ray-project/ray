@@ -17,7 +17,6 @@
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
-#include "boost/compute/detail/lru_cache.hpp"
 #include "ray/common/asio/periodical_runner.h"
 #include "ray/common/buffer.h"
 #include "ray/common/placement_group.h"
@@ -48,6 +47,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
+#include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -1875,11 +1875,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Serialized runtime info env are cached.
   mutable std::mutex runtime_env_serialization_mutex_;
   /// Maps serialized runtime env to **immutable** deserialized protobuf.
-  mutable boost::compute::detail::lru_cache<std::string,
-                                            std::shared_ptr<rpc::RuntimeEnvInfo>>
+  mutable utils::container::SharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_pb_serialization_cache_;
   /// Maps serialized runtime env to **immutable** deserialized json.
-  mutable boost::compute::detail::lru_cache<std::string, std::shared_ptr<nlohmann::json>>
+  mutable utils::container::SharedLruCache<std::string, nlohmann::json>
       runtime_env_json_serialization_cache_;
 };
 

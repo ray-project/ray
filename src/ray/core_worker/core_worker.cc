@@ -2167,10 +2167,10 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
     const std::string &serialized_runtime_env_info) const {
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    auto opt_runtime_info =
-        runtime_env_pb_serialization_cache_.get(serialized_runtime_env_info);
-    if (opt_runtime_info.has_value()) {
-      return *opt_runtime_info;
+    auto runtime_info =
+        runtime_env_pb_serialization_cache_.Get(serialized_runtime_env_info);
+    if (runtime_info != nullptr) {
+      return runtime_info;
     }
   }
   auto pb_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>();
@@ -2179,8 +2179,8 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::GetCachedPbRuntimeEnvOrParse(
                 .ok());
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    runtime_env_pb_serialization_cache_.insert(serialized_runtime_env_info,
-                                               pb_runtime_env_info);
+    runtime_env_pb_serialization_cache_.Put(serialized_runtime_env_info,
+                                            pb_runtime_env_info);
   }
   return pb_runtime_env_info;
 }
@@ -2189,17 +2189,16 @@ std::shared_ptr<nlohmann::json> CoreWorker::GetCachedJsonRuntimeEnvOrParse(
     const std::string &serialized_runtime_env) const {
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    auto opt_runtime_info =
-        runtime_env_json_serialization_cache_.get(serialized_runtime_env);
-    if (opt_runtime_info.has_value()) {
-      return *opt_runtime_info;
+    auto runtime_info = runtime_env_json_serialization_cache_.Get(serialized_runtime_env);
+    if (runtime_info != nullptr) {
+      return runtime_info;
     }
   }
   auto parsed_json = std::make_shared<json>();
   *parsed_json = json::parse(serialized_runtime_env);
   {
     std::lock_guard lck(runtime_env_serialization_mutex_);
-    runtime_env_json_serialization_cache_.insert(serialized_runtime_env, parsed_json);
+    runtime_env_json_serialization_cache_.Put(serialized_runtime_env, parsed_json);
   }
   return parsed_json;
 }
