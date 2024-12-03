@@ -51,6 +51,7 @@ DECLARE_stats(actors);
 /// Job stats.
 DECLARE_stats(running_jobs);
 DECLARE_stats(finished_jobs);
+DECLARE_stats(duration_jobs);
 
 /// Placement group stats, broken down by state.
 DECLARE_stats(placement_groups);

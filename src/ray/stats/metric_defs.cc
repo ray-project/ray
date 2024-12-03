@@ -84,6 +84,9 @@ DEFINE_stats(finished_jobs,
              /*buckets=*/(),
              ray::stats::COUNT);
 
+DEFINE_stats(
+    duration_jobs, "Duration of jobs finished.", ("JobId"), (), ray::stats::GAUGE);
+
 /// Logical resource usage reported by raylets.
 DEFINE_stats(resources,
              // TODO(sang): Support placement_group_reserved_available | used
