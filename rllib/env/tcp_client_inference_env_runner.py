@@ -427,13 +427,12 @@ def _get_message(sock_):
         # Check for proper protocol.
         if "type" not in message:
             raise ConnectionError(
-                "Protocol Error! Message from RLlibClient does not contain `type` "
-                "field."
+                "Protocol Error! Message from peer does not contain `type` " "field."
             )
         return MessageTypes(message.pop("type")), message
     except Exception as e:
         raise ConnectionError(
-            f"Error receiving message from server on socket {sock_}! "
+            f"Error receiving message from peer on socket {sock_}! "
             f"Original error was: {e}"
         )
 
@@ -508,7 +507,7 @@ def _dummy_client(port: int = 5556):
     obs, info = env.reset()
     observations.append(obs.tolist())
 
-    for i in range(env_steps_per_sample):
+    while True:
         timesteps += 1
         # Perform action inference using the ONNX model.
         logits = onnx_session.run(
@@ -517,6 +516,7 @@ def _dummy_client(port: int = 5556):
         )[0][
             0
         ]  # [0]=first return item, [0]=batch size 1
+
         # Stochastic sample.
         action_probs = softmax(logits)
         action = int(np.random.choice(list(range(env.action_space.n)), p=action_probs))
@@ -572,6 +572,7 @@ def _dummy_client(port: int = 5556):
                 else:
                     raise NotImplementedError
 
+                episodes = []
                 timesteps = 0
 
             # Set new buckets to empty lists (for next episode).
@@ -583,26 +584,6 @@ def _dummy_client(port: int = 5556):
 
             # The episode is done -> Reset.
             if terminated or truncated:
-                print(f"Episode done: Return={episode_return}")
                 obs, _ = env.reset()
                 observations = [obs.tolist()]
                 episode_return = 0.0
-
-
-if __name__ == "__main__":
-    from ray.rllib.algorithms.ppo import PPOConfig
-
-    # Create an EnvRunner.
-    config = PPOConfig().environment(
-        observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
-        action_space=gym.spaces.Discrete(2),
-        env_config={"port": 5556},
-    )
-    env_runner = TcpClientInferenceEnvRunner(config=config)
-
-    # Create a dummy client playing cartpole.
-    client_thread = threading.Thread(target=_dummy_client)
-    client_thread.start()
-
-    # Query the EnvRunner.
-    episodes = env_runner.sample()

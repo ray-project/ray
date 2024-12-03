@@ -38,7 +38,27 @@ For logging to your WandB account, use:
 
 Results to expect
 -----------------
-TODO: Fill in
+You should see something like this on your terminal. Note that the dummy CartPole
+client (which runs in a thread for the purpose of this example here) might throw
+a disconnection error at the end, b/c RLlib closes the server socket when done training.
+
++----------------------+------------+--------+------------------+
+| Trial name           | status     |   iter |   total time (s) |
+|                      |            |        |                  |
+|----------------------+------------+--------+------------------+
+| PPO_None_3358e_00000 | TERMINATED |     40 |          32.2649 |
++----------------------+------------+--------+------------------+
++------------------------+------------------------+
+|  episode_return_mean  |   num_env_steps_sample |
+|                       |             d_lifetime |
+|-----------------------+------------------------|
+|                458.68 |                 160000 |
++-----------------------+------------------------+
+
+From the dummy client (thread), you should see at the end:
+```
+ConnectionError: Error receiving message from peer on socket ...
+```
 """
 from functools import partial
 import threading
