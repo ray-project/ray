@@ -328,12 +328,12 @@ def test_flush_worker_result_queue(queue_backlog_length):
     wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
 
     def populate_result_queue():
+        # Note that the result queue is a thread-safe queue of maxsize 1.
         get_train_context().get_result_queue().put("result")
 
     for _ in range(queue_backlog_length):
         wg.execute(populate_result_queue)
 
-    for _ in range(queue_backlog_length):
         status = wg.poll_status()
         assert all(
             worker_status.training_result

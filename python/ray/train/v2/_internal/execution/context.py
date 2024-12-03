@@ -245,6 +245,11 @@ class TrainContext:
                 checkpoint_dir_name, metrics, checkpoint
             )
             # Step 3: Report the training result to the result queue.
+            # The queue size is set to 1 to avoid accumulating unprocessed results.
+            # If the queue is full, the put operation blocks until a result is consumed.
+
+            # TODO (hpguo): Add a metrics to track the blocking time waiting for the
+            # training result to be consumed by the controller.
             self.get_result_queue().put(training_result)
 
 

@@ -170,7 +170,9 @@ class RayTrainWorker:
             distributed_context=distributed_context,
             execution_context=ExecutionContext(
                 synchronization_actor=synchronization_actor,
-                result_queue=queue.Queue(),
+                # Make the queue size 1 to avoid building up too
+                # many unprocessed results.
+                result_queue=queue.Queue(maxsize=1),
                 training_thread_runner=ThreadRunner(),
                 train_context_callbacks=context_callbacks_to_propagate,
             ),
