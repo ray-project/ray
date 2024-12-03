@@ -69,6 +69,9 @@ DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
 AUTOSCALER_NAMESPACE = "__autoscaler"
 
+# Log level for the autoscaler.
+AUTOSCALER_LOG_LEVEL = os.environ.get("RAY_AUTOSCALER_LOG_LEVEL", "INFO")
+
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
