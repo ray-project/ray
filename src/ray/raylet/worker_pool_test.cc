@@ -582,11 +582,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(
         worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), worker);
   }
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
@@ -595,6 +597,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
         worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), nullptr);
   }
 
   {

@@ -246,6 +246,10 @@ class RayletClientInterface : public PinObjectsInterface,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
 
+  virtual void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
+
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
 
@@ -534,6 +538,10 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;

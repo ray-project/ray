@@ -46,6 +46,7 @@ namespace rpc {
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(CancelResourceReserve)     \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ReleaseUnusedBundles)      \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetSystemConfig)           \
+  RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(IsLocalWorkerDead)         \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(ShutdownRaylet)            \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(DrainRaylet)               \
   RAY_NODE_MANAGER_RPC_SERVICE_HANDLER(GetTasksInfo)              \
@@ -107,6 +108,10 @@ class NodeManagerServiceHandler {
   virtual void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
                                        rpc::CancelWorkerLeaseReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                                       rpc::IsLocalWorkerDeadReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 
   virtual void HandlePrepareBundleResources(
       rpc::PrepareBundleResourcesRequest request,
