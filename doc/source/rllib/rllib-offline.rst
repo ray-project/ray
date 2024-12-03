@@ -594,7 +594,7 @@ your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.Single
 
 Using Old API Stack ``SampleBatch`` Recordings
 ----------------------------------------------
-If you have expert data previously recorded using RLlib's older API stack, it can be seamlessly utilized in the new Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, 
+If you have expert data previously recorded using RLlib's old API stack, it can be seamlessly utilized in the new stack's Offline RL API by setting ``input_read_sample_batches=True``. Alternatively, 
 you can convert your ``SampleBatch`` recordings into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` format using RLlib's 
 :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` as demonstrated below:
 
@@ -913,7 +913,7 @@ Other than the number of post-processing actors you can tune performance on the 
 or in the ``ray_remote_args``. 
 
 .. note:: Typically, increasing the number of CPUs is sufficient for performance tuning in the post-processing stage of your pipeline. GPUs are only needed in specialized cases, such as in customized pipelines. For example, RLlib’s :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the 
-    :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`_ on experience batches. In these calculations the value model of the algorithm's 
+    :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`_ on experience batches. In these calculations, the value model of the algorithm's 
     :py:class:`~ray.rllib.core.rl_module.RLModule` is applied, which you can accelerate by running on a GPU.
 
 As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` in the **Post-Processing (PreLearner)** ``2`` cpus you could use the following syntax:
