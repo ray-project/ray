@@ -435,30 +435,36 @@ class EnvRunnerGroup:
                     )
                 env_to_module_states = [
                     s[COMPONENT_ENV_TO_MODULE_CONNECTOR]
-                    for s in connector_states if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
+                    for s in connector_states
+                    if COMPONENT_ENV_TO_MODULE_CONNECTOR in s
                 ]
                 module_to_env_states = [
                     s[COMPONENT_MODULE_TO_ENV_CONNECTOR]
-                    for s in connector_states if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
+                    for s in connector_states
+                    if COMPONENT_MODULE_TO_ENV_CONNECTOR in s
                 ]
 
                 env_runner_states = {}
                 if env_to_module_states:
-                    env_runner_states.update({
-                        COMPONENT_ENV_TO_MODULE_CONNECTOR: (
-                            self.local_env_runner._env_to_module.merge_states(
-                                env_to_module_states
-                            )
-                        ),
-                    })
+                    env_runner_states.update(
+                        {
+                            COMPONENT_ENV_TO_MODULE_CONNECTOR: (
+                                self.local_env_runner._env_to_module.merge_states(
+                                    env_to_module_states
+                                )
+                            ),
+                        }
+                    )
                 if module_to_env_states:
-                    env_runner_states.update({
-                        COMPONENT_MODULE_TO_ENV_CONNECTOR: (
-                            self.local_env_runner._module_to_env.merge_states(
-                                module_to_env_states
-                            )
-                        ),
-                    })
+                    env_runner_states.update(
+                        {
+                            COMPONENT_MODULE_TO_ENV_CONNECTOR: (
+                                self.local_env_runner._module_to_env.merge_states(
+                                    module_to_env_states
+                                )
+                            ),
+                        }
+                    )
         # Ignore states from remote EnvRunners (use the current `from_worker` states
         # only).
         else:

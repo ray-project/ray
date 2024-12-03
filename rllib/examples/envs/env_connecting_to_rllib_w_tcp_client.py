@@ -1,9 +1,15 @@
-"""Example of running RLlib with a connected UnrealEngine5 (UE5) instance as Env.
+"""Example of running against a TCP-connected external env performing its own inference.
 
-The example uses a custom EnvRunner (ExternalTcpSingleAgentEnvRunner) to allow
-connections from within a running UE5 Editor to RLlib.
-To set up the UE5 side of things, refer to this tutorial here, where we describe step
-by step how to run this example.
+The example uses a custom EnvRunner (TcpClientInferenceEnvRunner) to allow
+connections from one or more TCP clients to RLlib's EnvRunner actors, which act as
+RL servers.
+In this example, action inference for stepping the env is performed on the client's
+side, meaning the client computes all actions itself, applies them to the env logic,
+collects episodes of experiences, and sends these (in bulk) back to RLlib for training.
+Also, from time to time, the updated model weights have to be sent from RLlib (server)
+back to the connected clients.
+Note that RLlib's new API stack does not yet support individual action requests, where
+action computations happen on the RLlib (server) side.
 
 This example:
     - demonstrates how RLlib can be hooked up to an externally running complex simulator
@@ -18,7 +24,7 @@ How to run this script
 `python [script file name].py --enable-new-api-stack --port 5555
 
 Use the `--port` option to change the default port (5555) to some other value.
-Make sure that you do the same on the UE5 side, inside the `RLlibClient` plugin.
+Make sure that you do the same on the client side.
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -41,7 +47,10 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
-from ray.rllib.env.tcp_client_inference_env_runner import TcpClientInferenceEnvRunner
+from ray.rllib.env.tcp_client_inference_env_runner import (
+    _dummy_client,
+    TcpClientInferenceEnvRunner,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -49,7 +58,7 @@ from ray.rllib.utils.test_utils import (
 from ray.tune.registry import get_trainable_cls
 
 parser = add_rllib_example_script_args(
-    default_reward=0.99, default_iters=200, default_timesteps=1000000
+    default_reward=450.0, default_iters=200, default_timesteps=2000000
 )
 parser.set_defaults(
     enable_new_api_stack=True,
@@ -62,28 +71,22 @@ parser.add_argument(
     help="The port for RLlib's EnvRunner to listen to for incoming UE5 connections. "
     "You need to specify the same port inside your UE5 `RLlibClient` plugin.",
 )
-parser.add_argument(
-    "--use-dummy-cartpole-client",
-    action="store_true",
-)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    # If we use a dummy CartPole client, start it in a thread (and do its thing in
-    # parallel).
-    if args.use_dummy_cartpole_client:
-        from ray.rllib.env.tcp_client_inference_env_runner import _dummy_client
-        client_thread = threading.Thread(
-            target=partial(
-                _dummy_client,
-                port=args.port + (
-                    args.num_env_runners if args.num_env_runners is not None else 1
-                )),
-        )
-        client_thread.start()
+    # Start the dummy CartPole client in a thread (and do its thing in parallel).
+    client_thread = threading.Thread(
+        target=partial(
+            _dummy_client,
+            port=args.port
+            + (args.num_env_runners if args.num_env_runners is not None else 1),
+        ),
+    )
+    client_thread.start()
 
+    # Define the RLlib (server) config.
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()

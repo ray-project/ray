@@ -1,14 +1,13 @@
 import base64
 from collections import defaultdict
 import gzip
-import socket
-import struct
 import json
 import pathlib
+import socket
 import tempfile
 import threading
 import time
-from typing import Collection, Optional, Union
+from typing import Collection, DefaultDict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
@@ -40,7 +39,7 @@ from ray.rllib.utils.metrics import (
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import softmax
-from ray.rllib.utils.typing import StateDict
+from ray.rllib.utils.typing import EpisodeID, StateDict
 
 torch, _ = try_import_torch()
 
@@ -49,11 +48,11 @@ torch, _ = try_import_torch()
 class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
     """An EnvRunner communicating with an external env through a TCP socket.
 
-    This particular implementation assumes:
+    This implementation assumes:
     - Only one external client ever connects to this env runner.
     - The external client performs inference locally through an ONNX model. Thus,
     samples are sent in bulk once a certain number of timesteps has been executed on the
-    client's side (no individual, remote action requests).
+    client's side (no individual action requests).
     - A copy of the RLModule is kept at all times on the env runner, but never used
     for inference, only as a data (weights) container.
     TODO (sven): The above might be inefficient as we have to store basically two
@@ -61,6 +60,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
     - There is no environment and no connectors on this env runner. The external env
     is responsible for generating all the data to create episodes.
     """
+
     @override(EnvRunner)
     def __init__(self, *, config, **kwargs):
         """
@@ -104,15 +104,17 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         self._blocked_on_state = False
 
         # Start a background thread for client communication.
-        self.thread = threading.Thread(target=self._client_message_listener, daemon=True)
+        self.thread = threading.Thread(
+            target=self._client_message_listener, daemon=True
+        )
         self.thread.start()
 
     @override(EnvRunner)
     def assert_healthy(self):
         """Checks that the server socket is open and listening."""
-        assert self.server_socket is not None, (
-            "Server socket is None (not connected, not listening)."
-        )
+        assert (
+            self.server_socket is not None
+        ), "Server socket is None (not connected, not listening)."
 
     @override(EnvRunner)
     def sample(self, **kwargs):
@@ -234,9 +236,12 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
             self._blocked_on_state = False
 
     def _client_message_listener(self):
-        """Sets up the server socket and binds to the specified host and port."""
+        """Entry point for the listener thread."""
+
+        # Set up the server socket and bind to the specified host and port.
         self._recycle_sockets()
 
+        # Enter an endless message receival- and processing loop.
         while True:
             # As long as we are blocked on a new state, sleep a bit and continue.
             # Do NOT process any incoming messages (until we send out the new state
@@ -252,38 +257,14 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                 # Process the message received based on its type.
                 # Initial handshake.
                 if msg_type == MessageTypes.PING:
-                    _send_message(self.client_socket, {"type": MessageTypes.PONG.name})
+                    self._send_pong_message()
 
                 # Episode data from the client.
                 elif msg_type in [
                     MessageTypes.EPISODES,
                     MessageTypes.EPISODES_AND_GET_STATE,
                 ]:
-                    if msg_type == MessageTypes.EPISODES_AND_GET_STATE:
-                        self._blocked_on_state = True
-
-                    episodes = []
-                    for episode_data in msg_body.get("episodes", []):
-                        episode = SingleAgentEpisode(
-                            observation_space=self.config.observation_space,
-                            observations=[np.array(o) for o in episode_data[Columns.OBS]],
-                            action_space=self.config.action_space,
-                            actions=episode_data[Columns.ACTIONS],
-                            rewards=episode_data[Columns.REWARDS],
-                            extra_model_outputs={
-
-                            },
-                            terminated=episode_data[Columns.TERMINATEDS],
-                            truncated=episode_data[Columns.TRUNCATEDS],
-                            len_lookback_buffer=0,
-                        )
-                        episodes.append(episode.finalize())
-                    # Push episodes into the to-be-returned list (for `sample()` requests).
-                    with self._sample_lock:
-                        if isinstance(self._episode_chunks_to_return, list):
-                            self._episode_chunks_to_return.extend(episodes)
-                        else:
-                            self._episode_chunks_to_return = episodes
+                    self._process_episodes_message(msg_type, msg_body)
 
                 # Client requests the state (model weights).
                 elif msg_type == MessageTypes.GET_STATE:
@@ -291,13 +272,8 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
 
                 # Clients requests some (relevant) config information.
                 elif msg_type == MessageTypes.GET_CONFIG:
-                    _send_message(self.client_socket, {
-                        "type": MessageTypes.SET_CONFIG.name,
-                        "env_steps_per_sample": self.config.get_rollout_fragment_length(
-                            worker_index=self.worker_index
-                        ),
-                        "force_on_policy": True,
-                    })
+                    self._send_set_config_message()
+
             except ConnectionError as e:
                 print(f"Messaging/connection error {e}! Recycling sockets ...")
                 self._recycle_sockets(5.0)
@@ -327,23 +303,79 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         if self.server_socket:
             self.server_socket.close()
 
+    def _send_pong_message(self):
+        _send_message(self.client_socket, {"type": MessageTypes.PONG.name})
+
+    def _process_episodes_message(self, msg_type, msg_body):
+        # On-policy training -> we have to block until we get a new `set_state` call
+        # (b/c the learning step is done and we can sent new weights back to all
+        # clients).
+        if msg_type == MessageTypes.EPISODES_AND_GET_STATE:
+            self._blocked_on_state = True
+
+        episodes = []
+        for episode_data in msg_body["episodes"]:
+            episode = SingleAgentEpisode(
+                observation_space=self.config.observation_space,
+                observations=[np.array(o) for o in episode_data[Columns.OBS]],
+                action_space=self.config.action_space,
+                actions=episode_data[Columns.ACTIONS],
+                rewards=episode_data[Columns.REWARDS],
+                extra_model_outputs={
+                    Columns.ACTION_DIST_INPUTS: [
+                        np.array(a) for a in episode_data[Columns.ACTION_DIST_INPUTS]
+                    ],
+                    Columns.ACTION_LOGP: episode_data[Columns.ACTION_LOGP],
+                },
+                terminated=episode_data[Columns.TERMINATEDS],
+                truncated=episode_data[Columns.TRUNCATEDS],
+                len_lookback_buffer=0,
+            )
+            episodes.append(episode.finalize())
+
+        # Push episodes into the to-be-returned list (for `sample()` requests).
+        with self._sample_lock:
+            if isinstance(self._episode_chunks_to_return, list):
+                self._episode_chunks_to_return.extend(episodes)
+            else:
+                self._episode_chunks_to_return = episodes
+
     def _send_set_state_message(self):
         with tempfile.TemporaryDirectory() as dir:
             onnx_file = pathlib.Path(dir) / "_temp_model.onnx"
             torch.onnx.export(
                 self.module,
-                {"batch": {"obs": torch.randn(1, *self.config.observation_space.shape)}},
+                {
+                    "batch": {
+                        "obs": torch.randn(1, *self.config.observation_space.shape)
+                    }
+                },
                 onnx_file,
                 export_params=True,
             )
             with open(onnx_file, "rb") as f:
                 compressed = gzip.compress(f.read())
                 onnx_binary = base64.b64encode(compressed).decode("utf-8")
-        _send_message(self.client_socket, {
-            "type": MessageTypes.SET_STATE.name,
-            "onnx_file": onnx_binary,
-            WEIGHTS_SEQ_NO: self._weights_seq_no,
-        })
+        _send_message(
+            self.client_socket,
+            {
+                "type": MessageTypes.SET_STATE.name,
+                "onnx_file": onnx_binary,
+                WEIGHTS_SEQ_NO: self._weights_seq_no,
+            },
+        )
+
+    def _send_set_config_message(self):
+        _send_message(
+            self.client_socket,
+            {
+                "type": MessageTypes.SET_CONFIG.name,
+                "env_steps_per_sample": self.config.get_rollout_fragment_length(
+                    worker_index=self.worker_index
+                ),
+                "force_on_policy": True,
+            },
+        )
 
     def _log_episode_metrics(self, length, ret, sec):
         # Log general episode metrics.
@@ -372,8 +404,6 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
 def _send_message(sock_, message: dict):
     """Sends a message to the client with a length header."""
     body = json.dumps(message).encode("utf-8")
-    ## `>`: Big endian (most significant byte first); `Q`: uint64.
-    #header = struct.pack(">Q", len(body))
     header = str(len(body)).zfill(8).encode("utf-8")
     try:
         sock_.sendall(header + body)
@@ -389,8 +419,6 @@ def _get_message(sock_):
     try:
         # Read the length header (8 bytes)
         header = _get_num_bytes(sock_, 8)
-        ## `>`: Big endian (most significant byte first); `Q`: uint64.
-        #struct.unpack(">Q", header))
         msg_length = int(header.decode("utf-8"))
         # Read the message body
         body = _get_num_bytes(sock_, msg_length)
@@ -412,7 +440,7 @@ def _get_message(sock_):
 
 def _get_num_bytes(sock_, num_bytes):
     """Helper function to receive a specific number of bytes."""
-    data = b''
+    data = b""
     while len(data) < num_bytes:
         packet = sock_.recv(num_bytes - len(data))
         if not packet:
@@ -429,9 +457,7 @@ def _dummy_client(port: int = 5556):
             with open("_temp_onnx", "wb") as f:
                 f.write(
                     gzip.decompress(
-                        base64.b64decode(
-                            msg_body["onnx_file"].encode("utf-8")
-                        )
+                        base64.b64decode(msg_body["onnx_file"].encode("utf-8"))
                     )
                 )
                 onnx_session = onnxruntime.InferenceSession("_temp_onnx")
@@ -470,6 +496,8 @@ def _dummy_client(port: int = 5556):
     episodes = []
     observations = []
     actions = []
+    action_dist_inputs = []
+    action_logps = []
     rewards = []
 
     timesteps = 0
@@ -486,26 +514,38 @@ def _dummy_client(port: int = 5556):
         logits = onnx_session.run(
             output_names,
             {"onnx::Gemm_0": np.array([obs], np.float32)},
-        )[0][0]  # [0]=first return item, [0]=batch size 1
+        )[0][
+            0
+        ]  # [0]=first return item, [0]=batch size 1
         # Stochastic sample.
         action_probs = softmax(logits)
         action = int(np.random.choice(list(range(env.action_space.n)), p=action_probs))
+        logp = float(np.log(action_probs[action]))
 
-        actions.append(action)
+        # Perform the env step.
         obs, reward, terminated, truncated, info = env.step(action)
+
+        # Collect step data.
         observations.append(obs.tolist())
+        actions.append(action)
+        action_dist_inputs.append(logits.tolist())
+        action_logps.append(logp)
         rewards.append(reward)
         episode_return += reward
 
         # We have to create a new episode record.
         if timesteps == env_steps_per_sample or terminated or truncated:
-            episodes.append({
-                Columns.OBS: observations,
-                Columns.ACTIONS: actions,
-                Columns.REWARDS: rewards,
-                Columns.TERMINATEDS: terminated,
-                Columns.TRUNCATEDS: truncated,
-            })
+            episodes.append(
+                {
+                    Columns.OBS: observations,
+                    Columns.ACTIONS: actions,
+                    Columns.ACTION_DIST_INPUTS: action_dist_inputs,
+                    Columns.ACTION_LOGP: action_logps,
+                    Columns.REWARDS: rewards,
+                    Columns.TERMINATEDS: terminated,
+                    Columns.TRUNCATEDS: truncated,
+                }
+            )
             # We collected enough samples -> Send them to server.
             if timesteps == env_steps_per_sample:
                 # Make sure the amount of data we collected is correct.
@@ -527,7 +567,6 @@ def _dummy_client(port: int = 5556):
                     assert msg_type == MessageTypes.SET_STATE
                     onnx_session, output_names = _set_state(msg_body)
 
-
                 # Sampling doesn't have to be on-policy -> continue collecting
                 # samples.
                 else:
@@ -538,6 +577,8 @@ def _dummy_client(port: int = 5556):
             # Set new buckets to empty lists (for next episode).
             observations = [observations[-1]]
             actions = []
+            action_dist_inputs = []
+            action_logps = []
             rewards = []
 
             # The episode is done -> Reset.
@@ -549,17 +590,13 @@ def _dummy_client(port: int = 5556):
 
 
 if __name__ == "__main__":
-    import numpy as np
     from ray.rllib.algorithms.ppo import PPOConfig
 
     # Create an EnvRunner.
-    config = (
-        PPOConfig()
-        .environment(
-            observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
-            action_space=gym.spaces.Discrete(2),
-            env_config={"port": 5556},
-        )
+    config = PPOConfig().environment(
+        observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+        action_space=gym.spaces.Discrete(2),
+        env_config={"port": 5556},
     )
     env_runner = TcpClientInferenceEnvRunner(config=config)
 

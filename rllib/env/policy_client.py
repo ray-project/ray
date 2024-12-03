@@ -21,6 +21,7 @@ from ray.rllib.utils.typing import (
     EnvObsType,
     EnvActionType,
 )
+
 # Backward compatibility.
 from ray.rllib.env.utils.external_env_protocol import MessageTypes as Commands
 
