@@ -176,7 +176,6 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
   Status s = gcs_rpc_client_->SyncGetClusterId(request, &reply, timeout_ms);
   if (!s.ok()) {
     RAY_LOG(WARNING) << "Failed to get cluster ID from GCS server: " << s;
-    gcs_rpc_client_->Shutdown();
     gcs_rpc_client_.reset();
     client_call_manager_.reset();
     return s;
@@ -189,7 +188,7 @@ Status GcsClient::FetchClusterId(int64_t timeout_ms) {
 
 void GcsClient::Disconnect() {
   if (gcs_rpc_client_) {
-    gcs_rpc_client_->Shutdown();
+    gcs_rpc_client_.reset();
   }
 }
 

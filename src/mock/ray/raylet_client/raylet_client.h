@@ -133,6 +133,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
               (override));
+  MOCK_METHOD(void,
+              IsLocalWorkerDead,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
+              (override));
 };
 
 }  // namespace ray

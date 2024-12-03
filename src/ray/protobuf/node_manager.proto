@@ -392,6 +392,16 @@ message PushMutableObjectReply {
   bool done = 1;
 }
 
+message IsLocalWorkerDeadRequest {
+  // Binary worker id of the target worker.
+  bytes worker_id = 1;
+}
+
+message IsLocalWorkerDeadReply {
+  // Whether the target worker is dead or not.
+  bool is_dead = 1;
+}
+
 // Service for inter-node-manager communication.
 service NodeManagerService {
   // Handle the case when GCS restarted.
@@ -457,4 +467,5 @@ service NodeManagerService {
   rpc RegisterMutableObject(RegisterMutableObjectRequest)
       returns (RegisterMutableObjectReply);
   rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
+  rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

@@ -596,6 +596,14 @@ void raylet::RayletClient::DrainRaylet(
   grpc_client_->DrainRaylet(request, callback);
 }
 
+void raylet::RayletClient::IsLocalWorkerDead(
+    const WorkerID &worker_id,
+    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  grpc_client_->IsLocalWorkerDead(request, callback);
+}
+
 void raylet::RayletClient::GlobalGC(
     const rpc::ClientCallback<rpc::GlobalGCReply> &callback) {
   rpc::GlobalGCRequest request;
