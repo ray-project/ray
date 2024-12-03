@@ -88,7 +88,7 @@ class APPOLearner(IMPALALearner):
 
         # TODO (sven): Maybe we should have a `after_gradient_based_update`
         #  method per module?
-        curr_timestep = timesteps[NUM_ENV_STEPS_TRAINED_LIFETIME]
+        curr_timestep = timesteps.get(NUM_ENV_STEPS_TRAINED_LIFETIME, 0)
         for module_id, module in self.module._rl_modules.items():
             config = self.config.get_config_for_module(module_id)
 
