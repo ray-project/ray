@@ -4684,6 +4684,24 @@ class AlgorithmConfig(_Config):
                 )
 
     def _validate_offline_settings(self):
+        # If a user does not have an environment and cannot run evaluation,
+        # or does not want to run evaluation, she needs to provide at least
+        # action and observation spaces. Note, we require here the spaces,
+        # i.e. a user cannot provide an environment instead because we do
+        # not want to create the environment to receive spaces.
+        if (
+            not (
+                self.evaluation_config.evaluation_num_env_runners > 0
+                or self.evaluation_config.evaluation_interval
+            )
+            and self.action_space is None
+            or self.observation_space is None
+        ):
+            raise ValueError(
+                "If no evaluation should be run `action_space` and "
+                "`observation_space` must be provided."
+            )
+
         from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 
         if self.prelearner_class and not issubclass(

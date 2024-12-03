@@ -45,6 +45,8 @@ class MARWILConfig(AlgorithmConfig):
 
     .. testcode::
 
+        import gymnasium as gym
+
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
 
@@ -61,7 +63,15 @@ class MARWILConfig(AlgorithmConfig):
         )
         # Define the environment for which to learn a policy
         # from offline data.
-        config.environment("CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set the training parameters.
         config.training(
             beta=1.0,
@@ -118,7 +128,15 @@ class MARWILConfig(AlgorithmConfig):
             dataset_num_iters_per_learner=1,
         )
         # Set the config's environment for evalaution.
-        config.environment(env="CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set up a tuner to run the experiment.
         tuner = tune.Tuner(
             "MARWIL",
