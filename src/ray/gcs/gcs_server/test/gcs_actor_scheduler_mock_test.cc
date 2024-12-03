@@ -54,7 +54,7 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_local_node_with_raylet=*/false);
     cluster_task_manager = std::make_unique<ClusterTaskManager>(
         local_node_id,
-        cluster_resource_scheduler,
+        *cluster_resource_scheduler,
         /*get_node_info=*/
         [this](const NodeID &node_id) {
           auto node = gcs_node_manager->GetAliveNode(node_id);

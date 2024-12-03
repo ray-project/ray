@@ -395,6 +395,9 @@ void GcsServer::InitClusterResourceScheduler() {
 }
 
 void GcsServer::InitClusterTaskManager() {
+  if (local_task_manager_ == nullptr) {
+    local_task_manager_ = std::make_unique<NoopLocalTaskManager>();
+  }
   RAY_CHECK(cluster_resource_scheduler_);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       kGCSNodeID,
@@ -407,7 +410,7 @@ void GcsServer::InitClusterTaskManager() {
       /*announce_infeasible_task=*/
       nullptr,
       /*local_task_manager=*/
-      std::make_shared<NoopLocalTaskManager>());
+      *local_task_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
