@@ -321,7 +321,6 @@ def main(results=None):
         "n=1 actors",
         lambda: ray.get(dag.execute(*[b"x" * payload_size for _ in range(n_args)])),
     )
-
     compiled_dag = dag.experimental_compile()
     results += timeit(
         "[unstable] single-actor with all args with small payloads DAG calls, "
