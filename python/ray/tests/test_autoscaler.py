@@ -320,6 +320,12 @@ MULTI_WORKER_CLUSTER = dict(
     SMALL_CLUSTER, **{"available_node_types": TYPES_A, "head_node_type": "empty_node"}
 )
 
+# `DUMMY_IDLE_DURATION_S` is used as a dummy value for
+# `node_idle_duration_s` in load_metrics.update()
+# when we want to simulate worker node's idle duration
+# (`total_resources` == `available_resources`),
+# but don't want to cause autoscaler downscaling.
+# (`DUMMY_IDLE_DURATION_S` < `idle_timeout_minutes`).
 DUMMY_IDLE_DURATION_S = 3
 
 exc_info = None
