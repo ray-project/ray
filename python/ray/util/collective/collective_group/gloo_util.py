@@ -37,7 +37,7 @@ NUMPY_GLOO_DTYPE_MAP = {
     numpy.int64: pygloo.glooDataType_t.glooInt64,
     # FLOAT types
     numpy.half: pygloo.glooDataType_t.glooFloat16,
-    numpy.float: pygloo.glooDataType_t.glooFloat64,
+    float: pygloo.glooDataType_t.glooFloat64,
     numpy.float16: pygloo.glooDataType_t.glooFloat16,
     numpy.float32: pygloo.glooDataType_t.glooFloat32,
     numpy.float64: pygloo.glooDataType_t.glooFloat64,
