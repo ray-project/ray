@@ -425,8 +425,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
               const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
               const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
               const rpc::GcsNodeInfo *node_info =
-                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/true);
-              if (node_info == nullptr) {
+                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+              if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
                 RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
                     << "Disconnect core worker client since its node is dead";
                 core_worker_client_pool_->Disconnect(worker_id);
