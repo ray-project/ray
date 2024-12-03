@@ -3250,7 +3250,6 @@ def read_clickhouse(
     table: str,
     dsn: str,
     columns: Optional[List[str]] = None,
-    filters: Optional[Dict[str, Any]] = None,
     order_by: Optional[Tuple[List[str], bool]] = None,
     client_settings: Optional[Dict[str, Any]] = None,
     client_kwargs: Optional[Dict[str, Any]] = None,
@@ -3267,7 +3266,6 @@ def read_clickhouse(
         ...     table="default.table",
         ...     dsn="clickhouse+http://username:password@host:8124/default",
         ...     columns=["timestamp", "age", "status", "text", "label"],
-        ...     filters={"text": ("!=", None), "age": (">", 25), "status": ("!=", "inactive")},
         ...     order_by=(["timestamp"], False),
         ... )
 
@@ -3280,32 +3278,6 @@ def read_clickhouse(
             <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
         columns: Optional list of columns to select from the data source.
             If no columns are specified, all columns will be selected by default.
-        filters: Optional Dict of fields and values for filtering the
-            data via a WHERE clause. The value should be a tuple where the first element
-            is one of ('==', '!=', '<', '>') and the second element is the value to filter by.
-            The default operator is 'is'. Only strings, ints, floats, booleans, and None are
-            currently supported as values. All filter conditions will be joined using the
-            logical AND operation. For more information, see `ClickHouse WHERE Clause doc
-            <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
-
-            Example:
-
-            .. testcode::
-
-                {
-                    "text": ("!=", None),
-                    "age": (">", 25),
-                    "status": ("!=", "inactive")
-                }
-
-            .. testoutput::
-                :options: +MOCK
-
-                ... WHERE (text IS NOT NULL) AND (age > 25) AND (status != 'inactive') ...
-
-            This example will filter rows where "text" IS NOT NULL, "age" is greater than 25,
-            and "status" is not equal to "inactive".
-
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
             should be descending (True for DESC, False for ASC).
         client_settings: Optional ClickHouse server settings to be used with the session/every request.
@@ -3330,7 +3302,6 @@ def read_clickhouse(
         table=table,
         dsn=dsn,
         columns=columns,
-        filters=filters,
         order_by=order_by,
         client_settings=client_settings,
         client_kwargs=client_kwargs,

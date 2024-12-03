@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Any, Callable, Iterable, List, Optional
+from typing import Callable, Iterable, List, Optional
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -8,74 +8,6 @@ from ray.data.datasource.datasource import Datasource, ReadTask
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
-
-
-def _convert_filter_value(key: str, operator: str, value: Any) -> Optional[str]:
-    # TODO(jecsand838) add date and datetime filter support
-    ops = {
-        "==": {"types": ["*"]},
-        "!=": {"types": ["*"]},
-        "<": {"types": [int, float]},
-        ">": {"types": [int, float]},
-    }
-    if value is None:
-        if operator == "==":
-            return f"{key} IS NULL"
-        elif operator == "!=":
-            return f"{key} IS NOT NULL"
-        else:
-            raise ValueError(
-                "Your `filters` contains a non-nullable operator "
-                f"'{operator}' being used to filters by null values on column: '{key}'."
-                "To learn more, read "
-                "https://clickhouse.com/docs/en/sql-reference/statements/select/where/."
-            )
-    elif isinstance(value, (str, bool, int, float)):
-        operator = _validate_ops(key, operator, value, ops)
-        return f"{key} {operator} {_convert_value(value)}"
-    else:
-        logger.warning(
-            f"Unsupported data type {type(value).__name__}"
-            f"for filtering on '{key}'. Please use one of: str, int, float, bool."
-        )
-        return None
-
-
-def _validate_ops(column: str, op: str, value, ops) -> str:
-    if op not in ops:
-        raise ValueError(
-            "Your `filters` contains a unsupported operator "
-            f"'{op}' being used on column: '{column}'."
-            "To learn more, read "
-            "https://clickhouse.com/docs/en/sql-reference/statements/select/where/."
-        )
-    op_types = ops[op]["types"]
-    if op_types != ["*"] and type(value) not in op_types:
-        raise ValueError(
-            "Your `filters` contains a non-supported operator "
-            f"'{op}' being used on column: '{column}' with "
-            f"value of type: '{type(value).__name__}'."
-            f"Supported types for operator '{op}' are: {op_types}."
-            "To learn more, read "
-            "https://clickhouse.com/docs/en/sql-reference/statements/select/where/."
-        )
-    return op
-
-
-def _convert_value(value) -> str:
-    if isinstance(value, str):
-        return f"'{value}'"
-    elif isinstance(value, bool):
-        return f"{str(value).lower()}"
-    elif isinstance(value, (int, float)):
-        return f"{str(value)}"
-    else:
-        raise ValueError(
-            "Your `filters` contains a non-supported "
-            f"value type '{type(value).__name__}'"
-            "To learn more, read "
-            "https://clickhouse.com/docs/en/sql-reference/statements/select/where/."
-        )
 
 
 @DeveloperAPI
@@ -102,27 +34,6 @@ class ClickHouseDatasource(Datasource):
                 - columns: List of columns to select from the data source.
                     If no columns are specified, all columns will be
                     selected by default.
-                - filters: Dict of fields and values for filtering the data via
-                    a WHERE clause. The value should be a tuple where the first element
-                    is one of ('==', '!=', '<', '>') and the second element is the
-                    value to filter by. The default operator is 'is'. Only strings,
-                    ints, floats, booleans, and None are currently
-                    supported as values. All filter conditions will be joined
-                    using the logical AND operation. For more information,
-                    see `ClickHouse WHERE Clause doc
-                    <https://clickhouse.com/docs/en/sql-reference/statements/select/where>`_.
-
-                    Example:
-                    ```python
-                    {
-                        "text": ("!=", None),
-                        "age": (">", 25),
-                        "status": ("!=", "inactive")
-                    }
-                    ```
-                    This example will filter rows where "text" IS NOT NULL,
-                    "age" is greater than 25,
-                    **and** "status" is not equal to "inactive".
                 - order_by: Tuple containing a list of columns to order by and a
                     boolean indicating the order.
                 - client_settings: ClickHouse server settings to be used with the
@@ -137,7 +48,6 @@ class ClickHouseDatasource(Datasource):
         self._table = table
         self._dsn = dsn
         self._columns = kwargs.get("columns")
-        self._filters = kwargs.get("filters")
         self._order_by = kwargs.get("order_by")
         self._client_settings = kwargs.get("client_settings")
         self._client_kwargs = kwargs.get("client_kwargs")
@@ -160,17 +70,6 @@ class ClickHouseDatasource(Datasource):
     def _generate_query(self) -> str:
         select_clause = ", ".join(self._columns) if self._columns else "*"
         query = f"SELECT {select_clause} FROM {self._table}"
-        if self._filters:
-            filter_conditions = [
-                _convert_filter_value(column, operator, value)
-                for column, (operator, value) in self._filters.items()
-                if _convert_filter_value(column, operator, value) is not None
-            ]
-            if len(filter_conditions) == 1:
-                query += f" WHERE {filter_conditions[0]}"
-            elif len(filter_conditions) > 1:
-                filter_clause = " AND ".join(f"({i})" for i in filter_conditions)
-                query += f" WHERE {filter_clause}"
         if self._order_by:
             columns, desc = self._order_by
             direction = " DESC" if desc else ""

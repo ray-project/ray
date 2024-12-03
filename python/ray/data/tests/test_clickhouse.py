@@ -23,7 +23,6 @@ class TestClickHouseDatasource:
             table="default.table_name",
             dsn="clickhouse://user:password@localhost:8123/default",
             columns=["column1", "column2"],
-            filters={"column1": ("==", "value1"), "column2": (">", 10)},
             order_by=(["column1"], False),
             client_settings={"setting1": "value1"},
             client_kwargs={"arg1": "value1"},
@@ -34,8 +33,7 @@ class TestClickHouseDatasource:
     def test_init(self, datasource):
         # Test query generation with columns, filters, and order_by
         expected_query = (
-            "SELECT column1, column2 FROM default.table_name "
-            "WHERE (column1 == 'value1') AND (column2 > 10) ORDER BY column1"
+            "SELECT column1, column2 FROM default.table_name " "ORDER BY column1"
         )
         assert datasource._query == expected_query
 
@@ -64,19 +62,6 @@ class TestClickHouseDatasource:
     )
     def test_generate_query_columns(self, datasource, columns, expected_query_part):
         datasource._columns = columns
-        generated_query = datasource._generate_query()
-        assert expected_query_part in generated_query
-
-    @pytest.mark.parametrize(
-        "filters, expected_query_part",
-        [
-            ({"field1": ("==", "value1")}, "field1 == 'value1'"),
-            ({"field2": (">", 10)}, "field2 > 10"),
-            ({"field3": ("!=", None)}, "field3 IS NOT NULL"),
-        ],
-    )
-    def test_generate_query_filters(self, datasource, filters, expected_query_part):
-        datasource._filters = filters
         generated_query = datasource._generate_query()
         assert expected_query_part in generated_query
 
