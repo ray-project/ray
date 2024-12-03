@@ -750,6 +750,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
                 key=NUM_ENV_STEPS_SAMPLED_LIFETIME,
                 value=state[NUM_ENV_STEPS_SAMPLED_LIFETIME],
                 reduce="sum",
+                with_throughput=True,
             )
 
         # Update `agent_to_module_mapping_fn`.
@@ -916,7 +917,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self.metrics.log_value(
             NUM_ENV_STEPS_SAMPLED, num_steps, reduce="sum", clear_on_reduce=True
         )
-        self.metrics.log_value(NUM_ENV_STEPS_SAMPLED_LIFETIME, num_steps, reduce="sum")
+        self.metrics.log_value(
+            NUM_ENV_STEPS_SAMPLED_LIFETIME,
+            num_steps,
+            reduce="sum",
+            with_throughput=True,
+        )
         # Completed episodes.
         if episode.is_done:
             self.metrics.log_value(NUM_EPISODES, 1, reduce="sum", clear_on_reduce=True)
