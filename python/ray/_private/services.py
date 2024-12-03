@@ -1501,12 +1501,12 @@ def start_gcs_server(
     stderr_file = (
         sys.stderr
         if os.environ.get("RAY_LOG_TO_STDERR", "0") == "1"
-        else open(os.devnull, "rw")
+        else open(os.devnull, "w")
     )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        stdout_file=open(os.devnull, "rw"),
+        stdout_file=open(os.devnull, "w"),
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
