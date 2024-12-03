@@ -248,7 +248,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
         dependency_manager_(missing_objects_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
-            scheduler_,
+            *scheduler_,
             dependency_manager_, /* is_owner_alive= */
             [this](const WorkerID &worker_id, const NodeID &node_id) {
               return is_owner_alive_;
