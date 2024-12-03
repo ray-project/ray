@@ -304,13 +304,9 @@ class RedisGcsTableStorage : public GcsTableStorage {
 /// that uses memory as storage.
 class InMemoryGcsTableStorage : public GcsTableStorage {
  public:
-  explicit InMemoryGcsTableStorage(instrumented_io_context &main_io_service)
+  explicit InMemoryGcsTableStorage()
       : GcsTableStorage(std::make_shared<ObservableStoreClient>(
-            std::make_unique<InMemoryStoreClient>())),
-        io_service_(main_io_service) {}
-
-  // All methods are posted to this io_service.
-  instrumented_io_context &io_service_;
+            std::make_unique<InMemoryStoreClient>())) {}
 };
 
 }  // namespace gcs

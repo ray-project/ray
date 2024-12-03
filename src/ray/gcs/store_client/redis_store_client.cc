@@ -81,6 +81,11 @@ void RedisStoreClient::MGetValues(
   auto total_count = batched_commands.size();
   auto finished_count = std::make_shared<size_t>(0);
   auto key_value_map = std::make_shared<absl::flat_hash_map<std::string, std::string>>();
+  // `Postable` can only be invoked once, but here we have several Redis callbacks, the
+  // last of which will trigger the `callback`. So we need to use a shared `Postable`.
+  auto shared_callback =
+      std::make_shared<Postable<void(absl::flat_hash_map<std::string, std::string>)>>(
+          std::move(callback));
 
   for (auto &command : batched_commands) {
     auto mget_callback = [finished_count,
@@ -88,7 +93,7 @@ void RedisStoreClient::MGetValues(
                           // Copies!
                           args = command.args,
                           // Copies!
-                          callback,
+                          shared_callback,
                           key_value_map](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
         auto value = reply->ReadAsStringArray();
@@ -101,12 +106,12 @@ void RedisStoreClient::MGetValues(
 
       ++(*finished_count);
       if (*finished_count == total_count) {
-        callback.Dispatch("RedisStoreClient.AsyncMultiGet", std::move(*key_value_map));
+        std::move(*shared_callback)
+            .Dispatch("RedisStoreClient.AsyncMultiGet", std::move(*key_value_map));
       }
     };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(mget_callback));
   }
-  return Status::OK();
 }
 
 RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
@@ -126,9 +131,10 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
                        RedisKey{external_storage_namespace_, table_name},
                        /*args=*/{key, data}};
   RedisCallback write_callback =
-      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
         auto added_num = reply->ReadAsInteger();
-        callback.Dispatch("RedisStoreClient.AsyncPut", added_num != 0);
+        std::move(callback).Dispatch("RedisStoreClient.AsyncPut", added_num != 0);
       };
   SendRedisCmdWithKeys({key}, std::move(command), std::move(write_callback));
   return Status::OK();
@@ -139,14 +145,16 @@ Status RedisStoreClient::AsyncGet(
     const std::string &key,
     ToPostable<OptionalItemCallback<std::string>> callback) {
   auto redis_callback =
-      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
         std::optional<std::string> result;
         if (!reply->IsNil()) {
           result = reply->ReadAsString();
         }
         RAY_CHECK(!reply->IsError())
             << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-        callback.Dispatch("RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
+        std::move(callback).Dispatch(
+            "RedisStoreClient.AsyncGet", Status::OK(), std::move(result));
       };
 
   RedisCommand command{/*command=*/"HGET",
@@ -179,7 +187,7 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
                                           const std::vector<std::string> &keys,
                                           Postable<void(int64_t)> callback) {
   if (keys.empty()) {
-    callback.Dispatch("RedisStoreClient.AsyncBatchDelete", 0);
+    std::move(callback).Dispatch("RedisStoreClient.AsyncBatchDelete", 0);
     return Status::OK();
   }
   return DeleteByKeys(table_name, keys, std::move(callback));
@@ -190,8 +198,8 @@ Status RedisStoreClient::AsyncMultiGet(
     const std::vector<std::string> &keys,
     Postable<void(absl::flat_hash_map<std::string, std::string>)> callback) {
   if (keys.empty()) {
-    callback.Dispatch("RedisStoreClient.AsyncMultiGet",
-                      absl::flat_hash_map<std::string, std::string>{});
+    std::move(callback).Dispatch("RedisStoreClient.AsyncMultiGet",
+                                 absl::flat_hash_map<std::string, std::string>{});
     return Status::OK();
   }
   MGetValues(table_name, keys, std::move(callback));
@@ -321,14 +329,17 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
   auto total_count = del_cmds.size();
   auto finished_count = std::make_shared<size_t>(0);
   auto num_deleted = std::make_shared<int64_t>(0);
+  auto shared_callback = std::make_shared<Postable<void(int64_t)>>(std::move(callback));
+
   for (auto &command : del_cmds) {
     // `callback` is copied to each `delete_callback` lambda. Don't move.
-    auto delete_callback = [num_deleted, finished_count, total_count, callback](
+    auto delete_callback = [num_deleted, finished_count, total_count, shared_callback](
                                const std::shared_ptr<CallbackReply> &reply) {
       (*num_deleted) += reply->ReadAsInteger();
       ++(*finished_count);
       if (*finished_count == total_count) {
-        callback.Dispatch("RedisStoreClient.AsyncBatchDelete", *num_deleted);
+        std::move(*shared_callback)
+            .Dispatch("RedisStoreClient.AsyncBatchDelete", *num_deleted);
       }
     };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
@@ -370,7 +381,8 @@ void RedisStoreClient::RedisScanner::Scan() {
   // we should consider using a reader-writer lock.
   absl::MutexLock lock(&mutex_);
   if (!cursor_.has_value()) {
-    callback_.Dispatch("RedisStoreClient.RedisScanner.Scan", std::move(results_));
+    std::move(callback_).Dispatch("RedisStoreClient.RedisScanner.Scan",
+                                  std::move(results_));
     self_ref_.reset();
     return;
   }
@@ -466,9 +478,10 @@ Status RedisStoreClient::AsyncExists(const std::string &table_name,
       "HEXISTS", RedisKey{external_storage_namespace_, table_name}, {key}};
   SendRedisCmdArgsAsKeys(
       std::move(command),
-      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+      [callback =
+           std::move(callback)](const std::shared_ptr<CallbackReply> &reply) mutable {
         bool exists = reply->ReadAsInteger() > 0;
-        callback.Dispatch("RedisStoreClient.AsyncExists", exists);
+        std::move(callback).Dispatch("RedisStoreClient.AsyncExists", exists);
       });
   return Status::OK();
 }

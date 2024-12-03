@@ -18,10 +18,11 @@ namespace gcs {
 
 class MockGcsNodeManager : public GcsNodeManager {
  public:
-  MockGcsNodeManager()
+  MockGcsNodeManager(instrumented_io_context &io_context)
       : GcsNodeManager(/*gcs_publisher=*/nullptr,
                        /*gcs_table_storage=*/nullptr,
                        /*raylet_client_pool=*/nullptr,
+                       io_context,
                        /*cluster_id=*/ClusterID::Nil()) {}
   MOCK_METHOD(void,
               HandleRegisterNode,

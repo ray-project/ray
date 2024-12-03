@@ -76,7 +76,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   auto &io_context = io_context_provider_.GetDefaultIOContext();
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>(io_context);
+    gcs_table_storage_ = std::make_shared<InMemoryGcsTableStorage>();
     break;
   case StorageType::REDIS_PERSIST: {
     auto redis_client = CreateRedisClient(io_context);

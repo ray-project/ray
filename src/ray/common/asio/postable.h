@@ -48,16 +48,22 @@ using ToPostable = typename internal::ToPostableHelper<FuncType>::type;
 /// provides type safety and prevents accidentally running the function on the wrong
 /// io_context.
 ///
+/// A Postable can only be Post()ed or Dispatch()ed once. After that, it is moved-from and
+/// a next invocation will fail.
 template <typename FuncType>
 class Postable {
  public:
   Postable(std::function<FuncType> func, instrumented_io_context &io_context)
-      : func_(std::move(func)), io_context_(io_context) {}
+      : func_(std::move(func)), io_context_(io_context) {
+    RAY_CHECK(func_ != nullptr)
+        << "Postable must be constructed with a non-null function.";
+  }
 
   template <typename... Args>
-  void Post(const std::string &name, Args &&...args) const {
+  void Post(const std::string &name, Args &&...args) && {
+    RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";
     io_context_.post(
-        [func = func_,
+        [func = std::move(func_),
          args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
           std::apply(func, std::move(args_tuple));
         },
@@ -65,9 +71,10 @@ class Postable {
   }
 
   template <typename... Args>
-  void Dispatch(const std::string &name, Args &&...args) const {
+  void Dispatch(const std::string &name, Args &&...args) && {
+    RAY_CHECK(func_ != nullptr) << "Postable has already been invoked.";
     io_context_.dispatch(
-        [func = func_,
+        [func = std::move(func_),
          args_tuple = std::make_tuple(std::forward<Args>(args)...)]() mutable {
           std::apply(func, std::move(args_tuple));
         },
