@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
 #include "ray/util/logging.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -134,9 +135,14 @@ struct RedisRequestContext {
   std::vector<size_t> argc_;
 };
 
+// RunArgvAsync is thread-safe, can be accessed from multiple threads. The work is
+// dispatched to the io_service thread, and the callback is dispatched back to the
+// argument io_context.
+//
+// RunArgvSync is not thread-safe, and CHECK-fails if accessed from multiple threads.
 class RedisContext {
  public:
-  RedisContext(instrumented_io_context &io_service);
+  explicit RedisContext(instrumented_io_context &io_service);
 
   ~RedisContext();
 
@@ -168,7 +174,7 @@ class RedisContext {
 
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_.get();
+    return *redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
@@ -179,6 +185,9 @@ class RedisContext {
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
+  // Checks `context_` is always used in the same thread. No need to check the async
+  // context because it is thread-safe.
+  ThreadChecker sync_context_thread_checker_;
 };
 
 }  // namespace gcs
