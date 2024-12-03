@@ -26,7 +26,10 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 
+#include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
 #include "mock/ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
