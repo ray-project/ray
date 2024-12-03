@@ -43,8 +43,8 @@ if TYPE_CHECKING:
     from ray.data.aggregate import AggregateFn
 
 T = TypeVar("T")
-# The sample size when estiamte the data size
-_PANDAS_SIZE_BYTES_MIN_COUNT = 50
+# Max number of samples used to estimate the Pandas block size.
+_PANDAS_SIZE_BYTES_MAX_SAMPLE_COUNT = 50
 
 logger = logging.getLogger(__name__)
 
