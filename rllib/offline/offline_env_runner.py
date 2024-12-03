@@ -25,9 +25,9 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     """The environment runner to record the single agent case."""
 
     @override(SingleAgentEnvRunner)
-    def __init__(self, config: AlgorithmConfig, **kwargs):
+    def __init__(self, *, config: AlgorithmConfig, **kwargs):
         # Initialize the parent.
-        super().__init__(config, **kwargs)
+        super().__init__(config=config, **kwargs)
 
         # Get the data context for this `EnvRunner`.
         data_context = ray.data.DataContext.get_current()

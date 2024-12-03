@@ -177,7 +177,11 @@ class TorchRLModule(nn.Module, RLModule):
         training sample collection (w/ exploration behavior).
         `_forward_train()` to define the forward pass prior to loss computation.
         """
-        return self.forward_train(batch, **kwargs)
+        # TODO (sven): Experimental to make ONNX exported models work.
+        if self.config.inference_only:
+            return self.forward_exploration(batch, **kwargs)
+        else:
+            return self.forward_train(batch, **kwargs)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):
