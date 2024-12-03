@@ -23,13 +23,14 @@ def get_network_params() -> Dict[str, Any]:
     with _lightgbm_network_params_lock:
         if not _lightgbm_network_params:
             logger.warning(
-                "`ray.train.lightgbm.get_network_params` was called outside the context "
-                "of a `ray.train.lightgbm.LightGBMTrainer`. "
-                "The current process has no knowledge of the distributed training group, "
-                "so returning an empty dict. Please call this within the training loop "
-                "of a `ray.train.lightgbm.LightGBMTrainer`. "
-                "If you are actually calling this within a `LightGBMTrainer`, "
-                "this is unexpected -- please file a bug report to the Ray Team."
+                "`ray.train.lightgbm.get_network_params` was called outside "
+                "the context of a `ray.train.lightgbm.LightGBMTrainer`. "
+                "The current process has no knowledge of the distributed training "
+                "worker group, so this method will return an empty dict. "
+                "Please call this within the training loop of a "
+                "`ray.train.lightgbm.LightGBMTrainer`. "
+                "If you are in fact calling this within a `LightGBMTrainer`, "
+                "this is unexpected: please file a bug report to the Ray Team."
             )
             return {}
 

@@ -4,7 +4,7 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray.train
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.lightgbm.config import LightGBMConfig, get_network_params
+from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa: F401
 from ray.train.trainer import GenDataset
 
 logger = logging.getLogger(__name__)
