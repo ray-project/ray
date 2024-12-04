@@ -112,6 +112,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
+
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
@@ -534,10 +538,6 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_job_done_delay_ms, /*  15 secs */ 1
 /// Setting this value too smaller might result in some finished tasks marked as failed by
 /// GCS since task events data are pushed to GCS asynchronously.
 RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */ 1000 * 1)
-
-/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
-/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
-RAY_CONFIG(bool, record_task_actor_creation_sites, false)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)
