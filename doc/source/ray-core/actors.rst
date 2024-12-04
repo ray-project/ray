@@ -518,7 +518,7 @@ Example:
     # Capture stacktrace upon actor creation.
     counter = Counter.remote()
 
-    # Stacktrace will be captured for method invocation
+    # Capture stacktrace upon method invocation.
     counter.increment.remote()
 
 The stacktrace will show the exact line numbers and call stack where the actor was created and methods were invoked.
