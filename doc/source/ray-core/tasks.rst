@@ -331,7 +331,7 @@ Example:
     future = my_task.remote()
     result = ray.get(future)
 
-The stacktrace will show the exact line numbers and call stack where the task was created and invoked.
+The stacktrace shows the exact line numbers and call stack where the task was created and invoked.
 
 This feature is currently only supported for Python and C++ tasks.
 
