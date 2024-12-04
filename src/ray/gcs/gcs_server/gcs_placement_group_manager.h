@@ -18,9 +18,7 @@
 #include <optional>
 #include <utility>
 
-#include "absl/container/btree_map.h"
 #include "absl/container/flat_hash_map.h"
-#include "absl/container/flat_hash_set.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/common/id.h"
@@ -238,11 +236,11 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   /// \param get_ray_namespace A callback to get the ray namespace.
   GcsPlacementGroupManager(instrumented_io_context &io_context,
                            GcsPlacementGroupSchedulerInterface *scheduler,
-                           std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+                           gcs::GcsTableStorage *gcs_table_storage,
                            GcsResourceManager &gcs_resource_manager,
                            std::function<std::string(const JobID &)> get_ray_namespace);
 
-  ~GcsPlacementGroupManager() = default;
+  ~GcsPlacementGroupManager() override = default;
 
   void HandleCreatePlacementGroup(rpc::CreatePlacementGroupRequest request,
                                   rpc::CreatePlacementGroupReply *reply,
@@ -484,7 +482,7 @@ class GcsPlacementGroupManager : public rpc::PlacementGroupInfoHandler {
   gcs::GcsPlacementGroupSchedulerInterface *gcs_placement_group_scheduler_ = nullptr;
 
   /// Used to update placement group information upon creation, deletion, etc.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage *gcs_table_storage_ = nullptr;
 
   /// Counter of placement groups broken down by State.
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>>

@@ -29,12 +29,12 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
-                               std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
+                               gcs::GcsTableStorage *gcs_table_storage,
                                rpc::NodeManagerClientPool *raylet_client_pool,
                                const ClusterID &cluster_id)
-    : gcs_publisher_(std::move(gcs_publisher)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
+    : gcs_publisher_(gcs_publisher),
+      gcs_table_storage_(gcs_table_storage),
       raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id) {}
 

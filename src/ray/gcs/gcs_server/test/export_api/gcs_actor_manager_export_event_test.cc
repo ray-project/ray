@@ -37,7 +37,7 @@ using json = nlohmann::json;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
-  MockActorScheduler() {}
+  MockActorScheduler() = default;
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
@@ -147,15 +147,15 @@ class GcsActorManagerTest : public ::testing::Test {
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         mock_actor_scheduler_,
-        gcs_table_storage_,
-        gcs_publisher_,
+        gcs_table_storage_.get(),
+        gcs_publisher_.get(),
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},

@@ -31,8 +31,8 @@ class GcsInitData {
   /// Create a GcsInitData.
   ///
   /// \param gcs_table_storage The storage from which the metadata will be loaded.
-  explicit GcsInitData(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage)
-      : gcs_table_storage_(std::move(gcs_table_storage)) {}
+  explicit GcsInitData(gcs::GcsTableStorage &gcs_table_storage)
+      : gcs_table_storage_(gcs_table_storage) {}
 
   /// Load all required metadata from the store into memory at once asynchronously.
   ///
@@ -89,7 +89,7 @@ class GcsInitData {
 
  protected:
   /// The gcs table storage.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage &gcs_table_storage_;
 
   /// Job metadata.
   absl::flat_hash_map<JobID, rpc::JobTableData> job_table_data_;
