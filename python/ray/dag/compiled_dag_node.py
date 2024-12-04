@@ -901,7 +901,7 @@ class CompiledDAG:
         Traverse the DAG backwards from the output node to find unused attributes.
 
         Args:
-            output_node: The starting node for the traversal (typically the output node).
+            output_node: The starting node for the traversal.
             input_attributes: A set of attributes accessed by the InputNode.
 
         Returns:
@@ -913,6 +913,7 @@ class CompiledDAG:
         used_attributes = set()
         # Keep track of visited nodes during backtracking.
         visited_nodes = set()
+
         # Traverse backwards from the output node to find all used inputs.
         def traverse(node):
             if node in visited_nodes:
