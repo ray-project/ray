@@ -37,7 +37,7 @@ void PeriodicalRunner::Clear() {
 
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
                                          uint64_t period_ms,
-                                         const std::string &name) {
+                                         std::string name) {
   if (period_ms > 0) {
     auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
     {
@@ -46,14 +46,22 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
     }
     auto weak_self = weak_from_this();
     io_service_.post(
-        [weak_self, fn = std::move(fn), period_ms, name, timer = std::move(timer)]() {
+        [weak_self,
+         fn = std::move(fn),
+         period_ms,
+         name = std::move(name),
+         timer = std::move(timer)]() {
           if (auto self = weak_self.lock(); self) {
             if (RayConfig::instance().event_stats()) {
               self->DoRunFnPeriodicallyInstrumented(
-                  std::move(fn), boost::posix_time::milliseconds(period_ms), timer, name);
+                  std::move(fn),
+                  boost::posix_time::milliseconds(period_ms),
+                  std::move(timer),
+                  std::move(name));
             } else {
-              self->DoRunFnPeriodically(
-                  std::move(fn), boost::posix_time::milliseconds(period_ms), timer);
+              self->DoRunFnPeriodically(std::move(fn),
+                                        boost::posix_time::milliseconds(period_ms),
+                                        std::move(timer));
             }
           }
         },
@@ -62,14 +70,14 @@ void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
 }
 
 void PeriodicalRunner::DoRunFnPeriodically(
-    const std::function<void()> &fn,
+    std::function<void()> fn,
     boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer) {
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
   auto weak_self = weak_from_this();
-  timer->async_wait([weak_self, fn, period, timer = std::move(timer)](
+  timer->async_wait([weak_self, fn = std::move(fn), period, timer = std::move(timer)](
                         const boost::system::error_code &error) {
     if (auto self = weak_self.lock(); self) {
       if (error == boost::asio::error::operation_aborted) {
@@ -79,16 +87,16 @@ void PeriodicalRunner::DoRunFnPeriodically(
         return;
       }
       RAY_CHECK(!error) << error.message();
-      self->DoRunFnPeriodically(fn, period, timer);
+      self->DoRunFnPeriodically(std::move(fn), period, std::move(timer));
     }
   });
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
-    const std::function<void()> &fn,
+    std::function<void()> fn,
     boost::posix_time::milliseconds period,
     std::shared_ptr<boost::asio::deadline_timer> timer,
-    const std::string &name) {
+    std::string name) {
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
@@ -98,14 +106,19 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
   auto weak_self = weak_from_this();
   timer->async_wait([weak_self,
-                     fn,
+                     fn = std::move(fn),
                      period,
                      timer = std::move(timer),
                      stats_handle = std::move(stats_handle),
-                     name](const boost::system::error_code &error) {
+                     name = std::move(name)](const boost::system::error_code &error) {
     if (auto self = weak_self.lock(); self) {
       self->io_service_.stats().RecordExecution(
-          [weak_self, fn, error, period, timer, name]() {
+          [weak_self,
+           fn = std::move(fn),
+           error,
+           period,
+           timer = std::move(timer),
+           name = std::move(name)]() {
             if (auto self = weak_self.lock(); self) {
               if (error == boost::asio::error::operation_aborted) {
                 // `operation_aborted` is set when `timer` is canceled or destroyed.
@@ -114,7 +127,8 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
                 return;
               }
               RAY_CHECK(!error) << error.message();
-              self->DoRunFnPeriodicallyInstrumented(fn, period, timer, name);
+              self->DoRunFnPeriodicallyInstrumented(
+                  std::move(fn), period, std::move(timer), std::move(name));
             }
           },
           stats_handle);

@@ -41,25 +41,23 @@ class PeriodicalRunner : public std::enable_shared_from_this<PeriodicalRunner> {
 
   ~PeriodicalRunner();
 
-  void RunFnPeriodically(std::function<void()> fn,
-                         uint64_t period_ms,
-                         const std::string &name) ABSL_LOCKS_EXCLUDED(mutex_);
+  void RunFnPeriodically(std::function<void()> fn, uint64_t period_ms, std::string name)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
   explicit PeriodicalRunner(instrumented_io_context &io_service);
 
   void Clear();
 
-  void DoRunFnPeriodically(const std::function<void()> &fn,
+  void DoRunFnPeriodically(std::function<void()> fn,
                            boost::posix_time::milliseconds period,
                            std::shared_ptr<boost::asio::deadline_timer> timer)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void DoRunFnPeriodicallyInstrumented(const std::function<void()> &fn,
+  void DoRunFnPeriodicallyInstrumented(std::function<void()> fn,
                                        boost::posix_time::milliseconds period,
                                        std::shared_ptr<boost::asio::deadline_timer> timer,
-                                       const std::string &name)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+                                       std::string name) ABSL_LOCKS_EXCLUDED(mutex_);
 
   instrumented_io_context &io_service_;
   mutable absl::Mutex mutex_;
