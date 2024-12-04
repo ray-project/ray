@@ -306,7 +306,7 @@ Ray can optionally capture and display the stacktrace of where your code invokes
 
 To enable invocation stacktrace capture, set the environment variable ``RAY_enable_invocation_stacktrace=true``. When enabled:
 
-- The stacktrace will be captured when creating and invoking tasks
+- Ray captures the stacktrace when creating and invoking tasks
 - The stacktrace will be visible in:
   - Ray Dashboard UI under the task details
   - ``ray list task --detail`` CLI command output
