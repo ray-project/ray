@@ -80,6 +80,65 @@ class TestClickHouseDatasource:
         generated_query = datasource._generate_query()
         assert expected_query_part in generated_query
 
+    @pytest.mark.parametrize(
+        "query_params, expected_query",
+        [
+            (
+                {},
+                "SELECT * FROM default.table_name",
+            ),
+            (
+                {
+                    "columns": ["field1"],
+                },
+                "SELECT field1 FROM default.table_name",
+            ),
+            (
+                {
+                    "columns": ["field1"],
+                    "order_by": (["field1"], False),
+                },
+                "SELECT field1 FROM default.table_name ORDER BY field1",
+            ),
+            (
+                {
+                    "columns": ["field1", "field2"],
+                    "order_by": (["field1"], True),
+                },
+                "SELECT field1, field2 FROM default.table_name ORDER BY field1 DESC",
+            ),
+            (
+                {
+                    "columns": ["field1", "field2", "field3"],
+                    "order_by": (["field1", "field2"], False),
+                },
+                "SELECT field1, field2, field3 FROM default.table_name "
+                "ORDER BY (field1, field2)",
+            ),
+            (
+                {
+                    "columns": ["field1", "field2", "field3"],
+                    "order_by": (["field1", "field2"], True),
+                },
+                "SELECT field1, field2, field3 FROM default.table_name "
+                "ORDER BY (field1, field2) DESC",
+            ),
+            (
+                {
+                    "columns": ["field1", "field2", "field3"],
+                    "order_by": (["field1", "field2", "field3"], True),
+                },
+                "SELECT field1, field2, field3 FROM default.table_name "
+                "ORDER BY (field1, field2, field3) DESC",
+            ),
+        ],
+    )
+    def test_generate_query_full(self, datasource, query_params, expected_query):
+        datasource._columns = query_params.get("columns")
+        datasource._order_by = query_params.get("order_by")
+        generated_query = datasource._generate_query()
+        assert expected_query == generated_query
+
     @pytest.mark.parametrize("parallelism", [1, 2, 3, 4])
     def test_get_read_tasks(self, datasource, parallelism):
         batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field1"])

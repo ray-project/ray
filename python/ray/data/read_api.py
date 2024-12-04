@@ -3250,7 +3250,7 @@ def read_lance(
     )
 
 
-@PublicAPI
+@PublicAPI(stability="alpha")
 def read_clickhouse(
     *,
     table: str,

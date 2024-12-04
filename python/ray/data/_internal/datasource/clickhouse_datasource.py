@@ -1,6 +1,6 @@
 import logging
 import math
-from typing import Callable, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from ray.data._internal.util import _check_import
 from ray.data.block import Block, BlockAccessor, BlockMetadata
@@ -19,7 +19,15 @@ class ClickHouseDatasource(Datasource):
     NUM_SAMPLE_ROWS = 100
     MIN_ROWS_PER_READ_TASK = 50
 
-    def __init__(self, table: str, dsn: str, **kwargs):
+    def __init__(
+        self,
+        table: str,
+        dsn: str,
+        columns: Optional[List[str]] = None,
+        order_by: Optional[Tuple[List[str], bool]] = None,
+        client_settings: Optional[Dict[str, Any]] = None,
+        client_kwargs: Optional[Dict[str, Any]] = None,
+    ):
         """
         Initialize a ClickHouse Datasource.
 
@@ -30,27 +38,25 @@ class ClickHouseDatasource(Datasource):
                 "clickhouse+http://username:password@host:8124/default").
                 For more information, see `ClickHouse Connection String doc
                 <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
-            **kwargs: Optional additional arguments:
-                - columns: List of columns to select from the data source.
-                    If no columns are specified, all columns will be
-                    selected by default.
-                - order_by: Tuple containing a list of columns to order by and a
-                    boolean indicating the order.
-                - client_settings: ClickHouse server settings to be used with the
-                    session/every request. For more information,
-                    see `ClickHouse Client Settings doc
-                    <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
-                - client_kwargs: Additional keyword arguments to pass to
-                    the ClickHouse client. For more information,
-                    see `ClickHouse Core Settings doc
-                    <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+            columns: Optional List of columns to select from the data source.
+                If no columns are specified, all columns will be selected by default.
+            order_by: Optional Tuple containing a list of columns to order by
+                and a boolean indicating the order.
+            client_settings: Optional ClickHouse server settings to be used with the
+                session/every request. For more information, see
+                `ClickHouse Client Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+            client_kwargs: Optional Additional keyword arguments to pass to the
+                ClickHouse client. For more information,
+                see `ClickHouse Core Settings doc
+                <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
         """
         self._table = table
         self._dsn = dsn
-        self._columns = kwargs.get("columns")
-        self._order_by = kwargs.get("order_by")
-        self._client_settings = kwargs.get("client_settings")
-        self._client_kwargs = kwargs.get("client_kwargs")
+        self._columns = columns
+        self._order_by = order_by
+        self._client_settings = client_settings or {}
+        self._client_kwargs = client_kwargs or {}
         self._query = self._generate_query()
         self._estimates = {
             "size": f"SELECT SUM(byteSize(*)) AS estimate FROM ({self._query})",
