@@ -18,154 +18,11 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/ray_syncer/node_state.h"
+#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/common/ray_syncer/ray_syncer_server.h"
 
-namespace ray {
-namespace syncer {
-
-NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
-
-bool NodeState::SetComponent(MessageType message_type,
-                             const ReporterInterface *reporter,
-                             ReceiverInterface *receiver) {
-  if (message_type < static_cast<MessageType>(kComponentArraySize) &&
-      reporters_[message_type] == nullptr && receivers_[message_type] == nullptr) {
-    reporters_[message_type] = reporter;
-    receivers_[message_type] = receiver;
-    return true;
-  } else {
-    RAY_LOG(FATAL) << "Fail to set components, message_type:" << message_type
-                   << ", reporter:" << reporter << ", receiver:" << receiver;
-    return false;
-  }
-}
-
-std::optional<RaySyncMessage> NodeState::CreateSyncMessage(MessageType message_type) {
-  if (reporters_[message_type] == nullptr) {
-    return std::nullopt;
-  }
-  auto message = reporters_[message_type]->CreateSyncMessage(
-      sync_message_versions_taken_[message_type], message_type);
-  if (message != std::nullopt) {
-    sync_message_versions_taken_[message_type] = message->version();
-    RAY_LOG(DEBUG) << "Sync message taken: message_type:" << message_type
-                   << ", version:" << message->version()
-                   << ", node:" << NodeID::FromBinary(message->node_id());
-  }
-  return message;
-}
-
-bool NodeState::RemoveNode(const std::string &node_id) {
-  return cluster_view_.erase(node_id) != 0;
-}
-
-bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  auto &current = cluster_view_[message->node_id()][message->message_type()];
-
-  RAY_LOG(DEBUG) << "ConsumeSyncMessage: local_version="
-                 << (current ? current->version() : -1)
-                 << " message_version=" << message->version()
-                 << ", message_from=" << NodeID::FromBinary(message->node_id());
-  // Check whether newer version of this message has been received.
-  if (current && current->version() >= message->version()) {
-    return false;
-  }
-
-  current = message;
-  auto receiver = receivers_[message->message_type()];
-  if (receiver != nullptr) {
-    RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))
-        << "Consume message from node";
-    receiver->ConsumeSyncMessage(message);
-  }
-  return true;
-}
-
-namespace {
-
-std::string GetNodeIDFromServerContext(grpc::CallbackServerContext *server_context) {
-  const auto &metadata = server_context->client_metadata();
-  auto iter = metadata.find("node_id");
-  RAY_CHECK(iter != metadata.end());
-  return NodeID::FromHex(std::string(iter->second.begin(), iter->second.end())).Binary();
-}
-
-}  // namespace
-
-RayServerBidiReactor::RayServerBidiReactor(
-    grpc::CallbackServerContext *server_context,
-    instrumented_io_context &io_context,
-    const std::string &local_node_id,
-    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-    std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb)
-    : RaySyncerBidiReactorBase<ServerBidiReactor>(
-          io_context,
-          GetNodeIDFromServerContext(server_context),
-          std::move(message_processor)),
-      cleanup_cb_(std::move(cleanup_cb)),
-      server_context_(server_context) {
-  // Send the local node id to the remote
-  server_context_->AddInitialMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
-  StartSendInitialMetadata();
-
-  // Start pulling from remote
-  StartPull();
-}
-
-void RayServerBidiReactor::DoDisconnect() {
-  io_context_.dispatch([this]() { Finish(grpc::Status::OK); }, "");
-}
-
-void RayServerBidiReactor::OnCancel() {
-  io_context_.dispatch([this]() { Disconnect(); }, "");
-}
-
-void RayServerBidiReactor::OnDone() {
-  io_context_.dispatch(
-      [this, cleanup_cb = cleanup_cb_, remote_node_id = GetRemoteNodeID()]() {
-        cleanup_cb(this, false);
-        delete this;
-      },
-      "");
-}
-
-RayClientBidiReactor::RayClientBidiReactor(
-    const std::string &remote_node_id,
-    const std::string &local_node_id,
-    instrumented_io_context &io_context,
-    std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor,
-    std::function<void(RaySyncerBidiReactor *, bool)> cleanup_cb,
-    std::unique_ptr<ray::rpc::syncer::RaySyncer::Stub> stub)
-    : RaySyncerBidiReactorBase<ClientBidiReactor>(
-          io_context, remote_node_id, std::move(message_processor)),
-      cleanup_cb_(std::move(cleanup_cb)),
-      stub_(std::move(stub)) {
-  client_context_.AddMetadata("node_id", NodeID::FromBinary(local_node_id).Hex());
-  stub_->async()->StartSync(&client_context_, this);
-  // Prevent this call from being terminated.
-  // Check https://github.com/grpc/proposal/blob/master/L67-cpp-callback-api.md
-  // for details.
-  AddHold();
-  StartPull();
-}
-
-void RayClientBidiReactor::OnDone(const grpc::Status &status) {
-  io_context_.dispatch(
-      [this, status]() {
-        cleanup_cb_(this, !status.ok());
-        delete this;
-      },
-      "");
-}
-
-void RayClientBidiReactor::DoDisconnect() {
-  io_context_.dispatch(
-      [this]() {
-        StartWritesDone();
-        // Free the hold to allow OnDone being called.
-        RemoveHold();
-      },
-      "");
-}
+namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
                      const std::string &local_node_id)
@@ -384,7 +241,6 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
   return reactor;
 }
 
-RaySyncerService::~RaySyncerService() {}
+RaySyncerService::~RaySyncerService() = default;
 
-}  // namespace syncer
-}  // namespace ray
+}  // namespace ray::syncer

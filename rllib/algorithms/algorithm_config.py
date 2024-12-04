@@ -357,6 +357,11 @@ class AlgorithmConfig(_Config):
         self.num_gpus_per_learner = 0
         self.num_cpus_per_learner = 1
         self.local_gpu_idx = 0
+        # TODO (sven): This probably works even without any restriction
+        #  (allowing for any arbitrary number of requests in-flight). Test with
+        #  3 first, then with unlimited, and if both show the same behavior on
+        #  an async algo, remove this restriction entirely.
+        self.max_requests_in_flight_per_learner = 3
 
         # `self.training()`
         self.gamma = 0.99
@@ -435,6 +440,8 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
+        self.offline_data_class = None
+        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -463,6 +470,7 @@ class AlgorithmConfig(_Config):
         self.output_compress_columns = [Columns.OBS, Columns.NEXT_OBS]
         self.output_max_file_size = 64 * 1024 * 1024
         self.output_max_rows_per_file = None
+        self.output_write_remaining_data = False
         self.output_write_method = "write_parquet"
         self.output_write_method_kwargs = {}
         self.output_filesystem = None
@@ -1798,17 +1806,20 @@ class AlgorithmConfig(_Config):
                 synchronously in turn with their update step (e.g., PPO or DQN). Not
                 relevant for any algos that sample asynchronously, such as APPO or
                 IMPALA.
-            max_requests_in_flight_per_env_runner: Max number of inflight requests
-                to each EnvRunner worker. See the FaultTolerantActorManager class for
-                more details.
+            max_requests_in_flight_per_env_runner: Max number of in-flight requests
+                to each EnvRunner (actor)). See the
+                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
+                details.
                 Tuning these values is important when running experiments with
                 large sample batches, where there is the risk that the object store may
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
                 slowly as well. You can inspect the object store during your experiment
-                via a call to Ray memory on your head node, and by using the Ray
+                through a call to `ray memory` on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight or enable compression.
+                turn down the number of remote requests in flight or enable compression
+                or increase the object store memory through, for example:
+                `ray.init(object_store_memory=10 * 1024 * 1024 * 1024)  # =10 GB`
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -2110,6 +2121,7 @@ class AlgorithmConfig(_Config):
         num_cpus_per_learner: Optional[Union[float, int]] = NotProvided,
         num_gpus_per_learner: Optional[Union[float, int]] = NotProvided,
         local_gpu_idx: Optional[int] = NotProvided,
+        max_requests_in_flight_per_learner: Optional[int] = NotProvided,
     ):
         """Sets LearnerGroup and Learner worker related configurations.
 
@@ -2135,6 +2147,15 @@ class AlgorithmConfig(_Config):
                 an index into the available
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
+            max_requests_in_flight_per_learner: Max number of in-flight requests
+                to each Learner (actor). You normally do not have to tune this setting
+                (default is 3), however, for asynchronous algorithms, this determines
+                the "queue" size for incoming batches (or lists of episodes) into each
+                Learner worker, thus also determining, how much off-policy'ness would be
+                acceptable. The off-policy'ness is the difference between the numbers of
+                updates a policy has undergone on the Learner vs the EnvRunners.
+                See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
+                for more details.
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2147,6 +2168,8 @@ class AlgorithmConfig(_Config):
             self.num_gpus_per_learner = num_gpus_per_learner
         if local_gpu_idx is not NotProvided:
             self.local_gpu_idx = local_gpu_idx
+        if max_requests_in_flight_per_learner is not NotProvided:
+            self.max_requests_in_flight_per_learner = max_requests_in_flight_per_learner
 
         return self
 
@@ -2539,6 +2562,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         input_: Optional[Union[str, Callable[[IOContext], InputReader]]] = NotProvided,
+        offline_data_class: Optional[Type] = NotProvided,
         input_read_method: Optional[Union[str, Callable]] = NotProvided,
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
@@ -2566,6 +2590,7 @@ class AlgorithmConfig(_Config):
         output_compress_columns: Optional[List[str]] = NotProvided,
         output_max_file_size: Optional[float] = NotProvided,
         output_max_rows_per_file: Optional[int] = NotProvided,
+        output_write_remaining_data: Optional[bool] = NotProvided,
         output_write_method: Optional[str] = NotProvided,
         output_write_method_kwargs: Optional[Dict] = NotProvided,
         output_filesystem: Optional[str] = NotProvided,
@@ -2587,6 +2612,14 @@ class AlgorithmConfig(_Config):
                 `ray.rllib.offline.InputReader`.
                 - A string key that indexes a callable with
                 `tune.registry.register_input`
+            offline_data_class: An optional `OfflineData` class that is used to define
+                the offline data pipeline, including the dataset and the sampling
+                methodology. Override the `OfflineData` class and pass your derived
+                class here, if you need some primer transformations specific to your
+                data or your loss. Usually overriding the `OfflinePreLearner` and using
+                the resulting customization via `prelearner_class` suffices for most
+                cases. The default is `None` which uses the base `OfflineData` defined
+                in `ray.rllib.offline.offline_data.OfflineData`.
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2749,6 +2782,15 @@ class AlgorithmConfig(_Config):
                 to a new file.
             output_max_rows_per_file: Max output row numbers before rolling over to a
                 new file.
+            output_write_remaining_data: Determines whether any remaining data in the
+                recording buffers should be stored to disk. It is only applicable if
+                `output_max_rows_per_file` is defined. When sampling data, it is
+                buffered until the threshold specified by `output_max_rows_per_file`
+                is reached. Only complete multiples of `output_max_rows_per_file` are
+                written to disk, while any leftover data remains in the buffers. If a
+                recording session is stopped, residual data may still reside in these
+                buffers. Setting `output_write_remaining_data` to `True` ensures this
+                data is flushed to disk. By default, this attribute is set to `False`.
             output_write_method: Write method for the `ray.data.Dataset` to write the
                 offline data to `output`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2779,6 +2821,8 @@ class AlgorithmConfig(_Config):
         """
         if input_ is not NotProvided:
             self.input_ = input_
+        if offline_data_class is not NotProvided:
+            self.offline_data_class = offline_data_class
         if input_read_method is not NotProvided:
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
@@ -2863,6 +2907,8 @@ class AlgorithmConfig(_Config):
             self.output_max_file_size = output_max_file_size
         if output_max_rows_per_file is not NotProvided:
             self.output_max_rows_per_file = output_max_rows_per_file
+        if output_write_remaining_data is not NotProvided:
+            self.output_write_remaining_data = output_write_remaining_data
         if output_write_method is not NotProvided:
             self.output_write_method = output_write_method
         if output_write_method_kwargs is not NotProvided:
@@ -4679,13 +4725,21 @@ class AlgorithmConfig(_Config):
                 )
 
     def _validate_offline_settings(self):
+        from ray.rllib.offline.offline_data import OfflineData
         from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 
+        if self.offline_data_class and not issubclass(
+            self.offline_data_class, OfflineData
+        ):
+            raise ValueError(
+                "Unknown `offline_data_class`. OfflineData class needs to inherit "
+                "from `OfflineData` class."
+            )
         if self.prelearner_class and not issubclass(
             self.prelearner_class, OfflinePreLearner
         ):
             raise ValueError(
-                "Unknown `prelearner_class`. Prelearner class needs to inherit "
+                "Unknown `prelearner_class`. PreLearner class needs to inherit "
                 "from `OfflinePreLearner` class."
             )
 

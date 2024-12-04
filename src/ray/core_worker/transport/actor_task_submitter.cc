@@ -44,7 +44,7 @@ void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
         }));
   };
 
-  if (!reference_counter_->AddObjectPrimaryCopyDeleteCallback(
+  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
           actor_creation_return_id,
           [actor_out_of_scope_callback](const ObjectID &object_id) {
             actor_out_of_scope_callback(object_id);
@@ -876,7 +876,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
-  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id) ||
+      !GetTaskFinisherWithoutMu().IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return Status::OK();
   }

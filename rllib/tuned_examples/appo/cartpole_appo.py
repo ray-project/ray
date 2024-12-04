@@ -16,6 +16,7 @@ config = (
     APPOConfig()
     .environment("CartPole-v1")
     .training(
+        circular_buffer_iterations_per_batch=2,
         vf_loss_coeff=0.05,
         entropy_coeff=0.0,
     )
