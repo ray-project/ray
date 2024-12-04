@@ -515,7 +515,7 @@ Example:
             self.value += 1
             return self.value
 
-    # Stacktrace will be captured for actor creation
+    # Capture stacktrace upon actor creation.
     counter = Counter.remote()
 
     # Stacktrace will be captured for method invocation
