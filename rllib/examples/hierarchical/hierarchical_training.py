@@ -26,13 +26,11 @@ import logging
 
 import gymnasium as gym
 
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.core.rl_module import MultiRLModuleSpec, RLModuleSpec
-from ray.rllib.examples.envs.classes.windy_maze_env import (
-    WindyMazeEnv,
-    HierarchicalWindyMazeEnv,
-)
+from ray.rllib.examples.envs.classes.six_room_env import SixRoomEnv
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -54,14 +52,15 @@ if __name__ == "__main__":
 
     # Run the flat (non-hierarchical env).
     if args.flat:
+        tune.register_env("env", lambda cfg: SixRoomEnv({"flat": True}))
         base_config = (
             PPOConfig()
-            .environment(WindyMazeEnv)
+            .environment(SixRoomEnv)
             # .env_runners(num_env_runners=0)
         )
     # Run in hierarchical mode.
     else:
-        maze = WindyMazeEnv()
+        maze = SixRoomEnv()
 
         def policy_mapping_fn(agent_id, episode, **kwargs):
             if agent_id.startswith("lower_level_"):
