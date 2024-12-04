@@ -544,12 +544,12 @@
   run:
     timeout: 1800
     script: >
-      python gpu_batch_inference.py 
+      python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_chaos
   stable: False
-  # Don't use 'nightly_tests/dataset' as the working directory because we need to run 
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
 
@@ -560,7 +560,7 @@
     timeout: 1800
     prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
     script: >
-      python dataset/gpu_batch_inference.py 
+      python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 # 10 TB image classification parquet data with autoscaling heterogenous cluster
@@ -574,5 +574,5 @@
   run:
     timeout: 3600
     script: >
-      python gpu_batch_inference.py 
+      python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
