@@ -11,17 +11,22 @@ from ray.serve._private.common import DeploymentID, EndpointInfo, RequestMetadat
 from ray.serve._private.proxy import (
     DRAINING_MESSAGE,
     HEALTHY_MESSAGE,
-    NO_ROUTES_MESSAGE,
     HTTPProxy,
     ResponseGenerator,
     ResponseStatus,
     gRPCProxy,
 )
 from ray.serve._private.proxy_request_response import ProxyRequest
-from ray.serve._private.proxy_router import ProxyRouter
-from ray.serve._private.test_utils import FakeGrpcContext
+from ray.serve._private.proxy_router import (
+    NO_REPLICAS_MESSAGE,
+    NO_ROUTES_MESSAGE,
+    ProxyRouter,
+)
+from ray.serve._private.test_utils import FakeGrpcContext, MockDeploymentHandle
 from ray.serve.generated import serve_pb2
 from ray.serve.grpc_util import RayServegRPCContext
+
+ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE = "Router is not ready for traffic"
 
 
 class FakeRef:
@@ -99,9 +104,10 @@ class FakeProxyRouter(ProxyRouter):
         self.route = None
         self.handle = None
         self.app_is_cross_language = None
+        self._ready_for_traffic = False
 
     def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        pass
+        self.endpoints = endpoints
 
     def get_handle_for_endpoint(self, *args, **kwargs):
         if (
@@ -122,6 +128,15 @@ class FakeProxyRouter(ProxyRouter):
             return None
 
         return self.route, self.handle, self.app_is_cross_language
+
+    def set_ready_for_traffic(self):
+        self._ready_for_traffic = True
+
+    def ready_for_traffic(self, is_head: bool) -> bool:
+        if self._ready_for_traffic:
+            return True, ""
+
+        return False, ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
 
 
 class FakeProxyRequest(ProxyRequest):
@@ -231,20 +246,21 @@ async def _consume_proxy_generator(
 class TestgRPCProxy:
     """Test methods implemented on gRPCProxy"""
 
-    def create_grpc_proxy(self):
+    def create_grpc_proxy(self, is_head: bool = False):
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return gRPCProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
-            proxy_router_class=FakeProxyRouter,
+            is_head=is_head,
+            proxy_router=FakeProxyRouter(),
         )
 
     @pytest.mark.asyncio
     async def test_not_found_response(self):
         """Test gRPCProxy returns the correct not found response."""
         grpc_proxy = self.create_grpc_proxy()
-        grpc_proxy.update_routes({})
+        grpc_proxy.proxy_router.update_routes({})
 
         # Application name not provided.
         status, _ = await _consume_proxy_generator(
@@ -270,8 +286,10 @@ class TestgRPCProxy:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
-    @pytest.mark.parametrize("routes_updated", [False, True])
-    async def test_routes_response(self, is_draining: bool, routes_updated: bool):
+    @pytest.mark.parametrize("router_ready_for_traffic", [False, True])
+    async def test_routes_response(
+        self, is_draining: bool, router_ready_for_traffic: bool
+    ):
         """Test responses to the routes method.
 
         The response should be an OK success unless:
@@ -279,16 +297,13 @@ class TestgRPCProxy:
             - the proxy is draining.
         """
         grpc_proxy = self.create_grpc_proxy()
+        grpc_proxy.proxy_router.update_routes(
+            {DeploymentID(name="deployment", app_name="app"): EndpointInfo("/route")},
+        )
         if is_draining:
             grpc_proxy.update_draining(True)
-        if routes_updated:
-            grpc_proxy.update_routes(
-                {
-                    DeploymentID(name="deployment", app_name="app"): EndpointInfo(
-                        "/route"
-                    )
-                },
-            )
+        if router_ready_for_traffic:
+            grpc_proxy.proxy_router.set_ready_for_traffic()
 
         status, [response_bytes] = await _consume_proxy_generator(
             grpc_proxy.proxy_request(
@@ -303,26 +318,27 @@ class TestgRPCProxy:
         response = serve_pb2.ListApplicationsResponse()
         response.ParseFromString(response_bytes)
 
-        if not is_draining and routes_updated:
+        if not is_draining and router_ready_for_traffic:
             assert status.code == grpc.StatusCode.OK
             assert status.message == HEALTHY_MESSAGE
             assert status.is_error is False
             assert response.application_names == ["app"]
-        elif not routes_updated:
-            assert status.code == grpc.StatusCode.UNAVAILABLE
-            assert status.message == NO_ROUTES_MESSAGE
-            assert status.is_error is True
-            assert response.application_names == []
-        else:
+        elif is_draining:
             assert status.code == grpc.StatusCode.UNAVAILABLE
             assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
             assert response.application_names == ["app"]
+        else:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            assert status.is_error is True
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
-    @pytest.mark.parametrize("routes_updated", [False, True])
-    async def test_health_response(self, is_draining: bool, routes_updated: bool):
+    @pytest.mark.parametrize("router_ready_for_traffic", [False, True])
+    async def test_health_response(
+        self, is_draining: bool, router_ready_for_traffic: bool
+    ):
         """Test responses to the health method.
 
         The response should be an OK success unless:
@@ -332,10 +348,8 @@ class TestgRPCProxy:
         grpc_proxy = self.create_grpc_proxy()
         if is_draining:
             grpc_proxy.update_draining(True)
-        if routes_updated:
-            grpc_proxy.update_routes(
-                {},
-            )
+        if router_ready_for_traffic:
+            grpc_proxy.proxy_router.set_ready_for_traffic()
 
         status, [response_bytes] = await _consume_proxy_generator(
             grpc_proxy.proxy_request(
@@ -350,21 +364,21 @@ class TestgRPCProxy:
         response = serve_pb2.HealthzResponse()
         response.ParseFromString(response_bytes)
 
-        if not is_draining and routes_updated:
+        if not is_draining and router_ready_for_traffic:
             assert status.code == grpc.StatusCode.OK
             assert status.message == HEALTHY_MESSAGE
             assert status.is_error is False
             assert response.message == HEALTHY_MESSAGE
-        elif not routes_updated:
-            assert status.code == grpc.StatusCode.UNAVAILABLE
-            assert status.message == NO_ROUTES_MESSAGE
-            assert status.is_error is True
-            assert response.message == NO_ROUTES_MESSAGE
-        else:
+        elif is_draining:
             assert status.code == grpc.StatusCode.UNAVAILABLE
             assert status.message == DRAINING_MESSAGE
             assert status.is_error is True
             assert response.message == DRAINING_MESSAGE
+        else:
+            assert status.code == grpc.StatusCode.UNAVAILABLE
+            assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            assert status.is_error is True
+            assert response.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
 
     @pytest.mark.asyncio
     async def test_service_handler_factory(self):
@@ -425,13 +439,14 @@ class TestHTTPProxy:
         assert messages[0]["status"] == status_code
         assert messages[1]["body"].decode("utf-8") == body
 
-    def create_http_proxy(self):
+    def create_http_proxy(self, is_head: bool = False):
         node_id = "fake-node_id"
         node_ip_address = "fake-node_ip_address"
         return HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
-            proxy_router_class=FakeProxyRouter,
+            is_head=is_head,
+            proxy_router=FakeProxyRouter(),
             proxy_actor=FakeActorHandle(),
         )
 
@@ -439,7 +454,7 @@ class TestHTTPProxy:
     async def test_not_found_response(self):
         """Test the response returned when a route is not found."""
         http_proxy = self.create_http_proxy()
-        http_proxy.update_routes({})
+        http_proxy.proxy_router.update_routes({})
 
         status, messages = await _consume_proxy_generator(
             http_proxy.proxy_request(
@@ -459,8 +474,10 @@ class TestHTTPProxy:
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
-    @pytest.mark.parametrize("routes_updated", [False, True])
-    async def test_routes_response(self, is_draining: bool, routes_updated: bool):
+    @pytest.mark.parametrize("router_ready_for_traffic", [False, True])
+    async def test_routes_response(
+        self, is_draining: bool, router_ready_for_traffic: bool
+    ):
         """Test responses to the routes method.
 
         The response should be a 200 success unless:
@@ -468,16 +485,13 @@ class TestHTTPProxy:
             - the proxy is draining.
         """
         http_proxy = self.create_http_proxy()
+        http_proxy.proxy_router.update_routes(
+            {DeploymentID(name="deployment", app_name="app"): EndpointInfo("/route")},
+        )
         if is_draining:
             http_proxy.update_draining(True)
-        if routes_updated:
-            http_proxy.update_routes(
-                {
-                    DeploymentID(name="deployment", app_name="app"): EndpointInfo(
-                        "/route"
-                    )
-                },
-            )
+        if router_ready_for_traffic:
+            http_proxy.proxy_router.set_ready_for_traffic()
 
         status, messages = await _consume_proxy_generator(
             http_proxy.proxy_request(
@@ -488,28 +502,32 @@ class TestHTTPProxy:
             )
         )
 
-        if not is_draining and routes_updated:
+        if not is_draining and router_ready_for_traffic:
             assert status.code == 200
             assert status.is_error is False
             assert status.message == HEALTHY_MESSAGE
             self._check_asgi_messages(
                 messages, status_code=200, body='{"/route":"app"}'
             )
-        elif not routes_updated:
-            assert status.code == 503
-            assert status.is_error is True
-            assert status.message == NO_ROUTES_MESSAGE
-            self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
-        else:
+        elif is_draining:
             assert status.code == 503
             assert status.is_error is True
             assert status.message == DRAINING_MESSAGE
             self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
+        else:
+            assert status.code == 503
+            assert status.is_error is True
+            assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            self._check_asgi_messages(
+                messages, status_code=503, body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            )
 
     @pytest.mark.asyncio
     @pytest.mark.parametrize("is_draining", [False, True])
-    @pytest.mark.parametrize("routes_updated", [False, True])
-    async def test_health_response(self, is_draining: bool, routes_updated: bool):
+    @pytest.mark.parametrize("router_ready_for_traffic", [False, True])
+    async def test_health_response(
+        self, is_draining: bool, router_ready_for_traffic: bool
+    ):
         """Test responses to the health check method.
 
         The response should be a 200 success unless:
@@ -519,8 +537,8 @@ class TestHTTPProxy:
         http_proxy = self.create_http_proxy()
         if is_draining:
             http_proxy.update_draining(True)
-        if routes_updated:
-            http_proxy.update_routes({})
+        if router_ready_for_traffic:
+            http_proxy.proxy_router.set_ready_for_traffic()
 
         status, messages = await _consume_proxy_generator(
             http_proxy.proxy_request(
@@ -530,21 +548,23 @@ class TestHTTPProxy:
                 ),
             )
         )
-        if not is_draining and routes_updated:
+        if not is_draining and router_ready_for_traffic:
             assert status.code == 200
             assert status.is_error is False
             assert status.message == HEALTHY_MESSAGE
             self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
-        elif not routes_updated:
-            assert status.code == 503
-            assert status.is_error is True
-            assert status.message == NO_ROUTES_MESSAGE
-            self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
-        else:
+        elif is_draining:
             assert status.code == 503
             assert status.is_error is True
             assert status.message == DRAINING_MESSAGE
             self._check_asgi_messages(messages, status_code=503, body=DRAINING_MESSAGE)
+        else:
+            assert status.code == 503
+            assert status.is_error is True
+            assert status.message == ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            self._check_asgi_messages(
+                messages, status_code=503, body=ROUTER_NOT_READY_FOR_TRAFFIC_MESSAGE
+            )
 
     @pytest.mark.asyncio
     async def test_receive_asgi_messages(self):
@@ -554,7 +574,6 @@ class TestHTTPProxy:
         request_metadata = RequestMetadata(
             request_id="fake-request-id",
             internal_request_id="fake-internal-request-id",
-            endpoint="fake-endpoint",
         )
         queue = AsyncMock()
         http_proxy.asgi_receive_queues[internal_request_id] = queue
@@ -680,33 +699,109 @@ class TestHTTPProxy:
         # Ensure after calling __call__, send.messages should be expected messages.
         assert send.messages == expected_messages
 
-    @pytest.mark.asyncio
-    async def test_health_request_errors_until_route_table_updated(self):
-        """Health endpoint should error until `update_routes` has been called."""
-        http_proxy = self.create_http_proxy()
-        proxy_request = FakeProxyRequest(
-            request_type="http",
-            is_health_request=True,
-        )
 
-        status, messages = await _consume_proxy_generator(
-            http_proxy.proxy_request(proxy_request)
-        )
-        assert status.code == 503
-        assert status.is_error is True
-        assert status.message == NO_ROUTES_MESSAGE
-        self._check_asgi_messages(messages, status_code=503, body=NO_ROUTES_MESSAGE)
+@pytest.mark.asyncio
+async def test_head_http_unhealthy_until_route_table_updated():
+    """Health endpoint should error until `update_routes` has been called."""
 
-        # Update route table, response should no longer error (even if empty).
-        http_proxy.update_routes({})
+    def get_handle_override(endpoint, info):
+        return MockDeploymentHandle(endpoint.name, endpoint.app_name)
 
-        status, messages = await _consume_proxy_generator(
-            http_proxy.proxy_request(proxy_request)
-        )
-        assert status.code == 200
-        assert status.is_error is False
-        assert status.message == HEALTHY_MESSAGE
-        self._check_asgi_messages(messages, status_code=200, body=HEALTHY_MESSAGE)
+    http_proxy = HTTPProxy(
+        node_id="fake-node-id",
+        node_ip_address="fake-node-ip-address",
+        # proxy is on head node
+        is_head=True,
+        proxy_router=ProxyRouter(get_handle_override),
+        proxy_actor=FakeActorHandle(),
+    )
+    proxy_request = FakeProxyRequest(
+        request_type="http",
+        is_health_request=True,
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_ROUTES_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
+
+    # Update route table, response should no longer error
+    http_proxy.proxy_router.update_routes(
+        {DeploymentID("a", "b"): EndpointInfo("/route")}
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 200
+    assert status.is_error is False
+    assert status.message == HEALTHY_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 200
+    assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
+
+
+@pytest.mark.asyncio
+async def test_worker_http_unhealthy_until_replicas_populated():
+    """Health endpoint should error until handle's running replicas is populated."""
+
+    handle = MockDeploymentHandle("a", "b")
+    http_proxy = HTTPProxy(
+        node_id="fake-node-id",
+        node_ip_address="fake-node-ip-address",
+        # proxy is on worker node
+        is_head=False,
+        proxy_router=ProxyRouter(lambda *args: handle),
+        proxy_actor=FakeActorHandle(),
+    )
+    proxy_request = FakeProxyRequest(
+        request_type="http",
+        is_health_request=True,
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_ROUTES_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_ROUTES_MESSAGE
+
+    # Update route table, response should still error because running
+    # replicas is not yet populated.
+    http_proxy.proxy_router.update_routes(
+        {DeploymentID("a", "b"): EndpointInfo("/route")}
+    )
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 503
+    assert status.is_error is True
+    assert status.message == NO_REPLICAS_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 503
+    assert messages[1]["body"].decode("utf-8") == NO_REPLICAS_MESSAGE
+
+    # Populate running replicas. Now response should be healthy and return 200.
+    handle.set_running_replicas_populated(True)
+
+    status, messages = await _consume_proxy_generator(
+        http_proxy.proxy_request(proxy_request)
+    )
+    assert status.code == 200
+    assert status.is_error is False
+    assert status.message == HEALTHY_MESSAGE
+    assert messages[0]["headers"] is not None
+    assert messages[0]["status"] == 200
+    assert messages[1]["body"].decode("utf-8") == HEALTHY_MESSAGE
 
 
 if __name__ == "__main__":

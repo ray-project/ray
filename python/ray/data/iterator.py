@@ -1,6 +1,5 @@
 import abc
 import time
-import warnings
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -188,9 +187,7 @@ class DataIterator(abc.ABC):
     def _get_dataset_tag(self) -> str:
         return "unknown_dataset"
 
-    def iter_rows(
-        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
-    ) -> Iterable[Dict[str, Any]]:
+    def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return a local row iterable over the dataset.
 
         If the dataset is a tabular dataset (Arrow/Pandas blocks), dicts
@@ -205,34 +202,12 @@ class DataIterator(abc.ABC):
 
         Time complexity: O(1)
 
-        Args:
-            prefetch_batches: The number of batches to prefetch ahead of the current
-                batch during the scan.
-            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
-                instead.
-
         Returns:
             An iterable over rows of the dataset.
         """
-        iter_batch_args = {
-            "batch_size": None,
-            "batch_format": None,
-            "prefetch_batches": prefetch_batches,
-        }
-        if prefetch_blocks > 0:
-            warnings.warn(
-                "`prefetch_blocks` is deprecated in Ray 2.10. Use "
-                "the `prefetch_batches` parameter to specify the amount of prefetching "
-                "in terms of batches instead of blocks.",
-                DeprecationWarning,
-            )
-            iter_batch_args["prefetch_batches"] = prefetch_blocks
-        if prefetch_batches != 1:
-            warnings.warn(
-                "`prefetch_batches` is deprecated in Ray 2.12.", DeprecationWarning
-            )
-
-        batch_iterable = self.iter_batches(**iter_batch_args)
+        batch_iterable = self.iter_batches(
+            batch_size=None, batch_format=None, prefetch_batches=1
+        )
 
         def _wrapped_iterator():
             for batch in batch_iterable:
@@ -726,7 +701,8 @@ class DataIterator(abc.ABC):
             :class:`~ray.data.preprocessors.Concatenator`.
 
             >>> from ray.data.preprocessors import Concatenator
-            >>> preprocessor = Concatenator(output_column_name="features", exclude="target")
+            >>> columns_to_concat = ["sepal length (cm)", "sepal width (cm)", "petal length (cm)", "petal width (cm)"]
+            >>> preprocessor = Concatenator(columns=columns_to_concat, output_column_name="features")
             >>> it = preprocessor.transform(ds).iterator()
             >>> it
             DataIterator(Concatenator
@@ -758,7 +734,8 @@ class DataIterator(abc.ABC):
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> import pandas as pd
+            >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> it = ds.iterator()
             >>> it.to_tf(feature_columns="sepal length (cm)", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None,), dtype=tf.float64, name='sepal length (cm)'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
@@ -934,9 +911,13 @@ class DataIterator(abc.ABC):
         ref_bundles_iter, stats, _ = self._to_ref_bundle_iterator()
 
         ref_bundles = list(ref_bundles_iter)
-        logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+        execution_plan = ExecutionPlan(stats)
+        logical_plan = LogicalPlan(
+            InputData(input_data=ref_bundles),
+            execution_plan._context,
+        )
         return MaterializedDataset(
-            ExecutionPlan(stats),
+            execution_plan,
             logical_plan,
         )
 

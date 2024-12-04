@@ -98,20 +98,21 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             TrainWorkerInfoWithDetails,
         )
 
-        try:
-            logger.info("Getting all actor info from GCS.")
-            actors = await DataOrganizer.get_all_actors()
-
-        except Exception:
-            logger.exception("Error Getting all actor info from GCS.")
-
         train_runs_with_details: List[TrainRunInfoWithDetails] = []
 
         for train_run in train_runs.values():
             worker_infos_with_details: List[TrainWorkerInfoWithDetails] = []
 
+            actor_ids = [worker.actor_id for worker in train_run.workers]
+
+            logger.info(f"Getting all actor info from GCS (actor_ids={actor_ids})")
+
+            train_run_actors = await DataOrganizer.get_actor_infos(
+                actor_ids=actor_ids,
+            )
+
             for worker_info in train_run.workers:
-                actor = actors.get(worker_info.actor_id, None)
+                actor = train_run_actors.get(worker_info.actor_id, None)
                 # Add hardware metrics to API response
                 if actor:
                     gpus = [
@@ -161,16 +162,15 @@ class TrainHead(dashboard_utils.DashboardHeadModule):
             # function (e.g., system failure or user interruption) that crashed the
             # train controller.
             # We need to detect this case and mark the train run as ABORTED.
-            controller_actor_status = actors.get(
-                train_run.controller_actor_id, None
-            ).get("state")
+            actor = train_run_actors.get(train_run.controller_actor_id)
+            controller_actor_status = actor.get("state") if actor else None
             if (
                 controller_actor_status == ActorStatusEnum.DEAD
-                and train_run.run_status == RunStatusEnum.STARTED
+                and train_run.run_status == RunStatusEnum.RUNNING
             ):
                 train_run_with_details.run_status = RunStatusEnum.ABORTED
                 train_run_with_details.status_detail = (
-                    "Unexpectedly terminated due to system errors."
+                    "Terminated due to system errors or killed by the user."
                 )
 
             train_runs_with_details.append(train_run_with_details)

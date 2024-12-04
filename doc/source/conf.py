@@ -31,6 +31,10 @@ from custom_directives import (  # noqa
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
@@ -66,7 +70,15 @@ extensions = [
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
+    "sphinx_docsearch",
 ]
+
+# Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
+docsearch_app_id = "LBHF0PABBL"
+docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
+docsearch_index_name = "docs-ray"
 
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
@@ -288,7 +300,7 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": """<b><a target="_blank" href="https://raysummit.anyscale.com/flow/anyscale/raysummit2024/landing/page/eventsite?utm_source=regDocs6_5g">Register for Ray Summit 2024</a></b> with keynotes from Mira Murati, Marc Andreessen, and Anastasis Germanidis.""",
+    "announcement": False,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },

@@ -1,11 +1,11 @@
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west1
-allowed_azs: 
+allowed_azs:
     - us-west1-c
 
 max_workers: 5
 
-#aws:
+#advanced_configurations_json:
 #    BlockDeviceMappings:
 #        - DeviceName: /dev/sda1
 #          Ebs:
@@ -25,7 +25,6 @@ worker_node_types:
      max_workers: 5
      use_spot: false
      resources:
-      cpu: 2 
+      cpu: 2
       custom_resources:
         pg_custom: 666
-

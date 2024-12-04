@@ -481,6 +481,7 @@ class SkillLevel(ExampleEnum):
 class Framework(ExampleEnum):
     """Framework type for example metadata."""
 
+    AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"
@@ -776,8 +777,8 @@ def setup_context(app, pagename, templatename, context, doctree):
         soup.append(page_text)
 
         container = soup.new_tag("div", attrs={"class": "example-index"})
-        for group, examples in examples.items():
-            if not examples:
+        for group, group_examples in examples.items():
+            if not group_examples:
                 continue
 
             header = soup.new_tag("h2", attrs={"class": "example-header"})
@@ -810,7 +811,7 @@ def setup_context(app, pagename, templatename, context, doctree):
                 table.append(thead)
 
             tbody = soup.new_tag("tbody")
-            for example in examples:
+            for example in group_examples:
                 tr = soup.new_tag("tr")
 
                 # The columns specify which attributes of each example to show;

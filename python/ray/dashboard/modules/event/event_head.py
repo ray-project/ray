@@ -10,6 +10,7 @@ import aiohttp.web
 
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.ray_constants import env_integer
 from ray.core.generated import event_pb2, event_pb2_grpc
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.event.event_utils import monitor_events, parse_event_strings
@@ -22,6 +23,13 @@ dashboard_utils._json_compatible_types.add(JobEvents)
 
 MAX_EVENTS_TO_CACHE = int(os.environ.get("RAY_DASHBOARD_MAX_EVENTS_TO_CACHE", 10000))
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS", 1
+)
+
 
 class EventHead(
     dashboard_utils.DashboardHeadModule, event_pb2_grpc.ReportEventServiceServicer
@@ -31,12 +39,14 @@ class EventHead(
         self._event_dir = os.path.join(self._dashboard_head.log_dir, "events")
         os.makedirs(self._event_dir, exist_ok=True)
         self._monitor: Union[asyncio.Task, None] = None
-        self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="event_monitor"
-        )
         self.total_report_events_count = 0
         self.total_events_received = 0
         self.module_started = time.monotonic()
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_EVENT_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="event_head_executor",
+        )
 
     @staticmethod
     def _update_events(event_list):
@@ -111,7 +121,7 @@ class EventHead(
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: self._update_events(parse_event_strings(data)),
-            self.monitor_thread_pool_executor,
+            self._executor,
         )
 
     @staticmethod

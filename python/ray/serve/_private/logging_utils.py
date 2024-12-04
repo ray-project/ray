@@ -6,6 +6,7 @@ import traceback
 from typing import Any, Optional, Tuple
 
 import ray
+from ray._private.ray_constants import LOGGING_ROTATE_BACKUP_COUNT, LOGGING_ROTATE_BYTES
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter
 from ray.serve._private.common import ServeComponentType
@@ -68,7 +69,7 @@ class ServeComponentFilter(logging.Filter):
             setattr(record, SERVE_LOG_COMPONENT, self.component_type)
         else:
             setattr(record, SERVE_LOG_COMPONENT, self.component_name)
-            setattr(record, SERVE_LOG_REPLICA, self.component_id)
+            setattr(record, SERVE_LOG_COMPONENT_ID, self.component_id)
 
         return True
 
@@ -140,8 +141,6 @@ class ServeFormatter(logging.Formatter):
         record_formats_attrs = []
         if SERVE_LOG_REQUEST_ID in record.__dict__:
             record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_REQUEST_ID])
-        if SERVE_LOG_ROUTE in record.__dict__:
-            record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_ROUTE])
         record_formats_attrs.append(SERVE_LOG_RECORD_FORMAT[SERVE_LOG_MESSAGE])
         record_format += " ".join(record_formats_attrs)
 
@@ -152,9 +151,9 @@ class ServeFormatter(logging.Formatter):
         return formatter.format(record)
 
 
-def access_log_msg(*, method: str, status: str, latency_ms: float):
+def access_log_msg(*, method: str, route: str, status: str, latency_ms: float):
     """Returns a formatted message for an HTTP or ServeHandle access log."""
-    return f"{method.upper()} {status.upper()} {latency_ms:.1f}ms"
+    return f"{method} {route} {status} {latency_ms:.1f}ms"
 
 
 def log_to_stderr_filter(record: logging.LogRecord) -> bool:
@@ -278,6 +277,7 @@ def configure_component_logger(
     component_type: Optional[ServeComponentType] = None,
     max_bytes: Optional[int] = None,
     backup_count: Optional[int] = None,
+    stream_handler_only: bool = False,
 ):
     """Configure a logger to be used by a Serve component.
 
@@ -291,13 +291,21 @@ def configure_component_logger(
     logger.setLevel(logging_config.log_level)
     logger.handlers.clear()
 
-    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True.
-    if RAY_SERVE_LOG_TO_STDERR:
+    # Only add stream handler if RAY_SERVE_LOG_TO_STDERR is True or if
+    # `stream_handler_only` is set to True.
+    if RAY_SERVE_LOG_TO_STDERR or stream_handler_only:
         stream_handler = logging.StreamHandler()
         stream_handler.setFormatter(ServeFormatter(component_name, component_id))
         stream_handler.addFilter(log_to_stderr_filter)
         stream_handler.addFilter(ServeContextFilter())
         logger.addHandler(stream_handler)
+
+    # Skip setting up file handler and stdout/stderr redirect if `stream_handler_only`
+    # is set to True. Logger such as default serve logger can be configured outside the
+    # context of a Serve component, we don't want those logs to redirect into serve's
+    # logger and log files.
+    if stream_handler_only:
+        return
 
     if logging_config.logs_dir:
         logs_dir = logging_config.logs_dir
@@ -343,13 +351,26 @@ def configure_component_logger(
     # Remove unwanted attributes from the log record.
     file_handler.addFilter(ServeLogAttributeRemovalFilter())
 
-    # Redirect print, stdout, and stderr to Serve logger.
-    if not RAY_SERVE_LOG_TO_STDERR:
+    # Redirect print, stdout, and stderr to Serve logger, only when it's on the replica.
+    if not RAY_SERVE_LOG_TO_STDERR and component_type == ServeComponentType.REPLICA:
         builtins.print = redirected_print
         sys.stdout = StreamToLogger(logger, logging.INFO, sys.stdout)
         sys.stderr = StreamToLogger(logger, logging.INFO, sys.stderr)
 
     logger.addHandler(file_handler)
+
+
+def configure_default_serve_logger():
+    """Helper function to configure the default Serve logger that's used outside of
+    individual Serve components."""
+    configure_component_logger(
+        component_name="serve",
+        component_id=str(os.getpid()),
+        logging_config=LoggingConfig(),
+        max_bytes=LOGGING_ROTATE_BYTES,
+        backup_count=LOGGING_ROTATE_BACKUP_COUNT,
+        stream_handler_only=True,
+    )
 
 
 def configure_component_memory_profiler(
@@ -466,7 +487,15 @@ def configure_component_cpu_profiler(
 
 
 def get_serve_logs_dir() -> str:
-    """Get the directory that stores Serve log files."""
+    """Get the directory that stores Serve log files.
+
+    If `ray._private.worker._global_node` is None (running outside the context of Ray),
+    then the current working directory with subdirectory of serve is used as the logs
+    directory. Otherwise, the logs directory is determined by the global node's logs
+    directory path.
+    """
+    if ray._private.worker._global_node is None:
+        return os.path.join(os.getcwd(), "serve")
 
     return os.path.join(ray._private.worker._global_node.get_logs_dir_path(), "serve")
 

@@ -1,77 +1,24 @@
-from typing import Callable
-
 import pytest
 
-from ray.serve._private.common import DeploymentID, EndpointInfo, RequestProtocol
+from ray.serve._private.common import DeploymentID, EndpointInfo
 from ray.serve._private.proxy_router import (
-    EndpointRouter,
-    LongestPrefixRouter,
+    NO_REPLICAS_MESSAGE,
+    NO_ROUTES_MESSAGE,
     ProxyRouter,
 )
-
-
-def get_handle_function(router: ProxyRouter) -> Callable:
-    if isinstance(router, LongestPrefixRouter):
-        return router.match_route
-    else:
-        return router.get_handle_for_endpoint
+from ray.serve._private.test_utils import MockDeploymentHandle
 
 
 @pytest.fixture
-def mock_longest_prefix_router() -> LongestPrefixRouter:
-    class MockHandle:
-        def __init__(self, name: str):
-            self._name = name
-            self._protocol = RequestProtocol.UNDEFINED
+def mock_router():
+    def mock_get_handle(endpoint, info):
+        return MockDeploymentHandle(endpoint.name, endpoint.app_name)
 
-        def options(self, *args, **kwargs):
-            return self
-
-        def __eq__(self, other_name: str):
-            return self._name == other_name
-
-        def _set_request_protocol(self, protocol: RequestProtocol):
-            self._protocol = protocol
-
-        def _get_or_create_router(self):
-            pass
-
-    def mock_get_handle(name, *args, **kwargs):
-        return MockHandle(name)
-
-    yield LongestPrefixRouter(mock_get_handle, RequestProtocol.HTTP)
+    yield ProxyRouter(mock_get_handle)
 
 
-@pytest.fixture
-def mock_endpoint_router() -> EndpointRouter:
-    class MockHandle:
-        def __init__(self, name: str):
-            self._name = name
-            self._protocol = RequestProtocol.UNDEFINED
-
-        def options(self, *args, **kwargs):
-            return self
-
-        def __eq__(self, other_name: str):
-            return self._name == other_name
-
-        def _set_request_protocol(self, protocol: RequestProtocol):
-            self._protocol = protocol
-
-        def _get_or_create_router(self):
-            pass
-
-    def mock_get_handle(name, *args, **kwargs):
-        return MockHandle(name)
-
-    yield EndpointRouter(mock_get_handle, RequestProtocol.GRPC)
-
-
-@pytest.mark.parametrize(
-    "mocked_router", ["mock_longest_prefix_router", "mock_endpoint_router"]
-)
-def test_no_match(mocked_router, request):
-    router = request.getfixturevalue(mocked_router)
+def test_no_match(mock_router: ProxyRouter):
+    router = mock_router
     router.update_routes(
         {
             DeploymentID(name="endpoint", app_name="default"): EndpointInfo(
@@ -80,20 +27,14 @@ def test_no_match(mocked_router, request):
             DeploymentID(name="endpoint2", app_name="app2"): EndpointInfo(
                 route="/hello2"
             ),
-        }
+        },
     )
-    assert get_handle_function(router)("/nonexistent") is None
+    assert router.match_route("/nonexistent") is None
+    assert router.get_handle_for_endpoint("/nonexistent") is None
 
 
-@pytest.mark.parametrize(
-    "mocked_router, target_route",
-    [
-        ("mock_longest_prefix_router", "/endpoint"),
-        ("mock_endpoint_router", "default"),
-    ],
-)
-def test_default_route(mocked_router, target_route, request):
-    router = request.getfixturevalue(mocked_router)
+def test_default_route(mock_router: ProxyRouter):
+    router = mock_router
     router.update_routes(
         {
             DeploymentID(name="endpoint", app_name="default"): EndpointInfo(
@@ -102,37 +43,52 @@ def test_default_route(mocked_router, target_route, request):
             DeploymentID(name="endpoint2", app_name="app2"): EndpointInfo(
                 route="/endpoint2"
             ),
-        }
+        },
     )
 
-    assert get_handle_function(router)("/nonexistent") is None
+    # Route based matching
+    assert router.match_route("/nonexistent") is None
 
-    route, handle, app_is_cross_language = get_handle_function(router)(target_route)
-    assert all([route == "/endpoint", handle == "endpoint", not app_is_cross_language])
+    route, handle, app_is_cross_language = router.match_route("/endpoint")
+    assert route == "/endpoint"
+    assert handle == ("endpoint", "default")
+    assert not app_is_cross_language
+
+    # Endpoint based matching
+    assert router.get_handle_for_endpoint("/nonexistent") is None
+
+    route, handle, app_is_cross_language = router.get_handle_for_endpoint("default")
+    assert route == "/endpoint"
+    assert handle == ("endpoint", "default")
+    assert not app_is_cross_language
 
 
-def test_trailing_slash(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
+def test_trailing_slash(mock_router: ProxyRouter):
+    router = mock_router
     router.update_routes(
-        {DeploymentID(name="endpoint", app_name="default"): EndpointInfo(route="/test")}
+        {
+            DeploymentID(name="endpoint", app_name="default"): EndpointInfo(
+                route="/test"
+            )
+        },
     )
 
-    route, handle, _ = get_handle_function(router)("/test/")
-    assert route == "/test" and handle == "endpoint"
+    route, handle, _ = router.match_route("/test/")
+    assert route == "/test" and handle == ("endpoint", "default")
 
     router.update_routes(
         {
             DeploymentID(name="endpoint", app_name="default"): EndpointInfo(
                 route="/test/"
             )
-        }
+        },
     )
 
-    assert get_handle_function(router)("/test") is None
+    assert router.match_route("/test") is None
 
 
-def test_prefix_match(mock_longest_prefix_router):
-    router = mock_longest_prefix_router
+def test_prefix_match(mock_router):
+    router = mock_router
     router.update_routes(
         {
             DeploymentID(name="endpoint1", app_name="default"): EndpointInfo(
@@ -142,48 +98,44 @@ def test_prefix_match(mock_longest_prefix_router):
                 route="/test"
             ),
             DeploymentID(name="endpoint3", app_name="default"): EndpointInfo(route="/"),
-        }
+        },
     )
 
-    route, handle, _ = get_handle_function(router)("/test/test2/subpath")
-    assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _ = get_handle_function(router)("/test/test2/")
-    assert route == "/test/test2" and handle == "endpoint1"
-    route, handle, _ = get_handle_function(router)("/test/test2")
-    assert route == "/test/test2" and handle == "endpoint1"
+    route, handle, _ = router.match_route("/test/test2/subpath")
+    assert route == "/test/test2" and handle == ("endpoint1", "default")
+    route, handle, _ = router.match_route("/test/test2/")
+    assert route == "/test/test2" and handle == ("endpoint1", "default")
+    route, handle, _ = router.match_route("/test/test2")
+    assert route == "/test/test2" and handle == ("endpoint1", "default")
 
-    route, handle, _ = get_handle_function(router)("/test/subpath")
-    assert route == "/test" and handle == "endpoint2"
-    route, handle, _ = get_handle_function(router)("/test/")
-    assert route == "/test" and handle == "endpoint2"
-    route, handle, _ = get_handle_function(router)("/test")
-    assert route == "/test" and handle == "endpoint2"
+    route, handle, _ = router.match_route("/test/subpath")
+    assert route == "/test" and handle == ("endpoint2", "default")
+    route, handle, _ = router.match_route("/test/")
+    assert route == "/test" and handle == ("endpoint2", "default")
+    route, handle, _ = router.match_route("/test")
+    assert route == "/test" and handle == ("endpoint2", "default")
 
-    route, handle, _ = get_handle_function(router)("/test2")
-    assert route == "/" and handle == "endpoint3"
-    route, handle, _ = get_handle_function(router)("/")
-    assert route == "/" and handle == "endpoint3"
+    route, handle, _ = router.match_route("/test2")
+    assert route == "/" and handle == ("endpoint3", "default")
+    route, handle, _ = router.match_route("/")
+    assert route == "/" and handle == ("endpoint3", "default")
 
 
-@pytest.mark.parametrize(
-    "mocked_router, target_route1, target_route2",
-    [
-        ("mock_longest_prefix_router", "/endpoint", "/endpoint2"),
-        ("mock_endpoint_router", "app1_endpoint", "app2"),
-    ],
-)
-def test_update_routes(mocked_router, target_route1, target_route2, request):
-    router = request.getfixturevalue(mocked_router)
+def test_update_routes(mock_router):
+    router = mock_router
     router.update_routes(
-        {
-            DeploymentID(name="endpoint", app_name="app1"): EndpointInfo(
-                route="/endpoint"
-            )
-        }
+        {DeploymentID("endpoint", "app1"): EndpointInfo(route="/endpoint")},
     )
 
-    route, handle, app_is_cross_language = get_handle_function(router)(target_route1)
-    assert all([route == "/endpoint", handle == "endpoint", not app_is_cross_language])
+    route, handle, app_is_cross_language = router.match_route("/endpoint")
+    assert route == "/endpoint"
+    assert handle == ("endpoint", "app1")
+    assert not app_is_cross_language
+
+    route, handle, app_is_cross_language = router.get_handle_for_endpoint("app1")
+    assert route == "/endpoint"
+    assert handle == ("endpoint", "app1")
+    assert not app_is_cross_language
 
     router.update_routes(
         {
@@ -195,13 +147,78 @@ def test_update_routes(mocked_router, target_route1, target_route2, request):
                 route="/endpoint3",
                 app_is_cross_language=True,
             ),
-        }
+        },
     )
 
-    assert get_handle_function(router)(target_route1) is None
+    assert router.match_route("/endpoint") is None
+    assert router.match_route("app1") is None
 
-    route, handle, app_is_cross_language = get_handle_function(router)(target_route2)
-    assert all([route == "/endpoint2", handle == "endpoint2", app_is_cross_language])
+    route, handle, app_is_cross_language = router.match_route("/endpoint2")
+    assert route == "/endpoint2"
+    assert handle == ("endpoint2", "app2")
+    assert app_is_cross_language
+
+    route, handle, app_is_cross_language = router.get_handle_for_endpoint("app2")
+    assert route == "/endpoint2"
+    assert handle == ("endpoint2", "app2")
+    assert app_is_cross_language
+
+
+class TestReadyForTraffic:
+    @pytest.mark.parametrize("is_head", [False, True])
+    def test_route_table_not_populated(self, mock_router, is_head: bool):
+        """Proxy router should NOT be ready for traffic if:
+        - it has not received route table from controller
+        """
+
+        ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=is_head)
+        assert not ready_for_traffic
+        assert msg == NO_ROUTES_MESSAGE
+
+    def test_head_route_table_populated_no_replicas(self, mock_router):
+        """Proxy router should be ready for traffic if:
+        - it has received route table from controller
+        - it hasn't received any replicas yet
+        - it lives on head node
+        """
+
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_router.handles[d_id].set_running_replicas_populated(False)
+
+        ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=True)
+        assert ready_for_traffic
+        assert not msg
+
+    def test_worker_route_table_populated_no_replicas(self, mock_router):
+        """Proxy router should NOT be ready for traffic if:
+        - it has received route table from controller
+        - it hasn't received any replicas yet
+        - it lives on a worker node
+        """
+
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_router.handles[d_id].set_running_replicas_populated(False)
+
+        ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=False)
+        assert not ready_for_traffic
+        assert msg == NO_REPLICAS_MESSAGE
+
+    @pytest.mark.parametrize("is_head", [False, True])
+    def test_route_table_populated_with_replicas(self, mock_router, is_head: bool):
+        """Proxy router should be ready for traffic if:
+        - it has received route table from controller
+        - it has received replicas from controller
+        """
+
+        d_id = DeploymentID(name="A", app_name="B")
+        mock_router.update_routes({d_id: EndpointInfo(route="/")})
+        mock_router.handles[d_id].set_running_replicas_populated(True)
+
+        ready_for_traffic, msg = mock_router.ready_for_traffic(is_head=is_head)
+        assert ready_for_traffic
+        assert not msg
 
 
 if __name__ == "__main__":

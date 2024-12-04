@@ -1,4 +1,4 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
@@ -74,16 +74,16 @@ class WriteObservationsToEpisodes(ConnectorV2):
 
         # Call the connector (and thereby write the transformed observations back
         # into the episodes).
-        output_data = connector(
+        output_batch = connector(
             rl_module=None,  # This particular connector works without an RLModule.
-            data=batch,
+            batch=batch,
             episodes=episodes,
             explore=True,
             shared_data={},
         )
 
         # The connector does NOT change the data batch being passed through.
-        check(output_data, batch)
+        check(output_batch, batch)
 
         # However, the connector has overwritten the last observations in the episodes.
         check(episodes[0].get_observations(-1), [0.0, 1.0])
@@ -95,13 +95,13 @@ class WriteObservationsToEpisodes(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Optional[Dict[str, Any]],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        observations = data.get(Columns.OBS)
+        observations = batch.get(Columns.OBS)
 
         if observations is None:
             raise ValueError(
@@ -127,5 +127,5 @@ class WriteObservationsToEpisodes(ConnectorV2):
             # Change the observation space of the sa_episode.
             sa_episode.observation_space = self.observation_space
 
-        # Return the unchanged batch data.
-        return data
+        # Return the unchanged `batch`.
+        return batch

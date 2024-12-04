@@ -22,6 +22,12 @@ For a quick demo, you can run Prometheus locally on your machine. Follow the qui
 
 ### Quickstart: Running Prometheus locally
 
+```{admonition} Note
+:class: note
+If you need to change the root temporary directory by using "--temp-dir" in your Ray
+cluster setup, follow these [manual steps](#optional-manual-running-prometheus-locally) to set up Prometheus locally.
+```
+
 Run the following command to download and start Prometheus locally with a configuration that scrapes metrics from a local Ray Cluster.
 
 ```bash
@@ -61,7 +67,17 @@ ray_dashboard_api_requests_count_requests_total
 
 You can then see the number of requests to the Ray Dashboard API over time.
 
-To stop Prometheus, run `kill <PID>` where `<PID>` is the PID of the Prometheus process that was printed out when you ran the command. To find the PID, you can also run `ps aux | grep prometheus`.
+To stop Prometheus, run the following commands:
+
+```sh
+# case 1: Ray > 2.40
+ray metrics shutdown-prometheus
+
+# case 2: Otherwise
+# Run `ps aux | grep prometheus` to find the PID of the Prometheus process. Then, kill the process.
+kill <PID>
+```
+
 
 ### [Optional] Manual: Running Prometheus locally
 
@@ -76,7 +92,7 @@ tar xvfz prometheus-*.tar.gz
 cd prometheus-*
 ```
 
-Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`.
+Ray provides a Prometheus config that works out of the box. After running Ray, you can find the config at `/tmp/ray/session_latest/metrics/prometheus/prometheus.yml`. If you specify the `--temp-dir={your_temp_path}` when starting the Ray cluster, the config file is at `{your_temp_path}/session_latest/metrics/prometheus/prometheus.yml`
 
 ```yaml
 global:
@@ -88,13 +104,17 @@ scrape_configs:
 - job_name: 'ray'
   file_sd_configs:
   - files:
-    - '/tmp/ray/prom_metrics_service_discovery.json'
+    - '/tmp/ray/prom_metrics_service_discovery.json' # or '${your_temp_path}/prom_metrics_service_discovery.json' if --temp-dir is specified
 ```
 
 Next, start Prometheus:
 
 ```shell
+# With default settings
 ./prometheus --config.file=/tmp/ray/session_latest/metrics/prometheus/prometheus.yml
+
+# With specified --temp-dir
+./prometheus --config.file={your_temp_path}/session_latest/metrics/prometheus/prometheus.yml
 ```
 ```{admonition} Note
 :class: note
@@ -233,7 +253,7 @@ Here are some instructions for each of the paths:
 
 (grafana)=
 ### Simplest: Setting up Grafana with Ray-provided configurations
-Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics. 
+Grafana is a tool that supports advanced visualizations of Prometheus metrics and allows you to create custom dashboards with your favorite metrics.
 
 ::::{tab-set}
 
@@ -241,7 +261,7 @@ Grafana is a tool that supports advanced visualizations of Prometheus metrics an
 
 ```{admonition} Note
 :class: note
-The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems. 
+The instructions below describe one way of starting a Grafana server on a macOS machine. Refer to the [Grafana documentation](https://grafana.com/docs/grafana/latest/setup-grafana/start-restart-grafana/#start-the-grafana-server) for how to start Grafana servers in different systems.
 
 For KubeRay users, follow [these instructions](kuberay-prometheus-grafana) to set up Grafana.
 ```

@@ -19,6 +19,13 @@
 namespace ray {
 namespace gcs {
 
+namespace {
+bool IsIntentionalWorkerFailure(rpc::WorkerExitType exit_type) {
+  return exit_type == rpc::WorkerExitType::INTENDED_USER_EXIT ||
+         exit_type == rpc::WorkerExitType::INTENDED_SYSTEM_EXIT;
+}
+}  // namespace
+
 void GcsWorkerManager::HandleReportWorkerFailure(
     rpc::ReportWorkerFailureRequest request,
     rpc::ReportWorkerFailureReply *reply,
@@ -46,10 +53,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                          rpc::WorkerExitType_Name(request.worker_failure().exit_type()),
                          ", exit_detail = ",
                          request.worker_failure().exit_detail());
-        if (request.worker_failure().exit_type() ==
-                rpc::WorkerExitType::INTENDED_USER_EXIT ||
-            request.worker_failure().exit_type() ==
-                rpc::WorkerExitType::INTENDED_SYSTEM_EXIT) {
+        if (IsIntentionalWorkerFailure(request.worker_failure().exit_type())) {
           RAY_LOG(DEBUG) << message;
         } else {
           RAY_LOG(WARNING)
@@ -81,7 +85,9 @@ void GcsWorkerManager::HandleReportWorkerFailure(
                            << ", node id = " << node_id
                            << ", address = " << worker_address.ip_address();
           } else {
-            stats::UnintentionalWorkerFailures.Record(1);
+            if (!IsIntentionalWorkerFailure(worker_failure_data->exit_type())) {
+              stats::UnintentionalWorkerFailures.Record(1);
+            }
             // Only publish worker_id and raylet_id in address as they are the only fields
             // used by sub clients.
             rpc::WorkerDeltaData worker_failure;
@@ -90,7 +96,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
             worker_failure.set_raylet_id(
                 worker_failure_data->worker_address().raylet_id());
             RAY_CHECK_OK(
-                gcs_publisher_->PublishWorkerFailure(worker_id, worker_failure, nullptr));
+                gcs_publisher_.PublishWorkerFailure(worker_id, worker_failure, nullptr));
           }
           GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
         };
@@ -99,7 +105,7 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         // receives the worker registration information first and then the worker failure
         // message, so we delete the get operation. Related issues:
         // https://github.com/ray-project/ray/pull/11599
-        Status status = gcs_table_storage_->WorkerTable().Put(
+        Status status = gcs_table_storage_.WorkerTable().Put(
             worker_id, *worker_failure_data, on_done);
         if (!status.ok()) {
           on_done(status);
@@ -150,27 +156,49 @@ void GcsWorkerManager::HandleGetAllWorkerInfo(
     rpc::GetAllWorkerInfoRequest request,
     rpc::GetAllWorkerInfoReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  auto limit = request.has_limit() ? request.limit() : -1;
+  int64_t limit =
+      request.has_limit() ? request.limit() : std::numeric_limits<int64_t>::max();
 
   RAY_LOG(DEBUG) << "Getting all worker info.";
-  auto on_done = [reply, send_reply_callback, limit](
-                     const absl::flat_hash_map<WorkerID, WorkerTableData> &result) {
-    auto total_workers = result.size();
+
+  bool filter_exist_paused_threads = request.filters().exist_paused_threads();
+  bool filter_is_alive = request.filters().is_alive();
+
+  auto filter_fn = [filter_exist_paused_threads,
+                    filter_is_alive](const WorkerTableData &worker_data) {
+    if (filter_exist_paused_threads && worker_data.num_paused_threads() == 0) {
+      return false;
+    }
+    if (filter_is_alive && !worker_data.is_alive()) {
+      return false;
+    }
+    return true;
+  };
+  auto on_done = [reply, send_reply_callback, limit, filter_fn](
+                     absl::flat_hash_map<WorkerID, WorkerTableData> &&result) {
+    int64_t total_workers = result.size();
     reply->set_total(total_workers);
 
-    auto count = 0;
-    for (auto &data : result) {
-      if (limit != -1 && count >= limit) {
+    int64_t num_added = 0;
+    int64_t num_filtered = 0;
+
+    for (auto &pair : result) {
+      if (num_added >= limit) {
         break;
       }
-      count += 1;
-
-      reply->add_worker_table_data()->CopyFrom(data.second);
+      if (filter_fn(pair.second)) {
+        reply->add_worker_table_data()->Swap(&pair.second);
+        num_added += 1;
+      } else {
+        num_filtered += 1;
+      }
     }
+    reply->set_num_filtered(num_filtered);
+
     RAY_LOG(DEBUG) << "Finished getting all worker info.";
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
   };
-  Status status = gcs_table_storage_->WorkerTable().GetAll(on_done);
+  Status status = gcs_table_storage_.WorkerTable().GetAll(on_done);
   if (!status.ok()) {
     on_done(absl::flat_hash_map<WorkerID, WorkerTableData>());
   }
@@ -180,7 +208,7 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
                                            rpc::AddWorkerInfoReply *reply,
                                            rpc::SendReplyCallback send_reply_callback) {
   auto worker_data = std::make_shared<WorkerTableData>();
-  worker_data->CopyFrom(request.worker_data());
+  worker_data->Swap(request.mutable_worker_data());
   auto worker_id = WorkerID::FromBinary(worker_data->worker_address().worker_id());
   RAY_LOG(DEBUG) << "Adding worker " << worker_id;
 
@@ -194,7 +222,7 @@ void GcsWorkerManager::HandleAddWorkerInfo(rpc::AddWorkerInfoRequest request,
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Put(worker_id, *worker_data, on_done);
+  Status status = gcs_table_storage_.WorkerTable().Put(worker_id, *worker_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -231,7 +259,7 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
           auto worker_data = std::make_shared<WorkerTableData>();
           worker_data->CopyFrom(*result);
           worker_data->set_debugger_port(debugger_port);
-          Status status = gcs_table_storage_->WorkerTable().Put(
+          Status status = gcs_table_storage_.WorkerTable().Put(
               worker_id, *worker_data, on_worker_update_done);
           if (!status.ok()) {
             GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -239,7 +267,7 @@ void GcsWorkerManager::HandleUpdateWorkerDebuggerPort(
         }
       };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  Status status = gcs_table_storage_.WorkerTable().Get(worker_id, on_worker_get_done);
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
@@ -287,7 +315,7 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
           worker_data->has_num_paused_threads() ? worker_data->num_paused_threads() : 0;
       worker_data->set_num_paused_threads(current_num_paused_threads +
                                           num_paused_threads_delta);
-      Status status = gcs_table_storage_->WorkerTable().Put(
+      Status status = gcs_table_storage_.WorkerTable().Put(
           worker_id, *worker_data, on_worker_update_done);
       if (!status.ok()) {
         GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
@@ -295,7 +323,7 @@ void GcsWorkerManager::HandleUpdateWorkerNumPausedThreads(
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_worker_get_done);
+  Status status = gcs_table_storage_.WorkerTable().Get(worker_id, on_worker_get_done);
   if (!status.ok()) {
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   }
@@ -321,7 +349,7 @@ void GcsWorkerManager::GetWorkerInfo(
     }
   };
 
-  Status status = gcs_table_storage_->WorkerTable().Get(worker_id, on_done);
+  Status status = gcs_table_storage_.WorkerTable().Get(worker_id, on_done);
   if (!status.ok()) {
     on_done(status, std::nullopt);
   }

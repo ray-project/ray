@@ -83,15 +83,19 @@ Done performing action inference through 10 Episodes
 """
 import os
 
-from ray.rllib.connectors.env_to_module import (
-    EnvToModulePipeline,
-    AddObservationsFromEpisodesToBatch,
-    AddStatesFromEpisodesToBatch,
-    BatchIndividualItems,
-    NumpyToTensor,
+from ray.rllib.connectors.env_to_module import EnvToModulePipeline
+from ray.rllib.connectors.module_to_env import ModuleToEnvPipeline
+from ray.rllib.core import (
+    COMPONENT_ENV_RUNNER,
+    COMPONENT_ENV_TO_MODULE_CONNECTOR,
+    COMPONENT_MODULE_TO_ENV_CONNECTOR,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_LEARNER,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
 )
-from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
@@ -118,13 +122,13 @@ register_env("stateless-cart", _env_creator)
 
 parser = add_rllib_example_script_args(default_reward=200.0)
 parser.set_defaults(
+    # Script only runs on new API stack.
+    enable_new_api_stack=True,
     # Make sure that - by default - we produce checkpoints during training.
     checkpoint_freq=1,
     checkpoint_at_end=True,
     # Use StatelessCartPole by default.
     env="stateless-cart",
-    # Script only runs on new API stack.
-    enable_new_api_stack=True,
 )
 parser.add_argument(
     "--explore-during-inference",
@@ -143,68 +147,69 @@ parser.add_argument(
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .training(
-            num_sgd_iter=6,
+            num_epochs=6,
             lr=0.0003,
             vf_loss_coeff=0.01,
         )
         # Add an LSTM setup to the default RLModule used.
-        .rl_module(model_config_dict={"use_lstm": True})
+        .rl_module(model_config=DefaultModelConfig(use_lstm=True))
     )
 
     print("Training LSTM-policy until desired reward/timesteps/iterations. ...")
     results = run_rllib_example_script_experiment(base_config, args)
 
-    print("Training completed. Creating an env-loop for inference ...")
-
-    print("Env ...")
-    env = _env_creator(base_config.env_config)
-
-    # We build the env-to-module pipeline here manually, but feel also free to build it
-    # through the even easier:
-    # `env_to_module = base_config.build_env_to_module_connector(env=env)`, which will
-    # automatically add all default pieces necessary (for example the
-    # `AddStatesFromEpisodesToBatch` component b/c we are using a stateful RLModule
-    # here).
-    print("Env-to-module ConnectorV2 ...")
-    env_to_module = EnvToModulePipeline(
-        input_observation_space=env.observation_space,
-        input_action_space=env.action_space,
-        connectors=[
-            AddObservationsFromEpisodesToBatch(),
-            AddStatesFromEpisodesToBatch(),
-            BatchIndividualItems(multi_agent=args.num_agents > 0),
-            NumpyToTensor(),
-        ],
-    )
-
-    # Create the RLModule.
     # Get the last checkpoint from the above training run.
-    best_result = results.get_best_result(
-        metric=f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}", mode="max"
+    metric_key = metric = f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+    best_result = results.get_best_result(metric=metric_key, mode="max")
+
+    print(
+        "Training completed (R="
+        f"{best_result.metrics[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]}). "
+        "Creating an env-loop for inference ..."
     )
-    # Create new Algorithm and restore its state from the last checkpoint.
+
+    print("Env ...", end="")
+    env = _env_creator(base_config.env_config)
+    print(" ok")
+
+    # Create the env-to-module pipeline from the checkpoint.
+    print("Restore env-to-module connector from checkpoint ...", end="")
+    env_to_module = EnvToModulePipeline.from_checkpoint(
+        os.path.join(
+            best_result.checkpoint.path,
+            COMPONENT_ENV_RUNNER,
+            COMPONENT_ENV_TO_MODULE_CONNECTOR,
+        )
+    )
+    print(" ok")
+
+    print("Restore RLModule from checkpoint ...", end="")
+    # Create RLModule from a checkpoint.
     rl_module = RLModule.from_checkpoint(
         os.path.join(
             best_result.checkpoint.path,
-            "learner_group",
-            "learner",
-            "rl_module",
+            COMPONENT_LEARNER_GROUP,
+            COMPONENT_LEARNER,
+            COMPONENT_RL_MODULE,
             DEFAULT_MODULE_ID,
         )
     )
-    print("RLModule restored ...")
+    print(" ok")
 
     # For the module-to-env pipeline, we will use the convenient config utility.
-    print("Module-to-env ConnectorV2 ...")
-    module_to_env = base_config.build_module_to_env_connector(env=env)
+    print("Restore module-to-env connector from checkpoint ...", end="")
+    module_to_env = ModuleToEnvPipeline.from_checkpoint(
+        os.path.join(
+            best_result.checkpoint.path,
+            COMPONENT_ENV_RUNNER,
+            COMPONENT_MODULE_TO_ENV_CONNECTOR,
+        )
+    )
+    print(" ok")
 
     # Now our setup is complete:
     # [gym.Env] -> env-to-module -> [RLModule] -> module-to-env -> [gym.Env] ... repeat
@@ -233,7 +238,7 @@ if __name__ == "__main__":
             rl_module_out = rl_module.forward_exploration(input_dict)
 
         to_env = module_to_env(
-            data=rl_module_out,
+            batch=rl_module_out,
             episodes=[episode],  # ConnectorV2 pipelines operate on lists of episodes.
             rl_module=rl_module,
             explore=args.explore_during_inference,
@@ -244,6 +249,7 @@ if __name__ == "__main__":
         # is not vectorized here, so we need to use `action[0]`.
         action = to_env.pop(Columns.ACTIONS)[0]
         obs, reward, terminated, truncated, _ = env.step(action)
+        # Keep our `SingleAgentEpisode` instance updated at all times.
         episode.add_env_step(
             obs,
             action,
