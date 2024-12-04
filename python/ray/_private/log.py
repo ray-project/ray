@@ -1,5 +1,4 @@
 import logging
-from logging.config import dictConfig
 import threading
 from typing import Union
 
@@ -74,44 +73,19 @@ def generate_logging_config():
             return
         logger_initialized = True
 
-        formatters = {
-            "plain": {
-                "format": (
-                    "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
-                ),
-            },
-        }
-
-        handlers = {
-            "default": {
-                "()": PlainRayHandler,
-                "formatter": "plain",
-            }
-        }
-
-        loggers = {
-            # Default ray logger; any log message that gets propagated here will be
-            # logged to the console. Disable propagation, as many users will use
-            # basicConfig to set up a default handler. If so, logs will be
-            # printed twice unless we prevent propagation here.
-            "ray": {
-                "level": "INFO",
-                "handlers": ["default"],
-                "propagate": False,
-            },
-            # Special handling for ray.rllib: only warning-level messages passed through
-            # See https://github.com/ray-project/ray/pull/31858 for related PR
-            "ray.rllib": {
-                "level": "WARN",
-            },
-        }
-
-        dictConfig(
-            {
-                "version": 1,
-                "formatters": formatters,
-                "handlers": handlers,
-                "loggers": loggers,
-                "disable_existing_loggers": False,
-            }
+        plain_formatter = logging.Formatter(
+            "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
         )
+
+        default_handler = PlainRayHandler()
+        default_handler.setFormatter(plain_formatter)
+
+        ray_logger = logging.getLogger("ray")
+        ray_logger.setLevel(logging.INFO)
+        ray_logger.addHandler(default_handler)
+        ray_logger.propagate = False
+
+        # Special handling for ray.rllib: only warning-level messages passed through
+        # See https://github.com/ray-project/ray/pull/31858 for related PR
+        rllib_logger = logging.getLogger("ray.rllib")
+        rllib_logger.setLevel(logging.WARN)
