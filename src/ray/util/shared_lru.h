@@ -27,10 +27,8 @@
 // // Check and consume `val`.
 //
 // TODO(hjiang):
-// 1. Write a wrapper around KeyHash and KeyEq, which takes std::reference_wrapper<Key>,
-// so we could store keys only in std::list, and reference in absl::flat_hash_map.
-// 2. Add a `GetOrCreate` interface, which takes factory function to creation value.
-// 3. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
+// 1. Add a `GetOrCreate` interface, which takes factory function to creation value.
+// 2. For thread-safe cache, add a sharded container wrapper to reduce lock contention.
 
 #pragma once
 
@@ -43,6 +41,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "src/ray/util/logging.h"
+#include "src/ray/util/map_utils.h"
 
 namespace ray::utils::container {
 
@@ -74,7 +73,7 @@ class SharedLruCache final {
 
     lru_list_.emplace_front(key);
     Entry new_entry{std::move(value), lru_list_.begin()};
-    cache_[std::move(key)] = std::move(new_entry);
+    cache_[std::cref(lru_list_.front())] = std::move(new_entry);
 
     if (max_entries_ > 0 && lru_list_.size() > max_entries_) {
       const auto &stale_key = lru_list_.back();
@@ -129,7 +128,14 @@ class SharedLruCache final {
     typename std::list<Key>::iterator lru_iterator;
   };
 
-  using EntryMap = absl::flat_hash_map<Key, Entry>;
+  // TODO(hjiang): These two internal type alias has been consolidated into stable header
+  // in later versions, update after we bump up abseil.
+  using KeyHash = absl::container_internal::hash_default_hash<Key>;
+  using KeyEqual = absl::container_internal::hash_default_eq<Key>;
+
+  using KeyConstRef = std::reference_wrapper<const Key>;
+  using EntryMap =
+      absl::flat_hash_map<KeyConstRef, Entry, RefHash<KeyHash>, RefEq<KeyEqual>>;
 
   // The maximum number of entries in the cache. A value of 0 means there is no
   // limit on entry count.
