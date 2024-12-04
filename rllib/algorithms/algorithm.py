@@ -2709,7 +2709,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         state = {}
 
         # Get (local) EnvRunner state (w/o RLModule).
-        if self._check_component(COMPONENT_ENV_RUNNER, components, not_components):
+        if self.env_runner_group and self._check_component(
+            COMPONENT_ENV_RUNNER, components, not_components
+        ):
             state[
                 COMPONENT_ENV_RUNNER
             ] = self.env_runner_group.local_env_runner.get_state(
@@ -2797,9 +2799,12 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
     @override(Checkpointable)
     def get_checkpointable_components(self) -> List[Tuple[str, "Checkpointable"]]:
         components = [
-            (COMPONENT_ENV_RUNNER, self.env_runner_group.local_env_runner),
             (COMPONENT_LEARNER_GROUP, self.learner_group),
         ]
+        if not self.config.is_offline:
+            components.append(
+                (COMPONENT_ENV_RUNNER, self.env_runner_group.local_env_runner),
+            )
         if self.eval_env_runner_group:
             components.append(
                 (
