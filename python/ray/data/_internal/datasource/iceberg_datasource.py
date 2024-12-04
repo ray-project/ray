@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 
 def _get_read_task(
     tasks: Iterable["FileScanTask"],
-    table_io: FileIO,
-    table_metadata: TableMetadata,
-    row_filter: BooleanExpression,
+    table_io: "FileIO",
+    table_metadata: "TableMetadata",
+    row_filter: "BooleanExpression",
     case_sensitive: bool,
     limit: Optional[int],
     schema: "Schema",
@@ -103,7 +103,7 @@ class IcebergDatasource(Datasource):
 
         self._plan_files = None
 
-    def _get_table_from_catalog(self) -> Table:
+    def _get_table_from_catalog(self) -> "Table":
         catalog = self._get_catalog()
         return catalog.load_table(self.table_identifier)
 
