@@ -290,29 +290,14 @@ py_test(
 #     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
 #     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 # )
-
-#@OldAPIStack
+# Pendulum
 py_test(
-    name = "learning_tests_cartpole_separate_losses_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/appo/cartpole-appo-separate-losses.py"
-    ],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
+    name = "learning_tests_pendulum_appo",
+    main = "tuned_examples/appo/pendulum_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "torch_only"],
     size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
-    args = ["--dir=tuned_examples/appo"]
+    srcs = ["tuned_examples/appo/pendulum_appo.py"],
+    args = ["--as-test", "--num-learners=1", "--num-cpus=6", "--num-env-runners=4"]
 )
 
 #@OldAPIStack
