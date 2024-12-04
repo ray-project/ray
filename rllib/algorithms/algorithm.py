@@ -669,18 +669,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
         # If an input path is available and we are on the new API stack generate
         # an `OfflineData` instance.
-        if (
-            self.config.input_
-            and (
-                isinstance(self.config.input_, str)
-                or (
-                    isinstance(self.config.input_, list)
-                    and isinstance(self.config.input_[0], str)
-                )
-            )
-            and self.config.input_ != "sampler"
-            and self.config.enable_rl_module_and_learner
-        ):
+        if self.config.is_offline:
             from ray.rllib.offline.offline_data import OfflineData
 
             self.offline_data = OfflineData(self.config)
