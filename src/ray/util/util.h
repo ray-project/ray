@@ -148,10 +148,10 @@ inline int64_t current_sys_time_us() {
 }
 
 inline std::string GenerateUUIDV4() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(0, 15);
-  static std::uniform_int_distribution<> dis2(8, 11);
+  thread_local std::random_device rd;
+  thread_local std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, 15);
+  std::uniform_int_distribution<> dis2(8, 11);
 
   std::stringstream ss;
   int i;

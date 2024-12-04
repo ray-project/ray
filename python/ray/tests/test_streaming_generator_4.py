@@ -3,6 +3,8 @@ import numpy as np
 import sys
 import time
 import gc
+import os
+import signal
 import random
 import asyncio
 from typing import Optional
@@ -34,6 +36,40 @@ def assert_no_leak():
     assert core_worker.get_memory_store_size() == 0
 
 
+@pytest.mark.skipif(
+    sys.platform == "win32", reason="SIGKILL is not available on Windows"
+)
+def test_caller_death(monkeypatch, shutdown_only):
+    """
+    Test the case where caller of a streaming generator actor task dies
+    while the streaming generator task is executing. The streaming
+    generator task should still finish and won't block other actor tasks.
+    This means that `ReportGeneratorItemReturns` RPC should fail and it shouldn't
+    be retried indefinitely.
+    """
+    monkeypatch.setenv("RAY_core_worker_rpc_server_reconnect_timeout_s", "1")
+    ray.init()
+
+    @ray.remote
+    class Callee:
+        def gen(self, caller_pid):
+            os.kill(caller_pid, signal.SIGKILL)
+            yield [1] * 1024 * 1024
+
+        def ping(self):
+            pass
+
+    @ray.remote
+    def caller(callee):
+        ray.get(callee.gen.remote(os.getpid()))
+
+    callee = Callee.remote()
+    o = caller.remote(callee)
+    ray.wait([o])
+    # Make sure gen will finish and ping can run.
+    ray.get(callee.ping.remote())
+
+
 @pytest.mark.parametrize("backpressure", [False, True])
 @pytest.mark.parametrize("delay_latency", [0.1, 1])
 @pytest.mark.parametrize("threshold", [1, 3])
@@ -53,6 +89,10 @@ def test_ray_datasetlike_mini_stress_test(
         m.setenv(
             "RAY_testing_asio_delay_us",
             "CoreWorkerService.grpc_server.ReportGeneratorItemReturns=10000:1000000",
+        )
+        m.setenv(
+            "RAY_testing_rpc_failure",
+            "CoreWorkerService.grpc_client.ReportGeneratorItemReturns=5",
         )
         cluster = ray_start_cluster
         cluster.add_node(
@@ -261,8 +301,6 @@ def test_cancel(shutdown_only, use_asyncio):
 
 
 if __name__ == "__main__":
-    import os
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:
