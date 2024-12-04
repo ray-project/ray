@@ -137,9 +137,9 @@ click the dropdowns below:
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **High-throughput Architectures**                                                                                                                                          |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **Model-based RL**                                                                                                                                                         |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
