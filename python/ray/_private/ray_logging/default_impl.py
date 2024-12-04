@@ -1,15 +1,15 @@
-def get_dict_config_provider():
-    from ray._private.ray_logging.logging_config import DefaultDictConfigProvider
+def get_logging_configurator():
+    from ray._private.ray_logging.logging_config import DefaultLoggingConfigurator
 
-    return DefaultDictConfigProvider()
+    return DefaultLoggingConfigurator()
 
 
 # Anyscale overrides
 
 
-def get_dict_config_provider():  # noqa: F811
+def get_logging_configurator():  # noqa: F811
     from ray.anyscale._private.ray_logging.logging_config import (
-        AnyscaleDictConfigProvider,
+        AnyscaleLoggingConfigurator,
     )
 
-    return AnyscaleDictConfigProvider()
+    return AnyscaleLoggingConfigurator()

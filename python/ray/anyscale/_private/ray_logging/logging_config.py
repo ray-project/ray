@@ -1,3 +1,4 @@
+import logging
 from typing import Set
 
 import ray._private.ray_logging.logging_config as logging_config
@@ -5,60 +6,40 @@ from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter
 
 
-class AnyscaleDictConfigProvider(logging_config.DictConfigProvider):
+class AnyscaleLoggingConfigurator(logging_config.LoggingConfigurator):
     def __init__(self):
-        self._default_dict_config_provider = logging_config.DefaultDictConfigProvider()
-        self._dict_configs = {
-            "JSON": lambda log_level: {
-                "version": 1,
-                "disable_existing_loggers": False,
-                "formatters": {
-                    "json": {
-                        "()": (
-                            f"{JSONFormatter.__module__}."
-                            f"{JSONFormatter.__qualname__}"
-                        ),
-                    },
-                },
-                "filters": {
-                    "core_context": {
-                        "()": (
-                            f"{CoreContextFilter.__module__}."
-                            f"{CoreContextFilter.__qualname__}"
-                        ),
-                    },
-                },
-                "handlers": {
-                    "console": {
-                        "level": log_level,
-                        "class": "logging.StreamHandler",
-                        "formatter": "json",
-                        "filters": ["core_context"],
-                    },
-                },
-                "root": {
-                    "level": log_level,
-                    "handlers": ["console"],
-                },
-                "loggers": {
-                    "ray": {
-                        "level": log_level,
-                        "handlers": ["console"],
-                        "propagate": False,
-                    }
-                },
-            },
+        self._default_logging_configurator = logging_config.DefaultLoggingConfigurator()
+        self._encoding_to_formatter = {
+            "JSON": JSONFormatter(),
         }
 
     def get_supported_encodings(self) -> Set[str]:
         supported_encodings = set()
-        supported_encodings.update(self._dict_configs.keys())
+        supported_encodings.update(self._encoding_to_formatter.keys())
         supported_encodings.update(
-            self._default_dict_config_provider.get_supported_encodings()
+            self._default_logging_configurator.get_supported_encodings()
         )
         return supported_encodings
 
-    def get_dict_config(self, encoding: str, log_level: str) -> dict:
-        if encoding in self._dict_configs:
-            return self._dict_configs[encoding](log_level)
-        return self._default_dict_config_provider.get_dict_config(encoding, log_level)
+    def configure_logging(self, encoding: str, log_level: str):
+        if encoding in self._encoding_to_formatter:
+            formatter = self._encoding_to_formatter[encoding]
+            core_context_filter = CoreContextFilter()
+            handler = logging.StreamHandler()
+            handler.setLevel(log_level)
+            handler.setFormatter(formatter)
+            handler.addFilter(core_context_filter)
+
+            root_logger = logging.getLogger()
+            root_logger.setLevel(log_level)
+            root_logger.addHandler(handler)
+
+            ray_logger = logging.getLogger("ray")
+            ray_logger.setLevel(log_level)
+            # Remove all existing handlers added by `ray/__init__.py`.
+            for h in ray_logger.handlers[:]:
+                ray_logger.removeHandler(h)
+            ray_logger.addHandler(handler)
+            ray_logger.propagate = False
+        else:
+            self._default_logging_configurator.configure_logging(encoding, log_level)

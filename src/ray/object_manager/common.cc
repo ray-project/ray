@@ -15,6 +15,7 @@
 #include "ray/object_manager/common.h"
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 
 namespace ray {
