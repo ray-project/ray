@@ -97,6 +97,9 @@ class LanceDatasource(Datasource):
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
         return None
 
+    def add_column(self, parallelism: int) -> List["AddColumnTask"]:
+        raise NotImplementedError
+
 
 def _read_fragments_with_retry(
     fragment_ids,
