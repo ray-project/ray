@@ -685,7 +685,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         if isinstance(items_to_add, list):
             if len(items_to_add) != num_items:
                 raise ValueError(
-                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"Mismatch between `num_items` ({num_items}) and the length "
                     f"of the provided list ({len(items_to_add)}) in "
                     f"{ConnectorV2.__name__}.add_n_batch_items()!"
                 )
