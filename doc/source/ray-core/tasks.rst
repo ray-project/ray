@@ -302,7 +302,7 @@ Nested tasks don't inherit the task events settings from the parent task. You ne
 Invocation Stacktrace
 ---------------------
 
-Ray can optionally capture and display the stacktrace of where tasks are invoked from in your code. This can help with debugging and understanding the execution flow of your application.
+Ray can optionally capture and display the stacktrace of where your code invokes tasks. This feature can help with debugging and understanding the execution flow of your application.
 
 To enable invocation stacktrace capture, set the environment variable ``RAY_enable_invocation_stacktrace=true``. When enabled:
 
