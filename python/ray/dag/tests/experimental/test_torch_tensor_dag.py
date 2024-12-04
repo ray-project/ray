@@ -315,8 +315,8 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     with pytest.raises(
         ValueError,
         match=(
-            r"DAG inputs cannot be transferred "
-            "via NCCL because the driver cannot participate in the NCCL group"
+            r"DAG inputs cannot be transferred via NCCL because the driver cannot "
+            "participate in the NCCL group"
         ),
     ):
         dag.experimental_compile()
@@ -328,7 +328,10 @@ def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
 
     with pytest.raises(
         ValueError,
-        match=(r"Driver cannot participate in the NCCL group\."),
+        match=(
+            "Outputs cannot be transferred via NCCL because the driver cannot "
+            "participate in the NCCL group"
+        ),
     ):
         dag.experimental_compile()
 

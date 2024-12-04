@@ -19,6 +19,7 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.dag.sync_group import _SynchronousGroup
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 
@@ -81,6 +82,45 @@ class DAGNode(DAGNodeBase):
         self._type_hint: ChannelOutputType = ChannelOutputType()
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
+
+        # Whether this node requires NCCL read/write/collective operations.
+        # [TODO:andyub] Merge these into a single requires_nccl flag.
+        self._requires_nccl_read = False
+        self._requires_nccl_write = False
+        self._requires_nccl_collective = False
+
+    @property
+    def sync_group(self) -> Optional[_SynchronousGroup]:
+        """
+        Return the synchronous group that this node belongs to. If this node is not
+        in any synchronous group, return None.
+
+        Some operations (e.g., synchronous NCCL operations) in the DAG are synchronous.
+        During DAG compilation, when scheduling synchronous operations, all nodes in
+        the same synchronous group must be ready.
+        """
+        return None
+
+    @property
+    def requires_nccl_read(self) -> bool:
+        return self._requires_nccl_read
+
+    def set_requires_nccl_read(self, value: bool) -> None:
+        self._requires_nccl_read = value
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self._requires_nccl_write
+
+    def set_requires_nccl_write(self, value: bool) -> None:
+        self._requires_nccl_write = value
+
+    @property
+    def requires_nccl_collective(self) -> bool:
+        return self._requires_nccl_collective
+
+    def set_requires_nccl_collective(self, value: bool) -> None:
+        self._requires_nccl_collective = value
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
