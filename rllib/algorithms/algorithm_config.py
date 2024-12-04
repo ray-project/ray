@@ -1813,9 +1813,11 @@ class AlgorithmConfig(_Config):
                 fill up, causing spilling of objects to disk. This can cause any
                 asynchronous requests to become very slow, making your experiment run
                 slowly as well. You can inspect the object store during your experiment
-                via a call to `ray memory` on your head node, and by using the Ray
+                through a call to `ray memory` on your head node, and by using the Ray
                 dashboard. If you're seeing that the object store is filling up,
-                turn down the number of remote requests in flight or enable compression.
+                turn down the number of remote requests in flight or enable compression
+                or increase the object store memory through, for example:
+                `ray.init(object_store_memory=10 * 1024 * 1024 * 1024)  # =10 GB`
             sample_collector: For the old API stack only. The SampleCollector class to
                 be used to collect and retrieve environment-, model-, and sampler data.
                 Override the SampleCollector base class to implement your own
@@ -2144,9 +2146,14 @@ class AlgorithmConfig(_Config):
                 CUDA devices. For example if `os.environ["CUDA_VISIBLE_DEVICES"] = "1"`
                 and `local_gpu_idx=0`, RLlib uses the GPU with ID=1 on the node.
             max_requests_in_flight_per_learner: Max number of in-flight requests
-                to each Learner (actor)). See the
-                `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class for more
-                details.
+                to each Learner (actor). You normally do not have to tune this setting
+                (default is 3), however, for asynchronous algorithms, this determines
+                the "queue" size for incoming batches (or lists of episodes) into each
+                Learner worker, thus also determining, how much off-policy'ness would be
+                acceptable. The off-policy'ness is the difference between the numbers of
+                updates a policy has undergone on the Learner vs the EnvRunners.
+                See the `ray.rllib.utils.actor_manager.FaultTolerantActorManager` class
+                for more details.
 
         Returns:
             This updated AlgorithmConfig object.
