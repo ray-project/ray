@@ -9,3 +9,6 @@ __all__ = [
     "LightGBMPredictor",
     "LightGBMTrainer",
 ]
+
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.
