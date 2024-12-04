@@ -490,7 +490,7 @@ Ray can optionally capture and display the stacktrace of where your code creates
 To enable invocation stacktrace capture, set the environment variable ``RAY_enable_invocation_stacktrace=true``. When enabled:
 
 - Ray captures the stacktrace when creating actors or calling actor methods
-- The stacktrace will be visible in:
+- The stacktrace is visible in:
   - Ray Dashboard UI under the actor details
   - ``ray list task --detail`` CLI command output
   - State API responses
