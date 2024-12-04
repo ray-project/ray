@@ -18,7 +18,7 @@ if TYPE_CHECKING:
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
     from pyiceberg.manifest import DataFile, DataFileContent
-    from pyiceberg.table import DataScan, FileScanTask, Schema, TableMetadata, Table
+    from pyiceberg.table import DataScan, FileScanTask, Schema, Table, TableMetadata
 
 logger = logging.getLogger(__name__)
 
