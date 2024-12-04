@@ -440,6 +440,7 @@ class AlgorithmConfig(_Config):
 
         # `self.offline_data()`
         self.input_ = "sampler"
+        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -2560,6 +2561,7 @@ class AlgorithmConfig(_Config):
         self,
         *,
         input_: Optional[Union[str, Callable[[IOContext], InputReader]]] = NotProvided,
+        offline_data_class: Optional[Type] = NotProvided,
         input_read_method: Optional[Union[str, Callable]] = NotProvided,
         input_read_method_kwargs: Optional[Dict] = NotProvided,
         input_read_schema: Optional[Dict[str, str]] = NotProvided,
@@ -2609,6 +2611,14 @@ class AlgorithmConfig(_Config):
                 `ray.rllib.offline.InputReader`.
                 - A string key that indexes a callable with
                 `tune.registry.register_input`
+            offline_data_class: An optional `OfflineData` class that is used to define
+                the offline data pipeline, including the dataset and the sampling
+                methodology. Override the `OfflineData` class and pass your derived
+                class here, if you need some primer transformations specific to your
+                data or your loss. Usually overriding the `OfflinePreLearner` and using
+                the resulting customization via `prelearner_class` suffices for most
+                cases. The default is `None` which uses the base `OfflineData` defined
+                in `ray.rllib.offline.offline_data`.
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2789,7 +2799,9 @@ class AlgorithmConfig(_Config):
             This updated AlgorithmConfig object.
         """
         if input_ is not NotProvided:
-            self.input_ = input_
+            self.input_ = input_  #
+        if offline_data_class is not NotProvided:
+            self.offline_data_class = offline_data_class
         if input_read_method is not NotProvided:
             self.input_read_method = input_read_method
         if input_read_method_kwargs is not NotProvided:
@@ -4691,13 +4703,21 @@ class AlgorithmConfig(_Config):
                 )
 
     def _validate_offline_settings(self):
+        from ray.rllib.offline.offline_data import OfflineData
         from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 
+        if self.offline_data_class and not issubclass(
+            self.offline_data_class, OfflineData
+        ):
+            raise ValueError(
+                "Unknown `offline_data_class`. OfflineData class needs to inherit "
+                "from `OfflineData` class."
+            )
         if self.prelearner_class and not issubclass(
             self.prelearner_class, OfflinePreLearner
         ):
             raise ValueError(
-                "Unknown `prelearner_class`. Prelearner class needs to inherit "
+                "Unknown `prelearner_class`. PreLearner class needs to inherit "
                 "from `OfflinePreLearner` class."
             )
 
