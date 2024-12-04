@@ -43,7 +43,7 @@ parser = add_rllib_example_script_args(
     default_timesteps=100000,
     default_iters=200,
 )
-parser.add_argument("--flat", action="store_true")
+#parser.add_argument("--flat", action="store_true")
 parser.set_defaults(enable_new_api_stack=True)
 
 
@@ -51,53 +51,54 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     # Run the flat (non-hierarchical env).
-    if args.flat:
-        tune.register_env("env", lambda cfg: SixRoomEnv({"flat": True}))
-        base_config = (
-            PPOConfig()
-            .environment(SixRoomEnv)
-            # .env_runners(num_env_runners=0)
-        )
+    #if args.flat:
+    #    tune.register_env("env", lambda cfg: SixRoomEnv({"flat": True}))
+    #    base_config = (
+    #        PPOConfig()
+    #        .environment(SixRoomEnv)
+    #        # .env_runners(num_env_runners=0)
+    #    )
     # Run in hierarchical mode.
-    else:
-        maze = SixRoomEnv()
+    #maze = SixRoomEnv()
 
-        def policy_mapping_fn(agent_id, episode, **kwargs):
-            if agent_id.startswith("lower_level_"):
-                return "low_level_policy"
-            else:
-                return "high_level_policy"
+    def policy_mapping_fn(agent_id, episode, **kwargs):
+        if agent_id.startswith("low_level_"):
+            return f"low_level_policy_{agent_id[-1]}"
+        else:
+            return "high_level_policy"
 
-        base_config = (
-            PPOConfig()
-            .environment(HierarchicalWindyMazeEnv)
-            .env_runners(
-                env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
-                # num_env_runners=0,
-            )
-            .training(entropy_coeff=0.01)
-            .multi_agent(
-                policy_mapping_fn=policy_mapping_fn,
-                policies={"high_level_policy", "low_level_policy"},
-                algorithm_config_overrides_per_module={
-                    "high_level_policy": PPOConfig.overrides(gamma=0.9),
-                    "low_level_policy": PPOConfig.overrides(gamma=0.0),
-                },
-            )
-            .rl_module(
-                rl_module_spec=MultiRLModuleSpec(rl_module_specs={
-                    "high_level_policy": RLModuleSpec(
-                        observation_space=maze.observation_space,
-                        action_space=gym.spaces.Discrete(4),
-                    ),
-                    "low_level_policy": RLModuleSpec(
-                        observation_space=gym.spaces.Tuple(
-                            [maze.observation_space, gym.spaces.Discrete(4)]
-                        ),
-                        action_space=maze.action_space,
-                    ),
-                }),
-            )
+    base_config = (
+        PPOConfig()
+        .environment(SixRoomEnv)
+        .env_runners(
+            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
+            # num_env_runners=0,
         )
+        .training(
+            entropy_coeff=0.01,
+        )
+        .multi_agent(
+            policy_mapping_fn=policy_mapping_fn,
+            policies={"high_level_policy", "low_level_policy_0", "low_level_policy_1", "low_level_policy_2"},
+            #algorithm_config_overrides_per_module={
+            #    "high_level_policy": PPOConfig.overrides(gamma=0.9),
+            #    "low_level_policy": PPOConfig.overrides(gamma=0.0),
+            #},
+        )
+        #.rl_module(
+        #    rl_module_spec=MultiRLModuleSpec(rl_module_specs={
+        #        "high_level_policy": RLModuleSpec(
+        #            observation_space=maze.observation_space,
+        #            action_space=gym.spaces.Discrete(4),
+        #        ),
+        #        "low_level_policy": RLModuleSpec(
+        #            observation_space=gym.spaces.Tuple(
+        #                [maze.observation_space, gym.spaces.Discrete(4)]
+        #            ),
+        #            action_space=maze.action_space,
+        #        ),
+        #    }),
+        #)
+    )
 
     run_rllib_example_script_experiment(base_config, args)

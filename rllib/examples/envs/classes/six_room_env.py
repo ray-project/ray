@@ -27,15 +27,15 @@ MAP = [
 #}
 
 # Room connections (doors)
-DOORS = {
-    (0, 1): [(2, 4)],  # Door between room 0 and room 1
-    (1, 2): [(2, 8)],  # Door between room 1 and room 2
-    (3, 4): [(6, 4)],  # Door between room 3 and room 4
-    (4, 5): [(6, 8)],  # Door between room 4 and room 5
-    (0, 3): [(4, 2)],  # Door between room 0 and room 3
-    (1, 4): [(4, 6)],  # Door between room 1 and room 4
-    (2, 5): [(4, 10)],  # Door between room 2 and room 5
-}
+#DOORS = {
+#    (0, 1): [(2, 4)],  # Door between room 0 and room 1
+#    (1, 2): [(2, 8)],  # Door between room 1 and room 2
+#    (3, 4): [(6, 4)],  # Door between room 3 and room 4
+#    (4, 5): [(6, 8)],  # Door between room 4 and room 5
+#    (0, 3): [(4, 2)],  # Door between room 0 and room 3
+#    (1, 4): [(4, 6)],  # Door between room 1 and room 4
+#    (2, 5): [(4, 10)],  # Door between room 2 and room 5
+#}
 
 # Number of steps allowed for a low-level policy to reach the given goal.
 MAX_STEPS_LOW_LEVEL = 10
@@ -52,24 +52,23 @@ class SixRoomEnv(MultiAgentEnv):
             "low_level_agent_1",
             "low_level_agent_2",
         ]# if not self.flat else ["agent"]
+        self.agents = self.possible_agents
 
-        # Define low-level agent observation and action spaces.
-        low_level_observation_space = spaces.Box(
-            low=0, high=1, shape=(len(MAP), len(MAP[0])), dtype=np.float32
-        )
+        # Define low-level observation space: Discrete, index fields.
+        observation_space = spaces.Discrete(len(MAP) * len(MAP[0]))
         # Primitive actions: up, down, left, right.
         low_level_action_space = spaces.Discrete(4)
 
         self.observation_spaces = {
-            "high_level_agent": spaces.Discrete(6),
-            "low_level_agent_0": low_level_observation_space,
-            "low_level_agent_1": low_level_observation_space,
-            "low_level_agent_2": low_level_observation_space,
+            "high_level_agent": observation_space, #spaces.Discrete(6),
+            "low_level_agent_0": observation_space,
+            "low_level_agent_1": observation_space,
+            "low_level_agent_2": observation_space,
         }
         self.action_spaces = {
             "high_level_agent": spaces.Tuple((
-                # The new target room.
-                spaces.Discrete(6),
+                # The new target observation.
+                observation_space,
                 # Low-level policy that should get us to target room.
                 spaces.Discrete(3)
             )),
@@ -90,79 +89,80 @@ class SixRoomEnv(MultiAgentEnv):
 
         # Return high-level observation.
         return {
-            "high_level_agent": self._current_room,
+            "high_level_agent": self._agent_discrete_pos,
         }, {}
 
     def step(self, action_dict):
-        rewards = {"high_level_agent": 0.0, "low_level_agent": 0.0}
         terminateds = {"__all__": False}
         truncateds = {"__all__": False}
 
         # High-level agent acted: Set next goal and next low-level policy to use.
+        # Note that the agent does not move in this case and stays at its current
+        # location.
         if "high_level_agent" in action_dict:
             self._high_level_action = action_dict["high_level_agent"]
             low_level_agent = f"low_level_agent_{self._high_level_action[1]}"
             self._low_level_steps = 0
             # Return next low-level observation for the now-active agent.
             return (
-                {low_level_agent: self._get_low_level_obs()},
-                rewards,
+                {low_level_agent: self._agent_discrete_pos},
+                {"high_level_agent": 0.0},
                 terminateds,
                 truncateds,
                 {},
             )
-        # Low-level agent made a move (sent primitive action).
+        # Low-level agent made a move (primitive action).
         else:
-            assert "low_level_agent" in action_dict
-            target_room, low_level_policy = self._high_level_action
-
-            low_level_action = action_dict["low_level_agent"]
-            next_pos = self._get_next_pos(low_level_action)
+            #low_level_agent = next(iter(action_dict.keys()))
+            assert len(action_dict) == 1
+            target_discrete_pos, low_level_agent = self._high_level_action
+            low_level_agent = f"low_level_agent_{low_level_agent}"
+            next_pos = self._get_next_pos(action_dict[low_level_agent])
 
             # Check if the move ends up in a wall. If so -> correct.
             if MAP[next_pos[0]][next_pos[1]] != "W":
                 self._agent_pos = next_pos
 
-            # Low-level agent has reached its target room:
-            # - Hand back control to high-level agent.
-            # - Reward low level agent and high-level agent.
-            if
-
             # Check if the agent has reached the global goal state.
             if MAP[self._agent_pos[0]][self._agent_pos[1]] == "G":
-                self._current_room = target_room
-                rewards["low_level_agent"] = 1.0
-                rewards["high_level_agent"] = 0.0
-                terminateds["low_level_agent"] = True
-                if self._current_room == self.goal_room:
-                    rewards["high_level_agent"] += 10.0
-                    terminateds["__all__"] = True
-
+                rewards = {"high_level_agent": 10.0, low_level_agent: 0.0}
+                terminateds["__all__"] = True
                 return {
-                    "high_level_agent": self._current_room,
-                    "low_level_agent": self._get_low_level_obs()
+                    "high_level_agent": self._agent_discrete_pos,
+                    low_level_agent: self._agent_discrete_pos,
                 }, rewards, terminateds, truncateds, {}
-            #
+
+            # Low-level agent has reached its target location:
+            # - Hand back control to high-level agent.
+            # - Reward low level agent and high-level agent.
+            elif self._agent_discrete_pos == target_discrete_pos:
+                rewards = {"high_level_agent": 1.0, low_level_agent: 1.0}
+                return {
+                    "high_level_agent": self._agent_discrete_pos,
+                }, rewards, terminateds, truncateds, {}
+
+            # Low-level agent has not reached anything.
             else:
-                # Increment low-level step counter
+                # Increment low-level step counter.
                 self._low_level_steps += 1
+                # Small step penalty.
+                rewards = {low_level_agent: -0.01}
+                # Reached time budget -> Hand back control to high level agent.
                 if self._low_level_steps >= MAX_STEPS_LOW_LEVEL:
-                    terminateds["low_level_agent"] = True
-
-                return {
-                    "high_level_agent": self._current_room,
-                    "low_level_agent": self._get_low_level_obs()
-                }, rewards, terminateds, truncateds, {}
+                    return {
+                        "high_level_agent": self._agent_discrete_pos,
+                    }, rewards, terminateds, truncateds, {}
+                else:
+                    return {
+                        low_level_agent: self._agent_discrete_pos,
+                    }, rewards, terminateds, truncateds, {}
 
     @property
-    def _current_room(self):
-        top_rooms = self._agent_pos[1] < 4
-        left_rooms = self._agent_pos[0] < 4
-        center_rooms = not left_rooms and self._agent_pos[0] < 8
-        if top_rooms:
-            return 0 if left_rooms else 1 if center_rooms else 2
-        else:
-            return 3 if left_rooms else 4 if center_rooms else 5
+    def _agent_discrete_pos(self):
+        x = self._agent_pos[0]
+        y = self._agent_pos[1]
+        # discrete position = row idx * columns + col idx
+        return x * len(MAP[0]) + y
 
     def _get_next_pos(self, action):
         x, y = self._agent_pos
@@ -179,7 +179,7 @@ class SixRoomEnv(MultiAgentEnv):
         else:
             return x, y + 1
 
-    def _get_low_level_obs(self):
-        obs = np.zeros((len(MAP), len(MAP[0])), dtype=np.float32)
-        obs[self._agent_pos] = 1.0
-        return obs
+    #def _get_low_level_obs(self):
+    #    obs = np.zeros((len(MAP), len(MAP[0])), dtype=np.float32)
+    #    obs[self._agent_pos] = 1.0
+    #    return obs
