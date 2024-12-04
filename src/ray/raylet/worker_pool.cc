@@ -32,7 +32,6 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet/worker_pool.h"
 
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
