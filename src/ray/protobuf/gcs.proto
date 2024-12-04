@@ -156,7 +156,8 @@ message ActorTableData {
   // Number of times this actor is restarted due to lineage reconstructions.
   uint64 num_restarts_due_to_lineage_reconstruction = 33;
   // Human readable stacktrace of the actor creation. The exact data
-  // format depends on the language. Only populated if the flag is enabled.
+  // format depends on the language. Only populated if
+  // `RAY_enable_invocation_stacktrace` is set to `true`
   optional string invocation_stacktrace = 34;
 }
 
