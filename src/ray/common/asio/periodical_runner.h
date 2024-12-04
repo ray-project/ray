@@ -28,19 +28,28 @@ namespace ray {
 /// It can run functions with specified period. Each function is triggered by its timer.
 /// To run a function, call `RunFnPeriodically(fn, period_ms)`.
 /// All registered functions will stop running once this object is destructed.
-class PeriodicalRunner {
+//
+// Lifetime: once a PeriodicalRunner is destructed, all its timers are cancelled. The
+// scheduled asio tasks keep a weak_ptr to the PeriodicalRunner, and they won't run after
+// the PeriodicalRunner is destructed.
+class PeriodicalRunner : public std::enable_shared_from_this<PeriodicalRunner> {
  public:
-  explicit PeriodicalRunner(instrumented_io_context &io_service);
+  static std::shared_ptr<PeriodicalRunner> Create(instrumented_io_context &io_service) {
+    // Sadly we can't use std::make_shared because the constructor is private.
+    return std::shared_ptr<PeriodicalRunner>(new PeriodicalRunner(io_service));
+  }
 
   ~PeriodicalRunner();
-
-  void Clear();
 
   void RunFnPeriodically(std::function<void()> fn,
                          uint64_t period_ms,
                          const std::string &name) ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
+  explicit PeriodicalRunner(instrumented_io_context &io_service);
+
+  void Clear();
+
   void DoRunFnPeriodically(const std::function<void()> &fn,
                            boost::posix_time::milliseconds period,
                            std::shared_ptr<boost::asio::deadline_timer> timer)
@@ -56,9 +65,6 @@ class PeriodicalRunner {
   mutable absl::Mutex mutex_;
   std::vector<std::shared_ptr<boost::asio::deadline_timer>> timers_
       ABSL_GUARDED_BY(mutex_);
-  // `stopped_` is copied to the timer callback, and may outlive `this`.
-  std::shared_ptr<std::atomic<bool>> stopped_ =
-      std::make_shared<std::atomic<bool>>(false);
 };
 
 }  // namespace ray

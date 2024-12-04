@@ -31,7 +31,7 @@ GcsRedisFailureDetector::GcsRedisFailureDetector(
 
 void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
-  periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service_);
+  periodical_runner_ = PeriodicalRunner::Create(io_service_);
   periodical_runner_->RunFnPeriodically(
       [this] { DetectRedis(); },
       RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
@@ -40,7 +40,7 @@ void GcsRedisFailureDetector::Start() {
 
 void GcsRedisFailureDetector::Stop() {
   RAY_LOG(INFO) << "Stopping redis failure detector.";
-  periodical_runner_->Clear();
+  periodical_runner_.reset();
 }
 
 void GcsRedisFailureDetector::DetectRedis() {

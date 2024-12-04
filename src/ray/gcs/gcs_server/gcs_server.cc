@@ -66,8 +66,10 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(io_context_provider_.GetIOContext<GcsPublisher>()),
-      periodical_runner_(io_context_provider_.GetDefaultIOContext()),
+      pubsub_periodical_runner_(
+          PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
+      periodical_runner_(
+          PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
       is_stopped_(false) {
   // Init GCS table storage. Note this is on the default io context, not the one with
@@ -127,7 +129,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
       },
-      /*periodical_runner=*/&pubsub_periodical_runner_,
+      /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
@@ -251,7 +253,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         RAY_LOG(INFO) << GetDebugState();
         PrintAsioStats();
@@ -262,7 +264,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   global_gc_throttler_ =
       std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugStateToFile();
         TryGlobalGC();
@@ -348,7 +350,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_));
   rpc_server_.RegisterService(*node_resource_info_service_);
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
