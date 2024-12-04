@@ -2617,6 +2617,9 @@ class CompiledDAG:
         """
         Visualize the compiled graph using Graphviz.
 
+        For non-ASCII formats, the visualization will be saved to a file specified
+        by the `filename` argument.
+
         This method generates a graphical representation of the compiled graph,
         showing tasks and their dependencies.This method should be called
         **after** the graph has been compiled using `experimental_compile()`.
