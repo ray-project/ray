@@ -254,7 +254,8 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0",
+            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
+            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
             "requests",
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
