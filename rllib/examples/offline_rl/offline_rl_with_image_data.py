@@ -55,6 +55,8 @@ from ray.rllib.examples.offline_rl.classes.image_offline_prelearner import (
 )
 
 # Create an Algorithm configuration.
+# TODO: Make this an actually running/learning example with RLunplugged
+# data from S3 and add this to the CI.
 config = (
     BCConfig()
     .environment(
