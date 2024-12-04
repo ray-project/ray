@@ -33,60 +33,66 @@
 # Groupby tests
 ###############
 
-# NOTE: 'column08', 'column09', and 'column05' correspond to the 'l_orderkey', 
-# 'l_partkey', and 'l_extendedprice' columns of the TPC-H lineitem table, respectively.
+# The groupby tests use the TPC-H lineitem table. Here are the columns used for the 
+# groupbys and their corresponding TPC-H column names:
+#
+# | Our dataset     | TPC-H column name |
+# |-----------------|-------------------|
+# | column02        | l_suppkey         |
+# | column08        | l_returnflag      |
+# | column13        | l_shipinstruct    |
+# | column14        | l_shipmode        |
+# 
+# Here are the number of groups for different groupby columns:
+#
+# | Groupby columns                  | Number of groups |
+# |----------------------------------|------------------|
+# | column08, column13, column14     | 84               |
+# | column02, column14               | 7,000,000        |
+# 
+# The SF (scale factor) 1000 lineitem table contains ~6B rows and is ~750GB in size. 
 
 - name: aggregate_groups
   stable: False
 
   cluster:
-    cluster_compute: autoscaling_cpu_compute_with_extra_disk.yaml
+    cluster_compute: all_to_all_compute.yaml
 
   run:
     timeout: 3600
 
   variations:
-    - __suffix__: count
-      run:
-        script: > 
-          python aggregate_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
-          --group-by column08 column09 --aggregation count
-    - __suffix__: mean
+    - __suffix__: few_groups
       run:
         script: >
-          python aggregate_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
-          --group-by column08 column09 --aggregation mean --aggregate-on column05
-    - __suffix__: std
+          python groupby_benchmark.py --sf 1000 --aggregate 
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
       run:
         script: >
-          python aggregate_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
-          --group-by column08 column09 --aggregation std --aggregate-on column05
-    
+          python groupby_benchmark.py --sf 1000 --aggregate
+          --group-by column02 column14 
+  
 - name: map_groups
   stable: False
 
   cluster:
-    cluster_compute: autoscaling_cpu_compute_with_extra_disk.yaml
+    cluster_compute: all_to_all_compute.yaml
 
   run:
     timeout: 3600
 
   variations:
-    - __suffix__: pandas
+    - __suffix__: few_groups
       run:
         script: >
-          python map_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
-          --group-by column08 column09 --batch-format pandas
-    - __suffix__: pyarrow
+          python groupby_benchmark.py --sf 1000 --map-groups 
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
       run:
         script: >
-          python map_groups_benchmark.py 
-          s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem 
-          --group-by column08 column09 --batch-format pyarrow
+          python groupby_benchmark.py --sf 1000 --map-groups
+          --group-by column02 column14 
 
 ###############
 # Dataset tests
