@@ -131,7 +131,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
                   std::move(fn), period, std::move(timer), std::move(name));
             }
           },
-          stats_handle);
+          std::move(stats_handle));
     }
   });
 }
