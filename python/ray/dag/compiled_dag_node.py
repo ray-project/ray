@@ -57,6 +57,7 @@ from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.torch_tensor_nccl_channel import (
     _init_nccl_group,
     _destroy_nccl_group,
+    _destroy_cpu_group,
 )
 
 from ray.dag.dag_node_operation import (
@@ -840,6 +841,8 @@ class CompiledDAG:
         self._nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
         self._nccl_group_ids: Set[str] = set()
+        # All the CPU group IDs for collective operations.
+        self._cpu_group_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -880,6 +883,10 @@ class CompiledDAG:
     @property
     def nccl_group_ids(self) -> Set[str]:
         return self._nccl_group_ids
+
+    @property
+    def cpu_group_ids(self) -> Set[str]:
+        return self._cpu_group_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -1229,7 +1236,10 @@ class CompiledDAG:
         # Store all the NCCL group IDs for P2P send/recv and collective operations.
         self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
             set(custom_nccl_group_to_id.values())
-        ).union(set(actors_to_cpu_group_id.values()))
+        )
+
+        # Store all the CPU group IDs for collective operations.
+        self._cpu_group_ids = set(actors_to_cpu_group_id.values())
 
         if direct_input:
             self._input_num_positional_args = 1
@@ -1982,6 +1992,9 @@ class CompiledDAG:
 
                 for nccl_group_id in outer._nccl_group_ids:
                     _destroy_nccl_group(nccl_group_id)
+
+                for cpu_group_id in outer._cpu_group_ids:
+                    _destroy_cpu_group(cpu_group_id)
 
                 logger.info("Waiting for worker tasks to exit")
                 self.wait_teardown()

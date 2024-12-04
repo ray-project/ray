@@ -596,12 +596,21 @@ def _do_init_cpu_group(
 
 def _do_destroy_nccl_group(self, group_id):
     ctx = ChannelContext.get_current()
-    if group_id in ctx.nccl_groups:
-        ctx.nccl_groups[group_id].destroy()
-    elif group_id in ctx.cpu_groups:
-        ctx.cpu_groups[group_id].destroy()
+    if group_id not in ctx.nccl_groups:
+        return
+    ctx.nccl_groups[group_id].destroy()
 
     # Keep the NCCL group in the map after destruction in case there is still a
+    # task loop running.
+
+
+def _do_destroy_cpu_group(self, group_id):
+    ctx = ChannelContext.get_current()
+    if group_id not in ctx.cpu_groups:
+        return
+    ctx.cpu_groups[group_id].destroy()
+
+    # Keep the CPU group in the map after destruction in case there is still a
     # task loop running.
 
 
@@ -737,12 +746,12 @@ def _init_cpu_group(
     use_communication_streams: bool = False,
 ) -> str:
     """
-    Initialize a NCCL group with the given actors. If a custom NCCL group is
-    provided, then it will be used, otherwise a new NCCL group will be created.
+    Initialize a CPU group with the given actors. If a custom CPU group is
+    provided, then it will be used, otherwise a new CPU group will be created.
 
     Args:
-        actors: A list of actors that participate in the NCCL group.
-        custom_nccl_group: A custom NCCL group to initialize.
+        actors: A list of actors that participate in the CPU group.
+        custom_cpu_group: A custom CPU group to initialize.
         use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
                 can be overlapped to improve perfomrance.
@@ -756,7 +765,7 @@ def _init_cpu_group(
     actor_ids = {actor._ray_actor_id for actor in actors}
     assert len(actor_ids) == len(actors), "Actors must be unique"
 
-    # Used to uniquely identify this NCCL group.
+    # Used to uniquely identify this CPU group.
     group_id = str(uuid.uuid4())
 
     if custom_cpu_group is not None:
@@ -781,7 +790,7 @@ def _init_cpu_group(
         ray.get(init_tasks, timeout=30)
     except ray.exceptions.GetTimeoutError:
         logger.warning(
-            "NCCL group creation not done after 30s. NCCL group creation may be hung."
+            "CPU group creation not done after 30s. CPU group creation may be hung."
         )
         ray.get(init_tasks)
 
@@ -802,10 +811,10 @@ def _destroy_nccl_group(group_id: str) -> None:
     Destroy the NCCL group with the given ID.
     """
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups and group_id not in ctx.cpu_groups:
+    if group_id not in ctx.nccl_groups:
         return
 
-    group = ctx.nccl_groups[group_id] if group_id in ctx.nccl_groups else ctx.cpu_groups[group_id]
+    group = ctx.nccl_groups[group_id]
     actors = group.get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
@@ -822,7 +831,32 @@ def _destroy_nccl_group(group_id: str) -> None:
             "may be hung."
         )
 
-    if group_id in ctx.nccl_groups:
-        del ctx.nccl_groups[group_id]
-    else:
-        del ctx.cpu_groups[group_id]
+    del ctx.nccl_groups[group_id]
+
+
+def _destroy_cpu_group(group_id: str) -> None:
+    """
+    Destroy the CPU group with the given ID.
+    """
+    ctx = ChannelContext.get_current()
+    if group_id not in ctx.cpu_groups:
+        return
+
+    group = ctx.cpu_groups[group_id]
+    actors = group.get_actor_handles()
+    destroy_tasks = [
+        actor.__ray_call__.remote(
+            _do_destroy_cpu_group,
+            group_id,
+        )
+        for actor in actors
+    ]
+
+    _, unready = ray.wait(destroy_tasks, timeout=30, num_returns=len(destroy_tasks))
+    if unready:
+        logger.warning(
+            "CPU group destruction not done after 30s. CPU group destruction "
+            "may be hung."
+        )
+
+    del ctx.cpu_groups[group_id]

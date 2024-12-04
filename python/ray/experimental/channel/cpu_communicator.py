@@ -5,10 +5,7 @@ from typing import Dict, List, Optional, Tuple
 import torch
 
 import ray
-from ray.experimental.channel.gpu_communicator import (
-    ReduceOp,
-    TorchTensorAllocator,
-)
+from ray.experimental.channel.gpu_communicator import ReduceOp, TorchTensorAllocator
 
 
 @ray.remote(num_cpus=0)
@@ -98,13 +95,13 @@ class CPUCommunicator:
         self._actor_handles = actor_handles
         self.num_ops = defaultdict(int)
 
-        # For collective communication, one barrier will be created for 
+        # For collective communication, one barrier will be created for
         # each unique group of participants.
         self.barriers = set()
         self._rank = None
 
     def send(self, tensor: torch.Tensor, peer_rank: int):
-        # p2p operations are done via a shared memory channel, initialized in 
+        # p2p operations are done via a shared memory channel, initialized in
         # `create_channel` of `TorchTensorType`
         pass
 

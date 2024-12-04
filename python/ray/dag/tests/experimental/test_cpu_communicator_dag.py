@@ -6,6 +6,12 @@ import pytest
 
 import ray
 import ray.cluster_utils
+from ray.experimental.collective.conftest import (
+    AbstractNcclGroup,
+    CPUTorchTensorWorker,
+    check_nccl_group_init,
+    check_nccl_group_teardown,
+)
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
