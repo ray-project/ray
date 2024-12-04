@@ -1867,11 +1867,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 
+  /// TODO(hjiang): Cached job runtime env info.
+  ///
   /// Serialized runtime info env are cached.
   mutable std::mutex job_runtime_env_serialization_mutex_;
-  /// For a job, [job_runtime_env_] never changes. non-`nullptr` if cached, otherwise
-  /// nullptr.
-  mutable std::shared_ptr<nlohmann::json> job_runtime_env_;
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
   mutable utils::container::SharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;

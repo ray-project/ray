@@ -2178,7 +2178,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
-  std::shared_ptr<json> parent = job_runtime_env_;
+  std::shared_ptr<json> parent = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> parent_runtime_env_info = nullptr;
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr;
   runtime_env_info.reset(new rpc::RuntimeEnvInfo());
@@ -2197,7 +2197,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
 
     auto job_serialized_runtime_env =
         worker_context_.GetCurrentJobConfig().runtime_env_info().serialized_runtime_env();
-    if (!IsRuntimeEnvEmpty(job_serialized_runtime_env) && parent != nullptr) {
+    if (!IsRuntimeEnvEmpty(job_serialized_runtime_env)) {
       parent = std::make_shared<json>(json::parse(job_serialized_runtime_env));
     }
     parent_runtime_env_info = std::make_shared<rpc::RuntimeEnvInfo>(
@@ -2209,7 +2209,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent = worker_context_.GetCurrentRuntimeEnv();
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
-  if (!parent) {
+  if (parent == nullptr) {
     return runtime_env_info;
   }
   std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
