@@ -40,11 +40,11 @@ config = (
         # by-global-norm.
         grad_clip=0.5,
         grad_clip_by="value",
-        lr=0.0003,  # matches [1]
+        lr=0.0005,  # Note: [1] uses 3e-4.
         vf_loss_coeff=0.5,  # matches [1]
         gamma=0.995,  # matches [1]
         lambda_=0.995,  # matches [1]
-        entropy_coeff=0.01,  # Note: [1] uses 0.0.
+        entropy_coeff=0.0,  # matches [1]
         use_kl_loss=True,  # matches [1]
         kl_coeff=1.0,  # matches [1]
         kl_target=0.04,  # matches [1]
