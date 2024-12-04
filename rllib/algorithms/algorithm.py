@@ -3562,8 +3562,8 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             )
             results.update(eval_results)
 
+        # EnvRunner actors fault tolerance stats.
         if self.env_runner_group:
-            # Fault tolerance stats.
             results[FAULT_TOLERANCE_STATS] = {
                 "num_healthy_workers": (
                     self.env_runner_group.num_healthy_remote_workers()

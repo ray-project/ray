@@ -4713,7 +4713,7 @@ class AlgorithmConfig(_Config):
             and (self.action_space is None or self.observation_space is None)
         ):
             raise ValueError(
-                "If no evaluation should be run `action_space` and "
+                "If no evaluation should be run, `action_space` and "
                 "`observation_space` must be provided."
             )
 
