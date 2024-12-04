@@ -441,6 +441,7 @@ class AlgorithmConfig(_Config):
         # `self.offline_data()`
         self.input_ = "sampler"
         self.offline_data_class = None
+        self.offline_data_class = None
         self.input_read_method = "read_parquet"
         self.input_read_method_kwargs = {}
         self.input_read_schema = {}
@@ -2618,7 +2619,7 @@ class AlgorithmConfig(_Config):
                 data or your loss. Usually overriding the `OfflinePreLearner` and using
                 the resulting customization via `prelearner_class` suffices for most
                 cases. The default is `None` which uses the base `OfflineData` defined
-                in `ray.rllib.offline.offline_data`.
+                in `ray.rllib.offline.offline_data.OfflineData`.
             input_read_method: Read method for the `ray.data.Dataset` to read in the
                 offline data from `input_`. The default is `read_parquet` for Parquet
                 files. See https://docs.ray.io/en/latest/data/api/input_output.html for
@@ -2799,7 +2800,7 @@ class AlgorithmConfig(_Config):
             This updated AlgorithmConfig object.
         """
         if input_ is not NotProvided:
-            self.input_ = input_  #
+            self.input_ = input_
         if offline_data_class is not NotProvided:
             self.offline_data_class = offline_data_class
         if input_read_method is not NotProvided:
