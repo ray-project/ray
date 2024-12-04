@@ -102,15 +102,22 @@ class IcebergDatasource(Datasource):
             self._scan_kwargs["snapshot_id"] = snapshot_id
 
         self._plan_files = None
-
-    def _get_table_from_catalog(self) -> "Table":
-        catalog = self._get_catalog()
-        return catalog.load_table(self.table_identifier)
+        self._table = None
 
     def _get_catalog(self) -> "Catalog":
         from pyiceberg import catalog
 
         return catalog.load_catalog(self._catalog_name, **self._catalog_kwargs)
+
+    @property
+    def table(self) -> "Table":
+        """
+        Return the table reference from the catalog
+        """
+        if self._table is None:
+            catalog = self._get_catalog()
+            self._table = catalog.load_table(self.table_identifier)
+        return self._table
 
     @property
     def plan_files(self) -> List["FileScanTask"]:
@@ -125,10 +132,8 @@ class IcebergDatasource(Datasource):
         return self._plan_files
 
     def _get_data_scan(self) -> "DataScan":
-        catalog = self._get_catalog()
-        table = catalog.load_table(self.table_identifier)
 
-        data_scan = table.scan(
+        data_scan = self.table.scan(
             row_filter=self._row_filter,
             selected_fields=self._selected_fields,
             **self._scan_kwargs,
@@ -195,9 +200,8 @@ class IcebergDatasource(Datasource):
                 "number of files"
             )
 
-        table = self._get_table_from_catalog()
-        table_io = table.io
-        table_metadata = table.metadata
+        table_io = self.table.io
+        table_metadata = self.table.metadata
         row_filter = self._row_filter
         case_sensitive = self._scan_kwargs.get("case_sensitive", True)
         limit = self._scan_kwargs.get("limit")
