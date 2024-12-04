@@ -27,6 +27,7 @@ user-guides/tls
 user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
+user-guides/kuberay-auth
 ```
 
 
@@ -57,3 +58,4 @@ at the {ref}`introductory guide <kuberay-quickstart>` first.
 * {ref}`ray-k8s-autoscaler-comparison`
 * {ref}`deploy-a-static-ray-cluster-without-kuberay`
 * {ref}`kubectl-plugin`
+* {ref}`kuberay-auth`
