@@ -521,7 +521,7 @@ Example:
     # Capture stacktrace upon method invocation.
     counter.increment.remote()
 
-The stacktrace will show the exact line numbers and call stack where the actor was created and methods were invoked.
+The stacktrace shows the exact line numbers and call stack where the actor was created and methods were invoked.
 
 This feature is currently only supported for Python and C++ tasks.
 
