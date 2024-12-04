@@ -881,6 +881,19 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
+    const WorkerID &worker_id) const {
+  for (const auto &[_, state] : states_by_lang_) {
+    for (auto it = state.registered_workers.begin(); it != state.registered_workers.end();
+         it++) {
+      if ((*it)->WorkerId() == worker_id) {
+        return (*it);
+      }
+    }
+  }
+  return nullptr;
+}
+
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
     const std::shared_ptr<ClientConnection> &connection) const {
   for (const auto &entry : states_by_lang_) {
     auto worker = GetWorker(entry.second.registered_workers, connection);
