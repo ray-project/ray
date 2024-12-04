@@ -214,7 +214,7 @@ const ActorDetailPage = () => {
                   title="Invocation stacktrace"
                   code={
                     actorDetail.invocationStacktrace ||
-                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_enable_invocation_stacktrace" to "true".'
+                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
                   }
                 />
               </Box>

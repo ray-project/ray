@@ -4048,7 +4048,8 @@ cdef class CoreWorker:
             retry_exception_allowlist,
             function_descriptor)
 
-        if RayConfig.instance().enable_invocation_stacktrace():
+        if RayConfig.instance().record_task_actor_creation_sites():
+            # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
             invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
@@ -4133,7 +4134,8 @@ cdef class CoreWorker:
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
-        if RayConfig.instance().enable_invocation_stacktrace():
+        if RayConfig.instance().record_task_actor_creation_sites():
+            # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
             invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
@@ -4289,7 +4291,7 @@ cdef class CoreWorker:
             retry_exception_allowlist,
             function_descriptor)
 
-        if RayConfig.instance().enable_invocation_stacktrace():
+        if RayConfig.instance().record_task_actor_creation_sites():
             invocation_stacktrace = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):

@@ -560,7 +560,7 @@ message TaskSpec {
   map<string, string> labels = 41;
   // Human readable stacktrace of the task invocation, or actor creation. The exact data
   // format depends on the language. Only populated if environment variable
-  // `RAY_enable_invocation_stacktrace` is set to `true`.
+  // `RAY_record_task_actor_creation_sites` is set to `true`.
   optional string invocation_stacktrace = 42;
 }
 

@@ -537,7 +537,7 @@ RAY_CONFIG(uint64_t, gcs_mark_task_failed_on_worker_dead_delay_ms, /*  1 secs */
 
 /// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
 /// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
-RAY_CONFIG(bool, enable_invocation_stacktrace, false)
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
 
 /// Whether or not we enable metrics collection.
 RAY_CONFIG(bool, enable_metrics_collection, true)

@@ -71,7 +71,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   std::vector<rpc::ObjectReference> return_refs;
 
   std::string invocation_stacktrace;
-  if (::RayConfig::instance().enable_invocation_stacktrace()) {
+  if (::RayConfig::instance().record_task_actor_creation_sites()) {
     std::stringstream ss;
     ss << ray::StackTrace();
     invocation_stacktrace = ss.str();
@@ -142,7 +142,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
   std::string invocation_stacktrace;
-  if (::RayConfig::instance().enable_invocation_stacktrace()) {
+  if (::RayConfig::instance().record_task_actor_creation_sites()) {
     std::stringstream ss;
     ss << ray::StackTrace();
     invocation_stacktrace = ss.str();

@@ -2471,7 +2471,7 @@ def test_list_get_tasks_invocation_stacktrace(shutdown_only):
     """
     ray.init(
         num_cpus=2,
-        runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}},
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
     )
 
     @ray.remote
@@ -2506,7 +2506,7 @@ def test_list_actor_tasks_invocation_stacktrace(shutdown_only):
     """
     ray.init(
         num_cpus=2,
-        runtime_env={"env_vars": {"RAY_enable_invocation_stacktrace": "true"}},
+        runtime_env={"env_vars": {"RAY_record_task_actor_creation_sites": "true"}},
     )
 
     @ray.remote
