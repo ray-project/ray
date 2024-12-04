@@ -15,8 +15,8 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/rpc/grpc_server.h"
 #include "ray/rpc/server_call.h"
-#include "ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
-#include "ray/rpc/test/grpc_bench/helloworld.pb.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.grpc.pb.h"
+#include "src/ray/rpc/test/grpc_bench/helloworld.pb.h"
 
 using namespace ray;
 using namespace ray::rpc;
