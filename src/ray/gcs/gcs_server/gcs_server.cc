@@ -404,10 +404,8 @@ void GcsServer::InitClusterTaskManager() {
         auto node = gcs_node_manager_->GetAliveNode(node_id);
         return node.has_value() ? node.value().get() : nullptr;
       },
-      /*announce_infeasible_task=*/
-      nullptr,
-      /*local_task_manager=*/
-      std::make_shared<NoopLocalTaskManager>());
+      /*announce_infeasible_task=*/nullptr,
+      /*local_task_manager=*/local_task_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
