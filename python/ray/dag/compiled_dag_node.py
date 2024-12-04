@@ -2240,7 +2240,7 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
-    def _visualize_ascii(self):
+    def _visualize_ascii(self) -> str:
         """
         Visualize the compiled graph in
         ASCII format with directional markers.
@@ -2248,6 +2248,11 @@ class CompiledDAG:
         This function generates an ASCII visualization of a Compiled Graph,
         where each task node is labeled,
         and edges use `<` and `>` markers to show data flow direction.
+
+        This method is called by:
+            - `compiled_dag.visualize(format="ascii")`
+
+
 
         High-Level Algorithm:
         - Topological Sorting: Sort nodes topologically to organize
@@ -2317,7 +2322,8 @@ class CompiledDAG:
             # 8:MultiOutputNode
             ```
 
-            Example of Anti-pattern Visualization (ordering to reduce intersections):
+            Example of Anti-pattern Visualization (There are intersections):
+            # We can swtich the nodes ordering to reduce intersections, i.e. swap o2 and o3
             ```python
             with InputNode() as i:
                 o1, o2, o3 = a.return_three.bind(i)
@@ -2606,9 +2612,8 @@ class CompiledDAG:
         filename="compiled_graph",
         format="png",
         view=False,
-        return_dot=False,
         channel_details=False,
-    ):
+    ) -> str:
         """
         Visualize the compiled graph using Graphviz.
 
@@ -2622,8 +2627,14 @@ class CompiledDAG:
             view: For non-ascii: Whether to open the file with the default viewer.
                 For ascii: Whether to print the visualization and return None
                     or return the ascii visualization string directly.
-            return_dot: If True, returns the DOT source as a string instead of figure.
             channel_details: If True, adds channel details to edges.
+
+        Returns:
+            str:
+                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
+                the Graphviz DOT string representation of the compiled graph.
+                - For ASCII format, returns the ASCII string representation of the
+                compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
@@ -2631,17 +2642,12 @@ class CompiledDAG:
 
         """
         if format == "ascii":
-            if any([return_dot, channel_details]):
+            if channel_details:
                 raise ValueError(
-                    "Parameters 'return_dot' and 'channel_details' are"
+                    "Parameters 'channel_details' are"
                     " not compatible with 'ascii' format."
                 )
-            ascii_visualiztion_str = self._visualize_ascii()
-            if view:
-                print(ascii_visualiztion_str)
-                return
-            else:
-                return ascii_visualiztion_str
+            return self._visualize_ascii()
         try:
             import graphviz
         except ImportError:
@@ -2771,11 +2777,8 @@ class CompiledDAG:
             if type(task.dag_node) == InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
                 dot.edge(str(self.input_task_idx), str(idx))
-        if return_dot:
-            return dot.source
-        else:
-            # Render the graph to a file
-            dot.render(filename, view=view)
+        dot.render(filename, view=view)
+        return dot.source
 
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this

@@ -29,7 +29,7 @@ def test_visualize_basic(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     # Call the visualize method
-    dot_source = compiled_dag.visualize(return_dot=True)
+    dot_source = compiled_dag.visualize()
 
     graphs = pydot.graph_from_dot_data(dot_source)
     graph = graphs[0]
@@ -76,7 +76,7 @@ def test_visualize_multi_return(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     # Get the DOT source
-    dot_source = compiled_dag.visualize(return_dot=True)
+    dot_source = compiled_dag.visualize()
 
     graphs = pydot.graph_from_dot_data(dot_source)
     graph = graphs[0]
@@ -130,7 +130,7 @@ def test_visualize_multi_return2(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     # Get the DOT source
-    dot_source = compiled_dag.visualize(return_dot=True)
+    dot_source = compiled_dag.visualize()
 
     graphs = pydot.graph_from_dot_data(dot_source)
     graph = graphs[0]
@@ -190,7 +190,7 @@ def test_visualize_multi_input_nodes(ray_start_regular):
     compiled_dag = dag.experimental_compile()
 
     # Get the DOT source
-    dot_source = compiled_dag.visualize(return_dot=True)
+    dot_source = compiled_dag.visualize()
 
     graphs = pydot.graph_from_dot_data(dot_source)
     graph = graphs[0]
