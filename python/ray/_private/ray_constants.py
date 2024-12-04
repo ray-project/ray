@@ -69,9 +69,6 @@ DEBUG_AUTOSCALING_STATUS_LEGACY = "__autoscaling_status_legacy"
 AUTOSCALER_V2_ENABLED_KEY = "__autoscaler_v2_enabled"
 AUTOSCALER_NAMESPACE = "__autoscaler"
 
-# Log level for the autoscaler.
-AUTOSCALER_LOG_LEVEL = os.environ.get("RAY_AUTOSCALER_LOG_LEVEL", "INFO")
-
 ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
@@ -224,7 +221,8 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"

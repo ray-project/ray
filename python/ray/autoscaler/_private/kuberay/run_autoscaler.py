@@ -96,11 +96,9 @@ def _setup_logging() -> None:
     # The director should already exist, but try (safely) to create it just in case.
     try_to_create_directory(log_dir)
 
-    logging_level = ray_constants.AUTOSCALER_LOG_LEVEL
-
     # Write logs at info level to monitor.log.
     setup_component_logger(
-        logging_level=logging_level,
+        logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log
@@ -110,7 +108,7 @@ def _setup_logging() -> None:
 
     # For the autoscaler, the root logger _also_ needs to write to stderr, not just
     # ray_constants.MONITOR_LOG_FILE_NAME.
-    level = logging.getLevelName(logging_level.upper())
+    level = logging.getLevelName(ray_constants.LOGGER_LEVEL.upper())
     stderr_handler = logging._StderrHandler()
     stderr_handler.setFormatter(logging.Formatter(ray_constants.LOGGER_FORMAT))
     stderr_handler.setLevel(level)
