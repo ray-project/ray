@@ -1021,7 +1021,7 @@ def test_get_with_zero_timeout(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(1)
     # Give enough time for DAG execution result to be ready
-    time.sleep(1)
+    time.sleep(2)
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1

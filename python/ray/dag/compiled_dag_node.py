@@ -258,6 +258,27 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
     return None
 
 
+def _device_context_manager():
+    """
+    Return a context manager for executing communication operations
+    (i.e., READ and WRITE). For NCCL operations, the context manager
+    uses the proper cuda device from channel context, otherwise,
+    nullcontext will be returned.
+    """
+    import torch
+
+    device = ChannelContext.get_current().torch_device
+
+    if device.type == "cuda" and torch.cuda.is_available():
+        # In the case of mocked NCCL, we may get a device with type "cuda"
+        # but CUDA is not available. We return nullcontext() in that case,
+        # otherwise torch raises a runtime error if the cuda device context
+        # manager is used.
+        # TODO(rui): consider better mocking NCCL to support device context.
+        return torch.cuda.device(device)
+    return nullcontext()
+
+
 @DeveloperAPI
 class CompiledTask:
     """Wraps the normal Ray DAGNode with some metadata."""
@@ -640,13 +661,15 @@ class ExecutableTask:
             True if the next operation should not be executed; otherwise, False.
         """
         if op_type == _DAGNodeOperationType.READ:
-            with self._recv_stream:
-                return self._read(overlap_gpu_communication)
+            with _device_context_manager():
+                with self._recv_stream:
+                    return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            with self._send_stream:
-                return self._write()
+            with _device_context_manager():
+                with self._send_stream:
+                    return self._write()
 
 
 @dataclass
@@ -2139,7 +2162,7 @@ class CompiledDAG:
             RayChannelTimeoutError: If the execution does not complete within
                 self._execution_timeout seconds.
 
-        NOTE: Not threadsafe due to _execution_index etc.
+        NOTE: Not thread-safe due to _execution_index etc.
         """
         if self._enable_asyncio:
             raise ValueError("Use execute_async if enable_asyncio=True")
@@ -2197,7 +2220,7 @@ class CompiledDAG:
     ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
-        NOTE: Not threadsafe.
+        NOTE: Not thread-safe.
 
         Args:
             args: Args to the InputNode.
@@ -2329,7 +2352,7 @@ class CompiledDAG:
                     "Ensure that 'experimental_compile()' completed successfully."
                 )
 
-        # Dot file for debuging
+        # Dot file for debugging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
         # Give every actor a unique color, colors between 24k -> 40k tested as readable
         # other colors may be too dark, especially when wrapping back around to 0
