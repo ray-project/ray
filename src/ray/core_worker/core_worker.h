@@ -185,11 +185,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
-  /// Connect to the raylet and notify that the core worker is ready.
-  /// If the options.connect_on_start is false, it doesn't need to be explicitly
-  /// called.
-  void ConnectToRaylet();
-
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
   /// notified that this worker is disconnected from a raylet.
@@ -1662,7 +1657,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
-  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor.
   void ConnectToRayletInternal();
 
   /// Shared state of the worker. Includes process-level and thread-level state.
