@@ -21,6 +21,7 @@ from ray.data.datasource import (
     ReadTask,
     RowBasedFileDatasink,
 )
+from ray.data.in_place_api import add_columns, delete_rows
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
 from ray.data.read_api import (  # noqa: F401

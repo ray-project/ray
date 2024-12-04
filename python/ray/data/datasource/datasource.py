@@ -1,6 +1,7 @@
-from typing import Callable, Iterable, List, Optional
+from typing import Any, Callable, Dict, Iterable, List, Optional
 
 import numpy as np
+import pyarrow as pa
 
 from ray.data._internal.util import _check_pyarrow_version
 from ray.data.block import Block, BlockMetadata
@@ -57,6 +58,66 @@ class Datasource:
         Returns:
             A list of read tasks that can be executed to read blocks from the
             datasource in parallel.
+        """
+        raise NotImplementedError
+
+    class TaskCommitMessage:
+        def __init__(self, task_id: str, partition: Dict[Any, Any]):
+            self.task_id = task_id
+            self.partition = partition
+
+        def __getitem__(self, key):
+            if key == "task_id":
+                return self.fragments
+            elif key == "partition":
+                return self.partition
+            else:
+                raise KeyError(f"Key {key} not found")
+
+    class TaskInput:
+        def __init__(self, task_id: str, fn: Callable, partition: Dict[Any, Any]):
+            self.task_id = task_id
+            self.fn = fn
+            self.partition = partition
+
+    class CustomTask:
+        def __init__(self, task_input: "TaskInput"):
+            self._fn = task_input.fn
+            self._task_id = task_input.task_id
+
+        def __call__(self) -> Dict[str, Any]:
+            output = self._fn()
+            return {
+                "commit_messages": Datasource.TaskCommitMessage(
+                    self._task_id, {"output", output}
+                )
+            }
+
+    def get_custom_tasks(
+        self,
+        value_func: Dict[str, str] | Callable[[pa.RecordBatch], pa.RecordBatch],
+        params: Dict[str, Any] = None,
+    ) -> List[CustomTask]:
+        """Execute the read and return read tasks.
+
+        Args:
+            parallelism: The requested read parallelism. The number of read
+                tasks should equal to this value if possible.
+
+        Returns:
+            A list of read tasks that can be executed to read blocks from the
+            datasource in parallel.
+        """
+        raise NotImplementedError
+
+    def commit_tasks(self, commit_messages: List[TaskCommitMessage]) -> bool:
+        """Execute the read and return read tasks.
+
+        Args:
+            commit_messages: The commit messages from the read tasks.
+
+        Returns:
+            A list of blocks that can be committed to the datasource.
         """
         raise NotImplementedError
 
