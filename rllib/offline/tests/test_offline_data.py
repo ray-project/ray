@@ -201,6 +201,42 @@ class TestOfflineData(unittest.TestCase):
         # Finally, remove the files and folders.
         shutil.rmtree(dir_path)
 
+    def test_custom_data_class(self):
+
+        # Define a simple customized `OfflineData` class.
+        class TestOfflineData(OfflineData):
+            def __init__(self, config: AlgorithmConfig):
+                # Simply call super.
+                super().__init__(config=config)
+
+        # Configure a `BC` algorithm.
+        config = (
+            BCConfig()
+            .environment(
+                env="CartPole-v1",
+            )
+            .offline_data(
+                input_=[self.data_path],
+                offline_data_class=TestOfflineData,
+                dataset_num_iters_per_learner=1,
+            )
+        )
+
+        # Build the `BC` instance.
+        algo = config.build()
+
+        # Assert, we use now the customized class.
+        self.assertIsInstance(algo.offline_data, TestOfflineData)
+
+        try:
+            # Run a training iteration.
+            res = algo.train()
+            # Ensure, we indeed got a dictionary with the results.
+            self.assertIsInstance(res, dict)
+        finally:
+            # Stop the algorithm gracefully.
+            algo.stop()
+
 
 if __name__ == "__main__":
     import sys
