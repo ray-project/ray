@@ -687,22 +687,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 validate_env=self.validate_env,
                 default_policy_class=self.get_default_policy_class(self.config),
                 config=self.config,
-                num_env_runners=(
-                    0
-                    if (
-                        self.config.input_
-                        and (
-                            isinstance(self.config.input_, str)
-                            or (
-                                isinstance(self.config.input_, list)
-                                and isinstance(self.config.input_[0], str)
-                            )
-                        )
-                        and self.config.input_ != "sampler"
-                        and self.config.enable_rl_module_and_learner
-                    )
-                    else self.config.num_env_runners
-                ),
+                num_env_runners=self.config.num_env_runners,
                 local_env_runner=True,
                 logdir=self.logdir,
                 tune_trial_id=self.trial_id,
