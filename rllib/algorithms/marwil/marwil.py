@@ -46,6 +46,7 @@ class MARWILConfig(AlgorithmConfig):
     .. testcode::
 
         import gymnasium as gym
+        import numpy as np
 
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
@@ -94,6 +95,9 @@ class MARWILConfig(AlgorithmConfig):
         algo.train()
 
     .. testcode::
+
+        import gymnasium as gym
+        import numpy as np
 
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
