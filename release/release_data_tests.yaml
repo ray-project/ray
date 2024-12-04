@@ -25,10 +25,14 @@
     timeout: 3600
     script: python read_and_consume_benchmark.py s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
 
-- name: count_parquet
+###############
+# Writing tests
+###############
+
+- name: write_parquet
   run:
-    timeout: 600
-    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
 
 ###############
 # Groupby tests
@@ -102,6 +106,11 @@
 ###############
 # Dataset tests
 ###############
+
+- name: count_parquet
+  run:
+    timeout: 600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
 
 - name: streaming_data_ingest_benchmark_1tb
   group: data-tests
@@ -604,12 +613,12 @@
   run:
     timeout: 1800
     script: >
-      python gpu_batch_inference.py 
+      python gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 - name: batch_inference_chaos
   stable: False
-  # Don't use 'nightly_tests/dataset' as the working directory because we need to run 
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
   # the 'setup_chaos.py' script.
   working_dir: nightly_tests
 
@@ -620,7 +629,7 @@
     timeout: 1800
     prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
     script: >
-      python dataset/gpu_batch_inference.py 
+      python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
 
 # 10 TB image classification parquet data with autoscaling heterogenous cluster
@@ -634,5 +643,5 @@
   run:
     timeout: 3600
     script: >
-      python gpu_batch_inference.py 
+      python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
