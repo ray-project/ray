@@ -80,10 +80,14 @@ class GcsAutoscalerStateManager;
 /// and the management of actor creation.
 /// For more details, please see the design document.
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
+///
+/// Notes on lifecycle:
+/// 1. Gcs server contains a lot of data member, gcs server outlives all of them.
+/// 2. Gcs table storage and all gcs managers share a lifetime, that starts from a
+/// `DoStart` call to `Stop`.
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
-                     instrumented_io_context &main_service);
+  GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -289,13 +293,13 @@ class GcsServer {
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Gcs service state flag, which is used for ut.

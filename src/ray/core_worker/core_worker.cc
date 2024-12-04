@@ -417,7 +417,38 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   core_worker_client_pool_ =
-      std::make_shared<rpc::CoreWorkerClientPool>(*client_call_manager_);
+      std::make_shared<rpc::CoreWorkerClientPool>([&](const rpc::Address &addr) {
+        return std::make_shared<rpc::CoreWorkerClient>(
+            addr,
+            *client_call_manager_,
+            /*core_worker_unavailable_timeout_callback=*/[this, addr]() {
+              const NodeID node_id = NodeID::FromBinary(addr.raylet_id());
+              const WorkerID worker_id = WorkerID::FromBinary(addr.worker_id());
+              const rpc::GcsNodeInfo *node_info =
+                  gcs_client_->Nodes().Get(node_id, /*filter_dead_nodes=*/false);
+              if (node_info != nullptr && node_info->state() == rpc::GcsNodeInfo::DEAD) {
+                RAY_LOG(INFO).WithField(worker_id).WithField(node_id)
+                    << "Disconnect core worker client since its node is dead";
+                core_worker_client_pool_->Disconnect(worker_id);
+                return;
+              }
+
+              raylet::RayletClient raylet_client(
+                  rpc::NodeManagerWorkerClient::make(node_info->node_manager_address(),
+                                                     node_info->node_manager_port(),
+                                                     *client_call_manager_));
+              raylet_client.IsLocalWorkerDead(
+                  worker_id,
+                  [this, worker_id](const Status &status,
+                                    rpc::IsLocalWorkerDeadReply &&reply) {
+                    if (status.ok() && reply.is_dead()) {
+                      RAY_LOG(INFO).WithField(worker_id)
+                          << "Disconnect core worker client since it is dead";
+                      core_worker_client_pool_->Disconnect(worker_id);
+                    }
+                  });
+            });
+      });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
       /*channels=*/std::vector<
@@ -747,12 +778,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
                        /*pin_object=*/pin_object));
       });
 
-  // Tell the raylet the port that we are listening on.
-  // NOTE: This also marks the worker as available in Raylet. We do this at the
-  // very end in case there is a problem during construction.
-  if (options.connect_on_start) {
-    ConnectToRayletInternal();
-  }
   // Used to detect if the object is in the plasma store.
   max_direct_call_object_size_ = RayConfig::instance().max_direct_call_object_size();
 
@@ -834,6 +859,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Verify driver and worker are never mixed in the same process.
   RAY_CHECK_EQ(options_.worker_type != WorkerType::DRIVER, niced);
 #endif
+
+  // Tell the raylet the port that we are listening on.
+  // NOTE: This also marks the worker as available in Raylet. We do this at the
+  // very end in case there is a problem during construction.
+  ConnectToRayletInternal();
 }
 
 CoreWorker::~CoreWorker() { RAY_LOG(INFO) << "Core worker is destructed"; }
@@ -866,14 +896,6 @@ void CoreWorker::Shutdown() {
 
   task_event_buffer_->Stop();
 
-  if (gcs_client_) {
-    // We should disconnect gcs client first otherwise because it contains
-    // a blocking logic that can block the io service upon
-    // gcs shutdown.
-    // TODO(sang): Refactor GCS client to be more robust.
-    RAY_LOG(INFO) << "Disconnecting a GCS client.";
-    gcs_client_->Disconnect();
-  }
   io_service_.stop();
   RAY_LOG(INFO) << "Waiting for joining a core worker io thread. If it hangs here, there "
                    "might be deadlock or a high load in the core worker io service.";
@@ -886,7 +908,13 @@ void CoreWorker::Shutdown() {
 
   // Now that gcs_client is not used within io service, we can reset the pointer and clean
   // it up.
-  gcs_client_.reset();
+  if (gcs_client_) {
+    RAY_LOG(INFO) << "Disconnecting a GCS client.";
+    // TODO(hjiang): Move the Disconnect() logic
+    // to GcsClient destructor.
+    gcs_client_->Disconnect();
+    gcs_client_.reset();
+  }
 
   RAY_LOG(INFO) << "Core worker ready to be deallocated.";
 }
@@ -906,11 +934,6 @@ void CoreWorker::ConnectToRayletInternal() {
     RAY_CHECK(status.ok()) << "Failed to announce worker's port to raylet and GCS: "
                            << status;
   }
-}
-
-void CoreWorker::ConnectToRaylet() {
-  RAY_CHECK(!options_.connect_on_start);
-  ConnectToRayletInternal();
 }
 
 void CoreWorker::Disconnect(
@@ -3454,13 +3477,13 @@ Status CoreWorker::ReportGeneratorItemReturns(
         if (status.ok()) {
           num_objects_consumed = reply.total_num_object_consumed();
         } else {
-          // TODO(sang): Handle network error more gracefully.
           // If the request fails, we should just resume until task finishes without
           // backpressure.
           num_objects_consumed = waiter->TotalObjectGenerated();
           RAY_LOG(WARNING).WithField(return_id)
               << "Failed to report streaming generator return "
-                 "to the caller. The yield'ed ObjectRef may not be usable.";
+                 "to the caller. The yield'ed ObjectRef may not be usable. "
+              << status;
         }
         waiter->HandleObjectReported(num_objects_consumed);
       });

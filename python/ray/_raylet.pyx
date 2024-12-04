@@ -3002,7 +3002,6 @@ cdef class CoreWorker:
         options.terminate_asyncio_thread = terminate_asyncio_thread
         options.serialized_job_config = serialized_job_config
         options.metrics_agent_port = metrics_agent_port
-        options.connect_on_start = False
         options.runtime_env_hash = runtime_env_hash
         options.startup_token = startup_token
         options.session_name = session_name
@@ -3029,10 +3028,6 @@ cdef class CoreWorker:
         assert self.is_driver
         with nogil:
             CCoreWorkerProcess.Shutdown()
-
-    def notify_raylet(self):
-        with nogil:
-            CCoreWorkerProcess.GetCoreWorker().ConnectToRaylet()
 
     def run_task_loop(self):
         with nogil:

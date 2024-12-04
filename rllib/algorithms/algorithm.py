@@ -710,7 +710,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         ):
             from ray.rllib.offline.offline_data import OfflineData
 
-            self.offline_data = OfflineData(self.config)
+            # Use either user-provided `OfflineData` class or RLlib's default.
+            offline_data_class = self.config.offline_data_class or OfflineData
+            # Build the `OfflineData` class.
+            self.offline_data = offline_data_class(self.config)
         # Otherwise set the attribute to `None`.
         else:
             self.offline_data = None
@@ -3548,11 +3551,26 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             ),
         }
 
+        # Compile all throughput stats.
+        throughputs = {}
+
+        def _reduce(p, s):
+            if isinstance(s, Stats):
+                ret = s.peek()
+                _throughput = s.peek(throughput=True)
+                if _throughput is not None:
+                    _curr = throughputs
+                    for k in p[:-1]:
+                        _curr = _curr.setdefault(k, {})
+                    _curr[p[-1] + "_throughput"] = _throughput
+            else:
+                ret = s
+            return ret
+
         # Resolve all `Stats` leafs by peeking (get their reduced values).
-        return tree.map_structure(
-            lambda s: s.peek() if isinstance(s, Stats) else s,
-            results,
-        )
+        all_results = tree.map_structure_with_path(_reduce, results)
+        deep_update(all_results, throughputs, new_keys_allowed=True)
+        return all_results
 
     def __repr__(self):
         if self.config.enable_rl_module_and_learner:
