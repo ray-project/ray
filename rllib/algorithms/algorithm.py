@@ -672,7 +672,10 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         if self.config.is_offline:
             from ray.rllib.offline.offline_data import OfflineData
 
-            self.offline_data = OfflineData(self.config)
+            # Use either user-provided `OfflineData` class or RLlib's default.
+            offline_data_class = self.config.offline_data_class or OfflineData
+            # Build the `OfflineData` class.
+            self.offline_data = offline_data_class(self.config)
         # Otherwise set the attribute to `None`.
         else:
             self.offline_data = None
