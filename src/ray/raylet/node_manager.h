@@ -523,6 +523,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                             rpc::PrestartWorkersReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReportWorkerBacklog` request.
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
@@ -551,6 +555,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
