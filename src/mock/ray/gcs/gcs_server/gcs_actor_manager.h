@@ -30,9 +30,9 @@ class MockGcsActorManager : public GcsActorManager {
   MockGcsActorManager(RuntimeEnvManager &runtime_env_manager,
                       GcsFunctionManager &function_manager)
       : GcsActorManager(
-            nullptr,
-            nullptr,
-            nullptr,
+            /*scheduler=*/nullptr,
+            /*gcs_table_storage=*/nullptr,
+            /*gcs_publisher=*/nullptr,
             runtime_env_manager,
             function_manager,
             [](const ActorID &) {},

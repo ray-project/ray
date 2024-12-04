@@ -26,8 +26,7 @@ namespace gcs {
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
-  explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<GcsPublisher> &gcs_publisher)
+  GcsWorkerManager(gcs::GcsTableStorage &gcs_table_storage, GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage), gcs_publisher_(gcs_publisher) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
@@ -68,8 +67,8 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       const WorkerID &worker_id,
       std::function<void(const std::optional<WorkerTableData> &)> callback) const;
 
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  gcs::GcsTableStorage &gcs_table_storage_;
+  GcsPublisher &gcs_publisher_;
   UsageStatsClient *usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
