@@ -913,7 +913,7 @@ class CompiledDAG:
         used_attributes = set()
         # Keep track of visited nodes during backtracking.
         visited_nodes = set()
-         # Traverse backwards from the output node to find all used inputs.
+        # Traverse backwards from the output node to find all used inputs.
         def traverse(node):
             if node in visited_nodes:
                 return
@@ -929,7 +929,6 @@ class CompiledDAG:
 
         unused_attributes = input_attributes - used_attributes
         return unused_attributes
-
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -1145,7 +1144,9 @@ class CompiledDAG:
                     nccl_actors_p2p.add(downstream_actor_handle)
 
         # handle_unused_attributes:
-        unused_attributes = self.find_unused_input_attributes(output_node, input_attributes)
+        unused_attributes = self.find_unused_input_attributes(
+            output_node, input_attributes
+        )
 
         if unused_attributes:
             unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
