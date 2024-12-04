@@ -52,6 +52,13 @@ parser.add_argument(
     "--gcs-address", required=True, type=str, help="the address to use for GCS"
 )
 parser.add_argument(
+    "--redis-username",
+    required=False,
+    type=str,
+    default=None,
+    help="the username to use for Redis",
+)
+parser.add_argument(
     "--redis-password",
     required=False,
     type=str,
@@ -212,6 +219,7 @@ if __name__ == "__main__":
         raylet_ip_address=raylet_ip_address,
         node_manager_port=args.node_manager_port,
         redis_address=args.redis_address,
+        redis_username=args.redis_username,
         redis_password=args.redis_password,
         plasma_store_socket_name=args.object_store_name,
         raylet_socket_name=args.raylet_name,
