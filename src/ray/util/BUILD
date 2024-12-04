@@ -57,10 +57,16 @@ cc_library(
 )
 
 cc_library(
+    name = "map_utils",
+    hdrs = ["map_utils.h"],
+)
+
+cc_library(
     name = "shared_lru",
     hdrs = ["shared_lru.h"],
     visibility = ["//visibility:public"],
     deps = [
+        ":map_utils",
         ":util",
         "@com_google_absl//absl/container:flat_hash_map",
     ],
