@@ -2650,7 +2650,10 @@ class CompiledDAG:
                     "Parameters 'channel_details' are"
                     " not compatible with 'ascii' format."
                 )
-            return self._visualize_ascii()
+            ascii_visualiztion_str = self._visualize_ascii()
+            if view:
+                print(ascii_visualiztion_str)
+            return ascii_visualiztion_str
         try:
             import graphviz
         except ImportError:

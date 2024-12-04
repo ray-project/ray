@@ -7,12 +7,14 @@ from ray.tests.conftest import *  # noqa
 
 import pytest
 
+
 def cleanup_files(filename: str):
     """Helper function to delete files generated during the test."""
-    for ext in ['','.png', '.pdf', '.jpeg', '.dot']:
+    for ext in ["", ".png", ".pdf", ".jpeg", ".dot"]:
         file_path = filename + ext
         if os.path.exists(file_path):
             os.remove(file_path)
+
 
 def test_visualize_basic(ray_start_regular):
     """
