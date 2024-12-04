@@ -52,6 +52,7 @@ class GcsActorSchedulerMockTest : public Test {
         /*is_node_available_fn=*/
         [](auto) { return true; },
         /*is_local_node_with_raylet=*/false);
+    local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
     cluster_task_manager = std::make_unique<ClusterTaskManager>(
         local_node_id,
         cluster_resource_scheduler,
@@ -60,10 +61,8 @@ class GcsActorSchedulerMockTest : public Test {
           auto node = gcs_node_manager->GetAliveNode(node_id);
           return node.has_value() ? node.value().get() : nullptr;
         },
-        /*announce_infeasible_task=*/
-        nullptr,
-        /*local_task_manager=*/
-        std::make_shared<NoopLocalTaskManager>());
+        /*announce_infeasible_task=*/nullptr,
+        /*local_task_manager=*/*local_task_manager_);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
     actor_scheduler = std::make_unique<GcsActorScheduler>(
@@ -88,6 +87,7 @@ class GcsActorSchedulerMockTest : public Test {
   std::shared_ptr<MockStoreClient> store_client;
   std::unique_ptr<GcsActorTable> actor_table;
   std::unique_ptr<GcsNodeManager> gcs_node_manager;
+  std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
   std::unique_ptr<ClusterTaskManager> cluster_task_manager;
   std::unique_ptr<GcsActorScheduler> actor_scheduler;
   std::shared_ptr<rpc::MockCoreWorkerClientInterface> core_worker_client;
