@@ -19,16 +19,25 @@
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
+#include "ray/util/counter_map.h"
+#include "ray/gcs/gcs_server/gcs_init_data.h"
 
 namespace ray {
 namespace gcs {
 
+enum GcsWorkerManagerCounter {
+  kNumWorkerDeadEventsStored,
+};
+
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
-  explicit GcsWorkerManager(std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+  explicit GcsWorkerManager(size_t max_num_worker_events,
+                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
                             std::shared_ptr<GcsPublisher> &gcs_publisher)
-      : gcs_table_storage_(gcs_table_storage), gcs_publisher_(gcs_publisher) {}
+      : gcs_table_storage_(gcs_table_storage),
+        gcs_publisher_(gcs_publisher),
+        max_num_dead_workers_(max_num_dead_workers) {}
 
   void HandleReportWorkerFailure(rpc::ReportWorkerFailureRequest request,
                                  rpc::ReportWorkerFailureReply *reply,
@@ -56,6 +65,8 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       rpc::UpdateWorkerNumPausedThreadsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  void Initialize(const GcsInitData &gcs_init_data);
+
   void AddWorkerDeadListener(
       std::function<void(std::shared_ptr<WorkerTableData>)> listener);
 
@@ -73,6 +84,13 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   UsageStatsClient *usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
+
+  /// The workers are sorted according to the timestamp, and the oldest is at the head of
+  /// the list.
+  std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
+
+  /// Max number of dead workers allowed in the storage.
+  const size_t max_num_dead_workers_ = 1000;
 
   /// Tracks the number of occurences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;
