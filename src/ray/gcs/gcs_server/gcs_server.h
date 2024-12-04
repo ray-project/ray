@@ -299,7 +299,7 @@ class GcsServer {
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
   /// Local task manager.
-  std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
+  NoopLocalTaskManager local_task_manager_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;
