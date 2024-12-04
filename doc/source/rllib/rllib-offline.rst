@@ -671,12 +671,14 @@ the concurrency level specified in the keyword arguments for the mapping operati
 
 .. code-block:: python
     
-    AlgorithmConfig()
-    .offline_data(
-        map_batches_kwargs={
-            "concurrency": 10,
-            "num_cpus": 4,
-        }
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            map_batches_kwargs={
+                "concurrency": 10,
+                "num_cpus": 4,
+            }
+        )
     )
 
 This initiates an actor pool with 10 ``DataWorker`` instances, each running an instance of RLlib's callable :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` class to post-process batches for updating the 
@@ -688,10 +690,12 @@ You scale the number of learners in RLlib's :py:meth:`~ray.rllib.algorithms.algo
 
 .. code-block:: python
     
-    AlgorithmConfig()
-    .learners(
-        num_learners=4,
-        num_gpus_per_learner=1,
+    config = (
+        AlgorithmConfig()
+        .learners(
+            num_learners=4,
+            num_gpus_per_learner=1,
+        )
     )
 
 With this configuration you start an application with 4 (remote) :py:class:`~ray.rllib.core.learner.learner.Learner`s (see :ref:`Learner (Alpha)` for more details about RLlib's learners) 
@@ -707,9 +711,11 @@ For example, to read from a storage bucket in GCS, you can specify the folder lo
 
 .. code-block:: python
 
-    AlgorithmConfig()
-    .offline_data(
-        input_="gs://<your-bucket>/dir1",
+    config=(
+        AlgorithmConfig()
+        .offline_data(
+            input_="gs://<your-bucket>/dir1",
+        )
     )
 
 This configuration allows RLlib to read data recursively from any folder beneath the specified path. If you are using a filesystem for GCS (for instance, due to authentication requirements), 
@@ -727,11 +733,13 @@ use the following syntax:
     )
 
     # Define the configuration.
-    AlgorithmConfig()
-    .offline_data(
-        # NOTE: Use a relative file path now
-        input_="<public-bucket>/dir1",
-        input_filesystem=gcs,
+    config= (
+        AlgorithmConfig()
+        .offline_data(
+            # NOTE: Use a relative file path now
+            input_="<public-bucket>/dir1",
+            input_filesystem=gcs,
+        )
     )
 
 You can learn more about PyArrow's filesystems, particularly regarding cloud filesystems and required authentication, in `PyArrow Filesystem Interface <https://arrow.apache.org/docs/python/filesystems.html#filesystem-interface>`__.
@@ -742,9 +750,11 @@ You can use cloud storage in a similar way when recording experiences from an ex
 
 .. code-block:: python
 
-    AlgorithmConfig()
-    .offline_data(
-        output="gs://<your-bucket>/dir1",
+    config= (
+        AlgorithmConfig()
+        .offline_data(
+            output="gs://<your-bucket>/dir1",
+        )
     )
 
 RLlib writes then directly into the folder in the cloud storage and creates it if not already existent in the bucket. The only difference to reading is that you can't use multiple paths for writing.
@@ -752,9 +762,11 @@ So something like
 
 .. code-block:: python
 
-    AlgorithmConfig()
-    .offline_data(
-        output=["gs://<your-bucket>/dir1", "gs://<your-bucket>/dir2"],
+    config= (
+        AlgorithmConfig()
+        .offline_data(
+            output=["gs://<your-bucket>/dir1", "gs://<your-bucket>/dir2"],
+        )
     )
 
 would not work. If the storage requires special permissions for creating folders and/or writing files, ensure that the cluster user is granted the necessary permissions. Failure to do so results
@@ -821,20 +833,22 @@ For instance, if you only require specific columns from your offline data (for e
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.columns import Columns
 
-    AlgorithmConfig()
-    .offline_Data(
-        input_read_method_kwargs={
-            "columns": [
-                Columns.EPS_ID,
-                Columns.AGENT_ID,
-                Columns.OBS,
-                Columns.NEXT_OBS,
-                Columns.REWARDS,
-                Columns.ACTIONS,
-                Columns.TERMINATED,
-                Columns.TRUNCATED,
-            ],
-        },
+    config = (
+        AlgorithmConfig()
+        .offline_Data(
+            input_read_method_kwargs={
+                "columns": [
+                    Columns.EPS_ID,
+                    Columns.AGENT_ID,
+                    Columns.OBS,
+                    Columns.NEXT_OBS,
+                    Columns.REWARDS,
+                    Columns.ACTIONS,
+                    Columns.TERMINATED,
+                    Columns.TRUNCATED,
+                ],
+            },
+        )
     )
 
 Similarly, if you only require specific rows from your dataset, you can apply pushdown filters as shown below:
@@ -846,11 +860,13 @@ Similarly, if you only require specific rows from your dataset, you can apply pu
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.core.columns import Columns
 
-    AlgorithmConfig()
-    .offline_data(
-        input_read_method_kwargs={
-            "filter": pyarrow.dataset.field(Columns.AGENT_ID) == "agent_1",
-        },
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            input_read_method_kwargs={
+                "filter": pyarrow.dataset.field(Columns.AGENT_ID) == "agent_1",
+            },
+        )
     )
 
 How to Tune Post-Processing (PreLearner)
@@ -874,11 +890,13 @@ throughput to avoid backpressure. You can use the ``concurrency`` in RLlib's ``m
 
     from ray.rllib.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .offline_data(
-        map_batches_kwargs={
-            "concurrency": 4,
-        },
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            map_batches_kwargs={
+                "concurrency": 4,
+            },
+        )
     )
 
 With the preceding code you would enable :ref:`Ray Data <data>` to start up to ``4`` parallel :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` actors that can post-process your data for training.
@@ -894,11 +912,13 @@ You can also enable autoscaling in your **Post-Processing (PreLearner)** by prov
 
     from ray.rllib.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .offline_data(
-        map_batches_kwargs={
-            "concurrency": (4, 8),
-        },
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            map_batches_kwargs={
+                "concurrency": (4, 8),
+            },
+        )
     )
 
 This allows :ref:`Ray Data <data>` to start up to ``8`` post-processing actors to downstream data faster, for example in case of backpressure.
@@ -922,12 +942,14 @@ As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offli
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .offline_data(
-        map_batches_kwargs={
-            "concurrency": 4,
-            "num_cpus": 2,
-        },
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            map_batches_kwargs={
+                "concurrency": 4,
+                "num_cpus": 2,
+            },
+        )
     )
 
 .. warning:: Don't override the ``batch_size`` in RLlib's ``map_batches_kwargs``. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size in transformations of
@@ -951,21 +973,23 @@ Each :py:class:`~ray.rllib.utils.replay_buffers.episode_replay_buffer.EpisodeRep
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .training(
-        # Train on a batch of 1000 timesteps each iteration.
-        train_batch_size_per_learner=1000,
-    )
-    .offline_data(
-        # Read in RLlib's new stack `SingleAgentEpisode` data.
-        input_read_episodes=True
-        # Define an input read batch size of 10 episodes.
-        input_read_batch_size=10,
-        # Set the replay buffer in the `OfflinePrelearner`
-        # to 1,000 timesteps.
-        prelearner_buffer_kwargs={
-            "capacity": 1000,
-        },
+    config = (
+        AlgorithmConfig()
+        .training(
+            # Train on a batch of 1000 timesteps each iteration.
+            train_batch_size_per_learner=1000,
+        )
+        .offline_data(
+            # Read in RLlib's new stack `SingleAgentEpisode` data.
+            input_read_episodes=True
+            # Define an input read batch size of 10 episodes.
+            input_read_batch_size=10,
+            # Set the replay buffer in the `OfflinePrelearner`
+            # to 1,000 timesteps.
+            prelearner_buffer_kwargs={
+                "capacity": 1000,
+            },
+        )
     )
 
 If you configure `input_read_batch_size` to ``10`` as shown in the code, each of the ``10`` :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` fit into the buffer, enabling sampling across a wide variety of timesteps from multiple episodes. This results in high sampling variation. Now, consider the case where the buffer
@@ -975,21 +999,23 @@ capacity is reduced to ``500``:
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .training(
-        # Train on a batch of 1000 timesteps each iteration.
-        train_batch_size_per_learner=1000,
-    )
-    .offline_data(
-        # Read in RLlib's new stack `SingleAgentEpisode` data.
-        input_read_episodes=True
-        # Define an input read batch size of 10 episodes.
-        input_read_batch_size=10,
-        # Set the replay buffer in the `OfflinePrelearner`
-        # to 500 timesteps.
-        prelearner_buffer_kwargs={
-            "capacity": 500,
-        },
+    config = (
+        AlgorithmConfig()
+        .training(
+            # Train on a batch of 1000 timesteps each iteration.
+            train_batch_size_per_learner=1000,
+        )
+        .offline_data(
+            # Read in RLlib's new stack `SingleAgentEpisode` data.
+            input_read_episodes=True
+            # Define an input read batch size of 10 episodes.
+            input_read_batch_size=10,
+            # Set the replay buffer in the `OfflinePrelearner`
+            # to 500 timesteps.
+            prelearner_buffer_kwargs={
+                "capacity": 500,
+            },
+        )
     )
 
 With the same `input_read_batch_size`, only ``5`` :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be buffered at a time, causing inefficiencies as more data is read than can be retained for sampling.
@@ -1001,21 +1027,23 @@ results in lower sampling variation because many timesteps are repeatedly sample
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .training(
-        # Train on a batch of 4000 timesteps each iteration.
-        train_batch_size_per_learner=4000,
-    )
-    .offline_data(
-        # Read in RLlib's new stack `SingleAgentEpisode` data.
-        input_read_episodes=True
-        # Define an input read batch size of 10 episodes.
-        input_read_batch_size=10,
-        # Set the replay buffer in the `OfflinePrelearner`
-        # to 1,000 timesteps.
-        prelearner_buffer_kwargs={
-            "capacity": 500,
-        },
+    config = (
+        AlgorithmConfig()
+        .training(
+            # Train on a batch of 4000 timesteps each iteration.
+            train_batch_size_per_learner=4000,
+        )
+        .offline_data(
+            # Read in RLlib's new stack `SingleAgentEpisode` data.
+            input_read_episodes=True
+            # Define an input read batch size of 10 episodes.
+            input_read_batch_size=10,
+            # Set the replay buffer in the `OfflinePrelearner`
+            # to 1,000 timesteps.
+            prelearner_buffer_kwargs={
+                "capacity": 500,
+            },
+        )
     )
 
 .. tip:: To choose an adequate `input_read_batch_size` take a look at the length of your recorded episodes. In some cases each single episode is long enough to fulfill the `train_batch_size_per_learner` and you could choose a `input_read_batch_size` of ``1``. Most times it's not and you need to consider how many episodes should be buffered to balance
@@ -1141,9 +1169,11 @@ batch sizes reduce the overhead of frequent task coordination, but if they excee
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .training(
-        train_batch_size_per_learner=1024,
+    config = (
+        AlgorithmConfig()
+        .training(
+            train_batch_size_per_learner=1024,
+        )
     )
 
 .. tip::A good starting point for batch size tuning is ``2048``.
@@ -1163,11 +1193,13 @@ You can configure batch prefetching in the `iter_batches_kwargs`:
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .offline_data(
-        iter_batches_kwargs={
-            "prefetch_batches": 2,
-        }
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            iter_batches_kwargs={
+                "prefetch_batches": 2,
+            }
+        )
     )
 
 .. warning:: Don't override the ``batch_size`` in RLlib's `map_batches_kwargs`. This usually leads to high performance degradations. Note, this ``batch_size`` differs from the `train_batch_size_per_learner`: the former specifies the batch size
@@ -1186,10 +1218,12 @@ You can modify this value as follows:
 
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-    AlgorithmConfig()
-    .offline_data(
-        # Train on 20 batches from the substream in each learner.
-        dataset_num_iters_per_learner=20,
+    config = (
+        AlgorithmConfig()
+        .offline_data(
+            # Train on 20 batches from the substream in each learner.
+            dataset_num_iters_per_learner=20,
+        )
     )
 
 .. note::The default value of :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.dataset_num_iters_per_learner` is None, which allows each :py:class:`~ray.rllib.core.learner.learner.Learner` instance to process a full epoch on its data substream. While this setting works well for small datasets, it may not be suitable for larger datasets. It's important 
@@ -1276,11 +1310,13 @@ There are multiple ways to customize the :py:class:`~ray.rllib.connectors.learne
             parameter_2=100,
         )
 
-    AlgorithmConfig()
-    .training(
-        # Add the connector pipeline as the starting point for
-        # the learner connector pipeline.
-        learner_connector=_make_learner_connector,
+    config = (
+        AlgorithmConfig()
+        .training(
+            # Add the connector pipeline as the starting point for
+            # the learner connector pipeline.
+            learner_connector=_make_learner_connector,
+        )
     )
 
 As noted in the comments, this approach to adding a :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece to the :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline` is suitable only if you intend to manipulate raw episodes, as your :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` piece serves as the foundation for building the remainder of the pipeline (including batching and other processing
