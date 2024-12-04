@@ -206,7 +206,7 @@ class GcsServer {
   void PrintAsioStats();
 
   /// Get or connect to a redis server
-  std::shared_ptr<RedisClient> GetOrConnectRedis();
+  std::shared_ptr<RedisClient> GetOrConnectRedis(instrumented_io_context &io_service);
 
   void TryGlobalGC();
 

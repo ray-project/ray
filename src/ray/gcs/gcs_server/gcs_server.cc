@@ -69,7 +69,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
       periodical_runner_(io_context_provider_.GetDefaultIOContext()),
       is_started_(false),
       is_stopped_(false) {
-  // Init GCS table storage.
+  // Init GCS table storage. Note this is on the default io context, not the one with
+  // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
@@ -77,7 +78,8 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
         io_context_provider_.GetDefaultIOContext());
     break;
   case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+    gcs_table_storage_ = std::make_shared<gcs::RedisGcsTableStorage>(
+        GetOrConnectRedis(io_context_provider_.GetDefaultIOContext()));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
@@ -572,13 +574,13 @@ void GcsServer::InitKVManager() {
   std::unique_ptr<InternalKVInterface> instance;
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
+    instance = std::make_unique<StoreClientInternalKV>(std::make_unique<RedisStoreClient>(
+        GetOrConnectRedis(io_context_provider_.GetIOContext<GcsInternalKVManager>())));
     break;
   case (StorageType::IN_MEMORY):
     instance = std::make_unique<StoreClientInternalKV>(
         std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(
-            io_context_provider_.GetDefaultIOContext())));
+            io_context_provider_.GetIOContext<GcsInternalKVManager>())));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -591,7 +593,7 @@ void GcsServer::InitKVManager() {
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *kv_manager_);
+      io_context_provider_.GetIOContext<GcsInternalKVManager>(), *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_, false /* token_auth */);
 }
@@ -834,7 +836,8 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
+std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis(
+    instrumented_io_context &io_service) {
   if (redis_client_ == nullptr) {
     redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
     auto status = redis_client_->Connect(io_context_provider_.GetDefaultIOContext());
