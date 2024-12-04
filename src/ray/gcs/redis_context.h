@@ -139,7 +139,8 @@ struct RedisRequestContext {
 // dispatched to the io_service thread, and the callback is dispatched back to the
 // argument io_context.
 //
-// RunArgvSync is not thread-safe, and CHECK-fails if accessed from multiple threads.
+// RunArgvSync is not thread-safe, caller must ensure there's no concurrent call to
+// RunArgvSync.
 class RedisContext {
  public:
   explicit RedisContext(instrumented_io_context &io_service);
@@ -185,9 +186,6 @@ class RedisContext {
   std::unique_ptr<redisContext, RedisContextDeleter> context_;
   redisSSLContext *ssl_context_;
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
-  // Checks `context_` is always used in the same thread. No need to check the async
-  // context because it is thread-safe.
-  ThreadChecker sync_context_thread_checker_;
 };
 
 }  // namespace gcs

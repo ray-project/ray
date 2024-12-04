@@ -623,7 +623,6 @@ Status RedisContext::Connect(const std::string &address,
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     const std::vector<std::string> &args) {
   RAY_CHECK(context_);
-  RAY_CHECK(sync_context_thread_checker_.IsOnSameThread());
   // Build the arguments.
   std::vector<const char *> argv;
   std::vector<size_t> argc;
