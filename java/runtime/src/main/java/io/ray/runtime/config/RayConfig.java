@@ -41,6 +41,7 @@ public class RayConfig {
   public String logDir;
 
   private String bootstrapAddress;
+  public final String redisUsername;
   public final String redisPassword;
 
   // RPC socket name of object store.
@@ -170,6 +171,7 @@ public class RayConfig {
       this.bootstrapAddress = null;
     }
 
+    redisUsername = config.getString("ray.redis.username");
     redisPassword = config.getString("ray.redis.password");
     // Raylet node manager port.
     if (config.hasPath("ray.raylet.node-manager-port")) {

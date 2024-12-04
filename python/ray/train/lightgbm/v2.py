@@ -4,34 +4,10 @@ from typing import Any, Callable, Dict, Optional, Union
 import ray.train
 from ray.train import Checkpoint
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.train.lightgbm.config import NETWORK_PARAMS_KEY, LightGBMConfig
+from ray.train.lightgbm.config import LightGBMConfig, get_network_params  # noqa: F401
 from ray.train.trainer import GenDataset
 
 logger = logging.getLogger(__name__)
-
-
-def get_network_params() -> dict:
-    from ray.train._internal.session import get_session
-
-    session = get_session()
-    if not session:
-        logger.warning(
-            "`ray.train.lightgbm.get_network_params` was called outside the context "
-            "of a `ray.train.lightgbm.LightGBMTrainer`. "
-            "The current process has no knowledge of the distributed training group, "
-            "so returning an empty dict. Please call this within the training loop "
-            "of a `ray.train.lightgbm.LightGBMTrainer`."
-        )
-        return {}
-
-    network_params = session.get_state(NETWORK_PARAMS_KEY)
-    assert network_params is not None, (
-        f"`LightGBMConfig.backend_cls` must set '{NETWORK_PARAMS_KEY}' "
-        "in the session state in `on_training_start`. "
-        "Please fix this if you provided a custom `LightGBMConfig` subclass."
-        "Otherwise, please file a bug report to the Ray Team."
-    )
-    return network_params.copy()
 
 
 class LightGBMTrainer(DataParallelTrainer):
