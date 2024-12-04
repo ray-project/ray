@@ -2245,7 +2245,7 @@ class CompiledDAG:
         Visualize the compiled graph in
         ASCII format with directional markers.
 
-        This function generates an ASCII representation of a CG,
+        This function generates an ASCII visualization of a Compiled Graph,
         where each task node is labeled,
         and edges use `<` and `>` markers to show data flow direction.
 
