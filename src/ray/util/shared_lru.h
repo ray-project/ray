@@ -44,7 +44,7 @@
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "src/ray/util/logging.h"
+#include "ray/util/logging.h"
 
 namespace ray::utils::container {
 
