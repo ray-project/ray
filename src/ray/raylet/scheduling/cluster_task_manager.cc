@@ -29,16 +29,16 @@ ClusterTaskManager::ClusterTaskManager(
     std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
-    std::shared_ptr<ILocalTaskManager> local_task_manager,
+    ILocalTaskManager &local_task_manager,
     std::function<int64_t(void)> get_time_ms)
     : self_node_id_(self_node_id),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       get_node_info_(get_node_info),
       announce_infeasible_task_(announce_infeasible_task),
-      local_task_manager_(std::move(local_task_manager)),
+      local_task_manager_(local_task_manager),
       scheduler_resource_reporter_(
-          tasks_to_schedule_, infeasible_tasks_, *local_task_manager_),
-      internal_stats_(*this, *local_task_manager_),
+          tasks_to_schedule_, infeasible_tasks_, local_task_manager_),
+      internal_stats_(*this, local_task_manager_),
       get_time_ms_(get_time_ms) {}
 
 void ClusterTaskManager::QueueAndScheduleTask(
@@ -116,7 +116,7 @@ bool ClusterTaskManager::CancelTasks(
         }
       });
 
-  if (local_task_manager_->CancelTasks(
+  if (local_task_manager_.CancelTasks(
           predicate, failure_type, scheduling_failure_message)) {
     tasks_cancelled = true;
   }
@@ -235,7 +235,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
   }
   works_to_cancel.clear();
 
-  local_task_manager_->ScheduleAndDispatchTasks();
+  local_task_manager_.ScheduleAndDispatchTasks();
 }
 
 void ClusterTaskManager::TryScheduleInfeasibleTask() {
@@ -348,7 +348,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
     }
   }
 
-  local_task_manager_->AnyPendingTasksForResourceAcquisition(
+  local_task_manager_.AnyPendingTasksForResourceAcquisition(
       exemplar, any_pending, num_pending_actor_creation, num_pending_tasks);
 
   // If there's any pending task, at this point, there's no progress being made.
@@ -366,8 +366,8 @@ std::string ClusterTaskManager::DebugStr() const {
 
 void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
                                         const std::shared_ptr<internal::Work> &work) {
-  if (spillback_to == self_node_id_ && local_task_manager_) {
-    local_task_manager_->QueueAndScheduleTask(work);
+  if (spillback_to == self_node_id_) {
+    local_task_manager_.QueueAndScheduleTask(work);
     return;
   }
 
