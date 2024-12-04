@@ -55,6 +55,8 @@
 
 - name: aggregate_groups
   stable: False
+  # TODO: Once the test is stable, change the frequency to 'nightly'.
+  frequency: nightly-3x
 
   cluster:
     cluster_compute: all_to_all_compute.yaml
@@ -76,6 +78,8 @@
   
 - name: map_groups
   stable: False
+  # TODO: Once the test is stable, change the frequency to 'nightly'.
+  frequency: nightly-3x
 
   cluster:
     cluster_compute: all_to_all_compute.yaml
