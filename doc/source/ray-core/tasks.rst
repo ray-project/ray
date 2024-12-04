@@ -327,7 +327,7 @@ Example:
     def my_task():
         return 42
 
-    # Stacktrace will be captured for task invocation
+    # Capture the stacktrace upon task invocation
     future = my_task.remote()
     result = ray.get(future)
 
