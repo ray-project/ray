@@ -459,9 +459,9 @@ def _build_dag_node_operation_graph(
     return graph
 
 
-def _actor_viz_str(actor: "ray.actor.ActorHandle"):
+def _actor_viz_label(actor: "ray.actor.ActorHandle"):
     """
-    A string representation of an actor in the visualization of the execution schedule.
+    Returns the label of an actor in the visualization of the execution schedule.
 
     Args:
         actor: The actor to be represented.
@@ -471,16 +471,21 @@ def _actor_viz_str(actor: "ray.actor.ActorHandle"):
     return f"Actor class name: {class_name}\nActor ID: {actor_id}"
 
 
-def _node_viz_str(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
+def _node_viz_id_and_label(
+    node: _DAGOperationGraphNode, idx: int, optimized_index: int
+):
     """
-    A string representation of a node in the visualization of the execution schedule.
+    Returns the visualization id and label of a node. The visualization id is unique
+    across all nodes.
 
     Args:
         node: The node to be represented.
         idx: The index of the node in the execution schedule.
         optimized_index: The index of the node in the optimized execution schedule.
     """
-    return node.viz_str() + f" {idx},{optimized_index}"
+    node_viz_label = node.viz_str() + f" {idx},{optimized_index}"
+    node_viz_id = f"{node._actor_id}_{node_viz_label}"
+    return node_viz_id, node_viz_label
 
 
 def _visualize_execution_schedule(
@@ -537,7 +542,8 @@ def _visualize_execution_schedule(
         )
 
     dot = graphviz.Digraph(comment="DAG")
-    node_to_viz: Dict[_DAGOperationGraphNode, str] = {}
+    # A dictionary that maps a node to its visualization id
+    node_to_viz_id: Dict[_DAGOperationGraphNode, str] = {}
 
     if actor_to_overlapped_schedule is None:
         # TODO(rui): make the visualization more concise by only displaying
@@ -549,28 +555,31 @@ def _visualize_execution_schedule(
             node: i for i, node in enumerate(overlapped_schedule)
         }
 
-        with dot.subgraph(name=f"cluster_{execution_nodes[0]._actor_id}") as subgraph:
-            subgraph.attr(
-                rank=execution_nodes[0]._actor_id, label=_actor_viz_str(actor)
-            )
+        actor_id = actor._ray_actor_id.hex()
+        with dot.subgraph(name=f"cluster_{actor_id}") as subgraph:
+            subgraph.attr(rank=actor_id, label=_actor_viz_label(actor))
             for i, node in enumerate(execution_nodes):
                 optimized_index = node_to_optimized_index.get(node)
-                node_viz = _node_viz_str(node, i, optimized_index)
+                node_viz_id, node_viz_label = _node_viz_id_and_label(
+                    node, i, optimized_index
+                )
                 color = "red" if optimized_index != i else "black"
-                subgraph.node(node_viz, node_viz, color=color)
-                node_to_viz[node] = node_viz
+                subgraph.node(node_viz_id, node_viz_label, color=color)
+                node_to_viz_id[node] = node_viz_id
 
     for actor, execution_nodes in actor_to_execution_schedule.items():
         for i, node in enumerate(execution_nodes):
-            node_viz = node_to_viz[node]
+            node_viz_id = node_to_viz_id[node]
             for out_edge, viz_info in node.out_edges.items():
                 label, control_dependency = viz_info
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
-                out_node_repr = node_to_viz[out_node]
+                out_node_viz_id = node_to_viz_id[out_node]
                 color = "blue" if label == "nccl" else "black"
                 style = "dashed" if control_dependency else "solid"
-                dot.edge(node_viz, out_node_repr, label=label, color=color, style=style)
+                dot.edge(
+                    node_viz_id, out_node_viz_id, label=label, color=color, style=style
+                )
 
     # Add legend
     with dot.subgraph(name="cluster_legend") as legend:
