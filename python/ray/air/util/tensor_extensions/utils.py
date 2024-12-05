@@ -9,9 +9,28 @@ if TYPE_CHECKING:
     from pandas.core.dtypes.generic import ABCSeries
 
 
+def _is_ndarray_tensor(arr: np.ndarray) -> bool:
+    """Return whether the provided NumPy ndarray is comprised of tensors.
+
+    NOTE: Tensor is defined as a NumPy array such that `len(arr.shape) > 1`
+    """
+
+    # Case of uniform-shaped (ie non-ragged) tensor
+    if arr.ndim > 1:
+        return True
+
+    # Case of ragged tensor (as produced by `create_ragged_ndarray` utility)
+    elif (
+        arr.dtype.type is np.object_ and len(arr) > 0 and isinstance(arr[0], np.ndarray)
+    ):
+        return True
+
+    return False
+
+
 def _is_ndarray_variable_shaped_tensor(arr: np.ndarray) -> bool:
-    """Return whether the provided NumPy ndarray is representing a variable-shaped
-    tensor.
+    """Return whether the provided NumPy ndarray is comprised of variable-shaped
+    tensors.
 
     NOTE: This is an O(rows) check.
     """
@@ -46,8 +65,16 @@ def _create_possibly_ragged_ndarray(
             # `np.array(...)` without the `dtype=object` parameter will raise a
             # VisibleDeprecationWarning which we suppress.
             # More details: https://stackoverflow.com/q/63097829
-            warnings.simplefilter("ignore", category=np.VisibleDeprecationWarning)
-            return np.array(values, copy=False)
+            if np.lib.NumpyVersion(np.__version__) >= "2.0.0":
+                copy_if_needed = None
+                warning_type = np.exceptions.VisibleDeprecationWarning
+            else:
+                copy_if_needed = False
+                warning_type = np.VisibleDeprecationWarning
+
+            warnings.simplefilter("ignore", category=warning_type)
+            arr = np.array(values, copy=copy_if_needed)
+            return arr
     except ValueError as e:
         # Constructing a ragged ndarray directly via `np.array(...)`
         # without the `dtype=object` parameter will raise a ValueError.
@@ -69,7 +96,7 @@ def _create_possibly_ragged_ndarray(
 
 
 @PublicAPI(stability="alpha")
-def create_ragged_ndarray(values: Sequence[np.ndarray]) -> np.ndarray:
+def create_ragged_ndarray(values: Sequence[Any]) -> np.ndarray:
     """Create an array that contains arrays of different length
 
     If you're working with variable-length arrays like images, use this function to

@@ -27,6 +27,7 @@ from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data._internal.datasource.delta_sharing_datasource import (
     DeltaSharingDatasource,
 )
+from ray.data._internal.datasource.hudi_datasource import HudiDatasource
 from ray.data._internal.datasource.iceberg_datasource import IcebergDatasource
 from ray.data._internal.datasource.image_datasource import (
     ImageDatasource,
@@ -83,7 +84,7 @@ from ray.data.datasource.file_meta_provider import (
 from ray.data.datasource.parquet_meta_provider import ParquetMetadataProvider
 from ray.data.datasource.partitioning import Partitioning
 from ray.types import ObjectRef
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
 if TYPE_CHECKING:
@@ -125,9 +126,12 @@ def from_blocks(blocks: List[Block]):
     block_refs = [ray.put(block) for block in blocks]
     metadata = [BlockAccessor.for_block(block).get_metadata() for block in blocks]
     from_blocks_op = FromBlocks(block_refs, metadata)
-    logical_plan = LogicalPlan(from_blocks_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromBlocks": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_blocks_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromBlocks": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -205,9 +209,12 @@ def from_items(
         )
 
     from_items_op = FromItems(blocks, metadata)
-    logical_plan = LogicalPlan(from_items_op)
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromItems": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(from_items_op, execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromItems": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -405,9 +412,10 @@ def read_datasource(
         ray_remote_args,
         concurrency,
     )
-    logical_plan = LogicalPlan(read_op)
+    execution_plan = ExecutionPlan(stats)
+    logical_plan = LogicalPlan(read_op, execution_plan._context)
     return Dataset(
-        plan=ExecutionPlan(stats),
+        plan=execution_plan,
         logical_plan=logical_plan,
     )
 
@@ -728,6 +736,7 @@ def read_parquet(
         :class:`~ray.data.Dataset` producing records read from the specified parquet
         files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
     _validate_shuffle_arg(shuffle)
 
     if meta_provider is None:
@@ -841,10 +850,10 @@ def read_images(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -890,6 +899,8 @@ def read_images(
         ValueError: if ``size`` contains non-positive numbers.
         ValueError: if ``mode`` is unsupported.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = ImageFileMetadataProvider()
 
@@ -916,7 +927,7 @@ def read_images(
     )
 
 
-@PublicAPI
+@Deprecated
 def read_parquet_bulk(
     paths: Union[str, List[str]],
     *,
@@ -986,10 +997,10 @@ def read_parquet_bulk(
             assumes that the tensors are serialized in the raw
             NumPy array format in C-contiguous order (e.g. via
             `arr.tobytes()`).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`. Use
             with a custom callback to read only selected partitions of a dataset.
@@ -1016,6 +1027,14 @@ def read_parquet_bulk(
     Returns:
        :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
+    warnings.warn(
+        "`read_parquet_bulk` is deprecated and will be removed after May 2025. Use "
+        "`read_parquet` instead.",
+        DeprecationWarning,
+    )
+
     if meta_provider is None:
         meta_provider = FastFileMetadataProvider()
     read_table_args = _resolve_parquet_args(
@@ -1125,10 +1144,10 @@ def read_json(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1161,6 +1180,8 @@ def read_json(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1292,10 +1313,10 @@ def read_csv(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1327,6 +1348,8 @@ def read_csv(
     Returns:
         :class:`~ray.data.Dataset` producing records read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1408,10 +1431,10 @@ def read_text(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1438,6 +1461,8 @@ def read_text(
         :class:`~ray.data.Dataset` producing lines of text read from the specified
         paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1517,10 +1542,10 @@ def read_avro(
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
             when opening input files to read.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1546,6 +1571,8 @@ def read_avro(
     Returns:
         :class:`~ray.data.Dataset` holding records from the Avro files.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1641,6 +1668,8 @@ def read_numpy(
     Returns:
         Dataset holding Tensor records read from the specified paths.
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1740,10 +1769,10 @@ def read_tfrecords(
             when opening input files to read. To read a compressed TFRecord file,
             pass the corresponding compression type (e.g., for ``GZIP`` or ``ZLIB``),
             use ``arrow_open_stream_args={'compression': 'gzip'}``).
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -1775,6 +1804,8 @@ def read_tfrecords(
         ValueError: If a file contains a message that isn't a ``tf.train.Example``.
     """
     import platform
+
+    _emit_meta_provider_deprecation_warning(meta_provider)
 
     tfx_read = False
 
@@ -1894,6 +1925,8 @@ def read_webdataset(
 
     .. _tf.train.Example: https://www.tensorflow.org/api_docs/python/tf/train/Example
     """  # noqa: E501
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -1982,10 +2015,10 @@ def read_binary_files(
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
                     #pyarrow.fs.FileSystem.open_input_stream>`_.
-        meta_provider: A :ref:`file metadata provider <metadata_provider>`. Custom
-            metadata providers may be able to resolve file metadata more quickly and/or
-            accurately. In most cases, you do not need to set this. If ``None``, this
-            function uses a system-chosen implementation.
+        meta_provider: [Deprecated] A :ref:`file metadata provider <metadata_provider>`.
+            Custom metadata providers may be able to resolve file metadata more quickly
+            and/or accurately. In most cases, you do not need to set this. If ``None``,
+            this function uses a system-chosen implementation.
         partition_filter: A
             :class:`~ray.data.datasource.partitioning.PathPartitionFilter`.
             Use with a custom callback to read only selected partitions of a
@@ -2010,6 +2043,8 @@ def read_binary_files(
     Returns:
         :class:`~ray.data.Dataset` producing rows read from the specified paths.
     """
+    _emit_meta_provider_deprecation_warning(meta_provider)
+
     if meta_provider is None:
         meta_provider = DefaultFileMetadataProvider()
 
@@ -2123,6 +2158,12 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
+    if parallelism != -1 and parallelism != 1:
+        raise ValueError(
+            "To ensure correctness, 'read_sql' always launches one task. The "
+            "'parallelism' argument you specified can't be used."
+        )
+
     datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
     return read_datasource(
         datasource,
@@ -2272,6 +2313,58 @@ def read_databricks_tables(
     return read_datasource(
         datasource=datasource,
         parallelism=parallelism,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_hudi(
+    table_uri: str,
+    *,
+    storage_options: Optional[Dict[str, str]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from an
+    `Apache Hudi table <https://hudi.apache.org>`_.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_hudi( # doctest: +SKIP
+        ...     table_uri="/hudi/trips",
+        ... )
+
+    Args:
+        table_uri: The URI of the Hudi table to read from. Local file paths, S3, and GCS
+            are supported.
+        storage_options: Extra options that make sense for a particular storage
+            connection. This is used to store connection parameters like credentials,
+            endpoint, etc. See more explanation
+            `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
+        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the Hudi table.
+    """  # noqa: E501
+    datasource = HudiDatasource(
+        table_uri=table_uri,
+        storage_options=storage_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
         ray_remote_args=ray_remote_args,
         concurrency=concurrency,
         override_num_blocks=override_num_blocks,
@@ -2447,9 +2540,12 @@ def from_pandas_refs(
     if context.enable_pandas_block:
         get_metadata = cached_remote_fn(get_table_block_metadata)
         metadata = ray.get([get_metadata.remote(df) for df in dfs])
-        logical_plan = LogicalPlan(FromPandas(dfs, metadata))
+        execution_plan = ExecutionPlan(
+            DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+        )
+        logical_plan = LogicalPlan(FromPandas(dfs, metadata), execution_plan._context)
         return MaterializedDataset(
-            ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+            execution_plan,
             logical_plan,
         )
 
@@ -2458,9 +2554,12 @@ def from_pandas_refs(
     res = [df_to_block.remote(df) for df in dfs]
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
-    logical_plan = LogicalPlan(FromPandas(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromPandas": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromPandas(blocks, metadata), execution_plan._context)
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromPandas": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2540,10 +2639,13 @@ def from_numpy_refs(
     blocks, metadata = map(list, zip(*res))
     metadata = ray.get(metadata)
 
-    logical_plan = LogicalPlan(FromNumpy(blocks, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromNumpy": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromNumpy(blocks, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromNumpy": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -2616,10 +2718,13 @@ def from_arrow_refs(
 
     get_metadata = cached_remote_fn(get_table_block_metadata)
     metadata = ray.get([get_metadata.remote(t) for t in tables])
-    logical_plan = LogicalPlan(FromArrow(tables, metadata))
+    execution_plan = ExecutionPlan(
+        DatasetStats(metadata={"FromArrow": metadata}, parent=None)
+    )
+    logical_plan = LogicalPlan(FromArrow(tables, metadata), execution_plan._context)
 
     return MaterializedDataset(
-        ExecutionPlan(DatasetStats(metadata={"FromArrow": metadata}, parent=None)),
+        execution_plan,
         logical_plan,
     )
 
@@ -3232,4 +3337,15 @@ def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
             "Valid values are None, 'files'."
+        )
+
+
+def _emit_meta_provider_deprecation_warning(
+    meta_provider: Optional[BaseFileMetadataProvider],
+) -> None:
+    if meta_provider is not None:
+        warnings.warn(
+            "The `meta_provider` argument is deprecated and will be removed after May "
+            "2025.",
+            DeprecationWarning,
         )

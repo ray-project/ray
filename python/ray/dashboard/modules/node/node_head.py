@@ -1,13 +1,11 @@
-import abc
 import asyncio
 import json
 import logging
-import os
 import time
 from collections import deque
 from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import AsyncGenerator, Dict, Iterable, List, Optional
+from typing import AsyncGenerator, Iterable, List
 
 import aiohttp.web
 import grpc
@@ -16,7 +14,6 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray import NodeID
 from ray._private import ray_constants
 from ray._private.collections_utils import split
 from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
@@ -31,13 +28,7 @@ from ray.autoscaler._private.util import (
     get_per_node_breakdown_as_dict,
     parse_usage,
 )
-from ray.core.generated import (
-    gcs_pb2,
-    gcs_service_pb2,
-    gcs_service_pb2_grpc,
-    node_manager_pb2,
-    node_manager_pb2_grpc,
-)
+from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
@@ -91,70 +82,11 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-class GetAllNodeInfoClient(abc.ABC):
-    """
-    Gets all node info from GCS via gRPC NodeInfoGcsService.GetAllNodeInfo.
-    It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
-    RAY_USE_OLD_GCS_CLIENT.
-    """
-
-    @classmethod
-    def create(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
-        if use_old_client:
-            return GetAllNodeInfoFromGrpc(*args, **kwargs)
-        else:
-            return GetAllNodeInfoFromNewGcsClient(*args, **kwargs)
-
-    async def __call__(
-        self,
-        *,
-        timeout: Optional[int] = None,
-    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        pass
-
-
-class GetAllNodeInfoFromNewGcsClient(GetAllNodeInfoClient):
-    def __init__(self, dashboard_head):
-        self.gcs_aio_client = dashboard_head.gcs_aio_client
-
-    async def __call__(
-        self,
-        *,
-        timeout: Optional[int] = None,
-    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        return await self.gcs_aio_client.get_all_node_info(timeout=timeout)
-
-
-class GetAllNodeInfoFromGrpc(GetAllNodeInfoClient):
-    def __init__(self, dashboard_head):
-        gcs_channel = dashboard_head.aiogrpc_gcs_channel
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
-
-    async def __call__(
-        self,
-        *,
-        timeout: Optional[int] = None,
-    ) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
-        if reply.status.code != 0:
-            raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
-        nodes = {}
-        for message in reply.node_info_list:
-            nodes[NodeID(message.node_id)] = message
-        return nodes
-
-
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
         self._stubs = {}
-        self._get_all_node_info_client: GetAllNodeInfoClient = None
         self._collect_memory_info = False
 
         DataSource.nodes.signal.append(self._update_stubs)
@@ -213,7 +145,7 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         # it happens after the subscription. That is, an update between
         # get-all-node-info and the subscription is not missed.
         # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
-        all_node_info = await self._get_all_node_info_client(timeout=None)
+        all_node_info = await self._gcs_aio_client.get_all_node_info(timeout=None)
 
         def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
             return [_gcs_node_info_to_dict(m) for m in messages]
@@ -442,18 +374,15 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
         #       from another async task)
         current_stub_node_id_tuples = list(self._stubs.items())
 
-        if current_stub_node_id_tuples:
-            node_ids, _ = zip(*current_stub_node_id_tuples)
-        else:
-            node_ids = []
-
+        node_ids = []
         get_node_stats_tasks = []
 
-        for i, (node_id, stub) in enumerate(current_stub_node_id_tuples):
+        for _, (node_id, stub) in enumerate(current_stub_node_id_tuples):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
 
+            node_ids.append(node_id)
             get_node_stats_tasks.append(
                 stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
@@ -526,9 +455,6 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             DataSource.node_stats[node_id] = new_stat
 
     async def run(self, server):
-        self._get_all_node_info_client = GetAllNodeInfoClient.create(
-            self._dashboard_head
-        )
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),

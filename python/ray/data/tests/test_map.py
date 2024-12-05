@@ -9,13 +9,16 @@ from typing import Iterator
 import numpy as np
 import pandas as pd
 import pyarrow as pa
+import pyarrow.compute as pc
 import pyarrow.parquet as pq
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.execution.operators.actor_pool_map_operator import _MapWorker
 from ray.data.context import DataContext
 from ray.data.exceptions import UserCodeException
 from ray.data.tests.conftest import *  # noqa
@@ -75,6 +78,19 @@ def test_basic_actors(shutdown_only):
             column_udf_class("id", lambda x: x),
             concurrency=(8, 4),
         )
+
+    # Make sure all actors are dead after dataset execution finishes.
+    def _all_actors_dead():
+        actor_table = ray.state.actors()
+        actors = {
+            _id: actor_info
+            for _id, actor_info in actor_table.items()
+            if actor_info["ActorClassName"] == _MapWorker.__name__
+        }
+        assert len(actors) > 0
+        return all(actor_info["State"] == "DEAD" for actor_info in actors.values())
+
+    wait_for_condition(_all_actors_dead)
 
 
 def test_callable_classes(shutdown_only):
@@ -241,6 +257,25 @@ def test_actor_task_failure(shutdown_only, restore_data_context):
     ds.map_batches(Mapper, concurrency=1).materialize()
 
 
+def test_gpu_workers_not_reused(shutdown_only):
+    """By default, in Ray Core if `num_gpus` is specified workers will not be reused
+    for tasks invocation.
+
+    For more context check out https://github.com/ray-project/ray/issues/29624"""
+
+    ray.init(num_gpus=1)
+
+    total_blocks = 5
+    ds = ray.data.range(5, override_num_blocks=total_blocks)
+
+    def _get_worker_id(_):
+        return {"worker_id": ray.get_runtime_context().get_worker_id()}
+
+    unique_worker_ids = ds.map(_get_worker_id, num_gpus=1).unique("worker_id")
+
+    assert len(unique_worker_ids) == total_blocks
+
+
 def test_concurrency(shutdown_only):
     ray.init(num_cpus=6)
     ds = ray.data.range(10, override_num_blocks=10)
@@ -296,17 +331,216 @@ def test_flat_map_generator(ray_start_regular_shared):
 
 
 def test_add_column(ray_start_regular_shared):
-    ds = ray.data.range(5).add_column("foo", lambda x: 1)
+    """Tests the add column API."""
+
+    # Test with pyarrow batch format
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: pa.array([1] * x.num_rows), batch_format="pyarrow"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    # Test with chunked array batch format
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: pa.chunked_array([[1] * x.num_rows]), batch_format="pyarrow"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    # Adding a column that is already there should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException,
+        match="Trying to add an existing column with name 'id'",
+    ):
+        ds = ray.data.range(5).add_column(
+            "id", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
+        )
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Adding a column in the wrong format should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException, match="For pyarrow batch format"
+    ):
+        ds = ray.data.range(5).add_column("id", lambda x: [1], batch_format="pyarrow")
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Test with numpy batch format
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: np.array([1] * len(list(x.keys())[0])), batch_format="numpy"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    ds = ray.data.range(5).add_column(
+        "foo", lambda x: np.add(x["id"], 1), batch_format="numpy"
+    )
+    assert ds.take(1) == [{"id": 0, "foo": 1}]
+
+    # Adding a column that is already there should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException,
+        match="Trying to add an existing column with name 'id'",
+    ):
+        ds = ray.data.range(5).add_column(
+            "id", lambda x: np.add(x["id"], 1), batch_format="numpy"
+        )
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Adding a column in the wrong format should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException, match="For numpy batch format"
+    ):
+        ds = ray.data.range(5).add_column("id", lambda x: [1], batch_format="numpy")
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Test with pandas batch format
+    ds = ray.data.range(5).add_column("foo", lambda x: pd.Series([1] * x.shape[0]))
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
     ds = ray.data.range(5).add_column("foo", lambda x: x["id"] + 1)
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
-    assert ds.take(2) == [{"id": 1}, {"id": 2}]
+    # Adding a column that is already there should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException,
+        match="Trying to add an existing column with name 'id'",
+    ):
+        ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+
+    # Adding a column in the wrong format should result in an error
+    with pytest.raises(
+        ray.exceptions.UserCodeException, match="For pandas batch format"
+    ):
+        ds = ray.data.range(5).add_column(
+            "id", lambda x: np.array([1]), batch_format="pandas"
+        )
+        assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     with pytest.raises(ValueError):
         ds = ray.data.range(5).add_column("id", 0)
+
+    # Test that an invalid batch_format raises an error
+    with pytest.raises(ValueError):
+        ray.data.range(5).add_column("foo", lambda x: x["id"] + 1, batch_format="foo")
+
+
+@pytest.mark.parametrize("names", (["foo", "bar"], {"spam": "foo", "ham": "bar"}))
+def test_rename_columns(ray_start_regular_shared, names):
+    ds = ray.data.from_items([{"spam": 0, "ham": 0}])
+
+    renamed_ds = ds.rename_columns(names)
+
+    assert renamed_ds.schema().names == ["foo", "bar"]
+
+
+def test_filter_mutex(ray_start_regular_shared, tmp_path):
+    """Test filter op."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    # Filter using lambda (UDF)
+    with pytest.raises(ValueError, match="Exactly one of 'fn' or 'expr'"):
+        parquet_ds.filter(
+            fn=lambda r: r["sepal.length"] > 5.0, expr="sepal.length > 5.0"
+        )
+
+    with pytest.raises(ValueError, match="must be a UserDefinedFunction"):
+        parquet_ds.filter(fn="sepal.length > 5.0")
+
+
+def test_filter_with_expressions(ray_start_regular_shared, tmp_path):
+    """Test filtering with expressions."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    # Filter using lambda (UDF)
+    filtered_udf_ds = parquet_ds.filter(lambda r: r["sepal.length"] > 5.0)
+    filtered_udf_data = filtered_udf_ds.to_pandas()
+
+    # Filter using expressions
+    filtered_expr_ds = parquet_ds.filter(expr="sepal.length > 5.0")
+    filtered_expr_data = filtered_expr_ds.to_pandas()
+
+    # Assert the filtered data is the same
+    assert set(filtered_udf_data["sepal.length"]) == set(
+        filtered_expr_data["sepal.length"]
+    )
+    assert len(filtered_udf_data) == len(filtered_expr_data)
+
+    # Verify correctness of filtered results: only rows with 'sepal.length' > 5.0
+    assert all(
+        filtered_expr_data["sepal.length"] > 5.0
+    ), "Filtered data contains rows with 'sepal.length' <= 5.0"
+    assert all(
+        filtered_udf_data["sepal.length"] > 5.0
+    ), "UDF-filtered data contains rows with 'sepal.length' <= 5.0"
+
+
+def test_filter_with_invalid_expression(ray_start_regular_shared, tmp_path):
+    """Test filtering with invalid expressions."""
+
+    # Generate sample data
+    data = {
+        "sepal.length": [4.8, 5.1, 5.7, 6.3, 7.0],
+        "sepal.width": [3.0, 3.3, 3.5, 3.2, 2.8],
+        "petal.length": [1.4, 1.7, 4.2, 5.4, 6.1],
+        "petal.width": [0.2, 0.4, 1.5, 2.1, 2.4],
+    }
+    df = pd.DataFrame(data)
+
+    # Define the path for the Parquet file in the tmp_path directory
+    parquet_file = tmp_path / "sample_data.parquet"
+
+    # Write DataFrame to a Parquet file
+    table = pa.Table.from_pandas(df)
+    pq.write_table(table, parquet_file)
+
+    # Load parquet dataset
+    parquet_ds = ray.data.read_parquet(str(parquet_file))
+
+    with pytest.raises(ValueError, match="Invalid syntax in the expression"):
+        parquet_ds.filter(expr="fake_news super fake")
+
+    fake_column_ds = parquet_ds.filter(expr="sepal_length_123 > 1")
+    with pytest.raises(UserCodeException):
+        fake_column_ds.to_pandas()
 
 
 def test_drop_columns(ray_start_regular_shared, tmp_path):
@@ -319,13 +553,14 @@ def test_drop_columns(ray_start_regular_shared, tmp_path):
         assert ds.drop_columns(["col2"]).take(1) == [{"col1": 1, "col3": 3}]
         assert ds.drop_columns(["col1", "col3"]).take(1) == [{"col2": 2}]
         assert ds.drop_columns([]).take(1) == [{"col1": 1, "col2": 2, "col3": 3}]
-        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == [{}]
-        assert ds.drop_columns(["col1", "col1", "col2", "col1"]).take(1) == [
-            {"col3": 3}
-        ]
+        assert ds.drop_columns(["col1", "col2", "col3"]).take(1) == []
+        assert ds.drop_columns(["col1", "col2"]).take(1) == [{"col3": 3}]
         # Test dropping non-existent column
         with pytest.raises((UserCodeException, KeyError)):
             ds.drop_columns(["dummy_col", "col1", "col2"]).materialize()
+
+    with pytest.raises(ValueError, match="drop_columns expects unique column names"):
+        ds1.drop_columns(["col1", "col2", "col2"])
 
 
 def test_select_columns(ray_start_regular_shared):
@@ -336,7 +571,7 @@ def test_select_columns(ray_start_regular_shared):
     ds2 = ds1.map_batches(lambda pa: pa, batch_size=1, batch_format="pyarrow")
 
     for each_ds in [ds1, ds2]:
-        assert each_ds.select_columns(cols=[]).take(1) == [{}]
+        assert each_ds.select_columns(cols=[]).take(1) == []
         assert each_ds.select_columns(cols=["col1", "col2", "col3"]).take(1) == [
             {"col1": 1, "col2": 2, "col3": 3}
         ]
@@ -347,14 +582,20 @@ def test_select_columns(ray_start_regular_shared):
             {"col1": 1, "col2": 2}
         ]
         # Test selecting columns with duplicates
-        assert each_ds.select_columns(cols=["col1", "col2", "col2"]).schema().names == [
-            "col1",
-            "col2",
-            "col2",
-        ]
+        with pytest.raises(ValueError, match="expected unique column names"):
+            each_ds.select_columns(cols=["col1", "col2", "col2"]).schema()
         # Test selecting a column that is not in the dataset schema
         with pytest.raises((UserCodeException, KeyError)):
             each_ds.select_columns(cols=["col1", "col2", "dummy_col"]).materialize()
+
+
+@pytest.mark.parametrize("cols", [None, 1, [1]])
+def test_select_columns_validation(ray_start_regular_shared, cols):
+    df = pd.DataFrame({"col1": [1, 2, 3], "col2": [2, 3, 4], "col3": [3, 4, 5]})
+    ds1 = ray.data.from_pandas(df)
+
+    with pytest.raises(ValueError):
+        ds1.select_columns(cols=cols)
 
 
 def test_map_batches_basic(ray_start_regular_shared, tmp_path, restore_data_context):

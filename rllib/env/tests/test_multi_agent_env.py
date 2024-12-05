@@ -7,25 +7,18 @@ import unittest
 import ray
 from ray.tune.registry import register_env
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_tf_policy import DQNTFPolicy
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.env.multi_agent_env import (
-    make_multi_agent,
     MultiAgentEnv,
     MultiAgentEnvWrapper,
 )
-from ray.rllib.evaluation.episode import Episode
-from ray.rllib.evaluation.rollout_worker import get_global_worker, RolloutWorker
+from ray.rllib.evaluation.rollout_worker import RolloutWorker
 from ray.rllib.evaluation.tests.test_rollout_worker import MockPolicy
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.mock_env import MockEnv, MockEnv2
-from ray.rllib.policy.policy import PolicySpec
 from ray.rllib.policy.sample_batch import (
     convert_ma_batch_to_sample_batch,
 )
-from ray.rllib.tests.test_nested_observation_spaces import NestedMultiAgentEnv
 from ray.rllib.utils.metrics import (
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
     ENV_RUNNER_RESULTS,
@@ -45,8 +38,8 @@ class BasicMultiAgent(MultiAgentEnv):
 
     def __init__(self, num):
         super().__init__()
-        self.agents = [MockEnv(25) for _ in range(num)]
-        self._agent_ids = set(range(num))
+        self.envs = [MockEnv(25) for _ in range(num)]
+        self.agents = list(range(num))
         self.terminateds = set()
         self.truncateds = set()
         self.observation_space = gym.spaces.Discrete(2)
@@ -61,7 +54,7 @@ class BasicMultiAgent(MultiAgentEnv):
         self.resetted = True
         self.terminateds = set()
         self.truncateds = set()
-        reset_results = [a.reset() for a in self.agents]
+        reset_results = [a.reset() for a in self.envs]
         return (
             {i: oi[0] for i, oi in enumerate(reset_results)},
             {i: oi[1] for i, oi in enumerate(reset_results)},
@@ -70,15 +63,15 @@ class BasicMultiAgent(MultiAgentEnv):
     def step(self, action_dict):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[i].step(
                 action
             )
             if terminated[i]:
                 self.terminateds.add(i)
             if truncated[i]:
                 self.truncateds.add(i)
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
 
     def render(self):
@@ -93,8 +86,8 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
 
     def __init__(self):
         super().__init__()
-        self.agents = [MockEnv(3), MockEnv(5)]
-        self._agent_ids = set(range(len(self.agents)))
+        self.envs = [MockEnv(3), MockEnv(5)]
+        self.agents = list(range(len(self.envs)))
         self.terminateds = set()
         self.truncateds = set()
         self.last_obs = {}
@@ -115,18 +108,18 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         self.last_truncated = {}
         self.last_info = {}
         self.i = 0
-        for i, a in enumerate(self.agents):
+        for i, a in enumerate(self.envs):
             self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_terminated[i] = False
             self.last_truncated[i] = False
         obs_dict = {self.i: self.last_obs[self.i]}
         info_dict = {self.i: self.last_info[self.i]}
-        self.i = (self.i + 1) % len(self.agents)
+        self.i = (self.i + 1) % len(self.envs)
         return obs_dict, info_dict
 
     def step(self, action_dict):
-        assert len(self.terminateds) != len(self.agents)
+        assert len(self.terminateds) != len(self.envs)
         for i, action in action_dict.items():
             (
                 self.last_obs[i],
@@ -134,7 +127,7 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
                 self.last_terminated[i],
                 self.last_truncated[i],
                 self.last_info[i],
-            ) = self.agents[i].step(action)
+            ) = self.envs[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         terminated = {self.i: self.last_terminated[self.i]}
@@ -146,9 +139,9 @@ class EarlyDoneMultiAgent(MultiAgentEnv):
         if truncated[self.i]:
             rew[self.i] = 0
             self.truncateds.add(self.i)
-        self.i = (self.i + 1) % len(self.agents)
-        terminated["__all__"] = len(self.terminateds) == len(self.agents) - 1
-        truncated["__all__"] = len(self.truncateds) == len(self.agents) - 1
+        self.i = (self.i + 1) % len(self.envs)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs) - 1
+        truncated["__all__"] = len(self.truncateds) == len(self.envs) - 1
         return obs, rew, terminated, truncated, info
 
 
@@ -157,11 +150,13 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
 
     def __init__(self):
         super().__init__()
-        self.agents = {}
-        self._agent_ids = set()
+        self.envs = {}
+        self.agents = []
+        self.possible_agents = list(range(10000))  # Absolute max. number of agents.
         self.agentID = 0
         self.terminateds = set()
         self.truncateds = set()
+        # All agents have the exact same spaces.
         self.observation_space = gym.spaces.Discrete(2)
         self.action_space = gym.spaces.Discrete(2)
         self.resetted = False
@@ -169,21 +164,25 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
     def spawn(self):
         # Spawn a new agent into the current episode.
         agentID = self.agentID
-        self.agents[agentID] = MockEnv(25)
-        self._agent_ids.add(agentID)
+        self.envs[agentID] = MockEnv(25)
+        self.agents.append(agentID)
         self.agentID += 1
         return agentID
 
+    def kill(self, agent_id):
+        del self.envs[agent_id]
+        self.agents.remove(agent_id)
+
     def reset(self, *, seed=None, options=None):
-        self.agents = {}
-        self._agent_ids = set()
+        self.envs = {}
+        self.agents.clear()
         self.spawn()
         self.resetted = True
         self.terminateds = set()
         self.truncateds = set()
         obs = {}
         infos = {}
-        for i, a in self.agents.items():
+        for i, a in self.envs.items():
             obs[i], infos[i] = a.reset()
 
         return obs, infos
@@ -192,7 +191,7 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
         obs, rew, terminated, truncated, info = {}, {}, {}, {}, {}
         # Apply the actions.
         for i, action in action_dict.items():
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
+            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.envs[i].step(
                 action
             )
             if terminated[i]:
@@ -202,24 +201,25 @@ class FlexAgentsMultiAgent(MultiAgentEnv):
 
         # Sometimes, add a new agent to the episode.
         if random.random() > 0.75 and len(action_dict) > 0:
-            i = self.spawn()
-            obs[i], rew[i], terminated[i], truncated[i], info[i] = self.agents[i].step(
-                action
-            )
-            if terminated[i]:
-                self.terminateds.add(i)
-            if truncated[i]:
-                self.truncateds.add(i)
+            aid = self.spawn()
+            obs[aid], rew[aid], terminated[aid], truncated[aid], info[aid] = self.envs[
+                aid
+            ].step(action)
+            if terminated[aid]:
+                self.terminateds.add(aid)
+            if truncated[aid]:
+                self.truncateds.add(aid)
 
         # Sometimes, kill an existing agent.
-        if len(self.agents) > 1 and random.random() > 0.25:
-            keys = list(self.agents.keys())
-            key = random.choice(keys)
-            terminated[key] = True
-            del self.agents[key]
+        if len(self.envs) > 1 and random.random() > 0.25:
+            keys = list(self.envs.keys())
+            aid = random.choice(keys)
+            self.kill(aid)
+            terminated[aid] = True
+            self.terminateds.add(aid)
 
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
 
 
@@ -235,9 +235,8 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
 
     def __init__(self, num=3):
         super().__init__()
-        self.num_agents = num
-        self.agents = [MockEnv(25) for _ in range(self.num_agents)]
-        self._agent_ids = set(range(self.num_agents))
+        self.agents = list(range(num))
+        self.envs = [MockEnv(25) for _ in range(self.num_agents)]
         self._observations = {}
         self._infos = {}
         self.terminateds = set()
@@ -251,7 +250,7 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
         self._observations = {}
         self._infos = {}
         for aid in self._get_random_agents():
-            self._observations[aid], self._infos[aid] = self.agents[aid].reset()
+            self._observations[aid], self._infos[aid] = self.envs[aid].reset()
         return self._observations, self._infos
 
     def step(self, action_dict):
@@ -264,7 +263,7 @@ class SometimesZeroAgentsMultiAgent(MultiAgentEnv):
                 terminated[aid],
                 truncated[aid],
                 self._infos[aid],
-            ) = self.agents[aid].step(action)
+            ) = self.envs[aid].step(action)
             if terminated[aid]:
                 self.terminateds.add(aid)
             if truncated[aid]:
@@ -312,10 +311,10 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         super().__init__()
         if increment_obs:
             # Observations are 0, 1, 2, 3... etc. as time advances
-            self.agents = [MockEnv2(5) for _ in range(num)]
+            self.envs = [MockEnv2(5) for _ in range(num)]
         else:
             # Observations are all zeros
-            self.agents = [MockEnv(5) for _ in range(num)]
+            self.envs = [MockEnv(5) for _ in range(num)]
         self._agent_ids = set(range(num))
         self.terminateds = set()
         self.truncateds = set()
@@ -340,7 +339,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         self.last_truncated = {}
         self.last_info = {}
         self.i = 0
-        for i, a in enumerate(self.agents):
+        for i, a in enumerate(self.envs):
             self.last_obs[i], self.last_info[i] = a.reset()
             self.last_rew[i] = 0
             self.last_terminated[i] = False
@@ -351,7 +350,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         return obs_dict, info_dict
 
     def step(self, action_dict):
-        assert len(self.terminateds) != len(self.agents)
+        assert len(self.terminateds) != len(self.envs)
         for i, action in action_dict.items():
             (
                 self.last_obs[i],
@@ -359,7 +358,7 @@ class RoundRobinMultiAgent(MultiAgentEnv):
                 self.last_terminated[i],
                 self.last_truncated[i],
                 self.last_info[i],
-            ) = self.agents[i].step(action)
+            ) = self.envs[i].step(action)
         obs = {self.i: self.last_obs[self.i]}
         rew = {self.i: self.last_rew[self.i]}
         terminated = {self.i: self.last_terminated[self.i]}
@@ -371,9 +370,93 @@ class RoundRobinMultiAgent(MultiAgentEnv):
         if truncated[self.i]:
             self.truncateds.add(self.i)
         self.i = (self.i + 1) % self.num
-        terminated["__all__"] = len(self.terminateds) == len(self.agents)
-        truncated["__all__"] = len(self.truncateds) == len(self.agents)
+        terminated["__all__"] = len(self.terminateds) == len(self.envs)
+        truncated["__all__"] = len(self.truncateds) == len(self.envs)
         return obs, rew, terminated, truncated, info
+
+
+class NestedMultiAgentEnv(MultiAgentEnv):
+    DICT_SPACE = gym.spaces.Dict(
+        {
+            "sensors": gym.spaces.Dict(
+                {
+                    "position": gym.spaces.Box(low=-100, high=100, shape=(3,)),
+                    "velocity": gym.spaces.Box(low=-1, high=1, shape=(3,)),
+                    "front_cam": gym.spaces.Tuple(
+                        (
+                            gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                            gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                        )
+                    ),
+                    "rear_cam": gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                }
+            ),
+            "inner_state": gym.spaces.Dict(
+                {
+                    "charge": gym.spaces.Discrete(100),
+                    "job_status": gym.spaces.Dict(
+                        {
+                            "task": gym.spaces.Discrete(5),
+                            "progress": gym.spaces.Box(low=0, high=100, shape=()),
+                        }
+                    ),
+                }
+            ),
+        }
+    )
+    TUPLE_SPACE = gym.spaces.Tuple(
+        [
+            gym.spaces.Box(low=-100, high=100, shape=(3,)),
+            gym.spaces.Tuple(
+                (
+                    gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                    gym.spaces.Box(low=0, high=1, shape=(10, 10, 3)),
+                )
+            ),
+            gym.spaces.Discrete(5),
+        ]
+    )
+
+    def __init__(self):
+        super().__init__()
+        self.observation_space = gym.spaces.Dict(
+            {"dict_agent": self.DICT_SPACE, "tuple_agent": self.TUPLE_SPACE}
+        )
+        self.action_space = gym.spaces.Dict(
+            {
+                "dict_agent": gym.spaces.Discrete(1),
+                "tuple_agent": gym.spaces.Discrete(1),
+            }
+        )
+        self._agent_ids = {"dict_agent", "tuple_agent"}
+        self.steps = 0
+        self.DICT_SAMPLES = [self.DICT_SPACE.sample() for _ in range(10)]
+        self.TUPLE_SAMPLES = [self.TUPLE_SPACE.sample() for _ in range(10)]
+
+    def reset(self, *, seed=None, options=None):
+        self.steps = 0
+        return {
+            "dict_agent": self.DICT_SAMPLES[0],
+            "tuple_agent": self.TUPLE_SAMPLES[0],
+        }, {}
+
+    def step(self, actions):
+        self.steps += 1
+        obs = {
+            "dict_agent": self.DICT_SAMPLES[self.steps],
+            "tuple_agent": self.TUPLE_SAMPLES[self.steps],
+        }
+        rew = {
+            "dict_agent": 0,
+            "tuple_agent": 0,
+        }
+        terminateds = {"__all__": self.steps >= 5}
+        truncateds = {"__all__": self.steps >= 5}
+        infos = {
+            "dict_agent": {},
+            "tuple_agent": {},
+        }
+        return obs, rew, terminateds, truncateds, infos
 
 
 class TestMultiAgentEnv(unittest.TestCase):
@@ -595,9 +678,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         register_env("flex_agents_multi_agent", lambda _: FlexAgentsMultiAgent())
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("flex_agents_multi_agent")
             .env_runners(num_env_runners=0)
-            .framework("tf")
             .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
         )
         algo = config.build()
@@ -618,9 +704,12 @@ class TestMultiAgentEnv(unittest.TestCase):
         )
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("sometimes_zero_agents")
-            .env_runners(num_env_runners=0, enable_connectors=True)
-            .framework("tf")
+            .env_runners(num_env_runners=0)
         )
         algo = config.build()
         for i in range(4):
@@ -705,7 +794,6 @@ class TestMultiAgentEnv(unittest.TestCase):
                 return [{}]  # empty dict
 
             def is_recurrent(self):
-                # TODO: avnishn automatically infer this.
                 return True
 
         ev = RolloutWorker(
@@ -729,217 +817,6 @@ class TestMultiAgentEnv(unittest.TestCase):
         for i in range(1, 5):
             check(batch["state_in_0"][i], h)
             check(batch["state_out_0"][i], h)
-
-    def test_returning_model_based_rollouts_data(self):
-        # TODO(avnishn): This test only works with the old api
-
-        class ModelBasedPolicy(DQNTFPolicy):
-            def compute_actions_from_input_dict(
-                self, input_dict, explore=None, timestep=None, episodes=None, **kwargs
-            ):
-                obs_batch = input_dict["obs"]
-                # In policy loss initialization phase, no episodes are passed
-                # in.
-                if episodes is not None:
-                    # Pretend we did a model-based rollout and want to return
-                    # the extra trajectory.
-                    env_id = episodes[0].env_id
-                    fake_eps = Episode(
-                        episodes[0].policy_map,
-                        episodes[0].policy_mapping_fn,
-                        lambda: None,
-                        lambda x: None,
-                        env_id,
-                    )
-                    builder = get_global_worker().sampler.sample_collector
-                    agent_id = "extra_0"
-                    policy_id = "p1"  # use p1 so we can easily check it
-                    builder.add_init_obs(
-                        episode=fake_eps,
-                        agent_id=agent_id,
-                        policy_id=policy_id,
-                        env_id=env_id,
-                        init_obs=obs_batch[0],
-                        init_infos={},
-                    )
-                    for t in range(4):
-                        builder.add_action_reward_next_obs(
-                            episode_id=fake_eps.episode_id,
-                            agent_id=agent_id,
-                            env_id=env_id,
-                            policy_id=policy_id,
-                            agent_done=t == 3,
-                            values=dict(
-                                t=t,
-                                actions=0,
-                                rewards=0,
-                                terminateds=False,
-                                truncateds=t == 3,
-                                infos={},
-                                new_obs=obs_batch[0],
-                            ),
-                        )
-                    batch = builder.postprocess_episode(episode=fake_eps, build=True)
-                    episodes[0].add_extra_batch(batch)
-
-                # Just return zeros for actions
-                return [0] * len(obs_batch), [], {}
-
-        ev = RolloutWorker(
-            env_creator=lambda _: MultiAgentCartPole({"num_agents": 2}),
-            default_policy_class=ModelBasedPolicy,
-            config=DQNConfig()
-            .framework("tf")
-            .env_runners(
-                rollout_fragment_length=5,
-                num_env_runners=0,
-                enable_connectors=False,  # only works with old episode API
-            )
-            .multi_agent(
-                policies={"p0", "p1"},
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: "p0",
-            ),
-        )
-        batch = ev.sample()
-        # 5 environment steps (rollout_fragment_length).
-        check(batch.count, 5)
-        # 10 agent steps for p0: 2 agents, both using p0 as their policy.
-        check(batch.policy_batches["p0"].count, 10)
-        # 20 agent steps for p1: Each time both(!) agents takes 1 step,
-        # p1 takes 4: 5 (rollout-fragment length) * 4 = 20
-        check(batch.policy_batches["p1"].count, 20)
-
-    def test_train_multi_agent_cartpole_single_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-            .framework("tf")
-        )
-
-        algo = config.build()
-        for i in range(50):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-            if result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] >= 50 * n:
-                algo.stop()
-                return
-        raise Exception("failed to improve reward")
-
-    def test_train_multi_agent_cartpole_multi_policy(self):
-        n = 10
-        register_env(
-            "multi_agent_cartpole", lambda _: MultiAgentCartPole({"num_agents": n})
-        )
-
-        def gen_policy():
-            config = PPOConfig.overrides(
-                gamma=random.choice([0.5, 0.8, 0.9, 0.95, 0.99]),
-                lr=random.choice([0.001, 0.002, 0.003]),
-            )
-            return PolicySpec(config=config)
-
-        config = (
-            PPOConfig()
-            .environment("multi_agent_cartpole")
-            .env_runners(num_env_runners=0)
-            .multi_agent(
-                policies={
-                    "policy_1": gen_policy(),
-                    "policy_2": gen_policy(),
-                },
-                policy_mapping_fn=lambda agent_id, episode, worker, **kwargs: (
-                    "policy_1"
-                ),
-            )
-            .framework("tf")
-            .training(train_batch_size=50, minibatch_size=50, num_epochs=1)
-        )
-
-        algo = config.build()
-        # Just check that it runs without crashing
-        for i in range(10):
-            result = algo.train()
-            print(
-                "Iteration {}, reward {}, timesteps {}".format(
-                    i,
-                    result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN],
-                    result[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-                )
-            )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_1") in [0, 1]
-        )
-        self.assertTrue(
-            algo.compute_single_action([0, 0, 0, 0], policy_id="policy_2") in [0, 1]
-        )
-        self.assertRaisesRegex(
-            KeyError,
-            "not found in PolicyMap",
-            lambda: algo.compute_single_action([0, 0, 0, 0], policy_id="policy_3"),
-        )
-
-    def test_space_in_preferred_format(self):
-        env = NestedMultiAgentEnv()
-        action_space_in_preferred_format = (
-            env._check_if_action_space_maps_agent_id_to_sub_space()
-        )
-        obs_space_in_preferred_format = (
-            env._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
-        assert action_space_in_preferred_format, "Act space is not in preferred format."
-        assert obs_space_in_preferred_format, "Obs space is not in preferred format."
-
-        env2 = make_multi_agent("CartPole-v1")()
-        action_spaces_in_preferred_format = (
-            env2._check_if_action_space_maps_agent_id_to_sub_space()
-        )
-        obs_space_in_preferred_format = (
-            env2._check_if_obs_space_maps_agent_id_to_sub_space()
-        )
-        assert (
-            action_spaces_in_preferred_format
-        ), "Action space should be in preferred format but isn't."
-        assert (
-            obs_space_in_preferred_format
-        ), "Observation space should be in preferred format but isn't."
-
-    def test_spaces_sample_contain_in_preferred_format(self):
-        env = NestedMultiAgentEnv()
-        # this environment has spaces that are in the preferred format
-        # for multi-agent environments where the spaces are dict spaces
-        # mapping agent-ids to sub-spaces
-        obs = env.observation_space_sample()
-        assert env.observation_space_contains(
-            obs
-        ), "Observation space does not contain obs"
-
-        action = env.action_space_sample()
-        assert env.action_space_contains(action), "Action space does not contain action"
-
-    def test_spaces_sample_contain_not_in_preferred_format(self):
-        env = make_multi_agent("CartPole-v1")({"num_agents": 2})
-        # this environment has spaces that are not in the preferred format
-        # for multi-agent environments where the spaces not in the preferred
-        # format, users must override the observation_space_contains,
-        # action_space_contains observation_space_sample,
-        # and action_space_sample methods in order to do proper checks
-        obs = env.observation_space_sample()
-        assert env.observation_space_contains(
-            obs
-        ), "Observation space does not contain obs"
-        action = env.action_space_sample()
-        assert env.action_space_contains(action), "Action space does not contain action"
 
 
 if __name__ == "__main__":

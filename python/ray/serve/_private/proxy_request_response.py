@@ -58,7 +58,8 @@ class ASGIProxyRequest(ProxyRequest):
 
     @property
     def method(self) -> str:
-        return self.scope.get("method", "websocket").upper()
+        # WebSocket messages don't have a 'method' field.
+        return self.scope.get("method", "WS").upper()
 
     @property
     def route_path(self) -> str:
@@ -98,7 +99,7 @@ class ASGIProxyRequest(ProxyRequest):
         self, receive_asgi_messages: Callable[[str], Awaitable[bytes]]
     ) -> StreamingHTTPRequest:
         return StreamingHTTPRequest(
-            pickled_asgi_scope=pickle.dumps(self.scope),
+            asgi_scope=self.scope,
             receive_asgi_messages=receive_asgi_messages,
         )
 

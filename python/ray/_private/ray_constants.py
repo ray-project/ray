@@ -73,9 +73,13 @@ ID_SIZE = 28
 
 # The default maximum number of bytes to allocate to the object store unless
 # overridden by the user.
-DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = 200 * 10**9
+DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
+    "RAY_DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES", 200 * 10**9  # 200 GB
+)
 # The default proportion of available memory allocated to the object store
-DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = 0.3
+DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", 0.3
+)
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES
 OBJECT_STORE_MINIMUM_MEMORY_BYTES = 75 * 1024 * 1024
@@ -217,7 +221,11 @@ DISABLE_DASHBOARD_LOG_INFO = env_integer("RAY_DISABLE_DASHBOARD_LOG_INFO", 0)
 LOGGER_FORMAT = "%(asctime)s\t%(levelname)s %(filename)s:%(lineno)s -- %(message)s"
 LOGGER_FORMAT_ESCAPE = json.dumps(LOGGER_FORMAT.replace("%", "%%"))
 LOGGER_FORMAT_HELP = f"The logging format. default={LOGGER_FORMAT_ESCAPE}"
-LOGGER_LEVEL = "info"
+# Configure the default logging levels for various Ray components.
+# TODO (kevin85421): Currently, I don't encourage Ray users to configure
+# `RAY_LOGGER_LEVEL` until its scope and expected behavior are clear and
+# easy to understand. Now, only Ray developers should use it.
+LOGGER_LEVEL = os.environ.get("RAY_LOGGER_LEVEL", "info")
 LOGGER_LEVEL_CHOICES = ["debug", "info", "warning", "error", "critical"]
 LOGGER_LEVEL_HELP = (
     "The logging level threshold, choices=['debug', 'info',"
@@ -343,6 +351,8 @@ OBJECT_METADATA_DEBUG_PREFIX = b"DEBUG:"
 
 AUTOSCALER_RESOURCE_REQUEST_CHANNEL = b"autoscaler_resource_request"
 
+REDIS_DEFAULT_USERNAME = ""
+
 REDIS_DEFAULT_PASSWORD = ""
 
 # The default ip address to bind to.
@@ -441,6 +451,12 @@ RAY_WORKER_NICENESS = "RAY_worker_niceness"
 # tasks.
 DEFAULT_TASK_MAX_RETRIES = 3
 
+# Default max_concurrency option in @ray.remote for threaded actors.
+DEFAULT_MAX_CONCURRENCY_THREADED = 1
+
+# Default max_concurrency option in @ray.remote for async actors.
+DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
+
 # Prefix for namespaces which are used internally by ray.
 # Jobs within these namespaces should be hidden from users
 # and should not be considered user activity.
@@ -448,6 +464,15 @@ DEFAULT_TASK_MAX_RETRIES = 3
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+
+# Ray internal flags. These flags should not be set by users, and we strip them on job
+# submission.
+# This should be consistent with src/ray/common/ray_internal_flag_def.h
+RAY_INTERNAL_FLAGS = [
+    "RAY_JOB_ID",
+    "RAY_RAYLET_PID",
+    "RAY_OVERRIDE_NODE_ID_FOR_TESTING",
+]
 
 
 def gcs_actor_scheduling_enabled():
@@ -507,3 +532,11 @@ PLACEMENT_GROUP_BUNDLE_RESOURCE_NAME = "bundle"
 RAY_LOGGING_CONFIG_ENCODING = os.environ.get("RAY_LOGGING_CONFIG_ENCODING")
 
 RAY_BACKEND_LOG_JSON_ENV_VAR = "RAY_BACKEND_LOG_JSON"
+
+RAY_ENABLE_EXPORT_API_WRITE = env_bool("RAY_enable_export_api_write", False)
+
+RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES = env_bool(
+    "RAY_EXPORT_EVENT_MAX_FILE_SIZE_BYTES", 100 * 1e6
+)
+
+RAY_EXPORT_EVENT_MAX_BACKUP_COUNT = env_bool("RAY_EXPORT_EVENT_MAX_BACKUP_COUNT", 20)

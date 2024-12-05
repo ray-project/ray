@@ -50,7 +50,7 @@ class GcsJobManagerTest : public ::testing::Test {
     });
     promise.get_future().get();
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<MockInMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::GcsTableStorage>(store_client_);
@@ -81,7 +81,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
 };
@@ -102,14 +102,14 @@ TEST_F(GcsJobManagerTest, TestFakeInternalKV) {
 }
 
 TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs. Job i should have i running tasks.
@@ -166,14 +166,14 @@ TEST_F(GcsJobManagerTest, TestIsRunningTasks) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   // Add 100 jobs.
@@ -343,8 +343,8 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
@@ -352,7 +352,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -428,8 +428,8 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithFilter) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
@@ -437,7 +437,7 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -531,8 +531,8 @@ TEST_F(GcsJobManagerTest, TestGetAllJobInfoWithLimit) {
 }
 
 TEST_F(GcsJobManagerTest, TestGetJobConfig) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *kv_,
@@ -540,7 +540,7 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -573,15 +573,15 @@ TEST_F(GcsJobManagerTest, TestGetJobConfig) {
 }
 
 TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
                                      client_factory_);
 
   auto job_id = JobID::FromInt(1);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
   auto add_job_request = Mocker::GenAddJobRequest(job_id, "namespace");
 
@@ -640,8 +640,8 @@ TEST_F(GcsJobManagerTest, TestPreserveDriverInfo) {
 }
 
 TEST_F(GcsJobManagerTest, TestNodeFailure) {
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
@@ -649,7 +649,7 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
 
   auto job_id1 = JobID::FromInt(1);
   auto job_id2 = JobID::FromInt(2);
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   rpc::AddJobReply empty_reply;
@@ -720,8 +720,4 @@ TEST_F(GcsJobManagerTest, TestNodeFailure) {
   EXPECT_TRUE(WaitForCondition(condition, 2000));
 }
 
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
 }  // namespace ray

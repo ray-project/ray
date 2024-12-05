@@ -14,6 +14,14 @@
 
 #pragma once
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <string>
+#include <vector>
+
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/runtime_env_manager.h"
 #include "ray/gcs/gcs_server/gcs_function_manager.h"
 #include "ray/gcs/gcs_server/gcs_init_data.h"
@@ -23,6 +31,7 @@
 #include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
 #include "ray/util/event.h"
+#include "ray/util/thread_checker.h"
 
 namespace ray {
 namespace gcs {
@@ -41,14 +50,14 @@ using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<GcsPublisher> gcs_publisher,
+  explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
+                         GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
-                         rpc::ClientFactoryFn client_factory = nullptr)
-      : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_publisher_(std::move(gcs_publisher)),
+                         rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
+      : gcs_table_storage_(gcs_table_storage),
+        gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
@@ -88,9 +97,29 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   void WriteDriverJobExportEvent(rpc::JobTableData job_data) const;
 
+  /// Record metrics.
+  /// For job manager, (1) running jobs count gauge and (2) new finished jobs (whether
+  /// succeed or fail) will be reported periodically.
+  void RecordMetrics();
+
  private:
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  void ClearJobInfos(const rpc::JobTableData &job_data);
+
+  void MarkJobAsFinished(rpc::JobTableData job_table_data,
+                         std::function<void(Status)> done_callback);
+
+  // Used to validate invariants for threading; for example, all callbacks are executed on
+  // the same thread.
+  ThreadChecker thread_checker_;
+
+  // Running Job IDs, used to report metrics.
+  absl::flat_hash_set<JobID> running_job_ids_;
+
+  // Number of finished jobs since start of this GCS Server, used to report metrics.
+  int64_t finished_jobs_count_ = 0;
+
+  GcsTableStorage &gcs_table_storage_;
+  GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;
@@ -104,11 +133,6 @@ class GcsJobManager : public rpc::JobInfoHandler {
 
   /// The cached core worker clients which are used to communicate with workers.
   rpc::CoreWorkerClientPool core_worker_clients_;
-
-  void ClearJobInfos(const rpc::JobTableData &job_data);
-
-  void MarkJobAsFinished(rpc::JobTableData job_table_data,
-                         std::function<void(Status)> done_callback);
 };
 
 }  // namespace gcs
