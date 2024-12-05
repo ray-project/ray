@@ -216,7 +216,9 @@ class OperatorFusionRule(Rule):
             return False
 
         if not self._can_merge_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size,
+            down_op.target_max_block_size,
+            up_op.data_context,
         ):
             return False
 
@@ -227,14 +229,13 @@ class OperatorFusionRule(Rule):
         self,
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
+        data_context: DataContext,
     ):
         # If the upstream op overrode the target max block size, only fuse if
         # they are equal.
         if up_target_max_block_size is not None:
             if down_target_max_block_size is None:
-                down_target_max_block_size = (
-                    DataContext.get_current().target_max_block_size
-                )
+                down_target_max_block_size = data_context.target_max_block_size
             if up_target_max_block_size != down_target_max_block_size:
                 return False
         return True

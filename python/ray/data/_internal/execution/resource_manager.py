@@ -43,6 +43,7 @@ class ResourceManager:
         topology: "Topology",
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
+        data_context: DataContext,
     ):
         self._topology = topology
         self._options = options
@@ -69,9 +70,8 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-        ctx = DataContext.get_current()
 
-        if ctx.op_resource_reservation_enabled:
+        if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
             # implemented accurate memory accounting.
             should_enable = all(
@@ -79,7 +79,7 @@ class ResourceManager:
             )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
-                    self, ctx.op_resource_reservation_ratio
+                    self, data_context.op_resource_reservation_ratio
                 )
 
     def _estimate_object_store_memory(self, op, state) -> int:
@@ -158,9 +158,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[
-                op
-            ] = self._global_usage.object_store_memory
+            self._downstream_object_store_memory[op] = (
+                self._global_usage.object_store_memory
+            )
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.

@@ -547,14 +547,12 @@ def generate_map_rows_fn(
     target_max_block_size: int,
 ) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks."""
-    context = DataContext.get_current()
 
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
         row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_map_rows(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
         map_transformer.set_target_max_block_size(target_max_block_size)
@@ -570,14 +568,11 @@ def generate_flat_map_fn(
     and then flatten results.
     """
 
-    context = DataContext.get_current()
-
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
         row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
         map_transformer.set_target_max_block_size(target_max_block_size)
@@ -593,7 +588,6 @@ def generate_map_batches_fn(
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
-    context = DataContext.get_current()
 
     def fn(
         blocks: Iterable[Block],
@@ -602,7 +596,6 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
 
         def _batch_fn(batch):
             return batch_fn(batch, *fn_args, **fn_kwargs)
