@@ -264,8 +264,8 @@ class RayLog {
   /// \param log_dir Logging output directory name.
   /// \param log_file Logging output file name.
   /// Both [log_dir] and [log_file] are used to determine log output filename; if both
-  /// empty, the log won't output to file, but to stdout. If both set, [log_file] has
-  /// higher priority than [log_dir].
+  /// empty, the log won't output to file, but to stdout.
+  /// It's illegal to set [log_file] and [log_dir] at the same time.
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_dir = "",

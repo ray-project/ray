@@ -28,7 +28,8 @@
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(log_dir, "", "The path of the dir where event log files are created.");
+DEFINE_string(ray_log_sink_filename, "", "The filename to dump gcs server log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -41,17 +42,9 @@ DEFINE_string(session_name,
               "session_name: The session name (ClusterID) of the cluster.");
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
-namespace {
-// GCS server output filename.
-constexpr std::string_view kGcsServerLog = "gcs_server.out";
-}  // namespace
-
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  const std::string log_file =
-      FLAGS_log_dir.empty() ? kGcsServerLog.data()
-                            : absl::StrFormat("%s/%s", FLAGS_log_dir, kGcsServerLog);
   // TODO(hjiang): For the current implementation, we assume all logging are managed by
   // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
   // final solution is implement self-customized sink for spdlog, and redirect
@@ -66,7 +59,7 @@ int main(int argc, char *argv[]) {
                                          argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*log_file=*/log_file);
+                                         /*log_file=*/FLAGS_ray_log_sink_filename);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 

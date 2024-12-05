@@ -848,6 +848,40 @@ class Node:
             )
         return redirect_output
 
+    def get_log_file_names(
+        self,
+        name: str,
+        unique: bool = False,
+        create_out: bool = True,
+        create_err: bool = True,
+    ) -> Tuple[Optional[str], Optional[str]]:
+        """Get filename to dump logs for stdout and stderr, with no files opened.
+        If output redirection has been disabled, no files will
+        be opened and `(None, None)` will be returned.
+
+        Args:
+            name: descriptive string for this log file.
+            unique: if true, a counter will be attached to `name` to
+                ensure the returned filename is not already used.
+            create_out: if True, create a .out file.
+            create_err: if True, create a .err file.
+
+        Returns:
+            A tuple of two file handles for redirecting optional (stdout, stderr),
+            or `(None, None)` if output redirection is disabled.
+        """
+        if not self.should_redirect_logs():
+            return None, None
+
+        log_stdout = None
+        log_stderr = None
+
+        if create_out:
+            log_stdout = self._get_log_file_name(name, "out", unique=unique)
+        if create_err:
+            log_stderr = self._get_log_file_name(name, "err", unique=unique)
+        return log_stdout, log_stderr
+
     def get_log_file_handles(
         self,
         name: str,
@@ -870,16 +904,11 @@ class Node:
             A tuple of two file handles for redirecting optional (stdout, stderr),
             or `(None, None)` if output redirection is disabled.
         """
-        if not self.should_redirect_logs():
-            return None, None
-
-        log_stdout = None
-        log_stderr = None
-
-        if create_out:
-            log_stdout = open_log(self._get_log_file_name(name, "out", unique=unique))
-        if create_err:
-            log_stderr = open_log(self._get_log_file_name(name, "err", unique=unique))
+        log_stdout_fname, log_stderr_fname = self.get_log_file_names(
+            name, unique=unique, create_out=create_out, create_err=create_err
+        )
+        log_stdout = None if log_stdout_fname is None else open_log(log_stdout_fname)
+        log_stderr = None if log_stderr_fname is None else open_log(log_stderr_fname)
         return log_stdout, log_stderr
 
     def _get_log_file_name(
@@ -1160,9 +1189,14 @@ class Node:
         assert gcs_server_port > 0
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
+
+        stdout_log_fname, _ = self.get_log_file_names(
+            "gcs_server", unique=True, create_out=True, create_err=False
+        )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
+            stdout_log_fname,
             self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
