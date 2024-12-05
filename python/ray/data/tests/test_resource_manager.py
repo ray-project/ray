@@ -120,6 +120,7 @@ class TestResourceManager:
                 MagicMock(),
                 ExecutionOptions(),
                 get_total_resources,
+                DataContext.get_current(),
             )
             expected_resource = ExecutionResources(4, 1, 0)
             # The first call should call ray.cluster_resources().
@@ -136,7 +137,7 @@ class TestResourceManager:
 
     def test_update_usage(self):
         """Test calculating op_usage."""
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
@@ -188,7 +189,9 @@ class TestResourceManager:
             )
             topo[op].add_output(ref_bundle)
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         resource_manager._op_resource_allocator = None
         resource_manager.update_usages()
 
@@ -233,7 +236,7 @@ class TestResourceManager:
         input = make_ref_bundles([[x] for x in range(1)])[0]
         input.size_bytes = MagicMock(return_value=1)
 
-        o1 = InputDataBuffer([input])
+        o1 = InputDataBuffer(DataContext.get_current(), [input])
         o2 = mock_map_op(o1)
         o3 = mock_map_op(o2)
 
@@ -242,6 +245,7 @@ class TestResourceManager:
             topo,
             ExecutionOptions(),
             MagicMock(return_value=ExecutionResources.zero()),
+            DataContext.get_current(),
         )
         ray.data.DataContext.get_current()._max_num_blocks_in_streaming_gen_buffer = 1
         ray.data.DataContext.get_current().target_max_block_size = 2
@@ -321,7 +325,7 @@ class TestReservationOpResourceAllocator:
         DataContext.get_current().op_resource_reservation_enabled = True
         DataContext.get_current().op_resource_reservation_ratio = 0.5
 
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
         o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
         o4 = LimitOperator(1, o3)
@@ -338,7 +342,9 @@ class TestReservationOpResourceAllocator:
             nonlocal global_limits
             return global_limits
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         resource_manager.get_op_usage = MagicMock(side_effect=lambda op: op_usages[op])
         resource_manager._mem_op_internal = op_internal_usage
         resource_manager._mem_op_outputs = op_outputs_usages
@@ -462,12 +468,14 @@ class TestReservationOpResourceAllocator:
         global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
         incremental_usage = ExecutionResources(cpu=3, gpu=0, object_store_memory=500)
 
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1, incremental_resource_usage=incremental_usage)
         o3 = mock_map_op(o2, incremental_resource_usage=incremental_usage)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -491,7 +499,7 @@ class TestReservationOpResourceAllocator:
         global_limits = ExecutionResources(cpu=6, gpu=0, object_store_memory=1600)
         incremental_usage = ExecutionResources(cpu=0, gpu=0, object_store_memory=100)
 
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(
             o1,
             ray_remote_args={"num_cpus": 0, "num_gpus": 1},
@@ -500,7 +508,9 @@ class TestReservationOpResourceAllocator:
         )
         topo, _ = build_streaming_topology(o2, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -516,12 +526,14 @@ class TestReservationOpResourceAllocator:
         """Test that we only handle non-completed map ops."""
         DataContext.get_current().op_resource_reservation_enabled = True
 
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
         o3 = LimitOperator(1, o2)
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         resource_manager.get_op_usage = MagicMock(
             return_value=ExecutionResources.zero()
         )
@@ -549,15 +561,17 @@ class TestReservationOpResourceAllocator:
         """
         DataContext.get_current().op_resource_reservation_enabled = True
 
-        o1 = InputDataBuffer([])
+        o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
-        o3 = InputDataBuffer([])
+        o3 = InputDataBuffer(DataContext.get_current(), [])
         o4 = mock_map_op(o3)
         o3 = UnionOperator(o2, o4)
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
-        resource_manager = ResourceManager(topo, ExecutionOptions(), MagicMock())
+        resource_manager = ResourceManager(
+            topo, ExecutionOptions(), MagicMock(), DataContext.get_current()
+        )
         assert not resource_manager.op_resource_allocator_enabled()
 
 

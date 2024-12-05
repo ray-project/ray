@@ -91,7 +91,9 @@ def test_execution_resources(ray_start_10_cpus_shared):
 
 
 def test_resource_canonicalization(ray_start_10_cpus_shared):
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
@@ -165,7 +167,9 @@ def test_execution_options_resource_limit():
 
 
 def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_context):
-    input_op = InputDataBuffer(make_ref_bundles([[i] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
@@ -191,7 +195,9 @@ def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_co
 def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
-    input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         data_context=DataContext.get_current(),
@@ -232,7 +238,9 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
 def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
-    input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
@@ -282,7 +290,9 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_context):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
-    input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
@@ -376,7 +386,9 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
 def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     ctx = ray.data.DataContext.get_current()
     ctx._max_num_blocks_in_streaming_gen_buffer = 1
-    input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(100)])
+    )
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
@@ -463,7 +475,8 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
 
 def test_limit_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(
-        make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)])
+        DataContext.get_current(),
+        make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)]),
     )  # Two two-row bundles
     op = LimitOperator(3, input_op)
     op.start(ExecutionOptions())
@@ -489,8 +502,16 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
 
 
 def test_output_splitter_resource_reporting(ray_start_10_cpus_shared):
-    input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(4)]))
-    op = OutputSplitter(input_op, 2, equal=False, locality_hints=["0", "1"])
+    input_op = InputDataBuffer(
+        DataContext.get_current(), make_ref_bundles([[SMALL_STR] for i in range(4)])
+    )
+    op = OutputSplitter(
+        input_op,
+        2,
+        equal=False,
+        data_context=DataContext.get_current(),
+        locality_hints=["0", "1"],
+    )
     op.start(ExecutionOptions(actor_locality_enabled=True))
 
     assert op.current_processor_usage() == ExecutionResources(

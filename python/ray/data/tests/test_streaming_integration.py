@@ -81,7 +81,7 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
         executor = StreamingExecutor(DataContext.get_current())
-        o = InputDataBuffer([])
+        o = InputDataBuffer(DataContext.get_current(), [])
         # Start the executor. Because non-started executors don't
         # need to be shut down.
         executor.execute(o)
@@ -94,7 +94,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
     ctx.execution_options.preserve_order = True
     executor = StreamingExecutor(ctx)
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -121,8 +121,8 @@ def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
 def test_output_split_e2e(ray_start_10_cpus_shared):
     executor = StreamingExecutor(DataContext.get_current())
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
-    o2 = OutputSplitter(o1, 2, equal=True)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
+    o2 = OutputSplitter(o1, 2, equal=True, data_context=DataContext.get_current())
     it = executor.execute(o2)
 
     class Consume(threading.Thread):

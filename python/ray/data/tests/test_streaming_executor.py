@@ -85,7 +85,7 @@ def make_ref_bundle(x):
 )
 def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -114,7 +114,7 @@ def test_build_streaming_topology(verbose_progress):
 def test_disallow_non_unique_operators():
     inputs = make_ref_bundles([[x] for x in range(20)])
     # An operator [o1] cannot used in the same DAG twice.
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -132,7 +132,7 @@ def test_disallow_non_unique_operators():
 
 def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -175,7 +175,7 @@ def test_process_completed_tasks():
     o1.mark_execution_completed.assert_not_called()
 
     # Test dependents completed.
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -198,7 +198,7 @@ def test_process_completed_tasks():
 def test_select_operator_to_run():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -252,7 +252,7 @@ def test_select_operator_to_run():
 
 def test_dispatch_next_task():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o1_state = OpState(o1, [])
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
@@ -279,7 +279,7 @@ def test_dispatch_next_task():
 def test_debug_dump_topology():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -295,6 +295,7 @@ def test_debug_dump_topology():
         topo,
         ExecutionOptions(),
         MagicMock(return_value=ExecutionResources.zero()),
+        DataContext.get_current(),
     )
     resource_manager.update_usages()
     # Just a sanity check to ensure it doesn't crash.
@@ -303,7 +304,7 @@ def test_debug_dump_topology():
 
 def test_validate_dag():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -324,7 +325,7 @@ def test_validate_dag():
 
 
 def test_execution_allowed():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
 
     # CPU.
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources(cpu=1))
@@ -425,7 +426,7 @@ def test_execution_allowed():
 def test_select_ops_ensure_at_least_one_live_operator():
     opt = ExecutionOptions()
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -459,7 +460,7 @@ def test_select_ops_ensure_at_least_one_live_operator():
 
 def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
-    o1 = InputDataBuffer(inputs)
+    o1 = InputDataBuffer(DataContext.get_current(), inputs)
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
@@ -504,7 +505,7 @@ def test_configure_output_locality():
 
 
 def test_execution_allowed_downstream_aware_memory_throttling():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
     # Below global.
     assert _execution_allowed(
@@ -549,7 +550,7 @@ def test_execution_allowed_downstream_aware_memory_throttling():
 
 
 def test_execution_allowed_nothrottle():
-    op = InputDataBuffer([])
+    op = InputDataBuffer(DataContext.get_current(), [])
     op.incremental_resource_usage = MagicMock(return_value=ExecutionResources())
     # Above global.
     assert not _execution_allowed(

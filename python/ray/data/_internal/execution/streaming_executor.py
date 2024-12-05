@@ -125,6 +125,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._options,
             lambda: self._autoscaler.get_total_resources(),
+            self._data_context,
         )
         self._backpressure_policies = get_backpressure_policies(self._topology)
         self._autoscaler = create_autoscaler(
