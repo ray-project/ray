@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <memory>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
@@ -49,6 +51,7 @@ struct GcsServerConfig {
   std::string grpc_server_name = "GcsServer";
   uint16_t grpc_server_port = 0;
   uint16_t grpc_server_thread_num = 1;
+  std::string redis_username;
   std::string redis_password;
   std::string redis_address;
   uint16_t redis_port = 6379;
@@ -77,10 +80,14 @@ class GcsAutoscalerStateManager;
 /// and the management of actor creation.
 /// For more details, please see the design document.
 /// https://docs.google.com/document/d/1d-9qBlsh2UQHo-AWMWR0GptI_Ajwu4SKx0Q0LHKPpeI/edit#heading=h.csi0gaglj2pv
+///
+/// Notes on lifecycle:
+/// 1. Gcs server contains a lot of data member, gcs server outlives all of them.
+/// 2. Gcs table storage and all gcs managers share a lifetime, that starts from a
+/// `DoStart` call to `Stop`.
 class GcsServer {
  public:
-  explicit GcsServer(const GcsServerConfig &config,
-                     instrumented_io_context &main_service);
+  GcsServer(const GcsServerConfig &config, instrumented_io_context &main_service);
   virtual ~GcsServer();
 
   /// Start gcs server.
@@ -218,9 +225,9 @@ class GcsServer {
   /// The `ClientCallManager` object that is shared by all `NodeManagerWorkerClient`s.
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
   /// The gcs resource manager.
-  std::shared_ptr<GcsResourceManager> gcs_resource_manager_;
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   /// The cluster task manager.
@@ -230,15 +237,17 @@ class GcsServer {
   /// The gcs node manager.
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
-  std::shared_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
   /// The gcs redis failure detector.
-  std::shared_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
+  std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs actor manager.
-  std::shared_ptr<GcsActorManager> gcs_actor_manager_;
+  std::unique_ptr<GcsActorManager> gcs_actor_manager_;
   /// The gcs placement group scheduler.
-  std::shared_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
+  /// [gcs_placement_group_scheduler_] depends on [raylet_client_pool_].
+  std::unique_ptr<GcsPlacementGroupScheduler> gcs_placement_group_scheduler_;
   /// The gcs placement group manager.
-  std::shared_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
+  /// [gcs_placement_group_manager_] depends on [gcs_placement_group_scheduler_].
+  std::unique_ptr<GcsPlacementGroupManager> gcs_placement_group_manager_;
   /// Job info handler and service.
   std::unique_ptr<GcsJobManager> gcs_job_manager_;
   std::unique_ptr<rpc::JobInfoGrpcService> job_info_service_;
@@ -284,15 +293,17 @@ class GcsServer {
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
   PeriodicalRunner pubsub_periodical_runner_;
   /// The runner to run function periodically.
   PeriodicalRunner periodical_runner_;
   /// The gcs table storage.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Stores references to URIs stored by the GCS for runtime envs.
   std::unique_ptr<ray::RuntimeEnvManager> runtime_env_manager_;
+  /// Local task manager.
+  NoopLocalTaskManager local_task_manager_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

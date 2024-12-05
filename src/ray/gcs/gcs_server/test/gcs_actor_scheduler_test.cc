@@ -12,10 +12,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <gtest/gtest.h>
+
 #include <memory>
 
 // clang-format off
-#include "gtest/gtest.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/gcs_server/gcs_actor_scheduler.h"
 #include "ray/gcs/gcs_server/test/gcs_server_test_util.h"
@@ -38,8 +39,10 @@ class GcsActorSchedulerTest : public ::testing::Test {
         std::make_unique<ray::pubsub::MockPublisher>());
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
     gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
-    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(
-        gcs_publisher_, gcs_table_storage_, raylet_client_pool_, ClusterID::Nil());
+    gcs_node_manager_ = std::make_shared<gcs::GcsNodeManager>(gcs_publisher_.get(),
+                                                              gcs_table_storage_.get(),
+                                                              raylet_client_pool_.get(),
+                                                              ClusterID::Nil());
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
@@ -52,7 +55,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*is_local_node_with_raylet=*/false);
     counter.reset(
         new CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>());
-    cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
+    local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
+    cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
         local_node_id_,
         cluster_resource_scheduler,
         /*get_node_info=*/
@@ -60,10 +64,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
           auto node = gcs_node_manager_->GetAliveNode(node_id);
           return node.has_value() ? node.value().get() : nullptr;
         },
-        /*announce_infeasible_task=*/
-        nullptr,
-        /*local_task_manager=*/
-        std::make_shared<NoopLocalTaskManager>());
+        /*announce_infeasible_task=*/nullptr,
+        /*local_task_manager=*/*local_task_manager_);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
         cluster_resource_scheduler->GetClusterResourceManager(),
@@ -73,7 +75,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         io_service_,
         *gcs_actor_table_,
         *gcs_node_manager_,
-        cluster_task_manager_,
+        *cluster_task_manager_,
         /*schedule_failure_handler=*/
         [this](std::shared_ptr<gcs::GcsActor> actor,
                const rpc::RequestWorkerLeaseReply::SchedulingFailureType failure_type,
@@ -84,7 +86,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         [this](std::shared_ptr<gcs::GcsActor> actor, const rpc::PushTaskReply &reply) {
           success_actors_.emplace_back(std::move(actor));
         },
-        raylet_client_pool_,
+        *raylet_client_pool_,
         /*client_factory=*/
         [this](const rpc::Address &address) { return worker_client_; },
         /*normal_task_resources_changed_callback=*/
@@ -147,6 +149,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
+  std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
@@ -1191,8 +1194,3 @@ TEST_F(GcsActorSchedulerTest, TestReleaseUnusedActorWorkersByGcs) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

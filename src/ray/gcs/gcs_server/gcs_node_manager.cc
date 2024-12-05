@@ -29,14 +29,13 @@ namespace ray {
 namespace gcs {
 
 //////////////////////////////////////////////////////////////////////////////////////////
-GcsNodeManager::GcsNodeManager(
-    std::shared_ptr<GcsPublisher> gcs_publisher,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-    const ClusterID &cluster_id)
-    : gcs_publisher_(std::move(gcs_publisher)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      raylet_client_pool_(std::move(raylet_client_pool)),
+GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
+                               gcs::GcsTableStorage *gcs_table_storage,
+                               rpc::NodeManagerClientPool *raylet_client_pool,
+                               const ClusterID &cluster_id)
+    : gcs_publisher_(gcs_publisher),
+      gcs_table_storage_(gcs_table_storage),
+      raylet_client_pool_(raylet_client_pool),
       cluster_id_(cluster_id) {}
 
 void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
@@ -393,8 +392,8 @@ std::shared_ptr<rpc::GcsNodeInfo> GcsNodeManager::RemoveNode(
               .WithField("ip", removed_node->node_manager_address())
           << error_message.str();
       RAY_LOG(WARNING) << error_message.str();
-      auto error_data_ptr =
-          gcs::CreateErrorTableData(type, error_message.str(), current_time_ms());
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          type, error_message.str(), absl::FromUnixMillis(current_time_ms()));
       RAY_CHECK_OK(gcs_publisher_->PublishError(node_id.Hex(), *error_data_ptr, nullptr));
     }
 
