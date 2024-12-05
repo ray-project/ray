@@ -40,8 +40,8 @@
 #include <utility>
 
 #include "absl/container/flat_hash_map.h"
-#include "src/ray/util/logging.h"
-#include "src/ray/util/map_utils.h"
+#include "ray/util/logging.h"
+#include "ray/util/map_utils.h"
 
 namespace ray::utils::container {
 
