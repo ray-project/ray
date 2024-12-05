@@ -44,7 +44,6 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
 #include "src/ray/protobuf/pubsub.pb.h"
@@ -185,11 +184,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
-
-  /// Connect to the raylet and notify that the core worker is ready.
-  /// If the options.connect_on_start is false, it doesn't need to be explicitly
-  /// called.
-  void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
@@ -824,6 +818,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                    const std::string &type,
                    const std::string &error_message,
                    double timestamp);
+
+  // Prestart workers. The workers:
+  // - uses current language.
+  // - uses current JobID.
+  // - does NOT support root_detached_actor_id.
+  // - uses provided runtime_env_info applied to the job runtime env, as if it's a task
+  // request.
+  //
+  // This API is async. It provides no guarantee that the workers are actually started.
+  void PrestartWorkers(const std::string &serialized_runtime_env_info,
+                       uint64_t keep_alive_duration_secs,
+                       size_t num_workers);
 
   /// Submit a normal task.
   ///
@@ -1651,7 +1657,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
-  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor.
   void ConnectToRayletInternal();
 
   /// Shared state of the worker. Includes process-level and thread-level state.
