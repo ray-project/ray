@@ -64,7 +64,9 @@ class TestResourceManager:
         # the cluster resources for CPU/GPU, and
         # DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION of cluster object store memory.
         options = ExecutionOptions()
-        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        resource_manager = ResourceManager(
+            MagicMock(), options, get_total_resources, DataContext.get_current()
+        )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"],
             gpu=cluster_resources["GPU"],
@@ -77,7 +79,9 @@ class TestResourceManager:
         options.resource_limits = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        resource_manager = ResourceManager(
+            MagicMock(), options, get_total_resources, DataContext.get_current()
+        )
         expected = ExecutionResources(
             cpu=1,
             gpu=2,
@@ -91,7 +95,9 @@ class TestResourceManager:
         options.exclude_resources = ExecutionResources(
             cpu=1, gpu=2, object_store_memory=100
         )
-        resource_manager = ResourceManager(MagicMock(), options, get_total_resources)
+        resource_manager = ResourceManager(
+            MagicMock(), options, get_total_resources, DataContext.get_current()
+        )
         expected = ExecutionResources(
             cpu=cluster_resources["CPU"] - 1,
             gpu=cluster_resources["GPU"] - 2,
@@ -328,7 +334,7 @@ class TestReservationOpResourceAllocator:
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1, incremental_resource_usage=ExecutionResources(1, 0, 15))
         o3 = mock_map_op(o2, incremental_resource_usage=ExecutionResources(1, 0, 10))
-        o4 = LimitOperator(1, o3)
+        o4 = LimitOperator(1, o3, DataContext.get_current())
 
         op_usages = {op: ExecutionResources.zero() for op in [o1, o2, o3, o4]}
         op_internal_usage = {op: 0 for op in [o1, o2, o3, o4]}
@@ -528,7 +534,7 @@ class TestReservationOpResourceAllocator:
 
         o1 = InputDataBuffer(DataContext.get_current(), [])
         o2 = mock_map_op(o1)
-        o3 = LimitOperator(1, o2)
+        o3 = LimitOperator(1, o2, DataContext.get_current())
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 
         resource_manager = ResourceManager(
@@ -565,7 +571,7 @@ class TestReservationOpResourceAllocator:
         o2 = mock_map_op(o1)
         o3 = InputDataBuffer(DataContext.get_current(), [])
         o4 = mock_map_op(o3)
-        o3 = UnionOperator(o2, o4)
+        o3 = UnionOperator(DataContext.get_current(), o2, o4)
 
         topo, _ = build_streaming_topology(o3, ExecutionOptions())
 

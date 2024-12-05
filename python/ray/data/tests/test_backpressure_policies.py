@@ -43,11 +43,13 @@ class TestConcurrencyCapBackpressurePolicy(unittest.TestCase):
         input_op = InputDataBuffer(DataContext.get_current(), input_data=[MagicMock()])
         map_op_no_concurrency = TaskPoolMapOperator(
             map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
             input_op=input_op,
             target_max_block_size=None,
         )
         map_op = TaskPoolMapOperator(
             map_transformer=MagicMock(),
+            data_context=DataContext.get_current(),
             input_op=map_op_no_concurrency,
             target_max_block_size=None,
             concurrency=concurrency,
