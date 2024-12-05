@@ -202,6 +202,8 @@ class IcebergDatasource(Datasource):
                 "number of files"
             )
 
+        # Get required properties for reading tasks - table IO, table metadata, row filter, case sensitivity, limit and projected schema
+        # pre-apply them to `_get_read_task` through partial to avoid `self` reference which causes perfromance degradation during serialization
         table_io = self.table.io
         table_metadata = self.table.metadata
         row_filter = self._row_filter
