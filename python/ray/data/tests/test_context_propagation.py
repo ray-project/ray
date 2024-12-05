@@ -9,9 +9,12 @@ from ray.data.datasource import Datasource, ReadTask
 from ray.tests.conftest import *  # noqa
 
 
+# Auto-use `restore_data_context` for each test.
+pytestmark = pytest.mark.usefixtures("restore_data_context")
+
+
 def test_context_saved_when_dataset_created(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     ctx = DataContext.get_current()
     ctx.set_config("foo", 1)
@@ -48,9 +51,34 @@ def test_context_saved_when_dataset_created(
     assert d2.context.get_config("foo") == 1
 
 
+def test_multiple_datasets_propagation(
+    ray_start_regular_shared,
+):
+    """Test that DataContext propagation works correctly with multiple datasets."""
+    ctx = DataContext.get_current()
+
+    def map(_):
+        ctx = DataContext.get_current()
+        return {"foo": ctx.get_config("foo")}
+
+    ctx.set_config("foo", 1)
+    # ds1's DataContext should be sealed as soon as
+    # it's created.
+    ds1 = ray.data.range(1)
+    ds1 = ds1.map(map)
+
+    # Updating DataContext again should only affect
+    # ds2, but not ds1.
+    ctx.set_config("foo", 2)
+    ds2 = ray.data.range(1)
+    ds2 = ds1.map(map)
+
+    assert ds1.take_all() == [{"foo": 1}]
+    assert ds2.take_all() == [{"foo": 2}]
+
+
 def test_read(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
@@ -67,7 +95,6 @@ def test_read(
 
 def test_map(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     context = DataContext.get_current()
     context.foo = 70001
@@ -77,7 +104,6 @@ def test_map(
 
 def test_flat_map(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     context = DataContext.get_current()
     context.foo = 70002
@@ -87,7 +113,6 @@ def test_flat_map(
 
 def test_map_batches(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     context = DataContext.get_current()
     context.foo = 70003
@@ -99,7 +124,6 @@ def test_map_batches(
 
 def test_filter(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     context = DataContext.get_current()
     context.foo = 70004
@@ -111,7 +135,6 @@ def test_filter(
 
 def test_streaming_split(
     ray_start_regular_shared,
-    restore_data_context,
 ):
     # Tests that custom DataContext can be properly propagated
     # when using `streaming_split()`.
