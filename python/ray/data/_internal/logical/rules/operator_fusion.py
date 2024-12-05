@@ -317,7 +317,7 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         # Fused physical map operator.
-        assert up_op.data_context == down_op.data_context
+        assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
@@ -406,9 +406,11 @@ class OperatorFusionRule(Rule):
             up_op.target_max_block_size, down_op.target_max_block_size
         )
 
+        assert up_op.data_context is down_op.data_context
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from

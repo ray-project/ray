@@ -478,7 +478,7 @@ def test_limit_resource_reporting(ray_start_10_cpus_shared):
         DataContext.get_current(),
         make_ref_bundles([[SMALL_STR, SMALL_STR] for i in range(2)]),
     )  # Two two-row bundles
-    op = LimitOperator(3, input_op)
+    op = LimitOperator(3, input_op, DataContext.get_current())
     op.start(ExecutionOptions())
 
     assert op.current_processor_usage() == ExecutionResources(
