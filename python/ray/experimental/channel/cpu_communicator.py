@@ -2,8 +2,6 @@ import asyncio
 from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
-import torch
-
 import ray
 from ray.experimental.channel.gpu_communicator import ReduceOp, TorchTensorAllocator
 
@@ -16,6 +14,7 @@ class CPUCommBarrier:
 
     p2p operations are not done here (completed via shared memory channel).
     """
+    import torch
 
     def __init__(self, num_actors: int):
         self.num_actors = num_actors
@@ -87,6 +86,7 @@ class CPUCommunicator:
     """
     Uses a CPU-based communicator actor instead of a NCCL group.
     """
+    import torch
 
     def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
         """We use the op index to synchronize the sender and receiver at the
