@@ -2,7 +2,7 @@ import os
 import random
 import sys
 import time
-from typing import List, Set
+from typing import List, Optional, Set
 
 import pytest
 
@@ -16,6 +16,7 @@ from ray.serve._private import default_impl
 from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import (
     RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_CONTROLLER_NAME,
     SERVE_NAMESPACE,
 )
 from ray.serve._private.deployment_scheduler import (
@@ -33,6 +34,7 @@ from ray.serve.context import _get_global_client
 from ray.serve.schema import ServeDeploySchema
 from ray.serve.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
+from ray.util.state import list_actors
 
 
 @ray.remote(num_cpus=1)
@@ -48,6 +50,19 @@ def check_node_dead(node_id: str):
     target_node = [node for node in ray.nodes() if node["NodeID"] == node_id][0]
     assert not target_node["Alive"]
     return True
+
+
+def get_controller_pid() -> Optional[int]:
+    all_current_actors = list_actors(filters=[("state", "=", "ALIVE")])
+    for actor in all_current_actors:
+        if SERVE_CONTROLLER_NAME == actor["name"]:
+            return actor["pid"]
+
+
+def kill_controller_and_wait_for_restart(controller):
+    old_pid = get_controller_pid()
+    ray.kill(controller, no_restart=False)
+    wait_for_condition(lambda: get_controller_pid() != old_pid)
 
 
 @pytest.mark.skipif(
@@ -337,6 +352,7 @@ def setup_compact_scheduling(request, monkeypatch):
     monkeypatch.setenv("RAY_health_check_failure_threshold", "1")
     monkeypatch.setenv("RAY_health_check_timeout_ms", "1000")
     monkeypatch.setenv("RAY_health_check_period_ms", "1000")
+    monkeypatch.setenv("RAY_SERVE_PROXY_MIN_DRAINING_PERIOD_S", "0.01")
 
     params = getattr(request, "param") if hasattr(request, "param") else None
     cluster = AutoscalingCluster(
@@ -350,7 +366,8 @@ def setup_compact_scheduling(request, monkeypatch):
                     "max_workers": 10,
                 },
             },
-            "idle_timeout_minutes": 0.05,
+            "idle_timeout_minutes": 0.01,
+            "autoscaler_v2": True,
         }
     )
     cluster.start()
@@ -380,6 +397,7 @@ def setup_compact_scheduling(request, monkeypatch):
                         "num_replicas": 1,
                         "ray_actor_options": {"num_cpus": 1},
                         "health_check_period_s": 1,
+                        "graceful_shutdown_timeout_s": 1,
                     }
                 ],
             },
@@ -557,11 +575,12 @@ class TestCompactScheduling:
         pids = [h.get_pid.remote().result() for _ in range(30)]
 
         # Controller crashes
-        ray.kill(client._controller, no_restart=False)
+        kill_controller_and_wait_for_restart(client._controller)
 
         # When the controller recovers, it should recover 6 RUNNING
         # replicas and 1 STARTING replica. Then it should stop one
         # replica to match `target_num_replicas=6`.
+        #
         # Then it should promptly identify the same compaction that was
         # in-progress before and try to compact Node3 (with 1 replica on it)
         wait_for_condition(
@@ -749,8 +768,10 @@ class TestCompactScheduling:
         with pytest.raises(RuntimeError):
             wait_for_condition(any_starting_or_pending_migration_replicas)
 
+        serve.shutdown()
+
     @pytest.mark.parametrize(
-        "ray_autoscaling_cluster",
+        "autoscaling_cluster",
         [
             {
                 "head_resources": {"CPU": 0},
@@ -773,9 +794,7 @@ class TestCompactScheduling:
         ],
         indirect=True,
     )
-    def test_prefer_larger_nodes(self, ray_autoscaling_cluster: AutoscalingCluster):
-        ray.init()
-        serve.start()
+    def test_prefer_larger_nodes(self, autoscaling_cluster: AutoscalingCluster):
         client = _get_global_client()
         signal = SignalActor.options(name="signal123").remote()
         signal.send.remote()

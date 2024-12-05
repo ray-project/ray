@@ -51,3 +51,6 @@ __all__ = [
     "TorchPredictor",
     "TorchDetectionPredictor",
 ]
+
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.
