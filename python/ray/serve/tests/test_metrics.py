@@ -6,7 +6,11 @@ from typing import DefaultDict, Dict, List, Optional
 import grpc
 import pytest
 import requests
-from fastapi import FastAPI
+from fastapi import FastAPI, WebSocket
+from starlette.requests import Request
+from starlette.responses import PlainTextResponse
+from websockets.exceptions import ConnectionClosed
+from websockets.sync.client import connect
 
 import ray
 import ray.util.state as state_api
@@ -581,6 +585,161 @@ def test_proxy_metrics_fields_internal_error(serve_start_shutdown):
     assert latency_metrics[0]["application"] == real_app_name
     assert latency_metrics[0]["status_code"] == str(grpc.StatusCode.INTERNAL)
     print("serve_grpc_request_latency_ms_sum working as expected.")
+
+
+def test_proxy_metrics_http_status_code_is_error(serve_start_shutdown):
+    """Verify that 2xx status codes aren't errors, others are."""
+
+    def check_request_count_metrics(
+        expected_error_count: int,
+        expected_success_count: int,
+    ):
+        resp = requests.get("http://127.0.0.1:9999").text
+        error_count = 0
+        success_count = 0
+        for line in resp.split("\n"):
+            if line.startswith("ray_serve_num_http_error_requests_total"):
+                error_count += int(float(line.split(" ")[-1]))
+            if line.startswith("ray_serve_num_http_requests_total"):
+                success_count += int(float(line.split(" ")[-1]))
+
+        assert error_count == expected_error_count
+        assert success_count == expected_success_count
+        return True
+
+    @serve.deployment
+    async def return_status_code(request: Request):
+        code = int((await request.body()).decode("utf-8"))
+        return PlainTextResponse("", status_code=code)
+
+    serve.run(return_status_code.bind())
+
+    # 200 is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"200")
+    assert r.status_code == 200
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=1,
+    )
+
+    # 2xx is not an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"250")
+    assert r.status_code == 250
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=2,
+    )
+
+    # 3xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"300")
+    assert r.status_code == 300
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=1,
+        expected_success_count=3,
+    )
+
+    # 4xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"400")
+    assert r.status_code == 400
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=2,
+        expected_success_count=4,
+    )
+
+    # 5xx is an error.
+    r = requests.get("http://127.0.0.1:8000/", data=b"500")
+    assert r.status_code == 500
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=3,
+        expected_success_count=5,
+    )
+
+
+def test_proxy_metrics_websocket_status_code_is_error(serve_start_shutdown):
+    """Verify that status codes aisde from 1000 or 1001 are errors."""
+
+    def check_request_count_metrics(
+        expected_error_count: int,
+        expected_success_count: int,
+    ):
+        resp = requests.get("http://127.0.0.1:9999").text
+        error_count = 0
+        success_count = 0
+        for line in resp.split("\n"):
+            if line.startswith("ray_serve_num_http_error_requests_total"):
+                error_count += int(float(line.split(" ")[-1]))
+            if line.startswith("ray_serve_num_http_requests_total"):
+                success_count += int(float(line.split(" ")[-1]))
+
+        assert error_count == expected_error_count
+        assert success_count == expected_success_count
+        return True
+
+    fastapi_app = FastAPI()
+
+    @serve.deployment
+    @serve.ingress(fastapi_app)
+    class WebSocketServer:
+        @fastapi_app.websocket("/")
+        async def accept_then_close(self, ws: WebSocket):
+            await ws.accept()
+            code = int(await ws.receive_text())
+            await ws.close(code=code)
+
+    serve.run(WebSocketServer.bind())
+
+    # Regular disconnect (1000) is not an error.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1000")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=1,
+    )
+
+    # Goaway disconnect (1001) is not an error.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1001")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=0,
+        expected_success_count=2,
+    )
+
+    # Other codes are errors.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("1011")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=1,
+        expected_success_count=3,
+    )
+
+    # Other codes are errors.
+    with connect("ws://localhost:8000/") as ws:
+        with pytest.raises(ConnectionClosed):
+            ws.send("3000")
+            ws.recv()
+
+    wait_for_condition(
+        check_request_count_metrics,
+        expected_error_count=2,
+        expected_success_count=4,
+    )
 
 
 def test_replica_metrics_fields(serve_start_shutdown):
@@ -1581,7 +1740,7 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write a value.
-    ray.get(host.notify_changed.remote("key_1", 999))
+    ray.get(host.notify_changed.remote({"key_1": 999}))
     object_ref = host.listen_for_change.remote({"key_1": -1})
 
     # Check that the result's size is reported.
@@ -1595,8 +1754,8 @@ def test_long_poll_host_sends_counted(serve_instance):
     )
 
     # Write two new values.
-    ray.get(host.notify_changed.remote("key_1", 1000))
-    ray.get(host.notify_changed.remote("key_2", 1000))
+    ray.get(host.notify_changed.remote({"key_1": 1000}))
+    ray.get(host.notify_changed.remote({"key_2": 1000}))
     object_ref = host.listen_for_change.remote(
         {"key_1": result_1["key_1"].snapshot_id, "key_2": -1}
     )

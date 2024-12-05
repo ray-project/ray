@@ -10,6 +10,7 @@ from ray._private.ray_constants import DEFAULT_RUNTIME_ENV_TIMEOUT_SECONDS
 from ray._private.runtime_env.conda import get_uri as get_conda_uri
 from ray._private.runtime_env.pip import get_uri as get_pip_uri
 from ray._private.runtime_env.plugin_schema_manager import RuntimeEnvPluginSchemaManager
+from ray._private.runtime_env.uv import get_uri as get_uv_uri
 from ray._private.runtime_env.validation import OPTION_TO_VALIDATION_FN
 from ray._private.thirdparty.dacite import from_dict
 from ray.core.generated.runtime_env_common_pb2 import (
@@ -148,7 +149,6 @@ OPTION_TO_VALIDATION_FN[
 ] = RuntimeEnvConfig.parse_and_validate_runtime_env_config
 
 
-# TODO(hjiang): Expose `uv` related fields after implementation finished.
 @PublicAPI
 class RuntimeEnv(dict):
     """This class is used to define a runtime environment for a job, task,
@@ -180,21 +180,21 @@ class RuntimeEnv(dict):
     .. code-block:: python
 
         from ray.runtime_env import RuntimeEnv
-        # Invoke a remote task that will run in a specified runtime environment.
+        # Invoke a remote task that runs in a specified runtime environment.
         f.options(runtime_env=RuntimeEnv(...)).remote()
 
-        # Instantiate an actor that will run in a specified runtime environment.
+        # Instantiate an actor that runs in a specified runtime environment.
         actor = SomeClass.options(runtime_env=RuntimeEnv(...)).remote()
 
         # Specify a runtime environment in the task definition. Future invocations via
-        # `g.remote()` will use this runtime environment unless overridden by using
+        # `g.remote()` use this runtime environment unless overridden by using
         # `.options()` as above.
         @ray.remote(runtime_env=RuntimeEnv(...))
         def g():
             pass
 
         # Specify a runtime environment in the actor definition. Future instantiations
-        # via `MyClass.remote()` will use this runtime environment unless overridden by
+        # via `MyClass.remote()` use this runtime environment unless overridden by
         # using `.options()` as above.
         @ray.remote(runtime_env=RuntimeEnv(...))
         class MyClass:
@@ -222,34 +222,41 @@ class RuntimeEnv(dict):
             pip={"packages":["tensorflow", "requests"], "pip_check": False,
             "pip_version": "==22.0.2;python_version=='3.8.11'"})
 
+        # Example for using image_uri
+        RuntimeEnv(
+            image_uri="rayproject/ray:2.39.0-py312-cu123")
+
     Args:
         py_modules: List of URIs (either in the GCS or external
-            storage), each of which is a zip file that will be unpacked and
-            inserted into the PYTHONPATH of the workers.
+            storage), each of which is a zip file that Ray unpacks and
+            inserts into the PYTHONPATH of the workers.
         working_dir: URI (either in the GCS or external storage) of a zip
-            file that will be unpacked in the directory of each task/actor.
+            file that Ray unpacks in the directory of each task/actor.
         pip: Either a list of pip packages, a string
-            containing the path to a pip requirements.txt file, or a python
+            containing the path to a pip requirements.txt file, or a Python
             dictionary that has three fields: 1) ``packages`` (required, List[str]): a
             list of pip packages, 2) ``pip_check`` (optional, bool): whether enable
             pip check at the end of pip install, defaults to False.
-            3) ``pip_version`` (optional, str): the version of pip, Ray will spell
+            3) ``pip_version`` (optional, str): the version of pip, Ray prepends
             the package name "pip" in front of the ``pip_version`` to form the final
             requirement string, the syntax of a requirement specifier is defined in
             full in PEP 508.
+        uv: Either a list of pip packages, or a Python dictionary that has one field:
+            1) ``packages`` (required, List[str]).
         conda: Either the conda YAML config, the name of a
             local conda env (e.g., "pytorch_p36"), or the path to a conda
             environment.yaml file.
-            The Ray dependency will be automatically injected into the conda
-            env to ensure compatibility with the cluster Ray. The conda name
-            may be mangled automatically to avoid conflicts between runtime
-            envs.
-            This field cannot be specified at the same time as the 'pip' field.
-            To use pip with conda, please specify your pip dependencies within
+            Ray automatically injects the dependency into the conda
+            env to ensure compatibility with the cluster Ray. Ray may automatically
+            mangle the conda name to avoid conflicts between runtime envs.
+            This field can't be specified at the same time as the 'pip' field.
+            To use pip with conda, specify your pip dependencies within
             the conda YAML config:
             https://conda.io/projects/conda/en/latest/user-guide/tasks/manage-environments.html#create-env-file-manually
         container: Require a given (Docker) container image,
-            The Ray worker process will run in a container with this image.
+            The Ray worker process runs in a container with this image.
+            This parameter only works alone, or with the ``config`` or
+            ``env_vars`` parameters.
             The `run_options` list spec is here:
             https://docs.docker.com/engine/reference/run/
         env_vars: Environment variables to set.
@@ -264,6 +271,9 @@ class RuntimeEnv(dict):
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
+        image_uri: URI to a container image. The Ray worker process runs
+            in a container with this image. This parameter only works alone,
+            or with the ``config`` or ``env_vars`` parameters.
     """
 
     known_fields: Set[str] = {
@@ -272,6 +282,7 @@ class RuntimeEnv(dict):
         "working_dir",
         "conda",
         "pip",
+        "uv",
         "container",
         "excludes",
         "env_vars",
@@ -311,6 +322,7 @@ class RuntimeEnv(dict):
         _validate: bool = True,
         mpi: Optional[Dict] = None,
         image_uri: Optional[str] = None,
+        uv: Optional[List[str]] = None,
         **kwargs,
     ):
         super().__init__()
@@ -322,6 +334,8 @@ class RuntimeEnv(dict):
             runtime_env["working_dir"] = working_dir
         if pip is not None:
             runtime_env["pip"] = pip
+        if uv is not None:
+            runtime_env["uv"] = uv
         if conda is not None:
             runtime_env["conda"] = conda
         if nsight is not None:
@@ -349,16 +363,18 @@ class RuntimeEnv(dict):
         if not _validate:
             return
 
-        if self.get("conda") and self.get("pip"):
+        if (self.get("conda") is not None) + (self.get("pip") is not None) + (
+            self.get("uv") is not None
+        ) > 1:
             raise ValueError(
-                "The 'pip' field and 'conda' field of "
-                "runtime_env cannot both be specified.\n"
-                f"specified pip field: {self['pip']}\n"
-                f"specified conda field: {self['conda']}\n"
-                "To use pip with conda, please only set the 'conda' "
-                "field, and specify your pip dependencies "
-                "within the conda YAML config dict: see "
-                "https://conda.io/projects/conda/en/latest/"
+                "The 'pip' field, 'uv' field, and 'conda' field of "
+                "runtime_env cannot be specified at the same time.\n"
+                f"specified pip field: {self.get('pip')}\n"
+                f"specified conda field: {self.get('conda')}\n"
+                f"specified uv field: {self.get('uv')}\n"
+                "To use pip with conda, please only set the 'conda'"
+                "field, and specify your pip dependencies within the conda YAML "
+                "config dict: see https://conda.io/projects/conda/en/latest/"
                 "user-guide/tasks/manage-environments.html"
                 "#create-env-file-manually"
             )
@@ -472,6 +488,11 @@ class RuntimeEnv(dict):
             return get_pip_uri(self)
         return None
 
+    def uv_uri(self) -> Optional[str]:
+        if "uv" in self:
+            return get_uv_uri(self)
+        return None
+
     def plugin_uris(self) -> List[str]:
         """Not implemented yet, always return a empty list"""
         return []
@@ -518,6 +539,11 @@ class RuntimeEnv(dict):
             return True
         return False
 
+    def has_uv(self) -> bool:
+        if self.get("uv"):
+            return True
+        return False
+
     def virtualenv_name(self) -> Optional[str]:
         if not self.has_pip() or not isinstance(self["pip"], str):
             return None
@@ -529,6 +555,13 @@ class RuntimeEnv(dict):
         # Parse and validate field pip on method `__setitem__`
         self["pip"] = self["pip"]
         return self["pip"]
+
+    def uv_config(self) -> Dict:
+        if not self.has_uv() or isinstance(self["uv"], str):
+            return {}
+        # Parse and validate field pip on method `__setitem__`
+        self["uv"] = self["uv"]
+        return self["uv"]
 
     def get_extension(self, key) -> Optional[str]:
         if key not in RuntimeEnv.extensions_fields:

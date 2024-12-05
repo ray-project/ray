@@ -54,7 +54,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
       std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
-      std::shared_ptr<ILocalTaskManager> local_task_manager,
+      ILocalTaskManager &local_task_manager,
       std::function<int64_t(void)> get_time_ms = []() {
         return (int64_t)(absl::GetCurrentTimeNanos() / 1e6);
       });
@@ -161,6 +161,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
+  /// TODO(hjiang): Use reference instead of shared pointer.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
 
   /// Function to get the node information of a given node id.
@@ -168,7 +169,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// Function to announce infeasible task to GCS.
   std::function<void(const RayTask &)> announce_infeasible_task_;
 
-  std::shared_ptr<ILocalTaskManager> local_task_manager_;
+  ILocalTaskManager &local_task_manager_;
 
   /// TODO(swang): Add index from TaskID -> Work to avoid having to iterate
   /// through queues to cancel tasks, etc.

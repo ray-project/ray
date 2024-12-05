@@ -184,13 +184,34 @@ cc_test(
 )
 
 cc_test(
-    name = "resize_uninitialized_test",
-    srcs = ["resize_uninitialized_test.cc"],
+    name = "size_literals_test",
+    srcs = ["size_literals_test.cc"],
     size = "small",
     copts = COPTS,
     tags = ["team:core"],
     deps = [
-        "//src/ray/util:resize_uninitialized",
+        "//src/ray/util:size_literals",
         "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "shared_lru_test",
+    srcs = ["shared_lru_test.cc"],
+    deps = [
+        "//src/ray/util:shared_lru",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+)
+
+cc_library(
+    name = "resize_uninitialized",
+    hdrs = ["resize_uninitialized.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings:internal",
     ],
 )
