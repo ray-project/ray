@@ -1041,8 +1041,9 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
         # Sync weights to the evaluation EnvRunners.
         if self.eval_env_runner_group is not None:
             self.eval_env_runner_group.sync_weights(
-                from_worker_or_learner_group=self.learner_group,
-                # self.env_runner_group.local_env_runner,
+                from_worker_or_learner_group=self.learner_group
+                if self.config.enable_env_runner_and_connector_v2
+                else self.env_runner_group.local_env_runner,
                 inference_only=True,
             )
 
