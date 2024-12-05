@@ -464,6 +464,7 @@ DEFAULT_MAX_CONCURRENCY_ASYNC = 1000
 # in /src/ray/gcs/gcs_server/gcs_job_manager.h.
 RAY_INTERNAL_NAMESPACE_PREFIX = "_ray_internal_"
 RAY_INTERNAL_DASHBOARD_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}dashboard"
+RAY_INTERNAL_CLIENT2_NAMESPACE = f"{RAY_INTERNAL_NAMESPACE_PREFIX}client2"
 
 # Ray internal flags. These flags should not be set by users, and we strip them on job
 # submission.
