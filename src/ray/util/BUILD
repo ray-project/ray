@@ -39,7 +39,6 @@ ray_cc_library(
     ],
 )
 
-<<<<<<< HEAD
 cc_library(
     name = "resize_uninitialized",
     hdrs = ["resize_uninitialized.h"],
@@ -49,19 +48,15 @@ cc_library(
     ],
 )
 
-cc_library(
-=======
 ray_cc_library(
     name = "size_literals",
     hdrs = ["size_literals.h"],
 )
 
 ray_cc_library(
->>>>>>> master
     name = "thread_checker",
     hdrs = ["thread_checker.h"],
     srcs = ["thread_checker.cc"],
-
 )
 
 ray_cc_library(
