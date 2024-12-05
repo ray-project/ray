@@ -1413,6 +1413,8 @@ def init(
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
+        _redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1471,6 +1473,9 @@ def init(
         "_driver_object_store_memory", None
     )
     _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_username: str = kwargs.pop(
+        "_redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+    )
     _redis_password: str = kwargs.pop(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
@@ -1697,6 +1702,7 @@ def init(
             labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
             huge_pages=None,
@@ -1774,6 +1780,7 @@ def init(
             node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
@@ -2474,9 +2481,6 @@ def connect(
         worker_launch_time_ms,
         worker_launched_time_ms,
     )
-
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
 
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id
