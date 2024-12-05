@@ -107,7 +107,9 @@ class ActorPoolMapOperator(MapOperator):
             )
         self._min_rows_per_bundle = min_rows_per_bundle
         self._ray_remote_args_fn = ray_remote_args_fn
-        self._ray_remote_args = self._apply_default_remote_args(self._ray_remote_args)
+        self._ray_remote_args = self._apply_default_remote_args(
+            self._ray_remote_args, data_context
+        )
 
         self._actor_pool = _ActorPool(compute_strategy, self._start_actor)
         # A queue of bundles awaiting dispatch to actors.
@@ -324,12 +326,13 @@ class ActorPoolMapOperator(MapOperator):
         return res
 
     @staticmethod
-    def _apply_default_remote_args(ray_remote_args: Dict[str, Any]) -> Dict[str, Any]:
+    def _apply_default_remote_args(
+        ray_remote_args: Dict[str, Any], data_context: DataContext
+    ) -> Dict[str, Any]:
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = self.data_context
-            ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
+            ray_remote_args["scheduling_strategy"] = data_context.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via
         # extra kwargs (e.g., map_batches(..., max_restarts=0) to disable).
