@@ -254,6 +254,9 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
+  /// TODO(hjiang): Having both log directory and filename for `StartRayLog` is confusing,
+  /// at the end of the day should have only filename. Fix all usage in the next PR.
+  ///
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
