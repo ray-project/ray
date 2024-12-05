@@ -51,30 +51,15 @@ def test_context_saved_when_dataset_created(
     assert d2.context.get_config("foo") == 1
 
 
-def test_multiple_datasets_propagation(
-    ray_start_regular_shared,
-):
-    """Test that DataContext propagation works correctly with multiple datasets."""
-    ctx = DataContext.get_current()
-
-    def map(_):
-        ctx = DataContext.get_current()
-        return {"foo": ctx.get_config("foo")}
-
-    ctx.set_config("foo", 1)
-    # ds1's DataContext should be sealed as soon as
-    # it's created.
-    ds1 = ray.data.range(1)
-    ds1 = ds1.map(map)
-
-    # Updating DataContext again should only affect
-    # ds2, but not ds1.
-    ctx.set_config("foo", 2)
-    ds2 = ray.data.range(1)
-    ds2 = ds1.map(map)
-
-    assert ds1.take_all() == [{"foo": 1}]
-    assert ds2.take_all() == [{"foo": 2}]
+def _test_updating_context_after_dataset_creation(gen_ds):
+    context = DataContext.get_current()
+    context.set_config("foo", 1)
+    ds = gen_ds()
+    assert ds.take_all()[0]["id"] == 1
+    # DataContext is supposed to be sealed when a Dataset is created.
+    # Test that updating the current DataContext doesn't affect existing Datasets.
+    context.set_config("foo", 2)
+    assert ds.take_all()[0]["id"] == 1
 
 
 def test_read(
@@ -82,55 +67,55 @@ def test_read(
 ):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
-            value = DataContext.get_current().foo
+            value = DataContext.get_current().get_config("foo")
             meta = BlockMetadata(
                 num_rows=1, size_bytes=8, schema=None, input_files=None, exec_stats=None
             )
             return [ReadTask(lambda: [pd.DataFrame({"id": [value]})], meta)]
 
-    context = DataContext.get_current()
-    context.foo = 12345
-    assert ray.data.read_datasource(CustomDatasource()).take_all()[0]["id"] == 12345
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.read_datasource(CustomDatasource()),
+    )
 
 
 def test_map(
     ray_start_regular_shared,
 ):
-    context = DataContext.get_current()
-    context.foo = 70001
-    ds = ray.data.range(1).map(lambda x: {"id": DataContext.get_current().foo})
-    assert ds.take_all()[0]["id"] == 70001
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).map(
+            lambda _: {"id": DataContext.get_current().get_config("foo")}
+        )
+    )
 
 
 def test_flat_map(
     ray_start_regular_shared,
 ):
-    context = DataContext.get_current()
-    context.foo = 70002
-    ds = ray.data.range(1).flat_map(lambda x: [{"id": DataContext.get_current().foo}])
-    assert ds.take_all()[0]["id"] == 70002
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).flat_map(
+            lambda _: [{"id": DataContext.get_current().get_config("foo")}]
+        )
+    )
 
 
 def test_map_batches(
     ray_start_regular_shared,
 ):
-    context = DataContext.get_current()
-    context.foo = 70003
-    ds = ray.data.range(1).map_batches(
-        lambda x: {"id": [DataContext.get_current().foo]}
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.range(1).map_batches(
+            lambda x: {"id": [DataContext.get_current().get_config("foo")]}
+        )
     )
-    assert ds.take_all()[0]["id"] == 70003
 
 
 def test_filter(
     ray_start_regular_shared,
 ):
-    context = DataContext.get_current()
-    context.foo = 70004
-    ds = ray.data.from_items([70004]).filter(
-        lambda x: x["item"] == DataContext.get_current().foo
+    _test_updating_context_after_dataset_creation(
+        lambda: ray.data.from_items([1]).filter(
+            lambda x: x["id"] == DataContext.get_current().get_config("foo")
+        )
     )
-    assert ds.take_all()[0]["item"] == 70004
 
 
 def test_streaming_split(
