@@ -333,6 +333,13 @@ void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir,
                          const std::string &log_file) {
+  // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
+  // [log_file]. But they cannot be non empty at the same time. Cleanup `log_dir`.
+  const bool log_dir_empty = log_dir.empty();
+  const bool log_file_empty = log_file.empty();
+  RAY_CHECK(log_dir_empty || log_file_empty)
+      << "Log directory and log filename cannot be set at the same time.";
+
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
