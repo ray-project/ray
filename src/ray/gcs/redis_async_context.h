@@ -71,9 +71,6 @@ class RedisAsyncContext {
   /// \return redisAsyncContext *
   redisAsyncContext *GetRawRedisAsyncContext();
 
-  /// Reset the raw 'redisAsyncContext' pointer to nullptr.
-  void ResetRawRedisAsyncContext();
-
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
   /// \param fn Callback that will be called after the command finishes.
