@@ -14,25 +14,6 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-DATABRICKS_HOST = "DATABRICKS_HOST"
-DATABRICKS_TOKEN = "DATABRICKS_TOKEN"
-DATABRICKS_CLIENT_ID = "DATABRICKS_CLIENT_ID"
-DATABRICKS_CLIENT_SECRET = "DATABRICKS_CLIENT_SECRET"
-
-
-def is_in_databricks_runtime():
-    return "DATABRICKS_RUNTIME_VERSION" in os.environ
-
-
-def verify_databricks_auth_env():
-    return (
-        DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ
-    ) or (
-        DATABRICKS_HOST in os.environ and DATABRICKS_CLIENT_ID in os.environ
-        and DATABRICKS_CLIENT_SECRET in os.environ
-    )
-
-
 class _MLflowLoggerUtil:
     """Util class for setting up and logging to MLflow.
 
@@ -104,23 +85,6 @@ class _MLflowLoggerUtil:
         """
         if tracking_token:
             os.environ["MLFLOW_TRACKING_TOKEN"] = tracking_token
-
-        if is_in_databricks_runtime():
-            if tracking_uri is None:
-                tracking_uri = "databricks"
-
-            if not verify_databricks_auth_env():
-                raise RuntimeError(
-                    "In databricks runtime, to use MLflow in Ray tasks, you need to set "
-                    "environmental variables DATABRICKS_HOST + DATABRICKS_TOKEN,"
-                    "or set environmental variables "
-                    "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
-                    "before calling `ray.util.spark.setup_ray_cluster`, these variables "
-                    "are used to set up authentication with Databricks MLflow "
-                    "service. For details, you can refer to Databricks documentation at "
-                    "'https://docs.databricks.com/en/dev-tools/auth/pat.html' or "
-                    "'https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'."
-                )
 
         self._mlflow.set_tracking_uri(tracking_uri)
         self._mlflow.set_registry_uri(registry_uri)

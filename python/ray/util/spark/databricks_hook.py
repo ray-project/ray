@@ -8,6 +8,20 @@ import time
 
 _logger = logging.getLogger(__name__)
 
+DATABRICKS_HOST = "DATABRICKS_HOST"
+DATABRICKS_TOKEN = "DATABRICKS_TOKEN"
+DATABRICKS_CLIENT_ID = "DATABRICKS_CLIENT_ID"
+DATABRICKS_CLIENT_SECRET = "DATABRICKS_CLIENT_SECRET"
+
+
+def verify_databricks_auth_env():
+    return (
+        DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ
+    ) or (
+        DATABRICKS_HOST in os.environ and DATABRICKS_CLIENT_ID in os.environ
+        and DATABRICKS_CLIENT_SECRET in os.environ
+    )
+
 
 def get_databricks_function(func_name):
     import IPython
@@ -163,13 +177,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
-        from ray.air._internal.mlflow import (
-            verify_databricks_auth_env,
-            DATABRICKS_HOST,
-            DATABRICKS_TOKEN,
-            DATABRICKS_CLIENT_ID,
-            DATABRICKS_CLIENT_SECRET,
-        )
         conf = {
             **super().custom_environment_variables(),
             # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
