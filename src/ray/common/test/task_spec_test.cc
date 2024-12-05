@@ -252,8 +252,3 @@ TEST(TaskSpecTest, TestNodeLabelSchedulingStrategy) {
                std::hash<rpc::SchedulingStrategy>()(scheduling_strategy_5));
 }
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
