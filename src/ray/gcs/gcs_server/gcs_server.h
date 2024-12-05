@@ -295,9 +295,9 @@ class GcsServer {
   /// A publisher for publishing gcs messages.
   std::unique_ptr<GcsPublisher> gcs_publisher_;
   /// Grpc based pubsub's periodical runner.
-  PeriodicalRunner pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The gcs table storage.
   std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   /// Stores references to URIs stored by the GCS for runtime envs.
