@@ -826,7 +826,6 @@ class CompiledDAG:
         # dag.execute.
         self._input_num_positional_args: Optional[int] = None
         self._input_kwargs: Tuple[str, ...] = None
-        self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
         self.dag_input_channels: Optional[List[ChannelInterface]] = None
@@ -943,7 +942,6 @@ class CompiledDAG:
         from ray.dag.collective_node import _CollectiveOperation
 
         self.input_task_idx, self.output_task_idx = None, None
-        self.actor_task_count.clear()
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
@@ -1016,8 +1014,6 @@ class CompiledDAG:
                         "Compiled DAGs can only bind methods to an actor "
                         "that is already created with Actor.remote()"
                     )
-
-                self.actor_task_count[actor_handle._actor_id] += 1
 
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
