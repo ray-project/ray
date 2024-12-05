@@ -91,11 +91,11 @@ class ActorPoolMapOperator(MapOperator):
             ray_remote_args,
         )
         self._ray_actor_task_remote_args = {}
-        actor_task_errors = DataContext.get_current().actor_task_retry_on_errors
+        actor_task_errors = self.data_context.actor_task_retry_on_errors
         if actor_task_errors:
             self._ray_actor_task_remote_args["retry_exceptions"] = actor_task_errors
         _add_system_error_to_retry_exceptions(self._ray_actor_task_remote_args)
-        data_context = DataContext.get_current()
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield
@@ -133,7 +133,7 @@ class ActorPoolMapOperator(MapOperator):
         # upstream operators, leading to a spike in memory usage prior to steady state.
         logger.debug(f"{self._name}: Waiting for {len(refs)} pool actors to start...")
         try:
-            timeout = DataContext.get_current().wait_for_min_actors_s
+            timeout = self.data_context.wait_for_min_actors_s
             ray.get(refs, timeout=timeout)
         except ray.exceptions.GetTimeoutError:
             raise ray.exceptions.GetTimeoutError(
@@ -148,7 +148,7 @@ class ActorPoolMapOperator(MapOperator):
     def _start_actor(self):
         """Start a new actor and add it to the actor pool as a pending actor."""
         assert self._cls is not None
-        ctx = DataContext.get_current()
+        ctx = self.data_context
         if self._ray_remote_args_fn:
             self._refresh_actor_cls()
         actor = self._cls.remote(
@@ -209,7 +209,7 @@ class ActorPoolMapOperator(MapOperator):
                 num_returns="streaming",
                 name=self.name,
                 **self._ray_actor_task_remote_args,
-            ).remote(DataContext.get_current(), ctx, *input_blocks)
+            ).remote(self.data_context, ctx, *input_blocks)
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -326,7 +326,7 @@ class ActorPoolMapOperator(MapOperator):
         """Apply defaults to the actor creation remote args."""
         ray_remote_args = ray_remote_args.copy()
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
+            ctx = self.data_context
             ray_remote_args["scheduling_strategy"] = ctx.scheduling_strategy
         # Enable actor fault tolerance by default, with infinite actor recreations and
         # up to N retries per task. The user can customize this in map_batches via

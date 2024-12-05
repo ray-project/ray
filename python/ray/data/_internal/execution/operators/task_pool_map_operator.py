@@ -10,7 +10,6 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
-from ray.data.context import DataContext
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -83,7 +82,7 @@ class TaskPoolMapOperator(MapOperator):
         dynamic_ray_remote_args = self._get_runtime_ray_remote_args(input_bundle=bundle)
         dynamic_ray_remote_args["name"] = self.name
 
-        data_context = DataContext.get_current()
+        data_context = self.data_context
         if data_context._max_num_blocks_in_streaming_gen_buffer is not None:
             # The `_generator_backpressure_num_objects` parameter should be
             # `2 * _max_num_blocks_in_streaming_gen_buffer` because we yield

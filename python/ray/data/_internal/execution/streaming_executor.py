@@ -121,6 +121,11 @@ class StreamingExecutor(Executor, threading.Thread):
 
         # Setup the streaming DAG topology and start the runner thread.
         self._topology, _ = build_streaming_topology(dag, self._options)
+
+        # Set DataContext for each op.
+        for op in self._topology:
+            op.set_data_context(self._data_context)
+
         self._resource_manager = ResourceManager(
             self._topology,
             self._options,
