@@ -1,4 +1,3 @@
-import copy
 import logging
 import threading
 import time
@@ -75,13 +74,13 @@ class StreamSplitDataIterator(DataIterator):
             cur_epoch = ray.get(
                 self._coord_actor.start_epoch.remote(self._output_split_idx)
             )
-            future: ObjectRef[
-                Optional[ObjectRef[Block]]
-            ] = self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            future: ObjectRef[Optional[ObjectRef[Block]]] = (
+                self._coord_actor.get.remote(cur_epoch, self._output_split_idx)
+            )
             while True:
-                block_ref_and_md: Optional[
-                    Tuple[ObjectRef[Block], BlockMetadata]
-                ] = ray.get(future)
+                block_ref_and_md: Optional[Tuple[ObjectRef[Block], BlockMetadata]] = (
+                    ray.get(future)
+                )
                 if not block_ref_and_md:
                     break
                 else:
@@ -135,13 +134,13 @@ class SplitCoordinator:
         equal: bool,
         locality_hints: Optional[List[NodeIdStr]],
     ):
+        # Set current DataContext.
+        self._context = dataset.context
+        ray.data.DataContext._set_current(self._context)
         # Automatically set locality with output to the specified location hints.
         if locality_hints:
-            dataset.context.execution_options.locality_with_output = locality_hints
+            self._context.execution_options.locality_with_output = locality_hints
             logger.info(f"Auto configuring locality_with_output={locality_hints}")
-
-        # Set current DataContext.
-        ray.data.DataContext._set_current(dataset.context)
 
         self._base_dataset = dataset
         self._n = n
@@ -158,7 +157,7 @@ class SplitCoordinator:
         def gen_epochs():
             while True:
                 executor = StreamingExecutor(
-                    copy.deepcopy(dataset.context.execution_options),
+                    self._context,
                     create_dataset_tag(
                         self._base_dataset._name, self._base_dataset._uuid
                     ),

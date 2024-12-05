@@ -12,7 +12,6 @@ import ray
 from ray import cloudpickle
 from ray._private.test_utils import wait_for_condition
 from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
     ExecutionResources,
     RefBundle,
 )
@@ -81,7 +80,7 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     # even if not using iterators.
     initial = streaming_executor._num_shutdown
     for _ in range(num_runs):
-        executor = StreamingExecutor(ExecutionOptions())
+        executor = StreamingExecutor(DataContext.get_current())
         o = InputDataBuffer([])
         # Start the executor. Because non-started executors don't
         # need to be shut down.
@@ -90,8 +89,10 @@ def test_autoshutdown_dangling_executors(ray_start_10_cpus_shared):
     assert streaming_executor._num_shutdown - initial == num_runs
 
 
-def test_pipelined_execution(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions(preserve_order=True))
+def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
+    ctx = DataContext.get_current()
+    ctx.execution_options.preserve_order = True
+    executor = StreamingExecutor(ctx)
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
@@ -114,7 +115,7 @@ def test_pipelined_execution(ray_start_10_cpus_shared):
 
 
 def test_output_split_e2e(ray_start_10_cpus_shared):
-    executor = StreamingExecutor(ExecutionOptions())
+    executor = StreamingExecutor(DataContext.get_current())
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = OutputSplitter(o1, 2, equal=True)
