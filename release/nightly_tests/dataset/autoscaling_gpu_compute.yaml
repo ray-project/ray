@@ -1,4 +1,4 @@
-# This config matches the default config for Anyscale workspaces with autoscaling, 
+# This config matches the default config for Anyscale workspaces with autoscaling,
 # except instead of using CPU instances, it uses GPU instances.
 cloud_id: {{env["ANYSCALE_CLOUD_ID"]}}
 region: us-west-2
