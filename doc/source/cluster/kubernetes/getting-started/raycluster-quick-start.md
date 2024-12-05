@@ -83,6 +83,7 @@ Once the KubeRay operator is running, you're ready to deploy a RayCluster. Creat
 
   :::{tab-item} Kustomize
   ```sh
+  # Deploy a sample RayCluster CR from the KubeRay repository:
   kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
