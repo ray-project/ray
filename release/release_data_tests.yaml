@@ -99,6 +99,40 @@
           python groupby_benchmark.py --sf 10 --map-groups
           --group-by column02 column14
 
+########################
+# Sort and shuffle tests
+########################
+
+- name: random_shuffle
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+
+- name: sort
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
 ###############
 # Dataset tests
 ###############
@@ -534,40 +568,6 @@
       frequency: manual
       cluster:
         cluster_compute: single_node_benchmark_compute_gce.yaml
-
-########################
-# Sort and shuffle tests
-########################
-
-- name: random_shuffle
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_compute: autoscaling_cpu_compute_large.yaml
-
-  run:
-    timeout: 7200
-    script: >
-      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
-
-- name: sort
-  stable: False
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_worker_killing_policy=retriable_lifo
-      pip:
-        - ray[default]
-    cluster_compute: autoscaling_cpu_compute_large.yaml
-
-  run:
-    timeout: 7200
-    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
 #######################
 # Batch inference tests
