@@ -70,6 +70,7 @@ from ray.dag.dag_node_operation import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+from ray.experimental.channel.gloo_group import init_gloo_group
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -1227,6 +1228,17 @@ class CompiledDAG:
         self._nccl_group_ids = set(actors_to_nccl_group_id.values()).union(
             set(custom_nccl_group_to_id.values())
         )
+
+        gloo_actors = []
+        for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+            requires_gloo = dag_node.type_hint.requires_gloo()
+            if requires_gloo:
+                gloo_actors.append(dag_node._get_actor_handle())
+                for downstream_actor_handle in task.downstream_task_idxs.values():
+                    gloo_actors.append(downstream_actor_handle)
+        print("init_gloo_group", gloo_actors)
+        init_gloo_group(gloo_actors)
 
         if direct_input:
             self._input_num_positional_args = 1

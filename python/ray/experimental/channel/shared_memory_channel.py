@@ -9,6 +9,7 @@ import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
+from ray.experimental.channel.gloo_channel import GlooChannel
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -105,11 +106,15 @@ class _ResizeChannel:
 
 
 class SharedMemoryType(ChannelOutputType):
+    SHM = "shm"
+    GLOO = "gloo"
+
     def __init__(
         self,
         *,
         buffer_size_bytes: Optional[int] = None,
         num_shm_buffers: Optional[int] = None,
+        transport = SHM,
     ):
         """
         Args:
@@ -119,6 +124,9 @@ class SharedMemoryType(ChannelOutputType):
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
+        self.transport = transport
+        if transport == self.GLOO:
+            return
         if buffer_size_bytes is None:
             buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         self.buffer_size_bytes = buffer_size_bytes
@@ -147,12 +155,21 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
+        if self.transport == self.GLOO:
+            return GlooChannel(
+                writer,
+                reader_and_node_list,
+            )
+
         return CompositeChannel(
             writer,
             reader_and_node_list,
             self._num_shm_buffers,
             read_by_adag_driver,
         )
+
+    def requires_gloo(self) -> bool:
+        return self.transport == self.GLOO
 
 
 @PublicAPI(stability="alpha")
