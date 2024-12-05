@@ -35,6 +35,71 @@
     script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
 
 ###############
+# Groupby tests
+###############
+
+# The groupby tests use the TPC-H lineitem table. Here are the columns used for the 
+# groupbys and their corresponding TPC-H column names:
+#
+# | Our dataset     | TPC-H column name |
+# |-----------------|-------------------|
+# | column02        | l_suppkey         |
+# | column08        | l_returnflag      |
+# | column13        | l_shipinstruct    |
+# | column14        | l_shipmode        |
+# 
+# Here are the number of groups for different groupby columns in SF 1000:
+#
+# | Groupby columns                  | Number of groups |
+# |----------------------------------|------------------|
+# | column08, column13, column14     | 84               |
+# | column02, column14               | 7,000,000        |
+# 
+# The SF (scale factor) 1000 lineitem table contains ~6B rows.
+
+# TODO: Bump the scale from SF100 to SF1000 once we handle the scale.
+
+- name: aggregate_groups
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: few_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate 
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate
+          --group-by column02 column14 
+  
+- name: map_groups
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: few_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups 
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups
+          --group-by column02 column14 
+
+###############
 # Dataset tests
 ###############
 

@@ -38,12 +38,12 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_pool.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet/worker_pool.h"
 
 namespace {
 
@@ -362,7 +362,7 @@ NodeManager::NodeManager(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       get_node_info_func,
       announce_infeasible_task,
-      local_task_manager_);
+      *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
