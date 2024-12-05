@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "ray/gcs/asio.h"
+#include "ray/gcs/redis_async_context.h"
 
 #include <iostream>
 
@@ -28,9 +28,7 @@ extern "C" {
 }
 
 namespace ray {
-
 namespace gcs {
-
 instrumented_io_context io_service;
 
 void ConnectCallback(const redisAsyncContext *c, int status) {
@@ -48,20 +46,19 @@ void GetCallback(redisAsyncContext *c, void *r, void *privdata) {
   io_service.stop();
 }
 
-class RedisAsioTest : public ::testing::Test {
+class RedisAsyncContextTest : public ::testing::Test {
  public:
-  RedisAsioTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
+  RedisAsyncContextTest() { TestSetupUtil::StartUpRedisServers(std::vector<int>()); }
 
-  virtual ~RedisAsioTest() { TestSetupUtil::ShutDownRedisServers(); }
+  virtual ~RedisAsyncContextTest() { TestSetupUtil::ShutDownRedisServers(); }
 };
 
-TEST_F(RedisAsioTest, TestRedisCommands) {
+TEST_F(RedisAsyncContextTest, TestRedisCommands) {
   redisAsyncContext *ac = redisAsyncConnect("127.0.0.1", TEST_REDIS_SERVER_PORTS.front());
   ASSERT_TRUE(ac->err == 0);
   ray::gcs::RedisAsyncContext redis_async_context(
+      io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter>(ac, RedisContextDeleter()));
-
-  RedisAsioClient client(io_service, redis_async_context);
 
   redisAsyncSetConnectCallback(ac, ConnectCallback);
   redisAsyncSetDisconnectCallback(ac, DisconnectCallback);
@@ -80,9 +77,7 @@ TEST_F(RedisAsioTest, TestRedisCommands) {
 
   io_service.run();
 }
-
 }  // namespace gcs
-
 }  // namespace ray
 
 int main(int argc, char **argv) {
