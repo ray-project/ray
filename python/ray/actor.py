@@ -135,6 +135,8 @@ class ActorMethod:
             a actor task stop pausing.
         enable_task_events: True if task events is enabled, i.e., task events from
             the actor should be reported. Defaults to True.
+        _signature: The signature of the actor method. It is None only when cross
+            language feature is used.
         _decorator: An optional decorator that should be applied to the actor
             method invocation (as opposed to the actor method execution) before
             invoking the method. The decorator must return a function that
@@ -280,8 +282,8 @@ class ActorMethod:
             signature_copy = inspect.Signature(parameters=signature_copy)
             raise TypeError(
                 f"{str(e)}. The function `{self._method_name}` has a signature "
-                f"`{signature_copy}`, but it doesn't match a given argument to a "
-                f"bind function. args: {args}. kwargs: {kwargs}."
+                f"`{signature_copy}`, but the given arguments to `bind` doesn't "
+                f"match. args: {args}. kwargs: {kwargs}."
             ) from None
 
         node = ClassMethodNode(

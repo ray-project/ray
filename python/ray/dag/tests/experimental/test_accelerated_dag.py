@@ -2552,7 +2552,7 @@ def test_multi_arg_exception_async(shutdown_only):
     loop.run_until_complete(main())
 
 
-def test_signature_error(shutdown_only):
+def test_signature_mismatch(shutdown_only):
     @ray.remote
     class Worker:
         def w(self, x):
@@ -2569,8 +2569,8 @@ def test_signature_error(shutdown_only):
         TypeError,
         match=(
             r"got an unexpected keyword argument 'y'\. The function `w` has a "
-            r"signature `\(x\)`, but it doesn't match a given argument to a "
-            r"bind function\..*args:.*kwargs:.*"
+            r"signature `\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r".*args:.*kwargs:.*"
         ),
     ):
         with InputNode() as inp:
@@ -2580,7 +2580,7 @@ def test_signature_error(shutdown_only):
         TypeError,
         match=(
             r"too many positional arguments\. The function `w` has a signature "
-            r"`\(x\)`, but it doesn't match a given argument to a bind function\. "
+            r"`\(x\)`, but the given arguments to `bind` doesn't match\. "
             r"args:.*kwargs:.*"
         ),
     ):
@@ -2591,8 +2591,8 @@ def test_signature_error(shutdown_only):
         TypeError,
         match=(
             r"missing a required argument: 'y'\. The function `f` has a signature "
-            r"`\(x, \*, y\)`, but it doesn't match a given argument to a bind "
-            r"function\. args:.*kwargs:.*"
+            r"`\(x, \*, y\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
         ),
     ):
         with InputNode() as inp:
@@ -2602,8 +2602,8 @@ def test_signature_error(shutdown_only):
         TypeError,
         match=(
             r"missing a required argument: 'y'\. The function `g` has a signature "
-            r"`\(x, y, z=1\)`, but it doesn't match a given argument to a bind "
-            r"function\. args:.*kwargs:.*"
+            r"`\(x, y, z=1\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
         ),
     ):
         with InputNode() as inp:

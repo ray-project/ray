@@ -86,7 +86,7 @@ def validate_args(signature_parameters: List[Parameter], args, kwargs):
         signature_parameters: The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
-        args: The non-keyword arguments passed into the function.
+        args: The positional arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
 
     Raises:
@@ -113,7 +113,7 @@ def flatten_args(signature_parameters: List[Parameter], args, kwargs):
         signature_parameters: The list of Parameter objects
             representing the function signature, obtained from
             `extract_signature`.
-        args: The non-keyword arguments passed into the function.
+        args: The positional arguments passed into the function.
         kwargs: The keyword arguments passed into the function.
 
     Returns:
