@@ -25,6 +25,7 @@
 #include "ray/common/constants.h"
 #include "ray/common/status.h"
 #include "ray/util/macros.h"
+#include "ray/util/resize_uninitialized.h"
 #include "ray/util/util.h"
 
 extern "C" {
@@ -232,7 +233,7 @@ JobID TaskID::JobId() const { return ActorId().JobId(); }
 
 TaskID TaskID::ComputeDriverTaskId(const WorkerID &driver_id) {
   std::string driver_id_str = driver_id.Binary();
-  driver_id_str.resize(Size());
+  utils::strings::STLStringResizeUninitialized(&driver_id_str, Size());
   return TaskID::FromBinary(driver_id_str);
 }
 
