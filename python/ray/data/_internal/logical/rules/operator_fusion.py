@@ -316,9 +316,11 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         # Fused physical map operator.
+        assert up_op.data_context == down_op.data_context
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,

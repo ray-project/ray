@@ -67,11 +67,15 @@ def test_read(
 ):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
-            value = DataContext.get_current().get_config("foo")
+
+            def read_fn():
+                value = DataContext.get_current().get_config("foo")
+                return [pd.DataFrame({"id": [value]})]
+
             meta = BlockMetadata(
                 num_rows=1, size_bytes=8, schema=None, input_files=None, exec_stats=None
             )
-            return [ReadTask(lambda: [pd.DataFrame({"id": [value]})], meta)]
+            return [ReadTask(read_fn, meta)]
 
     _test_updating_context_after_dataset_creation(
         lambda: ray.data.read_datasource(CustomDatasource()),
@@ -112,9 +116,9 @@ def test_filter(
     ray_start_regular_shared,
 ):
     _test_updating_context_after_dataset_creation(
-        lambda: ray.data.from_items([1]).filter(
-            lambda x: x["id"] == DataContext.get_current().get_config("foo")
-        )
+        lambda: ray.data.from_items([1])
+        .filter(lambda x: x["item"] == DataContext.get_current().get_config("foo"))
+        .rename_columns({"item": "id"})
     )
 
 

@@ -80,7 +80,9 @@ class _MapActorContext:
 
 
 def plan_project_op(
-    op: Project, physical_children: List[PhysicalOperator]
+    op: Project,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -105,6 +107,7 @@ def plan_project_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name=op.name,
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
@@ -113,7 +116,9 @@ def plan_project_op(
 
 
 def plan_filter_op(
-    op: Filter, physical_children: List[PhysicalOperator]
+    op: Filter,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -145,6 +150,7 @@ def plan_filter_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name=op.name,
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
@@ -153,7 +159,9 @@ def plan_filter_op(
 
 
 def plan_udf_map_op(
-    op: AbstractUDFMap, physical_children: List[PhysicalOperator]
+    op: AbstractUDFMap,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     """Get the corresponding physical operators DAG for AbstractUDFMap operators.
 
@@ -190,6 +198,7 @@ def plan_udf_map_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name=op.name,
         target_max_block_size=None,
         compute_strategy=compute,

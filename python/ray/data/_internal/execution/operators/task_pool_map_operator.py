@@ -10,6 +10,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.execution.operators.map_operator import MapOperator, _map_task
 from ray.data._internal.execution.operators.map_transformer import MapTransformer
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data.context import DataContext
 
 
 class TaskPoolMapOperator(MapOperator):
@@ -19,6 +20,7 @@ class TaskPoolMapOperator(MapOperator):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         name: str = "TaskPoolMap",
         min_rows_per_bundle: Optional[int] = None,
@@ -53,6 +55,7 @@ class TaskPoolMapOperator(MapOperator):
         super().__init__(
             map_transformer,
             input_op,
+            data_context,
             name,
             target_max_block_size,
             min_rows_per_bundle,

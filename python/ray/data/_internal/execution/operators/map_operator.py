@@ -63,6 +63,7 @@ class MapOperator(OneToOneOperator, ABC):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
@@ -95,7 +96,7 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, target_max_block_size)
+        super().__init__(name, input_op, data_context, target_max_block_size)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
@@ -123,6 +124,7 @@ class MapOperator(OneToOneOperator, ABC):
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -172,6 +174,7 @@ class MapOperator(OneToOneOperator, ABC):
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -188,6 +191,7 @@ class MapOperator(OneToOneOperator, ABC):
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 target_max_block_size=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,

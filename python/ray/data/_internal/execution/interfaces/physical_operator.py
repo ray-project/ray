@@ -173,6 +173,7 @@ class PhysicalOperator(Operator):
         self,
         name: str,
         input_dependencies: List["PhysicalOperator"],
+        data_context: DataContext,
         target_max_block_size: Optional[int],
     ):
         super().__init__(name, input_dependencies)
@@ -191,7 +192,7 @@ class PhysicalOperator(Operator):
         # The LogicalOperator(s) which were translated to create this PhysicalOperator.
         # Set via `PhysicalOperator.set_logical_operators()`.
         self._logical_operators: List[LogicalOperator] = []
-        self._data_context = DataContext.get_current()
+        self._data_context = data_context
 
     def __reduce__(self):
         raise ValueError("Operator is not serializable.")
@@ -199,9 +200,6 @@ class PhysicalOperator(Operator):
     @property
     def data_context(self) -> DataContext:
         return self._data_context
-
-    def set_data_context(self, data_context: DataContext):
-        self._data_context = data_context
 
     # Override the following 3 methods to correct type hints.
 
