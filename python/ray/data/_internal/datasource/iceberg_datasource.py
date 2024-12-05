@@ -203,9 +203,11 @@ class IcebergDatasource(Datasource):
             )
 
         # Get required properties for reading tasks - table IO, table metadata,
-        # row filter, case sensitivity,limit and projected schema. pre-apply
-        # them to `_get_read_task` through partial to avoid `self` reference
-        # which causes perfromance degradation during serialization
+        # row filter, case sensitivity,limit and projected schema to pass
+        # them directly to `_get_read_task` to avoid capture of `self` reference
+        # within the closure carrying substantial overhead invoking these tasks
+        #
+        # See https://github.com/ray-project/ray/issues/49107 for more context
         table_io = self.table.io
         table_metadata = self.table.metadata
         row_filter = self._row_filter
