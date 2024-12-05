@@ -31,9 +31,7 @@ extern "C" {
 #include "ray/common/ray_config.h"
 
 namespace ray {
-
 namespace gcs {
-
 CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply->type) {
   RAY_CHECK(nullptr != redis_reply);
 
@@ -279,9 +277,13 @@ RedisContext::~RedisContext() {
   }
 }
 
+void RedisContext::ResetSyncContext() { context_.reset(); }
+
+void RedisContext::ResetAsyncContext() { redis_async_context_.reset(); }
+
 void RedisContext::Disconnect() {
-  context_.reset();
-  redis_async_context_.reset();
+  ResetSyncContext();
+  ResetAsyncContext();
 }
 
 Status AuthenticateRedis(redisContext *context,
@@ -326,14 +328,15 @@ Status AuthenticateRedis(redisAsyncContext *context,
 
 void RedisAsyncContextDisconnectCallback(const redisAsyncContext *context, int status) {
   RAY_LOG(DEBUG) << "Redis async context disconnected. Status: " << status;
-  // Reset raw 'redisAsyncContext' to nullptr because hiredis will release this context.
-  reinterpret_cast<RedisAsyncContext *>(context->data)->ResetRawRedisAsyncContext();
+  // Reset 'RedisAsyncContext' to nullptr because hiredis will release the raw async
+  // context.
+  reinterpret_cast<RedisContext *>(context->data)->ResetAsyncContext();
 }
 
-void SetDisconnectCallback(RedisAsyncContext *redis_async_context) {
+void SetDisconnectCallback(RedisContext *redis_context) {
   redisAsyncContext *raw_redis_async_context =
-      redis_async_context->GetRawRedisAsyncContext();
-  raw_redis_async_context->data = redis_async_context;
+      redis_context->async_context().GetRawRedisAsyncContext();
+  raw_redis_async_context->data = redis_context;
   redisAsyncSetDisconnectCallback(raw_redis_async_context,
                                   RedisAsyncContextDisconnectCallback);
 }
@@ -598,6 +601,14 @@ Status RedisContext::Connect(const std::string &address,
 
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
+
+  // Remember function arguments for reconnection
+  address_ = address;
+  port_ = port;
+  username_ = username;
+  password_ = password;
+  enable_ssl_ = enable_ssl;
+
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   auto ip_addresses = ResolveDNS(io_service_, address, port);
@@ -619,7 +630,6 @@ Status RedisContext::Connect(const std::string &address,
   }
   RAY_CHECK_OK(AuthenticateRedis(context_.get(), username, password));
 
-  // Connect to async context
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp =
@@ -635,7 +645,11 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK_OK(AuthenticateRedis(async_context.get(), username, password));
   redis_async_context_.reset(
       new RedisAsyncContext(io_service_, std::move(async_context)));
-  SetDisconnectCallback(redis_async_context_.get());
+  SetDisconnectCallback(this);
+
+  // Check all contexts are connected before proceeding.
+  RAY_CHECK(context_ != nullptr || redis_async_context_ != nullptr)
+      << "Failed to connect to Redis.";
 
   // handle validation and primary connection for different types of redis
   if (isRedisSentinel(*this)) {
@@ -649,6 +663,12 @@ Status RedisContext::Connect(const std::string &address,
   }
 }
 
+Status RedisContext::Reconnect() {
+  RAY_LOG(INFO) << "Try to reconnect to Redis server.";
+  Disconnect();
+  return Connect(address_, port_, username_, password_, enable_ssl_);
+}
+
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     const std::vector<std::string> &args) {
   RAY_CHECK(context_);
@@ -659,20 +679,50 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
     argv.push_back(arg.data());
     argc.push_back(arg.size());
   }
-  auto redis_reply = reinterpret_cast<redisReply *>(
-      ::redisCommandArgv(context_.get(), args.size(), argv.data(), argc.data()));
-  if (redis_reply == nullptr) {
-    RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
-    return nullptr;
+  // Run the command. We try to reconnect if the connection is lost, and we retry with
+  // exponential backoff using the same connection if error happens.
+  auto exp_back_off = ExponentialBackOff(RayConfig::instance().redis_retry_base_ms(),
+                                         RayConfig::instance().redis_retry_multiplier(),
+                                         RayConfig::instance().redis_retry_max_ms());
+  size_t pending_retries = RayConfig::instance().num_redis_request_retries() + 1;
+  std::unique_ptr<redisReply, decltype(freeReplyObject) *> redis_reply(nullptr,
+                                                                       freeReplyObject);
+  while (pending_retries > 0) {
+    redis_reply.reset(reinterpret_cast<redisReply *>(
+        ::redisCommandArgv(context_.get(), args.size(), argv.data(), argc.data())));
+    // Disconnected. Try to reconnect first.
+    if (redis_reply == nullptr) {
+      RAY_CHECK_OK(this->Reconnect());
+      continue;
+    }
+    // Error happened, retry with same connection.
+    if (redis_reply->type != REDIS_REPLY_ERROR) {
+      std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply.get()));
+      return callback_reply;
+    }
+
+    auto error_msg = redis_reply ? redis_reply->str : context_->errstr;
+    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(args, " ") << "]"
+                   << " failed due to error " << error_msg << ". " << pending_retries
+                   << " retries left.";
+    auto delay = exp_back_off.Current();
+    exp_back_off.Next();
+    std::this_thread::sleep_for(std::chrono::milliseconds(delay));
+    --pending_retries;
   }
-  std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply));
-  freeReplyObject(redis_reply);
-  return callback_reply;
+
+  RAY_LOG(ERROR) << "Failed to send redis command (sync): " << context_->errstr;
+  return nullptr;
 }
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback) {
-  RAY_CHECK(redis_async_context_);
+  // redis_async_context_ is nullptr means the connection is lost because it is reset in
+  // the disconnect callback. If the connection is lost, we need to reconnect before
+  // sending the request.
+  if (redis_async_context_ == nullptr) {
+    RAY_CHECK_OK(this->Reconnect());
+  }
   auto request_context = new RedisRequestContext(io_service_,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
@@ -680,7 +730,5 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
   // RedisRequestContext is thread safe.
   request_context->Run();
 }
-
 }  // namespace gcs
-
 }  // namespace ray
