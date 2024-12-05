@@ -8,6 +8,7 @@ from ray.data._internal.execution.operators.limit_operator import LimitOperator
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.test_operators import _mul2_map_data_prcessor
 from ray.data.tests.util import run_op_tasks_sync
@@ -94,6 +95,7 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
     )
@@ -113,6 +115,7 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2},
@@ -126,6 +129,7 @@ def test_resource_canonicalization(ray_start_10_cpus_shared):
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2, "num_cpus": 1},
@@ -165,6 +169,7 @@ def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_co
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2, "scheduling_strategy": "DEFAULT"},
@@ -175,6 +180,7 @@ def test_scheduling_strategy_overrides(ray_start_10_cpus_shared, restore_data_co
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
         ray_remote_args={"num_gpus": 2},
@@ -188,6 +194,7 @@ def test_task_pool_resource_reporting(ray_start_10_cpus_shared):
     input_op = InputDataBuffer(make_ref_bundles([[SMALL_STR] for i in range(100)]))
     op = MapOperator.create(
         _mul2_map_data_prcessor,
+        data_context=DataContext.get_current(),
         input_op=input_op,
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
@@ -229,6 +236,7 @@ def test_task_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=TaskPoolStrategy(),
         min_rows_per_bundle=3,
@@ -278,6 +286,7 @@ def test_actor_pool_resource_reporting(ray_start_10_cpus_shared, restore_data_co
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=ActorPoolStrategy(
             min_size=2, max_size=10, max_tasks_in_flight_per_actor=2
@@ -371,6 +380,7 @@ def test_actor_pool_resource_reporting_with_bundling(ray_start_10_cpus_shared):
     op = MapOperator.create(
         _mul2_map_data_prcessor,
         input_op=input_op,
+        data_context=DataContext.get_current(),
         name="TestMapper",
         compute_strategy=ActorPoolStrategy(min_size=2, max_size=10),
         min_rows_per_bundle=2,

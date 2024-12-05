@@ -34,6 +34,7 @@ def mock_map_op(
     op = MapOperator.create(
         MagicMock(),
         input_op,
+        DataContext.get_current(),
         ray_remote_args=ray_remote_args or {},
         compute_strategy=compute_strategy,
     )

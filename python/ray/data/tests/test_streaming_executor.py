@@ -33,6 +33,7 @@ from ray.data._internal.execution.streaming_executor_state import (
     update_operator_states,
 )
 from ray.data._internal.execution.util import make_ref_bundles
+from ray.data.context import DataContext
 from ray.data.tests.conftest import *  # noqa
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
 
@@ -86,10 +87,14 @@ def test_build_streaming_topology(verbose_progress):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, num_progress_bars = build_streaming_topology(
         o3, ExecutionOptions(verbose_progress=verbose_progress)
@@ -111,10 +116,14 @@ def test_disallow_non_unique_operators():
     # An operator [o1] cannot used in the same DAG twice.
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o4 = PhysicalOperator("test_combine", [o2, o3], target_max_block_size=None)
     with pytest.raises(ValueError):
@@ -125,7 +134,9 @@ def test_process_completed_tasks():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o2, ExecutionOptions(verbose_progress=True))
 
@@ -166,10 +177,14 @@ def test_process_completed_tasks():
     # Test dependents completed.
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o2
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, ExecutionOptions(verbose_progress=True))
 
@@ -185,10 +200,14 @@ def test_select_operator_to_run():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     resource_manager = mock_resource_manager(
@@ -236,7 +255,9 @@ def test_dispatch_next_task():
     o1 = InputDataBuffer(inputs)
     o1_state = OpState(o1, [])
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     op_state = OpState(o2, [o1_state.outqueue])
 
@@ -260,10 +281,14 @@ def test_debug_dump_topology():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     resource_manager = ResourceManager(
@@ -282,11 +307,13 @@ def test_validate_dag():
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=8),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=4),
     )
     _validate_dag(o3, ExecutionResources.for_limits())
@@ -402,10 +429,12 @@ def test_select_ops_ensure_at_least_one_live_operator():
     o2 = MapOperator.create(
         make_map_transformer(lambda block: [b * -1 for b in block]),
         o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
     )
     topo, _ = build_streaming_topology(o3, opt)
     topo[o2].outqueue.append(make_ref_bundle("dummy1"))
@@ -432,11 +461,14 @@ def test_configure_output_locality():
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        DataContext.get_current(),
     )
     o3 = MapOperator.create(
         make_map_transformer(lambda block: [b * 2 for b in block]),
         o2,
+        DataContext.get_current(),
         compute_strategy=ray.data.ActorPoolStrategy(size=1),
     )
     # No locality.

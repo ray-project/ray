@@ -96,10 +96,14 @@ def test_pipelined_execution(ray_start_10_cpus_shared, restore_data_context):
     inputs = make_ref_bundles([[x] for x in range(20)])
     o1 = InputDataBuffer(inputs)
     o2 = MapOperator.create(
-        make_map_transformer(lambda block: [b * -1 for b in block]), o1
+        make_map_transformer(lambda block: [b * -1 for b in block]),
+        o1,
+        ctx,
     )
     o3 = MapOperator.create(
-        make_map_transformer(lambda block: [b * 2 for b in block]), o2
+        make_map_transformer(lambda block: [b * 2 for b in block]),
+        o2,
+        ctx,
     )
 
     def reverse_sort(inputs: List[RefBundle], ctx):
