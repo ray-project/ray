@@ -2158,6 +2158,12 @@ def read_sql(
     Returns:
         A :class:`Dataset` containing the queried data.
     """
+    if parallelism != -1 and parallelism != 1:
+        raise ValueError(
+            "To ensure correctness, 'read_sql' always launches one task. The "
+            "'parallelism' argument you specified can't be used."
+        )
+
     datasource = SQLDatasource(sql=sql, connection_factory=connection_factory)
     return read_datasource(
         datasource,
