@@ -90,6 +90,7 @@ class OfflinePreLearner:
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
+        **kwargs: Dict[str, Any],
     ):
 
         self.config = config
@@ -352,6 +353,7 @@ class OfflinePreLearner:
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
+        **kwargs: Dict[str, Any],
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 

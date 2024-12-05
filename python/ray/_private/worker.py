@@ -2482,9 +2482,6 @@ def connect(
         worker_launched_time_ms,
     )
 
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
-
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id
         worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
