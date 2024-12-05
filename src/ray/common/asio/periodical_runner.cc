@@ -24,10 +24,6 @@ PeriodicalRunner::PeriodicalRunner(instrumented_io_context &io_service)
 
 PeriodicalRunner::~PeriodicalRunner() {
   RAY_LOG(DEBUG) << "PeriodicalRunner is destructed";
-  Clear();
-}
-
-void PeriodicalRunner::Clear() {
   absl::MutexLock lock(&mutex_);
   for (const auto &timer : timers_) {
     timer->cancel();
@@ -38,35 +34,35 @@ void PeriodicalRunner::Clear() {
 void PeriodicalRunner::RunFnPeriodically(std::function<void()> fn,
                                          uint64_t period_ms,
                                          std::string name) {
-  if (period_ms > 0) {
-    auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
-    {
-      absl::MutexLock lock(&mutex_);
-      timers_.push_back(timer);
-    }
-    auto weak_self = weak_from_this();
-    io_service_.post(
-        [weak_self,
-         fn = std::move(fn),
-         period_ms,
-         name = std::move(name),
-         timer = std::move(timer)]() {
-          if (auto self = weak_self.lock(); self) {
-            if (RayConfig::instance().event_stats()) {
-              self->DoRunFnPeriodicallyInstrumented(
-                  std::move(fn),
-                  boost::posix_time::milliseconds(period_ms),
-                  std::move(timer),
-                  std::move(name));
-            } else {
-              self->DoRunFnPeriodically(std::move(fn),
-                                        boost::posix_time::milliseconds(period_ms),
-                                        std::move(timer));
-            }
-          }
-        },
-        "PeriodicalRunner.RunFnPeriodically");
+  if (period_ms <= 0) {
+    return;
   }
+  auto timer = std::make_shared<boost::asio::deadline_timer>(io_service_);
+  {
+    absl::MutexLock lock(&mutex_);
+    timers_.push_back(timer);
+  }
+  io_service_.post(
+      [weak_self = weak_from_this(),
+       fn = std::move(fn),
+       period_ms,
+       name = std::move(name),
+       timer = std::move(timer)]() mutable {
+        if (auto self = weak_self.lock(); self) {
+          if (RayConfig::instance().event_stats()) {
+            self->DoRunFnPeriodicallyInstrumented(
+                std::move(fn),
+                boost::posix_time::milliseconds(period_ms),
+                std::move(timer),
+                std::move(name));
+          } else {
+            self->DoRunFnPeriodically(std::move(fn),
+                                      boost::posix_time::milliseconds(period_ms),
+                                      std::move(timer));
+          }
+        }
+      },
+      "PeriodicalRunner.RunFnPeriodically");
 }
 
 void PeriodicalRunner::DoRunFnPeriodically(
@@ -76,20 +72,23 @@ void PeriodicalRunner::DoRunFnPeriodically(
   fn();
   absl::MutexLock lock(&mutex_);
   timer->expires_from_now(period);
-  auto weak_self = weak_from_this();
-  timer->async_wait([weak_self, fn = std::move(fn), period, timer = std::move(timer)](
-                        const boost::system::error_code &error) {
-    if (auto self = weak_self.lock(); self) {
-      if (error == boost::asio::error::operation_aborted) {
-        // `operation_aborted` is set when `timer` is canceled or destroyed.
-        // The Monitor lifetime may be short than the object who use it. (e.g.
-        // gcs_server)
-        return;
-      }
-      RAY_CHECK(!error) << error.message();
-      self->DoRunFnPeriodically(std::move(fn), period, std::move(timer));
-    }
-  });
+
+  timer->async_wait(
+      [weak_self = weak_from_this(),
+       fn = std::move(fn),
+       period,
+       timer = std::move(timer)](const boost::system::error_code &error) mutable {
+        if (auto self = weak_self.lock(); self) {
+          if (error == boost::asio::error::operation_aborted) {
+            // `operation_aborted` is set when `timer` is canceled or destroyed.
+            // The Monitor lifetime may be short than the object who use it. (e.g.
+            // gcs_server)
+            return;
+          }
+          RAY_CHECK(!error) << error.message();
+          self->DoRunFnPeriodically(std::move(fn), period, std::move(timer));
+        }
+      });
 }
 
 void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
@@ -104,36 +103,36 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
   // which the handler was elgible to execute on the event loop but was queued by the
   // event loop.
   auto stats_handle = io_service_.stats().RecordStart(name, period.total_nanoseconds());
-  auto weak_self = weak_from_this();
-  timer->async_wait([weak_self,
-                     fn = std::move(fn),
-                     period,
-                     timer = std::move(timer),
-                     stats_handle = std::move(stats_handle),
-                     name = std::move(name)](const boost::system::error_code &error) {
-    if (auto self = weak_self.lock(); self) {
-      self->io_service_.stats().RecordExecution(
-          [weak_self,
-           fn = std::move(fn),
-           error,
-           period,
-           timer = std::move(timer),
-           name = std::move(name)]() {
-            if (auto self = weak_self.lock(); self) {
-              if (error == boost::asio::error::operation_aborted) {
-                // `operation_aborted` is set when `timer` is canceled or destroyed.
-                // The Monitor lifetime may be short than the object who use it. (e.g.
-                // gcs_server)
-                return;
-              }
-              RAY_CHECK(!error) << error.message();
-              self->DoRunFnPeriodicallyInstrumented(
-                  std::move(fn), period, std::move(timer), std::move(name));
-            }
-          },
-          std::move(stats_handle));
-    }
-  });
+  timer->async_wait(
+      [weak_self = weak_from_this(),
+       fn = std::move(fn),
+       period,
+       timer = std::move(timer),
+       stats_handle = std::move(stats_handle),
+       name = std::move(name)](const boost::system::error_code &error) mutable {
+        if (auto self = weak_self.lock(); self) {
+          self->io_service_.stats().RecordExecution(
+              [weak_self,
+               fn = std::move(fn),
+               error,
+               period,
+               timer = std::move(timer),
+               name = std::move(name)]() mutable {
+                if (auto self = weak_self.lock(); self) {
+                  if (error == boost::asio::error::operation_aborted) {
+                    // `operation_aborted` is set when `timer` is canceled or destroyed.
+                    // The Monitor lifetime may be short than the object who use it. (e.g.
+                    // gcs_server)
+                    return;
+                  }
+                  RAY_CHECK(!error) << error.message();
+                  self->DoRunFnPeriodicallyInstrumented(
+                      std::move(fn), period, std::move(timer), std::move(name));
+                }
+              },
+              std::move(stats_handle));
+        }
+      });
 }
 
 }  // namespace ray

@@ -47,8 +47,6 @@ class PeriodicalRunner : public std::enable_shared_from_this<PeriodicalRunner> {
  private:
   explicit PeriodicalRunner(instrumented_io_context &io_service);
 
-  void Clear();
-
   void DoRunFnPeriodically(std::function<void()> fn,
                            boost::posix_time::milliseconds period,
                            std::shared_ptr<boost::asio::deadline_timer> timer)
