@@ -575,7 +575,7 @@ class OptunaSearch(Searcher):
     def add_evaluated_point(
         self,
         parameters: Dict,
-        value: float,
+        value: float = None,
         error: bool = False,
         pruned: bool = False,
         intermediate_values: Optional[List[float]] = None,
@@ -621,7 +621,6 @@ class OptunaSearch(Searcher):
         # to allow the `value` arg in `add_evaluated_point` being `Optional[float]`.
         if ot_trial_state == OptunaTrialState.FAIL:
             value = None
-
         trial = ot.trial.create_trial(
             state=ot_trial_state,
             value=value,
