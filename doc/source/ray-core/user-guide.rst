@@ -18,3 +18,4 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     fault-tolerance
     patterns/index.rst
     advanced-topics
+    ray-compiled-graphs
