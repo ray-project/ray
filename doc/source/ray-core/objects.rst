@@ -5,28 +5,30 @@ Objects
 
 Ray tasks and actors create and compute on objects. These objects are **remote objects** 
 because Ray can store them anywhere in a Ray cluster. You can use **object refs** to refer
-to them. Ray caches remote objects are cached in its distributed
+to them. Ray caches remote objects in its distributed
 `shared-memory <https://en.wikipedia.org/wiki/Shared_memory>`__ **object store**, and 
 there is one object store per node in the cluster. In the cluster setting,
 a remote object can live on one or many nodes, independent of which node holds the 
 object refs.
 
-An **object ref** a pointer or a unique ID that you can use to refer to a
+An **object ref** is a pointer or a unique ID that you can use to refer to a
 remote object without seeing its value. If you're familiar with futures, Ray object
 refs are conceptually similar.
 
 Ray creates object refs. These two calls return object refs:
 
-  1. remote function calls
-  2. :func:`ray.put() <ray.put>`.
+* remote function calls
+* :func:`ray.put() <ray.put>`
 
-  .. testcode::
+For example:
 
-    import ray
+.. testcode::
 
-    # Put an object in Ray's object store.
-    y = 1
-    object_ref = ray.put(y)
+  import ray
+
+  # Put an object in Ray's object store.
+  y = 1
+  object_ref = ray.put(y)
 
 .. note::
 
@@ -40,51 +42,53 @@ Fetching object data
 
 You can use the :func:`ray.get() <ray.get>` method to fetch the result of a remote
 object from an object ref.
-If the current node's object store doesn't contain the object, the Ray downloads the
+If the current node's object store doesn't contain the object, Ray downloads the
 object.
 
-  If the object is a `numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
-  or a collection of numpy arrays, the ``get`` call is zero-copy and returns arrays backed by shared object store memory.
-  Otherwise, we deserialize the object data into a Python object.
+If the object is a
+`numpy array <https://docs.scipy.org/doc/numpy/reference/generated/numpy.array.html>`__
+or a collection of numpy arrays, the ``get`` call is zero-copy and 
+returns arrays backed by shared object store memory.
+Otherwise, Ray deserializes the object data into a Python object.
 
-  .. testcode::
+.. testcode::
 
-    import ray
-    import time
+  import ray
+  import time
 
-    # Get the value of one object ref.
-    obj_ref = ray.put(1)
-    assert ray.get(obj_ref) == 1
+  # Get the value of one object ref.
+  obj_ref = ray.put(1)
+  assert ray.get(obj_ref) == 1
 
-    # Get the values of multiple object refs in parallel.
-    assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
+  # Get the values of multiple object refs in parallel.
+  assert ray.get([ray.put(i) for i in range(3)]) == [0, 1, 2]
 
-    # You can also set a timeout to return early from a ``get``
-    # that's blocking for too long.
-    from ray.exceptions import GetTimeoutError
-    # ``GetTimeoutError`` is a subclass of ``TimeoutError``.
+  # You can also set a timeout to return early from a ``get``
+  # that's blocking for too long.
+  from ray.exceptions import GetTimeoutError
+  # ``GetTimeoutError`` is a subclass of ``TimeoutError``.
 
-    @ray.remote
-    def long_running_function():
-        time.sleep(8)
+  @ray.remote
+  def long_running_function():
+      time.sleep(8)
 
-    obj_ref = long_running_function.remote()
-    try:
-        ray.get(obj_ref, timeout=4)
-    except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
-        print("`get` timed out.")
+  obj_ref = long_running_function.remote()
+  try:
+      ray.get(obj_ref, timeout=4)
+  except GetTimeoutError:  # You can capture the standard "TimeoutError" instead
+      print("`get` timed out.")
 
-  .. testoutput::
+.. testoutput::
 
-    `get` timed out.
+  `get` timed out.
 
 Passing object arguments
 ------------------------
 
 You can freely pass Ray object references in a Ray application. You can pass them as
 arguments to tasks, actor methods, and even stored in other objects. Ray tracks objects
-with *distributed reference counting*, and automatically frees once it deletes all
-references to the object.
+with *distributed reference counting*, and automatically frees an object's data once it
+deletes all references to the object.
 
 You can pass an object to a Ray task or method in two different ways. Depending on
 the way you pass an object, Ray decides whether to *de-reference* the object prior
@@ -130,7 +134,7 @@ constructors and actor method calls:
     actor_handle.method.remote(obj)  # by-value
     actor_handle.method.remote([obj])  # by-reference
 
-Closure capture of objects
+Closure-capture of objects
 --------------------------
 
 You can also pass objects to tasks with *closure-capture*. This approach is convenient
