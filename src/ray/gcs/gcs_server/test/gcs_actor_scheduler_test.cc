@@ -696,7 +696,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   scheduling::NodeID scheduling_node_id(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
   const auto &cluster_resource_manager =
-      cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
+      cluster_task_manager_->GetClusterResourceScheduler().GetClusterResourceManager();
   auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
   ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
 
