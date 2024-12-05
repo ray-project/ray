@@ -63,11 +63,6 @@ redisAsyncContext *RedisAsyncContext::GetRawRedisAsyncContext() {
   return redis_async_context_.get();
 }
 
-void RedisAsyncContext::ResetRawRedisAsyncContext() {
-  // Reset redis_async_context_ to nullptr because hiredis has released this context.
-  redis_async_context_.release();
-}
-
 Status RedisAsyncContext::RedisAsyncCommand(redisCallbackFn *fn,
                                             void *privdata,
                                             const char *format,
