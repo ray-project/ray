@@ -158,9 +158,9 @@ class ResourceManager:
             f = (1.0 + num_ops_so_far) / max(1.0, num_ops_total - 1.0)
             num_ops_so_far += 1
             self._downstream_fraction[op] = min(1.0, f)
-            self._downstream_object_store_memory[op] = (
-                self._global_usage.object_store_memory
-            )
+            self._downstream_object_store_memory[
+                op
+            ] = self._global_usage.object_store_memory
 
             # Update operator's object store usage, which is used by
             # DatasetStats and updated on the Ray Data dashboard.
@@ -557,8 +557,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def _get_downstream_eligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream eligible operators of the given operator, ignoring intermediate
-        ineligible operators.
+        """Get the downstream eligible operators of the given operator, ignoring
+        intermediate ineligible operators.
 
         E.g.,
           - "cur_map->downstream_map" will return [downstream_map].

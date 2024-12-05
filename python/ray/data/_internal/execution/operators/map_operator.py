@@ -281,9 +281,9 @@ class MapOperator(OneToOneOperator, ABC):
         if "scheduling_strategy" not in ray_remote_args:
             ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
-                ray_remote_args["scheduling_strategy"] = (
-                    ctx.scheduling_strategy_large_args
-                )
+                ray_remote_args[
+                    "scheduling_strategy"
+                ] = ctx.scheduling_strategy_large_args
                 # Takes precedence over small args case. This is to let users know
                 # when the large args case is being triggered.
                 self._remote_args_for_metrics = copy.deepcopy(ray_remote_args)

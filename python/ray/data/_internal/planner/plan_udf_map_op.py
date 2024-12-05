@@ -596,7 +596,6 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-
         def _batch_fn(batch):
             return batch_fn(batch, *fn_args, **fn_kwargs)
 

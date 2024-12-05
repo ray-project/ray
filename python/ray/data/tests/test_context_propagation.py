@@ -8,7 +8,6 @@ from ray.data.context import DataContext
 from ray.data.datasource import Datasource, ReadTask
 from ray.tests.conftest import *  # noqa
 
-
 # Auto-use `restore_data_context` for each test.
 pytestmark = pytest.mark.usefixtures("restore_data_context")
 
@@ -67,7 +66,6 @@ def test_read(
 ):
     class CustomDatasource(Datasource):
         def prepare_read(self, parallelism: int):
-
             def read_fn():
                 value = DataContext.get_current().get_config("foo")
                 return [pd.DataFrame({"id": [value]})]
