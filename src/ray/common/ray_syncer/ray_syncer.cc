@@ -80,12 +80,12 @@ void RaySyncer::Connect(const std::string &node_id,
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *reactor, bool restart) {
               const std::string &node_id = reactor->GetRemoteNodeID();
-              if (sync_reactors_.contains(node_id) &&
-                  sync_reactors_.at(node_id) != reactor) {
+              auto iter = sync_reactors_.find(node_id);
+              if (iter != sync_reactors_.end() && iter->second != reactor) {
                 // The client is already reconnected.
                 return;
               }
-              sync_reactors_.erase(node_id);
+              sync_reactors_.erase(iter);
               if (restart) {
                 execute_after(
                     io_context_,
@@ -215,8 +215,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);
         const auto &node_id = reactor->GetRemoteNodeID();
-        if (syncer_.sync_reactors_.contains(node_id) &&
-            syncer_.sync_reactors_.at(node_id) != reactor) {
+        auto iter = syncer_.sync_reactors_.find(node_id);
+        if (iter != syncer_.sync_reactors_.end() && iter->second != reactor) {
           // There is a new connection to the node, no need to clean up.
           // This can happen when there is transient network error and the client
           // reconnects. The sequence of events are:
@@ -228,7 +228,7 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
           return;
         }
         RAY_LOG(INFO).WithField(NodeID::FromBinary(node_id)) << "Connection is broken.";
-        syncer_.sync_reactors_.erase(node_id);
+        syncer_.sync_reactors_.erase(iter);
         syncer_.node_state_->RemoveNode(node_id);
       });
   RAY_LOG(INFO).WithField(NodeID::FromBinary(reactor->GetRemoteNodeID()))
