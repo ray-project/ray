@@ -193,6 +193,7 @@ and bases the scheduling decision a few factors like the following:
 
 - :ref:`the actor's resource requirements <ray-scheduling-resources>`
 - :ref:`the specified scheduling strategy <ray-scheduling-strategies>`
+
 See :ref:`Ray scheduling <ray-scheduling>` for more details.
 
 Fault tolerance
