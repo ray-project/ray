@@ -149,7 +149,11 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); }),
       client_call_manager_(io_service),
-      worker_rpc_pool_(client_call_manager_),
+      worker_rpc_pool_([this](const rpc::Address &addr) {
+        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+        });
+      }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
           /*channels=*/
@@ -340,7 +344,7 @@ NodeManager::NodeManager(
   }
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
       [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
         return !this->IsWorkerDead(owner_worker_id, owner_node_id);
@@ -2025,6 +2029,14 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                                          rpc::IsLocalWorkerDeadReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
+                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,

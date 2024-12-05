@@ -994,13 +994,14 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             batch=batch,
             timesteps=timesteps,
             num_epochs=num_epochs,
             minibatch_size=minibatch_size,
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
         )
+        return self.metrics.reduce()
 
     def update_from_episodes(
         self,
@@ -1062,7 +1063,7 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             episodes=episodes,
             timesteps=timesteps,
             num_epochs=num_epochs,
@@ -1070,6 +1071,7 @@ class Learner(Checkpointable):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             num_total_minibatches=num_total_minibatches,
         )
+        return self.metrics.reduce()
 
     def update_from_iterator(
         self,
@@ -1432,9 +1434,6 @@ class Learner(Checkpointable):
         # cleanups-, logging-, and update logic to happen.
         self.after_gradient_based_update(timesteps=timesteps or {})
 
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
-
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
         """Called before gradient-based updates are completed.
@@ -1695,6 +1694,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
             reduce="sum",
+            with_throughput=True,
         )
 
     @Deprecated(
