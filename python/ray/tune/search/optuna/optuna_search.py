@@ -572,10 +572,13 @@ class OptunaSearch(Searcher):
 
         self._completed_trials.add(trial_id)
 
+    # Note (hpguo): Enable the `value` arg in `add_evaluated_point` being
+    # `Optional[float]` in Optuna==4.1.0. Optuna enforces the value to be
+    # `None` if the trial state is FAILED.
     def add_evaluated_point(
         self,
         parameters: Dict,
-        value: float,
+        value: Optional[float] = None,
         error: bool = False,
         pruned: bool = False,
         intermediate_values: Optional[List[float]] = None,
@@ -605,6 +608,9 @@ class OptunaSearch(Searcher):
             ot_trial_state = OptunaTrialState.FAIL
         elif pruned:
             ot_trial_state = OptunaTrialState.PRUNED
+        # If the trial state is FAILED, the value must be `None` in Optuna==4.1.0
+        if ot_trial_state == OptunaTrialState.FAIL:
+            assert value is None
 
         if intermediate_values:
             intermediate_values_dict = {
