@@ -59,8 +59,9 @@ std::shared_ptr<const RaySyncMessage> RaySyncer::GetSyncMessage(
 std::vector<std::string> RaySyncer::GetAllConnectedNodeIDs() const {
   auto task = std::packaged_task<std::vector<std::string>()>([&]() {
     std::vector<std::string> nodes;
+    nodes.reserve(sync_reactors_.size());
     for (auto [node_id, _] : sync_reactors_) {
-      nodes.push_back(node_id);
+      nodes.emplace_back(std::move(node_id));
     }
     return nodes;
   });
@@ -76,7 +77,8 @@ void RaySyncer::Connect(const std::string &node_id,
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
-            /* message_processor */ [this](auto msg) { BroadcastRaySyncMessage(msg); },
+            /* message_processor */
+            [this](auto msg) { BroadcastRaySyncMessage(std::move(msg)); },
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *reactor, bool restart) {
               const std::string &node_id = reactor->GetRemoteNodeID();
