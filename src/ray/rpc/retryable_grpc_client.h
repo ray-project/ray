@@ -146,7 +146,7 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
   // Return the number of pending requests waiting for retry.
   size_t NumPendingRequests() const { return pending_requests_.size(); }
 
-  ~RetryableGrpcClient();
+  ~RetryableGrpcClient() override;
 
  private:
   RetryableGrpcClient(std::shared_ptr<grpc::Channel> channel,
@@ -167,10 +167,11 @@ class RetryableGrpcClient : public std::enable_shared_from_this<RetryableGrpcCli
             std::move(server_unavailable_timeout_callback)),
         server_name_(std::move(server_name)) {}
 
-  // Set up the timer to run CheckChannelStatus.
+  // Set up the timer to update client status periodically.
   void SetupCheckTimer();
 
-  void CheckChannelStatus(bool reset_timer = true);
+  // Update retriable grpc client status.
+  void UpdateStatus(bool reset_timer = true);
 
   instrumented_io_context &io_context_;
   boost::asio::deadline_timer timer_;

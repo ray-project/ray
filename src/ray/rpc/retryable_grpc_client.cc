@@ -39,12 +39,12 @@ void RetryableGrpcClient::SetupCheckTimer() {
   std::weak_ptr<RetryableGrpcClient> weak_self = weak_from_this();
   timer_.async_wait([weak_self](boost::system::error_code error) {
     if (auto self = weak_self.lock(); self && (error == boost::system::errc::success)) {
-      self->CheckChannelStatus();
+      self->UpdateStatus();
     }
   });
 }
 
-void RetryableGrpcClient::CheckChannelStatus(bool reset_timer) {
+void RetryableGrpcClient::UpdateStatus(bool reset_timer) {
   // We need to cleanup all the pending requests which are timeout.
   const auto now = absl::Now();
   while (!pending_requests_.empty()) {
@@ -140,7 +140,7 @@ void RetryableGrpcClient::Retry(std::shared_ptr<RetryableGrpcRequest> request) {
         break;
       }
 
-      CheckChannelStatus(false);
+      UpdateStatus(/*reset_timer=*/false);
     }
     request->CallMethod();
     return;
