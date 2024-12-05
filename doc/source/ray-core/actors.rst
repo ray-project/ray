@@ -4,94 +4,33 @@
 Actors
 ======
 
-Actors extend the Ray API from functions (tasks) to classes.
-An actor is essentially a stateful worker (or a service). When a new actor is
-instantiated, a new worker is created, and methods of the actor are scheduled on
-that specific worker and can access and mutate the state of that worker.
+Actors extend the Ray API from functions to classes.
+An actor is essentially a stateful worker, or a service. When your code instantiates
+a new actor, Ray creates a new worker and schedules methods of the actor on
+that specific worker, allowing those methods to access and mutate the state of that worker.
 
-.. tab-set::
+The ``ray.remote`` decorator indicates that instances of the ``Counter`` class are actors. Each actor runs in its own Python process.
 
-    .. tab-item:: Python
+.. testcode::
 
-        The ``ray.remote`` decorator indicates that instances of the ``Counter`` class will be actors. Each actor runs in its own Python process.
+    import ray
 
-        .. testcode::
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.value = 0
 
-          import ray
+        def increment(self):
+            self.value += 1
+            return self.value
 
-          @ray.remote
-          class Counter:
-              def __init__(self):
-                  self.value = 0
+        def get_counter(self):
+            return self.value
 
-              def increment(self):
-                  self.value += 1
-                  return self.value
+    # Create an actor from this class.
+    counter = Counter.remote()
 
-              def get_counter(self):
-                  return self.value
-
-          # Create an actor from this class.
-          counter = Counter.remote()
-
-    .. tab-item:: Java
-
-        ``Ray.actor`` is used to create actors from regular Java classes.
-
-        .. code-block:: java
-
-          // A regular Java class.
-          public class Counter {
-
-            private int value = 0;
-
-            public int increment() {
-              this.value += 1;
-              return this.value;
-            }
-          }
-
-          // Create an actor from this class.
-          // `Ray.actor` takes a factory method that can produce
-          // a `Counter` object. Here, we pass `Counter`'s constructor
-          // as the argument.
-          ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
-
-    .. tab-item:: C++
-
-        ``ray::Actor`` is used to create actors from regular C++ classes.
-
-        .. code-block:: c++
-
-          // A regular C++ class.
-          class Counter {
-
-          private:
-              int value = 0;
-
-          public:
-            int Increment() {
-              value += 1;
-              return value;
-            }
-          };
-
-          // Factory function of Counter class.
-          static Counter *CreateCounter() {
-              return new Counter();
-          };
-
-          RAY_REMOTE(&Counter::Increment, CreateCounter);
-
-          // Create an actor from this class.
-          // `ray::Actor` takes a factory method that can produce
-          // a `Counter` object. Here, we pass `Counter`'s factory function
-          // as the argument.
-          auto counter = ray::Actor(CreateCounter).Remote();
-
-
-
-Use `ray list actors` from :ref:`State API <state-api-overview-ref>` to see actors states:
+Use `ray list actors` from the :ref:`State API <state-api-overview-ref>` to see actors states:
 
 .. code-block:: bash
 
@@ -116,365 +55,187 @@ Specifying required resources
 
 .. _actor-resource-guide:
 
-You can specify resource requirements in actors too (see :ref:`resource-requirements` for more details.)
+You can specify resource requirements in actors, too. See :ref:`resource-requirements` for more details.
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: Python
-
-        .. testcode::
-
-            # Specify required resources for an actor.
-            @ray.remote(num_cpus=2, num_gpus=0.5)
-            class Actor:
-                pass
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            // Specify required resources for an actor.
-            Ray.actor(Counter::new).setResource("CPU", 2.0).setResource("GPU", 0.5).remote();
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Specify required resources for an actor.
-            ray::Actor(CreateCounter).SetResource("CPU", 2.0).SetResource("GPU", 0.5).Remote();
-
+    # Specify required resources for an actor.
+    @ray.remote(num_cpus=2, num_gpus=0.5)
+    class Actor:
+        pass
 
 Calling the actor
 -----------------
 
-We can interact with the actor by calling its methods with the ``remote``
-operator. We can then call ``get`` on the object ref to retrieve the actual
+Interact with the actor by calling its methods with the ``remote``
+operator. Then call ``get`` on the object ref to retrieve the actual
 value.
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: Python
+    # Call the actor.
+    obj_ref = counter.increment.remote()
+    print(ray.get(obj_ref))
 
-        .. testcode::
+.. testoutput::
 
-            # Call the actor.
-            obj_ref = counter.increment.remote()
-            print(ray.get(obj_ref))
+    1
 
-        .. testoutput::
+Methods called on different actors can execute in parallel, and methods called on the same actor execute serially in the order that they are called. Methods on the same actor share state with one another, as shown below.
 
-            1
+.. testcode::
 
-    .. tab-item:: Java
+    # Create ten Counter actors.
+    counters = [Counter.remote() for _ in range(10)]
 
-        .. code-block:: java
+    # Increment each Counter once and get the results. These tasks all happen in
+    # parallel.
+    results = ray.get([c.increment.remote() for c in counters])
+    print(results)
 
-            // Call the actor.
-            ObjectRef<Integer> objectRef = counter.task(&Counter::increment).remote();
-            Assert.assertTrue(objectRef.get() == 1);
+    # Increment the first Counter five times. Ray executes these tasks serially
+    # while sharing state.
+    results = ray.get([counters[0].increment.remote() for _ in range(5)])
+    print(results)
 
-    .. tab-item:: C++
+.. testoutput::
 
-        .. code-block:: c++
+    [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
+    [2, 3, 4, 5, 6]
 
-            // Call the actor.
-            auto object_ref = counter.Task(&Counter::increment).Remote();
-            assert(*object_ref.Get() == 1);
+Passing actor handles
+---------------------
 
-Methods called on different actors can execute in parallel, and methods called on the same actor are executed serially in the order that they are called. Methods on the same actor will share state with one another, as shown below.
+You can pass actor handles into other tasks. Define remote functions, which are actor methods, that use actor handles.
 
-.. tab-set::
+.. testcode::
 
-    .. tab-item:: Python
+    import time
 
-        .. testcode::
+    @ray.remote
+    def f(counter):
+        for _ in range(10):
+            time.sleep(0.1)
+            counter.increment.remote()
 
-            # Create ten Counter actors.
-            counters = [Counter.remote() for _ in range(10)]
+If you instantiate an actor, you can pass the handle to various tasks.
 
-            # Increment each Counter once and get the results. These tasks all happen in
-            # parallel.
-            results = ray.get([c.increment.remote() for c in counters])
-            print(results)
+.. testcode::
 
-            # Increment the first Counter five times. These tasks are executed serially
-            # and share state.
-            results = ray.get([counters[0].increment.remote() for _ in range(5)])
-            print(results)
+    counter = Counter.remote()
 
-        .. testoutput::
+    # Start some tasks that use the actor.
+    [f.remote(counter) for _ in range(3)]
 
-            [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-            [2, 3, 4, 5, 6]
+    # Print the counter value.
+    for _ in range(10):
+        time.sleep(0.1)
+        print(ray.get(counter.get_counter.remote()))
 
-    .. tab-item:: Java
+.. testoutput::
+    :options: +MOCK
 
-        .. code-block:: java
-
-            // Create ten Counter actors.
-            List<ActorHandle<Counter>> counters = new ArrayList<>();
-            for (int i = 0; i < 10; i++) {
-                counters.add(Ray.actor(Counter::new).remote());
-            }
-
-            // Increment each Counter once and get the results. These tasks all happen in
-            // parallel.
-            List<ObjectRef<Integer>> objectRefs = new ArrayList<>();
-            for (ActorHandle<Counter> counterActor : counters) {
-                objectRefs.add(counterActor.task(Counter::increment).remote());
-            }
-            // prints [1, 1, 1, 1, 1, 1, 1, 1, 1, 1]
-            System.out.println(Ray.get(objectRefs));
-
-            // Increment the first Counter five times. These tasks are executed serially
-            // and share state.
-            objectRefs = new ArrayList<>();
-            for (int i = 0; i < 5; i++) {
-                objectRefs.add(counters.get(0).task(Counter::increment).remote());
-            }
-            // prints [2, 3, 4, 5, 6]
-            System.out.println(Ray.get(objectRefs));
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            // Create ten Counter actors.
-            std::vector<ray::ActorHandle<Counter>> counters;
-            for (int i = 0; i < 10; i++) {
-                counters.emplace_back(ray::Actor(CreateCounter).Remote());
-            }
-
-            // Increment each Counter once and get the results. These tasks all happen in
-            // parallel.
-            std::vector<ray::ObjectRef<int>> object_refs;
-            for (ray::ActorHandle<Counter> counter_actor : counters) {
-                object_refs.emplace_back(counter_actor.Task(&Counter::Increment).Remote());
-            }
-            // prints 1, 1, 1, 1, 1, 1, 1, 1, 1, 1
-            auto results = ray::Get(object_refs);
-            for (const auto &result : results) {
-                std::cout << *result;
-            }
-
-            // Increment the first Counter five times. These tasks are executed serially
-            // and share state.
-            object_refs.clear();
-            for (int i = 0; i < 5; i++) {
-                object_refs.emplace_back(counters[0].Task(&Counter::Increment).Remote());
-            }
-            // prints 2, 3, 4, 5, 6
-            results = ray::Get(object_refs);
-            for (const auto &result : results) {
-                std::cout << *result;
-            }
-
-Passing Around Actor Handles
-----------------------------
-
-Actor handles can be passed into other tasks. We can define remote functions (or actor methods) that use actor handles.
-
-.. tab-set::
-
-    .. tab-item:: Python
-
-        .. testcode::
-
-            import time
-
-            @ray.remote
-            def f(counter):
-                for _ in range(10):
-                    time.sleep(0.1)
-                    counter.increment.remote()
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            public static class MyRayApp {
-
-              public static void foo(ActorHandle<Counter> counter) throws InterruptedException {
-                for (int i = 0; i < 1000; i++) {
-                  TimeUnit.MILLISECONDS.sleep(100);
-                  counter.task(Counter::increment).remote();
-                }
-              }
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            void Foo(ray::ActorHandle<Counter> counter) {
-                for (int i = 0; i < 1000; i++) {
-                    std::this_thread::sleep_for(std::chrono::milliseconds(100));
-                    counter.Task(&Counter::Increment).Remote();
-                }
-            }
-
-If we instantiate an actor, we can pass the handle around to various tasks.
-
-.. tab-set::
-
-    .. tab-item:: Python
-
-        .. testcode::
-
-            counter = Counter.remote()
-
-            # Start some tasks that use the actor.
-            [f.remote(counter) for _ in range(3)]
-
-            # Print the counter value.
-            for _ in range(10):
-                time.sleep(0.1)
-                print(ray.get(counter.get_counter.remote()))
-
-        .. testoutput::
-            :options: +MOCK
-
-            0
-            3
-            8
-            10
-            15
-            18
-            20
-            25
-            30
-            30
-
-    .. tab-item:: Java
-
-        .. code-block:: java
-
-            ActorHandle<Counter> counter = Ray.actor(Counter::new).remote();
-
-            // Start some tasks that use the actor.
-            for (int i = 0; i < 3; i++) {
-              Ray.task(MyRayApp::foo, counter).remote();
-            }
-
-            // Print the counter value.
-            for (int i = 0; i < 10; i++) {
-              TimeUnit.SECONDS.sleep(1);
-              System.out.println(counter.task(Counter::getCounter).remote().get());
-            }
-
-    .. tab-item:: C++
-
-        .. code-block:: c++
-
-            auto counter = ray::Actor(CreateCounter).Remote();
-
-            // Start some tasks that use the actor.
-            for (int i = 0; i < 3; i++) {
-              ray::Task(Foo).Remote(counter);
-            }
-
-            // Print the counter value.
-            for (int i = 0; i < 10; i++) {
-              std::this_thread::sleep_for(std::chrono::seconds(1));
-              std::cout << *counter.Task(&Counter::GetCounter).Remote().Get() << std::endl;
-            }
-
-
+    0
+    3
+    8
+    10
+    15
+    18
+    20
+    25
+    30
+    30
 
 Generators
 ----------
 Ray is compatible with Python generator syntax. See :ref:`Ray Generators <generators>` for more details.
 
-Cancelling Actor Tasks
+Cancelling actor tasks
 ----------------------
 
-Cancel Actor Tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
+Cancel actor tasks by calling :func:`ray.cancel() <ray.cancel>` on the returned `ObjectRef`.
 
-.. tab-set::
-
-    .. tab-item:: Python
-
-        .. literalinclude:: doc_code/actors.py
-            :language: python
-            :start-after: __cancel_start__
-            :end-before: __cancel_end__
+.. literalinclude:: doc_code/actors.py
+    :language: python
+    :start-after: __cancel_start__
+    :end-before: __cancel_end__
 
 
-In Ray, Task cancellation behavior is contingent on the Task's current state:
+In Ray, task cancellation behavior is contingent on the task's current state:
 
-**Unscheduled Tasks**:
-If the Actor Task hasn't been scheduled yet, Ray attempts to cancel the scheduling.
-When successfully cancelled at this stage, invoking ``ray.get(actor_task_ref)``
-produce a :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
+- **Unscheduled tasks**: If Ray hasn't scheduled the actor task yet, it attempt
+  to cancel the scheduling. When Ray successfully cancels it at this stage, 
+  invoking ``ray.get(actor_task_ref)`` produces a
+  :class:`TaskCancelledError <ray.exceptions.TaskCancelledError>`.
 
-**Running Actor Tasks (Regular Actor, Threaded Actor)**:
-For tasks classified as a single-threaded Actor or a multi-threaded Actor,
-Ray offers no mechanism for interruption.
+- **Running actor tasks (regular actor, threaded actor)**: For tasks classified
+  as a single-threaded actor or a multi-threaded actor, Ray offers no mechanism
+  for interruption.
 
-**Running Async Actor Tasks**:
-For Tasks classified as `async Actors <_async-actors>`, Ray seeks to cancel the associated `asyncio.Task`.
-This cancellation approach aligns with the standards presented in
-`asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__.
-Note that `asyncio.Task` won't be interrupted in the middle of execution if you don't `await` within the async function.
+- **Running async actor tasks**: For tasks classified as `async actors <_async-actors>`,
+  Ray tries to cancel the associated `asyncio.Task`. This cancellation approach aligns 
+  with the standards presented in
+  `asyncio task cancellation <https://docs.python.org/3/library/asyncio-task.html#task-cancellation>`__. Note that Ray won't interrupt `asyncio.Task` in the middle of execution if you don't `await` within the async function.
 
-**Cancellation Guarantee**:
-Ray attempts to cancel Tasks on a *best-effort* basis, meaning cancellation isn't always guaranteed.
-For example, if the cancellation request doesn't get through to the executor,
-the Task might not be cancelled.
-You can check if a Task was successfully cancelled using ``ray.get(actor_task_ref)``.
+- **Cancellation guarantee**: Ray attempts to cancel tasks on a *best-effort* basis, 
+  meaning cancellation isn't always guaranteed. For example, if the cancellation 
+  request doesn't get through to the executor, then Ray might not cancel the task.
+  To see if Ray successfully cancelled a task, use ``ray.get(actor_task_ref)``.
 
-**Recursive Cancellation**:
-Ray tracks all child and Actor Tasks. When the ``recursive=True`` argument is given,
-it cancels all child and Actor Tasks.
+- **Recursive cancellation**:Ray tracks all child and actor tasks. When the you give
+  the ``recursive=True`` argument, it cancels all child and actor tasks.
 
 Scheduling
 ----------
 
-For each actor, Ray will choose a node to run it
-and the scheduling decision is based on a few factors like
-:ref:`the actor's resource requirements <ray-scheduling-resources>`
-and :ref:`the specified scheduling strategy <ray-scheduling-strategies>`.
+For each actor, Ray chooses a node to run it
+and bases the scheduling decision a few factors like the following:
+
+- :ref:`the actor's resource requirements <ray-scheduling-resources>`
+- :ref:`the specified scheduling strategy <ray-scheduling-strategies>`
 See :ref:`Ray scheduling <ray-scheduling>` for more details.
 
-Fault Tolerance
+Fault tolerance
 ---------------
 
-By default, Ray actors won't be :ref:`restarted <fault-tolerance-actors>` and
-actor tasks won't be retried when actors crash unexpectedly.
+By default, Ray doesn't :ref:`restart <fault-tolerance-actors>` actors and
+won't retry actor tasks when actors crash unexpectedly.
 You can change this behavior by setting
 ``max_restarts`` and ``max_task_retries`` options
 in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`.
 See :ref:`Ray fault tolerance <fault-tolerance>` for more details.
 
-FAQ: Actors, Workers and Resources
-----------------------------------
+Actors, workers, and resources
+------------------------------
 
-What's the difference between a worker and an actor?
+Understanding the difference between a worker and an actor can help you
+optimize resource utilization.
 
-Each "Ray worker" is a python process.
+Each Ray worker is a Python process. Ray treats workers differently for
+tasks and actors. A Ray worker either:
 
-Workers are treated differently for tasks and actors. Any "Ray worker" is either 1. used to execute multiple Ray tasks or 2. is started as a dedicated Ray actor.
+#. executes multiple Ray tasks
+#. is a dedicated Ray actor
 
-* **Tasks**: When Ray starts on a machine, a number of Ray workers will be started automatically (1 per CPU by default). They will be used to execute tasks (like a process pool). If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), you will end up with 8 of your 16 workers idling.
+**Tasks**: When Ray starts on a machine, Ray starts a number of Ray workers automatically (1 per CPU by default). Ray uses them execute tasks like a process pool. If you execute 8 tasks with `num_cpus=2`, and total number of CPUs is 16 (`ray.cluster_resources()["CPU"] == 16`), 8 of the 16 workers idle.
 
-* **Actor**: A Ray Actor is also a "Ray worker" but is instantiated at runtime (upon `actor_cls.remote()`). All of its methods will run on the same process, using the same resources (designated when defining the Actor). Note that unlike tasks, the python processes that runs Ray Actors are not reused and will be terminated when the Actor is deleted.
+**Actor**: A Ray actor is also a Ray worker but Ray instantiates it at runtime upon `actor_cls.remote()`. All of its methods run on the same process, using the same resources designated when defining the actor. Note that unlike tasks, the Ray doesn't reuse the Python processes that run Ray actors. Ray terminates them when it deletes the actor.
 
-To maximally utilize your resources, you want to maximize the time that
-your workers are working. You also want to allocate enough cluster resources
-so that both all of your needed actors can run and any other tasks you
-define can run. This also implies that tasks are scheduled more flexibly,
-and that if you don't need the stateful part of an actor, you're mostly
-better off using tasks.
+To maximally utilize your resources, maximize the time that
+the workers are working. You also want to allocate enough cluster resources
+so that all of the needed actors can run and any other tasks you
+define can run. Ray schedules tasks more flexibly,
+so if you don't need the stateful part of an actor, use tasks.
 
-Task Events
+Task events
 -----------
 
 By default, Ray traces the execution of actor tasks, reporting task status events and profiling events
 that Ray Dashboard and :ref:`State API <state-api-overview-ref>` use.
 
-You can disable task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data the being sent to the Ray Dashboard.
+You can turn off task events for the actor by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.actor.ActorClass.options>`, which reduces the overhead of task execution, and the amount of data the Ray sends to the Ray Dashboard.
 
-You can also disable task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
+You can also turn off task events for some actor methods by setting the `enable_task_events` option to `False` in :func:`ray.remote() <ray.remote>` and :meth:`.options() <ray.remote_function.RemoteFunction.options>` on the actor method.
 Method settings override the actor setting:
 
 .. literalinclude:: doc_code/actors.py
@@ -483,7 +244,7 @@ Method settings override the actor setting:
     :end-before: __enable_task_events_end__
 
 
-More about Ray Actors
+More about Ray actors
 ---------------------
 
 .. toctree::
