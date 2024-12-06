@@ -1,49 +1,115 @@
-from gymnasium import spaces
+import gymnasium as gym
 import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
-# Map representation: Six rooms with entrances in between.
-MAP = [
-    "WWWWWWWWWWWWW",
-    "W   W   W   W",
-    "W       W   W",
-    "W   W       W",
-    "W WWWW WWWW W",
-    "W   W   W   W",
-    "W   W       W",
-    "W       W  GW",
-    "WWWWWWWWWWWWW"
-]
 
-# Room positions (top-left corner coordinates of each room)
-#ROOMS = {
-#    0: {(1, 1), (2, 1), (3, 1), (2, 1), (2, 2), (3, 2)},
-#    1: (1, 5),
-#    2: (1, 9),
-#    3: (5, 1),
-#    4: (5, 5),
-#    5: (5, 9),
-#}
+# Map representation: Always six rooms (as the name suggests) with doors in between.
+MAPS = {
+    "small": [
+        "WWWWWWWWWWWWW",
+        "W   W   W   W",
+        "W       W   W",
+        "W   W       W",
+        "W WWWW WWWW W",
+        "W   W   W   W",
+        "W   W       W",
+        "W       W  GW",
+        "WWWWWWWWWWWWW",
+    ],
+    "medium": [
+        "WWWWWWWWWWWWWWWWWWW",
+        "W     W     W     W",
+        "W           W     W",
+        "W     W           W",
+        "W WWWWWWW WWWWWWW W",
+        "W     W     W     W",
+        "W     W           W",
+        "W           W    GW",
+        "WWWWWWWWWWWWWWWWWWW",
+    ],
+    "large": [
+        "WWWWWWWWWWWWWWWWWWWWWWWWW",
+        "W       W       W       W",
+        "W       W       W       W",
+        "W               W       W",
+        "W       W               W",
+        "W       W       W       W",
+        "WW WWWWWWWWW WWWWWWWWWW W",
+        "W       W       W       W",
+        "W       W               W",
+        "W       W       W       W",
+        "W               W       W",
+        "W       W       W      GW",
+        "WWWWWWWWWWWWWWWWWWWWWWWWW",
+    ],
+}
 
-# Room connections (doors)
-#DOORS = {
-#    (0, 1): [(2, 4)],  # Door between room 0 and room 1
-#    (1, 2): [(2, 8)],  # Door between room 1 and room 2
-#    (3, 4): [(6, 4)],  # Door between room 3 and room 4
-#    (4, 5): [(6, 8)],  # Door between room 4 and room 5
-#    (0, 3): [(4, 2)],  # Door between room 0 and room 3
-#    (1, 4): [(4, 6)],  # Door between room 1 and room 4
-#    (2, 5): [(4, 10)],  # Door between room 2 and room 5
-#}
 
-# Number of steps allowed for a low-level policy to reach the given goal.
-MAX_STEPS_LOW_LEVEL = 10
+class SixRoomEnv(gym.Env):
+    """A grid-world with six rooms (arranged as 2x3), which are connected by doors.
 
+    The agent starts in the upper left room and has to reach a designated goal state
+    in one of the rooms using primitive actions up, left, down, and right.
 
-class SixRoomEnv(MultiAgentEnv):
+    The agent receives a small penalty of -0.01 on each step and a reward of +10.0 when
+    reaching the goal state.
+    """
+
     def __init__(self, config=None):
         super().__init__()
+
+        # User can provide a custom map or a recognized map name (small, medium, large).
+        self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
+        self.max_ts = config.get("max_ts", 100)
+
+        # Define observation space: Discrete, index fields.
+        self.observation_space = gym.spaces.Discrete(len(self.map) * len(self.map[0]))
+        # Primitive actions: up, down, left, right.
+        self.action_space = gym.spaces.Discrete(4)
+
+        # Initialize environment state.
+        self.reset()
+
+    def reset(self, *, seed=None, options=None):
+        self._agent_pos = (1, 1)
+        self._ts = 0
+        # Return high-level observation.
+        return self._agent_discrete_pos, {}
+
+    def step(self, action):
+        next_pos = _get_next_pos(action, self._agent_pos)
+
+        self._ts += 1
+
+        # Check if the move ends up in a wall. If so -> Ignore the move and stay
+        # where we are right now.
+        if self.map[next_pos[0]][next_pos[1]] != "W":
+            self._agent_pos = next_pos
+
+        # Check if the agent has reached the global goal state.
+        if self.map[self._agent_pos[0]][self._agent_pos[1]] == "G":
+            return self._agent_discrete_pos, 10.0, True, False, {}
+
+        # Small step penalty.
+        return self._agent_discrete_pos, -0.01, False, self._ts >= self.max_ts, {}
+
+    @property
+    def _agent_discrete_pos(self):
+        x = self._agent_pos[0]
+        y = self._agent_pos[1]
+        # discrete position = row idx * columns + col idx
+        return x * len(self.map[0]) + y
+
+
+class HierarchicalSixRoomEnv(MultiAgentEnv):
+    def __init__(self, config=None):
+        super().__init__()
+
+        # User can provide a custom map or a recognized map name (small, medium, large).
+        self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
+        self.max_steps_low_level = config.get("max_steps_low_level", 10)
+        self.max_ts = config.get("max_ts", 100)
 
         # self.flat = config.get("flat", False)
         self.possible_agents = [
@@ -51,33 +117,33 @@ class SixRoomEnv(MultiAgentEnv):
             "low_level_agent_0",
             "low_level_agent_1",
             "low_level_agent_2",
-        ]# if not self.flat else ["agent"]
+        ]
         self.agents = self.possible_agents
 
         # Define low-level observation space: Discrete, index fields.
-        observation_space = spaces.Discrete(len(MAP) * len(MAP[0]))
+        observation_space = gym.spaces.Discrete(len(self.map) * len(self.map[0]))
         # Primitive actions: up, down, left, right.
-        low_level_action_space = spaces.Discrete(4)
+        low_level_action_space = gym.spaces.Discrete(4)
 
         self.observation_spaces = {
-            "high_level_agent": observation_space, #spaces.Discrete(6),
+            "high_level_agent": observation_space,
             "low_level_agent_0": observation_space,
             "low_level_agent_1": observation_space,
             "low_level_agent_2": observation_space,
         }
         self.action_spaces = {
-            "high_level_agent": spaces.Tuple((
-                # The new target observation.
-                observation_space,
-                # Low-level policy that should get us to target room.
-                spaces.Discrete(3)
-            )),
+            "high_level_agent": gym.spaces.Tuple(
+                (
+                    # The new target observation.
+                    observation_space,
+                    # Low-level policy that should get us to target room.
+                    gym.spaces.Discrete(3),
+                )
+            ),
             "low_level_agent_0": low_level_action_space,
             "low_level_agent_1": low_level_action_space,
             "low_level_agent_2": low_level_action_space,
         }
-
-        #self.goal_room = 5
 
         # Initialize environment state.
         self.reset()
@@ -87,13 +153,17 @@ class SixRoomEnv(MultiAgentEnv):
         self._low_level_steps = 0
         self._high_level_action = None
 
+        self._ts = 0
+
         # Return high-level observation.
         return {
             "high_level_agent": self._agent_discrete_pos,
         }, {}
 
     def step(self, action_dict):
-        terminateds = {"__all__": False}
+        self._ts += 1
+
+        terminateds = {"__all__": self._ts >= self.max_ts}
         truncateds = {"__all__": False}
 
         # High-level agent acted: Set next goal and next low-level policy to use.
@@ -104,6 +174,7 @@ class SixRoomEnv(MultiAgentEnv):
             low_level_agent = f"low_level_agent_{self._high_level_action[1]}"
             self._low_level_steps = 0
             # Return next low-level observation for the now-active agent.
+            # We want this agent to act next.
             return (
                 {low_level_agent: self._agent_discrete_pos},
                 {"high_level_agent": 0.0},
@@ -113,33 +184,52 @@ class SixRoomEnv(MultiAgentEnv):
             )
         # Low-level agent made a move (primitive action).
         else:
-            #low_level_agent = next(iter(action_dict.keys()))
+            # low_level_agent = next(iter(action_dict.keys()))
             assert len(action_dict) == 1
             target_discrete_pos, low_level_agent = self._high_level_action
             low_level_agent = f"low_level_agent_{low_level_agent}"
-            next_pos = self._get_next_pos(action_dict[low_level_agent])
+            next_pos = _get_next_pos(action_dict[low_level_agent], self._agent_pos)
 
-            # Check if the move ends up in a wall. If so -> correct.
-            if MAP[next_pos[0]][next_pos[1]] != "W":
+            # Check if the move ends up in a wall. If so -> Ignore the move and stay
+            # where we are right now.
+            if self.map[next_pos[0]][next_pos[1]] != "W":
                 self._agent_pos = next_pos
 
             # Check if the agent has reached the global goal state.
-            if MAP[self._agent_pos[0]][self._agent_pos[1]] == "G":
-                rewards = {"high_level_agent": 10.0, low_level_agent: 0.0}
+            if self.map[self._agent_pos[0]][self._agent_pos[1]] == "G":
+                rewards = {
+                    "high_level_agent": 10.0,
+                    # +1.0 if the goal position was also the target position for the
+                    # low level agent.
+                    low_level_agent: float(
+                        self._agent_discrete_pos == target_discrete_pos
+                    ),
+                }
                 terminateds["__all__"] = True
-                return {
-                    "high_level_agent": self._agent_discrete_pos,
-                    low_level_agent: self._agent_discrete_pos,
-                }, rewards, terminateds, truncateds, {}
+                return (
+                    {
+                        "high_level_agent": self._agent_discrete_pos,
+                    },
+                    rewards,
+                    terminateds,
+                    truncateds,
+                    {},
+                )
 
             # Low-level agent has reached its target location:
             # - Hand back control to high-level agent.
             # - Reward low level agent and high-level agent.
             elif self._agent_discrete_pos == target_discrete_pos:
                 rewards = {"high_level_agent": 1.0, low_level_agent: 1.0}
-                return {
-                    "high_level_agent": self._agent_discrete_pos,
-                }, rewards, terminateds, truncateds, {}
+                return (
+                    {
+                        "high_level_agent": self._agent_discrete_pos,
+                    },
+                    rewards,
+                    terminateds,
+                    truncateds,
+                    {},
+                )
 
             # Low-level agent has not reached anything.
             else:
@@ -148,38 +238,46 @@ class SixRoomEnv(MultiAgentEnv):
                 # Small step penalty.
                 rewards = {low_level_agent: -0.01}
                 # Reached time budget -> Hand back control to high level agent.
-                if self._low_level_steps >= MAX_STEPS_LOW_LEVEL:
-                    return {
-                        "high_level_agent": self._agent_discrete_pos,
-                    }, rewards, terminateds, truncateds, {}
+                if self._low_level_steps >= self.max_steps_low_level:
+                    return (
+                        {
+                            "high_level_agent": self._agent_discrete_pos,
+                        },
+                        rewards,
+                        terminateds,
+                        truncateds,
+                        {},
+                    )
                 else:
-                    return {
-                        low_level_agent: self._agent_discrete_pos,
-                    }, rewards, terminateds, truncateds, {}
+                    return (
+                        {
+                            low_level_agent: self._agent_discrete_pos,
+                        },
+                        rewards,
+                        terminateds,
+                        truncateds,
+                        {},
+                    )
 
     @property
     def _agent_discrete_pos(self):
         x = self._agent_pos[0]
         y = self._agent_pos[1]
         # discrete position = row idx * columns + col idx
-        return x * len(MAP[0]) + y
+        return x * len(self.map[0]) + y
 
-    def _get_next_pos(self, action):
-        x, y = self._agent_pos
-        # Up.
-        if action == 0:
-            return x - 1, y
-        # Down.
-        elif action == 1:
-            return x + 1, y
-        # Left.
-        elif action == 2:
-            return x, y - 1
-        # Right.
-        else:
-            return x, y + 1
 
-    #def _get_low_level_obs(self):
-    #    obs = np.zeros((len(MAP), len(MAP[0])), dtype=np.float32)
-    #    obs[self._agent_pos] = 1.0
-    #    return obs
+def _get_next_pos(action, pos):
+    x, y = pos
+    # Up.
+    if action == 0:
+        return x - 1, y
+    # Down.
+    elif action == 1:
+        return x + 1, y
+    # Left.
+    elif action == 2:
+        return x, y - 1
+    # Right.
+    else:
+        return x, y + 1

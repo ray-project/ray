@@ -185,24 +185,16 @@ class FlattenObservations(ConnectorV2):
                 ):
                     flattened_obs = last_obs
                 else:
-                    try:
-                        flattened_obs = flatten_inputs_to_1d_tensor(
-                            inputs=last_obs,
-                            # In the multi-agent case, we need to use the specific agent's
-                            # space struct, not the multi-agent observation space dict.
-                            spaces_struct=self._input_obs_base_struct[sa_episode.agent_id],
-                            # Our items are individual observations (no batch axis present).
-                            batch_axis=False,
-                        )
-                    except Exception as e:
-                        flattened_obs = flatten_inputs_to_1d_tensor(
-                            inputs=last_obs,
-                            # In the multi-agent case, we need to use the specific agent's
-                            # space struct, not the multi-agent observation space dict.
-                            spaces_struct=self._input_obs_base_struct[sa_episode.agent_id],
-                            # Our items are individual observations (no batch axis present).
-                            batch_axis=False,
-                        )
+                    flattened_obs = flatten_inputs_to_1d_tensor(
+                        inputs=last_obs,
+                        # In the multi-agent case, we need to use the specific agent's
+                        # space struct, not the multi-agent observation space dict.
+                        spaces_struct=self._input_obs_base_struct[
+                            sa_episode.agent_id
+                        ],
+                        # Our items are individual observations (no batch axis present).
+                        batch_axis=False,
+                    )
 
             else:
                 flattened_obs = flatten_inputs_to_1d_tensor(

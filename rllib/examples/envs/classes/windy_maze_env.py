@@ -91,17 +91,21 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.flat_env = WindyMazeEnv(config)
 
         obs = {
-            f"low_level_{aid}": gym.spaces.Tuple([
-                # Flat observation space.
-                self.flat_env.observation_space,
-                # Goal (move up/down/left/right).
-                gym.spaces.Discrete(4),
-            ])
+            f"low_level_{aid}": gym.spaces.Tuple(
+                [
+                    # Flat observation space.
+                    self.flat_env.observation_space,
+                    # Goal (move up/down/left/right).
+                    gym.spaces.Discrete(4),
+                ]
+            )
             for aid in range(25)
         }
-        obs.update({
-            "high_level_agent": self.flat_env.observation_space,
-        })
+        obs.update(
+            {
+                "high_level_agent": self.flat_env.observation_space,
+            }
+        )
         self.observation_spaces = gym.spaces.Dict(obs)
 
         act = {
@@ -109,10 +113,12 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
             f"low_level_{aid}": self.flat_env.action_space
             for aid in range(25)
         }
-        act.update({
-            # Goal.
-            "high_level_agent": gym.spaces.Discrete(4),
-        })
+        act.update(
+            {
+                # Goal.
+                "high_level_agent": gym.spaces.Discrete(4),
+            }
+        )
         self.action_spaces = gym.spaces.Dict(act)
         self.agents = [f"low_level_{aid}" for aid in range(25)]
         self.agents.append("high_level_agent")

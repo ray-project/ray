@@ -448,7 +448,7 @@ class MultiAgentEpisode:
                     action_space=self.action_space.get(agent_id),
                 )
             else:
-                sa_episode = self.agent_episodes.get(agent_id)
+                sa_episode = self.agent_episodes[agent_id]
 
             # Collect value to be passed (at end of for-loop) into `add_env_step()`
             # call.
@@ -551,8 +551,8 @@ class MultiAgentEpisode:
                     # duplicate the previous one (this is a technical "fix" to properly
                     # complete the single agent episode; this last observation is never
                     # used for learning anyway).
-                    _observation = sa_episode.get_observations(-1)
-                    _infos = sa_episode.get_infos(-1)
+                    _observation = sa_episode._last_added_observation
+                    _infos = sa_episode._last_added_infos
                 # Agent is still alive.
                 # [previous obs] [action] (hanging) ...
                 else:
@@ -595,8 +595,8 @@ class MultiAgentEpisode:
                     # duplicate the previous one (this is a technical "fix" to properly
                     # complete the single agent episode; this last observation is never
                     # used for learning anyway).
-                    _observation = sa_episode.get_observations(-1)
-                    _infos = sa_episode.get_infos(-1)
+                    _observation = sa_episode._last_added_observation
+                    _infos = sa_episode._last_added_infos
                     # `_action` is already `get` above. We don't need to pop out from
                     # the cache as it gets wiped out anyway below b/c the agent is
                     # done.
@@ -1770,7 +1770,7 @@ class MultiAgentEpisode:
             # TODO (simon): Check, if we can store the `InfiniteLookbackBuffer`
             "env_t_to_agent_t": self.env_t_to_agent_t,
             "_hanging_actions_end": self._hanging_actions_end,
-            "_hanging_extra_model_outputs_end": (self._hanging_extra_model_outputs_end),
+            "_hanging_extra_model_outputs_end": self._hanging_extra_model_outputs_end,
             "_hanging_rewards_end": self._hanging_rewards_end,
             "_hanging_actions_begin": self._hanging_actions_begin,
             "_hanging_extra_model_outputs_begin": (
@@ -2532,12 +2532,15 @@ class MultiAgentEpisode:
                 # buffer, but a dict mapping keys to individual infinite lookback
                 # buffers.
                 if extra_model_outputs_key is None:
+                    assert hanging_val is None or isinstance(hanging_val, dict)
                     return {
                         key: sub_buffer.get(
                             indices=index_incl_lookback - sub_buffer.lookback,
                             neg_index_as_lookback=True,
                             fill=fill,
-                            _add_last_ts_value=hanging_val,
+                            _add_last_ts_value=(
+                                None if hanging_val is None else hanging_val[key]
+                            ),
                             **one_hot_discrete,
                         )
                         for key, sub_buffer in inf_lookback_buffer.items()
