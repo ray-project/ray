@@ -613,6 +613,15 @@ class OptunaSearch(Searcher):
         else:
             intermediate_values_dict = None
 
+        # If the trial state is FAILED, the value must be `None` in Optuna==4.1.0
+        # Reference: https://github.com/optuna/optuna/pull/5211
+        # This is a temporary fix for the issue that Optuna enforces the value
+        # to be `None` if the trial state is FAILED.
+        # TODO (hpguo): A better solution may requires us to update the base class
+        # to allow the `value` arg in `add_evaluated_point` being `Optional[float]`.
+        if ot_trial_state == OptunaTrialState.FAIL:
+            value = None
+
         trial = ot.trial.create_trial(
             state=ot_trial_state,
             value=value,
