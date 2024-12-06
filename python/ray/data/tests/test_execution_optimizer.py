@@ -45,6 +45,7 @@ from ray.data._internal.logical.operators.map_operator import (
     FlatMap,
     MapBatches,
     MapRows,
+    Project,
 )
 from ray.data._internal.logical.operators.n_ary_operator import Union, Zip
 from ray.data._internal.logical.operators.write_operator import Write
@@ -332,6 +333,26 @@ def test_filter_e2e(ray_start_regular_shared):
     ds = ds.filter(fn=lambda x: x["id"] % 2 == 0)
     assert extract_values("id", ds.take_all()) == [0, 2, 4], ds
     _check_usage_record(["ReadRange", "Filter"])
+
+
+def test_project_operator(ray_start_regular_shared):
+    """Checks that the physical plan is properly generated for the Project operator."""
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    cols = ["sepal.length", "petal.width"]
+    ds = ds.select_columns(cols)
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+    assert op.cols == cols
+
+    physical_plan = Planner().plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
 
 
 def test_flat_map(ray_start_regular_shared):
@@ -1124,9 +1145,7 @@ def test_sort_validate_keys(ray_start_regular_shared):
     assert extract_values("id", ds.sort("id").take_all()) == list(range(10))
 
     invalid_col_name = "invalid_column"
-    with pytest.raises(
-        ValueError, match=f"The column '{invalid_col_name}' does not exist"
-    ):
+    with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds.sort(invalid_col_name).take_all()
 
     ds_named = ray.data.from_items(
@@ -1144,11 +1163,77 @@ def test_sort_validate_keys(ray_start_regular_shared):
     assert [d["col1"] for d in r1] == [7, 5, 3, 1]
     assert [d["col2"] for d in r2] == [8, 6, 4, 2]
 
-    with pytest.raises(
-        ValueError,
-        match=f"The column '{invalid_col_name}' does not exist in the schema",
-    ):
+    with pytest.raises(ValueError, match="there's no such column in the dataset"):
         ds_named.sort(invalid_col_name).take_all()
+
+
+def test_inherit_batch_format_rule():
+    from ray.data._internal.logical.rules.inherit_batch_format import (
+        InheritBatchFormatRule,
+    )
+
+    ctx = DataContext.get_current()
+
+    operator1 = get_parquet_read_logical_op()
+    operator2 = MapBatches(operator1, fn=lambda g: g, batch_format="pandas")
+    sort_key = SortKey("number", descending=True)
+    operator3 = Sort(operator2, sort_key)
+    original_plan = LogicalPlan(dag=operator3, context=ctx)
+
+    rule = InheritBatchFormatRule()
+    optimized_plan = rule.apply(original_plan)
+    assert optimized_plan.dag._batch_format == "pandas"
+
+
+def test_batch_format_on_sort(ray_start_regular_shared):
+    """Checks that the Sort op can inherit batch_format from upstream ops correctly."""
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    df_expected = pd.DataFrame(
+        {
+            "col1": [7, 5, 1, 1],
+            "col2": [8, 6, 4, 2],
+        }
+    )
+    df_actual = (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .sort("col2", descending=True)
+        .to_pandas()
+    )
+    pd.testing.assert_frame_equal(df_actual, df_expected)
+
+
+def test_batch_format_on_aggregate(ray_start_regular_shared):
+    """Checks that the Aggregate op can inherit batch_format
+    from upstream ops correctly."""
+    from ray.data.aggregate import AggregateFn
+
+    ds = ray.data.from_items(
+        [
+            {"col1": 1, "col2": 2},
+            {"col1": 1, "col2": 4},
+            {"col1": 5, "col2": 6},
+            {"col1": 7, "col2": 8},
+        ]
+    )
+    aggregation = AggregateFn(
+        init=lambda column: 1,
+        accumulate_row=lambda a, row: a * row["col2"],
+        merge=lambda a1, a2: a1 * a2,
+        name="prod",
+    )
+    assert (
+        ds.groupby("col1")
+        .map_groups(lambda g: g, batch_format="pandas")
+        .aggregate(aggregation)
+    ) == {"prod": 384}
 
 
 def test_aggregate_operator(ray_start_regular_shared):
@@ -1189,9 +1274,7 @@ def test_aggregate_e2e(ray_start_regular_shared, use_push_based_shuffle):
 def test_aggregate_validate_keys(ray_start_regular_shared):
     ds = ray.data.range(10)
     invalid_col_name = "invalid_column"
-    with pytest.raises(
-        ValueError, match=f"The column '{invalid_col_name}' does not exist"
-    ):
+    with pytest.raises(ValueError):
         ds.groupby(invalid_col_name).count()
 
     ds_named = ray.data.from_items(
@@ -1218,7 +1301,7 @@ def test_aggregate_validate_keys(ray_start_regular_shared):
 
     with pytest.raises(
         ValueError,
-        match=f"The column '{invalid_col_name}' does not exist in the schema",
+        match="there's no such column in the dataset",
     ):
         ds_named.groupby(invalid_col_name).count()
 

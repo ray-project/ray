@@ -30,7 +30,7 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
-_HEAD_GROUP_NAME = "head-group"
+_HEAD_GROUP_NAME = "headgroup"
 
 
 class AutoscalingConfigProducer:
@@ -82,7 +82,10 @@ class AutoscalingConfigProducer:
 
     def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
         result = requests.get(
-            self._ray_cr_url, headers=self._headers, verify=self._verify
+            self._ray_cr_url,
+            headers=self._headers,
+            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -216,7 +219,7 @@ def _node_type_from_group_spec(
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
-    return {
+    node_type = {
         "min_workers": min_workers,
         "max_workers": max_workers,
         # `node_config` is a legacy field required for compatibility.
@@ -224,6 +227,12 @@ def _node_type_from_group_spec(
         "node_config": {},
         "resources": resources,
     }
+
+    idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
+    if idle_timeout_s is not None:
+        node_type["idle_timeout_s"] = float(idle_timeout_s)
+
+    return node_type
 
 
 def _get_ray_resources_from_group_spec(

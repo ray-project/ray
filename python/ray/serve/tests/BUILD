@@ -444,3 +444,48 @@ py_test_module_list(
     ],
 )
 
+
+# Test handle API with local testing mode.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_FORCE_LOCAL_TESTING_MODE": "1"},
+    files = [
+        "test_handle_1.py",
+        "test_handle_2.py",
+        "test_handle_cancellation.py",
+        "test_handle_streaming.py",
+    ],
+    name_suffix = "_with_local_testing_mode",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)
+
+
+# Test currently off-by-default behavior to run replica sync methods in a threadpool.
+# TODO(edoakes): remove this once the FF is flipped on by default.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
+    files = [
+        "test_replica_sync_methods.py",
+    ],
+    name_suffix = "_with_run_sync_in_threadpool",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)

@@ -138,11 +138,15 @@ Environments
    Implements a custom `gymnasium <https://gymnasium.farama.org>`__ environment from scratch, showing how to define observation and action spaces,
    arbitrary reward functions, as well as, step- and reset logic.
 
+- `Env connecting to RLlib through a TCP client <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__:
+   An external environment, running outside of RLlib and acting as a client, connects to RLlib as a server. The external env performs its own
+   action inference using an ONNX model, sends collected data back to RLlib for training, and receives model updates from time to time from RLlib.
+
 - `Env Rendering and Recording <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_rendering_and_recording.py>`__:
    Illustrates environment rendering and recording setups within RLlib, capturing visual outputs for later review (ex. on WandB), which is essential
    for tracking agent behavior in training.
 
-- `Env with Protobuf Observations <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_with_protobuf_observations.py>`__:
+- `Env with Protobuf Observations <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_w_protobuf_observations.py>`__:
    Uses Protobuf for observations, demonstrating an advanced way of handling serialized data in environments. This approach is useful for
    integrating complex external data sources as observations.
 
@@ -349,7 +353,7 @@ in roughly 5 minutes. It can be run as follows on a single g5.24xlarge (or g6.24
 .. code-block:: bash
 
     $ cd ray/rllib/tuned_examples/ppo
-    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-gpus=4 --num-env-runners=95
+    $ python atari_ppo.py --env=ale_py:ALE/Pong-v5 --num-learners=4 --num-env-runners=95
 
 Note that some of the files in this folder are used for RLlib's daily or weekly release tests as well.
 

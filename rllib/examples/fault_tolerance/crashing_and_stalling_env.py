@@ -77,11 +77,15 @@ For APPO and testing restarting the entire EnvRunners, you could run the script 
 from gymnasium.wrappers import TimeLimit
 
 from ray import tune
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.cartpole_crashing import (
     CartPoleCrashing,
     MultiAgentCartPoleCrashing,
 )
-from ray.rllib.utils.test_utils import add_rllib_example_script_args
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
+)
 
 parser = add_rllib_example_script_args(
     default_reward=450.0,
@@ -93,7 +97,7 @@ parser.set_defaults(
     num_envs_per_env_runner=2,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 parser.add_argument(
     "--stall",
     action="store_true",
@@ -105,63 +109,69 @@ parser.add_argument(
     help="Whether to restart a failed environment (vs restarting the entire "
     "EnvRunner).",
 )
-args = parser.parse_args()
-
-# Register our environment with tune.
-if args.num_agents > 0:
-    tune.register_env("env", lambda cfg: MultiAgentCartPoleCrashing(cfg))
-else:
-    tune.register_env(
-        "env",
-        lambda cfg: TimeLimit(CartPoleCrashing(cfg), max_episode_steps=500),
-    )
-
-config = (
-    tune.registry.get_trainable_cls(args.algo)
-    .get_default_config()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .environment(
-        "env",
-        env_config={
-            "num_agents": args.num_agents,
-            # Probability to crash during step().
-            "p_crash": 0.0001,
-            # Probability to crash during reset().
-            "p_crash_reset": 0.001,
-            "crash_on_worker_indices": [1, 2],
-            "init_time_s": 2.0,
-            # Probability to stall during step().
-            "p_stall": 0.0005,
-            # Probability to stall during reset().
-            "p_stall_reset": 0.001,
-            # Stall from 2 to 5sec (or 0.0 if --stall not set).
-            "stall_time_sec": (2, 5) if args.stall else 0.0,
-            # EnvRunner indices to stall on.
-            "stall_on_worker_indices": [2, 3],
-        },
-    )
-    # Switch on resiliency.
-    .fault_tolerance(
-        # Recreate any failed EnvRunners.
-        restart_failed_env_runners=True,
-        # Restart any failed environment (w/o recreating the EnvRunner). Note that this
-        # is the much faster option.
-        restart_failed_sub_environments=args.restart_failed_envs,
-    )
-)
-
-# Add a simple multi-agent setup.
-if args.num_agents > 0:
-    config.multi_agent(
-        policies={f"p{i}" for i in range(args.num_agents)},
-        policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
-    )
 
 
 if __name__ == "__main__":
-    from ray.rllib.utils.test_utils import run_rllib_example_script_experiment
+    args = parser.parse_args()
 
-    run_rllib_example_script_experiment(config, args=args)
+    # Register our environment with tune.
+    if args.num_agents > 0:
+        tune.register_env("env", lambda cfg: MultiAgentCartPoleCrashing(cfg))
+    else:
+        tune.register_env(
+            "env",
+            lambda cfg: TimeLimit(CartPoleCrashing(cfg), max_episode_steps=500),
+        )
+
+    base_config = (
+        tune.registry.get_trainable_cls(args.algo)
+        .get_default_config()
+        .environment(
+            "env",
+            env_config={
+                "num_agents": args.num_agents,
+                # Probability to crash during step().
+                "p_crash": 0.0001,
+                # Probability to crash during reset().
+                "p_crash_reset": 0.001,
+                "crash_on_worker_indices": [1, 2],
+                "init_time_s": 2.0,
+                # Probability to stall during step().
+                "p_stall": 0.0005,
+                # Probability to stall during reset().
+                "p_stall_reset": 0.001,
+                # Stall from 2 to 5sec (or 0.0 if --stall not set).
+                "stall_time_sec": (2, 5) if args.stall else 0.0,
+                # EnvRunner indices to stall on.
+                "stall_on_worker_indices": [2, 3],
+            },
+        )
+        # Switch on resiliency.
+        .fault_tolerance(
+            # Recreate any failed EnvRunners.
+            restart_failed_env_runners=True,
+            # Restart any failed environment (w/o recreating the EnvRunner). Note that
+            # this is the much faster option.
+            restart_failed_sub_environments=args.restart_failed_envs,
+        )
+    )
+
+    # Use more stabilizing hyperparams for APPO.
+    if args.algo == "APPO":
+        base_config.training(
+            grad_clip=40.0,
+            entropy_coeff=0.0,
+            vf_loss_coeff=0.05,
+        )
+        base_config.rl_module(
+            model_config=DefaultModelConfig(vf_share_layers=True),
+        )
+
+    # Add a simple multi-agent setup.
+    if args.num_agents > 0:
+        base_config.multi_agent(
+            policies={f"p{i}" for i in range(args.num_agents)},
+            policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+        )
+
+    run_rllib_example_script_experiment(base_config, args=args)

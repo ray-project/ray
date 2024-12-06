@@ -7,15 +7,15 @@
 # If you would like to help with the move in your PR, please use `git mv` so that the history of the file is retained.
 
 load("@bazel_skylib//rules:common_settings.bzl", "bool_flag")
-load("@rules_proto//proto:defs.bzl", "proto_library")
-load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
-load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
 load("@com_github_grpc_grpc//bazel:cc_grpc_library.bzl", "cc_grpc_library")
 load("@com_github_grpc_grpc//bazel:cython_library.bzl", "pyx_library")
-load("@com_github_google_flatbuffers//:build_defs.bzl", "flatbuffer_cc_library")
-load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
-load("@python3_9//:defs.bzl", python39 = "interpreter")
 load("@hedron_compile_commands//:refresh_compile_commands.bzl", "refresh_compile_commands")
+load("@python3_9//:defs.bzl", python39 = "interpreter")
+load("@rules_cc//cc:defs.bzl", "cc_proto_library")
+load("@rules_proto//proto:defs.bzl", "proto_library")
+load("@rules_python//python:defs.bzl", "py_library", "py_runtime", "py_runtime_pair")
+load("//bazel:ray.bzl", "COPTS", "PYX_COPTS", "PYX_SRCS", "copy_to_workspace", "ray_cc_binary", "ray_cc_library", "ray_cc_test")
 
 package(
     default_visibility = ["//visibility:public"],
@@ -90,12 +90,12 @@ config_setting(
 # https://github.com/hedronvision/bazel-compile-commands-extractor?tab=readme-ov-file#vscode - directions for clangd config
 refresh_compile_commands(
     name = "refresh_compile_commands",
+    exclude_external_sources = True,  # removed below to have lsp index external cc files at the cost of 2x index time
     # Specify the targets of interest.
     # For example, specify a dict of targets and any flags required to build.
     targets = {
-      "//:ray_pkg": "",
+        "//:ray_pkg": "",
     },
-    exclude_external_sources = True, # removed below to have lsp index external cc files at the cost of 2x index time
     # No need to add flags already in .bazelrc. They're automatically picked up.
 )
 
@@ -103,7 +103,7 @@ refresh_compile_commands(
 refresh_compile_commands(
     name = "refresh_compile_commands_external_sources",
     targets = {
-      "//:ray_pkg": "",
+        "//:ray_pkg": "",
     },
 )
 
@@ -114,14 +114,16 @@ ray_cc_library(
     srcs = [
         "src/ray/rpc/common.cc",
         "src/ray/rpc/grpc_server.cc",
-        "src/ray/rpc/server_call.cc",
         "src/ray/rpc/rpc_chaos.cc",
+        "src/ray/rpc/retryable_grpc_client.cc",
+        "src/ray/rpc/server_call.cc",
     ],
     hdrs = glob([
         "src/ray/rpc/rpc_chaos.h",
         "src/ray/rpc/client_call.h",
         "src/ray/rpc/common.h",
         "src/ray/rpc/grpc_client.h",
+        "src/ray/rpc/retryable_grpc_client.h",
         "src/ray/rpc/grpc_server.h",
         "src/ray/rpc/metrics_agent_client.h",
         "src/ray/rpc/server_call.h",
@@ -534,10 +536,10 @@ ray_cc_library(
         ":scheduler",
         ":worker_rpc",
         "//src/ray/protobuf:agent_manager_cc_proto",
+        "//src/ray/util:thread_checker",
         "@boost//:bimap",
         "@com_github_grpc_grpc//src/proto/grpc/health/v1:health_proto",
         "@com_google_absl//absl/container:btree",
-        "//src/ray/util:thread_checker",
     ],
 )
 
@@ -620,6 +622,7 @@ ray_cc_library(
     deps = [
         ":reporter_rpc",
         ":stats_metric",
+        "//src/ray/util:size_literals",
         "@com_github_grpc_grpc//:grpc_opencensus_plugin",
     ],
 )
@@ -830,8 +833,8 @@ ray_cc_test(
     srcs = ["src/ray/core_worker/test/memory_store_test.cc"],
     tags = ["team:core"],
     deps = [
-        ":ray_mock",
         ":core_worker_lib",
+        ":ray_mock",
         "@com_google_googletest//:gtest_main",
     ],
 )
@@ -987,8 +990,8 @@ ray_cc_test(
     size = "small",
     srcs = ["src/ray/core_worker/test/task_event_buffer_export_event_test.cc"],
     tags = [
+        "no_windows",
         "team:core",
-        "no_windows"
     ],
     deps = [
         ":core_worker_lib",
@@ -1626,7 +1629,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1648,7 +1651,7 @@ ray_cc_test(
     deps = [
         ":gcs_server_lib",
         ":gcs_test_util_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1882,7 +1885,7 @@ ray_cc_test(
         ":gcs_table_storage_test_lib",
         ":gcs_test_util_lib",
         ":store_client_test_lib",
-        "@com_google_googletest//:gtest_main",
+        "@com_google_googletest//:gtest",
     ],
 )
 
@@ -1933,7 +1936,6 @@ ray_cc_test(
     ],
 )
 
-
 ray_cc_test(
     name = "usage_stats_client_test",
     size = "small",
@@ -1949,7 +1951,6 @@ ray_cc_test(
         "@com_google_googletest//:gtest_main",
     ],
 )
-
 
 ray_cc_library(
     name = "gcs_client_lib",
@@ -2190,13 +2191,11 @@ alias(
 ray_cc_library(
     name = "redis_client",
     srcs = [
-        "src/ray/gcs/asio.cc",
         "src/ray/gcs/redis_async_context.cc",
         "src/ray/gcs/redis_client.cc",
         "src/ray/gcs/redis_context.cc",
     ],
     hdrs = [
-        "src/ray/gcs/asio.h",
         "src/ray/gcs/redis_async_context.h",
         "src/ray/gcs/redis_client.h",
         "src/ray/gcs/redis_context.h",
@@ -2382,9 +2381,9 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "asio_test",
+    name = "redis_async_context_test",
     size = "small",
-    srcs = ["src/ray/gcs/test/asio_test.cc"],
+    srcs = ["src/ray/gcs/test/redis_async_context_test.cc"],
     args = [
         "$(location redis-server)",
         "$(location redis-cli)",
@@ -2402,14 +2401,46 @@ ray_cc_test(
 )
 
 ray_cc_test(
-    name = "gcs_export_event_test",
+    name = "gcs_job_manager_export_event_test",
     size = "small",
-    srcs = glob([
-        "src/ray/gcs/gcs_server/test/export_api/*.cc",
-    ]),
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_job_manager_export_event_test.cc"],
     tags = [
         "no_windows",
-        "team:core"
+        "team:core",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_actor_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_actor_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
+    ],
+    deps = [
+        ":gcs_server_lib",
+        ":gcs_server_test_util",
+        ":gcs_test_util_lib",
+        ":ray_mock",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+ray_cc_test(
+    name = "gcs_node_manager_export_event_test",
+    size = "small",
+    srcs = ["src/ray/gcs/gcs_server/test/export_api/gcs_node_manager_export_event_test.cc"],
+    tags = [
+        "no_windows",
+        "team:core",
     ],
     deps = [
         ":gcs_server_lib",
@@ -2556,6 +2587,7 @@ filegroup(
         "//src/ray/protobuf:common_py_proto",
         "//src/ray/protobuf:core_worker_py_proto",
         "//src/ray/protobuf:event_py_proto",
+        "//src/ray/protobuf:export_event_py_proto",
         "//src/ray/protobuf:gcs_py_proto",
         "//src/ray/protobuf:gcs_service_py_proto",
         "//src/ray/protobuf:instance_manager_py_proto",
@@ -2566,7 +2598,6 @@ filegroup(
         "//src/ray/protobuf:runtime_env_agent_py_proto",
         "//src/ray/protobuf:runtime_env_common_py_proto",
         "//src/ray/protobuf:usage_py_proto",
-        "//src/ray/protobuf:export_event_py_proto",
     ],
 )
 

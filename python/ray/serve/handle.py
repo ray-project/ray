@@ -7,7 +7,12 @@ from typing import Any, AsyncIterator, Dict, Iterator, Optional, Tuple, Union
 
 import ray
 from ray._raylet import ObjectRefGenerator
-from ray.serve._private.common import DeploymentID, RequestMetadata, RequestProtocol
+from ray.serve._private.common import (
+    DeploymentHandleSource,
+    DeploymentID,
+    RequestMetadata,
+    RequestProtocol,
+)
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.default_impl import (
     CreateRouterCallable,
@@ -30,7 +35,7 @@ from ray.serve._private.utils import (
     inside_ray_client_context,
     is_running_in_asyncio_loop,
 )
-from ray.serve.exceptions import RayServeException
+from ray.serve.exceptions import RayServeException, RequestCancelledError
 from ray.util import metrics
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -43,23 +48,22 @@ class _DeploymentHandleBase:
         deployment_name: str,
         app_name: str,
         *,
+        init_options: Optional[InitHandleOptionsBase] = None,
         handle_options: Optional[DynamicHandleOptionsBase] = None,
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
-        _recorded_telemetry: bool = False,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
+        self.init_options: Optional[InitHandleOptionsBase] = init_options
         self.handle_options: DynamicHandleOptionsBase = (
             handle_options or create_dynamic_handle_options()
         )
-        self.init_options: Optional[InitHandleOptionsBase] = None
 
         self.handle_id = get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
-        self._recorded_telemetry = _recorded_telemetry
 
         self._router: Optional[Router] = _router
         if _create_router is None:
@@ -71,33 +75,6 @@ class _DeploymentHandleBase:
             f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
             extra={"log_to_stderr": False},
         )
-
-    def _record_telemetry_if_needed(self):
-        # Record telemetry once per handle and not when used from the proxy
-        # (detected via request protocol).
-        if (
-            not self._recorded_telemetry
-            and self.handle_options._request_protocol == RequestProtocol.UNDEFINED
-        ):
-            if self.__class__ == DeploymentHandle:
-                ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
-
-            self._recorded_telemetry = True
-
-    def _set_request_protocol(self, request_protocol: RequestProtocol):
-        self.handle_options = self.handle_options.copy_and_update(
-            _request_protocol=request_protocol
-        )
-
-    def _get_or_create_router(self) -> Router:
-        if self._router is None:
-            self._router = self._create_router(
-                handle_id=self.handle_id,
-                deployment_id=self.deployment_id,
-                handle_options=self.init_options,
-            )
-
-        return self._router
 
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
@@ -163,8 +140,20 @@ class _DeploymentHandleBase:
                 f"was initialized with {self.init_options}."
             )
 
-        self.init_options = create_init_handle_options(**kwargs)
-        self._get_or_create_router()
+        init_options = create_init_handle_options(**kwargs)
+        self._router = self._create_router(
+            handle_id=self.handle_id,
+            deployment_id=self.deployment_id,
+            handle_options=init_options,
+        )
+        self.init_options = init_options
+
+        # Record handle api telemetry when not in the proxy
+        if (
+            self.init_options._source != DeploymentHandleSource.PROXY
+            and self.__class__ == DeploymentHandle
+        ):
+            ServeUsageTag.DEPLOYMENT_HANDLE_API_USED.record("1")
 
     def _options(self, _prefer_local_routing=DEFAULT.VALUE, **kwargs):
         if kwargs.get("stream") is True and inside_ray_client_context():
@@ -185,37 +174,23 @@ class _DeploymentHandleBase:
         return DeploymentHandle(
             self.deployment_name,
             self.app_name,
+            init_options=self.init_options,
             handle_options=new_handle_options,
             _router=self._router,
             _create_router=self._create_router,
             _request_counter=self.request_counter,
-            _recorded_telemetry=self._recorded_telemetry,
         )
 
     def _remote(
-        self, args: Tuple[Any], kwargs: Dict[str, Any]
+        self,
+        request_metadata: RequestMetadata,
+        args: Tuple[Any],
+        kwargs: Dict[str, Any],
     ) -> concurrent.futures.Future:
-        self._record_telemetry_if_needed()
-        _request_context = ray.serve.context._serve_request_context.get()
-        request_metadata = RequestMetadata(
-            request_id=_request_context.request_id
-            if _request_context.request_id
-            else generate_request_id(),
-            internal_request_id=_request_context._internal_request_id
-            if _request_context._internal_request_id
-            else generate_request_id(),
-            call_method=self.handle_options.method_name,
-            route=_request_context.route,
-            app_name=self.app_name,
-            multiplexed_model_id=self.handle_options.multiplexed_model_id,
-            is_streaming=self.handle_options.stream,
-            _request_protocol=self.handle_options._request_protocol,
-            grpc_context=_request_context.grpc_context,
-        )
         self.request_counter.inc(
             tags={
-                "route": _request_context.route,
-                "application": _request_context.app_name,
+                "route": request_metadata.route,
+                "application": request_metadata.app_name,
             }
         )
 
@@ -229,7 +204,13 @@ class _DeploymentHandleBase:
 
     def shutdown(self):
         if self._router:
-            self._router.shutdown()
+            shutdown_future = self._router.shutdown()
+            shutdown_future.result()
+
+    async def shutdown_async(self):
+        if self._router:
+            shutdown_future = self._router.shutdown()
+            await asyncio.wrap_future(shutdown_future)
 
     def __repr__(self):
         return f"{self.__class__.__name__}" f"(deployment='{self.deployment_name}')"
@@ -249,10 +230,19 @@ class _DeploymentHandleBase:
 
 
 class _DeploymentResponseBase:
-    def __init__(self, replica_result_future: concurrent.futures.Future[ReplicaResult]):
+    def __init__(
+        self,
+        replica_result_future: concurrent.futures.Future[ReplicaResult],
+        request_metadata: RequestMetadata,
+    ):
         self._cancelled = False
         self._replica_result_future = replica_result_future
         self._replica_result: Optional[ReplicaResult] = None
+        self._request_metadata: RequestMetadata = request_metadata
+
+    @property
+    def request_id(self) -> str:
+        return self._request_metadata.request_id
 
     def _fetch_future_result_sync(
         self, _timeout_s: Optional[float] = None
@@ -269,6 +259,8 @@ class _DeploymentResponseBase:
                 )
             except concurrent.futures.TimeoutError:
                 raise TimeoutError("Timed out resolving to ObjectRef.") from None
+            except concurrent.futures.CancelledError:
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -281,9 +273,12 @@ class _DeploymentResponseBase:
         if self._replica_result is None:
             # Use `asyncio.wrap_future` so `self._replica_result_future` can be awaited
             # safely from any asyncio loop.
-            self._replica_result = await asyncio.wrap_future(
-                self._replica_result_future
-            )
+            try:
+                self._replica_result = await asyncio.wrap_future(
+                    self._replica_result_future
+                )
+            except asyncio.CancelledError:
+                raise RequestCancelledError(self.request_id) from None
 
         return self._replica_result
 
@@ -411,7 +406,12 @@ class DeploymentResponse(_DeploymentResponseBase):
             "only pass `DeploymentResponse` objects as top level arguments."
         )
 
-    def result(self, *, timeout_s: Optional[float] = None) -> Any:
+    def result(
+        self,
+        *,
+        timeout_s: Optional[float] = None,
+        _skip_asyncio_check: bool = False,
+    ) -> Any:
         """Fetch the result of the handle call synchronously.
 
         This should *not* be used from within a deployment as it runs in an asyncio
@@ -421,11 +421,10 @@ class DeploymentResponse(_DeploymentResponseBase):
         a `TimeoutError` is raised.
         """
 
-        if is_running_in_asyncio_loop():
+        if not _skip_asyncio_check and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response` instead."
             )
 
         start_time_s = time.time()
@@ -451,7 +450,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return await replica_result.resolve_gen_to_ref_if_necessary_async()
+        return await replica_result.to_object_ref_async()
 
     @DeveloperAPI
     def _to_object_ref_sync(
@@ -477,8 +476,7 @@ class DeploymentResponse(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         # First, fetch the result of the future
@@ -491,7 +489,7 @@ class DeploymentResponse(_DeploymentResponseBase):
             start_time_s=start_time_s,
             curr_time_s=time.time(),
         )
-        return replica_result.resolve_gen_to_ref_if_necessary_sync(remaining_timeout_s)
+        return replica_result.to_object_ref(timeout_s=remaining_timeout_s)
 
 
 @PublicAPI(stability="beta")
@@ -552,7 +550,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
     def __await__(self):
         raise TypeError(
             "`DeploymentResponseGenerator` cannot be awaited directly. Use `async for` "
-            "or `_to_object_ref_gen` instead."
+            "or `await response.__anext__() instead`."
         )
 
     def __aiter__(self) -> AsyncIterator[Any]:
@@ -569,8 +567,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `async for` or `await response.__anext__()` instead."
             )
 
         replica_result = self._fetch_future_result_sync()
@@ -588,7 +585,7 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.record("1")
 
         replica_result = await self._fetch_future_result_async()
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
     @DeveloperAPI
     def _to_object_ref_gen_sync(
@@ -611,12 +608,11 @@ class DeploymentResponseGenerator(_DeploymentResponseBase):
         if not _allow_running_in_asyncio_loop and is_running_in_asyncio_loop():
             raise RuntimeError(
                 "Sync methods should not be called from within an `asyncio` event "
-                "loop. Use `await response` or `await response._to_object_ref()` "
-                "instead."
+                "loop. Use `await response._to_object_ref()` instead."
             )
 
         replica_result = self._fetch_future_result_sync(_timeout_s)
-        return replica_result.obj_ref_gen
+        return replica_result.to_object_ref_gen()
 
 
 @PublicAPI(stability="beta")
@@ -726,10 +722,38 @@ class DeploymentHandle(_DeploymentHandleBase):
             **kwargs: Keyword arguments to be serialized and passed to the
                 remote method call.
         """
-        future = self._remote(args, kwargs)
+        _request_context = ray.serve.context._serve_request_context.get()
+
+        request_protocol = RequestProtocol.UNDEFINED
+        if (
+            self.init_options
+            and self.init_options._source == DeploymentHandleSource.PROXY
+        ):
+            if _request_context.is_http_request:
+                request_protocol = RequestProtocol.HTTP
+            elif _request_context.grpc_context:
+                request_protocol = RequestProtocol.GRPC
+
+        request_metadata = RequestMetadata(
+            request_id=_request_context.request_id
+            if _request_context.request_id
+            else generate_request_id(),
+            internal_request_id=_request_context._internal_request_id
+            if _request_context._internal_request_id
+            else generate_request_id(),
+            call_method=self.handle_options.method_name,
+            route=_request_context.route,
+            app_name=self.app_name,
+            multiplexed_model_id=self.handle_options.multiplexed_model_id,
+            is_streaming=self.handle_options.stream,
+            _request_protocol=request_protocol,
+            grpc_context=_request_context.grpc_context,
+        )
+
+        future = self._remote(request_metadata, args, kwargs)
         if self.handle_options.stream:
             response_cls = DeploymentResponseGenerator
         else:
             response_cls = DeploymentResponse
 
-        return response_cls(future)
+        return response_cls(future, request_metadata)

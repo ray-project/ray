@@ -21,7 +21,6 @@ from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
 from ray.rllib.utils.checkpoints import Checkpointable
-from ray.rllib.utils.deprecation import Deprecated, deprecation_warning
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
 from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
@@ -97,10 +96,28 @@ class ConnectorV2(Checkpointable, abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
-        self._kwargs = kwargs
 
         self.input_action_space = input_action_space
         self.input_observation_space = input_observation_space
+
+        # Store child's constructor args and kwargs for the default
+        # `get_ctor_args_and_kwargs` implementation (to be able to restore from a
+        # checkpoint).
+        if self.__class__.__dict__.get("__init__") is not None:
+            caller_frame = inspect.stack()[1].frame
+            arg_info = inspect.getargvalues(caller_frame)
+            # Separate positional arguments and keyword arguments.
+            caller_locals = (
+                arg_info.locals
+            )  # Dictionary of all local variables in the caller
+            self._ctor_kwargs = {
+                arg: caller_locals[arg] for arg in arg_info.args if arg != "self"
+            }
+        else:
+            self._ctor_kwargs = {
+                "input_observation_space": self.input_observation_space,
+                "input_action_space": self.input_action_space,
+            }
 
     @OverrideToImplementCustomLogic
     def recompute_output_observation_space(
@@ -166,25 +183,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             The new observation space (after data has passed through this ConnectorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_observation_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_observation_space_from_input_spaces
-        )
-        child_source = inspect.getsource(
-            self.recompute_observation_space_from_input_spaces
-        )
-        if parent_source == child_source:
-            return self.input_observation_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_observation_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_observation_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_observation_space_from_input_spaces()
+        return self.input_observation_space
 
     @OverrideToImplementCustomLogic
     def recompute_output_action_space(
@@ -213,23 +212,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
             The new action space (after data has passed through this ConenctorV2
             piece).
         """
-        # Check, whether user is still overriding the old
-        # `recompute_action_space_from_input_spaces()`.
-        parent_source = inspect.getsource(
-            ConnectorV2.recompute_action_space_from_input_spaces
-        )
-        child_source = inspect.getsource(self.recompute_action_space_from_input_spaces)
-        if parent_source == child_source:
-            return self.input_action_space
-        else:
-            deprecation_warning(
-                old="ConnectorV2.recompute_action_space_from_input_spaces()",
-                new="ConnectorV2.recompute_output_action_space("
-                "input_observation_space: gym.Space, input_action_space: gym.Space) "
-                "-> gym.Space",
-                error=False,
-            )
-            return self.recompute_action_space_from_input_spaces()
+        return self.input_action_space
 
     @abc.abstractmethod
     def __call__(
@@ -702,7 +685,7 @@ class ConnectorV2(Checkpointable, abc.ABC):
         if isinstance(items_to_add, list):
             if len(items_to_add) != num_items:
                 raise ValueError(
-                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"Mismatch between `num_items` ({num_items}) and the length "
                     f"of the provided list ({len(items_to_add)}) in "
                     f"{ConnectorV2.__name__}.add_n_batch_items()!"
                 )
@@ -949,8 +932,8 @@ class ConnectorV2(Checkpointable, abc.ABC):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
         return (
-            (self.input_observation_space, self.input_action_space),  # *args
-            self._kwargs,  # **kwargs
+            (),  # *args
+            self._ctor_kwargs,  # **kwargs
         )
 
     def reset_state(self) -> None:
@@ -1028,21 +1011,3 @@ class ConnectorV2(Checkpointable, abc.ABC):
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__
-
-    @Deprecated(
-        new="ConnectorV2.recompute_output_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_observation_space_from_input_spaces(self):
-        pass
-
-    @Deprecated(
-        new="ConnectorV2.recompute_action_observation_space("
-        "input_observation_space: gym.Space, input_action_space: gym.Space) "
-        "-> gym.Space",
-        error=True,
-    )
-    def recompute_action_space_from_input_spaces(self):
-        pass

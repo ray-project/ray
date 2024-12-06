@@ -314,14 +314,14 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// \param gcs_publisher Used to publish gcs message.
   GcsActorManager(
       std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-      std::shared_ptr<GcsTableStorage> gcs_table_storage,
-      std::shared_ptr<GcsPublisher> gcs_publisher,
+      GcsTableStorage *gcs_table_storage,
+      GcsPublisher *gcs_publisher,
       RuntimeEnvManager &runtime_env_manager,
       GcsFunctionManager &function_manager,
       std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
-      const rpc::ClientFactoryFn &worker_client_factory = nullptr);
+      const rpc::CoreWorkerClientFactoryFn &worker_client_factory = nullptr);
 
-  ~GcsActorManager() = default;
+  ~GcsActorManager() override = default;
 
   void HandleRegisterActor(rpc::RegisterActorRequest request,
                            rpc::RegisterActorReply *reply,
@@ -687,12 +687,12 @@ class GcsActorManager : public rpc::ActorInfoHandler {
   /// The scheduler to schedule all registered actors.
   std::shared_ptr<GcsActorSchedulerInterface> gcs_actor_scheduler_;
   /// Used to update actor information upon creation, deletion, etc.
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
+  GcsTableStorage *gcs_table_storage_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsPublisher *gcs_publisher_;
   /// Factory to produce clients to workers. This is used to communicate with
   /// actors and their owners.
-  rpc::ClientFactoryFn worker_client_factory_;
+  rpc::CoreWorkerClientFactoryFn worker_client_factory_;
   /// A callback that is used to destroy placemenet group owned by the actor.
   /// This method MUST BE IDEMPOTENT because it can be called multiple times during
   /// actor destroy process.
