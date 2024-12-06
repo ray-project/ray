@@ -1516,7 +1516,7 @@ py-cpuinfo==9.0.0
     # via deepspeed
 py-partiql-parser==0.5.0
     # via moto
-py-spy==0.3.14
+py-spy==0.4.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements.txt
 py4j==0.10.9.7
     # via pyspark
