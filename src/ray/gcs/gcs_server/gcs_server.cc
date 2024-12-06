@@ -882,7 +882,7 @@ void GcsServer::TryGlobalGC() {
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
-    ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
+    ray_syncer_->BroadcastMessage(std::move(msg));
     global_gc_throttler_->RunNow();
   }
 }
