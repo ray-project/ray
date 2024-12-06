@@ -537,7 +537,6 @@ class TestGenerateActorToExecutionSchedule:
         ops_reader: _DAGOperationGraphNode,
     ):
         """
-        [CL]
         Add a data dependency between the WRITE operation of the writer and the READ
         operation of the reader.
 
