@@ -1,5 +1,6 @@
 import io
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -61,6 +62,18 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
+@dataclass
+class FileShuffleConfig:
+    """Configuration for file shuffling."""
+
+    seed: Optional[int] = None
+
+    def __post_init__(self):
+        """Ensure that the seed is either None or an integer."""
+        if self.seed is not None and not isinstance(self.seed, int):
+            raise ValueError("Seed must be an integer or None.")
+
+
 @DeveloperAPI
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
@@ -88,7 +101,7 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
+        shuffle: Union[FileShuffleConfig, Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -154,6 +167,9 @@ class FileBasedDatasource(Datasource):
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            # Create a NumPy random generator with a fixed seed if provided
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -526,8 +542,8 @@ def _open_file_with_retry(
 
 
 def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"]:
+    if shuffle not in [None, "files", FileShuffleConfig]:
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files'."
+            "Valid values are None, 'files', 'FileShuffleConfig'."
         )
