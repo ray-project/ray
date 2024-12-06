@@ -1444,7 +1444,7 @@ def get_address(redis_address):
 
 def start_gcs_server(
     redis_address: str,
-    log_dir: str,
+    event_log_dir: str,
     ray_log_sink_filename: Optional[str],
     session_name: str,
     redis_username: Optional[str] = None,
@@ -1459,7 +1459,7 @@ def start_gcs_server(
 
     Args:
         redis_address: The address that the Redis server is listening on.
-        log_dir: The path of the dir where gcs event log files are created.
+        event_log_dir: The path of the dir where gcs event log files are created.
         ray_log_sink_filename: The filename to dump gcs server log, which is written
             via `RAY_LOG`.
         session_name: The session name (cluster id) of this cluster.
@@ -1478,7 +1478,7 @@ def start_gcs_server(
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--log_dir={log_dir}",
+        f"--log_dir={event_log_dir}",
         f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
