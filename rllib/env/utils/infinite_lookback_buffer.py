@@ -540,7 +540,7 @@ class InfiniteLookbackBuffer:
         if _add_last_ts_value is not None:
             if self.finalized:
                 data_to_use = tree.map_structure(
-                    lambda s, l: np.append(s, l), data_to_use, _add_last_ts_value
+                    lambda s, last: np.append(s, last), data_to_use, _add_last_ts_value
                 )  # np.append(data_to_use.copy(), _add_last_ts_value)
             else:
                 data_to_use = data_to_use.copy()

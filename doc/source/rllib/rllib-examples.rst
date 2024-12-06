@@ -186,6 +186,13 @@ GPU (for Training and Sampling)
    with performance improvements during evaluation.
 
 
+Hierarchical Training
++++++++++++++++++++++
+
+- `Policy Inference after Training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
+   Demonstrates performing inference with a trained policy, showing how to load a trained model and use it to make decisions in a simulated environment.
+
+
 Inference (of Models/Policies)
 ++++++++++++++++++++++++++++++
 

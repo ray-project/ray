@@ -1,5 +1,4 @@
 import gymnasium as gym
-import numpy as np
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 
@@ -61,7 +60,7 @@ class SixRoomEnv(gym.Env):
 
         # User can provide a custom map or a recognized map name (small, medium, large).
         self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
-        self.max_ts = config.get("max_ts", 100)
+        self.time_limit = config.get("time_limit", 50)
 
         # Define observation space: Discrete, index fields.
         self.observation_space = gym.spaces.Discrete(len(self.map) * len(self.map[0]))
@@ -92,7 +91,7 @@ class SixRoomEnv(gym.Env):
             return self._agent_discrete_pos, 10.0, True, False, {}
 
         # Small step penalty.
-        return self._agent_discrete_pos, -0.01, False, self._ts >= self.max_ts, {}
+        return self._agent_discrete_pos, -0.01, False, self._ts >= self.time_limit, {}
 
     @property
     def _agent_discrete_pos(self):
@@ -109,7 +108,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         # User can provide a custom map or a recognized map name (small, medium, large).
         self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
         self.max_steps_low_level = config.get("max_steps_low_level", 10)
-        self.max_ts = config.get("max_ts", 100)
+        self.time_limit = config.get("time_limit", 50)
 
         # self.flat = config.get("flat", False)
         self.possible_agents = [
@@ -120,16 +119,21 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         ]
         self.agents = self.possible_agents
 
-        # Define low-level observation space: Discrete, index fields.
+        # Define basic observation space: Discrete, index fields.
         observation_space = gym.spaces.Discrete(len(self.map) * len(self.map[0]))
+        # Low level agents always see where they are right now and what the target
+        # state should be.
+        low_level_observation_space = gym.spaces.Tuple(
+            (observation_space, observation_space)
+        )
         # Primitive actions: up, down, left, right.
         low_level_action_space = gym.spaces.Discrete(4)
 
         self.observation_spaces = {
             "high_level_agent": observation_space,
-            "low_level_agent_0": observation_space,
-            "low_level_agent_1": observation_space,
-            "low_level_agent_2": observation_space,
+            "low_level_agent_0": low_level_observation_space,
+            "low_level_agent_1": low_level_observation_space,
+            "low_level_agent_2": low_level_observation_space,
         }
         self.action_spaces = {
             "high_level_agent": gym.spaces.Tuple(
@@ -163,7 +167,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
     def step(self, action_dict):
         self._ts += 1
 
-        terminateds = {"__all__": self._ts >= self.max_ts}
+        terminateds = {"__all__": self._ts >= self.time_limit}
         truncateds = {"__all__": False}
 
         # High-level agent acted: Set next goal and next low-level policy to use.
@@ -176,8 +180,19 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             # Return next low-level observation for the now-active agent.
             # We want this agent to act next.
             return (
-                {low_level_agent: self._agent_discrete_pos},
-                {"high_level_agent": 0.0},
+                {
+                    low_level_agent: (
+                        self._agent_discrete_pos,  # current
+                        self._high_level_action[0],  # target
+                    )
+                },
+                # Penalty for a target state that's close to the current state.
+                {
+                    "high_level_agent": -self.eucl_dist(
+                        self._agent_discrete_pos, self._high_level_action[0], self.map
+                    )
+                    / 10.0,
+                },
                 terminateds,
                 truncateds,
                 {},
@@ -218,9 +233,9 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
 
             # Low-level agent has reached its target location:
             # - Hand back control to high-level agent.
-            # - Reward low level agent and high-level agent.
+            # - Reward low level agent and high-level agent with small rewards.
             elif self._agent_discrete_pos == target_discrete_pos:
-                rewards = {"high_level_agent": 1.0, low_level_agent: 1.0}
+                rewards = {"high_level_agent": 0.1, low_level_agent: 0.1}
                 return (
                     {
                         "high_level_agent": self._agent_discrete_pos,
@@ -251,7 +266,10 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 else:
                     return (
                         {
-                            low_level_agent: self._agent_discrete_pos,
+                            low_level_agent: (
+                                self._agent_discrete_pos,  # current
+                                target_discrete_pos,  # target
+                            ),
                         },
                         rewards,
                         terminateds,
@@ -265,6 +283,12 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         y = self._agent_pos[1]
         # discrete position = row idx * columns + col idx
         return x * len(self.map[0]) + y
+
+    @staticmethod
+    def eucl_dist(pos1, pos2, map):
+        x1, y1 = pos1 % len(map[0]), pos1 // len(map)
+        x2, y2 = pos2 % len(map[0]), pos2 // len(map)
+        return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
 
 
 def _get_next_pos(action, pos):

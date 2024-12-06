@@ -2590,24 +2590,13 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
-#@OldAPIStack
 py_test(
-    name = "examples/hierarchical/hierarchical_training_tf",
+    name = "examples/hierarchical/hierarchical_training",
     main = "examples/hierarchical/hierarchical_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
+    size = "large",
     srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = [ "--framework=tf", "--stop-reward=0.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/hierarchical/hierarchical_training_torch",
-    main = "examples/hierarchical/hierarchical_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = ["--framework=torch", "--stop-reward=0.0"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=4.0", "--map=large", "--time-limit=50"]
 )
 
 # subdirectory: inference/
