@@ -7,6 +7,7 @@ from ray.data._internal.execution.interfaces import (
 )
 from ray.data._internal.execution.operators.base_physical_operator import NAryOperator
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 
 class UnionOperator(NAryOperator):
@@ -15,6 +16,7 @@ class UnionOperator(NAryOperator):
 
     def __init__(
         self,
+        data_context: DataContext,
         *input_ops: PhysicalOperator,
     ):
         """Create a UnionOperator.
@@ -38,7 +40,7 @@ class UnionOperator(NAryOperator):
 
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {"Union": []}
-        super().__init__(*input_ops)
+        super().__init__(data_context, *input_ops)
 
     def start(self, options: ExecutionOptions):
         # Whether to preserve the order of the input data (both the
