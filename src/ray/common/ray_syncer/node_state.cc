@@ -21,6 +21,11 @@ namespace ray::syncer {
 
 NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 
+void NodeState::SetRaySyncMsgObserverForOnce(RaySyncMsgObserver ray_sync_msg_observer) {
+  RAY_CHECK(!ray_sync_msg_observer_);
+  ray_sync_msg_observer_ = std::move(ray_sync_msg_observer);
+}
+
 bool NodeState::SetComponent(MessageType message_type,
                              const ReporterInterface *reporter,
                              ReceiverInterface *receiver) {
@@ -67,6 +72,9 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   }
 
   current = message;
+  if (ray_sync_msg_observer_) {
+    ray_sync_msg_observer_(*message);
+  }
   auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {
     RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))

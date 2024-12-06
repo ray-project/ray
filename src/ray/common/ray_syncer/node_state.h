@@ -16,6 +16,7 @@
 
 #include <array>
 #include <cstdint>
+#include <functional>
 #include <memory>
 #include <optional>
 
@@ -74,6 +75,10 @@ class NodeState {
   /// \return true if the local node doesn't have message with newer version.
   bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
+  /// Set the observer callable for sync message response for once.
+  /// This function is expected to call only once, repeated invocations throws exception.
+  void SetRaySyncMsgObserverForOnce(RaySyncMsgObserver ray_sync_msg_observer);
+
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
       std::string,
@@ -99,6 +104,12 @@ class NodeState {
       std::string,
       std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
       cluster_view_;
+
+  /// Sync message observer, which is a callback on received message response.
+  ///
+  /// As of now we only have one single usage for health check status update, update to
+  /// vector if we have more observers.
+  RaySyncMsgObserver ray_sync_msg_observer_;
 };
 
 }  // namespace ray::syncer

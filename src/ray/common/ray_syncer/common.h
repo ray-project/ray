@@ -16,11 +16,18 @@
 
 #pragma once
 
+#include <functional>
+
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray::syncer {
 
 inline constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
+
+// Observer callable for sync message response.
+using RaySyncMsgObserver =
+    std::function<void(const ::ray::rpc::syncer::RaySyncMessage &)>;
 
 }  // namespace ray::syncer

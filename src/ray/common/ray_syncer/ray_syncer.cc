@@ -72,7 +72,7 @@ void RaySyncer::Connect(const std::string &node_id,
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([=]() {
         auto stub = ray::rpc::syncer::RaySyncer::NewStub(channel);
-        auto reactor = new RayClientBidiReactor(
+        auto *reactor = new RayClientBidiReactor(
             /* remote_node_id */ node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
@@ -142,6 +142,10 @@ void RaySyncer::Disconnect(const std::string &node_id) {
     reactor->Disconnect();
   });
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
+}
+
+void RaySyncer::SetRaySyncMsgObserverForOnce(RaySyncMsgObserver ray_sync_msg_observer) {
+  node_state_->SetRaySyncMsgObserverForOnce(std::move(ray_sync_msg_observer));
 }
 
 void RaySyncer::Register(MessageType message_type,
