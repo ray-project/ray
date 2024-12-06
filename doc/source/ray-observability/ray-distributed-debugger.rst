@@ -35,7 +35,32 @@ Create a new virtual environment and install dependencies.
 Start a Ray cluster
 ~~~~~~~~~~~~~~~~~~~
 
-Run `ray start --head` to start a Ray cluster.
+.. tab-set::
+
+  .. tab-item:: Local
+
+    Run `ray start --head` to start a local Ray cluster.
+
+  .. tab-item:: KubeRay
+
+    Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
+    You will need to connect VS Code to the cluster, one way to do that is to add
+
+    .. code-block:: yaml
+
+        ports:
+        - containerPort: 22
+          name: ssd
+
+
+    to the `ray-head` container and make sure sshd is running in the `ray-head` container. You can then connect VS Code to the cluster by running
+
+    .. code-block:: bash
+
+        kubectl port-forward service/raycluster-sample-head-svc 2222:22
+
+    and after checking that `ssh -p 2222 ray@localhost` works, connect VS Code as described in the
+    `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
 
 
 Register the cluster
