@@ -7,16 +7,21 @@ from ray.tests.conftest import *  # noqa
 
 import pytest
 
+
 @pytest.fixture
-def cleanup_files(filename: str):
-    """Helper function to delete files generated during the test."""
-    for ext in ["", ".png", ".pdf", ".jpeg", ".dot"]:
-        file_path = filename + ext
-        if os.path.exists(file_path):
-            os.remove(file_path)
+def cleanup_files():
+    """Pytest fixture to clean up files generated during the test."""
+
+    def _cleanup_files(filename: str):
+        for ext in ["", ".png", ".pdf", ".jpeg", ".dot"]:
+            file_path = filename + ext
+            if os.path.exists(file_path):
+                os.remove(file_path)
+
+    return _cleanup_files
 
 
-def test_visualize_basic(ray_start_regular):
+def test_visualize_basic(ray_start_regular, cleanup_files):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
@@ -60,7 +65,7 @@ def test_visualize_basic(ray_start_regular):
     cleanup_files("compiled_graph")
 
 
-def test_visualize_multi_return(ray_start_regular):
+def test_visualize_multi_return(ray_start_regular, cleanup_files):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
@@ -108,7 +113,7 @@ def test_visualize_multi_return(ray_start_regular):
     cleanup_files("compiled_graph")
 
 
-def test_visualize_multi_return2(ray_start_regular):
+def test_visualize_multi_return2(ray_start_regular, cleanup_files):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
@@ -171,7 +176,7 @@ def test_visualize_multi_return2(ray_start_regular):
     cleanup_files("compiled_graph")
 
 
-def test_visualize_multi_input_nodes(ray_start_regular):
+def test_visualize_multi_input_nodes(ray_start_regular, cleanup_files):
     """
     Expect output or dot_source:
         MultiOutputNode" fillcolor=yellow shape=rectangle style=filled]
