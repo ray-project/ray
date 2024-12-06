@@ -2552,6 +2552,37 @@
       cluster:
         cluster_compute: 2gpus_64cpus_gce.yaml
 
+- name: rllib_learning_tests_halfcheetah_appo_torch
+  group: RLlib tests
+  working_dir: rllib_tests
+
+  stable: true
+
+  frequency: nightly
+  team: rllib
+  cluster:
+    byod:
+      type: gpu
+      post_build_script: byod_rllib_test.sh
+      runtime_env:
+        - RLLIB_TEST_NO_JAX_IMPORT=1
+        - LD_LIBRARY_PATH=$LD_LIBRARY_PATH:/home/ray/.mujoco/mujoco210/bin
+    cluster_compute: 1gpu_32cpus.yaml
+
+  run:
+    timeout: 5400
+    script: python learning_tests/tuned_examples/appo/halfcheetah_appo.py --enable-new-api-stack --num-learners=0 --num-env-runners=31 --stop-reward=1000.0 --as-release-test
+
+  alert: default
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: 2gpus_32cpus_gce.yaml
+
 # --------------------------
 # DreamerV3
 # --------------------------

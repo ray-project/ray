@@ -246,9 +246,9 @@ class ClusterTaskManagerTest : public ::testing::Test {
             id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
         dependency_manager_(missing_objects_),
-        local_task_manager_(std::make_shared<LocalTaskManager>(
+        local_task_manager_(std::make_unique<LocalTaskManager>(
             id_,
-            scheduler_,
+            *scheduler_,
             dependency_manager_, /* is_owner_alive= */
             [this](const WorkerID &worker_id, const NodeID &node_id) {
               return is_owner_alive_;
@@ -279,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*get_time=*/[this]() { return current_time_ms_; })),
         task_manager_(
             id_,
-            scheduler_,
+            *scheduler_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
@@ -290,7 +290,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },
-            local_task_manager_,
+            *local_task_manager_,
             /*get_time=*/[this]() { return current_time_ms_; }) {
     RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
   }
@@ -385,7 +385,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
   int64_t current_time_ms_ = 0;
 
   MockTaskDependencyManager dependency_manager_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::unique_ptr<LocalTaskManager> local_task_manager_;
   ClusterTaskManager task_manager_;
 };
 
