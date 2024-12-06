@@ -78,9 +78,9 @@ from ray.rllib.utils.test_utils import (
 )
 
 parser = add_rllib_example_script_args(
-    default_reward=100.0,
-    default_timesteps=1000000,
-    default_iters=200,
+    default_reward=5.0,
+    default_timesteps=2000000,
+    default_iters=400,
 )
 parser.add_argument(
     "--flat",
@@ -140,8 +140,9 @@ if __name__ == "__main__":
             ),
         )
         .training(
+            lr=0.0001,
             num_epochs=10,
-            entropy_coeff=0.01,
+            entropy_coeff=0.1,
         )
     )
 

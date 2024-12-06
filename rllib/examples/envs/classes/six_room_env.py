@@ -188,10 +188,15 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 },
                 # Penalty for a target state that's close to the current state.
                 {
-                    "high_level_agent": -self.eucl_dist(
-                        self._agent_discrete_pos, self._high_level_action[0], self.map
+                    "high_level_agent": (
+                        self.eucl_dist(
+                            self._agent_discrete_pos,
+                            self._high_level_action[0],
+                            self.map,
+                        )
+                        / (len(self.map) ** 2 + len(self.map[0]) ** 2) ** 0.5
                     )
-                    / 10.0,
+                    - 1.0,
                 },
                 terminateds,
                 truncateds,
