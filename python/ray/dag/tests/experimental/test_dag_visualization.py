@@ -10,7 +10,7 @@ import pytest
 
 @pytest.fixture
 def cleanup_files():
-    """Pytest fixture to clean up files generated during the test."""
+    """Clean up files generated during the test."""
 
     def _cleanup_files(filename: str):
         for ext in ["", ".png", ".pdf", ".jpeg", ".dot"]:
