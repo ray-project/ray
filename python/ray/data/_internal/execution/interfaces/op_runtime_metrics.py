@@ -414,7 +414,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
     @property
     def obj_store_mem_max_pending_output_per_task(self) -> Optional[float]:
         """Estimated size in bytes of output blocks in a task's generator buffer."""
-        context = ray.data.DataContext.get_current()
+        context = self._op.data_context
         if context._max_num_blocks_in_streaming_gen_buffer is None:
             return None
 
@@ -560,7 +560,7 @@ class OpRuntimeMetrics(metaclass=OpRuntimesMetricsMeta):
             input_size,
         )
 
-        ctx = ray.data.context.DataContext.get_current()
+        ctx = self._op.data_context
         if ctx.enable_get_object_locations_for_metrics:
             locations = ray.experimental.get_object_locations(inputs.block_refs)
             for block, meta in inputs.blocks:

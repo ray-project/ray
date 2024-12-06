@@ -9,6 +9,7 @@ from ray.data._internal.execution.interfaces import (
 from ray.data._internal.logical.interfaces import LogicalOperator
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.stats import StatsDict
+from ray.data.context import DataContext
 
 
 class OneToOneOperator(PhysicalOperator):
@@ -21,6 +22,7 @@ class OneToOneOperator(PhysicalOperator):
         self,
         name: str,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
     ):
         """Create a OneToOneOperator.
@@ -30,7 +32,7 @@ class OneToOneOperator(PhysicalOperator):
             target_max_block_size: The target maximum number of bytes to
                 include in an output block.
         """
-        super().__init__(name, [input_op], target_max_block_size)
+        super().__init__(name, [input_op], data_context, target_max_block_size)
 
     @property
     def input_dependency(self) -> PhysicalOperator:
@@ -47,6 +49,7 @@ class AllToAllOperator(PhysicalOperator):
         self,
         bulk_fn: AllToAllTransformFn,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int],
         num_outputs: Optional[int] = None,
         sub_progress_bar_names: Optional[List[str]] = None,
@@ -71,7 +74,7 @@ class AllToAllOperator(PhysicalOperator):
         self._input_buffer: List[RefBundle] = []
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
-        super().__init__(name, [input_op], target_max_block_size)
+        super().__init__(name, [input_op], data_context, target_max_block_size)
 
     def num_outputs_total(self) -> Optional[int]:
         return (
@@ -158,6 +161,7 @@ class NAryOperator(PhysicalOperator):
 
     def __init__(
         self,
+        data_context: DataContext,
         *input_ops: LogicalOperator,
     ):
         """Create a OneToOneOperator.
@@ -167,4 +171,6 @@ class NAryOperator(PhysicalOperator):
         """
         input_names = ", ".join([op._name for op in input_ops])
         op_name = f"{self.__class__.__name__}({input_names})"
-        super().__init__(op_name, list(input_ops), target_max_block_size=None)
+        super().__init__(
+            op_name, list(input_ops), data_context, target_max_block_size=None
+        )
