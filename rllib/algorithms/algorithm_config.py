@@ -4704,6 +4704,20 @@ class AlgorithmConfig(_Config):
                 )
 
     def _validate_offline_settings(self):
+        # If a user does not have an environment and cannot run evaluation,
+        # or does not want to run evaluation, she needs to provide at least
+        # action and observation spaces. Note, we require here the spaces,
+        # i.e. a user cannot provide an environment instead because we do
+        # not want to create the environment to receive spaces.
+        if self.is_offline and (
+            not (self.evaluation_num_env_runners > 0 or self.evaluation_interval)
+            and (self.action_space is None or self.observation_space is None)
+        ):
+            raise ValueError(
+                "If no evaluation should be run, `action_space` and "
+                "`observation_space` must be provided."
+            )
+
         from ray.rllib.offline.offline_data import OfflineData
         from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 
@@ -4757,6 +4771,22 @@ class AlgorithmConfig(_Config):
                 "recorded (i.e. `batch_mode=='complete_episodes'`). Otherwise "
                 "recorded episodes cannot be read in for training."
             )
+
+    @property
+    def is_offline(self) -> bool:
+        """Defines, if this config is for offline RL."""
+        return (
+            # Does the user provide any input path/class?
+            bool(self.input_)
+            # Is it a real string path or list of such paths.
+            and (
+                isinstance(self.input_, str)
+                or (isinstance(self.input_, list) and isinstance(self.input_[0], str))
+            )
+            # Could be old stack - which is considered very differently.
+            and self.input_ != "sampler"
+            and self.enable_rl_module_and_learner
+        )
 
     @staticmethod
     def _serialize_dict(config):
