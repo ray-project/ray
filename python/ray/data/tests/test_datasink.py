@@ -1,5 +1,5 @@
 import pickle
-from typing import Any, Iterable, List, Tuple, cast
+from typing import Any, Iterable, List
 
 import pytest
 
