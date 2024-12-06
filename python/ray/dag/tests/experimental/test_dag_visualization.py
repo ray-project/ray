@@ -7,7 +7,7 @@ from ray.tests.conftest import *  # noqa
 
 import pytest
 
-
+@pytest.fixture
 def cleanup_files(filename: str):
     """Helper function to delete files generated during the test."""
     for ext in ["", ".png", ".pdf", ".jpeg", ".dot"]:
