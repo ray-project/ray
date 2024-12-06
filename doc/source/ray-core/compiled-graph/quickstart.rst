@@ -71,8 +71,8 @@ Let's create an equivalent program using Ray Compiled Graph. Note 4 key differen
     Execution takes 86.72196418046951 us
 
 The performance of the same DAG is improved by 10X! It is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookeeping and distributed protocol, the classic Ray Core APIs have
-usually 1ms+ system overhead. Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
+the system overhead. Due to various bookeeping and distributed protocol, the classic Ray Core APIs usually have 1ms+ system overhead. 
+Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
 
 GPU to GPU Communication
@@ -123,7 +123,7 @@ To support GPU to GPU RDMA via NCCL, you can use ``with_type_hint`` API with Com
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
-    # Compile API prepares the nccl communicator across all workers and schedule operations
+    # Compile API prepares the NCCL communicator across all workers and schedule operations
     # accordingly.
     dag = dag.experimental_compile()
     assert ray.get(dag.execute((10, ))) == (10, )

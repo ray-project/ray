@@ -10,7 +10,7 @@ As large language models become common, programming distributed systems with mul
 Ray APIs facilitate this but have limitations: a high system overhead of over 1ms per task launch, 
 unsuitable for high-performance tasks like LLM inference, and lack direct GPU-to-GPU RDMA communication, requiring external tools like NCCL. 
 
-Ray Compiled Graph give you a classic Ray Core-like API but with:
+Ray Compiled Graph gives you a classic Ray Core-like API but with:
 
 - **Much lower system overhead** (less than 50us) for workloads that repeatedly execute the same task DAG
 - **Native support for GPU-GPU communication**, via NCCL with various optimization such as overlapping compute and communication.
@@ -18,14 +18,15 @@ Ray Compiled Graph give you a classic Ray Core-like API but with:
 .. testcode::
 
     # Ray Core API for remote execution
-    # 1ms overhead to invoke `recv`
+    # ~1ms overhead to invoke `recv`
     ref = receiver.recv.remote(data)
     ray.get(ref)
 
     # Compiled Graph for remote execution
-    # less than 50us overhead to invoke `recv`
+    # less than 50us overhead to invoke `recv` (during `dag.execute(data)`)
     with InputNode() as inp:
         dag = receiver.recv.bind(inp)
+
     dag = dag.experimental_compile()
     ref = dag.execute(data)
     ray.get(ref)
@@ -34,7 +35,7 @@ Ray Compiled Graph has a static execution model which is different from classic 
 of the static nature, Ray Compiled Graph can perform various optimization such as
 
 - Pre-allocate resources so that it can reduce system overhead.
-- Prepare NCCL communicators and schedule it in a way it has no deadlocks.
+- Prepare NCCL communicators and schedule it in a way that avoids deadlocks.
 - Automatically overlap GPU compute and communication.
 - Improve multi node performance.
 
@@ -42,9 +43,9 @@ Use Cases
 ---------
 Ray Compiled Graph APIs are designed to simplify high-performance multi-GPU workloads.
 
-- Applications with sub-millisecond level runtime requirements (which is highly affected by 1ms+ system overhead). I.e., LLM inference.
-- Multi GPU applications such as LLM inference or train.
-- Multi GPU applications with heterogenous compute pattern. See `Heterogenous training with Ray Compiled Graph <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ for more details.
+- Applications with sub-millisecond level runtime requirements (which is highly affected by 1ms+ system overhead). E.g., LLM inference.
+- Multi GPU applications such as LLM inference or training.
+- Multi GPU applications with heterogenous compute patterns. See `Heterogenous training with Ray Compiled Graph <https://www.youtube.com/watch?v=Mg08QTBILWU>`_ for more details.
 
 More Resources
 --------------

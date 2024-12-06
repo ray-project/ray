@@ -17,5 +17,5 @@ If you’re brand new to Ray, we recommend starting with the :ref:`walkthrough <
     scheduling/index.rst
     fault-tolerance
     patterns/index.rst
-    advanced-topics
     compiled-graph/ray-compiled-graph
+    advanced-topics
