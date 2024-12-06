@@ -15,6 +15,7 @@
 #include "ray/gcs/gcs_server/gcs_server.h"
 
 #include <fstream>
+#include <utility>
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -65,20 +66,31 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
                            RayConfig::instance().gcs_server_rpc_client_thread_num()),
       raylet_client_pool_(
           std::make_unique<rpc::NodeManagerClientPool>(client_call_manager_)),
-      pubsub_periodical_runner_(io_context_provider_.GetIOContext<GcsPublisher>()),
-      periodical_runner_(io_context_provider_.GetDefaultIOContext()),
+      pubsub_periodical_runner_(
+          PeriodicalRunner::Create(io_context_provider_.GetIOContext<GcsPublisher>())),
+      periodical_runner_(
+          PeriodicalRunner::Create(io_context_provider_.GetDefaultIOContext())),
       is_started_(false),
       is_stopped_(false) {
-  // Init GCS table storage.
+  // Init GCS table storage. Note this is on the default io context, not the one with
+  // GcsInternalKVManager, to avoid congestion on the latter.
   RAY_LOG(INFO) << "GCS storage type is " << storage_type_;
+  auto &io_context = io_context_provider_.GetDefaultIOContext();
   switch (storage_type_) {
   case StorageType::IN_MEMORY:
-    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(
-        io_context_provider_.GetDefaultIOContext());
+    gcs_table_storage_ = std::make_unique<InMemoryGcsTableStorage>(io_context);
     break;
-  case StorageType::REDIS_PERSIST:
-    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(GetOrConnectRedis());
+  case StorageType::REDIS_PERSIST: {
+    auto redis_client = CreateRedisClient(io_context);
+    gcs_table_storage_ = std::make_unique<gcs::RedisGcsTableStorage>(redis_client);
+    // Init redis failure detector.
+    gcs_redis_failure_detector_ =
+        std::make_unique<GcsRedisFailureDetector>(io_context, redis_client, []() {
+          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
+        });
+    gcs_redis_failure_detector_->Start();
     break;
+  }
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
@@ -117,7 +129,7 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
           rpc::ChannelType::RAY_LOG_CHANNEL,
           rpc::ChannelType::RAY_NODE_RESOURCE_USAGE_CHANNEL,
       },
-      /*periodical_runner=*/&pubsub_periodical_runner_,
+      /*periodical_runner=*/*pubsub_periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
@@ -241,7 +253,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // data.
   rpc_server_.Run();
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         RAY_LOG(INFO) << GetDebugState();
         PrintAsioStats();
@@ -252,7 +264,7 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   global_gc_throttler_ =
       std::make_unique<Throttler>(RayConfig::instance().global_gc_min_interval_s() * 1e9);
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugStateToFile();
         TryGlobalGC();
@@ -338,7 +350,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       io_context_provider_.GetDefaultIOContext(), *gcs_resource_manager_));
   rpc_server_.RegisterService(*node_resource_info_service_);
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         for (const auto &alive_node : gcs_node_manager_->GetAllAliveNodes()) {
           std::shared_ptr<ray::RayletClientInterface> raylet_client;
@@ -567,15 +579,16 @@ void GcsServer::InitUsageStatsClient() {
 void GcsServer::InitKVManager() {
   // TODO (yic): Use a factory with configs
   std::unique_ptr<InternalKVInterface> instance;
+  auto &io_context = io_context_provider_.GetIOContext<GcsInternalKVManager>();
   switch (storage_type_) {
   case (StorageType::REDIS_PERSIST):
     instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<RedisStoreClient>(GetOrConnectRedis()));
+        std::make_unique<RedisStoreClient>(CreateRedisClient(io_context)));
     break;
   case (StorageType::IN_MEMORY):
-    instance = std::make_unique<StoreClientInternalKV>(
-        std::make_unique<ObservableStoreClient>(std::make_unique<InMemoryStoreClient>(
-            io_context_provider_.GetDefaultIOContext())));
+    instance =
+        std::make_unique<StoreClientInternalKV>(std::make_unique<ObservableStoreClient>(
+            std::make_unique<InMemoryStoreClient>(io_context)));
     break;
   default:
     RAY_LOG(FATAL) << "Unexpected storage type! " << storage_type_;
@@ -588,7 +601,7 @@ void GcsServer::InitKVManager() {
 void GcsServer::InitKVService() {
   RAY_CHECK(kv_manager_);
   kv_service_ = std::make_unique<rpc::InternalKVGrpcService>(
-      io_context_provider_.GetDefaultIOContext(), *kv_manager_);
+      io_context_provider_.GetIOContext<GcsInternalKVManager>(), *kv_manager_);
   // Register service.
   rpc_server_.RegisterService(*kv_service_, false /* token_auth */);
 }
@@ -831,20 +844,12 @@ std::string GcsServer::GetDebugState() const {
   return stream.str();
 }
 
-std::shared_ptr<RedisClient> GcsServer::GetOrConnectRedis() {
-  if (redis_client_ == nullptr) {
-    redis_client_ = std::make_shared<RedisClient>(GetRedisClientOptions());
-    auto status = redis_client_->Connect(io_context_provider_.GetDefaultIOContext());
-    RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
-
-    // Init redis failure detector.
-    gcs_redis_failure_detector_ = std::make_unique<GcsRedisFailureDetector>(
-        io_context_provider_.GetDefaultIOContext(), redis_client_, []() {
-          RAY_LOG(FATAL) << "Redis connection failed. Shutdown GCS.";
-        });
-    gcs_redis_failure_detector_->Start();
-  }
-  return redis_client_;
+std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
+    instrumented_io_context &io_service) {
+  auto redis_client = std::make_shared<RedisClient>(GetRedisClientOptions());
+  auto status = redis_client->Connect(io_service);
+  RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+  return redis_client;
 }
 
 void GcsServer::PrintAsioStats() {

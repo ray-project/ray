@@ -31,7 +31,7 @@ using namespace pub_internal;
 
 class PublisherTest : public ::testing::Test {
  public:
-  PublisherTest() { periodic_runner_.reset(new PeriodicalRunner(io_service_)); }
+  PublisherTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {}
 
   ~PublisherTest() {}
 
@@ -44,7 +44,7 @@ class PublisherTest : public ::testing::Test {
             rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL,
             rpc::ChannelType::RAY_ERROR_INFO_CHANNEL,
         },
-        /*periodic_runner=*/periodic_runner_.get(),
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[this]() { return current_time_; },
         /*subscriber_timeout_ms=*/subscriber_timeout_ms_,
         /*batch_size*/ 100,
@@ -118,7 +118,7 @@ class PublisherTest : public ::testing::Test {
   instrumented_io_context io_service_;
   rpc::PubsubLongPollingReply reply;
   rpc::SendReplyCallback send_reply_callback;
-  std::shared_ptr<PeriodicalRunner> periodic_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::shared_ptr<Publisher> publisher_;
   absl::flat_hash_map<ObjectID, absl::flat_hash_set<NodeID>> subscribers_map_;
   const uint64_t subscriber_timeout_ms_ = 30000;

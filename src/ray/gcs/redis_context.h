@@ -26,6 +26,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
 #include "ray/util/logging.h"
+#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -134,9 +135,15 @@ struct RedisRequestContext {
   std::vector<size_t> argc_;
 };
 
+// RunArgvAsync is thread-safe, can be accessed from multiple threads. The work is
+// dispatched to the io_service thread, and the callback is dispatched back to the
+// argument io_context.
+//
+// RunArgvSync is not thread-safe, caller must ensure there's no concurrent call to
+// RunArgvSync.
 class RedisContext {
  public:
-  RedisContext(instrumented_io_context &io_service);
+  explicit RedisContext(instrumented_io_context &io_service);
 
   ~RedisContext();
 
@@ -169,7 +176,7 @@ class RedisContext {
 
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_.get();
+    return *redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }
