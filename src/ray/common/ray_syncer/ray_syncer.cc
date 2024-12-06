@@ -78,7 +78,7 @@ void RaySyncer::Connect(const std::string &node_id,
             /* local_node_id */ GetLocalNodeID(),
             /* io_context */ io_context_,
             /* message_processor */
-            [this](auto msg) { BroadcastRaySyncMessage(std::move(msg)); },
+            [this](auto msg) { BroadcastMessage(std::move(msg)); },
             /* cleanup_cb */
             [this, channel](RaySyncerBidiReactor *reactor, bool restart) {
               const std::string &node_id = reactor->GetRemoteNodeID();
@@ -186,10 +186,6 @@ bool RaySyncer::OnDemandBroadcasting(MessageType message_type) {
     return true;
   }
   return false;
-}
-
-void RaySyncer::BroadcastRaySyncMessage(std::shared_ptr<const RaySyncMessage> message) {
-  BroadcastMessage(std::move(message));
 }
 
 void RaySyncer::BroadcastMessage(std::shared_ptr<const RaySyncMessage> message) {
