@@ -62,6 +62,7 @@ OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 OPEN_FILE_MAX_ATTEMPTS = 10
 
 
+@DeveloperAPI
 @dataclass
 class FileShuffleConfig:
     """Configuration for file shuffling."""
