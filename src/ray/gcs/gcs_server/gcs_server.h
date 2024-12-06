@@ -226,12 +226,14 @@ class GcsServer {
   rpc::ClientCallManager client_call_manager_;
   /// Node manager client pool.
   std::unique_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
-  /// The gcs resource manager.
-  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The cluster resource scheduler.
   std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  /// [cluster_task_manager_] depends on [cluster_resource_scheduler_].
   /// The cluster task manager.
-  std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
+  std::unique_ptr<ClusterTaskManager> cluster_task_manager_;
+  /// [gcs_resource_manager_] depends on [cluster_task_manager_].
+  /// The gcs resource manager.
+  std::unique_ptr<GcsResourceManager> gcs_resource_manager_;
   /// The autoscaler state manager.
   std::unique_ptr<GcsAutoscalerStateManager> gcs_autoscaler_state_manager_;
   /// The gcs node manager.

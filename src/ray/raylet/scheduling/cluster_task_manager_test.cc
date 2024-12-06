@@ -279,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*get_time=*/[this]() { return current_time_ms_; })),
         task_manager_(
             id_,
-            scheduler_,
+            *scheduler_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;

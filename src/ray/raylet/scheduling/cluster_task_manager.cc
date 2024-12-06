@@ -26,7 +26,7 @@ namespace raylet {
 
 ClusterTaskManager::ClusterTaskManager(
     const NodeID &self_node_id,
-    std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+    ClusterResourceScheduler &cluster_resource_scheduler,
     internal::NodeInfoGetter get_node_info,
     std::function<void(const RayTask &)> announce_infeasible_task,
     ILocalTaskManager &local_task_manager,
@@ -156,7 +156,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
       RayTask task = work->task;
       RAY_LOG(DEBUG) << "Scheduling pending task "
                      << task.GetTaskSpecification().TaskId();
-      auto scheduling_node_id = cluster_resource_scheduler_->GetBestSchedulableNode(
+      auto scheduling_node_id = cluster_resource_scheduler_.GetBestSchedulableNode(
           task.GetTaskSpecification(),
           /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
                                                             : task.GetPreferredNodeID(),
@@ -175,7 +175,7 @@ void ClusterTaskManager::ScheduleAndDispatchTasks() {
             !task.GetTaskSpecification().GetNodeAffinitySchedulingStrategySoft()) {
           // This can only happen if the target node doesn't exist or is infeasible.
           // The task will never be schedulable in either case so we should fail it.
-          if (cluster_resource_scheduler_->IsLocalNodeWithRaylet()) {
+          if (cluster_resource_scheduler_.IsLocalNodeWithRaylet()) {
             ReplyCancelled(
                 *work,
                 rpc::RequestWorkerLeaseReply::SCHEDULING_CANCELLED_UNSCHEDULABLE,
@@ -251,7 +251,7 @@ void ClusterTaskManager::TryScheduleInfeasibleTask() {
     RAY_LOG(DEBUG) << "Check if the infeasible task is schedulable in any node. task_id:"
                    << task.GetTaskSpecification().TaskId();
     bool is_infeasible;
-    cluster_resource_scheduler_->GetBestSchedulableNode(
+    cluster_resource_scheduler_.GetBestSchedulableNode(
         task.GetTaskSpecification(),
         /*preferred_node_id*/ work->PrioritizeLocalNode() ? self_node_id_.Binary()
                                                           : task.GetPreferredNodeID(),
@@ -291,7 +291,7 @@ void ClusterTaskManager::FillResourceUsage(rpc::ResourcesData &data) {
   scheduler_resource_reporter_.FillResourceUsage(data);
   // This populates usage information.
   syncer::ResourceViewSyncMessage resource_view_sync_message;
-  cluster_resource_scheduler_->GetLocalResourceManager().PopulateResourceViewSyncMessage(
+  cluster_resource_scheduler_.GetLocalResourceManager().PopulateResourceViewSyncMessage(
       resource_view_sync_message);
   (*data.mutable_resources_total()) =
       std::move(resource_view_sync_message.resources_total());
@@ -357,7 +357,7 @@ bool ClusterTaskManager::AnyPendingTasksForResourceAcquisition(
 
 void ClusterTaskManager::RecordMetrics() const {
   internal_stats_.RecordMetrics();
-  cluster_resource_scheduler_->GetLocalResourceManager().RecordMetrics();
+  cluster_resource_scheduler_.GetLocalResourceManager().RecordMetrics();
 }
 
 std::string ClusterTaskManager::DebugStr() const {
@@ -385,7 +385,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   const auto &task_spec = task.GetTaskSpecification();
   RAY_LOG(DEBUG) << "Spilling task " << task_spec.TaskId() << " to node " << spillback_to;
 
-  if (!cluster_resource_scheduler_->AllocateRemoteTaskResources(
+  if (!cluster_resource_scheduler_.AllocateRemoteTaskResources(
           scheduling::NodeID(spillback_to.Binary()),
           task_spec.GetRequiredResources().GetResourceMap())) {
     RAY_LOG(DEBUG) << "Tried to allocate resources for request " << task_spec.TaskId()
@@ -405,8 +405,7 @@ void ClusterTaskManager::ScheduleOnNode(const NodeID &spillback_to,
   send_reply_callback();
 }
 
-std::shared_ptr<ClusterResourceScheduler>
-ClusterTaskManager::GetClusterResourceScheduler() const {
+ClusterResourceScheduler &ClusterTaskManager::GetClusterResourceScheduler() const {
   return cluster_resource_scheduler_;
 }
 
