@@ -1445,7 +1445,7 @@ def get_address(redis_address):
 def start_gcs_server(
     redis_address: str,
     event_log_dir: str,
-    ray_log_sink_filename: Optional[str],
+    ray_log_filepath: Optional[str],
     session_name: str,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1460,7 +1460,7 @@ def start_gcs_server(
     Args:
         redis_address: The address that the Redis server is listening on.
         event_log_dir: The path of the dir where gcs event log files are created.
-        ray_log_sink_filename: The filename to dump gcs server log, which is written
+        ray_log_filepath: The file path to dump gcs server log, which is written
             via `RAY_LOG`.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
@@ -1487,8 +1487,8 @@ def start_gcs_server(
         f"--ray-commit={ray.__commit__}",
     ]
 
-    if ray_log_sink_filename:
-        command += [f"--ray_log_sink_filename={ray_log_sink_filename}"]
+    if ray_log_filepath:
+        command += [f"--ray_log_filepath={ray_log_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)

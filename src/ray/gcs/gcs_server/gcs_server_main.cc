@@ -28,8 +28,12 @@
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_string(event_log_dir, "", "The path of the dir where event log files are created.");
-DEFINE_string(ray_log_sink_filename, "", "The filename to dump gcs server log, which is written via `RAY_LOG`.");
+DEFINE_string(event_log_dir,
+              "",
+              "The path of the dir where event log files are created.");
+DEFINE_string(ray_log_filepath,
+              "",
+              "The filename to dump gcs server log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -54,12 +58,22 @@ int main(int argc, char *argv[]) {
   // By default, GCS server flushes all logging and stdout/stderr to a single file called
   // `gcs_server.out`, without log rotations. To keep backward compatibility at best
   // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  if (const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+      rotation_max_bytes == nullptr) {
+    const long max_rotation_size = std::numeric_limits<long>::max();
+    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
+    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
+  }
+
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*log_file=*/FLAGS_ray_log_sink_filename);
+                                         /*log_file=*/FLAGS_ray_log_filepath);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
@@ -104,7 +118,7 @@ int main(int argc, char *argv[]) {
   ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+  if (RayConfig::instance().event_log_reporter_enabled() && !event_log_dir.empty()) {
     // This GCS server process emits GCS standard events, and
     // Node, Actor, and Driver Job export events
     // so the various source types are passed to RayEventInit. The type of an
