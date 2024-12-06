@@ -306,14 +306,10 @@ struct SyncerServerTest {
     auto start = steady_clock::now();
 
     while (duration_cast<seconds>(steady_clock::now() - start).count() <= time_s) {
-      std::promise<bool> p;
-      auto f = p.get_future();
-      io_context.post([&p, predicate]() mutable { p.set_value(predicate()); }, "TEST");
-      if (f.get()) {
+      if (predicate()) {
         return true;
-      } else {
-        std::this_thread::sleep_for(1s);
       }
+      std::this_thread::sleep_for(100ms);
     }
     return false;
   }
