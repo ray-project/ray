@@ -19,7 +19,7 @@
   run:
     timeout: 3600
     script: >
-      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB 
+      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB
       --format parquet --iterate
 
 - name: read_images
