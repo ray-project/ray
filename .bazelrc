@@ -49,8 +49,8 @@ build:clang-cl --per_file_copt="-\\.(asm|S)$@-Werror"
 build:msvc-cl     --per_file_copt="-\\.(asm|S)$@-WX"
 # Ignore warnings for protobuf generated files and external projects.
 build --per_file_copt="\\.pb\\.cc$@-w"
-build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
-build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration"
+build:linux --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
+build:macos --per_file_copt="-\\.(asm|S)$,external/.*@-w,-Wno-error=implicit-function-declaration,-Wno-error=unused-function"
 # Ignore warnings for host tools, which we generally can't control.
 # Ideally we only want to ignore warnings for external project
 # but the current bazel version doesn't support host_per_file_copt yet.
