@@ -444,6 +444,7 @@ def read_fragments(
     assert len(fragments) > 0
 
     import pyarrow as pa
+    import pyarrow.parquet as pq
 
     logger.debug(f"Reading {len(fragments)} parquet fragments")
     use_threads = to_batches_kwargs.pop("use_threads", False)
@@ -463,12 +464,12 @@ def read_fragments(
             }
 
         def get_batch_iterable():
-            return fragment.to_batches(
+            pq_file = pq.ParquetFile(fragment.path,filesystem=fragment.filesystem)
+            return pq_file.iter_batches(
                 use_threads=use_threads,
                 columns=columns,
-                schema=schema,
                 batch_size=batch_size,
-                **to_batches_kwargs,
+                **to_batches_kwargs
             )
 
         # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
