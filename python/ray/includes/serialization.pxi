@@ -485,7 +485,7 @@ cdef class MessagePackSerializedObject(SerializedObject):
 
     def to_bytes(self) -> bytes:
         cdef shared_ptr[CBuffer] data = \
-          dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+          static_pointer_cast[CBuffer, LocalMemoryBuffer](
             make_shared[LocalMemoryBuffer](self._total_bytes))
         buffer = Buffer.make(data)
         self.write_to(buffer)

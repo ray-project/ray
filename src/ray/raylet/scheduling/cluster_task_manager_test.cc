@@ -676,7 +676,7 @@ TEST_F(ClusterTaskManagerTest, BlockedWorkerDies2Test) {
 TEST_F(ClusterTaskManagerTest, NoFeasibleNodeTest) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   RayTask task = CreateTask({{ray::kCPU_ResourceLabel, 999}});
   rpc::RequestWorkerLeaseReply reply;
@@ -838,8 +838,8 @@ TEST_F(ClusterTaskManagerTest, TestIsSelectedBasedOnLocality) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker1));
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
 
   int num_callbacks = 0;
   auto callback = [&](Status, std::function<void()>, std::function<void()>) {
@@ -893,8 +893,8 @@ TEST_F(ClusterTaskManagerTest, TestGrantOrReject) {
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
   std::shared_ptr<MockWorker> worker2 =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1235);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker1));
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker2));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker1));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker2));
 
   int num_callbacks = 0;
   auto callback = [&](Status, std::function<void()>, std::function<void()>) {
@@ -1976,7 +1976,7 @@ TEST_F(ClusterTaskManagerTest, TestSpillWaitingTasks) {
   // Dispatch the ready task.
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
   task_manager_.ScheduleAndDispatchTasks();
   pool_.TriggerCallbacks();
   ASSERT_EQ(num_callbacks, 4);
@@ -2320,7 +2320,7 @@ TEST_F(ClusterTaskManagerTestWithoutCPUsAtHead, ZeroCPUNode) {
 TEST_F(ClusterTaskManagerTest, SchedulingClassCapSpillback) {
   std::shared_ptr<MockWorker> worker =
       std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234);
-  pool_.PushWorker(std::dynamic_pointer_cast<WorkerInterface>(worker));
+  pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker));
 
   std::vector<RayTask> tasks;
   std::vector<std::unique_ptr<rpc::RequestWorkerLeaseReply>> replies;

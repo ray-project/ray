@@ -220,7 +220,7 @@ void PlasmaStore::ReturnFromGet(const std::shared_ptr<GetRequest> &get_request) 
     }
   }
   // Send the get reply to the client.
-  Status s = SendGetReply(std::dynamic_pointer_cast<Client>(get_request->client),
+  Status s = SendGetReply(std::static_pointer_cast<Client>(get_request->client),
                           &get_request->object_ids[0],
                           get_request->objects,
                           get_request->object_ids.size(),

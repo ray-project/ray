@@ -49,7 +49,7 @@ from libc.stdint cimport (
 )
 from libcpp cimport bool as c_bool, nullptr
 from libcpp.memory cimport (
-    dynamic_pointer_cast,
+    static_pointer_cast,
     make_shared,
     shared_ptr,
     make_unique,
@@ -926,7 +926,7 @@ cdef prepare_args_internal(
             # simple fix for reference counting purposes.
             if <int64_t>size <= put_threshold and \
                     (<int64_t>size + total_inlined <= rpc_inline_threshold):
-                arg_data = dynamic_pointer_cast[CBuffer, LocalMemoryBuffer](
+                arg_data = static_pointer_cast[CBuffer, LocalMemoryBuffer](
                         make_shared[LocalMemoryBuffer](size))
                 if size > 0:
                     (<SerializedObject>serialized_arg).write_to(
@@ -2636,7 +2636,7 @@ cdef shared_ptr[CBuffer] string_to_buffer(c_string& c_str):
     cdef shared_ptr[CBuffer] empty_metadata
     if c_str.size() == 0:
         return empty_metadata
-    return dynamic_pointer_cast[
+    return static_pointer_cast[
         CBuffer, LocalMemoryBuffer](
             make_shared[LocalMemoryBuffer](
                 <uint8_t*>(c_str.data()), c_str.size(), True))

@@ -344,7 +344,7 @@ NodeManager::NodeManager(
   }
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
-      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *cluster_resource_scheduler_,
       dependency_manager_,
       [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
         return !this->IsWorkerDead(owner_worker_id, owner_node_id);
@@ -357,14 +357,14 @@ NodeManager::NodeManager(
         return GetObjectsFromPlasma(object_ids, results);
       },
       max_task_args_memory);
-  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
-      self_node_id_,
-      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
-      get_node_info_func,
-      announce_infeasible_task,
-      *local_task_manager_);
-  placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
+  cluster_task_manager_ =
+      std::make_shared<ClusterTaskManager>(self_node_id_,
+                                           cluster_resource_scheduler_,
+                                           get_node_info_func,
+                                           announce_infeasible_task,
+                                           *local_task_manager_);
+  placement_group_resource_manager_ =
+      std::make_shared<NewPlacementGroupResourceManager>(cluster_resource_scheduler_);
 
   periodical_runner_.RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },

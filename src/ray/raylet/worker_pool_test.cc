@@ -278,7 +278,7 @@ class WorkerPoolMock : public WorkerPool {
                                                                client_call_manager_,
                                                                worker_startup_token);
     std::shared_ptr<WorkerInterface> worker =
-        std::dynamic_pointer_cast<WorkerInterface>(worker_);
+        std::static_pointer_cast<WorkerInterface>(worker_);
     auto rpc_client = std::make_shared<MockWorkerClient>();
     worker->Connect(rpc_client);
     mock_worker_rpc_clients_.emplace(worker->WorkerId(), rpc_client);
