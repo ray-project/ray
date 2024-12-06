@@ -3,7 +3,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
-from ray.experimental.channel.gpu_communicator import Communicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
 

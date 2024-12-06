@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.experimental.channel.gpu_communicator import ReduceOp, TorchTensorAllocator, Communicator
+from ray.experimental.channel.communicator import ReduceOp, TorchTensorAllocator, Communicator
 
 
 @ray.remote(num_cpus=0)
@@ -172,7 +172,6 @@ class CPUCommunicator(Communicator):
 
     def get_device_type(self) -> str:
         return "cpu"
-
 
     def recv_stream(self):
         pass

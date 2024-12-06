@@ -6,7 +6,7 @@ import torch
 
 import ray
 from ray.experimental.channel.common import ChannelContext
-from ray.experimental.channel.gpu_communicator import (
+from ray.experimental.channel.communicator import (
     Communicator,
     ReduceOp,
     TorchTensorAllocator,

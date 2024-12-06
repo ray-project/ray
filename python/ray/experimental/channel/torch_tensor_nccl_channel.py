@@ -10,7 +10,7 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
-from ray.experimental.channel.gpu_communicator import Communicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType

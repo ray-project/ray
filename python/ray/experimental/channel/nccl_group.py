@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.gpu_communicator import (
+from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )

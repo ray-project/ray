@@ -15,7 +15,7 @@ from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError
 from ray.dag.output_node import MultiOutputNode
-from ray.experimental.channel.gpu_communicator import (
+from ray.experimental.channel.communicator import (
     Communicator,
     TorchTensorAllocator,
 )
