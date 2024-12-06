@@ -190,7 +190,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
                 def _forward_exploration(self, batch):
                     ...
                     return {
-                        "actions": ...  # actions will be used as-is (no sampling step!)
+                        "actions": ...,  # actions will be used as-is (no sampling step!)
                         "action_dist_inputs": ...  # optional: If provided, will be used to compute action probs and logp.
                     }
 
