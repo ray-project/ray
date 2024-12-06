@@ -670,7 +670,7 @@ void GcsActorScheduler::OnActorDestruction(std::shared_ptr<GcsActor> actor) {
 
 void GcsActorScheduler::ReturnActorAcquiredResources(std::shared_ptr<GcsActor> actor) {
   auto &cluster_resource_manager =
-      cluster_task_manager_.GetClusterResourceScheduler()->GetClusterResourceManager();
+      cluster_task_manager_.GetClusterResourceScheduler().GetClusterResourceManager();
   cluster_resource_manager.AddNodeAvailableResources(
       scheduling::NodeID(actor->GetNodeID().Binary()),
       actor->GetAcquiredResources().GetResourceSet());
