@@ -1,5 +1,6 @@
 import itertools
-from typing import Callable, Iterator, List, Union
+import pickle
+from typing import Callable, Iterable, List, Union
 
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
@@ -8,6 +9,7 @@ from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
+    MapTransformFn,
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor
@@ -17,30 +19,40 @@ from ray.data.datasource.datasource import Datasource
 
 def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
-) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+) -> Callable[[Iterable[Block], TaskContext], Iterable[Block]]:
+    stats_fn = generate_collect_write_stats_fn()
+
+    def fn(blocks: Iterable[Block], ctx) -> Iterable[Block]:
         """Writes the blocks to the given datasink or legacy datasource.
 
         Outputs the original blocks to be written."""
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            datasink_or_legacy_datasource.write(it1, ctx)
+            write_result = datasink_or_legacy_datasource.write(it1, ctx)
         else:
-            datasink_or_legacy_datasource.write(it1, ctx, **write_args)
-        return it2
+            write_result = datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+
+        import pandas as pd
+
+        payload = pd.DataFrame({"payload": [pickle.dumps(write_result)]})
+
+        stats = list(stats_fn(it2, ctx))
+        assert len(stats) == 1
+        block = pd.concat([stats[0], payload], axis=1)
+        return iter([block])
 
     return fn
 
 
 def generate_collect_write_stats_fn() -> Callable[
-    [Iterator[Block], TaskContext], Iterator[Block]
+    [Iterable[Block], TaskContext], Iterable[Block]
 ]:
     # If the write op succeeds, the resulting Dataset is a list of
     # one Block which contain stats/metrics about the write.
     # Otherwise, an error will be raised. The Datasource can handle
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+    def fn(blocks: Iterable[Block], ctx) -> Iterable[Block]:
         """Handles stats collection for block writes."""
         block_accessors = [BlockAccessor.for_block(block) for block in blocks]
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
@@ -64,11 +76,9 @@ def plan_write_op(
     input_physical_dag = physical_children[0]
 
     write_fn = generate_write_fn(op._datasink_or_legacy_datasource, **op._write_args)
-    collect_stats_fn = generate_collect_write_stats_fn()
     # Create a MapTransformer for a write operator
-    transform_fns = [
+    transform_fns: List[MapTransformFn] = [
         BlockMapTransformFn(write_fn),
-        BlockMapTransformFn(collect_stats_fn),
     ]
     map_transformer = MapTransformer(transform_fns)
     return MapOperator.create(

@@ -57,7 +57,7 @@ class ParquetDatasink(_FileDatasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         import pyarrow as pa
         import pyarrow.parquet as pq
 
