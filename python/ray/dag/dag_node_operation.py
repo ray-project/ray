@@ -448,13 +448,16 @@ def _build_dag_node_operation_graph(
             ):
                 consumer_idxs = idx_to_task[downstream_task_idx].downstream_task_idxs
                 for consumer_idx in consumer_idxs:
-                    _add_edge(
-                        graph[task_idx][_DAGNodeOperationType.WRITE],
-                        graph[consumer_idx][_DAGNodeOperationType.READ],
-                        "nccl"
-                        if graph[task_idx][_DAGNodeOperationType.WRITE].requires_nccl
-                        else "shm",
-                    )
+                    if consumer_idx in graph:
+                        _add_edge(
+                            graph[task_idx][_DAGNodeOperationType.WRITE],
+                            graph[consumer_idx][_DAGNodeOperationType.READ],
+                            "nccl"
+                            if graph[task_idx][
+                                _DAGNodeOperationType.WRITE
+                            ].requires_nccl
+                            else "shm",
+                        )
                 continue
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
