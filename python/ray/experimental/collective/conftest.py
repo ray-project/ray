@@ -7,18 +7,18 @@ import torch
 import ray
 from ray.experimental.channel.common import ChannelContext
 from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
+    Communicator,
     ReduceOp,
     TorchTensorAllocator,
 )
 
 
-class AbstractNcclGroup(GPUCommunicator):
+class AbstractNcclGroup(Communicator):
     """
     A dummy NCCL group for testing.
     """
 
-    import cupy as cp
+    #import cupy as cp
 
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles
@@ -76,13 +76,13 @@ class MockNcclGroupSet:
         # Represents a mapping from a NCCL group ID to a set of actors and a custom
         # NCCL group.
         self.ids_to_actors_and_custom_comms: Dict[
-            str, Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
+            str, Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ] = {}
 
     def __call__(
         self,
         actors: List["ray.actor.ActorHandle"],
-        custom_nccl_group: Optional[GPUCommunicator] = None,
+        custom_nccl_group: Optional[Communicator] = None,
         use_communication_streams: bool = False,
     ) -> str:
         group_id = str(uuid.uuid4())
@@ -139,10 +139,10 @@ class MockNcclGroupSet:
         self,
         compiled_dag: "ray.dag.CompiledDAG",
         actors_and_custom_comms: Set[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
+            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ],
         p2p_actors_and_custom_comm: Optional[
-            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
+            Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
         ],
     ) -> None:
         assert len(self.ids_to_actors_and_custom_comms) == len(actors_and_custom_comms)
@@ -185,7 +185,7 @@ def mock_do_init_nccl_group(
     group_id: str,
     rank: int,
     actors: List[ray.actor.ActorHandle],
-    custom_nccl_group: Optional[GPUCommunicator],
+    custom_nccl_group: Optional[Communicator],
 ) -> None:
     ctx = ChannelContext.get_current()
     if custom_nccl_group is None:
@@ -209,10 +209,10 @@ def check_nccl_group_init(
     monkeypatch,
     dag: "ray.dag.DAGNode",
     actors_and_custom_comms: Set[
-        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
+        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ],
     p2p_actors_and_custom_comm: Optional[
-        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[GPUCommunicator]]
+        Tuple[FrozenSet["ray.actor.ActorHandle"], Optional[Communicator]]
     ] = None,
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()

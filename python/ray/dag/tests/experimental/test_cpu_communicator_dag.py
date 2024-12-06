@@ -143,7 +143,6 @@ def test_allreduce_basic(ray_start_cluster):
         reduced_val = sum(i + idx for idx in range(num_workers))
         assert result == [(reduced_val, shape, dtype) for _ in workers]
 
-
 @pytest.mark.parametrize(
     "ray_start_cluster",
     [
@@ -362,7 +361,7 @@ def test_allreduce_wrong_actors(ray_start_cluster):
         computes = [worker.return_tensor.bind(inp) for worker in workers[2:]]
         with pytest.raises(
             ValueError,
-            match="Expected actor handles to match the custom CPU group",
+            match="Expected actor handles to match the custom NCCL group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
 

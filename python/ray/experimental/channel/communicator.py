@@ -151,5 +151,8 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_device_type(self) -> str:
+    def get_device() -> str:
+        """
+        Return the TorchTensorType of the communicator.
+        """
         raise NotImplementedError

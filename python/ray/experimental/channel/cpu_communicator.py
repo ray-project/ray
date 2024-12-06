@@ -3,7 +3,7 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.experimental.channel.gpu_communicator import ReduceOp, TorchTensorAllocator
+from ray.experimental.channel.gpu_communicator import ReduceOp, TorchTensorAllocator, Communicator
 
 
 @ray.remote(num_cpus=0)
@@ -82,7 +82,7 @@ class CPUCommBarrier:
         return result
 
 
-class CPUCommunicator:
+class CPUCommunicator(Communicator):
     """
     Uses a CPU-based communicator actor instead of a NCCL group.
     """
@@ -169,3 +169,13 @@ class CPUCommunicator:
         Return the number of ranks in the CPU communicator.
         """
         return self._world_size
+
+    def get_device_type(self) -> str:
+        return "cpu"
+
+
+    def recv_stream(self):
+        pass
+
+    def send_stream(self):
+        pass

@@ -16,7 +16,7 @@ from ray.dag import InputNode
 from ray.exceptions import RayChannelError
 from ray.dag.output_node import MultiOutputNode
 from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
+    Communicator,
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -347,7 +347,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    class TestNcclGroup(GPUCommunicator):
+    class TestNcclGroup(Communicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
@@ -462,7 +462,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     actor1 = actor_cls.remote()
     actor2 = actor_cls.remote()
 
-    class MockNcclGroup(GPUCommunicator):
+    class MockNcclGroup(Communicator):
         """
         A mock NCCL group for testing. Send and recv are not implemented.
         """
@@ -611,7 +611,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
     ]
     ray.wait(refs)
 
-    class InitedNcclGroup(GPUCommunicator):
+    class InitedNcclGroup(Communicator):
         """
         A custom NCCL group based on existing torch.distributed setup.
         """
@@ -1066,7 +1066,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 
     from cupy.cuda import nccl
 
-    class TestNcclGroup(GPUCommunicator):
+    class TestNcclGroup(Communicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """

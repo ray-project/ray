@@ -3,8 +3,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple, Union
 
 import ray
 from ray.experimental.channel import ChannelContext, ChannelOutputType
-from ray.experimental.channel.cpu_communicator import CPUCommunicator
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.gpu_communicator import Communicator
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.util.annotations import PublicAPI
 
@@ -22,7 +21,7 @@ class TorchTensorType(ChannelOutputType):
 
     def __init__(
         self,
-        transport: Optional[Union[str, GPUCommunicator]] = AUTO,
+        transport: Optional[Union[str, Communicator]] = AUTO,
         _static_shape: bool = False,
         _direct_return: Optional[bool] = False,
     ):
@@ -66,15 +65,10 @@ class TorchTensorType(ChannelOutputType):
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
-        self._custom_nccl_group: Optional[GPUCommunicator] = None
-        if isinstance(transport, GPUCommunicator):
-            self._custom_nccl_group = transport
-            transport = self.NCCL
-
-        self._custom_cpu_group: Optional[CPUCommunicator] = None
-        if isinstance(transport, CPUCommunicator):
-            self._custom_cpu_group = transport
-            transport = self.CPU
+        self._nccl_group: Optional[Communicator] = None
+        if isinstance(transport, Communicator):
+            self._nccl_group = transport
+            transport = transport.get_device_type()
 
         if transport not in [self.AUTO, self.NCCL, self.CPU]:
             raise ValueError(
@@ -83,7 +77,6 @@ class TorchTensorType(ChannelOutputType):
         self.transport = transport
 
         self._nccl_group_id: Optional[str] = None
-        self._cpu_group_id: Optional[str] = None
 
         if self._static_shape and self.transport == self.AUTO:
             logger.info(
@@ -172,36 +165,23 @@ class TorchTensorType(ChannelOutputType):
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_nccl_group(self) -> Optional[Communicator]:
         """
-        Return the custom NCCL group if one is specified.
+        Return the NCCL group if one is specified.
         """
-        return self._custom_nccl_group
-
-    def get_custom_cpu_group(self) -> Optional[CPUCommunicator]:
-        """
-        Return the custom CPU group if one is specified.
-        """
-        return self._custom_cpu_group
+        return self._nccl_group
 
     def set_nccl_group_id(self, group_id: str) -> None:
         self._nccl_group_id = group_id
-
-    def set_cpu_group_id(self, group_id: str) -> None:
-        self._cpu_group_id = group_id
 
     @property
     def nccl_group_id(self) -> Optional[str]:
         return self._nccl_group_id
 
-    @property
-    def cpu_group_id(self) -> Optional[str]:
-        return self._cpu_group_id
-
     def __deepcopy__(self, memo):
         """
-        Deep copy all the fields except for the custom NCCL group. The custom
-        NCCL group should not be deep copied because it can be shared across
+        Deep copy all the fields except for the NCCL group. The NCCL group
+        should not be deep copied because it can be shared across
         `TorchTensorType` instances.
         """
         copy = TorchTensorType(
@@ -209,6 +189,6 @@ class TorchTensorType(ChannelOutputType):
             _static_shape=self._static_shape,
             _direct_return=self._direct_return,
         )
-        copy._custom_nccl_group = self._custom_nccl_group
+        copy._nccl_group = self._nccl_group
         copy._nccl_group_id = self._nccl_group_id
         return copy

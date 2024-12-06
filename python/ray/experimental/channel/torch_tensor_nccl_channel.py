@@ -10,7 +10,7 @@ import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.gpu_communicator import Communicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -315,7 +315,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         assert self._typ.nccl_group_id is not None, "No NCCL group specified."
         self._nccl_group_id: str = self._typ.nccl_group_id
-        self._nccl_group: "GPUCommunicator" = ctx.nccl_groups[self._typ.nccl_group_id]
+        self._nccl_group: "Communicator" = ctx.nccl_groups[self._typ.nccl_group_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -550,7 +550,7 @@ def _do_init_nccl_group(
     rank,
     actor_handles,
     use_communication_streams,
-    custom_nccl_group: Optional[GPUCommunicator] = None,
+    custom_nccl_group: Optional[Communicator] = None,
 ):
     import torch
 
@@ -564,6 +564,7 @@ def _do_init_nccl_group(
         custom_nccl_group.initialize(rank)
         ctx.nccl_groups[group_id] = custom_nccl_group
     else:
+        # default to NcclGroup
         ctx.nccl_groups[group_id] = _NcclGroup(
             world_size,
             comm_id,
@@ -573,27 +574,6 @@ def _do_init_nccl_group(
             use_communication_streams,
         )
 
-
-def _do_init_cpu_group(
-    self,
-    group_id,
-    world_size,
-    rank,
-    actor_handles,
-    custom_cpu_group: Optional[CPUCommunicator] = None,
-):
-    ctx = ChannelContext.get_current()
-    if custom_cpu_group is not None:
-        custom_cpu_group.initialize(rank)
-        ctx.cpu_groups[group_id] = custom_cpu_group
-    else:
-        ctx.cpu_groups[group_id] = CPUCommunicator(
-            world_size,
-            rank,
-            actor_handles,
-        )
-
-
 def _do_destroy_nccl_group(self, group_id):
     ctx = ChannelContext.get_current()
     if group_id not in ctx.nccl_groups:
@@ -602,17 +582,6 @@ def _do_destroy_nccl_group(self, group_id):
 
     # Keep the NCCL group in the map after destruction in case there is still a
     # task loop running.
-
-
-def _do_destroy_cpu_group(self, group_id):
-    ctx = ChannelContext.get_current()
-    if group_id not in ctx.cpu_groups:
-        return
-    ctx.cpu_groups[group_id].destroy()
-
-    # Keep the CPU group in the map after destruction in case there is still a
-    # task loop running.
-
 
 def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids())
@@ -625,7 +594,7 @@ def _do_get_unique_nccl_id(self) -> bool:
 
 
 def _get_ranks(
-    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
+    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[Communicator]
 ) -> List[int]:
     """
     Get ranks for the NCCL group to use. If custom_nccl_group is specified,
@@ -659,7 +628,7 @@ def _get_ranks(
 
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
-    custom_nccl_group: Optional[GPUCommunicator] = None,
+    custom_nccl_group: Optional[Communicator] = None,
     use_communication_streams: bool = False,
 ) -> str:
     """
@@ -675,11 +644,13 @@ def _init_nccl_group(
     """
     ctx = ChannelContext.get_current()
 
+    is_cpu_communicator = custom_nccl_group and isinstance(custom_nccl_group, CPUCommunicator)
+
     has_gpus = ray.get(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
     )
     for has_gpu, actor in zip(has_gpus, actors):
-        if not has_gpu:
+        if not has_gpu and not is_cpu_communicator:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
                 'TorchTensor(transport="nccl") or '
@@ -693,7 +664,7 @@ def _init_nccl_group(
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
-    nccl_comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+    nccl_comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id)) if not is_cpu_communicator else str(uuid.uuid4())
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
@@ -740,72 +711,6 @@ def _init_nccl_group(
     return group_id
 
 
-def _init_cpu_group(
-    actors: List[ray.actor.ActorHandle],
-    custom_cpu_group: Optional[CPUCommunicator] = None,
-    use_communication_streams: bool = False,
-) -> str:
-    """
-    Initialize a CPU group with the given actors. If a custom CPU group is
-    provided, then it will be used, otherwise a new CPU group will be created.
-
-    Args:
-        actors: A list of actors that participate in the CPU group.
-        custom_cpu_group: A custom CPU group to initialize.
-        use_communication_streams: Whether to use dedicated send and recv
-                streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
-    """
-    assert (
-        use_communication_streams == False
-    ), "Overlapping communication and computation is not implemented for CPUCommunicator"
-
-    ctx = ChannelContext.get_current()
-
-    actor_ids = {actor._ray_actor_id for actor in actors}
-    assert len(actor_ids) == len(actors), "Actors must be unique"
-
-    # Used to uniquely identify this CPU group.
-    group_id = str(uuid.uuid4())
-
-    if custom_cpu_group is not None:
-        logger.info(f"Initializing custom CPU group {group_id} on actors: {actors}")
-    else:
-        logger.info(f"Creating CPU group {group_id} on actors: {actors}")
-
-    world_size = len(actors)
-    ranks = _get_ranks(actors, custom_cpu_group)
-    init_tasks = [
-        actor.__ray_call__.remote(
-            _do_init_cpu_group,
-            group_id,
-            world_size,
-            rank,
-            actors,
-            custom_cpu_group,
-        )
-        for rank, actor in zip(ranks, actors)
-    ]
-    try:
-        ray.get(init_tasks, timeout=30)
-    except ray.exceptions.GetTimeoutError:
-        logger.warning(
-            "CPU group creation not done after 30s. CPU group creation may be hung."
-        )
-        ray.get(init_tasks)
-
-    logger.info("CPU group initialized.")
-
-    if custom_cpu_group is not None:
-        ctx.cpu_groups[group_id] = custom_cpu_group
-    else:
-        ctx.cpu_groups[group_id] = CPUCommunicator(
-            world_size,
-            actor_handles=actors,
-        )
-    return group_id
-
-
 def _destroy_nccl_group(group_id: str) -> None:
     """
     Destroy the NCCL group with the given ID.
@@ -832,31 +737,3 @@ def _destroy_nccl_group(group_id: str) -> None:
         )
 
     del ctx.nccl_groups[group_id]
-
-
-def _destroy_cpu_group(group_id: str) -> None:
-    """
-    Destroy the CPU group with the given ID.
-    """
-    ctx = ChannelContext.get_current()
-    if group_id not in ctx.cpu_groups:
-        return
-
-    group = ctx.cpu_groups[group_id]
-    actors = group.get_actor_handles()
-    destroy_tasks = [
-        actor.__ray_call__.remote(
-            _do_destroy_cpu_group,
-            group_id,
-        )
-        for actor in actors
-    ]
-
-    _, unready = ray.wait(destroy_tasks, timeout=30, num_returns=len(destroy_tasks))
-    if unready:
-        logger.warning(
-            "CPU group destruction not done after 30s. CPU group destruction "
-            "may be hung."
-        )
-
-    del ctx.cpu_groups[group_id]
