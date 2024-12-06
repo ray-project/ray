@@ -1,7 +1,7 @@
+import gymnasium as gym
+from gymnasium.spaces import Box, Discrete, Tuple
 import logging
 import random
-
-import gymnasium as gym
 
 from ray.rllib.env import MultiAgentEnv
 
@@ -22,25 +22,25 @@ MAP_DATA = """
 
 
 class WindyMazeEnv(gym.Env):
-    def __init__(self, config=None):
+    def __init__(self, env_config):
         self.map = [m for m in MAP_DATA.split("\n") if m]
         self.x_dim = len(self.map)
         self.y_dim = len(self.map[0])
-        logger.info(f"Loaded map {self.x_dim} {self.y_dim}")
+        logger.info("Loaded map {} {}".format(self.x_dim, self.y_dim))
         for x in range(self.x_dim):
             for y in range(self.y_dim):
                 if self.map[x][y] == "S":
                     self.start_pos = (x, y)
                 elif self.map[x][y] == "F":
                     self.end_pos = (x, y)
-        logger.info(f"Start pos {self.start_pos} end pos {self.end_pos}")
-        self.observation_space = gym.spaces.Tuple(
+        logger.info("Start pos {} end pos {}".format(self.start_pos, self.end_pos))
+        self.observation_space = Tuple(
             [
-                gym.spaces.Box(0, 100, shape=(2,)),  # (x, y)
-                gym.spaces.Discrete(4),  # wind direction (N, E, S, W)
+                Box(0, 100, shape=(2,)),  # (x, y)
+                Discrete(4),  # wind direction (N, E, S, W)
             ]
         )
-        self.action_space = gym.spaces.Discrete(2)  # whether to move or not
+        self.action_space = Discrete(2)  # whether to move or not
 
     def reset(self, *, seed=None, options=None):
         self.wind_direction = random.choice([0, 1, 2, 3])
@@ -86,43 +86,9 @@ class WindyMazeEnv(gym.Env):
 
 
 class HierarchicalWindyMazeEnv(MultiAgentEnv):
-    def __init__(self, config=None):
+    def __init__(self, env_config):
         super().__init__()
-        self.flat_env = WindyMazeEnv(config)
-
-        obs = {
-            f"low_level_{aid}": gym.spaces.Tuple(
-                [
-                    # Flat observation space.
-                    self.flat_env.observation_space,
-                    # Goal (move up/down/left/right).
-                    gym.spaces.Discrete(4),
-                ]
-            )
-            for aid in range(25)
-        }
-        obs.update(
-            {
-                "high_level_agent": self.flat_env.observation_space,
-            }
-        )
-        self.observation_spaces = gym.spaces.Dict(obs)
-
-        act = {
-            # Flat action space.
-            f"low_level_{aid}": self.flat_env.action_space
-            for aid in range(25)
-        }
-        act.update(
-            {
-                # Goal.
-                "high_level_agent": gym.spaces.Discrete(4),
-            }
-        )
-        self.action_spaces = gym.spaces.Dict(act)
-        self.agents = [f"low_level_{aid}" for aid in range(25)]
-        self.agents.append("high_level_agent")
-        self.possible_agents = self.agents.copy()
+        self.flat_env = WindyMazeEnv(env_config)
 
     def reset(self, *, seed=None, options=None):
         self.cur_obs, infos = self.flat_env.reset()
@@ -131,7 +97,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.num_high_level_steps = 0
         # current low level agent id. This must be unique for each high level
         # step since agent ids cannot be reused.
-        self.low_level_agent_id = f"low_level_{self.num_high_level_steps}"
+        self.low_level_agent_id = "low_level_{}".format(self.num_high_level_steps)
         return {
             "high_level_agent": self.cur_obs,
         }, {"high_level_agent": infos}
@@ -148,14 +114,14 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         self.current_goal = action
         self.steps_remaining_at_level = 25
         self.num_high_level_steps += 1
-        self.low_level_agent_id = f"low_level_{self.num_high_level_steps}"
+        self.low_level_agent_id = "low_level_{}".format(self.num_high_level_steps)
         obs = {self.low_level_agent_id: [self.cur_obs, self.current_goal]}
         rew = {self.low_level_agent_id: 0}
         done = truncated = {"__all__": False}
         return obs, rew, done, truncated, {}
 
     def _low_level_step(self, action):
-        logger.debug(f"Low level agent step {action}")
+        logger.debug("Low level agent step {}".format(action))
         self.steps_remaining_at_level -= 1
         cur_pos = tuple(self.cur_obs[0])
         goal_pos = self.flat_env._get_new_pos(cur_pos, self.current_goal)
@@ -181,7 +147,7 @@ class HierarchicalWindyMazeEnv(MultiAgentEnv):
         if f_terminated or f_truncated:
             terminated["__all__"] = f_terminated
             truncated["__all__"] = f_truncated
-            logger.debug(f"high level final reward {f_rew}")
+            logger.debug("high level final reward {}".format(f_rew))
             rew["high_level_agent"] = f_rew
             obs["high_level_agent"] = f_obs
         elif self.steps_remaining_at_level == 0:

@@ -21,8 +21,6 @@ You can try this formulation with:
 Note that the hierarchical formulation actually converges slightly slower than
 using --flat in this example.
 """
-from gymnasium.wrappers.common import TimeLimit
-
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
