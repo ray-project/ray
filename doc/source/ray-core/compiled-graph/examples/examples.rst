@@ -7,3 +7,4 @@ This section covers application written using Ray Compiled Graphs.
     :maxdepth: -1
 
     tensor-parallel-inference
+    pipeline-parallel-inference
