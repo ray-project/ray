@@ -208,7 +208,7 @@ def test_ray_worker_dev_flow(start_cluster):
         def f():
             return "hi"
 
-        h = serve.run(f.bind()).options(use_new_handle_api=True)
+        h = serve.run(f.bind())
 
         assert h.remote().result() == "hi"
 
