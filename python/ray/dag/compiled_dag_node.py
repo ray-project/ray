@@ -1076,7 +1076,6 @@ class CompiledDAG:
             for _, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
-
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
