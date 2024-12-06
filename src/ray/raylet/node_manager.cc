@@ -38,12 +38,12 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_pool.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
 #include "ray/util/event_label.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet/worker_pool.h"
 
 namespace {
 
@@ -149,7 +149,11 @@ NodeManager::NodeManager(
           config.ray_debugger_external,
           /*get_time=*/[]() { return absl::Now(); }),
       client_call_manager_(io_service),
-      worker_rpc_pool_(client_call_manager_),
+      worker_rpc_pool_([this](const rpc::Address &addr) {
+        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+        });
+      }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
           /*channels=*/
@@ -355,10 +359,10 @@ NodeManager::NodeManager(
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       get_node_info_func,
       announce_infeasible_task,
-      local_task_manager_);
+      *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
@@ -2025,6 +2029,14 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                                          rpc::IsLocalWorkerDeadReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
+                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
