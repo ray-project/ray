@@ -2260,6 +2260,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
       runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
     }
   }
+
+  runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
+                                            runtime_env_info);
   return runtime_env_info;
 }
 
