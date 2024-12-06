@@ -18,6 +18,11 @@ class TestOfflineData(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        # Assign the observation and action spaces.
+        env = gym.make("CartPole-v1")
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+        # Start ray.
         ray.init()
 
     def tearDown(self) -> None:
@@ -27,7 +32,14 @@ class TestOfflineData(unittest.TestCase):
         """Tests loading the data in `OfflineData`."""
 
         # Create a simple config.
-        config = AlgorithmConfig().offline_data(input_=[self.data_path])
+        config = (
+            AlgorithmConfig()
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
+            .offline_data(input_=[self.data_path])
+        )
         # Generate an `OfflineData` instance.
         offline_data = OfflineData(config)
 
@@ -41,7 +53,10 @@ class TestOfflineData(unittest.TestCase):
         # Create a simple config.
         config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -85,7 +100,10 @@ class TestOfflineData(unittest.TestCase):
         # Create a simple config.
         config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -213,7 +231,8 @@ class TestOfflineData(unittest.TestCase):
         config = (
             BCConfig()
             .environment(
-                env="CartPole-v1",
+                observation_space=self.observation_space,
+                action_space=self.action_space,
             )
             .offline_data(
                 input_=[self.data_path],

@@ -46,7 +46,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     gcs_actor_table_ =
         std::make_shared<GcsServerMocker::MockedGcsActorTable>(store_client_);
     local_node_id_ = NodeID::FromRandom();
-    auto cluster_resource_scheduler = std::make_shared<ClusterResourceScheduler>(
+    cluster_resource_scheduler_ = std::make_unique<ClusterResourceScheduler>(
         io_service_,
         scheduling::NodeID(local_node_id_.Binary()),
         NodeResources(),
@@ -58,7 +58,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
     local_task_manager_ = std::make_unique<raylet::NoopLocalTaskManager>();
     cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
         local_node_id_,
-        cluster_resource_scheduler,
+        *cluster_resource_scheduler_,
         /*get_node_info=*/
         [this](const NodeID &node_id) {
           auto node = gcs_node_manager_->GetAliveNode(node_id);
@@ -68,7 +68,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
         /*local_task_manager=*/*local_task_manager_);
     auto gcs_resource_manager = std::make_shared<gcs::GcsResourceManager>(
         io_service_,
-        cluster_resource_scheduler->GetClusterResourceManager(),
+        cluster_resource_scheduler_->GetClusterResourceManager(),
         *gcs_node_manager_,
         local_node_id_);
     gcs_actor_scheduler_ = std::make_shared<GcsServerMocker::MockedGcsActorScheduler>(
@@ -96,7 +96,8 @@ class GcsActorSchedulerTest : public ::testing::Test {
         });
 
     gcs_node_manager_->AddNodeAddedListener(
-        [cluster_resource_scheduler](std::shared_ptr<rpc::GcsNodeInfo> node) {
+        [cluster_resource_scheduler =
+             cluster_resource_scheduler_.get()](std::shared_ptr<rpc::GcsNodeInfo> node) {
           scheduling::NodeID node_id(node->node_id());
           auto &cluster_resource_manager =
               cluster_resource_scheduler->GetClusterResourceManager();
@@ -150,6 +151,7 @@ class GcsActorSchedulerTest : public ::testing::Test {
   std::shared_ptr<GcsServerMocker::MockWorkerClient> worker_client_;
   std::shared_ptr<gcs::GcsNodeManager> gcs_node_manager_;
   std::unique_ptr<raylet::ILocalTaskManager> local_task_manager_;
+  std::unique_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
   std::shared_ptr<ClusterTaskManager> cluster_task_manager_;
   std::shared_ptr<GcsServerMocker::MockedGcsActorScheduler> gcs_actor_scheduler_;
   std::shared_ptr<CounterMap<std::pair<rpc::ActorTableData::ActorState, std::string>>>
@@ -696,7 +698,7 @@ TEST_F(GcsActorSchedulerTest, TestScheduleAndDestroyOneActor) {
   scheduling::NodeID scheduling_node_id(node->node_id());
   ASSERT_EQ(1, gcs_node_manager_->GetAllAliveNodes().size());
   const auto &cluster_resource_manager =
-      cluster_task_manager_->GetClusterResourceScheduler()->GetClusterResourceManager();
+      cluster_task_manager_->GetClusterResourceScheduler().GetClusterResourceManager();
   auto resource_view_before_scheduling = cluster_resource_manager.GetResourceView();
   ASSERT_TRUE(resource_view_before_scheduling.contains(scheduling_node_id));
 
