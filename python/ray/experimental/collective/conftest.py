@@ -18,7 +18,7 @@ class AbstractNcclGroup(Communicator):
     A dummy NCCL group for testing.
     """
 
-    #import cupy as cp
+    import cupy as cp
 
     def __init__(self, actor_handles: List[ray.actor.ActorHandle]):
         self._actor_handles = actor_handles

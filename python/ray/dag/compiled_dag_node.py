@@ -840,8 +840,6 @@ class CompiledDAG:
         self._nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
         self._nccl_group_ids: Set[str] = set()
-        # All the CPU group IDs for collective operations.
-        self._cpu_group_ids: Set[str] = set()
         # The index of the current execution. It is incremented each time
         # the DAG is executed.
         self._execution_index: int = 0
@@ -882,10 +880,6 @@ class CompiledDAG:
     @property
     def nccl_group_ids(self) -> Set[str]:
         return self._nccl_group_ids
-
-    @property
-    def cpu_group_ids(self) -> Set[str]:
-        return self._cpu_group_ids
 
     def increment_max_finished_execution_index(self) -> None:
         """Increment the max finished execution index. It is used to
@@ -1199,7 +1193,7 @@ class CompiledDAG:
         # If a NCCL group for collective actors is not initialized, initialize and
         # cache the NCCL group ID.
         for collective_op in nccl_collective_ops:
-            if (collective_op.type_hint.nccl_group_id is None):
+            if collective_op.type_hint.nccl_group_id is None:
                 actors = frozenset(collective_op.actor_handles)
                 nccl_group_id = collective_op.init_nccl_group(
                     actors_to_nccl_group_id.get(actors, None)

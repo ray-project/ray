@@ -72,9 +72,6 @@ class _CollectiveOperation:
                 raise ValueError(
                     "Expected actor handles to match the custom NCCL group"
                 )
-        if isinstance(transport, CPUCommunicator):
-            if set(transport.get_actor_handles()) != set(self._actor_handles):
-                raise ValueError("Expected actor handles to match the custom CPU group")
 
     def __str__(self) -> str:
         return (
