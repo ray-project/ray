@@ -10,7 +10,7 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class FeatureHasher(Preprocessor):
-    """Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
+    r"""Apply the `hashing trick <https://en.wikipedia.org/wiki/Feature_hashing>`_ to a
     table that describes token frequencies.
 
     :class:`FeatureHasher` creates ``num_features`` columns named ``hash_{index}``,
