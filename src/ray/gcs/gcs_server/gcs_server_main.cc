@@ -31,9 +31,14 @@ DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(event_log_dir,
               "",
               "The path of the dir where event log files are created.");
-DEFINE_string(ray_log_filepath,
-              "",
-              "The filename to dump gcs server log, which is written via `RAY_LOG`.");
+DEFINE_string(
+    ray_log_stdout_filepath,
+    "",
+    "The filename to dump gcs server log on stdout, which is written via `RAY_LOG`.");
+DEFINE_string(
+    ray_log_stderr_filepath,
+    "",
+    "The filename to dump gcs server log on stderr, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -68,12 +73,14 @@ int main(int argc, char *argv[]) {
     setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
   }
 
-  InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
-                                         ray::RayLog::ShutDownRayLog,
-                                         argv[0],
-                                         ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"",
-                                         /*log_file=*/FLAGS_ray_log_filepath);
+  InitShutdownRAII ray_log_shutdown_raii(
+      ray::RayLog::StartRayLog,
+      ray::RayLog::ShutDownRayLog,
+      argv[0],
+      ray::RayLogLevel::INFO,
+      /*log_dir=*/"",
+      /*stdout_log_filepath=*/FLAGS_ray_log_stdout_filepath,
+      /*stderr_log_filepath=*/FLAGS_ray_log_stderr_filepath);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 

@@ -332,13 +332,18 @@ void RayLog::InitLogFormat() {
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir,
-                         const std::string &log_file) {
+                         const std::string &stdout_log_filepath,
+                         const std::string &stderr_log_filepath) {
   // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
-  // [log_file]. But they cannot be non empty at the same time. Cleanup `log_dir`.
+  // [stdout_log_filepath]. But they cannot be non empty at the same time. Cleanup
+  // `log_dir`.
   const bool log_dir_empty = log_dir.empty();
-  const bool log_file_empty = log_file.empty();
-  RAY_CHECK(log_dir_empty || log_file_empty)
-      << "Log directory and log filename cannot be set at the same time.";
+  const bool stdout_log_filepath_empty = stdout_log_filepath.empty();
+  const bool stderr_log_filepath_empty = stderr_log_filepath.empty();
+  RAY_CHECK(log_dir_empty || stdout_log_filepath_empty)
+      << "Log directory and stdout log filename cannot be set at the same time.";
+  RAY_CHECK(log_dir_empty || stderr_log_filepath_empty)
+      << "Log directory and stderr log filename cannot be set at the same time.";
 
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
@@ -361,11 +366,9 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  const auto log_output_fname =
-      GetLogOutputFilename(log_dir, log_file, app_name_without_path);
-  if (!log_output_fname.empty()) {
-    // Reset log pattern and level and we assume a log file can be rotated with
-    // 10 files in max size 512M by default.
+  // Reset log pattern and level and we assume a log file can be rotated with
+  // 10 files in max size 512M by default.
+  if (!stdout_log_filepath_empty || !stderr_log_filepath_empty) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
       long max_size = 0;
@@ -383,6 +386,12 @@ void RayLog::StartRayLog(const std::string &app_name,
         log_rotation_file_num_ = file_num;
       }
     }
+  }
+
+  // Set sink for stdout.
+  const auto stdout_log_fname =
+      GetLogOutputFilename(log_dir, stdout_log_filepath, app_name_without_path);
+  if (!stdout_log_fname.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -392,7 +401,7 @@ void RayLog::StartRayLog(const std::string &app_name,
       spdlog::drop(RayLog::GetLoggerName());
     }
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        log_output_fname, log_rotation_max_size_, log_rotation_file_num_);
+        stdout_log_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
@@ -402,11 +411,19 @@ void RayLog::StartRayLog(const std::string &app_name,
     sinks[0] = std::move(console_sink);
   }
 
-  // In all cases, log errors to the console log so they are in driver logs.
-  // https://github.com/ray-project/ray/issues/12893
-  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-  err_sink->set_level(spdlog::level::err);
-  sinks[1] = std::move(err_sink);
+  // Set sink for stderr.
+  const auto stderr_log_fname =
+      GetLogOutputFilename(log_dir, stderr_log_filepath, app_name_without_path);
+  if (stderr_log_fname.empty()) {
+    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+    err_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(err_sink);
+  } else {
+    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
+        stderr_log_fname, log_rotation_max_size_, log_rotation_file_num_);
+    file_sink->set_level(spdlog::level::err);
+    sinks[1] = std::move(file_sink);
+  }
 
   // Set the combined logger.
   auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),

@@ -1445,7 +1445,8 @@ def get_address(redis_address):
 def start_gcs_server(
     redis_address: str,
     event_log_dir: str,
-    ray_log_filepath: Optional[str],
+    ray_log_stdout_filepath: Optional[str],
+    ray_log_stderr_filepath: Optional[str],
     session_name: str,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1460,8 +1461,10 @@ def start_gcs_server(
     Args:
         redis_address: The address that the Redis server is listening on.
         event_log_dir: The path of the dir where gcs event log files are created.
-        ray_log_filepath: The file path to dump gcs server log, which is written
-            via `RAY_LOG`.
+        ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
+            written via `RAY_LOG`.
+        ray_log_stderr_filepath: The file path to dump gcs server stderr log, which is
+            written via `RAY_LOG`.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
@@ -1487,8 +1490,10 @@ def start_gcs_server(
         f"--ray-commit={ray.__commit__}",
     ]
 
-    if ray_log_filepath:
-        command += [f"--ray_log_filepath={ray_log_filepath}"]
+    if ray_log_stdout_filepath:
+        command += [f"--ray_log_stdout_filepath={ray_log_stdout_filepath}"]
+    if ray_log_stderr_filepath:
+        command += [f"--ray_log_stderr_filepath={ray_log_stderr_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1503,19 +1508,12 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
-    # Logging is fully managed by C++ side spdlog, which supports rotation and file
-    # count limitation.
-    stderr_file = (
-        sys.stderr
-        if os.environ.get("RAY_LOG_TO_STDERR", "0") == "1"
-        else open(os.devnull, "w")
-    )
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
         # GCS server stdout is completely taken over by C++ side spdlog, or disabled.
         stdout_file=open(os.devnull, "w"),
-        stderr_file=stderr_file,
+        stderr_file=open(os.devnull, "w"),
         fate_share=fate_share,
     )
     return process_info
