@@ -85,6 +85,9 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
     RAY_CHECK_EQ(sem_wait(sem), 0);
   } else {
     bool got_sem = false;
+
+#if defined(__APPLE__)
+
     // try to acquire the semaphore at least once even if the timeout_point is passed
     do {
       // macOS does not support sem_timedwait, so we implement a unified,
@@ -94,6 +97,38 @@ Status PlasmaObjectHeader::TryToAcquireSemaphore(
         break;
       }
     } while (std::chrono::steady_clock::now() < *timeout_point);
+
+#else  // defined(__Linux__)
+
+    // Calculate the relative time to wait
+    auto now = std::chrono::steady_clock::now();
+    if (*timeout_point <= now) {
+      // If the timeout is already passed, try once and return
+      got_sem = sem_trywait(sem) == 0;
+    } else {
+      auto duration = *timeout_point - now;
+      auto secs = std::chrono::duration_cast<std::chrono::seconds>(duration);
+      auto ns = std::chrono::duration_cast<std::chrono::nanoseconds>(duration - secs);
+
+      timespec ts;
+      clock_gettime(CLOCK_REALTIME, &ts);  // get current time
+      ts.tv_sec += secs.count();
+      ts.tv_nsec += ns.count();
+
+      // Handle the case where nanoseconds overflow
+      auto one_sec_in_ns = 1000000000L;
+      if (ts.tv_nsec >= one_sec_in_ns) {
+        ts.tv_sec += 1;
+        ts.tv_nsec -= one_sec_in_ns;
+      }
+
+      // Use sem_timedwait to wait until either the semaphore is acquired or the timeout
+      // is reached
+      got_sem = sem_timedwait(sem, &ts) == 0;
+    }
+
+#endif
+
     if (!got_sem) {
       return Status::ChannelTimeoutError("Timed out waiting for semaphore.");
     }
