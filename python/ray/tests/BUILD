@@ -521,6 +521,7 @@ py_test_module_list(
     "test_scheduling_2.py",
     "test_multiprocessing.py",
     "test_reference_counting.py",
+    "test_executor.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_1", "team:core"],
