@@ -670,7 +670,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  actor_task_submitter_ = std::make_shared<ActorTaskSubmitter>(*core_worker_client_pool_,
+  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
                                                                *memory_store_,
                                                                *task_manager_,
                                                                *actor_creator_,
@@ -731,7 +731,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
-      gcs_client_, actor_task_submitter_, reference_counter_);
+      gcs_client_, *actor_task_submitter_, reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
