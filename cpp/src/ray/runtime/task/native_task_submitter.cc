@@ -70,11 +70,11 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
   options.generator_backpressure_num_objects = -1;
   std::vector<rpc::ObjectReference> return_refs;
 
-  std::string invocation_stacktrace;
+  std::string call_site;
   if (::RayConfig::instance().record_task_actor_creation_sites()) {
     std::stringstream ss;
     ss << ray::StackTrace();
-    invocation_stacktrace = ss.str();
+    call_site = ss.str();
   }
   if (invocation.task_type == TaskType::ACTOR_TASK) {
     // NOTE: Ray CPP doesn't support per-method max_retries and retry_exceptions
@@ -88,7 +88,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                               max_retries,
                                               /*retry_exceptions=*/false,
                                               /*serialized_retry_exception_allowlist=*/"",
-                                              invocation_stacktrace,
+                                              call_site,
                                               return_refs);
     if (!status.ok()) {
       return ObjectID::Nil();
@@ -114,7 +114,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          scheduling_strategy,
                                          "",
                                          /*serialized_retry_exception_allowlist=*/"",
-                                         invocation_stacktrace);
+                                         call_site);
   }
   return ObjectID::FromBinary(return_refs[0].object_id());
 }
@@ -141,11 +141,11 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
         bundle_id.second);
     placement_group_scheduling_strategy->set_placement_group_capture_child_tasks(false);
   }
-  std::string invocation_stacktrace;
+  std::string call_site;
   if (::RayConfig::instance().record_task_actor_creation_sites()) {
     std::stringstream ss;
     ss << ray::StackTrace();
-    invocation_stacktrace = ss.str();
+    call_site = ss.str();
   }
   ray::core::ActorCreationOptions actor_options{
       create_options.max_restarts,
@@ -165,7 +165,7 @@ ActorID NativeTaskSubmitter::CreateActor(InvocationSpec &invocation,
                                         invocation.args,
                                         actor_options,
                                         /*extension_data=*/"",
-                                        invocation_stacktrace,
+                                        call_site,
                                         &actor_id);
   if (!status.ok()) {
     throw RayException("Create actor error");

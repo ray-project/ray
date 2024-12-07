@@ -4039,7 +4039,7 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             CTaskID current_c_task_id
             TaskID current_task = self.get_current_task_id()
-            c_string invocation_stacktrace
+            c_string call_site
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
@@ -4050,7 +4050,7 @@ cdef class CoreWorker:
 
         if RayConfig.instance().record_task_actor_creation_sites():
             # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
-            invocation_stacktrace = ''.join(traceback.format_stack())
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4079,7 +4079,7 @@ cdef class CoreWorker:
                     c_scheduling_strategy,
                     debugger_breakpoint,
                     serialized_retry_exception_allowlist,
-                    invocation_stacktrace,
+                    call_site,
                     current_c_task_id,
                 )
 
@@ -4129,14 +4129,14 @@ cdef class CoreWorker:
             c_vector[CObjectID] incremented_put_arg_ids
             optional[c_bool] is_detached_optional = nullopt
             unordered_map[c_string, c_string] c_labels
-            c_string invocation_stacktrace
+            c_string call_site
 
         self.python_scheduling_strategy_to_c(
             scheduling_strategy, &c_scheduling_strategy)
 
         if RayConfig.instance().record_task_actor_creation_sites():
             # TODO(ryw): unify with get_py_stack used by record_ref_creation_sites.
-            invocation_stacktrace = ''.join(traceback.format_stack())
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             prepare_resources(resources, &c_resources)
@@ -4173,7 +4173,7 @@ cdef class CoreWorker:
                         enable_task_events,
                         c_labels),
                     extension_data,
-                    invocation_stacktrace,
+                    call_site,
                     &c_actor_id,
                 )
 
@@ -4285,14 +4285,14 @@ cdef class CoreWorker:
             c_string serialized_retry_exception_allowlist
             c_string serialized_runtime_env = b"{}"
             unordered_map[c_string, c_string] c_labels
-            c_string invocation_stacktrace
+            c_string call_site
 
         serialized_retry_exception_allowlist = serialize_retry_exception_allowlist(
             retry_exception_allowlist,
             function_descriptor)
 
         if RayConfig.instance().record_task_actor_creation_sites():
-            invocation_stacktrace = ''.join(traceback.format_stack())
+            call_site = ''.join(traceback.format_stack())
 
         with self.profile_event(b"submit_task"):
             if num_method_cpus > 0:
@@ -4322,7 +4322,7 @@ cdef class CoreWorker:
                     max_retries,
                     retry_exceptions,
                     serialized_retry_exception_allowlist,
-                    invocation_stacktrace,
+                    call_site,
                     return_refs,
                     current_c_task_id,
                 )

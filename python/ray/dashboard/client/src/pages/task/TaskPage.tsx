@@ -89,7 +89,7 @@ const TaskPageContents = ({
     job_id,
     func_or_class_name,
     name,
-    invocation_stacktrace,
+    call_site,
   } = task;
   const isTaskActive = task.state === "RUNNING" && task.worker_id;
 
@@ -247,14 +247,14 @@ const TaskPageContents = ({
                 content: undefined,
               },
           {
-            label: "Invocation stacktrace",
+            label: "Call site",
             content: (
               <Box display="inline-block">
                 <CodeDialogButton
-                  title="Invocation stacktrace"
+                  title="Call site"
                   code={
-                    invocation_stacktrace ||
-                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
+                    call_site ||
+                    'Call site not recorded. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
                   }
                 />
               </Box>

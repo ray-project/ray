@@ -226,12 +226,12 @@ as well as some known problems. If you encounter other problems, `let us know`_.
 
 .. _`let us know`: https://github.com/ray-project/ray/issues
 
-Use invocation stacktrace
--------------------------
+Capture task and actor call sites
+---------------------------------
 
 Ray can optionally capture and display the stacktrace of where your code invokes tasks, creates actors or invokes actor tasks. This feature can help with debugging and understanding the execution flow of your application.
 
-To enable invocation stacktrace capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
+To enable call site capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
 
 - Ray captures the stacktrace when creating tasks, actors or calling actor methods
 - The stacktrace is visible in:

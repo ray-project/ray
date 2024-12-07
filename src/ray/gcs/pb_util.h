@@ -255,8 +255,8 @@ inline void FillTaskInfo(rpc::TaskInfoEntry *task_info,
   if (!pg_id.IsNil()) {
     task_info->set_placement_group_id(pg_id.Binary());
   }
-  if (task_spec.GetMessage().invocation_stacktrace().size() > 0) {
-    task_info->set_invocation_stacktrace(task_spec.GetMessage().invocation_stacktrace());
+  if (task_spec.GetMessage().call_site().size() > 0) {
+    task_info->set_call_site(task_spec.GetMessage().call_site());
   }
 }
 

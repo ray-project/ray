@@ -2463,10 +2463,10 @@ def test_list_get_tasks(shutdown_only):
     print(list_tasks())
 
 
-def test_list_get_tasks_invocation_stacktrace(shutdown_only):
+def test_list_get_tasks_call_site(shutdown_only):
     """
     Call chain: Driver -> caller -> callee.
-    Verify that the invocation stacktrace is captured in callee, and it contains string
+    Verify that the call site is captured in callee, and it contains string
     "caller".
     """
     ray.init(
@@ -2489,19 +2489,19 @@ def test_list_get_tasks_invocation_stacktrace(shutdown_only):
 
     def verify():
         callee_task = get_task(callee_ref)
-        assert callee_task["invocation_stacktrace"] is not None
-        assert "caller" in callee_task["invocation_stacktrace"]
+        assert callee_task["call_site"] is not None
+        assert "caller" in callee_task["call_site"]
         return True
 
     wait_for_condition(verify)
     print(list_tasks())
 
 
-def test_list_actor_tasks_invocation_stacktrace(shutdown_only):
+def test_list_actor_tasks_call_site(shutdown_only):
     """
     Call chain: Driver -> create_actor -> (Actor, Actor.method).
 
-    Verify that the invocation stacktraces are captured in both Actor and Actor.method,
+    Verify that the call sites are captured in both Actor and Actor.method,
     and they contain string "create_actor".
     """
     ray.init(
@@ -2526,14 +2526,14 @@ def test_list_actor_tasks_invocation_stacktrace(shutdown_only):
 
     def verify():
         method_task = get_task(method_ref)
-        assert method_task["invocation_stacktrace"] is not None
-        assert "create_actor" in method_task["invocation_stacktrace"]
+        assert method_task["call_site"] is not None
+        assert "create_actor" in method_task["call_site"]
 
         actors = list_actors(detail=True)
         assert len(actors) == 1
         actor = actors[0]
-        assert actor["invocation_stacktrace"] is not None
-        assert "create_actor" in actor["invocation_stacktrace"]
+        assert actor["call_site"] is not None
+        assert "create_actor" in actor["call_site"]
         return True
 
     wait_for_condition(verify)

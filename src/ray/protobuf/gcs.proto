@@ -158,7 +158,7 @@ message ActorTableData {
   // Human readable stacktrace of the actor creation. The exact data
   // format depends on the language. Only populated if
   // `RAY_record_task_actor_creation_sites` is set to `true`.
-  optional string invocation_stacktrace = 34;
+  optional string call_site = 34;
 }
 
 message ErrorTableData {

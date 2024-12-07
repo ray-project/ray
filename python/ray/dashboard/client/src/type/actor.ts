@@ -32,7 +32,7 @@ export type Actor = {
   };
   exitDetail: string;
   reprName: string;
-  invocationStacktrace?: string | undefined;
+  callSite?: string | undefined;
 };
 
 export type ActorDetail = {

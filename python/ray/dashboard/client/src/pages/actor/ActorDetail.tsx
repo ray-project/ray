@@ -207,14 +207,14 @@ const ActorDetailPage = () => {
             ),
           },
           {
-            label: "Invocation stacktrace",
+            label: "Call site",
             content: (
               <Box display="inline-block">
                 <CodeDialogButton
-                  title="Invocation stacktrace"
+                  title="Call site"
                   code={
-                    actorDetail.invocationStacktrace ||
-                    'Invocation stacktrace not enabled. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
+                    actorDetail.callSite ||
+                    'Call site not recorded. To enable, set environment variable "RAY_record_task_actor_creation_sites" to "true".'
                   }
                 />
               </Box>
