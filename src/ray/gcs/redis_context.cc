@@ -673,9 +673,8 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
                                                  std::move(args));
-  // If we are already on the io_service thread, we can run the request immediately.
-  io_service_.dispatch([request_context]() { request_context->Run(); },
-                       "RedisContext::RunArgvAsync");
+  // RedisRequestContext is thread safe.
+  request_context->Run();
 }
 
 }  // namespace gcs
