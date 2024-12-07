@@ -27,6 +27,7 @@ user-guides/tls
 user-guides/k8s-autoscaler
 user-guides/static-ray-cluster-without-kuberay
 user-guides/kubectl-plugin
+user-guides/kuberay-auth
 ```
 
 
