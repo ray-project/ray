@@ -2730,5 +2730,8 @@ ray_cc_library(
     name = "cgroup_setup",
     srcs = ["src/ray/raylet/cgroup_setup.cc"],
     hdrs = ["src/ray/raylet/cgroup_setup.h"],
-    deps = ["//src/ray/util"],
+    deps = [
+        "//src/ray/util",
+        "@com_google_absl//absl/strings:str_format",
+    ],
 )

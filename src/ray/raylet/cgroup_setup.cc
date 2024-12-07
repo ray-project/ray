@@ -22,6 +22,7 @@
 #include <string_view>
 #include <vector>
 
+#include "absl/strings/str_format.h"
 #include "src/ray/util/filesystem.h"
 #include "src/ray/util/logging.h"
 #include "src/ray/util/util.h"
@@ -33,7 +34,7 @@ namespace {
 const std::string kSystemCgroupFolder = []() {
   // Append UUID to system cgroup path to avoid conflict.
   // Chances are that multiple ray cluster runs on the same filesystem.
-  return JoinPaths("/sys/fs/cgroup/system", GenerateUUIDV4());
+  return absl::StrFormat("/sys/fs/cgroup/ray_system_%s", GenerateUUIDV4());
 }();
 // Cgroup PID path for ray system components.
 constexpr std::string_view kSystemCgroupProcs = "/sys/fs/cgroup/system/cgroup.procs";
