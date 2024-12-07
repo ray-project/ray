@@ -1,5 +1,5 @@
 import logging
-from typing import Iterable
+from typing import Any, Iterable
 
 from ray.data._internal.datasource.mongo_datasource import (
     _validate_database_collection_exist,
@@ -26,7 +26,7 @@ class MongoDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         import pymongo
 
         _validate_database_collection_exist(
