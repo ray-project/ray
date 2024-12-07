@@ -140,7 +140,7 @@ class ActorManagerTest : public ::testing::Test {
 
   void SetUp() {
     actor_manager_ = std::make_shared<ActorManager>(
-        gcs_client_mock_, actor_task_submitter_, reference_counter_);
+        gcs_client_mock_, *actor_task_submitter_, reference_counter_);
   }
 
   void TearDown() { actor_manager_.reset(); }

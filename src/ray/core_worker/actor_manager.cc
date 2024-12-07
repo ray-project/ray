@@ -152,7 +152,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   if (add_local_ref) {
     reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
   }
-  actor_task_submitter_->AddActorQueueIfNotExists(
+  actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
       actor_handle->MaxPendingCalls(),
       actor_handle->ExecuteOutOfOrder(),
@@ -168,7 +168,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
     // Current actor doesn't need to subscribe its state from GCS.
     // num_restarts is used for dropping out-of-order pub messages. Since we won't
     // subscribe any messages, we can set any value bigger than -1(we use 0 here).
-    actor_task_submitter_->ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
+    actor_task_submitter_.ConnectActor(actor_id, caller_address, /*num_restarts=*/0);
   }
 
   if (inserted && owned) {
@@ -218,27 +218,27 @@ void ActorManager::HandleActorStateNotification(const ActorID &actor_id,
                 << ", death context type="
                 << gcs::GetActorDeathCauseString(actor_data.death_cause());
   if (actor_data.preempted()) {
-    actor_task_submitter_->SetPreempted(actor_id);
+    actor_task_submitter_.SetPreempted(actor_id);
   }
 
   if (actor_data.state() == rpc::ActorTableData::RESTARTING) {
-    actor_task_submitter_->DisconnectActor(actor_id,
-                                           actor_data.num_restarts(),
-                                           /*is_dead=*/false,
-                                           actor_data.death_cause(),
-                                           /*is_restartable=*/true);
+    actor_task_submitter_.DisconnectActor(actor_id,
+                                          actor_data.num_restarts(),
+                                          /*is_dead=*/false,
+                                          actor_data.death_cause(),
+                                          /*is_restartable=*/true);
   } else if (actor_data.state() == rpc::ActorTableData::DEAD) {
     OnActorKilled(actor_id);
-    actor_task_submitter_->DisconnectActor(actor_id,
-                                           actor_data.num_restarts(),
-                                           /*is_dead=*/true,
-                                           actor_data.death_cause(),
-                                           gcs::IsActorRestartable(actor_data));
+    actor_task_submitter_.DisconnectActor(actor_id,
+                                          actor_data.num_restarts(),
+                                          /*is_dead=*/true,
+                                          actor_data.death_cause(),
+                                          gcs::IsActorRestartable(actor_data));
     // We cannot erase the actor handle here because clients can still
     // submit tasks to dead actors. This also means we defer unsubscription,
     // otherwise we crash when bulk unsubscribing all actor handles.
   } else if (actor_data.state() == rpc::ActorTableData::ALIVE) {
-    actor_task_submitter_->ConnectActor(
+    actor_task_submitter_.ConnectActor(
         actor_id, actor_data.address(), actor_data.num_restarts());
   } else {
     // The actor is being created and not yet ready, just ignore!
