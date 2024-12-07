@@ -6,7 +6,7 @@ import signal
 from collections import Counter
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
 import pytest_asyncio
@@ -23,7 +23,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID
+from ray._raylet import ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
@@ -42,6 +42,7 @@ from ray.core.generated.common_pb2 import (
     WorkerType,
     TaskType,
 )
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_pb2 import (
     TaskEvents,
     TaskStateUpdate,
@@ -51,6 +52,7 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GcsStatus,
     GetTaskEventsReply,
     GetAllActorInfoReply,
@@ -1005,6 +1007,86 @@ async def test_api_manager_list_tasks(state_api_manager):
         option=create_api_options(filters=[("task_id", "=", bytearray(id).hex())])
     )
     assert len(result.result) == 1
+
+
+@pytest.mark.asyncio
+@patch.object(
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
+)
+async def test_state_data_source_client_get_all_task_info():
+    #  Setup
+    mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
+
+    client = StateDataSourceClient(None, None)
+    client._gcs_task_info_stub = mock_gcs_task_info_stub
+
+    mock_reply = MagicMock(GetTaskEventsReply)
+    mock_gcs_task_info_stub.GetTaskEvents = AsyncMock()
+    mock_gcs_task_info_stub.GetTaskEvents.side_effect = [mock_reply]
+
+    test_actor_id = ActorID.from_random()
+    test_job_id = JobID.from_int(1)
+    test_task_id_1 = TaskID.for_fake_task(test_job_id)
+    test_task_id_2 = TaskID.for_fake_task(test_job_id)
+    test_task_name = "task_name"
+    test_state = "running"
+    input_filters = []
+    input_filters.append(("actor_id", "=", test_actor_id.hex()))
+    input_filters.append(("job_id", "!=", test_job_id.hex()))
+    input_filters.append(("task_id", "=", test_task_id_1.hex()))
+    input_filters.append(("name", "=", test_task_name))
+    input_filters.append(("task_id", "!=", test_task_id_2.hex()))
+    input_filters.append(("state", "=", test_state))
+    input_timeout = 100
+    input_limit = 200
+    input_exclude_driver = True
+
+    # Execute the function
+    result = await client.get_all_task_info(
+        input_timeout, input_limit, input_filters, input_exclude_driver
+    )
+
+    # Verify
+    assert result is mock_reply
+    mock_gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+
+    input_args = mock_gcs_task_info_stub.GetTaskEvents.await_args
+    assert len(input_args.kwargs) == 1
+    assert input_args.kwargs["timeout"] == input_timeout
+
+    assert len(input_args.args) == 1
+    request_arg = input_args.args[0]
+    assert request_arg.limit == input_limit
+
+    filters_arg = request_arg.filters
+    task_filters_arg = request_arg.filters.task_filters
+    assert len(task_filters_arg) == 2
+    if task_filters_arg[0].predicate == FilterPredicate.EQUAL:
+        assert TaskID(task_filters_arg[0].task_id) == test_task_id_1
+        assert task_filters_arg[1].predicate == FilterPredicate.NOT_EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_2
+    else:
+        assert task_filters_arg[0].task_id == test_task_id_2
+        assert task_filters_arg[1].predicate == FilterPredicate.EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_1
+
+    assert filters_arg.HasField("actor_filter")
+    assert ActorID(filters_arg.actor_filter.actor_id) == test_actor_id
+    assert filters_arg.actor_filter.predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.HasField("job_filter")
+    assert JobID(filters_arg.job_filter.job_id) == test_job_id
+    assert filters_arg.job_filter.predicate == FilterPredicate.NOT_EQUAL
+
+    assert filters_arg.HasField("name_filter")
+    assert filters_arg.name_filter.name == test_task_name
+    assert filters_arg.name_filter.predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.HasField("state_filter")
+    assert filters_arg.state_filter.state == test_state
+    assert filters_arg.state_filter.predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.exclude_driver == input_exclude_driver
 
 
 @pytest.mark.asyncio
