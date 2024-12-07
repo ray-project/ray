@@ -19,4 +19,4 @@ pytest-mock
 decord
 snowflake-connector-python
 pyiceberg[sql-sqlite]==0.7.0
-hudi==0.2.0rc1
+hudi==0.2.0
