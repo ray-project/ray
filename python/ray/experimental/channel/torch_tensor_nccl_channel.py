@@ -9,8 +9,8 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
-from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -574,6 +574,7 @@ def _do_init_nccl_group(
             use_communication_streams,
         )
 
+
 def _do_destroy_nccl_group(self, group_id):
     ctx = ChannelContext.get_current()
     if group_id not in ctx.nccl_groups:
@@ -582,6 +583,7 @@ def _do_destroy_nccl_group(self, group_id):
 
     # Keep the NCCL group in the map after destruction in case there is still a
     # task loop running.
+
 
 def _do_check_has_gpu(self) -> bool:
     return bool(ray.get_gpu_ids())
@@ -644,7 +646,9 @@ def _init_nccl_group(
     """
     ctx = ChannelContext.get_current()
 
-    is_cpu_communicator = custom_nccl_group and isinstance(custom_nccl_group, CPUCommunicator)
+    is_cpu_communicator = custom_nccl_group and isinstance(
+        custom_nccl_group, CPUCommunicator
+    )
 
     has_gpus = ray.get(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
@@ -664,7 +668,11 @@ def _init_nccl_group(
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
-    nccl_comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id)) if not is_cpu_communicator else str(uuid.uuid4())
+    nccl_comm_id = (
+        ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+        if not is_cpu_communicator
+        else str(uuid.uuid4())
+    )
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 

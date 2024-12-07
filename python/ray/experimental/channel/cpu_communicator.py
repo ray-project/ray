@@ -3,7 +3,11 @@ from collections import defaultdict
 from typing import Dict, List, Optional, Tuple
 
 import ray
-from ray.experimental.channel.communicator import ReduceOp, TorchTensorAllocator, Communicator
+from ray.experimental.channel.communicator import (
+    Communicator,
+    ReduceOp,
+    TorchTensorAllocator,
+)
 
 
 @ray.remote(num_cpus=0)
@@ -14,6 +18,7 @@ class CPUCommBarrier:
 
     p2p operations are not done here (completed via shared memory channel).
     """
+
     import torch
 
     def __init__(self, num_actors: int):
@@ -86,6 +91,7 @@ class CPUCommunicator(Communicator):
     """
     Uses a CPU-based communicator actor instead of a NCCL group.
     """
+
     import torch
 
     def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):

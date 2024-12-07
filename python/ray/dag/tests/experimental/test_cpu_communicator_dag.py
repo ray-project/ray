@@ -6,12 +6,6 @@ import pytest
 
 import ray
 import ray.cluster_utils
-from ray.experimental.collective.conftest import (
-    AbstractNcclGroup,
-    CPUTorchTensorWorker,
-    check_nccl_group_init,
-    check_nccl_group_teardown,
-)
 from ray.exceptions import RayChannelError
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.experimental.channel.cpu_communicator import CPUCommunicator
@@ -142,6 +136,7 @@ def test_allreduce_basic(ray_start_cluster):
         result = ray.get(ref)
         reduced_val = sum(i + idx for idx in range(num_workers))
         assert result == [(reduced_val, shape, dtype) for _ in workers]
+
 
 @pytest.mark.parametrize(
     "ray_start_cluster",

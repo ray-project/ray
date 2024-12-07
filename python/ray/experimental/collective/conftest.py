@@ -70,6 +70,9 @@ class AbstractNcclGroup(Communicator):
     def destroy(self) -> None:
         pass
 
+    def get_device_type(self) -> str:
+        return "nccl"
+
 
 class MockNcclGroupSet:
     def __init__(self):
