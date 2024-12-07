@@ -22,7 +22,7 @@ DEFAULT_MAX_BUFFER_SIZE = int(1e6)  # 100 mB
 MIN_BUFFER_SIZE = int(1000)  # 1000 bytes
 # For shared memory channels, the default number of buffers per channel to
 # allocate.
-DEFAULT_NUM_SHM_BUFFERS = 10
+DEFAULT_NUM_SHM_BUFFERS = 3
 
 
 def _create_channel_ref(
