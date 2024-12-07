@@ -1690,7 +1690,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;

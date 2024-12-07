@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 
+#include <utility>
+
 #include "ray/common/ray_config.h"
 
 namespace ray {
@@ -24,12 +26,12 @@ GcsRedisFailureDetector::GcsRedisFailureDetector(
     std::shared_ptr<RedisClient> redis_client,
     std::function<void()> callback)
     : io_service_(io_service),
-      redis_client_(redis_client),
+      redis_client_(std::move(redis_client)),
       callback_(std::move(callback)) {}
 
 void GcsRedisFailureDetector::Start() {
   RAY_LOG(INFO) << "Starting redis failure detector.";
-  periodical_runner_ = std::make_unique<PeriodicalRunner>(io_service_);
+  periodical_runner_ = PeriodicalRunner::Create(io_service_);
   periodical_runner_->RunFnPeriodically(
       [this] { DetectRedis(); },
       RayConfig::instance().gcs_redis_heartbeat_interval_milliseconds(),
@@ -38,14 +40,14 @@ void GcsRedisFailureDetector::Start() {
 
 void GcsRedisFailureDetector::Stop() {
   RAY_LOG(INFO) << "Stopping redis failure detector.";
-  periodical_runner_->Clear();
+  periodical_runner_.reset();
 }
 
 void GcsRedisFailureDetector::DetectRedis() {
   auto redis_callback = [this](const std::shared_ptr<CallbackReply> &reply) {
     if (reply->IsNil()) {
       RAY_LOG(ERROR) << "Redis is inactive.";
-      callback_();
+      this->io_service_.dispatch(this->callback_, "GcsRedisFailureDetector.DetectRedis");
     }
   };
   auto cxt = redis_client_->GetPrimaryContext();

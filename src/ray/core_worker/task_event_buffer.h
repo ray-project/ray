@@ -430,7 +430,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::thread io_thread_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);

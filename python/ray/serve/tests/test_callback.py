@@ -216,7 +216,7 @@ def test_http_proxy_return_aribitary_objects(ray_instance):
     ],
     indirect=True,
 )
-def test_http_proxy_calllback_failures(ray_instance, capsys):
+def test_http_proxy_callback_failures(ray_instance, capsys):
     """Test http proxy keeps restarting when callback function fails"""
 
     try:
