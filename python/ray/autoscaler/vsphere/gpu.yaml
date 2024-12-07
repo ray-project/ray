@@ -69,6 +69,7 @@ provider:
             # Dynamic PCI passthrough can support vSphere DRS, otherwise using regular PCI passthrough will not support
             # vSphere DRS.
             dynamic_pci_passthrough: False
+            pci_passthru_64bit_mmio_size_gb: 64
 
 # How Ray will authenticate with newly launched nodes.
 auth:
