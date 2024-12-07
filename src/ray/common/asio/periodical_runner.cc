@@ -111,24 +111,24 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
        stats_handle = std::move(stats_handle),
        name = std::move(name)](const boost::system::error_code &error) mutable {
         if (auto self = weak_self.lock(); self) {
+          // Moves `self` to the lambda because RecordExecution runs the lambda
+          // immediately so there's no chance for `self` to go out of scope.
           self->io_service_.stats().RecordExecution(
-              [weak_self,
+              [self = std::move(self),
                fn = std::move(fn),
                error,
                period,
                timer = std::move(timer),
                name = std::move(name)]() mutable {
-                if (auto self = weak_self.lock(); self) {
-                  if (error == boost::asio::error::operation_aborted) {
-                    // `operation_aborted` is set when `timer` is canceled or destroyed.
-                    // The Monitor lifetime may be short than the object who use it. (e.g.
-                    // gcs_server)
-                    return;
-                  }
-                  RAY_CHECK(!error) << error.message();
-                  self->DoRunFnPeriodicallyInstrumented(
-                      std::move(fn), period, std::move(timer), std::move(name));
+                if (error == boost::asio::error::operation_aborted) {
+                  // `operation_aborted` is set when `timer` is canceled or destroyed.
+                  // The Monitor lifetime may be short than the object who use it. (e.g.
+                  // gcs_server)
+                  return;
                 }
+                RAY_CHECK(!error) << error.message();
+                self->DoRunFnPeriodicallyInstrumented(
+                    std::move(fn), period, std::move(timer), std::move(name));
               },
               std::move(stats_handle));
         }

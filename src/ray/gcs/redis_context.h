@@ -18,15 +18,11 @@
 #include <boost/bind/bind.hpp>
 #include <functional>
 #include <memory>
-#include <mutex>
-#include <unordered_map>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
 #include "ray/util/logging.h"
-#include "ray/util/thread_checker.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -135,12 +131,6 @@ struct RedisRequestContext {
   std::vector<size_t> argc_;
 };
 
-// RunArgvAsync is thread-safe, can be accessed from multiple threads. The work is
-// dispatched to the io_service thread, and the callback is dispatched back to the
-// argument io_context.
-//
-// RunArgvSync is not thread-safe, caller must ensure there's no concurrent call to
-// RunArgvSync.
 class RedisContext {
  public:
   explicit RedisContext(instrumented_io_context &io_service);
