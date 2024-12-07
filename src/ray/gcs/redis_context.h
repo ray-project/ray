@@ -23,6 +23,7 @@
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
