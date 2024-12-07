@@ -31,6 +31,14 @@ allowing for any policy to control more than one agent.
 RLlib's MultiAgentEnv API
 -------------------------
 
+.. hint::
+
+    This paragraph describes RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, which is the
+    recommended way of defining your own multi-agent environment logic. However, if you are already using a
+    third-party multi-agent API, RLlib offers wrappers for :ref:`Farama's PettingZoo API <farama-pettingzoo-api>` as well
+    as :ref:`DeepMind's OpenSpiel API <deepmind-openspiel-api>`.
+
+
 The :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closely follows the
 conventions and APIs of `Farama's gymnasium (single-agent) <gymnasium.farama.org>`__ envs and even subclasses
 from `gymnasium.Env`, however, instead of publishing individual observations, rewards, and termination/truncation flags
@@ -167,101 +175,122 @@ In general, the returned observations dict must contain those agents (and only t
 that should act next. Agent IDs that should NOT act in the next `step()` call should NOT have
 their observations in the returned observations dict.
 
-Note also that this rule does not apply to reward dicts, termination dicts, or truncation dicts, which
+Note also that this rule does not apply to reward dicts or termination/truncation dicts, all of which
 may contain any agent ID at any time step regardless of whether the agent ID is expected to act or not
-in the next `step()` call. This is so that an action of agent A can trigger some reward for agent B, even
-though B is currently not acting itself. The same is true for termination flags: Agent A may act in a way
+in the next `step()` call. This is so that an action taken by agent A can trigger a reward for agent B, even
+though agent B is currently not acting itself. The same is true for termination flags: Agent A may act in a way
 that terminates agent B from the episode without agent B having acted itself recently.
 
-In other words, you determine the exact order and synchronization of agent actions in your multi-agent episode
-through the agent IDs contained in (and missing from) your observations dicts.
-Only those agent ID that must compute and send actions into the next `step()` call must be part of the
+.. note::
+    Use the special agent ID `__all__` in the termination dicts and/or truncation dicts to indicate
+    that the episode should end for all agent IDs, regardless of which agents are still active at this point.
+    RLlib automatically terminates all agents in this case and ends the episode.
+
+In summary, the exact order and synchronization of agent actions in your multi-agent episode is determined
+through the agent IDs contained in (or missing from) your observations dicts.
+Only those agent IDs that are expected to compute and send actions into the next `step()` call must be part of the
 returned observation dict.
 
-This API allows you to design any type of multi-agent environment, from turn-based games to
-environments where all agents always act simultaneously, to any combination of these two patterns.
+This simple rule allows you to design any type of multi-agent environment, from turn-based games to
+environments where all agents always act simultaneously, to any arbitrarily complex combination of these two patterns.
 
 Let's take a look at two specific, complete :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` example implementations,
-one where agents always act simulatenously and one where agents act in a turn-based sequence.
+one where agents always act simultaneously and one where agents act in a turn-based sequence.
 
 
-Example: Environments with Simultaneous Agent Steps
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Environment with Simultaneously Stepping Agents
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A good and simple example for a multi-agent env, in which all agents always step simultaneously
+is the Rock-Paper-Scissors game, in which two agents have to play N moves altogether, each choosing between
+the actions "Rock", "Paper", or "Scissors". After each move, the action choices are compared.
+Rock beats Scissors, Paper beats Rock, and Scissors beats Paper. The player winning the move receives
+a +1 reward, the losing player -1.
+
+Here is the initial class scaffold for your Rock-Paper-Scissors Game:
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+   :language: python
+   :start-after: __sphinx_doc_1_begin__
+   :end-before: __sphinx_doc_1_end__
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+   :language: python
+   :start-after: __sphinx_doc_2_begin__
+   :end-before: __sphinx_doc_2_end__
+
+Next, you can implement the constructor of your class:
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+   :language: python
+   :start-after: __sphinx_doc_3_begin__
+   :end-before: __sphinx_doc_3_end__
+
+Note that we specify `self.agents = self.possible_agents` in the constructor to indicate
+that the agents don't change over the course of an episode and stay fixed at `[player1, player2]`.
+
+The `reset` logic is to simply add both players in the returned observations dict (both players are
+expected to act simultaneously in the next `step()` call) and reset a `num_moves` counter
+that keeps track of the number of moves being played in order to terminate the episode after exactly
+10 timesteps (10 actions by either player):
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+   :language: python
+   :start-after: __sphinx_doc_4_begin__
+   :end-before: __sphinx_doc_4_end__
+
+Finally, your `step` method should handle the next observations (each player observes the action
+the opponent just chose), the rewards (+1 or -1 according to the winner/loser rules explained above),
+and the termination dict (you set the special `__all__` agent ID to `True` iff the number of moves
+has reached 10). The truncateds- and infos dicts always remain empty:
 
 
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/rock_paper_scissors.py
+   :language: python
+   :start-after: __sphinx_doc_5_begin__
+   :end-before: __sphinx_doc_5_end__
 
-.. code-block:: python
+`See here <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/agents_act_simultaneously.py>`__
+for a complete end-to-end example script showing how to run a multi-agent RLlib setup against your
+`RockPaperScissors` env.
 
-    # Multi-agent environment with two car agents and one traffic light agent.
-    env = MultiAgentTrafficEnv(num_cars=2, num_traffic_lights=1)
-
-    # Observations are a dict mapping agent IDs to their respective observations.
-    # Only include agent IDs in the observation dict for agents that require actions
-    # in the next `step()` call (here: all agents act simultaneously).
-    print(env.reset())
-    # Output:
-    # {
-    #   "car_1": [[...]],
-    #   "car_2": [[...]],
-    #   "traffic_light_1": [[...]]
-    # }
-
-    # In the `step` call, provide actions for each agent that had an observation.
-    observations, rewards, terminateds, truncateds, infos = env.step(
-        actions={"car_1": ..., "car_2": ..., "traffic_light_1": ...})
-
-    # Observations, rewards, and termination flags are returned as dictionaries.
-    print(rewards)
-    # Output: {"car_1": 3, "car_2": -1, "traffic_light_1": 0}
-
-    # Each agent can terminate individually; the episode ends when
-    # terminateds["__all__"] is set to True.
-    print(terminateds)
-    # Output: {"car_2": True, "__all__": False}
 
 Example: Turn-Based Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In a turn-based environment, agents step in a sequence. For example, consider a two-player TicTacToe game:
+Let's now walk through another multi-agent env example implementation, but this time you
+implement a turn-based game, in which you have two players (A and B), where A starts the game,
+then B makes a move, then again A, and so on and so forth.
+
+We implement the famous Tic-Tac-Toe game (with a slight variation), played on a 3x3 field.
+Each player adds one their piecec to the field at a time. Pieces can't be moved once placed.
+The player that completes one row (horizontal, diagonal, or vertical) first wins the game and
+receives +1 reward (the losing player receives a -1 reward).
+To make the implementation easier, the variation to the original game is that trying to
+place a piece on an already occupied field results in the board not changing at all, but the
+moving player receiving a -5 reward as a penalty.
+
 
 .. literalinclude::
 
 
-    # Turn-based environment with two agents: "player1" and "player2".
-    env = TicTacToe()
 
-    # Observations map agent IDs to their respective observations.
-    # Only the agent that should act next has an observation.
-    print(env.reset())
-    # Output:
-    # {
-    #   "player1": [[...]]
-    # }
-
-    # During `step`, only provide actions for agents listed in the observation dict.
-    new_obs, rewards, terminateds, truncateds, infos = env.step(actions={"player1": ...})
-
-    # Observations, rewards, and termination flags are returned as dictionaries.
-    print(rewards)
-    # Output: {"player1": 0, "player2": 0}
-
-    # Agents can terminate individually; the episode ends when
-    # terminateds["__all__"] is set to True.
-    print(terminateds)
-    # Output: {"player1": False, "__all__": False}
-
-    # Next, it’s player2's turn, so `new_obs` contains only player2's observation.
-    print(new_obs)
-    # Output:
-    # {
-    #   "player2": [[...]]
-    # }
-
-Other Supported Multi-Agent Env APIs
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Third Party Multi-Agent Env APIs
+--------------------------------
 
 Besides RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, you can also use
-`Farama's PettingZoo <pettingzoo.farama.org>`__ API for writing your custom multi-agent env.
+various third-party APIs and libraries to implement custom multi-agent envs.
+
+Farama PettingZoo
+~~~~~~~~~~~~~~~~~
+
+`Farama's PettingZoo <pettingzoo.farama.org>`__ API for writing custom multi-agent envs.
+
+
+DeepMind OpenSpiel
+~~~~~~~~~~~~~~~~~~
+
+
 
 
 Configuring Multi-Agent Training with Shared Algorithms
