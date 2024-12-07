@@ -170,6 +170,7 @@ RayTask CreateTask(
                                  "",
                                  0,
                                  TaskID::Nil(),
+                                 "",
                                  runtime_env_info);
 
   if (!args.empty()) {
