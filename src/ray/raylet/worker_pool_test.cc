@@ -2230,7 +2230,8 @@ int main(int argc, char **argv) {
       argv[0],
       ray::RayLogLevel::INFO,
       /*log_dir=*/"",
-      /*log_file=*/"");
+      /*stdout_log_filepath=*/"",
+      /*stderr_log_filepath=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
