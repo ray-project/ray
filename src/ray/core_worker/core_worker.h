@@ -1878,7 +1878,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
 
-  /// TODO(hjiang): Cached job runtime env info.
+  /// TODO(hjiang):
+  /// 1. Cached job runtime env info, it's not implemented at first place since
+  /// `OverrideRuntimeEnv` mutates parent job runtime env info.
+  /// 2. Cleanup cache on job change.
   ///
   /// Serialized runtime info env are cached.
   mutable std::mutex job_runtime_env_serialization_mutex_;
