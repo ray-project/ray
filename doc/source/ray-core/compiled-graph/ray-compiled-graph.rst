@@ -66,6 +66,3 @@ Learn more details about Ray Compiled Graph from the following links.
     :maxdepth: 1
 
     quickstart
-    advanced_user_guide
-    performance
-    examples/examples
