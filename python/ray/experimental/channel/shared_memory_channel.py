@@ -759,20 +759,23 @@ class CompositeChannel(ChannelInterface):
 
     def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
+        return self._channel_dict[self._resolve_actor_id()].read(timeout)
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        self.ensure_registered_as_reader()
+        self._channel_dict[self._resolve_actor_id()].release_buffer(timeout)
+
+    def _resolve_actor_id(self) -> str:
         actor_id = ray.get_runtime_context().get_actor_id()
-        # if actor_id is None, read was called by the driver
-        # if the driver is an actor, driver_actor_id will be set to that actor id
+        # If actor_id is None, read was called by the driver
+        # If the driver is an actor, driver_actor_id will be set to that actor id
         if actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
             assert len(self._reader_and_node_list) >= 1
             driver_proxy_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_proxy_actor)
-        return self._channel_dict[actor_id].read(timeout)
-
-    def release_buffer(self, timeout: Optional[float] = None):
-        self.ensure_registered_as_reader()
-        self._channel_dict[self._get_self_actor_id()].release_buffer(timeout)
+        return actor_id
 
     def close(self) -> None:
         for channel in self._channels:
