@@ -359,7 +359,7 @@ NodeManager::NodeManager(
       max_task_args_memory);
   cluster_task_manager_ =
       std::make_shared<ClusterTaskManager>(self_node_id_,
-                                           cluster_resource_scheduler_,
+                                           *cluster_resource_scheduler_,
                                            get_node_info_func,
                                            announce_infeasible_task,
                                            *local_task_manager_);
