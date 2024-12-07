@@ -815,7 +815,7 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     cluster.head_node.kill_gcs_server(False)
 
     print("Start gcs")
-    sleep(2)
+    sleep(20)
     cluster.head_node.start_gcs_server()
 
     assert len(ray.nodes()) == 1
