@@ -180,7 +180,7 @@ class CPUCommunicator(Communicator):
         return "cpu"
 
     def recv_stream(self):
-        pass
+        raise NotImplementedError
 
     def send_stream(self):
-        pass
+        raise NotImplementedError
