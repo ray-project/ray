@@ -3,13 +3,13 @@ Quickstart
 
 Hello World
 -----------
-Let's start from the "hello world" example of Ray Compiled Graph. First, install Ray.
+This "hello world" example uses Ray Compiled Graph. First, install Ray.
 
 .. testcode::
 
     pip install "ray[adag]"
 
-Let's start by creating a very simple actor that directly returns a given input using classic Ray Core APIs, ``remote`` and ``ray.get``.
+We will define a simple actor.
 
 .. testcode::
 
@@ -20,6 +20,10 @@ Let's start by creating a very simple actor that directly returns a given input 
     class SimpleActor:
     def echo(self, msg):
         return msg
+
+Create a very simple actor that directly returns a given input using classic Ray Core APIs, ``remote`` and ``ray.get``.
+
+.. testcode::
 
     a = SimpleActor.remote()
 
@@ -38,21 +42,27 @@ Let's start by creating a very simple actor that directly returns a given input 
 
     Execution takes 969.0364822745323 us
 
-Let's create an equivalent program using Ray Compiled Graph. Note 4 key differences from the classic Ray Core APIs.
+Create an equivalent program using Ray Compiled Graph. Note 4 key differences with the classic Ray Core APIs.
 
-- Create a static DAG using ``with InputNode() as inp:`` context manager
+- Create a static DAG using ``with InputNode() as inp:`` context manager.
 - Use ``bind`` instead of ``remote``.
 - Use ``experimental_compile`` API for compilation.
 - Use ``execute`` to execute the DAG.
+
+Define a graph and compile it using ``experimental_compile`` API.
 
 .. testcode::
 
     import ray.dag
     with ray.dag.InputNode() as inp:
-        # Note that it uses `bind` instead of `remote`
+        # Note that it uses `bind` instead of `remote`.
         dag = a.echo.bind(inp)
     # experimental_compile is the key for optimizing the performance.
     dag = dag.experimental_compile()
+
+Next, execute the DAG and measure the performance.
+
+.. testcode::
 
     # warmup
     for _ in range(5):
@@ -70,20 +80,20 @@ Let's create an equivalent program using Ray Compiled Graph. Note 4 key differen
 
     Execution takes 86.72196418046951 us
 
-The performance of the same DAG is improved by 10X! It is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookeeping and distributed protocol, the classic Ray Core APIs usually have 1ms+ system overhead. 
+The performance of the same DAG improved by 10X. The explanation for this improvement is because the function ``echo`` is cheap and thus highly affected by
+the system overhead. Due to various bookeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead. 
 Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
 
-GPU to GPU Communication
+GPU to GPU communication
 ------------------------
-Let's also see a very simple GPU to GPU example. With a type hint, Compiled Graph can prepare NCCL communicator and
+Consider a very simple GPU to GPU example. With a type hint, Compiled Graph can prepare NCCL communicator and
 proper operations ahead of time, avoiding the deadlock and overlapping the compute and communication.
 
 Ray Compiled Graph uses `cupy library <https://cupy.dev/>`_ under the hood to support NCCL operations.
-The version of NCCL is affected by the cupy version. We are also planning to support custom communicator in the future.
+The version of NCCL is affected by the cupy version. The Ray team is also planning to support custom communicator in the future, for example to support collectives across CPUs or to reuse existing collective groups.
 
-Let's create sender and receiver actors.
+Next, create sender and receiver actors.
 
 .. testcode::
 
@@ -93,7 +103,7 @@ Let's create sender and receiver actors.
     from ray.experimental.channel.torch_tensor_type import TorchTensorType
 
     ray.init()
-    # Note that the following example requires at least 2 GPUs
+    # Note that the following example requires at least 2 GPUs.
     assert ray.available_resources().get("GPU") >= 2, "At least 2 GPUs are required to run this example."
 
     import torch
@@ -112,7 +122,7 @@ Let's create sender and receiver actors.
     sender = GPUSender.remote()
     receiver = GPUReceiver.remote()
 
-To support GPU to GPU RDMA via NCCL, you can use ``with_type_hint`` API with Compiled Graph.
+To support GPU to GPU RDMA with NCCL, you can use ``with_type_hint`` API with Compiled Graph.
 
 .. testcode::
 
