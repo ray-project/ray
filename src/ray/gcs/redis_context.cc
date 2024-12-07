@@ -630,7 +630,8 @@ Status RedisContext::Connect(const std::string &address,
         << "Failed to setup encrypted redis: " << async_context->errstr;
   }
   RAY_CHECK_OK(AuthenticateRedis(async_context.get(), username, password));
-  redis_async_context_.reset(new RedisAsyncContext(std::move(async_context)));
+  redis_async_context_.reset(
+      new RedisAsyncContext(io_service_, std::move(async_context)));
   SetDisconnectCallback(redis_async_context_.get());
 
   // handle validation and primary connection for different types of redis

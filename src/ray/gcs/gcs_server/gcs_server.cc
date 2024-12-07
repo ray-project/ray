@@ -332,7 +332,7 @@ void GcsServer::InitGcsResourceManager(const GcsInitData &gcs_init_data) {
       cluster_resource_scheduler_->GetClusterResourceManager(),
       *gcs_node_manager_,
       kGCSNodeID,
-      cluster_task_manager_);
+      cluster_task_manager_.get());
 
   // Initialize by gcs tables data.
   gcs_resource_manager_->Initialize(gcs_init_data);
@@ -399,18 +399,16 @@ void GcsServer::InitClusterResourceScheduler() {
 
 void GcsServer::InitClusterTaskManager() {
   RAY_CHECK(cluster_resource_scheduler_);
-  cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
+  cluster_task_manager_ = std::make_unique<ClusterTaskManager>(
       kGCSNodeID,
-      cluster_resource_scheduler_,
+      *cluster_resource_scheduler_,
       /*get_node_info=*/
       [this](const NodeID &node_id) {
         auto node = gcs_node_manager_->GetAliveNode(node_id);
         return node.has_value() ? node.value().get() : nullptr;
       },
-      /*announce_infeasible_task=*/
-      nullptr,
-      /*local_task_manager=*/
-      std::make_shared<NoopLocalTaskManager>());
+      /*announce_infeasible_task=*/nullptr,
+      /*local_task_manager=*/local_task_manager_);
 }
 
 void GcsServer::InitGcsJobManager(const GcsInitData &gcs_init_data) {
@@ -887,7 +885,7 @@ void GcsServer::TryGlobalGC() {
     std::string serialized_msg;
     RAY_CHECK(commands_sync_message.SerializeToString(&serialized_msg));
     msg->set_sync_message(std::move(serialized_msg));
-    ray_syncer_->BroadcastRaySyncMessage(std::move(msg));
+    ray_syncer_->BroadcastMessage(std::move(msg));
     global_gc_throttler_->RunNow();
   }
 }
