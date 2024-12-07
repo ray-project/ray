@@ -4,44 +4,191 @@
 
 .. _rllib-multi-agent-environments-doc:
 
-Multi-Agent and Hierarchical
-----------------------------
+Multi-Agent Environments
+========================
 
-In a multi-agent environment, multiple "agents" act either simultaneously,
-in a turn-based sequence, or through a combination of both approaches.
+In a multi-agent environment, multiple "agents" act simultaneously, in a turn-based
+sequence, or through an arbitrary combination of both.
 
 For instance, in a traffic simulation, there might be multiple "car" and
-"traffic light" agents interacting simultaneously. In a board game,
-two or more agents may act in turn-based sequences.
+"traffic light" agents interacting simultaneously, whereas in a board game,
+two or more agents may act in a turn-based sequence.
 
-The multi-agent model in RLlib follows this structure:
-1. Your environment (a subclass of
-   :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`) returns
-   dictionaries that map AgentIDs (strings chosen by the environment) to
-   each agent's observations, rewards, termination/truncation flags, and
-   info dictionaries.
-1. You define the RLModules (policies) available for training. New RLModules
-   can be added on-the-fly during training.
-1. You define a mapping function that associates each AgentID with one of
-   the available RLModule IDs, which will be used to compute actions for that agent.
+Several different policy networks may be used to control the various agents.
+Thereby, each of the agents in the environment maps to exactly one particular policy. This mapping is
+determined by a user-provided function, called the "mapping function". Note that if there
+are ``N`` agents mapping to ``M`` policies, ``N`` is always larger or equal to ``M``,
+allowing for any policy to control more than one agent.
 
-This structure is illustrated in the following figure:
+.. figure:: images/envs/multi_agent_setup.svg
+    :width: 600
 
-.. image:: images/multi-agent.svg
+    **Multi-agent setup:** ``N`` agents live in the environment and take actions computed by ``M`` policy networks.
+    The mapping from agent to policy is flexible and determined by a user-provided mapping function. Here, `agent_1`
+    and `agent_3` both map to `policy_1`, whereas `agent_2` maps to `policy_2`.
 
-When implementing a :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`,
-only include agent IDs in the observation dictionary for agents that should
-send actions into the next `step()` call.
 
-This API allows you to design any type of multi-agent environment, from
-`turn-based games <https://github.com/ray-project/ray/blob/master/rllib/examples/self_play_with_open_spiel.py>`__
-to environments where `all agents act simultaneously <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/classes/multi_agent.py>`__,
-or any combination of these.
+RLlib's MultiAgentEnv API
+-------------------------
 
-Example: Environment with Simultaneous Agent Steps
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+The :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API of RLlib closely follows the
+conventions and APIs of `Farama's gymnasium (single-agent) <gymnasium.farama.org>`__ envs and even subclasses
+from `gymnasium.Env`, however, instead of publishing individual observations, rewards, and termination/truncation flags
+from `reset()` and `step()`, a custom :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation
+outputs dictionaries, one for observations, one for rewards, etc..in which agent IDs map
+In each such multi-agent dictionary, agent IDs map to the respective individual agent's observation/reward/etc..
 
-In this example, all agents in the environment step simultaneously:
+Here is a first draft of an example :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` implementation:
+
+.. code-block::
+
+    from ray.rllib.env.multi_agent_env import MultiAgentEnv
+
+    class MyMultiAgentEnv(MultiAgentEnv):
+
+        def __init__(self, config=None):
+            super().__init__()
+            ...
+
+        def reset(self, *, seed=None, options=None):
+            ...
+            # return observation dict and infos dict.
+            return {"agent_1": [obs of agent_1], "agent_2": [obs of agent_2]}, {}
+
+        def step(self, action_dict):
+            # return observation dict, rewards dict, termination/truncation dicts, and infos dict
+            return {"agent_1": [obs of agent_1]}, {...}, ...
+
+
+Agent Definitions
+~~~~~~~~~~~~~~~~~
+
+The number of agents in your environment and their IDs are entirely controlled by your :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
+code. Your env decides, which agents start after an episode reset, which agents enter the episode at a later point, which agents
+terminate the episode early, and which agents stay in the episode until the entire episode ends.
+
+To define, which agent IDs might even show up in your episodes, set the `self.possible_agents` attribute to a list of
+all possible agent ID.
+
+.. code-block::
+
+    def __init__(self, config=None):
+        super().__init__()
+        ...
+        # Define all agent IDs that might even show up in your episodes.
+        self.possible_agents = ["agent_1", "agent_2"]
+        ...
+
+In case your environment only starts with a subset of agent IDs and/or terminates some agent IDs before the end of the episode,
+you also need to permanently adjust the `self.agents` attribute throughout the course of your episode.
+If - on the other hand - all agent IDs are static throughout your episodes, you can set `self.agents` to be the same
+as `self.possible_agents` and don't change its value throughout the rest of your code:
+
+.. code-block::
+
+    def __init__(self, config=None):
+        super().__init__()
+        ...
+        # If your agents never change throughout the episode, set
+        # `self.agents` to the same list as `self.possible_agents`.
+        self.agents = self.possible_agents = ["agent_1", "agent_2"]
+        # Otherwise, you will have to adjust `self.agents` in `reset()` and `step()` to whatever the
+        # currently "alive" agents are.
+        ...
+
+Observation- and Action Spaces
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Next, you should set the observation- and action-spaces of each (possible) agent ID in your constructor.
+Use the `self.observation_spaces` and `self.action_spaces` attributes to define dictionaries mapping
+agent IDs to the individual agents' spaces. For example:
+
+.. code-block::
+
+    import gymnasium as gym
+    import numpy as np
+
+    ...
+
+        def __init__(self, config=None):
+            super().__init__()
+            ...
+            self.observation_spaces = {
+                "agent_1": gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+                "agent_2": gym.spaces.Box(-1.0, 1.0, (3,), np.float32),
+            }
+            self.action_spaces = {
+                "agent_1": gym.spaces.Discrete(2),
+                "agent_2": gym.spaces.Box(0.0, 1.0, (1,), np.float32),
+            }
+            ...
+
+In case your episodes hosts a lot of agents, some sharing the same observation- or action
+spaces, and you don't want to create very large spaces dicts, you can also override the
+:py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.get_observation_space` and
+:py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.get_action_space` methods and implement the mapping logic
+from agent ID to space yourself. For example:
+
+.. code-block::
+
+    def get_observation_space(self, agent_id):
+        if agent_id.startswith("robot_"):
+            return gym.spaces.Box(0, 255, (84, 84, 3), np.uint8)
+        elif agent_id.startswith("decision_maker"):
+            return gym.spaces.Discrete(2)
+        else:
+            raise ValueError(f"bad agent id: {agent_id}!")
+
+
+Observation-, Reward-, and Termination Dictionaries
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The last two things you need to implement in your custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
+are the `reset()` and `step()` methods. Equivalently to a single-agent `gymnasium.Env <https://gymnasium.farama.org/_modules/gymnasium/core/#Env>`__,
+you have to return observations and infos from `reset()`, and return observations, rewards, termination/truncation flags, and infos
+from `step()`, however, instead of individual values, these all have to be dictionaries mapping agent IDs to the respective
+individual agents' values.
+
+Let's take a look at an example `reset()` implementation first:
+
+.. code-block::
+
+    def reset(self, *, seed=None, options=None):
+        ...
+        return {
+            "agent_1": np.array([0.0, 1.0, 0.0, 0.0]),
+            "agent_2": np.array([0.0, 0.0, 1.0]),
+        }, {}  # <- empty info dict
+
+Here, your episode starts with both agents in it, and both expected to compute and send actions
+for the following `step()` call.
+
+In general, the returned observations dict must contain those agents (and only those agents)
+that should act next. Agent IDs that should NOT act in the next `step()` call should NOT have
+their observations in the returned observations dict.
+
+Note also that this rule does not apply to reward dicts, termination dicts, or truncation dicts, which
+may contain any agent ID at any time step regardless of whether the agent ID is expected to act or not
+in the next `step()` call. This is so that an action of agent A can trigger some reward for agent B, even
+though B is currently not acting itself. The same is true for termination flags: Agent A may act in a way
+that terminates agent B from the episode without agent B having acted itself recently.
+
+In other words, you determine the exact order and synchronization of agent actions in your multi-agent episode
+through the agent IDs contained in (and missing from) your observations dicts.
+Only those agent ID that must compute and send actions into the next `step()` call must be part of the
+returned observation dict.
+
+This API allows you to design any type of multi-agent environment, from turn-based games to
+environments where all agents always act simultaneously, to any combination of these two patterns.
+
+Let's take a look at two specific, complete :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` example implementations,
+one where agents always act simulatenously and one where agents act in a turn-based sequence.
+
+
+Example: Environments with Simultaneous Agent Steps
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 
 .. code-block:: python
 
@@ -72,13 +219,13 @@ In this example, all agents in the environment step simultaneously:
     print(terminateds)
     # Output: {"car_2": True, "__all__": False}
 
-Example: Turn-Based Environment
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Example: Turn-Based Environments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-In a turn-based environment, agents step in a sequence. For example, consider a
-two-player TicTacToe game:
+In a turn-based environment, agents step in a sequence. For example, consider a two-player TicTacToe game:
 
-.. code-block:: python
+.. literalinclude::
+
 
     # Turn-based environment with two agents: "player1" and "player2".
     env = TicTacToe()
@@ -109,6 +256,13 @@ two-player TicTacToe game:
     # {
     #   "player2": [[...]]
     # }
+
+Other Supported Multi-Agent Env APIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Besides RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, you can also use
+`Farama's PettingZoo <pettingzoo.farama.org>`__ API for writing your custom multi-agent env.
+
 
 Configuring Multi-Agent Training with Shared Algorithms
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -186,17 +340,18 @@ demonstrate competing policies with heuristic and learned strategies.
 Scaling to Many Agents
 ~~~~~~~~~~~~~~~~~~~~~~
 
-To scale to hundreds of agents using the same policy, RLlib batches policy
-evaluations across agents within a `MultiAgentEnv`. You can also auto-vectorize
-these environments by setting ``num_envs_per_env_runner > 1``.
+.. note::
+
+    Multi-agent setups are not vectorizable yet. The Ray team is working on a solution for
+    this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
 
 
 PettingZoo Multi-Agent Environments
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 `PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ offers a
-repository of over 50 diverse multi-agent environments. Though not directly
-compatible with RLlib, they can be adapted using the RLlib `PettingZooEnv` wrapper:
+repository of over 50 diverse multi-agent environments, directly compatible with RLlib
+through its built-in `PettingZooEnv` wrapper:
 
 .. code-block:: python
 
@@ -239,38 +394,3 @@ implement centralized training but decentralized execution. You can use the ``Mu
 
 For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
 
-
-Hierarchical Environments
-~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
-
-.. code-block:: text
-
-   top_level ---------------------------------------------------------------> top_level --->
-   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
-   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
-
-This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example). These lower-level agents pop in existence at the start of higher-level steps, and terminate when their higher-level action ends. Their experiences are aggregated by policy, so from RLlib's perspective it's just optimizing three different types of policies. The configuration might look something like this:
-
-.. code-block:: python
-
-    "multiagent": {
-        "policies": {
-            "top_level": (custom_policy or None, ...),
-            "mid_level": (custom_policy or None, ...),
-            "low_level": (custom_policy or None, ...),
-        },
-        "policy_mapping_fn":
-            lambda agent_id:
-                "low_level" if agent_id.startswith("low_level_") else
-                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
-        "policies_to_train": ["top_level"],
-    },
-
-
-In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation.
-The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level
-agents to lower-level agents as part of the lower-level agent observation.
-
-See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.

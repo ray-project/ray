@@ -166,11 +166,15 @@ class MultiAgentEnv(gym.Env):
             return self.observation_spaces[agent_id]
 
         # @OldAPIStack behavior.
+        # `self.observation_space` is a `gym.spaces.Dict` AND contains `agent_id`.
         if (
             isinstance(self.observation_space, gym.spaces.Dict)
             and agent_id in self.observation_space.spaces
         ):
             return self.observation_space[agent_id]
+        # `self.observation_space` is not a `gym.spaces.Dict` OR doesn't contain
+        # `agent_id` -> The defined space is most likely meant to be the space
+        # for all agents.
         else:
             return self.observation_space
 
@@ -179,11 +183,15 @@ class MultiAgentEnv(gym.Env):
             return self.action_spaces[agent_id]
 
         # @OldAPIStack behavior.
+        # `self.action_space` is a `gym.spaces.Dict` AND contains `agent_id`.
         if (
             isinstance(self.action_space, gym.spaces.Dict)
             and agent_id in self.action_space.spaces
         ):
             return self.action_space[agent_id]
+        # `self.action_space` is not a `gym.spaces.Dict` OR doesn't contain
+        # `agent_id` -> The defined space is most likely meant to be the space
+        # for all agents.
         else:
             return self.action_space
 

@@ -8,11 +8,20 @@ Environments
 ============
 
 In online reinforcement learning (RL), an algorithm trains a policy
-neural network by collecting data on-the-fly using one or more RL
-environments or simulators. The agent navigates within these environments choosing actions
-governed by this policy and collecting the environment's observations and rewards.
-The goal of the algorithm is to train the policy on this collected data such that the policy's
+neural network by collecting data on-the-fly using an RL environment or simulator.
+The agent navigates within the environment choosing actions governed by this policy and collecting
+the environment's observations and rewards.
+The goal of the algorithm is to train the policy on the collected data such that the policy's
 action choices eventually maximize the cumulative reward over the agent's lifetime.
+
+
+.. figure:: images/envs/single_agent_setup.svg
+    :width: 600
+
+    **Single-agent setup:** One agent lives in the environment and takes actions computed by a (single) policy.
+    The mapping from agent to policy is fixed ("default_agent" maps to "default_policy").
+    :ref:`See here for how this setup generalizes in the multi-agent case <rllib-multi-agent-environments-doc>`.
+
 
 .. _gymnasium:
 
@@ -20,9 +29,10 @@ Farama Gymnasium
 ----------------
 
 RLlib relies on `Farama's Gymnasium API <https://gymnasium.farama.org/>`__
-as its main RL environment interface for **single-agent** training. To implement
-custom logic with `gymnasium` and integrate it into an RLlib config, refer to
-the `SimpleCorridor example
+as its main RL environment interface for **single-agent** training
+(:ref:`see here for multi-agent <rllib-multi-agent-environments-doc>`).
+To implement custom logic with `gymnasium` and integrate it into an RLlib config, refer to
+this `SimpleCorridor example
 <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/custom_gym_env.py>`__.
 
 .. tip::
@@ -32,19 +42,19 @@ the `SimpleCorridor example
     for details. In particular, pay attention to which algorithms support discrete-
     and which support continuous action spaces (or both).
 
-For more on building a custom `Farama Gymnasium
+For more details on building a custom `Farama Gymnasium
 <https://gymnasium.farama.org/>`__ environment, consult the
 `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
 
-For **multi-agent** training, see :ref:`RLlib-supported APIs and RLlib's multi-agent API <rllib-multi-agent-environments-doc>`.
+For **multi-agent** training, see :ref:`RLlib's multi-agent API a nd supported third-party APIs <rllib-multi-agent-environments-doc>`.
 
 .. _configuring-environments:
 
 Configuring Environments
 ------------------------
 
-To specify the RL environment, you can provide either a string name or a
-Python class that subclasses `gymnasium.Env <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
+To specify which RL environment to train against, you can provide either a string name or a
+Python class that has to subclass `gymnasium.Env <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
 
 Specifying by String
 ~~~~~~~~~~~~~~~~~~~~
@@ -69,7 +79,7 @@ For example:
 .. tip::
 
     For all supported environment names registered with Farama, refer to these
-    resources:
+    resources (by env category):
 
     * `Toy Text <https://gymnasium.farama.org/environments/toy_text/>`__
     * `Classic Control <https://gymnasium.farama.org/environments/classic_control/>`__
@@ -80,9 +90,9 @@ For example:
 Specifying by Subclass of gymnasium.Env
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you are using a custom subclass of `gymnasium.Env class <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__,
+If you are using your own custom subclass of `gymnasium.Env class <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__,
 you can pass the class itself rather than a registered string. Your subclass must accept
-a single ``config`` argument in the constructor (which may default to `None`).
+a single ``config`` argument in its constructor (which may default to `None`).
 
 For example:
 
@@ -119,9 +129,14 @@ For example:
     algo = config.build()
     print(algo.train())
 
-Alternatively, you can register an environment creator function (or lambda)
-with Ray Tune. This function must take a single ``config`` parameter and
-return a `gymnasium.Env <https://github.com/Farama-Fundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
+
+Specifying by Tune-Registered Lambda
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A third option for providing environment information to your config is to register an
+environment creator function (or lambda) with Ray Tune. The creator function must take a
+single ``config`` parameter and return a single (non-vectorized)
+`gymnasium.Env <https://github.com/Farama-Fundation/Gymnasium/blob/main/gymnasium/core.py>`__ instance.
 
 For example:
 
@@ -146,15 +161,16 @@ For a complete example using a custom environment, see the
 .. warning::
 
     Due to Ray's distributed nature, gymnasium's own registry is incompatible
-    with Ray. Always use the registration methods documented here to ensure
-    remote Ray actors can access the environment.
+    with Ray. Always use the registration method documented here to ensure
+    remote Ray actors can access your custom environments.
 
-In the example above, the ``env_creator`` function takes a ``config`` argument.
-This config is primarily a dictionary containing required constructor options.
-However, you can also access additional properties within ``config`` (ex.
+In the preceding example, the ``env_creator`` function takes a ``config`` argument.
+This config is primarily a dictionary containing required settings.
+However, you can also access additional properties within the ``config`` variable (ex.
 ``config.worker_index`` to get the remote EnvRunner index or ``config.num_workers``
 for the total number of EnvRunners used). This can help customize environments
-within an ensemble.
+within an ensemble and make environments running on some EnvRunners behave differently from
+those running on other EnvRunners.
 
 For example:
 
@@ -183,31 +199,39 @@ For example:
     inside the environment (running within Ray workers). Pre-Ray logging
     configurations will be ignored. Use the following code to connect to Ray's
     logging instance:
-    `import logging; logger = logging.getLogger('ray.rllib')`
 
-Performance
-~~~~~~~~~~~
+    .. testcode::
+        import logging
+        logger = logging.getLogger('ray.rllib')`
 
-.. tip::
 
-    See the `scaling guide <rllib-training.html#scaling-guide>`__ for more
-    on RLlib training.
+Performance and Scaling
+-----------------------
+
+.. figure:: images/envs/env_runners.svg
+    :width: 600
+
+    **EnvRunner with gym.Env setup:** Environments in RLlib are located within the :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actors, whose number
+    you can scale through the `config.env_runners(num_env_runners=..)` setting. Each such :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actor
+    itself can hold more than one `gymnasium <https://gymnasium.farama.org>`__ environment (vectorized). You can set the number
+    of individual environment copies per EnvRunner through `config.env_runners(num_envs_per_env_runner=..)`.
+
 
 There are two methods to scale sample collection with RLlib and gymnasium environments, both of which
 can be used in combination.
 
 1. **Distribute across multiple processes:** RLlib creates multiple
-   :py:class:`~ray.rllib.envs.env_runner.EnvRunner` (Ray actors) for experience collection,
-   controlled through the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
+   :py:class:`~ray.rllib.envs.env_runner.EnvRunner` instances (Ray actors) for experience collection,
+   controlled through your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
    ``config.env_runners(num_env_runners=..)``.
 
 1. **Vectorization within a single process:** Many environments achieve high
    frame rates per core but are limited by policy inference latency. To address
-   this, create multiple environments per process and thus batch policy evaluations
+   this, create multiple environments per process and thus batch the policy forward pass
    across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``
    to create more than one environment per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
    actor. Additionally, you can make the individual subenvironments within an environment vector
-   independent processes (through python's multiprocessing used by gynnasium).
+   independent processes (through python's multiprocessing used by gymnasium).
    Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes
    and step them in parallel.
 
@@ -217,11 +241,15 @@ can be used in combination.
     this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
 
 
+.. tip::
+
+    See the `scaling guide <rllib-training.html#scaling-guide>`__ for more on RLlib training at scale.
+
 
 Expensive Environments
 ~~~~~~~~~~~~~~~~~~~~~~
 
-Some environments may require substantial resources to initialize. RLlib
-creates ``num_env_runners + 1`` copies of the environment, as the extra one is needed
-for the main process (on which the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` runs).
-To reduce overhead, defer environment initialization until ``reset()`` is called.
+Some environments may require substantial resources to initialize and run. Should your environments require
+more than 1 CPU per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`, you can provide more resources for each
+actor by setting the following config options:
+``config.env_runners(num_cpus_per_env_runner=.., num_gpus_per_env_runner=..)``
