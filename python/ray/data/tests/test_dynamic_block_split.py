@@ -304,30 +304,25 @@ def test_filter(ray_start_regular_shared, target_max_block_size):
     assert ds._plan.initial_num_blocks() == num_blocks_per_task
 
 
-@pytest.mark.skip("Needs zero-copy optimization for read->map_batches.")
-def test_read_large_data(ray_start_cluster):
+def test_read_large_data(ray_start_regular_shared):
     # Test 20G input with single task
     num_blocks_per_task = 20
     block_size = 1024 * 1024 * 1024
 
-    cluster = ray_start_cluster
-    cluster.add_node(num_cpus=1)
-
-    ray.init(cluster.address)
-
     def foo(batch):
-        return pd.DataFrame({"one": [1]})
+        return {"one": [1]}
 
     ds = ray.data.read_datasource(
         RandomBytesDatasource(
             num_tasks=1,
             num_batches_per_task=num_blocks_per_task,
+            num_rows_per_batch=None,
             row_size=block_size,
         ),
-        override_num_blocks=1,
+        override_num_blocks=num_blocks_per_task,
     )
 
-    ds = ds.map_batches(foo, num_rows_per_batch=None)
+    ds = ds.map_batches(foo)
     assert ds.count() == num_blocks_per_task
 
 
