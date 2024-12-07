@@ -32,23 +32,22 @@ extern "C" {
 
 namespace ray {
 namespace gcs {
-CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply->type) {
-  RAY_CHECK(nullptr != redis_reply);
-
+CallbackReply::CallbackReply(const redisReply &redis_reply)
+    : reply_type_(redis_reply.type) {
   switch (reply_type_) {
   case REDIS_REPLY_NIL: {
     break;
   }
   case REDIS_REPLY_ERROR: {
-    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply->str;
+    RAY_LOG(FATAL) << "Got an error in redis reply: " << redis_reply.str;
     break;
   }
   case REDIS_REPLY_INTEGER: {
-    int_reply_ = static_cast<int64_t>(redis_reply->integer);
+    int_reply_ = static_cast<int64_t>(redis_reply.integer);
     break;
   }
   case REDIS_REPLY_STATUS: {
-    const std::string status_str(redis_reply->str, redis_reply->len);
+    const std::string status_str(redis_reply.str, redis_reply.len);
     if (status_str == "OK") {
       status_reply_ = Status::OK();
     } else {
@@ -57,11 +56,11 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
     break;
   }
   case REDIS_REPLY_STRING: {
-    string_reply_ = std::string(redis_reply->str, redis_reply->len);
+    string_reply_ = std::string(redis_reply.str, redis_reply.len);
     break;
   }
   case REDIS_REPLY_ARRAY: {
-    if (redis_reply->elements == 0) {
+    if (redis_reply.elements == 0) {
       break;
     }
     // Array replies are used for scan or get.
@@ -76,12 +75,12 @@ CallbackReply::CallbackReply(redisReply *redis_reply) : reply_type_(redis_reply-
 
 bool CallbackReply::IsError() const { return reply_type_ == REDIS_REPLY_ERROR; }
 
-void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
-  const auto array_size = static_cast<size_t>(redis_reply->elements);
+void CallbackReply::ParseAsStringArrayOrScanArray(const redisReply &redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply.type);
+  const auto array_size = static_cast<size_t>(redis_reply.elements);
   if (array_size == 2) {
-    auto *cursor_entry = redis_reply->element[0];
-    auto *array_entry = redis_reply->element[1];
+    auto *cursor_entry = redis_reply.element[0];
+    auto *array_entry = redis_reply.element[1];
     if (REDIS_REPLY_ARRAY == array_entry->type) {
       // Parse as a scan array
       RAY_CHECK(REDIS_REPLY_STRING == cursor_entry->type);
@@ -101,12 +100,12 @@ void CallbackReply::ParseAsStringArrayOrScanArray(redisReply *redis_reply) {
   ParseAsStringArray(redis_reply);
 }
 
-void CallbackReply::ParseAsStringArray(redisReply *redis_reply) {
-  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply->type);
-  const auto array_size = static_cast<size_t>(redis_reply->elements);
+void CallbackReply::ParseAsStringArray(const redisReply &redis_reply) {
+  RAY_CHECK(REDIS_REPLY_ARRAY == redis_reply.type);
+  const auto array_size = static_cast<size_t>(redis_reply.elements);
   string_array_reply_.reserve(array_size);
   for (size_t i = 0; i < array_size; ++i) {
-    auto *entry = redis_reply->element[i];
+    auto *entry = redis_reply.element[i];
     if (entry->type == REDIS_REPLY_STRING) {
       string_array_reply_.emplace_back(std::string(entry->str, entry->len));
     } else {
@@ -190,7 +189,7 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
         [request_cxt]() { request_cxt->Run(); },
         std::chrono::milliseconds(delay));
   } else {
-    auto reply = std::make_shared<CallbackReply>(redis_reply);
+    auto reply = std::make_shared<CallbackReply>(*redis_reply);
     request_cxt->io_service_.post(
         [reply, callback = std::move(request_cxt->callback_)]() {
           if (callback) {
@@ -603,7 +602,6 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!redis_async_context_);
 
   // Remember function arguments for reconnection
-  address_ = address;
   port_ = port;
   username_ = username;
   password_ = password;
@@ -611,14 +609,18 @@ Status RedisContext::Connect(const std::string &address,
 
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
-  auto ip_addresses = ResolveDNS(io_service_, address, port);
-  RAY_CHECK(!ip_addresses.empty())
-      << "Failed to resolve DNS for " << address << ":" << port;
+  if (ip_address_.empty()) {
+    RAY_CHECK(!address.empty());
+    auto ip_addresses = ResolveDNS(address, port);
+    RAY_CHECK(!ip_addresses.empty())
+        << "Failed to resolve DNS for " << address << ":" << port;
 
-  RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
+    RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
+    ip_address_ = ip_addresses[0];
+  }
 
   {
-    auto resp = ConnectWithRetries<redisContext>(ip_addresses[0], port, redisConnect);
+    auto resp = ConnectWithRetries<redisContext>(ip_address_, port, redisConnect);
     RAY_CHECK_OK(resp.first /* status */);
     context_ = std::move(resp.second /* redisContext */);
   }
@@ -633,7 +635,7 @@ Status RedisContext::Connect(const std::string &address,
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp =
-        ConnectWithRetries<redisAsyncContext>(ip_addresses[0], port, redisAsyncConnect);
+        ConnectWithRetries<redisAsyncContext>(ip_address_, port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);
     async_context = std::move(resp.second);
   }
@@ -655,18 +657,15 @@ Status RedisContext::Connect(const std::string &address,
   if (isRedisSentinel(*this)) {
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
-    return ConnectRedisCluster(*this,
-                               username,
-                               password,
-                               enable_ssl,
-                               ip_addresses[0] + ":" + std::to_string(port));
+    return ConnectRedisCluster(
+        *this, username, password, enable_ssl, ip_address_ + ":" + std::to_string(port));
   }
 }
 
 Status RedisContext::Reconnect() {
   RAY_LOG(INFO) << "Try to reconnect to Redis server.";
   Disconnect();
-  return Connect(address_, port_, username_, password_, enable_ssl_);
+  return Connect("", port_, username_, password_, enable_ssl_);
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
@@ -695,17 +694,17 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
       RAY_CHECK_OK(this->Reconnect());
       continue;
     }
-    // Error happened, retry with same connection.
+
     if (redis_reply->type != REDIS_REPLY_ERROR) {
-      std::unique_ptr<CallbackReply> callback_reply(new CallbackReply(redis_reply.get()));
-      return callback_reply;
+      return std::make_unique<CallbackReply>(*redis_reply);
     }
 
+    // Error happened, retry with same connection.
     auto error_msg = redis_reply ? redis_reply->str : context_->errstr;
     RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(args, " ") << "]"
                    << " failed due to error " << error_msg << ". " << pending_retries
                    << " retries left.";
-    auto delay = exp_back_off.Current();
+    const auto delay = exp_back_off.Current();
     exp_back_off.Next();
     std::this_thread::sleep_for(std::chrono::milliseconds(delay));
     --pending_retries;
