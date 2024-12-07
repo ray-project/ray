@@ -111,10 +111,8 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
        stats_handle = std::move(stats_handle),
        name = std::move(name)](const boost::system::error_code &error) mutable {
         if (auto self = weak_self.lock(); self) {
-          // Captures `self_ptr` as a raw pointer because RecordExecution runs the lambda
-          // immediately so there's no chance for `self` to go out of scope.
           self->io_service_.stats().RecordExecution(
-              [self_ptr = self.get(),
+              [self,
                fn = std::move(fn),
                error,
                period,
@@ -127,7 +125,7 @@ void PeriodicalRunner::DoRunFnPeriodicallyInstrumented(
                   return;
                 }
                 RAY_CHECK(!error) << error.message();
-                self_ptr->DoRunFnPeriodicallyInstrumented(
+                self->DoRunFnPeriodicallyInstrumented(
                     std::move(fn), period, std::move(timer), std::move(name));
               },
               std::move(stats_handle));
