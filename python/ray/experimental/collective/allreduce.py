@@ -53,7 +53,7 @@ class AllReduceWrapper:
         """
         if transport is None:
             transport = TorchTensorType.NCCL
-        collective_group = _CollectiveOperation(input_nodes, op, transport)
+        collective_op = _CollectiveOperation(input_nodes, op, transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:
@@ -70,7 +70,7 @@ class AllReduceWrapper:
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: actor_handle,
                     BIND_INDEX_KEY: actor_handle._ray_dag_bind_index,
-                    COLLECTIVE_OPERATION_KEY: collective_group,
+                    COLLECTIVE_OPERATION_KEY: collective_op,
                 },
             )
             actor_handle._ray_dag_bind_index += 1
