@@ -1,7 +1,7 @@
 .. _train_scaling_config:
 
-Configuring Scale and GPUs
-==========================
+Configuring Scale and Resources (CPU, GPU and other accelerators)
+=================================================================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
 which configures the number of workers and the resources they should use.
@@ -24,8 +24,8 @@ the :class:`~ray.train.ScalingConfig`:
     )
 
 
-Using GPUs
-----------
+Using GPUs or other accelerators
+--------------------------------
 To use GPUs, pass ``use_gpu=True`` to the :class:`~ray.train.ScalingConfig`.
 This will request one GPU per training worker. In the example below, training will
 run on 8 GPUs (8 workers, each using one GPU).
@@ -37,6 +37,19 @@ run on 8 GPUs (8 workers, each using one GPU).
     scaling_config = ScalingConfig(
         num_workers=8,
         use_gpu=True
+    )
+
+
+For other types of accelerators such as HPUs, you can set HPU resources by ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
+In the example below, training will run on 8 HPUs (8 workers, each using one HPU).
+
+.. testcode::
+
+    from ray.train import ScalingConfig
+
+    scaling_config = ScalingConfig(
+        num_workers=8,
+        resources_per_worker={"HPU": 1}
     )
 
 
@@ -66,6 +79,30 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
         scaling_config=ScalingConfig(
             num_workers=1,
             use_gpu=True
+        )
+    )
+    trainer.fit()
+
+Using other accelerators in the training function
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+When other types of accelerators are needed such as HPUs, you can set the resources by ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
+
+.. testcode::
+
+    import torch
+    from ray.train import ScalingConfig
+    from ray.train.torch import TorchTrainer, get_device
+
+
+    def train_func():
+        device = get_device()
+        assert device == torch.device("hpu")
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=1,
+            resources_per_worker={"HPU": 1}
         )
     )
     trainer.fit()
@@ -132,7 +169,7 @@ assign each worker a NVIDIA A100 GPU.
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 PyTorch Distributed supports multiple `backends <https://pytorch.org/docs/stable/distributed.html#backends>`__
-for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo otherwise.
+for communicating tensors across workers. By default Ray Train will use NCCL when ``use_gpu=True`` and Gloo for CPU resources.
 
 If you explictly want to override this setting, you can configure a :class:`~ray.train.torch.TorchConfig`
 and pass it into the :class:`~ray.train.torch.TorchTrainer`.
@@ -153,6 +190,21 @@ and pass it into the :class:`~ray.train.torch.TorchTrainer`.
             use_gpu=True, # Defaults to NCCL
         ),
         torch_config=TorchConfig(backend="gloo"),
+    )
+
+For HPU resources, you need to use hccl backend as follows.
+
+.. testcode::
+
+    from ray.train.torch import TorchConfig, TorchTrainer
+
+    trainer = TorchTrainer(
+        train_func,
+        scaling_config=ScalingConfig(
+            num_workers=num_training_workers,
+            resources_per_worker={"CPU": 1, "HPU": 1},
+        ),
+        torch_config=TorchConfig(backend="hccl"),
     )
 
 (NCCL) Setting the communication network interface
