@@ -32,7 +32,6 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet/worker_pool.h"
 
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
@@ -878,6 +877,19 @@ Status WorkerPool::RegisterDriver(const std::shared_ptr<WorkerInterface> &driver
         });
   }
   return Status::OK();
+}
+
+std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(
+    const WorkerID &worker_id) const {
+  for (const auto &[_, state] : states_by_lang_) {
+    for (auto it = state.registered_workers.begin(); it != state.registered_workers.end();
+         it++) {
+      if ((*it)->WorkerId() == worker_id) {
+        return (*it);
+      }
+    }
+  }
+  return nullptr;
 }
 
 std::shared_ptr<WorkerInterface> WorkerPool::GetRegisteredWorker(

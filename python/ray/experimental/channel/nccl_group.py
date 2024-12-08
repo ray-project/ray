@@ -67,7 +67,7 @@ class _NcclGroup(Communicator):
                 specified, then this must be specified too.
             use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
+                can be overlapped to improve performance.
         """
         self._world_size = world_size
         self._rank: Optional[int] = rank
