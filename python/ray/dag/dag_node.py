@@ -92,12 +92,14 @@ class DAGNode(DAGNodeBase):
     @property
     def nccl_op(self) -> Optional[_NcclOperation]:
         """
-        Return the synchronous group that this node belongs to. If this node is not
-        in any synchronous group, return None.
+        [CL]
+        Return the NCCL op that this node belongs to. If this node is not
+        in any NCCL op, return None.
 
+        [CL]
         Some operations (e.g., synchronous NCCL operations) in the DAG are synchronous.
-        During DAG compilation, when scheduling synchronous operations, all nodes in
-        the same synchronous group must be ready.
+        During DAG compilation, when scheduling NCCL ops, all nodes in
+        the same NCCL op must be ready.
         """
         return None
 

@@ -386,8 +386,9 @@ class ExecutableTask:
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
-        # The synchronous group this task belongs to that is used for scheduling.
-        # If None, the task is not part of a synchronous group.
+        # [CL]
+        # The NCCL op this task belongs to that is used for scheduling.
+        # If None, the task is not part of a NCCL op.
         self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
         if self.nccl_op is not None:
             self.nccl_op.task_idxs.append(task.idx)

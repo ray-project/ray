@@ -119,7 +119,7 @@ class TestSelectNextNodes:
                 dag_node_2,
             ],
         }
-        # The graph is not accessed because there are no synchronous groups.
+        # The graph is not accessed because there are no NCCL ops.
         next_nodes = _select_next_nodes(mock_actor_to_candidates, dict())
         assert len(next_nodes) == 1
         assert next_nodes[0] == dag_node_1

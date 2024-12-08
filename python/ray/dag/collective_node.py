@@ -166,7 +166,7 @@ class CollectiveOutputNode(ClassMethodNode):
             COLLECTIVE_OPERATION_KEY, None
         )
         if self._collective_op is None:
-            raise ValueError("Expected a collective group")
+            raise ValueError("Expected a collective op")
         self.set_requires_nccl_collective(True)
 
     def _copy_impl(

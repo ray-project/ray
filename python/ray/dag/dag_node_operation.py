@@ -91,8 +91,8 @@ class _DAGOperationGraphNode:
         # the edge is a control dependency.
         self.in_edges: Dict[int, Tuple[str, bool]] = {}
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
-        # Synchronous group of this task. None if the task is not a
-        # synchronous operation.
+        # [CL]
+        # NCCL op of this task. None if the task is not a NCCL op.
         self.nccl_op: Optional[_NcclOperation] = nccl_op
 
     def __repr__(self):
@@ -158,8 +158,9 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        If this node is not part of a synchronous group of tasks, it is ready
-        when it has a zero in-degree. If it is part of a synchronous group, it
+        [CL]
+        If this node is not part of a NCCL op of tasks, it is ready
+        when it has a zero in-degree. If it is part of a NCCL op, it
         is ready when all nodes in the group have zero in-degrees.
         """
         return self.in_degree == 0 and (
@@ -238,11 +239,12 @@ def _select_next_nodes(
     select the node with the top priority. The priority is defined in
     `_DAGOperationGraphNode.__lt__`.
 
+    [CL]
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
     When a node is ready, it is added to the corresponding actor's priority queue.
-    For a node that is not a member of a synchronous group, it is ready to be executed
-    if it has a zero in-degree. For a node that is part of a synchronous group, it is
+    For a node that is not a member of a NCCL op, it is ready to be executed
+    if it has a zero in-degree. For a node that is part of a NCCL op, it is
     ready to be executed when all the nodes in the group have zero in-degrees.
 
     Args:
@@ -553,9 +555,10 @@ def _generate_actor_to_execution_schedule(
 
     # Use topological sort algorithm to generate the execution schedule.
     while True:
+        # [CL]
         # Select a list of nodes to be executed. There are two cases:
-        # 1. If a selected node is not in a synchronous group, only itself is returned.
-        # 2. If a selected node is part of a synchronous group, all nodes in the group
+        # 1. If a selected node is not in a NCCL op, only itself is returned.
+        # 2. If a selected node is part of a NCCL op, all nodes in the group
         #    are returned.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:

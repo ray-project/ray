@@ -6,7 +6,7 @@ from typing import List, Set
 class _NcclOperation(ABC):
     """
     [CL]
-    Represents a group of actors that participate in a synchronous operation.
+    Represents a group of actors that participate in a NCCL op.
     """
 
     def __init__(self):
@@ -20,7 +20,7 @@ class _NcclOperation(ABC):
     @abstractmethod
     def execute(self, *args, **kwargs) -> None:
         """
-        Execute the synchronous operation.
+        Execute the NCCL op.
 
         This method is used in `ExecutableTask._compute`.
         """
