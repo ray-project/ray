@@ -359,7 +359,7 @@ Besides RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API,
 various third-party APIs and libraries to implement custom multi-agent envs.
 
 
-.. farama-pettingzoo-api::
+.. _farama-pettingzoo-api:
 
 Farama PettingZoo
 ~~~~~~~~~~~~~~~~~
@@ -371,9 +371,11 @@ multi-agent environments, directly compatible with RLlib through the built-in
 
 .. testcode::
 
-    from ray.tune.registry import register_env
     from pettingzoo.butterfly import prison_v3
+
+    from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+    from ray.tune.registry import register_env
 
     register_env(
         "prison",
@@ -385,12 +387,31 @@ multi-agent environments, directly compatible with RLlib through the built-in
 See `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__ for a full example.
 
 
-.. deepmind-openspiel-api::
+.. _deepmind-openspiel-api:
 
 DeepMind OpenSpiel
 ~~~~~~~~~~~~~~~~~~
 
+The `OpenSpiel API by DeepMind <https://github.com/google-deepmind/open_spiel>`__ is a comprehensive framework
+designed for research and development in multi-agent reinforcement learning, game theory, and decision-making.
+The API is directly compatible with RLlib through the built-in
+:py:class:`~ray.rllib.env.wrappers.pettingzoo_env.PettingZooEnv` wrapper:
 
+
+.. testcode::
+
+    import pyspiel  # pip install open_spiel
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
+    from ray.tune.registry import register_env
+
+    register_env(
+        "open_spiel_env",
+        lambda cfg: OpenSpielEnv(pyspiel.load_game("connect_four")),
+    )
+
+    config = PPOConfig.environment("open_spiel_env")
 
 
 Configuring Multi-Agent Training with Shared Algorithms
