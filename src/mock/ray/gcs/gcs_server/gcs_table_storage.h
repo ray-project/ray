@@ -97,7 +97,7 @@ namespace gcs {
 
 class MockGcsNodeTable : public GcsNodeTable {
  public:
-  MockGcsNodeTable() : GcsNodeTable(nullptr) {};
+  MockGcsNodeTable() : GcsNodeTable(nullptr){};
 
   MOCK_METHOD(Status,
               Put,
