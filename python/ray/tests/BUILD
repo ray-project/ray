@@ -63,7 +63,6 @@ py_test_module_list(
 
 py_test_module_list(
   files = [
-    "test_gcs_fault_tolerance.py",
     "test_global_gc.py",
     "test_job.py",
     "test_memstat.py",
@@ -484,6 +483,7 @@ py_test_module_list(
 py_test_module_list(
   files = [
     "test_actor_advanced.py",
+    "test_gcs_fault_tolerance.py",
   ],
   size = "large",
   tags = ["exclusive", "large_size_python_tests_shard_0", "no_windows", "team:core"],
