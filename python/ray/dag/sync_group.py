@@ -3,8 +3,9 @@ from abc import ABC, abstractmethod
 from typing import List, Set
 
 
-class _SynchronousGroup(ABC):
+class _NcclOperation(ABC):
     """
+    [CL]
     Represents a group of actors that participate in a synchronous operation.
     """
 

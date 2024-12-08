@@ -1,5 +1,5 @@
 from functools import total_ordering
-from ray.dag.sync_group import _SynchronousGroup
+from ray.dag.sync_group import _NcclOperation
 from typing import Set, Tuple, List, Dict, Optional
 import copy
 import logging
@@ -54,7 +54,7 @@ class _DAGOperationGraphNode:
         op: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        sync_group: Optional[_SynchronousGroup] = None,
+        sync_group: Optional[_NcclOperation] = None,
         # [TODO:andyub] only 1 requires_nccl?
         requires_nccl_read: bool = False,
         requires_nccl_write: bool = False,
@@ -93,7 +93,7 @@ class _DAGOperationGraphNode:
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
         # Synchronous group of this task. None if the task is not a
         # synchronous operation.
-        self.sync_group: Optional[_SynchronousGroup] = sync_group
+        self.sync_group: Optional[_NcclOperation] = sync_group
 
     def __repr__(self):
         return (

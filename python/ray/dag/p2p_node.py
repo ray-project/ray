@@ -4,12 +4,14 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.sync_group import _SynchronousGroup
-from ray.dag.constants import P2P_GROUP_KEY
+from ray.dag.sync_group import _NcclOperation
+from ray.dag.constants import P2P_OPERATION_KEY
 from ray.util.annotations import DeveloperAPI
 
+# [CL] Class comments.
 
-class _P2PGroup(_SynchronousGroup):
+
+class _P2POperation(_NcclOperation):
     """
     Represent a group of actors in a NCCL P2P operation.
     """
@@ -31,7 +33,7 @@ class _P2PGroup(_SynchronousGroup):
         return data
 
 
-class _NcclP2PNode(ClassMethodNode):
+class _P2PNode(ClassMethodNode):
     """Represents a NCCL P2P operation in a Ray DAG."""
 
     def __init__(
@@ -51,12 +53,14 @@ class _NcclP2PNode(ClassMethodNode):
         )
 
         # Parse the P2P group.
-        self._p2p_group: _P2PGroup = other_args_to_resolve.get(P2P_GROUP_KEY, None)
+        self._p2p_group: _P2POperation = other_args_to_resolve.get(
+            P2P_OPERATION_KEY, None
+        )
         if self._p2p_group is None:
             raise ValueError("Expected a P2P group")
 
     @property
-    def sync_group(self) -> _P2PGroup:
+    def sync_group(self) -> _P2POperation:
         return self._p2p_group
 
     def _copy_impl(
@@ -75,7 +79,7 @@ class _NcclP2PNode(ClassMethodNode):
 
 
 @DeveloperAPI
-class _NcclSendNode(_NcclP2PNode):
+class _P2PSendNode(_P2PNode):
     """Represents a NCCL P2P send operation in a Ray DAG."""
 
     def __init__(
@@ -98,7 +102,7 @@ class _NcclSendNode(_NcclP2PNode):
             and isinstance(method_args[0], ClassMethodNode)
         ):
             raise ValueError("Expected a single input node that is a ClassMethodNode")
-        elif isinstance(method_args[0], _NcclP2PNode):
+        elif isinstance(method_args[0], _P2PNode):
             raise ValueError("NCCL send node cannot bind to another NCCL P2P node")
         self.set_requires_nccl_write(True)
 
@@ -109,7 +113,7 @@ class _NcclSendNode(_NcclP2PNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return _NcclSendNode(
+        return _P2PSendNode(
             self._method_name,
             new_args,
             new_kwargs,
@@ -119,12 +123,12 @@ class _NcclSendNode(_NcclP2PNode):
 
 
 @DeveloperAPI
-class _NcclRecvNode(_NcclP2PNode):
+class _P2PRecvNode(_P2PNode):
     """Represents a NCCL P2P recv operation in a Ray DAG."""
 
     def __init__(
         self,
-        method_args: Tuple[_NcclSendNode],
+        method_args: Tuple[_P2PSendNode],
         other_args_to_resolve: Dict[str, Any],
     ):
         super().__init__(
@@ -139,9 +143,9 @@ class _NcclRecvNode(_NcclP2PNode):
         if not (
             isinstance(method_args, tuple)
             and len(method_args) == 1
-            and isinstance(method_args[0], _NcclSendNode)
+            and isinstance(method_args[0], _P2PSendNode)
         ):
-            raise ValueError("Expected a single input node that is a _NcclSendNode")
+            raise ValueError("Expected a single input node that is a _P2PSendNode")
         self.set_requires_nccl_read(True)
 
     def _copy_impl(
@@ -151,7 +155,7 @@ class _NcclRecvNode(_NcclP2PNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        return _NcclRecvNode(
+        return _P2PRecvNode(
             self._method_name,
             new_args,
             new_kwargs,

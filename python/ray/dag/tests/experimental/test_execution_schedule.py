@@ -16,7 +16,7 @@ from ray.dag.dag_node_operation import (
     _generate_actor_to_execution_schedule,
 )
 from ray.dag.compiled_dag_node import CompiledTask
-from ray.dag.sync_group import _SynchronousGroup
+from ray.dag.sync_group import _NcclOperation
 from typing import Dict, List, Set
 from ray.actor import ActorHandle
 
@@ -36,7 +36,7 @@ def mock_init(self):
     pass
 
 
-class MockSyncGroup(_SynchronousGroup):
+class MockSyncGroup(_NcclOperation):
     def __init__(self, task_idxs: List[int], ready_task_idxs: Set[int] = None):
         super().__init__()
         self.task_idxs = task_idxs

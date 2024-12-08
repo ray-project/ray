@@ -22,13 +22,13 @@ import traceback
 
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
-from ray.dag.sync_group import _SynchronousGroup
+from ray.dag.sync_group import _NcclOperation
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.dag.constants import (
     RAY_ADAG_VISUALIZE_SCHEDULE,
     PARENT_CLASS_NODE_KEY,
-    P2P_GROUP_KEY,
+    P2P_OPERATION_KEY,
     BIND_INDEX_KEY,
     WRITE_BIND_INDEX_INCREMENT,
     READ_BIND_INDEX_DECREMENT,
@@ -388,7 +388,7 @@ class ExecutableTask:
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
         # The synchronous group this task belongs to that is used for scheduling.
         # If None, the task is not part of a synchronous group.
-        self.sync_group: Optional[_SynchronousGroup] = task.dag_node.sync_group
+        self.sync_group: Optional[_NcclOperation] = task.dag_node.sync_group
         if self.sync_group is not None:
             self.sync_group.task_idxs.append(task.idx)
 
@@ -1058,10 +1058,10 @@ class CompiledDAG:
             ClassMethodNode,
         )
         from ray.dag.p2p_node import (
-            _P2PGroup,
-            _NcclP2PNode,
-            _NcclRecvNode,
-            _NcclSendNode,
+            _P2POperation,
+            _P2PNode,
+            _P2PRecvNode,
+            _P2PSendNode,
         )
 
         def get_class_method_node_bind_index(node: ClassMethodNode) -> int:
@@ -1072,13 +1072,13 @@ class CompiledDAG:
             assert isinstance(bind_index, int)
             return bind_index
 
-        nccl_send_nodes: Dict[DAGNode, _NcclSendNode] = dict()
-        nccl_recv_nodes: Dict[DAGNode, Dict[int, _NcclRecvNode]] = defaultdict(dict)
+        nccl_send_nodes: Dict[DAGNode, _P2PSendNode] = dict()
+        nccl_recv_nodes: Dict[DAGNode, Dict[int, _P2PRecvNode]] = defaultdict(dict)
 
         # Find all DAG nodes that are NCCL P2P senders. Create and cache a
         # NcclSendNode for each of them.
         for task in self.idx_to_task.values():
-            if isinstance(task.dag_node, _NcclP2PNode):
+            if isinstance(task.dag_node, _P2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
                     "adding NcclSendNode or NcclRecvNode to the DAG"
@@ -1106,11 +1106,11 @@ class CompiledDAG:
                 task.dag_node._get_actor_handle()
             )
             assert send_actor_handle is not None, "Expected an actor handle"
-            nccl_send_nodes[task.dag_node] = _NcclSendNode(
+            nccl_send_nodes[task.dag_node] = _P2PSendNode(
                 method_args=(task.dag_node,),
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: send_actor_handle,
-                    P2P_GROUP_KEY: _P2PGroup(),
+                    P2P_OPERATION_KEY: _P2POperation(),
                     # [TODO:andyub] What should the bind index be here?
                     BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
                     + WRITE_BIND_INDEX_INCREMENT,
@@ -1139,11 +1139,11 @@ class CompiledDAG:
                     task.dag_node._get_actor_handle()
                 )
                 assert recv_actor_handle is not None, "Expected an actor handle"
-                recv_node = _NcclRecvNode(
+                recv_node = _P2PRecvNode(
                     method_args=(send_node,),
                     other_args_to_resolve={
                         PARENT_CLASS_NODE_KEY: recv_actor_handle,
-                        P2P_GROUP_KEY: send_node.sync_group,
+                        P2P_OPERATION_KEY: send_node.sync_group,
                         # [TODO:andyub] What should the bind index be here?
                         BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
                         - READ_BIND_INDEX_DECREMENT,
@@ -1182,7 +1182,7 @@ class CompiledDAG:
             InputNode,
             MultiOutputNode,
         )
-        from ray.dag.collective_node import _CollectiveGroup
+        from ray.dag.collective_node import _CollectiveOperation
 
         # Because type hints can be added or removed, we need to update
         # the nodes that involve in NCCL P2P operations at compile time.
@@ -1192,7 +1192,7 @@ class CompiledDAG:
         self.actor_task_count.clear()
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
-        nccl_collective_ops: Set[_CollectiveGroup] = set()
+        nccl_collective_ops: Set[_CollectiveOperation] = set()
 
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -2037,7 +2037,7 @@ class CompiledDAG:
         assert self.actor_to_tasks
 
         from ray.dag import ClassMethodNode
-        from ray.dag.p2p_node import _NcclSendNode, _NcclRecvNode
+        from ray.dag.p2p_node import _P2PSendNode, _P2PRecvNode
 
         def _is_same_actor(idx1: int, idx2: int) -> bool:
             """
@@ -2068,10 +2068,10 @@ class CompiledDAG:
         for idx, task in self.idx_to_task.items():
             for downstream_idx in task.downstream_task_idxs:
                 if task.dag_node.type_hint.requires_nccl():
-                    assert isinstance(task.dag_node, _NcclSendNode)
+                    assert isinstance(task.dag_node, _P2PSendNode)
                     if _is_same_actor(idx, downstream_idx):
                         assert isinstance(
-                            self.idx_to_task[downstream_idx].dag_node, _NcclRecvNode
+                            self.idx_to_task[downstream_idx].dag_node, _P2PRecvNode
                         )
                         actor_handle = self.idx_to_task[
                             idx

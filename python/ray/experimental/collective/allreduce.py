@@ -2,10 +2,10 @@ import logging
 from typing import List, Optional, Union
 
 import ray
-from ray.dag.collective_node import CollectiveOutputNode, _CollectiveGroup
+from ray.dag.collective_node import CollectiveOutputNode, _CollectiveOperation
 from ray.dag.constants import (
     BIND_INDEX_KEY,
-    COLLECTIVE_GROUP_KEY,
+    COLLECTIVE_OPERATION_KEY,
     PARENT_CLASS_NODE_KEY,
 )
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
@@ -53,7 +53,7 @@ class AllReduceWrapper:
         """
         if transport is None:
             transport = TorchTensorType.NCCL
-        collective_group = _CollectiveGroup(input_nodes, op, transport)
+        collective_group = _CollectiveOperation(input_nodes, op, transport)
         collective_output_nodes: List[CollectiveOutputNode] = []
 
         for input_node in input_nodes:
@@ -70,7 +70,7 @@ class AllReduceWrapper:
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: actor_handle,
                     BIND_INDEX_KEY: actor_handle._ray_dag_bind_index,
-                    COLLECTIVE_GROUP_KEY: collective_group,
+                    COLLECTIVE_OPERATION_KEY: collective_group,
                 },
             )
             actor_handle._ray_dag_bind_index += 1

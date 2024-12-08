@@ -8,8 +8,8 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.constants import COLLECTIVE_GROUP_KEY
-from ray.dag.sync_group import _SynchronousGroup
+from ray.dag.constants import COLLECTIVE_OPERATION_KEY
+from ray.dag.sync_group import _NcclOperation
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
@@ -17,7 +17,7 @@ from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 
-class _CollectiveGroup(_SynchronousGroup):
+class _CollectiveOperation(_NcclOperation):
     """
     Represent metadata for a group of actors in a NCCL collective operation.
 
@@ -162,8 +162,8 @@ class CollectiveOutputNode(ClassMethodNode):
             raise ValueError("Expected a single input node")
         self._input_node = method_args[0]
         # Parse the collective operation.
-        self._collective_group: _CollectiveGroup = other_args_to_resolve.get(
-            COLLECTIVE_GROUP_KEY, None
+        self._collective_group: _CollectiveOperation = other_args_to_resolve.get(
+            COLLECTIVE_OPERATION_KEY, None
         )
         if self._collective_group is None:
             raise ValueError("Expected a collective group")
@@ -190,9 +190,9 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_group(self) -> _CollectiveGroup:
+    def collective_group(self) -> _CollectiveOperation:
         return self._collective_group
 
     @property
-    def sync_group(self) -> _CollectiveGroup:
+    def sync_group(self) -> _CollectiveOperation:
         return self._collective_group
