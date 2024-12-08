@@ -1,3 +1,4 @@
+import tree
 from typing import Dict, Union
 
 from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
@@ -77,6 +78,9 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Q-network forward pass.
         qf_outs = self._qf(batch)
 
+        if Columns.STATE_OUT in qf_outs:
+            output[Columns.STATE_OUT] = qf_outs[Columns.STATE_OUT]
+
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
         action_dist = action_dist_cls.from_logits(qf_outs[QF_PREDS])
@@ -100,7 +104,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             B = qf_outs[QF_PREDS].shape[0]
             random_actions = torch.squeeze(
                 torch.multinomial(
-                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
+                    (
+                        torch.nan_to_num(qf_outs[QF_PREDS].squeeze(1), neginf=0.0)
+                        != 0.0
+                    ).float(),
                     num_samples=1,
                 ),
                 dim=1,
@@ -138,19 +145,39 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                     [batch[Columns.OBS], batch[Columns.NEXT_OBS]], dim=0
                 ),
             }
+            if Columns.STATE_IN in batch:
+                batch_base.update(
+                    {
+                        # Columns.STATE_IN: tree.map_structure(
+                        #     lambda t: t.repeat(2, 1, 1), batch[Columns.STATE_IN]
+                        # )
+                        Columns.STATE_IN: tree.map_structure(
+                            lambda t1, t2: torch.cat([t1, t2], dim=0),
+                            batch[Columns.STATE_IN],
+                            batch[Columns.NEXT_STATE_IN],
+                        )
+                    }
+                )
         # Otherwise we can just use the current observations.
         else:
             batch_base = {Columns.OBS: batch[Columns.OBS]}
+            if Columns.STATE_IN in batch:
+                batch_base.update({Columns.STATE_IN: batch[Columns.STATE_IN]})
+
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
+
+        # Stateful encoder?
+        if Columns.NEXT_STATE_IN in batch:
+            batch_target.update({Columns.STATE_IN: batch[Columns.NEXT_STATE_IN]})
 
         # Q-network forward passes.
         qf_outs = self._qf(batch_base)
         if self.uses_double_q:
-            output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
-                qf_outs[QF_PREDS], chunks=2, dim=0
+            output[QF_PREDS], output[QF_NEXT_PREDS] = tree.map_structure(
+                lambda t: t.squeeze(), torch.chunk(qf_outs[QF_PREDS], chunks=2, dim=0)
             )
         else:
-            output[QF_PREDS] = qf_outs[QF_PREDS]
+            output[QF_PREDS] = qf_outs[QF_PREDS].squeeze()
         # The target Q-values for the next observations.
         qf_target_next_outs = self.forward_target(batch_target)
         output[QF_TARGET_NEXT_PREDS] = qf_target_next_outs[QF_PREDS]
@@ -197,7 +224,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Reshape the action values.
         # NOTE: Handcrafted action shape.
         logits_per_action_per_atom = torch.reshape(
-            batch, shape=(-1, self.action_space.n, self.num_atoms)
+            batch, shape=(*batch.shape[:-1], self.action_space.n, self.num_atoms)
         )
         # Calculate the probability for each action value atom. Note,
         # the sum along action value atoms of a single action value
@@ -247,6 +274,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # Encoder forward pass.
         encoder_outs = encoder(batch)
 
+        # Stateful encoder?
+        if Columns.STATE_OUT in encoder_outs:
+            output[Columns.STATE_OUT] = encoder_outs[Columns.STATE_OUT]
+
         # Do we have a dueling architecture.
         if self.uses_dueling:
             # Head forward passes for advantage and value stream.
@@ -259,10 +290,12 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # Center the advantage stream distribution.
                 centered_af_logits = af_dist_output["logits"] - af_dist_output[
                     "logits"
-                ].mean(dim=1, keepdim=True)
+                ].mean(dim=-1, keepdim=True)
                 # Calculate the Q-value distribution by adding advantage and
                 # value stream.
-                qf_logits = centered_af_logits + vf_outs.unsqueeze(dim=-1)
+                qf_logits = centered_af_logits + vf_outs.view(
+                    -1, *((1,) * (centered_af_logits.dim() - 1))
+                )  # .unsqueeze(dim=-1)
                 # Calculate probabilites for the Q-value distribution along
                 # the support given by the atoms.
                 qf_probs = nn.functional.softmax(qf_logits, dim=-1)
@@ -279,9 +312,10 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # https://discuss.pytorch.org/t/gradient-computation-issue-due-to-
                 # inplace-operation-unsure-how-to-debug-for-custom-model/170133
                 # Has to be a mean for each batch element.
-                af_outs_mean = torch.unsqueeze(
-                    torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(dim=1), dim=1
+                af_outs_mean = torch.nan_to_num(qf_outs, neginf=torch.nan).nanmean(
+                    dim=-1, keepdim=True
                 )
+
                 qf_outs = qf_outs - af_outs_mean
                 # Add advantage and value stream. Note, we broadcast here.
                 output[QF_PREDS] = qf_outs + vf_outs
