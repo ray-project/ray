@@ -139,14 +139,14 @@ episodes (one non-finalized the other finalized):
     :align: left
 
     **Complex observations in a non-finalized episode**: Each individual observation is a (complex) dict matching the
-    gym environment's observation space. There are three such observation items stored in the episode so far.
+    gymnasium environment's observation space. There are three such observation items stored in the episode so far.
 
 .. figure:: images/episodes/sa_episode_finalized.svg
     :width: 600
     :align: left
 
     **Complex observations in a finalized episode**: The entire observation record is a single (complex) dict matching the
-    gym environment's observation space. At the leafs of the structure are `NDArrays` holding the individual values of the leaf.
+    gymnasium environment's observation space. At the leafs of the structure are `NDArrays` holding the individual values of the leaf.
     Note that these `NDArrays` have an extra batch dim (axis=0), whose length matches the length of the episode stored (here 3).
 
 
