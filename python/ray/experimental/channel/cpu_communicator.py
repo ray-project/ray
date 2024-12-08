@@ -19,15 +19,13 @@ class CPUCommBarrier:
     p2p operations are not done here (completed via shared memory channel).
     """
 
-    import torch
-
     def __init__(self, num_actors: int):
         self.num_actors = num_actors
         self.condition = asyncio.Condition()
         # Stores the data for each collective operation
-        self.collective_data: Dict[int, List[torch.Tensor]] = defaultdict(list)
+        self.collective_data: Dict[int, List["torch.Tensor"]] = defaultdict(list)
         # Stores the shape of data for each collective operation
-        self.collective_data_shape: Dict[int, torch.Tensor.type] = {}
+        self.collective_data_shape: Dict[int, "torch.Tensor.type"] = {}
         # Buffer for the number of actors seen
         self.num_actors_seen = defaultdict(int)
         # Number of actors who have read the result, and are about to exit the function.
@@ -35,7 +33,7 @@ class CPUCommBarrier:
         # relevant data.
         self.num_actors_read = defaultdict(int)
 
-    async def wait_collective(self, op_id: int, data: torch.Tensor, op: ReduceOp):
+    async def wait_collective(self, op_id: int, data: "torch.Tensor", op: ReduceOp):
         """
         Wait at the communicator until all actors have sent `op_id` and `data`.
         Once data from all actors is received, execute the collective `op`
@@ -65,8 +63,9 @@ class CPUCommBarrier:
 
             return data
 
-    def _apply_op(self, op: ReduceOp, tensors: List[torch.Tensor]) -> torch.Tensor:
+    def _apply_op(self, op: ReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
+        import torch
         result = tensors[0].clone()
         if op == ReduceOp.SUM:
             for tensor in tensors[1:]:
@@ -92,8 +91,6 @@ class CPUCommunicator(Communicator):
     Uses a CPU-based communicator actor instead of a NCCL group.
     """
 
-    import torch
-
     def __init__(self, world_size: int, actor_handles: List["ray.actor.ActorHandle"]):
         """We use the op index to synchronize the sender and receiver at the
         communicator actor."""
@@ -106,7 +103,7 @@ class CPUCommunicator(Communicator):
         self.barriers = set()
         self._rank = None
 
-    def send(self, tensor: torch.Tensor, peer_rank: int):
+    def send(self, tensor: "torch.Tensor", peer_rank: int):
         # p2p operations are done via a shared memory channel, initialized in
         # `create_channel` of `TorchTensorType`
         pass
@@ -114,7 +111,7 @@ class CPUCommunicator(Communicator):
     def recv(
         self,
         shape: Tuple[int],
-        dtype: torch.dtype,
+        dtype: "torch.dtype",
         peer_rank: int,
         allocator: Optional[TorchTensorAllocator] = None,
     ):
@@ -123,8 +120,8 @@ class CPUCommunicator(Communicator):
 
     def allreduce(
         self,
-        send_buf: torch.Tensor,
-        recv_buf: torch.Tensor,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
         op: ReduceOp = ReduceOp.SUM,
     ):
         all_ranks = [
