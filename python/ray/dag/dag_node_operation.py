@@ -65,7 +65,7 @@ class _DAGOperationGraphNode:
         and the operation it performs.
 
         Args:
-            operation: The operation that this node performs.
+            op: The operation that this node performs.
             task_idx: A unique index which can be used to index into
                 `CompiledDAG.idx_to_task` to get the corresponding task.
             actor_handle: The actor handle to which this operation belongs.
@@ -157,15 +157,11 @@ class _DAGOperationGraphNode:
     @property
     def is_ready(self) -> bool:
         """
-        [CL]
-        If this node is not part of a NCCL op of tasks, it is ready
-        when it has a zero in-degree. If it is part of a NCCL op, it
-        is ready when all nodes in the group have zero in-degrees.
+        If this node is not a NCCL op, it returns true when it has a zero in-degree.
+        If it is a NCCL op, it also requires all the nodes in the NCCL op to have
+        zero in-degrees.
         """
-        return self.in_degree == 0 and (
-            self.nccl_op is None
-            or len(self.nccl_op.task_idxs) == len(self.nccl_op.ready_task_idxs)
-        )
+        return self.in_degree == 0 and (self.nccl_op is None or self.nccl_op.is_ready)
 
     @property
     def requires_nccl_op(self) -> bool:
@@ -252,8 +248,6 @@ def _select_next_nodes(
             the head of the queue, i.e., `candidates[0]`, is the "smallest" node.
         graph: A dictionary mapping the index of a task to a dictionary of its
             _DAGOperationGraphNodes for different operations.
-        visited: A set of _DAGOperationGraphNodes that have already been added to the
-            execution schedule.
 
     Returns:
         A list of _DAGOperationGraphNodes to be placed into the corresponding
@@ -548,7 +542,8 @@ def _generate_actor_to_execution_schedule(
         "ray._raylet.ActorID", List[_DAGOperationGraphNode]
     ] = defaultdict(list)
     for node in graph.values():
-        _push_candidate_node_if_ready(actor_to_candidates, node)
+        if node.in_degree == 0:
+            _push_candidate_node_if_ready(actor_to_candidates, node)
 
     visited_nodes: Set[_DAGOperationGraphNode] = set()
 
@@ -562,9 +557,9 @@ def _generate_actor_to_execution_schedule(
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:
             break
-        assert all(node not in visited_nodes for node in nodes)
         # Add the selected nodes to the execution schedule.
         for node in nodes:
+            assert node not in visited_nodes
             actor_to_execution_schedule[node.actor_handle].append(node)
             visited_nodes.add(node)
         # Update the in-degree of the downstream nodes.
@@ -572,9 +567,9 @@ def _generate_actor_to_execution_schedule(
             for out_node_task_idx in node.out_edges:
                 out_node = graph[out_node_task_idx]
                 out_node.in_edges.pop(node.task_idx)
-                _push_candidate_node_if_ready(actor_to_candidates, out_node)
-    num_nodes = len(graph)
-    assert len(visited_nodes) == num_nodes, "Expected all nodes to be visited"
+                if out_node.in_degree == 0:
+                    _push_candidate_node_if_ready(actor_to_candidates, out_node)
+    assert len(visited_nodes) == len(graph), "Expected all nodes to be visited"
     for node in visited_nodes:
         assert node.is_ready, f"Expected {node} to be ready"
     for candidates in actor_to_candidates.values():

@@ -5,8 +5,7 @@ from typing import List, Set
 
 class _NcclOperation(ABC):
     """
-    [CL]
-    Represents a group of actors that participate in a NCCL op.
+    Represents a group of tasks in a NCCL operation.
     """
 
     def __init__(self):
@@ -16,6 +15,13 @@ class _NcclOperation(ABC):
         self.ready_task_idxs: Set[int] = set()
         # Whether the group has been added to the execution schedule.
         self.scheduled: bool = False
+
+    @property
+    def is_ready(self) -> bool:
+        """
+        Return true when all the tasks are ready.
+        """
+        return len(self.ready_task_idxs) == len(self.task_idxs)
 
     @abstractmethod
     def execute(self, *args, **kwargs) -> None:
