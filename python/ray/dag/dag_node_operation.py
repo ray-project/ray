@@ -435,7 +435,8 @@ def _build_dag_node_operation_graph(
             isinstance(task.dag_node, ClassMethodNode)
             and task.dag_node.is_class_method_output
         ):
-            # TODO(wxdeng): Handle the case where the task is a class method output.
+            # Class method output node dependencies are handled at its upstream:
+            # i.e., class method node
             continue
         for downstream_task_idx in task.downstream_task_idxs:
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
@@ -445,8 +446,18 @@ def _build_dag_node_operation_graph(
                 isinstance(downstream_dag_node, ClassMethodNode)
                 and downstream_dag_node.is_class_method_output
             ):
-                # TODO(wxdeng): Handle the case where the downstream task is
-                # a class method output.
+                consumer_idxs = idx_to_task[downstream_task_idx].downstream_task_idxs
+                for consumer_idx in consumer_idxs:
+                    if consumer_idx in graph:
+                        _add_edge(
+                            graph[task_idx][_DAGNodeOperationType.WRITE],
+                            graph[consumer_idx][_DAGNodeOperationType.READ],
+                            "nccl"
+                            if graph[task_idx][
+                                _DAGNodeOperationType.WRITE
+                            ].requires_nccl
+                            else "shm",
+                        )
                 continue
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
