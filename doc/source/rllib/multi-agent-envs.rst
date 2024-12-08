@@ -151,7 +151,7 @@ from agent ID to space yourself. For example:
 Observation-, Reward-, and Termination Dictionaries
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The last two things you need to implement in your custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
+The remaining two things you need to implement in your custom :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv`
 are the `reset()` and `step()` methods. Equivalently to a single-agent `gymnasium.Env <https://gymnasium.farama.org/_modules/gymnasium/core/#Env>`__,
 you have to return observations and infos from `reset()`, and return observations, rewards, termination/truncation flags, and infos
 from `step()`, however, instead of individual values, these all have to be dictionaries mapping agent IDs to the respective
@@ -172,8 +172,16 @@ Here, your episode starts with both agents in it, and both expected to compute a
 for the following `step()` call.
 
 In general, the returned observations dict must contain those agents (and only those agents)
-that should act next. Agent IDs that should NOT act in the next `step()` call should NOT have
+that should act next. Agent IDs that should NOT act in the next `step()` call must NOT have
 their observations in the returned observations dict.
+
+.. figure:: images/envs/multi_agent_episode_simultaneous.svg
+    :width: 450
+
+    **Env with simultaneously acting agents:** Both agents receive their observations at each
+    time step, including right after `reset()`. Note that an agent must computed and sent an action
+    into the next `step()` call whenever an observation is present for that agent in the returned
+    observations dict.
 
 Note also that this rule does not apply to reward dicts or termination/truncation dicts, all of which
 may contain any agent ID at any time step regardless of whether the agent ID is expected to act or not
@@ -190,6 +198,14 @@ In summary, the exact order and synchronization of agent actions in your multi-a
 through the agent IDs contained in (or missing from) your observations dicts.
 Only those agent IDs that are expected to compute and send actions into the next `step()` call must be part of the
 returned observation dict.
+
+.. figure:: images/envs/multi_agent_episode_turn_based.svg
+    :width: 450
+
+    **Env with agents taking turns:** The two agents act by taking alternating turns. `agent_1` receives the
+    first observation after the `reset()` and thus has to compute and send an action first. Upon receiving
+    this action, the env responds with an observation for `agent_2`, who now has to act. After receiving the action
+    for `agent_2`, a next observation for `agent_1` is returned and so on and so forth.
 
 This simple rule allows you to design any type of multi-agent environment, from turn-based games to
 environments where all agents always act simultaneously, to any arbitrarily complex combination of these two patterns.
@@ -262,17 +278,78 @@ Let's now walk through another multi-agent env example implementation, but this 
 implement a turn-based game, in which you have two players (A and B), where A starts the game,
 then B makes a move, then again A, and so on and so forth.
 
-We implement the famous Tic-Tac-Toe game (with a slight variation), played on a 3x3 field.
-Each player adds one their piecec to the field at a time. Pieces can't be moved once placed.
-The player that completes one row (horizontal, diagonal, or vertical) first wins the game and
-receives +1 reward (the losing player receives a -1 reward).
-To make the implementation easier, the variation to the original game is that trying to
+We implement the famous Tic-Tac-Toe game (with one slight aberration), played on a 3x3 field.
+Each player adds one of their pieces to the field at a time. Pieces can't be moved once placed.
+The player that first completes one row (horizontal, diagonal, or vertical) wins the game and
+receives +1 reward. The losing player receives a -1 reward.
+To make the implementation easier, the aberration from the original game is that trying to
 place a piece on an already occupied field results in the board not changing at all, but the
-moving player receiving a -5 reward as a penalty.
+moving player receiving a -5 reward as a penalty (in the original game, this move is
+simply not allowed and therefor can never happen).
+
+Here is your initial class scaffold for the Tic-Tac-Toe game:
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+   :language: python
+   :start-after: __sphinx_doc_1_begin__
+   :end-before: __sphinx_doc_1_end__
+
+In your constructor, make sure you define all possible agent IDs that can ever show up
+in your game ("player1" and "player2"), the currently active agent IDs (same as all
+possible agents), and each agent's observation- and action space.
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+   :language: python
+   :start-after: __sphinx_doc_2_begin__
+   :end-before: __sphinx_doc_2_end__
+
+Now let's implement your `reset()` method, in which you empty the board (set it to all 0s),
+pick a random start player, and return this start player's first observation.
+Note that you don't return the other player's observation as this player isn't
+acting next.
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+   :language: python
+   :start-after: __sphinx_doc_3_begin__
+   :end-before: __sphinx_doc_3_end__
 
 
-.. literalinclude::
+From here on, in each `step()`, you always flip between the two agents (you use the
+`self.current_player` attribute for keeping track) and return only the current agent's
+observation, because that's the player you want to act next.
 
+You also compute the both agents' rewards based on three criteria:
+Did the current player win (the opponent lost)?
+Did the current player place a piece on an already occupied field (gets penalized)?
+Is the game done because the board is full (both agents receive 0 reward)?
+
+.. literalinclude:: ../../../rllib/examples/envs/classes/multi_agent/tic_tac_toe.py
+   :language: python
+   :start-after: __sphinx_doc_4_begin__
+   :end-before: __sphinx_doc_4_end__
+
+
+Grouping Agents
+~~~~~~~~~~~~~~~
+
+It is common to have groups of agents in multi-agent RL, where each group is treated
+like a single agent with Tuple action- and observation spaces (one item in the tuple
+for each individual agent in the group).
+
+Such a group of agents can then be assigned to a single policy for centralized execution,
+or to specialized multi-agent policies that implement centralized training, but
+decentralized execution.
+
+You can use the :py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.with_agent_groups()``
+method to define these groups:
+
+.. literalinclude:: ../../../rllib/env/multi_agent_env.py
+   :language: python
+   :start-after: __grouping_doc_begin__
+   :end-before: __grouping_doc_end__
+
+For environments with multiple groups, or mixtures of agent groups and individual agents,
+you can use grouping in conjunction with the policy mapping API described in prior sections.
 
 
 Third Party Multi-Agent Env APIs
@@ -281,11 +358,34 @@ Third Party Multi-Agent Env APIs
 Besides RLlib's own :py:class`~ray.rllib.env.multi_agent_env.MultiAgentEnv` API, you can also use
 various third-party APIs and libraries to implement custom multi-agent envs.
 
+
+.. farama-pettingzoo-api::
+
 Farama PettingZoo
 ~~~~~~~~~~~~~~~~~
 
-`Farama's PettingZoo <pettingzoo.farama.org>`__ API for writing custom multi-agent envs.
+`PettingZoo <https://pettingzoo.farama.org>`__ offers a repository of over 50 diverse
+multi-agent environments, directly compatible with RLlib through the built-in
+:py:class:`~ray.rllib.env.wrappers.pettingzoo_env.PettingZooEnv` wrapper:
 
+
+.. testcode::
+
+    from ray.tune.registry import register_env
+    from pettingzoo.butterfly import prison_v3
+    from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
+
+    register_env(
+        "prison",
+        lambda cfg: PettingZooEnv(prison_v3.env(num_floors=cfg.get("num_floors", 4))),
+    )
+
+    config = PPOConfig.environment("prison", env_config={"num_floors": 5})
+
+See `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__ for a full example.
+
+
+.. deepmind-openspiel-api::
 
 DeepMind OpenSpiel
 ~~~~~~~~~~~~~~~~~~
@@ -366,34 +466,14 @@ and `rock_paper_scissors_learned_vs_learned.py <https://github.com/ray-project/r
 demonstrate competing policies with heuristic and learned strategies.
 
 
-Scaling to Many Agents
-~~~~~~~~~~~~~~~~~~~~~~
+Scaling to Many MultiAgentEnvs per EnvRunner
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. note::
 
-    Multi-agent setups are not vectorizable yet. The Ray team is working on a solution for
-    this restriction by utilizing `gymnasium >= 1.x` custom vectorization feature.
-
-
-PettingZoo Multi-Agent Environments
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-`PettingZoo <https://github.com/Farama-Foundation/PettingZoo>`__ offers a
-repository of over 50 diverse multi-agent environments, directly compatible with RLlib
-through its built-in `PettingZooEnv` wrapper:
-
-.. code-block:: python
-
-    from ray.tune.registry import register_env
-    from pettingzoo.butterfly import prison_v3
-    from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
-
-    env_creator = lambda config: prison_v3.env(num_floors=config.get("num_floors", 4))
-    register_env("prison", lambda config: PettingZooEnv(env_creator(config)))
-
-    config = PPOConfig.environment("prison", env_config={"num_floors": 5})
-
-See `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__ for a full example.
+    Unlike for single-agent environments, multi-agent setups are not vectorizable yet.
+    The Ray team is working on a solution for this restriction by utilizing
+    `gymnasium >= 1.x` custom vectorization feature.
 
 
 Variable-Sharing Between Policies
@@ -408,18 +488,3 @@ Implementing a Centralized Critic
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 TODO!!!
-
-Grouping Agents
-~~~~~~~~~~~~~~~
-
-It is common to have groups of agents in multi-agent RL. RLlib treats agent groups like a single agent with a Tuple action and observation space.
-The group agent can then be assigned to a single policy for centralized execution, or to specialized multi-agent policies that
-implement centralized training but decentralized execution. You can use the ``MultiAgentEnv.with_agent_groups()`` method to define these groups:
-
-.. literalinclude:: ../../../rllib/env/multi_agent_env.py
-   :language: python
-   :start-after: __grouping_doc_begin__
-   :end-before: __grouping_doc_end__
-
-For environments with multiple groups, or mixtures of agent groups and individual agents, you can use grouping in conjunction with the policy mapping API described in prior sections.
-

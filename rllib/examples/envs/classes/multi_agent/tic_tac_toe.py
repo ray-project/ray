@@ -25,20 +25,24 @@ class TicTacToe(MultiAgentEnv):
     Once a player completes a row, they receive +1.0 reward, the losing player receives
     -1.0 reward. In all other cases, both players receive 0.0 reward.
     """
-    # __sphinx_doc_1_end__
+# __sphinx_doc_1_end__
 
-    # __sphinx_doc_2_begin__
+# __sphinx_doc_2_begin__
     def __init__(self, config=None):
         super().__init__()
 
         # Define the agents in the game.
         self.agents = self.possible_agents = ["player1", "player2"]
 
-        # Define observation- and action spaces of each agent.
+        # Each agent observes a 9D tensor, representing the 3x3 fields of the board.
+        # A 0 means an empty field, a 1 represents a piece of player 1, a -1 a piece of
+        # player 2.
         self.observation_spaces = {
             "player1": gym.spaces.Box(-1.0, 1.0, (9,), np.float32),
             "player2": gym.spaces.Box(-1.0, 1.0, (9,), np.float32),
         }
+        # Each player has 9 actions, encoding the 9 fields each player can place a piece
+        # on during their turn.
         self.action_spaces = {
             "player1": gym.spaces.Discrete(9),
             "player2": gym.spaces.Discrete(9),
@@ -46,40 +50,39 @@ class TicTacToe(MultiAgentEnv):
 
         self.board = None
         self.current_player = None
-    # __sphinx_doc_2_end__
+# __sphinx_doc_2_end__
 
-    # __sphinx_doc_3_begin__
+# __sphinx_doc_3_begin__
     def reset(self, *, seed=None, options=None):
         self.board = [
             0, 0, 0,
             0, 0, 0,
             0, 0, 0,
         ]
+        # Pick a random player to start the game.
         self.current_player = np.random.choice(["player1", "player2"])
-        # Return observation and info dict.
+        # Return observations dict (only with the starting player, which is the one
+        # we expect to act next).
         return {
             self.current_player: np.array(self.board),
         }, {}
-    # __sphinx_doc_3_end__
+# __sphinx_doc_3_end__
 
-    # __sphinx_doc_4_begin__
+# __sphinx_doc_4_begin__
     def step(self, action_dict):
-        assert self.current_player in action_dict
-        assert len(action_dict) == 1
         action = action_dict[self.current_player]
 
         # Create a rewards-dict (containing the rewards of the agent that just acted).
         rewards = {self.current_player: 0.0}
-        # Create a terminateds-dict with a special __all__ key, indicating that the
-        # value is valid for all agents and thus - if True - ends the episode for all
-        # agents.
+        # Create a terminateds-dict with the special `__all__` agent ID, indicating that
+        # if True, the episode ends for all agents.
         terminateds = {"__all__": False}
 
         opponent = "player1" if self.current_player == "player2" else "player2"
 
         # Penalize trying to place a piece on an already occupied field.
         if self.board[action] != 0:
-            rewards[self.current_player] -= 1.0
+            rewards[self.current_player] -= 5.0
         # Change the board according to the (valid) action taken.
         else:
             self.board[action] = 1 if self.current_player == "player1" else -1
@@ -110,7 +113,14 @@ class TicTacToe(MultiAgentEnv):
                 # Episode is done and needs to be reset for a new game.
                 terminateds["__all__"] = True
 
-        # Flip players.
+            # The board might also be full w/o any player having won/lost.
+            # In this case, we simply end the episode and none of the players receives
+            # +1 or -1 reward.
+            elif 0 not in self.board:
+                terminateds["__all__"] = True
+
+        # Flip players and return an observations dict with only the next player to
+        # make a move in it.
         self.current_player = opponent
 
         return (
@@ -120,4 +130,4 @@ class TicTacToe(MultiAgentEnv):
             False,
             {},
         )
-    # __sphinx_doc_4_end__
+# __sphinx_doc_4_end__
