@@ -23,7 +23,7 @@ import traceback
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
@@ -856,7 +856,7 @@ class CompiledDAG:
         self._use_default_nccl_group = False
         # This is set to the specified custom nccl group
         # if there exists a type hint of `transport=nccl_group`.
-        self._custom_nccl_group_p2p: Optional[GPUCommunicator] = None
+        self._custom_nccl_group_p2p: Optional[Communicator] = None
         # The NCCL group ID for P2P send/recv operations.
         self._nccl_group_id_p2p: Optional[str] = None
         # All the NCCL group IDs for P2P send/recv and collective operations.
@@ -1153,7 +1153,7 @@ class CompiledDAG:
 
         # Initialize and cache a NCCL group for each custom NCCL group. All the
         # custom NCCL groups are initialized before the default NCCL groups.
-        custom_nccl_group_to_id: Dict[GPUCommunicator, str] = {}
+        custom_nccl_group_to_id: Dict[Communicator, str] = {}
         # Initialize and cache a NCCL group for each set of actors. A set of actors
         # can perform P2P send/recv and collective operations. If there are multiple
         # custom NCCL groups for a set of actors, only one is cached.
