@@ -97,7 +97,7 @@ namespace gcs {
 
 class MockGcsNodeTable : public GcsNodeTable {
  public:
-  MockGcsNodeTable() : GcsNodeTable(nullptr){};
+  MockGcsNodeTable() : GcsNodeTable(nullptr) {};
 
   MOCK_METHOD(Status,
               Put,
@@ -114,16 +114,6 @@ namespace ray {
 namespace gcs {
 
 class MockGcsWorkerTable : public GcsWorkerTable {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
-class MockGcsInternalConfigTable : public GcsInternalConfigTable {
  public:
 };
 

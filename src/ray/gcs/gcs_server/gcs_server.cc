@@ -18,18 +18,10 @@
 
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/network_util.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
-#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
-#include "ray/gcs/gcs_server/gcs_job_manager.h"
-#include "ray/gcs/gcs_server/gcs_node_manager.h"
-#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_worker_manager.h"
-#include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
-#include "ray/gcs/store_client/observable_store_client.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/util.h"
 
@@ -82,25 +74,6 @@ GcsServer::GcsServer(const ray::gcs::GcsServerConfig &config,
   default:
     RAY_LOG(FATAL) << "Unexpected storage type: " << storage_type_;
   }
-
-  auto on_done = [this](const ray::Status &status) {
-    RAY_CHECK(status.ok()) << "Failed to put internal config";
-    this->io_context_provider_.GetDefaultIOContext().stop();
-  };
-
-  ray::rpc::StoredConfig stored_config;
-  stored_config.set_config(config_.raylet_config_list);
-  RAY_CHECK_OK(gcs_table_storage_->InternalConfigTable().Put(
-      ray::UniqueID::Nil(), stored_config, on_done));
-  // Here we need to make sure the Put of internal config is happening in sync
-  // way. But since the storage API is async, we need to run the default io context
-  // to block current thread.
-  // This will run async operations from InternalConfigTable().Put() above
-  // inline.
-  io_context_provider_.GetDefaultIOContext().run();
-  // Reset the main service to the initial status otherwise, the signal handler
-  // will be called.
-  io_context_provider_.GetDefaultIOContext().restart();
 
   // Init GCS publisher instance.
   std::unique_ptr<pubsub::Publisher> inner_publisher;
@@ -652,7 +625,8 @@ void GcsServer::InitGcsWorkerManager() {
 
 void GcsServer::InitGcsAutoscalerStateManager(const GcsInitData &gcs_init_data) {
   RAY_CHECK(kv_manager_) << "kv_manager_ is not initialized.";
-  auto v2_enabled = std::to_string(RayConfig::instance().enable_autoscaler_v2());
+  auto v2_enabled =
+      std::to_string(static_cast<int>(RayConfig::instance().enable_autoscaler_v2()));
   RAY_LOG(INFO) << "Autoscaler V2 enabled: " << v2_enabled;
 
   kv_manager_->GetInstance().Put(
