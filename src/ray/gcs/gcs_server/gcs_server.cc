@@ -20,7 +20,11 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
 #include "ray/gcs/gcs_server/gcs_actor_manager.h"
+#include "ray/gcs/gcs_server/gcs_autoscaler_state_manager.h"
+#include "ray/gcs/gcs_server/gcs_job_manager.h"
+#include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/util/util.h"
@@ -416,9 +420,9 @@ void GcsServer::InitGcsActorManager(const GcsInitData &gcs_init_data) {
         gcs_actor_manager_->OnActorSchedulingFailed(
             std::move(actor), failure_type, scheduling_failure_message);
       };
-  auto schedule_success_handler = [this](std::shared_ptr<GcsActor> actor,
+  auto schedule_success_handler = [this](const std::shared_ptr<GcsActor> &actor,
                                          const rpc::PushTaskReply &reply) {
-    gcs_actor_manager_->OnActorCreationSuccess(std::move(actor), reply);
+    gcs_actor_manager_->OnActorCreationSuccess(actor, reply);
   };
 
   RAY_CHECK(gcs_resource_manager_ && cluster_task_manager_);
@@ -605,7 +609,7 @@ void GcsServer::InitRuntimeEnvManager() {
       *runtime_env_manager_, /*delay_executor=*/
       [this](std::function<void()> task, uint32_t delay_ms) {
         return execute_after(io_context_provider_.GetDefaultIOContext(),
-                             task,
+                             std::move(task),
                              std::chrono::milliseconds(delay_ms));
       });
   runtime_env_service_ = std::make_unique<rpc::RuntimeEnvGrpcService>(
@@ -676,31 +680,32 @@ void GcsServer::InitGcsTaskManager() {
 
 void GcsServer::InstallEventListeners() {
   // Install node event listeners.
-  gcs_node_manager_->AddNodeAddedListener([this](std::shared_ptr<rpc::GcsNodeInfo> node) {
-    // Because a new node has been added, we need to try to schedule the pending
-    // placement groups and the pending actors.
-    auto node_id = NodeID::FromBinary(node->node_id());
-    gcs_resource_manager_->OnNodeAdd(*node);
-    gcs_placement_group_manager_->OnNodeAdd(node_id);
-    gcs_actor_manager_->SchedulePendingActors();
-    gcs_autoscaler_state_manager_->OnNodeAdd(*node);
-    rpc::Address address;
-    address.set_raylet_id(node->node_id());
-    address.set_ip_address(node->node_manager_address());
-    address.set_port(node->node_manager_port());
+  gcs_node_manager_->AddNodeAddedListener(
+      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
+        // Because a new node has been added, we need to try to schedule the pending
+        // placement groups and the pending actors.
+        auto node_id = NodeID::FromBinary(node->node_id());
+        gcs_resource_manager_->OnNodeAdd(*node);
+        gcs_placement_group_manager_->OnNodeAdd(node_id);
+        gcs_actor_manager_->SchedulePendingActors();
+        gcs_autoscaler_state_manager_->OnNodeAdd(*node);
+        rpc::Address address;
+        address.set_raylet_id(node->node_id());
+        address.set_ip_address(node->node_manager_address());
+        address.set_port(node->node_manager_port());
 
-    auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
+        auto raylet_client = raylet_client_pool_->GetOrConnectByAddress(address);
 
-    if (gcs_healthcheck_manager_) {
-      RAY_CHECK(raylet_client != nullptr);
-      auto channel = raylet_client->GetChannel();
-      RAY_CHECK(channel != nullptr);
-      gcs_healthcheck_manager_->AddNode(node_id, channel);
-    }
-    cluster_task_manager_->ScheduleAndDispatchTasks();
-  });
+        if (gcs_healthcheck_manager_) {
+          RAY_CHECK(raylet_client != nullptr);
+          auto channel = raylet_client->GetChannel();
+          RAY_CHECK(channel != nullptr);
+          gcs_healthcheck_manager_->AddNode(node_id, channel);
+        }
+        cluster_task_manager_->ScheduleAndDispatchTasks();
+      });
   gcs_node_manager_->AddNodeRemovedListener(
-      [this](std::shared_ptr<rpc::GcsNodeInfo> node) {
+      [this](const std::shared_ptr<rpc::GcsNodeInfo> &node) {
         auto node_id = NodeID::FromBinary(node->node_id());
         const auto node_ip_address = node->node_manager_address();
         // All of the related placement groups and actors should be reconstructed when a
@@ -717,7 +722,7 @@ void GcsServer::InstallEventListeners() {
 
   // Install worker event listener.
   gcs_worker_manager_->AddWorkerDeadListener(
-      [this](std::shared_ptr<rpc::WorkerTableData> worker_failure_data) {
+      [this](const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data) {
         auto &worker_address = worker_failure_data->worker_address();
         auto worker_id = WorkerID::FromBinary(worker_address.worker_id());
         auto node_id = NodeID::FromBinary(worker_address.raylet_id());
