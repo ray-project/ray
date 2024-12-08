@@ -269,6 +269,22 @@ class InvalidValuesTest(unittest.TestCase):
 
         searcher.on_trial_complete("trial_1", {"training_iteration": 4, "metric": 1})
 
+    def testVizier(self):
+        from ray.tune.search.vizier import VizierSearch
+
+        np.random.seed(2020)  # At least one nan, inf, -inf and float
+
+        with self.check_searcher_checkpoint_errors_scope():
+            out = tune.run(
+                _invalid_objective,
+                search_alg=VizierSearch(),
+                config=self.config,
+                mode="max",
+                num_samples=16,
+                reuse_actors=False,
+            )
+        self.assertCorrectExperimentOutput(out)
+
     def testZOOpt(self):
         self.skipTest(
             "Recent ZOOpt versions fail handling invalid values gracefully. "
