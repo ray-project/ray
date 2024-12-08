@@ -20,8 +20,6 @@ class _NcclOperation(ABC):
     @abstractmethod
     def execute(self, *args, **kwargs) -> None:
         """
-        Execute the NCCL op.
-
-        This method is used in `ExecutableTask._compute`.
+        Execute the NCCL op. This is called in `ExecutableTask._compute`.
         """
         raise NotImplementedError

@@ -378,7 +378,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # [TODO:andyub] One requires_nccl instead of three.
+        # [CL]
         # We need a flag for NCCL read because currently we only support
         # overlapping NCCL read with computation. The other two flags are kept
         # for symmetry. We may be able to merge them into one flag after
@@ -1299,7 +1299,7 @@ class CompiledDAG:
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    nccl_collective_ops.add(dag_node.collective_op)
+                    nccl_collective_ops.add(dag_node.nccl_op)
                     if self._overlap_gpu_communication:
                         raise ValueError(
                             "Currently, the overlap_gpu_communication option is not "

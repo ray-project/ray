@@ -23,6 +23,7 @@ class _P2POperation(_NcclOperation):
         """
         Execute the NCCL P2P operation.
 
+        [CL]
         This method is an identity function.
 
         Args:
@@ -86,7 +87,7 @@ class _P2PSendNode(_P2PNode):
         other_args_to_resolve: Dict[str, Any],
     ):
         super().__init__(
-            method_name="nccl_send",
+            method_name="p2p_send",
             method_args=method_args,
             method_kwargs=dict(),
             method_options=dict(),
@@ -130,7 +131,7 @@ class _P2PRecvNode(_P2PNode):
         other_args_to_resolve: Dict[str, Any],
     ):
         super().__init__(
-            method_name="nccl_recv",
+            method_name="p2p_recv",
             method_args=method_args,
             method_kwargs=dict(),
             method_options=dict(),

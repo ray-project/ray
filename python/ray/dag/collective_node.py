@@ -190,9 +190,5 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_op(self) -> _CollectiveOperation:
-        return self._collective_op
-
-    @property
     def nccl_op(self) -> _CollectiveOperation:
         return self._collective_op

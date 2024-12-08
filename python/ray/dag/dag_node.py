@@ -84,7 +84,6 @@ class DAGNode(DAGNodeBase):
         self.is_adag_output_node = False
 
         # Whether this node requires NCCL read/write/collective operations.
-        # [TODO:andyub] Merge these into a single requires_nccl flag.
         self.requires_nccl_read = False
         self.requires_nccl_write = False
         self.requires_nccl_collective = False

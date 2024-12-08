@@ -55,7 +55,6 @@ class _DAGOperationGraphNode:
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
         nccl_op: Optional[_NcclOperation] = None,
-        # [TODO:andyub] only 1 requires_nccl?
         requires_nccl_read: bool = False,
         requires_nccl_write: bool = False,
         requires_nccl_collective: bool = False,
