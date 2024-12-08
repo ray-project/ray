@@ -713,7 +713,9 @@ def _check_single_tensor_input(tensor):
         if isinstance(tensor, types.cp.ndarray):
             return
     if types.torch_available():
-        if isinstance(tensor, types.th.Tensor):
+        import torch
+
+        if isinstance(tensor, torch.Tensor):
             return
     raise RuntimeError(
         "Unrecognized tensor type '{}'. Supported types are: "
