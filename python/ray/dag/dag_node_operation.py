@@ -1,5 +1,5 @@
 from functools import total_ordering
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from typing import Set, Tuple, List, Dict, Optional
 import copy
 import logging
@@ -54,7 +54,7 @@ class _DAGOperationGraphNode:
         op: _DAGNodeOperation,
         task_idx: int,
         actor_handle: "ray.actor.ActorHandle",
-        sync_group: Optional[_NcclOperation] = None,
+        nccl_op: Optional[_NcclOperation] = None,
         # [TODO:andyub] only 1 requires_nccl?
         requires_nccl_read: bool = False,
         requires_nccl_write: bool = False,
@@ -93,7 +93,7 @@ class _DAGOperationGraphNode:
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
         # Synchronous group of this task. None if the task is not a
         # synchronous operation.
-        self.sync_group: Optional[_NcclOperation] = sync_group
+        self.nccl_op: Optional[_NcclOperation] = nccl_op
 
     def __repr__(self):
         return (
@@ -163,8 +163,8 @@ class _DAGOperationGraphNode:
         is ready when all nodes in the group have zero in-degrees.
         """
         return self.in_degree == 0 and (
-            self.sync_group is None
-            or len(self.sync_group.task_idxs) == len(self.sync_group.ready_task_idxs)
+            self.nccl_op is None
+            or len(self.nccl_op.task_idxs) == len(self.nccl_op.ready_task_idxs)
         )
 
     @property
@@ -216,16 +216,16 @@ def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    if node.in_degree == 0 and node.sync_group is not None:
-        node.sync_group.ready_task_idxs.add(node.task_idx)
+    if node.in_degree == 0 and node.nccl_op is not None:
+        node.nccl_op.ready_task_idxs.add(node.task_idx)
     if node.is_ready:
-        if node.sync_group is None or not node.sync_group.scheduled:
+        if node.nccl_op is None or not node.nccl_op.scheduled:
             heapq.heappush(
                 actor_to_candidates[node.actor_handle._actor_id],
                 node,
             )
-        if node.sync_group is not None:
-            node.sync_group.scheduled = True
+        if node.nccl_op is not None:
+            node.nccl_op.scheduled = True
 
 
 def _select_next_nodes(
@@ -270,9 +270,9 @@ def _select_next_nodes(
 
     heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
 
-    if top_priority_node.sync_group is not None:
+    if top_priority_node.nccl_op is not None:
         next_nodes = []
-        for idx in top_priority_node.sync_group.task_idxs:
+        for idx in top_priority_node.nccl_op.task_idxs:
             node = graph[idx]
             assert node.is_ready
             next_nodes.append(node)

@@ -16,7 +16,7 @@ from ray.dag.dag_node_operation import (
     _generate_actor_to_execution_schedule,
 )
 from ray.dag.compiled_dag_node import CompiledTask
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from typing import Dict, List, Set
 from ray.actor import ActorHandle
 
@@ -51,7 +51,7 @@ def generate_dag_graph_nodes(
     exec_task_idx,
     task_idx,
     actor_handle,
-    sync_group=None,
+    nccl_op=None,
     requires_nccl_read=False,
     requires_nccl_write=False,
     requires_nccl_collective=False,
@@ -60,7 +60,7 @@ def generate_dag_graph_nodes(
         _DAGNodeOperation(exec_task_idx),
         task_idx,
         actor_handle,
-        sync_group,
+        nccl_op,
         requires_nccl_read,
         requires_nccl_write,
         requires_nccl_collective,
@@ -148,20 +148,20 @@ class TestSelectNextNodes:
 
         fake_actor_1, task_idx_1, exec_task_idx_1 = ActorHandle("fake_actor_1"), 1, 0
         fake_actor_2, task_idx_2, exec_task_idx_2 = ActorHandle("fake_actor_2"), 2, 0
-        sync_group = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
+        nccl_op = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
         mock_graph = {
             task_idx_1: generate_dag_graph_nodes(
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                sync_group,
+                nccl_op,
                 requires_nccl_write=True,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                sync_group,
+                nccl_op,
                 requires_nccl_read=True,
             ),
         }
@@ -203,10 +203,10 @@ class TestSelectNextNodes:
         task_idx_2_0, exec_task_idx_2_0 = 2, 1
         task_idx_2_1, exec_task_idx_2_1 = 4, 2
 
-        sync_group_1 = MockSyncGroup(
+        nccl_op_1 = MockSyncGroup(
             [task_idx_1_0, task_idx_2_1], {task_idx_1_0, task_idx_2_1}
         )
-        sync_group_2 = MockSyncGroup(
+        nccl_op_2 = MockSyncGroup(
             [task_idx_2_0, task_idx_1_1], {task_idx_2_0, task_idx_1_1}
         )
 
@@ -221,28 +221,28 @@ class TestSelectNextNodes:
                     exec_task_idx_1_0,
                     task_idx_1_0,
                     fake_actor_1,
-                    sync_group_1,
+                    nccl_op_1,
                     requires_nccl_write=True,
                 ),
                 task_idx_1_1: generate_dag_graph_nodes(
                     exec_task_idx_1_1,
                     task_idx_1_1,
                     fake_actor_1,
-                    sync_group_2,
+                    nccl_op_2,
                     requires_nccl_read=True,
                 ),
                 task_idx_2_0: generate_dag_graph_nodes(
                     exec_task_idx_2_0,
                     task_idx_2_0,
                     fake_actor_2,
-                    sync_group_2,
+                    nccl_op_2,
                     requires_nccl_write=True,
                 ),
                 task_idx_2_1: generate_dag_graph_nodes(
                     exec_task_idx_2_1,
                     task_idx_2_1,
                     fake_actor_2,
-                    sync_group_1,
+                    nccl_op_1,
                     requires_nccl_read=True,
                 ),
             }
@@ -283,21 +283,21 @@ class TestSelectNextNodes:
 
         fake_actor_1, task_idx_1, exec_task_idx_1 = ActorHandle("fake_actor_1"), 1, 0
         fake_actor_2, task_idx_2, exec_task_idx_2 = ActorHandle("fake_actor_2"), 2, 0
-        sync_group = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
+        nccl_op = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
 
         mock_graph = {
             task_idx_1: generate_dag_graph_nodes(
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                sync_group,
+                nccl_op,
                 requires_nccl_collective=True,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                sync_group,
+                nccl_op,
                 requires_nccl_collective=True,
             ),
         }
@@ -333,36 +333,36 @@ class TestSelectNextNodes:
         fake_actor_3, task_idx_3, exec_task_idx_3 = ActorHandle("fake_actor_3"), 3, 0
         fake_actor_4, task_idx_4, exec_task_idx_4 = ActorHandle("fake_actor_4"), 4, 0
 
-        sync_group_1 = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
-        sync_group_2 = MockSyncGroup([task_idx_3, task_idx_4], {task_idx_3, task_idx_4})
+        nccl_op_1 = MockSyncGroup([task_idx_1, task_idx_2], {task_idx_1, task_idx_2})
+        nccl_op_2 = MockSyncGroup([task_idx_3, task_idx_4], {task_idx_3, task_idx_4})
 
         mock_graph = {
             task_idx_1: generate_dag_graph_nodes(
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_collective=True,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_collective=True,
             ),
             task_idx_3: generate_dag_graph_nodes(
                 exec_task_idx_3,
                 task_idx_3,
                 fake_actor_3,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_collective=True,
             ),
             task_idx_4: generate_dag_graph_nodes(
                 exec_task_idx_4,
                 task_idx_4,
                 fake_actor_4,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_collective=True,
             ),
         }
@@ -716,36 +716,36 @@ class TestGenerateActorToExecutionSchedule:
         task_idx_2_1, exec_task_idx_2_1 = 2, 0
         task_idx_2_2, exec_task_idx_2_2 = 3, 1
 
-        sync_group_1 = MockSyncGroup([task_idx_1_1, task_idx_2_2])
-        sync_group_2 = MockSyncGroup([task_idx_2_1, task_idx_1_2])
+        nccl_op_1 = MockSyncGroup([task_idx_1_1, task_idx_2_2])
+        nccl_op_2 = MockSyncGroup([task_idx_2_1, task_idx_1_2])
 
         graph = {
             task_idx_1_1: generate_dag_graph_nodes(
                 exec_task_idx_1_1,
                 task_idx_1_1,
                 fake_actor_1,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_write=True,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 fake_actor_2,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_write=True,
             ),
             task_idx_2_2: generate_dag_graph_nodes(
                 exec_task_idx_2_2,
                 task_idx_2_2,
                 fake_actor_2,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_read=True,
             ),
             task_idx_1_2: generate_dag_graph_nodes(
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 fake_actor_1,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_read=True,
             ),
         }
@@ -882,10 +882,10 @@ class TestGenerateActorToExecutionSchedule:
         task_idx_2_5, exec_task_idx_2_5 = 15, 2
         task_idx_2_8, exec_task_idx_2_8 = 16, 3
 
-        sync_group_1 = MockSyncGroup([task_idx_1_2, task_idx_2_1])
-        sync_group_2 = MockSyncGroup([task_idx_1_4, task_idx_2_5])
-        sync_group_3 = MockSyncGroup([task_idx_2_4, task_idx_1_5])
-        sync_group_4 = MockSyncGroup([task_idx_2_8, task_idx_1_7])
+        nccl_op_1 = MockSyncGroup([task_idx_1_2, task_idx_2_1])
+        nccl_op_2 = MockSyncGroup([task_idx_1_4, task_idx_2_5])
+        nccl_op_3 = MockSyncGroup([task_idx_2_4, task_idx_1_5])
+        nccl_op_4 = MockSyncGroup([task_idx_2_8, task_idx_1_7])
 
         graph = {
             task_idx_1_1: generate_dag_graph_nodes(
@@ -932,56 +932,56 @@ class TestGenerateActorToExecutionSchedule:
                 exec_task_idx_1_2,
                 task_idx_1_2,
                 worker_1,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_write=True,
             ),
             task_idx_1_4: generate_dag_graph_nodes(
                 exec_task_idx_1_4,
                 task_idx_1_4,
                 worker_1,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_write=True,
             ),
             task_idx_1_5: generate_dag_graph_nodes(
                 exec_task_idx_1_5,
                 task_idx_1_5,
                 worker_1,
-                sync_group_3,
+                nccl_op_3,
                 requires_nccl_read=True,
             ),
             task_idx_1_7: generate_dag_graph_nodes(
                 exec_task_idx_1_7,
                 task_idx_1_7,
                 worker_1,
-                sync_group_4,
+                nccl_op_4,
                 requires_nccl_read=True,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
                 exec_task_idx_2_1,
                 task_idx_2_1,
                 worker_2,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_read=True,
             ),
             task_idx_2_4: generate_dag_graph_nodes(
                 exec_task_idx_2_4,
                 task_idx_2_4,
                 worker_2,
-                sync_group_3,
+                nccl_op_3,
                 requires_nccl_write=True,
             ),
             task_idx_2_5: generate_dag_graph_nodes(
                 exec_task_idx_2_5,
                 task_idx_2_5,
                 worker_2,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_read=True,
             ),
             task_idx_2_8: generate_dag_graph_nodes(
                 exec_task_idx_2_8,
                 task_idx_2_8,
                 worker_2,
-                sync_group_4,
+                nccl_op_4,
                 requires_nccl_write=True,
             ),
         }
@@ -1045,36 +1045,36 @@ class TestGenerateActorToExecutionSchedule:
         task_idx_2, exec_task_idx_2 = 2, 0
         task_idx_4, exec_task_idx_4 = 4, 1
 
-        sync_group_1 = MockSyncGroup([task_idx_1, task_idx_2])
-        sync_group_2 = MockSyncGroup([task_idx_3, task_idx_4])
+        nccl_op_1 = MockSyncGroup([task_idx_1, task_idx_2])
+        nccl_op_2 = MockSyncGroup([task_idx_3, task_idx_4])
 
         graph = {
             task_idx_1: generate_dag_graph_nodes(
                 exec_task_idx_1,
                 task_idx_1,
                 fake_actor_1,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_collective=True,
             ),
             task_idx_2: generate_dag_graph_nodes(
                 exec_task_idx_2,
                 task_idx_2,
                 fake_actor_2,
-                sync_group_1,
+                nccl_op_1,
                 requires_nccl_collective=True,
             ),
             task_idx_3: generate_dag_graph_nodes(
                 exec_task_idx_3,
                 task_idx_3,
                 fake_actor_1,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_collective=True,
             ),
             task_idx_4: generate_dag_graph_nodes(
                 exec_task_idx_4,
                 task_idx_4,
                 fake_actor_2,
-                sync_group_2,
+                nccl_op_2,
                 requires_nccl_collective=True,
             ),
         }

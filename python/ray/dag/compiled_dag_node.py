@@ -22,7 +22,7 @@ import traceback
 
 import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.dag.constants import (
@@ -388,9 +388,9 @@ class ExecutableTask:
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
         # The synchronous group this task belongs to that is used for scheduling.
         # If None, the task is not part of a synchronous group.
-        self.sync_group: Optional[_NcclOperation] = task.dag_node.sync_group
-        if self.sync_group is not None:
-            self.sync_group.task_idxs.append(task.idx)
+        self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
+        if self.nccl_op is not None:
+            self.nccl_op.task_idxs.append(task.idx)
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
@@ -614,9 +614,9 @@ class ExecutableTask:
     #     for task_input in self.task_inputs:
     #         resolved_inputs.append(task_input.resolve(input_data))
 
-    #     if self.sync_group is not None:
+    #     if self.nccl_op is not None:
     #         # Run a synchronous NCCL operation.
-    #         method = self.sync_group.execute
+    #         method = self.nccl_op.execute
     #     else:
     #         # Run an actor method.
     #         method = getattr(class_handle, self.method_name)
@@ -739,9 +739,9 @@ class ExecutableTask:
                 for task_input in self.task_inputs:
                     resolved_inputs.append(task_input.resolve(input_data))
 
-                if self.sync_group is not None:
+                if self.nccl_op is not None:
                     # Run a synchronous NCCL operation.
-                    method = self.sync_group.execute
+                    method = self.nccl_op.execute
                 else:
                     # Run an actor method.
                     method = getattr(class_handle, self.method_name)
@@ -1143,7 +1143,7 @@ class CompiledDAG:
                     method_args=(send_node,),
                     other_args_to_resolve={
                         PARENT_CLASS_NODE_KEY: recv_actor_handle,
-                        P2P_OPERATION_KEY: send_node.sync_group,
+                        P2P_OPERATION_KEY: send_node.nccl_op,
                         # [TODO:andyub] What should the bind index be here?
                         BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
                         - READ_BIND_INDEX_DECREMENT,
@@ -1298,7 +1298,7 @@ class CompiledDAG:
 
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
-                    nccl_collective_ops.add(dag_node.collective_group)
+                    nccl_collective_ops.add(dag_node.collective_op)
                     if self._overlap_gpu_communication:
                         raise ValueError(
                             "Currently, the overlap_gpu_communication option is not "
@@ -1949,7 +1949,7 @@ class CompiledDAG:
                     _DAGNodeOperation(exec_task_idx, method_name),
                     task_idx,
                     actor_handle,
-                    exec_task.sync_group,
+                    exec_task.nccl_op,
                     requires_nccl_read,
                     requires_nccl_write,
                     requires_nccl_collective,

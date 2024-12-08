@@ -4,7 +4,7 @@ from ray.dag import (
     DAGNode,
     ClassMethodNode,
 )
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.constants import P2P_OPERATION_KEY
 from ray.util.annotations import DeveloperAPI
 
@@ -52,16 +52,14 @@ class _P2PNode(ClassMethodNode):
             other_args_to_resolve,
         )
 
-        # Parse the P2P group.
-        self._p2p_group: _P2POperation = other_args_to_resolve.get(
-            P2P_OPERATION_KEY, None
-        )
-        if self._p2p_group is None:
-            raise ValueError("Expected a P2P group")
+        # Parse the P2P operation.
+        self._p2p_op: _P2POperation = other_args_to_resolve.get(P2P_OPERATION_KEY, None)
+        if self._p2p_op is None:
+            raise ValueError("Expected a P2P operation")
 
     @property
-    def sync_group(self) -> _P2POperation:
-        return self._p2p_group
+    def nccl_op(self) -> _P2POperation:
+        return self._p2p_op
 
     def _copy_impl(
         self,
@@ -70,11 +68,11 @@ class _P2PNode(ClassMethodNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        raise NotImplementedError("Cannot copy an abstract NCCL P2P node")
+        raise NotImplementedError("Cannot copy an abstract _P2PNode")
 
     def _execute_impl(self, *args, **kwargs):
         raise NotImplementedError(
-            "NCCL P2P nodes are only supported with dag.experimental_compile()"
+            "_P2PNode is only supported with dag.experimental_compile()"
         )
 
 

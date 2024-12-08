@@ -19,7 +19,7 @@ from typing import (
 import uuid
 import asyncio
 
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
 
@@ -90,7 +90,7 @@ class DAGNode(DAGNodeBase):
         self._requires_nccl_collective = False
 
     @property
-    def sync_group(self) -> Optional[_NcclOperation]:
+    def nccl_op(self) -> Optional[_NcclOperation]:
         """
         Return the synchronous group that this node belongs to. If this node is not
         in any synchronous group, return None.

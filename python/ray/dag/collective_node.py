@@ -9,7 +9,7 @@ from ray.dag import (
     ClassMethodNode,
 )
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
-from ray.dag.sync_group import _NcclOperation
+from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
@@ -162,10 +162,10 @@ class CollectiveOutputNode(ClassMethodNode):
             raise ValueError("Expected a single input node")
         self._input_node = method_args[0]
         # Parse the collective operation.
-        self._collective_group: _CollectiveOperation = other_args_to_resolve.get(
+        self._collective_op: _CollectiveOperation = other_args_to_resolve.get(
             COLLECTIVE_OPERATION_KEY, None
         )
-        if self._collective_group is None:
+        if self._collective_op is None:
             raise ValueError("Expected a collective group")
         self.set_requires_nccl_collective(True)
 
@@ -190,9 +190,9 @@ class CollectiveOutputNode(ClassMethodNode):
         )
 
     @property
-    def collective_group(self) -> _CollectiveOperation:
-        return self._collective_group
+    def collective_op(self) -> _CollectiveOperation:
+        return self._collective_op
 
     @property
-    def sync_group(self) -> _CollectiveOperation:
-        return self._collective_group
+    def nccl_op(self) -> _CollectiveOperation:
+        return self._collective_op
