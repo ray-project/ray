@@ -202,6 +202,9 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Note: must provide gcs_address, because the Ray cluster is not started yet.
+    ray.init(address=args.gcs_address)
+
     try:
         setup_component_logger(
             logging_level=args.logging_level,
@@ -211,6 +214,8 @@ if __name__ == "__main__":
             max_bytes=args.logging_rotate_bytes,
             backup_count=args.logging_rotate_backup_count,
         )
+
+        logger.error(" ".join(sys.argv))
 
         if args.modules_to_load:
             modules_to_load = set(args.modules_to_load.strip(" ,").split(","))
