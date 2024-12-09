@@ -4889,7 +4889,7 @@ cdef void async_callback(shared_ptr[CRayObject] obj,
         user_callback = <object>user_callback_ptr
         user_callback(result)
     except Exception:
-        # Only log the error here because this calllback is called from Cpp
+        # Only log the error here because this callback is called from Cpp
         # and Cython will ignore the exception anyway
         logger.exception(f"failed to run async callback (user func)")
     finally:

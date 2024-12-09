@@ -303,9 +303,9 @@ class GcsServer {
   /// Backend client.
   std::shared_ptr<RedisClient> redis_client_;
   /// Grpc based pubsub's periodical runner.
-  PeriodicalRunner pubsub_periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> pubsub_periodical_runner_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// Gcs service state flag, which is used for ut.
   std::atomic<bool> is_started_;
   std::atomic<bool> is_stopped_;

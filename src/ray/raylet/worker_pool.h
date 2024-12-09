@@ -825,7 +825,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A callback to get the current time.
   const std::function<absl::Time()> get_time_;

@@ -93,10 +93,10 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
             RayConfig::instance().task_events_max_num_task_in_gcs(),
             stats_counter_,
             std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-        periodical_runner_(io_service_) {
-    periodical_runner_.RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
-                                         5 * 1000,
-                                         "GcsTaskManager.GcJobSummary");
+        periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+    periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                          5 * 1000,
+                                          "GcsTaskManager.GcJobSummary");
   }
 
   /// Handles a AddTaskEventData request.
@@ -514,7 +514,7 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);
