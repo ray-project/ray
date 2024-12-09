@@ -1,6 +1,7 @@
 import {
   Autocomplete,
   Box,
+  Link,
   Pagination,
   Table,
   TableBody,
@@ -44,6 +45,7 @@ export const ServeApplicationDetailPage = () => {
   const {
     application,
     filteredDeployments,
+    publicUrl,
     page,
     setPage,
     changeFilter,
@@ -59,6 +61,13 @@ export const ServeApplicationDetailPage = () => {
   }
 
   const appName = application.name ? application.name : "-";
+
+  const docsPath =
+    publicUrl && application.docs_path
+      ? `${publicUrl}${
+          application.route_prefix !== "/" ? application.route_prefix : ""
+        }${application.docs_path}`
+      : undefined;
 
   const {
     items: list,
@@ -152,6 +161,25 @@ export const ServeApplicationDetailPage = () => {
               value: application?.deployed_app_config?.import_path || "-",
             },
           },
+          ...(application?.docs_path && publicUrl
+            ? [
+                {
+                  label: "Docs",
+                  content: (
+                    <Link
+                      sx={{
+                        whiteSpace: "nowrap",
+                      }}
+                      href={docsPath}
+                      target="_blank"
+                      rel="noreferrer"
+                    >
+                      View
+                    </Link>
+                  ),
+                },
+              ]
+            : []),
         ]}
       />
       <CollapsibleSection title="Deployments" startExpanded>
