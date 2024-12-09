@@ -155,6 +155,9 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     auto iter = running_job_ids_.find(job_id);
     RAY_CHECK(iter != running_job_ids_.end());
     running_job_ids_.erase(iter);
+    ray::stats::STATS_duration_jobs.Record(
+        job_table_data.end_time() - job_table_data.start_time(),
+        {{"JobId", job_id.Hex()}});
     ++finished_jobs_count_;
 
     done_callback(status);
