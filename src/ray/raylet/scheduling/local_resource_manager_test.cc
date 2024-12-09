@@ -155,8 +155,9 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
-  rpc::NodeDeathInfo node_death_info;
-  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max(), node_death_info);
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Make the node idle so that the node is drained and terminated.
@@ -182,8 +183,9 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
   *used_object_store = 1;
   manager->UpdateAvailableObjectStoreMemResource();
 
-  rpc::NodeDeathInfo node_death_info;
-  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max(), node_death_info);
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Free object store memory so that the node is drained and terminated.

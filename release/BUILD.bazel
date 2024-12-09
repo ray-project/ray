@@ -33,6 +33,16 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
+    name = "requirements_byod_3.12",
+    requirements_in = "ray_release/byod/requirements_byod_3.12.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.12.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
     name = "requirements_ml_byod_3.9",
     requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
     requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
@@ -299,7 +309,6 @@ py_library(
         bk_require("pybuildkite"),
         bk_require("pygithub"),
         bk_require("requests"),
-        bk_require("retry"),
     ],
 )
 
@@ -611,6 +620,21 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("freezegun"),
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_retry",
+    size = "small",
+    srcs = ["ray_release/tests/test_retry.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
         bk_require("pytest"),
     ],
 )

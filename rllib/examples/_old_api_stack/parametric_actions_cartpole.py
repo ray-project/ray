@@ -1,4 +1,5 @@
-"""Example of handling variable length and/or parametric action spaces.
+# @OldAPIStack
+"""Example of handling variable length or parametric action spaces.
 
 This toy example demonstrates the action-embedding based approach for handling large
 discrete action spaces (potentially infinite in size), similar to this example:
@@ -82,6 +83,8 @@ if __name__ == "__main__":
             # defined a custom DistributionalQModel that is aware of masking.
             "hiddens": [],
             "dueling": False,
+            "enable_rl_module_and_learner": False,
+            "enable_env_runner_and_connector_v2": False,
         }
     else:
         cfg = {}

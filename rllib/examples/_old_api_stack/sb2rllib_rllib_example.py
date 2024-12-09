@@ -1,5 +1,6 @@
+# @OldAPIStack
 """
-Example script on how to train, save, load, and test an RLlib agent.
+Example script that trains, saves, loads, and tests an RLlib agent.
 Equivalent script with stable baselines: sb2rllib_sb_example.py.
 Demonstrates transition from stable_baselines to Ray RLlib.
 

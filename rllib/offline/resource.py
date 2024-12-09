@@ -21,7 +21,7 @@ def get_offline_io_resource_bundles(
         # Algorithm config, we should set parallelism to num_workers if not specified
         # and only deal with parallelism here or in dataset_reader.py. same thing is
         # true with cpus_per_task.
-        parallelism = input_config.get("parallelism", config.get("num_workers", 1))
+        parallelism = input_config.get("parallelism", config.get("num_env_runners", 1))
         cpus_per_task = input_config.get(
             "num_cpus_per_read_task", DEFAULT_NUM_CPUS_PER_TASK
         )

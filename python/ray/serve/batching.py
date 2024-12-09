@@ -10,10 +10,14 @@ from typing import (
     Any,
     AsyncGenerator,
     Callable,
+    Coroutine,
     Dict,
+    Generic,
     Iterable,
     List,
+    Literal,
     Optional,
+    Protocol,
     Tuple,
     TypeVar,
     overload,
@@ -445,33 +449,90 @@ def _validate_batch_wait_timeout_s(batch_wait_timeout_s):
         )
 
 
+SelfType = TypeVar("SelfType", contravariant=True)
 T = TypeVar("T")
 R = TypeVar("R")
-F = TypeVar("F", Callable[[List[T]], List[R]], Callable[[Any, List[T]], List[R]])
-G = TypeVar("G", bound=Callable[[T], R])
 
 
-# Normal decorator use case (called with no arguments).
-@overload
-def batch(func: F) -> G:
-    pass
+class _SyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
+    def __call__(self, self_: SelfType, __batch: List[T], /) -> List[R]:
+        ...
 
 
-# "Decorator factory" use case (called with arguments).
-@overload
+class _AsyncBatchingMethod(Protocol, Generic[SelfType, T, R]):
+    async def __call__(self, self_: SelfType, __batch: List[T], /) -> List[R]:
+        ...
+
+
+@overload  # Sync function for `batch` called WITHOUT arguments
+def batch(_sync_func: Callable[[List[T]], List[R]], /) -> Callable[[T], R]:
+    ...
+
+
+@overload  # Async function for `batch` called WITHOUT arguments
 def batch(
+    _async_func: Callable[[List[T]], Coroutine[Any, Any, List[R]]], /
+) -> Callable[[T], Coroutine[Any, Any, R]]:
+    ...
+
+
+@overload  # Sync method for `batch` called WITHOUT arguments
+def batch(
+    _sync_meth: _SyncBatchingMethod[SelfType, T, R], /
+) -> Callable[[SelfType, T], R]:
+    ...
+
+
+@overload  # Async method for `batch` called WITHOUT arguments
+def batch(
+    _async_meth: _AsyncBatchingMethod[SelfType, T, R], /
+) -> Callable[[SelfType, T], Coroutine[Any, Any, R]]:
+    ...
+
+
+@overload  # `batch` called WITH arguments
+def batch(
+    _: Literal[None] = None,
+    /,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
-) -> Callable[[F], G]:
-    pass
+) -> "_BatchDecorator":
+    ...
+
+
+class _BatchDecorator(Protocol):
+    """Descibes behaviour of decorator produced by calling `batch` with arguments"""
+
+    @overload  # Sync function
+    def __call__(self, _sync_func: Callable[[List[T]], List[R]], /) -> Callable[[T], R]:
+        ...
+
+    @overload  # Async function
+    def __call__(
+        self, _async_func: Callable[[List[T]], Coroutine[Any, Any, List[R]]], /
+    ) -> Callable[[T], Coroutine[Any, Any, R]]:
+        ...
+
+    @overload  # Sync method
+    def __call__(
+        self, _sync_meth: _SyncBatchingMethod[SelfType, T, R], /
+    ) -> Callable[[SelfType, T], R]:
+        ...
+
+    @overload  # Async method
+    def __call__(
+        self, _async_meth: _AsyncBatchingMethod[SelfType, T, R], /
+    ) -> Callable[[SelfType, T], Coroutine[Any, Any, R]]:
+        ...
 
 
 @PublicAPI(stability="stable")
 def batch(
     _func: Optional[Callable] = None,
+    /,
     max_batch_size: int = 10,
     batch_wait_timeout_s: float = 0.0,
-):
+) -> Callable:
     """Converts a function to asynchronously handle batches.
 
     The function can be a standalone function or a class method. In both

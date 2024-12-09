@@ -14,6 +14,7 @@ from ray.autoscaler.tags import (
     NODE_KIND_HEAD,
     TAG_RAY_NODE_KIND,
     TAG_RAY_NODE_STATUS,
+    TAG_RAY_REPLICA_INDEX,
     TAG_RAY_USER_NODE_TYPE,
 )
 
@@ -43,6 +44,8 @@ class NodeData:
     Attributes:
         kind: Whether the node is the head or a worker.
         type: The user-defined type of the node.
+        replica_index: An identifier for nodes in a replica of a TPU worker group.
+            This value is set as a Pod label by a GKE webhook when TPUs are requested
         ip: Cluster-internal ip of the node. ip can be None if the ip
             has not yet been assigned.
         status: The status of the node. You must adhere to the following semantics
@@ -58,6 +61,7 @@ class NodeData:
     type: NodeType
     ip: Optional[NodeIP]
     status: NodeStatus
+    replica_index: Optional[str] = None
 
 
 class BatchingNodeProvider(NodeProvider):
@@ -116,6 +120,9 @@ class BatchingNodeProvider(NodeProvider):
 
         self.scale_request = ScaleRequest()
 
+        # Initialize map of replica indices to nodes in that replica
+        self.replica_index_to_nodes = defaultdict(list[str])
+
     def get_node_data(self) -> Dict[NodeID, NodeData]:
         """Queries cluster manager for node info. Returns a mapping from node id to
         NodeData.
@@ -160,6 +167,12 @@ class BatchingNodeProvider(NodeProvider):
             workers_to_delete=set(),  # No workers to delete yet
         )
         all_nodes = list(self.node_data_dict.keys())
+        self.replica_index_to_nodes.clear()
+        for node_id in all_nodes:
+            replica_index = self.node_data_dict[node_id].replica_index
+            # Only add node to map if it belongs to a multi-host podslice
+            if replica_index is not None:
+                self.replica_index_to_nodes[replica_index].append(node_id)
         # Support filtering by TAG_RAY_NODE_KIND, TAG_RAY_NODE_STATUS, and
         # TAG_RAY_USER_NODE_TYPE.
         # The autoscaler only uses tag_filters={},
@@ -187,11 +200,14 @@ class BatchingNodeProvider(NodeProvider):
 
     def node_tags(self, node_id: str) -> Dict[str, str]:
         node_data = self.node_data_dict[node_id]
-        return {
+        tags = {
             TAG_RAY_NODE_KIND: node_data.kind,
             TAG_RAY_NODE_STATUS: node_data.status,
             TAG_RAY_USER_NODE_TYPE: node_data.type,
         }
+        if node_data.replica_index is not None:
+            tags[TAG_RAY_REPLICA_INDEX] = node_data.replica_index
+        return tags
 
     def internal_ip(self, node_id: str) -> str:
         return self.node_data_dict[node_id].ip
@@ -230,6 +246,20 @@ class BatchingNodeProvider(NodeProvider):
                 f"{node_type}. Skipping termination request."
             )
 
+        # Terminate node
         self.scale_request.desired_num_workers[node_type] -= 1
         self.scale_request.workers_to_delete.add(node_id)
+
+        # Scale down all nodes in replica if node_id is part of a multi-host podslice
+        tags = self.node_tags(node_id)
+        if TAG_RAY_REPLICA_INDEX in tags:
+            node_replica_index = tags[TAG_RAY_REPLICA_INDEX]
+            for worker_id in self.replica_index_to_nodes[node_replica_index]:
+                # Check if worker has already been scheduled to delete
+                if worker_id not in self.scale_request.workers_to_delete:
+                    self.scale_request.workers_to_delete.add(worker_id)
+                    logger.info(
+                        f"Autoscaler terminating node {worker_id} "
+                        f"in multi-host replica {node_replica_index}."
+                    )
         self.scale_change_needed = True

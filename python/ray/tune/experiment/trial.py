@@ -53,6 +53,7 @@ from ray.tune.result import (
 from ray.tune.trainable.metadata import _TrainingRunMetadata
 from ray.tune.utils import date_str, flatten_dict
 from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.util import log_once
 from ray.util.annotations import Deprecated, DeveloperAPI
 
 DEBUG_PRINT_INTERVAL = 5
@@ -97,7 +98,7 @@ class ExportFormat:
         """Validates formats.
 
         Raises:
-            ValueError if the format is unknown.
+            ValueError: if the format is unknown.
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
@@ -659,7 +660,7 @@ class Trial:
         Should only be called when the trial is not running.
 
         Raises:
-            ValueError if trial status is running.
+            ValueError: if trial status is running.
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
@@ -792,11 +793,11 @@ class Trial:
         return None
 
     def _handle_restore_error(self, exc: Exception):
+        # For Restoration errors, we only increment the restore failure count
+        # if the number of failures exceeds the restore retry limit.
         if self.temporary_state.num_restore_failures >= int(
             os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
         ):
-            # Restore was unsuccessful, try again without checkpoint.
-            self.clear_checkpoint()
             self.run_metadata.num_failures += 1
         else:
             self.temporary_state.num_restore_failures += 1
@@ -851,18 +852,21 @@ class Trial:
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result dict. Keys "
-                    "are {}.".format(criteria, list(result.keys()))
-                )
-            elif isinstance(criteria, dict):
+        for criterion, stop_value in self.stopping_criterion.items():
+            if isinstance(criterion, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
                     "Use forward slashes to nest values `key1/key2/key3`."
                 )
-            elif result[criteria] >= stop_value:
+            elif criterion not in result:
+                if log_once("tune_trial_stop_criterion_not_found"):
+                    logger.warning(
+                        f"Stopping criterion '{criterion}' not found in result dict! "
+                        f"Available keys are {list(result.keys())}. If '{criterion}' is"
+                        " never reported, the run will continue until training is "
+                        "finished."
+                    )
+            elif result[criterion] >= stop_value:
                 return True
         return False
 
@@ -878,12 +882,6 @@ class Trial:
 
     def has_checkpoint(self) -> bool:
         return self.checkpoint is not None
-
-    def clear_checkpoint(self):
-        if self.latest_checkpoint_result:
-            self.latest_checkpoint_result.checkpoint = None
-        self.temporary_state.restoring_from = None
-        self.run_metadata.invalidate_cache()
 
     def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.

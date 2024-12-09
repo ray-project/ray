@@ -15,7 +15,6 @@ from pytest_lazyfixture import lazy_fixture
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     DefaultFileMetadataProvider,
-    DefaultParquetMetadataProvider,
     FastFileMetadataProvider,
     FileMetadataProvider,
     ParquetMetadataProvider,
@@ -28,7 +27,6 @@ from ray.data.datasource.file_meta_provider import (
     _get_file_infos_parallel,
     _get_file_infos_serial,
 )
-from ray.data.datasource.parquet_datasource import _ParquetFileFragmentMetaData
 from ray.data.datasource.path_util import (
     _resolve_paths_and_filesystem,
     _unwrap_protocol,
@@ -71,10 +69,6 @@ def test_file_metadata_providers_not_implemented():
         meta_provider(["/foo/bar.csv"], None, rows_per_file=None, file_sizes=[None])
     with pytest.raises(NotImplementedError):
         meta_provider.expand_paths(["/foo/bar.csv"], None)
-    meta_provider = ParquetMetadataProvider()
-    with pytest.raises(NotImplementedError):
-        meta_provider(["/foo/bar.csv"], None, num_fragments=0, prefetched_metadata=None)
-    assert meta_provider.prefetch_file_metadata(["test"]) is None
 
 
 @pytest.mark.parametrize(
@@ -108,10 +102,9 @@ def test_default_parquet_metadata_provider(fs, data_path):
     table = pa.Table.from_pandas(df2)
     pq.write_table(table, paths[1], filesystem=fs)
 
-    meta_provider = DefaultParquetMetadataProvider()
+    meta_provider = ParquetMetadataProvider()
     pq_ds = pq.ParquetDataset(paths, filesystem=fs, use_legacy_dataset=False)
-    file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
-    fragment_file_metas = [_ParquetFileFragmentMetaData(m) for m in file_metas]
+    fragment_file_metas = meta_provider.prefetch_file_metadata(pq_ds.fragments)
 
     meta = meta_provider(
         [p.path for p in pq_ds.fragments],
@@ -119,7 +112,9 @@ def test_default_parquet_metadata_provider(fs, data_path):
         num_fragments=len(pq_ds.fragments),
         prefetched_metadata=fragment_file_metas,
     )
-    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(file_metas)
+    expected_meta_size_bytes = _get_parquet_file_meta_size_bytes(
+        [f.metadata for f in pq_ds.fragments]
+    )
     assert meta.size_bytes == expected_meta_size_bytes
     assert meta.num_rows == 6
     assert len(paths) == 2
@@ -301,7 +296,6 @@ def test_default_file_metadata_provider_many_files_partitioned(
     data_path,
     endpoint_url,
     write_partitioned_df,
-    assert_base_partitioned_ds,
 ):
     if endpoint_url is None:
         storage_options = {}

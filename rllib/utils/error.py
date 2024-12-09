@@ -37,11 +37,11 @@ class NotSerializable(Exception):
 # num_gpus=n or num_gpus_per_env_runner=m settings.
 ERR_MSG_NO_GPUS = """Found {} GPUs on your machine (GPU devices found: {})! If your
     machine does not have any GPUs, you should set the config keys
-    `num_gpus_per_learner` and `num_gpus_per_env_runner` to 0 (they may be set to
-    1 by default for your particular RL algorithm)."""
+    `num_gpus_per_learner` and `num_gpus_per_env_runner` to 0. They may be set to
+    1 by default for your particular RL algorithm."""
 
 ERR_MSG_INVALID_ENV_DESCRIPTOR = """The env string you provided ('{}') is:
-a) Not a supported/installed environment.
+a) Not a supported or -installed environment.
 b) Not a tune-registered environment creator.
 c) Not a valid env class string.
 
@@ -67,7 +67,7 @@ In order to fix this problem, do the following:
 1) Run `pip install gymnasium` on your command line.
 2) Change all your import statements in your code from
    `import gym` -> `import gymnasium as gym` OR
-   `from gym.space import Discrete` -> `from gymnasium.spaces import Discrete`
+   `from gym.spaces import Discrete` -> `from gymnasium.spaces import Discrete`
 
 For your custom (single agent) gym.Env classes:
 3.1) Either wrap your old Env class via the provided `from gymnasium.wrappers import
@@ -121,8 +121,6 @@ ERR_MSG_TORCH_POLICY_CANNOT_SAVE_MODEL = """Could not save torch model under sel
 
 # HOWTO change the RLlib config, depending on how user runs the job.
 HOWTO_CHANGE_CONFIG = """
-To change the config for the `rllib train|rollout` command, use
-  `--config={'[key]': '[value]'}` on the command line.
 To change the config for `tune.Tuner().fit()` in a script: Modify the python dict
   passed to `tune.Tuner(param_space=[...]).fit()`.
 To change the config for an RLlib Algorithm instance: Modify the python dict

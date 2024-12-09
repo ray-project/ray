@@ -248,4 +248,4 @@ Tune Trainable Debugging Utilities
 
     tune.utils.diagnose_serialization
     tune.utils.validate_save_restore
-
+    tune.utils.util.validate_warmstart

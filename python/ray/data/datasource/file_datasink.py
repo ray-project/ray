@@ -9,8 +9,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
@@ -37,7 +36,6 @@ class _FileDatasink(Datasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
@@ -59,13 +57,6 @@ class _FileDatasink(Datasink):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if block_path_provider is not None:
-            raise DeprecationWarning(
-                "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`. For more information, see "
-                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
-            )
-
         if filename_provider is None:
             filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
@@ -79,7 +70,6 @@ class _FileDatasink(Datasink):
         self.try_create_dir = try_create_dir
         self.open_stream_args = open_stream_args
         self.filename_provider = filename_provider
-        self.block_path_provider = block_path_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
 
@@ -124,7 +114,7 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
@@ -133,22 +123,20 @@ class _FileDatasink(Datasink):
 
         if block_accessor.num_rows() == 0:
             logger.warning(f"Skipped writing empty block to {self.path}")
-            return "skip"
+            return
 
         self.write_block(block_accessor, 0, ctx)
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        if not self.has_created_dir:
-            return
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
+        aggregated_results = super().on_write_complete(write_result_blocks)
 
-        if all(write_results == "skip" for write_results in write_results):
+        # If no rows were written, we can delete the directory.
+        if self.has_created_dir and aggregated_results.num_rows == 0:
             self.filesystem.delete_dir(self.path)
+        return aggregated_results
 
     @property
     def supports_distributed_writes(self) -> bool:
@@ -209,7 +197,7 @@ class RowBasedFileDatasink(_FileDatasink):
             call_with_retry(
                 write_row_to_path,
                 description=f"write '{write_path}'",
-                match=DataContext.get_current().write_file_retry_on_errors,
+                match=DataContext.get_current().retried_io_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,
                 max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )
@@ -264,7 +252,7 @@ class BlockBasedFileDatasink(_FileDatasink):
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )

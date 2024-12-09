@@ -3,6 +3,8 @@ from ray.core.generated.common_pb2 import (
     TaskType,
     WorkerExitType,
     WorkerType,
+    ErrorType,
+    Language,
 )
 from ray.core.generated.gcs_pb2 import (
     ActorTableData,
@@ -24,6 +26,7 @@ ACTOR_STATUS = [
 TypeActorStatus = Literal[tuple(ACTOR_STATUS)]
 PLACEMENT_GROUP_STATUS = [
     "PENDING",
+    "PREPARED",
     "CREATED",
     "REMOVED",
     "RESCHEDULING",
@@ -36,6 +39,8 @@ TASK_STATUS = [
     "PENDING_OBJ_STORE_MEM_AVAIL",
     "PENDING_ARGS_FETCH",
     "SUBMITTED_TO_WORKER",
+    "PENDING_ACTOR_TASK_ARGS_FETCH",
+    "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
     "RUNNING",
     "RUNNING_IN_RAY_GET",
     "RUNNING_IN_RAY_WAIT",
@@ -70,6 +75,39 @@ TypeTaskType = Literal[tuple(TASK_TYPE)]
 TypeReferenceType = Literal[
     tuple(reference_type.value for reference_type in ReferenceType)
 ]
+# The ErrorType enum is used in the export API so it is public
+# and any modifications must be backward compatible.
+ERROR_TYPE = [
+    "WORKER_DIED",
+    "ACTOR_DIED",
+    "OBJECT_UNRECONSTRUCTABLE",
+    "TASK_EXECUTION_EXCEPTION",
+    "OBJECT_IN_PLASMA",
+    "TASK_CANCELLED",
+    "ACTOR_CREATION_FAILED",
+    "RUNTIME_ENV_SETUP_FAILED",
+    "OBJECT_LOST",
+    "OWNER_DIED",
+    "OBJECT_DELETED",
+    "DEPENDENCY_RESOLUTION_FAILED",
+    "OBJECT_UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED",
+    "OBJECT_UNRECONSTRUCTABLE_LINEAGE_EVICTED",
+    "OBJECT_FETCH_TIMED_OUT",
+    "LOCAL_RAYLET_DIED",
+    "TASK_PLACEMENT_GROUP_REMOVED",
+    "ACTOR_PLACEMENT_GROUP_REMOVED",
+    "TASK_UNSCHEDULABLE_ERROR",
+    "ACTOR_UNSCHEDULABLE_ERROR",
+    "OUT_OF_DISK_ERROR",
+    "OBJECT_FREED",
+    "OUT_OF_MEMORY",
+    "NODE_DIED",
+    "END_OF_STREAMING_GENERATOR",
+    "ACTOR_UNAVAILABLE",
+]
+# The Language enum is used in the export API so it is public
+# and any modifications must be backward compatible.
+LANGUAGE = ["PYTHON", "JAVA", "CPP"]
 
 
 def validate_protobuf_enum(grpc_enum, custom_enum):
@@ -93,3 +131,5 @@ validate_protobuf_enum(GcsNodeInfo.GcsNodeState, NODE_STATUS)
 validate_protobuf_enum(WorkerType, WORKER_TYPE)
 validate_protobuf_enum(WorkerExitType, WORKER_EXIT_TYPE)
 validate_protobuf_enum(TaskType, TASK_TYPE)
+validate_protobuf_enum(ErrorType, ERROR_TYPE)
+validate_protobuf_enum(Language, LANGUAGE)

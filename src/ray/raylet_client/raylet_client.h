@@ -86,13 +86,20 @@ class WorkerLeaseInterface {
                                    const std::string &disconnect_worker_error_detail,
                                    bool worker_exiting) = 0;
 
+  /// Request the raylet to prestart workers. In `request` we can set the worker's owner,
+  /// runtime env info and number of workers.
+  ///
+  virtual void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) = 0;
+
   /// Notify raylets to release unused workers.
   /// \param workers_in_use Workers currently in use.
   /// \param callback Callback that will be called after raylet completes the release of
   /// unused workers. \return ray::Status
-  virtual void ReleaseUnusedWorkers(
+  virtual void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) = 0;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) = 0;
 
   virtual void CancelWorkerLease(
       const TaskID &task_id,
@@ -238,6 +245,10 @@ class RayletClientInterface : public PinObjectsInterface,
       const std::string &reason_message,
       int64_t deadline_timestamp_ms,
       const rpc::ClientCallback<rpc::DrainRayletReply> &callback) = 0;
+
+  virtual void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) = 0;
 
   virtual std::shared_ptr<grpc::Channel> GetChannel() const = 0;
 };
@@ -449,6 +460,11 @@ class RayletClient : public RayletClientInterface {
                            const std::string &disconnect_worker_error_detail,
                            bool worker_exiting) override;
 
+  /// Implements WorkerLeaseInterface.
+  void PrestartWorkers(
+      const ray::rpc::PrestartWorkersRequest &request,
+      const ray::rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override;
+
   void GetTaskFailureCause(
       const TaskID &task_id,
       const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
@@ -476,9 +492,9 @@ class RayletClient : public RayletClientInterface {
       const std::vector<rpc::WorkerBacklogReport> &backlog_reports) override;
 
   /// Implements WorkerLeaseInterface.
-  void ReleaseUnusedWorkers(
+  void ReleaseUnusedActorWorkers(
       const std::vector<WorkerID> &workers_in_use,
-      const rpc::ClientCallback<rpc::ReleaseUnusedWorkersReply> &callback) override;
+      const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback) override;
 
   void CancelWorkerLease(
       const TaskID &task_id,
@@ -522,6 +538,10 @@ class RayletClient : public RayletClientInterface {
                    const std::string &reason_message,
                    int64_t deadline_timestamp_ms,
                    const rpc::ClientCallback<rpc::DrainRayletReply> &callback) override;
+
+  void IsLocalWorkerDead(
+      const WorkerID &worker_id,
+      const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override;
 
   void GetSystemConfig(
       const rpc::ClientCallback<rpc::GetSystemConfigReply> &callback) override;

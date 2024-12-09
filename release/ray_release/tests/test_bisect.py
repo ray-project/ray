@@ -90,12 +90,15 @@ def test_bisect():
 
     for output, input in test_cases.items():
 
-        def _mock_run_test(*args, **kwawrgs) -> Dict[str, str]:
-            return input
+        def _side_effect(ret):
+            def _mock_run_test(*args, **kwawrgs) -> Dict[str, str]:
+                return ret
+
+            return _mock_run_test
 
         with mock.patch(
             "ray_release.scripts.ray_bisect._run_test",
-            side_effect=_mock_run_test,
+            side_effect=_side_effect(input),
         ):
             for concurreny in range(1, 4):
                 assert _bisect({}, list(input.keys()), concurreny, 1) == output

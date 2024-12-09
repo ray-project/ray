@@ -31,6 +31,7 @@ class ProcessHelper {
   void RayStop();
   void StartRayNode(const std::string node_id_address,
                     const int port,
+                    const std::string redis_username,
                     const std::string redis_password,
                     const std::vector<std::string> &head_args = {});
   void StopRayNode();
@@ -41,7 +42,7 @@ class ProcessHelper {
   }
 
   std::unique_ptr<ray::gcs::GlobalStateAccessor> CreateGlobalStateAccessor(
-      const std::string &gcs_address);
+      const std::string &gcs_ip, int gcs_port);
 
   ProcessHelper(ProcessHelper const &) = delete;
   void operator=(ProcessHelper const &) = delete;

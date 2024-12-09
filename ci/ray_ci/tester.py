@@ -1,6 +1,4 @@
-import itertools
 import os
-import subprocess
 import sys
 from typing import List, Set, Tuple, Optional
 
@@ -18,7 +16,7 @@ from ci.ray_ci.builder_container import (
 from ci.ray_ci.linux_tester_container import LinuxTesterContainer
 from ci.ray_ci.windows_tester_container import WindowsTesterContainer
 from ci.ray_ci.tester_container import TesterContainer
-from ci.ray_ci.utils import docker_login, ci_init, logger
+from ci.ray_ci.utils import docker_login, ci_init
 from ray_release.test import Test, TestState
 
 CUDA_COPYRIGHT = """
@@ -371,15 +369,17 @@ def _get_test_targets(
     Get test targets that are owned by a particular team
     """
     query = _get_all_test_query(targets, team, except_tags, only_tags)
-    test_targets = set(
-        container.run_script_with_output(
+    test_targets = {
+        target
+        for target in container.run_script_with_output(
             [
                 f'bazel query "{query}"',
             ]
         )
         .strip()
         .split(os.linesep)
-    )
+        if target
+    }
     flaky_tests = set(_get_flaky_test_targets(team, operating_system, yaml_dir))
 
     if get_flaky_tests:
@@ -394,90 +394,32 @@ def _get_test_targets(
     if get_high_impact_tests:
         # run high impact test cases, so we include only high impact tests in the list
         # of targets provided by users
-        high_impact_tests = _get_high_impact_test_targets(
-            team, operating_system, container
-        )
+        prefix = f"{operating_system}:"
+        # TODO(can): we should also move the logic of _get_new_tests into the
+        # gen_microcheck_tests function; this is currently blocked by the fact that
+        # we need a container to run _get_new_tests
+        high_impact_tests = Test.gen_microcheck_tests(
+            prefix=prefix,
+            bazel_workspace_dir=bazel_workspace_dir,
+            team=team,
+        ).union(_get_new_tests(prefix, container))
         final_targets = high_impact_tests.intersection(final_targets)
 
     return list(final_targets)
 
 
-def _get_high_impact_test_targets(
-    team: str, operating_system: str, container: TesterContainer
-) -> Set[str]:
+def _get_new_tests(prefix: str, container: TesterContainer) -> Set[str]:
     """
-    Get all test targets that are high impact
+    Get all local test targets that are not in database
     """
-    os_prefix = f"{operating_system}:"
-    step_id_to_tests = Test.gen_high_impact_tests(prefix=os_prefix)
-    high_impact_tests = {
-        test.get_name().lstrip(os_prefix)
-        for test in itertools.chain.from_iterable(step_id_to_tests.values())
-        if test.get_oncall() == team
-    }
-    changed_tests = _get_changed_tests()
-
-    return high_impact_tests.union(changed_tests)
-
-
-def _get_changed_tests() -> Set[str]:
-    """
-    Get all changed tests in the current PR
-    """
-    changed_files = _get_changed_files()
-    logger.info(f"Changed files: {changed_files}")
-    return set(
-        itertools.chain.from_iterable(
-            [_get_test_targets_per_file(file) for file in _get_changed_files()]
-        )
+    local_test_targets = set(
+        container.run_script_with_output(['bazel query "tests(//...)"'])
+        .strip()
+        .split(os.linesep)
     )
+    db_test_targets = {test.get_target() for test in Test.gen_from_s3(prefix=prefix)}
 
-
-def _get_test_targets_per_file(file: str) -> Set[str]:
-    """
-    Get the test target from a file path
-    """
-    try:
-        package = (
-            subprocess.check_output(["bazel", "query", file], cwd=bazel_workspace_dir)
-            .decode()
-            .strip()
-        )
-        if not package:
-            return set()
-        targets = subprocess.check_output(
-            ["bazel", "query", f"tests(attr('srcs', {package}, //...))"],
-            cwd=bazel_workspace_dir,
-        )
-        targets = {
-            target.strip()
-            for target in targets.decode().splitlines()
-            if target is not None
-        }
-        logger.info(f"Found test targets for file {file}: {targets}")
-
-        return targets
-    except subprocess.CalledProcessError:
-        logger.info(f"File {file} is not a test target")
-        return set()
-
-
-def _get_changed_files() -> Set[str]:
-    """
-    Get all changed files in the current PR
-    """
-    base = os.environ.get("BUILDKITE_PULL_REQUEST_BASE_BRANCH")
-    head = os.environ.get("BUILDKITE_COMMIT")
-    if not base or not head:
-        # if not in a PR, return an empty set
-        return set()
-
-    subprocess.check_call(["git", "fetch", "origin", base], cwd=bazel_workspace_dir)
-    changes = subprocess.check_output(
-        ["git", "diff", "--name-only", f"origin/{base}...{head}"],
-        cwd=bazel_workspace_dir,
-    )
-    return {file.strip() for file in changes.decode().splitlines() if file is not None}
+    return local_test_targets.difference(db_test_targets)
 
 
 def _get_flaky_test_targets(

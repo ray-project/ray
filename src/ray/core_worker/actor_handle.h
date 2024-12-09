@@ -45,7 +45,8 @@ class ActorHandle {
               const std::string &ray_namespace,
               int32_t max_pending_calls,
               bool execute_out_of_order = false,
-              absl::optional<bool> enable_task_events = absl::nullopt);
+              absl::optional<bool> enable_task_events = absl::nullopt,
+              const std::unordered_map<std::string, std::string> &labels = {});
 
   /// Constructs an ActorHandle from a serialized string.
   explicit ActorHandle(const std::string &serialized);
@@ -89,9 +90,7 @@ class ActorHandle {
   ///
   /// \param[in] spec An existing task spec that has executed on the actor
   /// before.
-  /// \param[in] new_cursor Actor dummy object. This is legacy code needed for
-  /// raylet-based actor restart.
-  void SetResubmittedActorTaskSpec(TaskSpecification &spec, const ObjectID new_cursor);
+  void SetResubmittedActorTaskSpec(TaskSpecification &spec);
 
   void Serialize(std::string *output);
 
@@ -106,6 +105,10 @@ class ActorHandle {
   int32_t MaxPendingCalls() const { return inner_.max_pending_calls(); }
 
   bool ExecuteOutOfOrder() const { return inner_.execute_out_of_order(); }
+
+  const ::google::protobuf::Map<std::string, std::string> &GetLabels() const {
+    return inner_.labels();
+  }
 
  private:
   // Protobuf-defined persistent state of the actor handle.

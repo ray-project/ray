@@ -33,10 +33,10 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
         boost::asio::io_service::work io_service_work_(io_context_);
         io_context_.run();
       }),
-      runner_(io_context_) {
-  runner_.RunFnPeriodically([this] { over_capacity_ = CheckIfAnyPathOverCapacity(); },
-                            monitor_interval_ms,
-                            "FileSystemMonitor.CheckIfAnyPathOverCapacity");
+      runner_(PeriodicalRunner::Create(io_context_)) {
+  runner_->RunFnPeriodically([this] { over_capacity_ = CheckIfAnyPathOverCapacity(); },
+                             monitor_interval_ms,
+                             "FileSystemMonitor.CheckIfAnyPathOverCapacity");
 }
 
 FileSystemMonitor::FileSystemMonitor()
@@ -102,10 +102,15 @@ bool FileSystemMonitor::OverCapacityImpl(
     return false;
   }
 
+  // Convert bytes to GB
+  const double available_gb =
+      static_cast<double>(space_info->available) / (1024 * 1024 * 1024);
+  double capacity_gb = static_cast<double>(space_info->capacity) / (1024 * 1024 * 1024);
+
   std::ostringstream ostr;
   ostr << path << " is over " << capacity_threshold_ * 100
-       << "\% full, available space: " << space_info->available
-       << "; capacity: " << space_info->capacity
+       << "\% full, available space: " << available_gb << " GB"
+       << "; capacity: " << capacity_gb << " GB"
        << ". Object creation will fail if spilling is required.";
   RAY_EVENT_EVERY_MS(ERROR, "Out of Disk", 10 * 1000) << ostr.str();
   RAY_LOG_EVERY_MS(ERROR, 10 * 1000) << ostr.str();

@@ -10,7 +10,7 @@ _CUDA_COPYRIGHT = """
 == CUDA ==
 ==========
 
-CUDA Version 11.8.0
+CUDA Version 12.1.1
 
 Container image Copyright (c) 2016-2023, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 
@@ -37,6 +37,7 @@ _DOCKER_ENV = [
     "BUILDKITE_LABEL",
     "BUILDKITE_BAZEL_CACHE_URL",
     "BUILDKITE_PIPELINE_ID",
+    "BUILDKITE_PULL_REQUEST",
 ]
 _RAYCI_BUILD_ID = os.environ.get("RAYCI_BUILD_ID", "unknown")
 

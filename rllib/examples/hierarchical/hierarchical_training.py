@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """Example of hierarchical training using the multi-agent API.
 
@@ -91,6 +91,10 @@ if __name__ == "__main__":
             run_config=air.RunConfig(stop=stop),
             param_space=(
                 PPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
                 .environment(WindyMazeEnv)
                 .env_runners(num_env_runners=0)
                 .framework(args.framework)
@@ -107,6 +111,10 @@ if __name__ == "__main__":
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(HierarchicalWindyMazeEnv)
             .framework(args.framework)
             .env_runners(num_env_runners=0)

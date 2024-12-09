@@ -1,4 +1,4 @@
-# TODO (sven): Move this example script into the new API stack.
+# @OldAPIStack
 
 """
 Example of running an RLlib Algorithm against a locally running Unity3D editor
@@ -145,9 +145,9 @@ if __name__ == "__main__":
             lr=0.0003,
             lambda_=0.95,
             gamma=0.99,
-            sgd_minibatch_size=256,
+            minibatch_size=256,
             train_batch_size=4000,
-            num_sgd_iter=20,
+            num_epochs=20,
             clip_param=0.2,
             model={"fcnet_hiddens": [512, 512]},
         )

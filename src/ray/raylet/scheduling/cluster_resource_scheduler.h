@@ -125,6 +125,7 @@ class ClusterResourceScheduler {
                            bool requires_object_store_memory);
 
   LocalResourceManager &GetLocalResourceManager() { return *local_resource_manager_; }
+
   ClusterResourceManager &GetClusterResourceManager() {
     return *cluster_resource_manager_;
   }

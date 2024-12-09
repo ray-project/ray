@@ -38,6 +38,11 @@ RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 
 RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
+RELEASE_TEST_CONFIG_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+]
+
 
 def read_and_validate_release_test_collection(
     config_files: List[str],
@@ -76,11 +81,22 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = copy.deepcopy(test_definition)
+            continue
+
+        # Add default values to the test definition.
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
+
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
             continue
+
         variations = test_definition.pop("variations")
         _test_definition_invariant(
             test_definition,
@@ -134,13 +150,6 @@ def validate_release_test_collection(
             )
             num_errors += 1
 
-        error = validate_test_cluster_env(test, test_definition_root)
-        if error:
-            logger.error(
-                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
-            )
-            num_errors += 1
-
     if num_errors > 0:
         raise ReleaseTestConfigError(
             f"Release test configuration error: Found {num_errors} test "
@@ -184,27 +193,6 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
         error = validate_aws_config(config)
         if error:
             return error
-
-    return None
-
-
-def validate_test_cluster_env(
-    test: Test, test_definition_root: Optional[str] = None
-) -> Optional[str]:
-    if test.is_byod_cluster():
-        """
-        BYOD clusters are not validated because they do not need cluster environment
-        """
-        return None
-
-    from ray_release.template import get_cluster_env_path
-
-    cluster_env_path = get_cluster_env_path(test, test_definition_root)
-
-    if not os.path.exists(cluster_env_path):
-        raise ReleaseTestConfigError(
-            f"Cannot load yaml template from {cluster_env_path}: Path not found."
-        )
 
     return None
 

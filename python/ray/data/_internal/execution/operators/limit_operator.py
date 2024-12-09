@@ -1,6 +1,6 @@
 import copy
 from collections import deque
-from typing import Deque, List, Tuple
+from typing import Deque, List, Optional, Tuple
 
 import ray
 from ray.data._internal.execution.interfaces import PhysicalOperator, RefBundle
@@ -10,6 +10,7 @@ from ray.data._internal.execution.operators.base_physical_operator import (
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
@@ -20,6 +21,7 @@ class LimitOperator(OneToOneOperator):
         self,
         limit: int,
         input_op: PhysicalOperator,
+        data_context: DataContext,
     ):
         self._limit = limit
         self._consumed_rows = 0
@@ -27,7 +29,7 @@ class LimitOperator(OneToOneOperator):
         self._name = f"limit={limit}"
         self._output_metadata: List[BlockMetadata] = []
         self._cur_output_bundles = 0
-        super().__init__(self._name, input_op, target_max_block_size=None)
+        super().__init__(self._name, input_op, data_context, target_max_block_size=None)
         if self._limit <= 0:
             self.mark_execution_completed()
 
@@ -81,17 +83,18 @@ class LimitOperator(OneToOneOperator):
         if self._limit_reached():
             self.mark_execution_completed()
 
-        # We cannot estimate if we have only consumed empty blocks
-        if self._consumed_rows > 0:
+        # We cannot estimate if we have only consumed empty blocks,
+        # or if the input dependency's total number of output bundles is unknown.
+        num_inputs = self.input_dependencies[0].num_outputs_total()
+        if self._consumed_rows > 0 and num_inputs is not None:
             # Estimate number of output bundles
             # Check the case where _limit > # of input rows
-            num_inputs = self.input_dependencies[0].num_outputs_total()
             estimated_total_output_rows = min(
                 self._limit, self._consumed_rows / self._cur_output_bundles * num_inputs
             )
             # _consumed_rows / _limit is roughly equal to
             # _cur_output_bundles / total output blocks
-            self._estimated_output_blocks = round(
+            self._estimated_num_output_bundles = round(
                 estimated_total_output_rows
                 / self._consumed_rows
                 * self._cur_output_bundles
@@ -108,15 +111,23 @@ class LimitOperator(OneToOneOperator):
     def get_stats(self) -> StatsDict:
         return {self._name: self._output_metadata}
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         # Before execution is completed, we don't know how many output
         # bundles we will have. We estimate based off the consumption so far.
         if self._execution_completed:
             return self._cur_output_bundles
-        elif self._estimated_output_blocks is not None:
-            return self._estimated_output_blocks
-        else:
-            return self.input_dependencies[0].num_outputs_total()
+        return self._estimated_num_output_bundles
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is simply the limit or the number
+        # of input rows, whichever is smaller
+        input_num_rows = self.input_dependencies[0].num_output_rows_total()
+        if input_num_rows is None:
+            return None
+        return min(self._limit, input_num_rows)
 
     def throttling_disabled(self) -> bool:
+        return True
+
+    def implements_accurate_memory_accounting(self) -> bool:
         return True

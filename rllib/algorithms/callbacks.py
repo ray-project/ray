@@ -11,7 +11,6 @@ from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.postprocessing import Postprocessing
 from ray.rllib.policy import Policy
@@ -87,9 +86,8 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         You can access (and change) the worker(s) in question via the following code
         snippet inside your custom override of this method:
 
-        Note that any "worker" inside the algorithm's `self.worker` and
-        `self.evaluation_workers` EnvRunnerGroups are instances of a subclass of
-        EnvRunner.
+        Note that any "worker" inside the algorithm's `self.env_runner_group` and
+        `self.eval_env_runner_group` are instances of a subclass of EnvRunner.
 
         .. testcode::
             from ray.rllib.algorithms.callbacks import DefaultCallbacks
@@ -133,7 +131,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 never recreated as a failure of this would also crash the Algorithm.
             worker_ids: The list of (remote) worker IDs that have been recreated.
             is_evaluation: Whether `worker_set` is the evaluation EnvRunnerGroup
-                (located in `Algorithm.evaluation_workers`) or not.
+                (located in `Algorithm.eval_env_runner_group`) or not.
         """
         pass
 
@@ -228,7 +226,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         # TODO (sven): Deprecate Episode/EpisodeV2 with new API stack.
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         # TODO (sven): Deprecate this arg new API stack (in favor of `env_runner`).
         worker: Optional["EnvRunner"] = None,
         env_runner: Optional["EnvRunner"] = None,
@@ -245,19 +243,22 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         """Callback run when a new episode is created (but has not started yet!).
 
         This method gets called after a new Episode(V2) (old stack) or
-        SingleAgentEpisode/MultiAgentEpisode instance has been created.
+        MultiAgentEpisode instance has been created.
         This happens before the respective sub-environment's (usually a gym.Env)
         `reset()` is called by RLlib.
 
-        1) Episode(V2)/Single-/MultiAgentEpisode created: This callback is called.
+        Note, at the moment this callback does not get called in the new API stack
+        and single-agent mode.
+
+        1) Episode(V2)/MultiAgentEpisode created: This callback is called.
         2) Respective sub-environment (gym.Env) is `reset()`.
         3) Callback `on_episode_start` is called.
         4) Stepping through sub-environment/episode commences.
 
         Args:
             episode: The newly created episode. On the new API stack, this will be a
-                SingleAgentEpisode or MultiAgentEpisode object. On the old API stack,
-                this will be a Episode or EpisodeV2 object.
+                MultiAgentEpisode object. On the old API stack, this will be a
+                Episode or EpisodeV2 object.
                 This is the episode that is about to be started with an upcoming
                 `env.reset()`. Only after this reset call, the `on_episode_start`
                 callback will be called.
@@ -282,7 +283,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_start(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -315,7 +316,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 (within the vector of sub-environments of the BaseEnv).
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -324,7 +325,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_step(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -358,7 +359,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
             env_index: The index of the sub-environment that has just been stepped.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -367,7 +368,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
     def on_episode_end(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -384,12 +385,24 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         The exact time of the call of this callback is after `env.step([action])` and
         also after the results of this step (observation, reward, terminated, truncated,
         infos) have been logged to the given `episode` object, where either terminated
-        or truncated were True.
+        or truncated were True:
 
-        Note that on the new API stack, this callback is always preceeded by an
-        `on_episode_step` call, which comes before the call to this method, but is
-        provided with the non-finalized episode object (meaning the data has NOT
-        been converted to numpy arrays yet).
+        - The env is stepped: `final_obs, rewards, ... = env.step([action])`
+
+        - The step results are logged `episode.add_env_step(final_obs, rewards)`
+
+        - Callback `on_episode_step` is fired.
+
+        - Another env-to-module connector call is made (even though we won't need any
+          RLModule forward pass anymore). We make this additional call to ensure that in
+          case users use the connector pipeline to process observations (and write them
+          back into the episode), the episode object has all observations - even the
+          terminal one - properly processed.
+
+        - ---> This callback `on_episode_end()` is fired. <---
+
+        - The episode is finalized (i.e. lists of obs/rewards/actions/etc.. are
+          converted into numpy arrays).
 
         Args:
             episode: The terminated/truncated SingleAgent- or MultiAgentEpisode object
@@ -406,7 +419,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
                 or truncated.
             rl_module: The RLModule used to compute actions for stepping the env.
                 In a single-agent setup, this is a (single-agent) RLModule, in a multi-
-                agent setup, this will be a MultiAgentRLModule.
+                agent setup, this will be a MultiRLModule.
             kwargs: Forward compatibility placeholder.
         """
         pass
@@ -459,7 +472,7 @@ class DefaultCallbacks(metaclass=_CallbackMeta):
         self,
         *,
         worker: "EnvRunner",
-        episode: Episode,
+        episode,
         agent_id: AgentID,
         policy_id: PolicyID,
         policies: Dict[PolicyID, Policy],
@@ -589,7 +602,7 @@ class MemoryTrackingCallbacks(DefaultCallbacks):
     def on_episode_end(
         self,
         *,
-        episode: Union[EpisodeType, Episode, EpisodeV2],
+        episode: Union[EpisodeType, EpisodeV2],
         env_runner: Optional["EnvRunner"] = None,
         metrics_logger: Optional[MetricsLogger] = None,
         env: Optional[gym.Env] = None,
@@ -729,7 +742,7 @@ def make_multi_callbacks(
             self,
             *,
             worker: "EnvRunner",
-            episode: Episode,
+            episode,
             agent_id: AgentID,
             policy_id: PolicyID,
             policies: Dict[PolicyID, Policy],

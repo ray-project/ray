@@ -117,12 +117,14 @@ class ProxyManager:
         runtime_env_agent_address: str,
         *,
         session_dir: Optional[str] = None,
+        redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
         runtime_env_agent_port: int = 0,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._address = address
+        self._redis_username = redis_username
         self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
@@ -317,6 +319,7 @@ class ProxyManager:
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env_context=serialized_runtime_env_context,
+            redis_username=self._redis_username,
             redis_password=self._redis_password,
         )
 
@@ -625,7 +628,7 @@ class RequestIteratorProxy:
             # not its subsclasses. ex: grpc._Rendezvous
             # https://github.com/grpc/grpc/blob/v1.43.0/src/python/grpcio/grpc/_server.py#L353-L354
             # This fixes the https://github.com/ray-project/ray/issues/23865
-            if type(e) != grpc.RpcError:
+            if type(e) is not grpc.RpcError:
                 raise e  # re-raise other grpc exceptions
             logger.exception(
                 "Stop iterating cancelled request stream with the following exception:"
@@ -828,6 +831,7 @@ def serve_proxier(
     connection_str: str,
     address: Optional[str],
     *,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
     runtime_env_agent_address: Optional[str] = None,
@@ -847,6 +851,7 @@ def serve_proxier(
     proxy_manager = ProxyManager(
         address,
         session_dir=session_dir,
+        redis_username=redis_username,
         redis_password=redis_password,
         runtime_env_agent_address=runtime_env_agent_address,
     )

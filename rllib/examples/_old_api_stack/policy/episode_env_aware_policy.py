@@ -1,16 +1,14 @@
+# @OldAPIStack
 import numpy as np
-import tree
 from gymnasium.spaces import Box
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.examples.rl_modules.classes.random_rlm import StatefulRandomRLModule
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.policy.view_requirement import ViewRequirement
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.numpy import convert_to_numpy
 
 
 class StatefulRandomPolicy(RandomPolicy):
@@ -18,15 +16,14 @@ class StatefulRandomPolicy(RandomPolicy):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        config = RLModuleConfig(
+        self.model = StatefulRandomRLModule(
             action_space=self.action_space,
-            model_config_dict={
+            model_config={
                 "max_seq_len": 50,
                 "lstm_use_prev_action": False,
                 "lstm_use_prev_reward": False,
             },
         )
-        self.model = StatefulRandomRLModule(config=config)
 
         self.view_requirements = self.model.update_default_view_requirements(
             self.view_requirements
@@ -35,13 +32,6 @@ class StatefulRandomPolicy(RandomPolicy):
     @override(Policy)
     def is_recurrent(self):
         return True
-
-    def get_initial_state(self):
-        if self.config.get("enable_rl_module_and_learner", False):
-            # convert the tree of tensors to a tree to numpy arrays
-            return tree.map_structure(
-                lambda s: convert_to_numpy(s), self.model.get_initial_state()
-            )
 
     @override(Policy)
     def postprocess_trajectory(

@@ -7,44 +7,39 @@ COPTS_WITHOUT_LOG = select({
     "//:opt": ["-DBAZEL_OPT"],
     "//conditions:default": [],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         # TODO(mehrdadn): (How to) support dynamic linking?
         "-DRAY_STATIC",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 }) + select({
     "//:clang-cl": [
         "-Wno-builtin-macro-redefined",  # To get rid of warnings caused by deterministic build macros (e.g. #define __DATE__ "redacted")
         "-Wno-microsoft-unqualified-friend",  # This shouldn't normally be enabled, but otherwise we get: google/protobuf/map_field.h: warning: unqualified friend declaration referring to type outside of the nearest enclosing namespace is a Microsoft extension; add a nested name specifier (for: friend class DynamicMessage)
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 COPTS = COPTS_WITHOUT_LOG
 
 PYX_COPTS = select({
-    "//:msvc-cl": [
-    ],
+    "//:msvc-cl": [],
     "//conditions:default": [
         # Ignore this warning since CPython and Cython have issue removing deprecated tp_print on MacOS
         "-Wno-deprecated-declarations",
     ],
 }) + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "/FI" + "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 PYX_SRCS = [] + select({
-    "@bazel_tools//src/conditions:windows": [
+    "@platforms//os:windows": [
         "src/shims/windows/python-nondebug.h",
     ],
-    "//conditions:default": [
-    ],
+    "//conditions:default": [],
 })
 
 def flatbuffer_py_library(name, srcs, outs, out_prefix, includes = [], include_paths = []):
@@ -140,8 +135,8 @@ def native_java_binary(module_name, name, native_binary_name):
     native.filegroup(
         name = name,
         srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [name + "_windows"],
+            "@platforms//os:osx": [name + "_darwin"],
+            "@platforms//os:windows": [name + "_windows"],
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],
@@ -164,8 +159,8 @@ def native_java_library(module_name, name, native_library_name):
     native.filegroup(
         name = name,
         srcs = select({
-            "@bazel_tools//src/conditions:darwin": [name + "_darwin"],
-            "@bazel_tools//src/conditions:windows": [],
+            "@platforms//os:osx": [name + "_darwin"],
+            "@platforms//os:windows": [],
             "//conditions:default": [name + "_linux"],
         }),
         visibility = ["//visibility:public"],

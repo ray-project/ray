@@ -31,6 +31,7 @@
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/logging.h"
 #include "src/ray/protobuf/gcs.pb.h"
+#include "src/ray/protobuf/node_manager.pb.h"
 
 namespace ray {
 
@@ -154,10 +155,17 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   /// Change the local node to the draining state.
   /// After that, no new tasks can be scheduled onto the local node.
-  void SetLocalNodeDraining(int64_t draining_deadline_timestamp_ms,
-                            const rpc::NodeDeathInfo &node_death_info);
+  void SetLocalNodeDraining(const rpc::DrainRayletRequest &drain_request);
 
-  bool IsLocalNodeDraining() const { return is_local_node_draining_; }
+  bool IsLocalNodeDraining() const { return drain_request_.has_value(); }
+
+  /// Get the local drain request.
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return drain_request_;
+  }
+
+  /// Generate node death info from existing drain request.
+  rpc::NodeDeathInfo DeathInfoFromDrainRequest();
 
  private:
   struct ResourceUsage {
@@ -206,6 +214,12 @@ class LocalResourceManager : public syncer::ReporterInterface {
 
   absl::optional<absl::Time> GetResourceIdleTime() const;
 
+  /// Get the draining deadline if node is in draining state.
+  ///
+  /// \return The draining deadline if node is in draining state, otherwise -1.
+  int64_t GetDrainingDeadline() const {
+    return drain_request_.has_value() ? drain_request_->deadline_timestamp_ms() : -1;
+  }
   /// Identifier of local node.
   scheduling::NodeID local_node_id_;
   /// Resources of local node.
@@ -226,15 +240,8 @@ class LocalResourceManager : public syncer::ReporterInterface {
   // Version of this resource. It will incr by one whenever the state changed.
   int64_t version_ = 0;
 
-  // Whether the local node is being drained or not.
-  bool is_local_node_draining_ = false;
-  // The value is the timestamp when
-  // the node will be force killed.
-  // 0 if there is no deadline.
-  int64_t local_node_draining_deadline_timestamp_ms_ = -1;
-
-  /// This is set when the node is being drained and indicates the reason for draining.
-  rpc::NodeDeathInfo node_death_info_;
+  /// The draining request this node received.
+  std::optional<rpc::DrainRayletRequest> drain_request_;
 
   FRIEND_TEST(ClusterResourceSchedulerTest, SchedulingUpdateTotalResourcesTest);
   FRIEND_TEST(ClusterResourceSchedulerTest, AvailableResourceInstancesOpsTest);

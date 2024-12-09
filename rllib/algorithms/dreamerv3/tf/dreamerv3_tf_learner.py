@@ -18,7 +18,6 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import ParamDict
 from ray.rllib.core.learner.tf.tf_learner import TfLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
 from ray.rllib.utils.tf_utils import symlog, two_hot, clip_gradients
 from ray.rllib.utils.typing import ModuleID, TensorType
@@ -40,7 +39,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
 
     @override(TfLearner)
     def configure_optimizers_for_module(
-        self, module_id: ModuleID, config: DreamerV3Config = None, hps=None
+        self, module_id: ModuleID, config: DreamerV3Config = None
     ):
         """Create the 3 optimizers for Dreamer learning: world_model, actor, critic.
 
@@ -48,12 +47,6 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
         - albeit probably not that important - are used by the author's own
         implementation.
         """
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.configure_optimizers_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
 
         dreamerv3_module = self._module[module_id]
 
@@ -165,7 +158,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                     # Take individual loss term from the registered metrics for
                     # the main module.
                     self.metrics.peek(
-                        DEFAULT_MODULE_ID, component.upper() + "_L_total"
+                        (DEFAULT_MODULE_ID, component.upper() + "_L_total")
                     ),
                     self.filter_param_dict_for_optimizer(
                         self._params, self.get_optimizer(optimizer_name=component)
@@ -242,10 +235,20 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             key=module_id,
             window=1,  # <- single items (should not be mean/ema-reduced over time).
         )
+
+        # Add the predicted obs distributions for possible (video) summarization.
+        if config.report_images_and_videos:
+            self.metrics.log_value(
+                (module_id, "WORLD_MODEL_fwd_out_obs_distribution_means_b0xT"),
+                fwd_out["obs_distribution_means_BxT"][: self.config.batch_length_T],
+                reduce=None,  # No reduction, we want the tensor to stay in-tact.
+                window=1,  # <- single items (should not be mean/ema-reduced over time).
+            )
+
         if config.report_individual_batch_item_stats:
             # Log important world-model loss stats.
             self.metrics.log_dict(
-                metrics_dict={
+                {
                     "WORLD_MODEL_L_decoder_B_T": prediction_losses["L_decoder_B_T"],
                     "WORLD_MODEL_L_reward_B_T": prediction_losses["L_reward_B_T"],
                     "WORLD_MODEL_L_continue_B_T": prediction_losses["L_continue_B_T"],
@@ -270,10 +273,10 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
                 "h": fwd_out["h_states_BxT"],
                 "z": fwd_out["z_posterior_states_BxT"],
             },
-            start_is_terminated=tf.reshape(batch["is_terminated"], [-1]),  # ->BxT
+            start_is_terminated=tf.reshape(batch["is_terminated"], [-1]),  # -> BxT
         )
         if config.report_dream_data:
-            # To reduce this massive mount of data a little, slice out a T=1 piece
+            # To reduce this massive amount of data a little, slice out a T=1 piece
             # from each stats that has the shape (H, BxT), meaning convert e.g.
             # `rewards_dreamed_t0_to_H_BxT` into `rewards_dreamed_t0_to_H_Bx1`.
             # This will reduce the amount of data to be transferred and reported
@@ -281,13 +284,12 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             self.metrics.log_dict(
                 {
                     # Replace 'T' with '1'.
-                    "DREAM_DATA_"
-                    + key[:-1]
-                    + "1": (value[:, config.batch_size_B_per_learner])
+                    key[:-1] + "1": value[:, :: config.batch_length_T]
                     for key, value in dream_data.items()
                     if key.endswith("H_BxT")
                 },
-                key=module_id,
+                key=(module_id, "dream_data"),
+                reduce=None,
                 window=1,  # <- single items (should not be mean/ema-reduced over time).
             )
 
@@ -733,7 +735,7 @@ class DreamerV3TfLearner(DreamerV3Learner, TfLearner):
             :-1
         ]
 
-        # Reduce over H- (time) axis (sum) and then B-axis (mean).
+        # Reduce over both H- (time) axis and B-axis (mean).
         L_critic = tf.reduce_mean(L_critic_H_B)
 
         # Log important critic loss stats.

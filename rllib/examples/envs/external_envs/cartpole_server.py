@@ -33,7 +33,6 @@ import ray
 from ray import air, tune
 from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.env.policy_server_input import PolicyServerInput
-from ray.rllib.examples.custom_metrics_and_callbacks import MyCallbacks
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
@@ -174,8 +173,6 @@ if __name__ == "__main__":
         )
         # DL framework to use.
         .framework(args.framework)
-        # Create a "chatty" client/server or not.
-        .callbacks(MyCallbacks if args.callbacks_verbose else None)
         # Use the `PolicyServerInput` to generate experiences.
         .offline_data(input_=_input)
         # Use n worker processes to listen on different ports.
@@ -190,9 +187,6 @@ if __name__ == "__main__":
         .debugging(log_level="INFO")
     )
     # Disable RLModules because they need connectors
-    # TODO (Sven): Deprecate ExternalEnv (via EnvRunner path) and reenable connectors
-    #  and RL Modules here.
-    config.api_stack(enable_rl_module_and_learner=False)
 
     # DQN.
     if args.run == "DQN" or args.run == "APEX" or args.run == "R2D2":

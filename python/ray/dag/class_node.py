@@ -8,6 +8,7 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     PREV_CLASS_METHOD_CALL_KEY,
     BIND_INDEX_KEY,
+    IS_CLASS_METHOD_OUTPUT_KEY,
 )
 from ray.util.annotations import DeveloperAPI
 
@@ -134,6 +135,24 @@ class _UnboundClassMethodNode(object):
         return self
 
 
+class _ClassMethodOutput:
+    """Represents a class method output in a Ray function DAG."""
+
+    def __init__(self, class_method_call: "ClassMethodNode", output_idx: int):
+        # The upstream class method call that returns multiple values.
+        self._class_method_call = class_method_call
+        # The output index of the return value from the upstream class method call.
+        self._output_idx = output_idx
+
+    @property
+    def class_method_call(self) -> "ClassMethodNode":
+        return self._class_method_call
+
+    @property
+    def output_idx(self) -> int:
+        return self._output_idx
+
+
 @DeveloperAPI
 class ClassMethodNode(DAGNode):
     """Represents an actor method invocation in a Ray function DAG."""
@@ -146,7 +165,6 @@ class ClassMethodNode(DAGNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-
         self._bound_args = method_args or []
         self._bound_kwargs = method_kwargs or {}
         self._bound_options = method_options or {}
@@ -164,6 +182,21 @@ class ClassMethodNode(DAGNode):
         self._bind_index: Optional[int] = other_args_to_resolve.get(
             BIND_INDEX_KEY, None
         )
+        # Represent if the ClassMethodNode is a class method output. If True,
+        # the node is a placeholder for a return value from the ClassMethodNode
+        # that returns multiple values. If False, the node is a class method call.
+        self._is_class_method_output: bool = other_args_to_resolve.get(
+            IS_CLASS_METHOD_OUTPUT_KEY, False
+        )
+        # Represents the return value from the upstream ClassMethodNode that
+        # returns multiple values. If the node is a class method call, this is None.
+        self._class_method_output: Optional[_ClassMethodOutput] = None
+        if self._is_class_method_output:
+            # Set the upstream ClassMethodNode and the output index of the return
+            # value from `method_args`.
+            self._class_method_output = _ClassMethodOutput(
+                method_args[0], method_args[1]
+            )
 
         # The actor creation task dependency is encoded as the first argument,
         # and the ordering dependency as the second, which ensures they are
@@ -198,15 +231,22 @@ class ClassMethodNode(DAGNode):
         with value in bound_args and bound_kwargs via bottom-up recursion when
         current node is executed.
         """
-        method_body = getattr(self._parent_class_node, self._method_name)
-        # Execute with bound args.
-        return method_body.options(**self._bound_options).remote(
-            *self._bound_args,
-            **self._bound_kwargs,
-        )
+        if self.is_class_method_call:
+            method_body = getattr(self._parent_class_node, self._method_name)
+            # Execute with bound args.
+            return method_body.options(**self._bound_options).remote(
+                *self._bound_args,
+                **self._bound_kwargs,
+            )
+        else:
+            assert self._class_method_output is not None
+            return self._bound_args[0][self._class_method_output.output_idx]
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     def get_method_name(self) -> str:
         return self._method_name
@@ -222,3 +262,60 @@ class ClassMethodNode(DAGNode):
         if not isinstance(self._parent_class_node, ray.actor.ActorHandle):
             return None
         return self._parent_class_node
+
+    @property
+    def num_returns(self) -> int:
+        """
+        Return the number of return values from the class method call. If the
+        node is a class method output, return the number of return values from
+        the upstream class method call.
+        """
+
+        if self.is_class_method_call:
+            num_returns = self._bound_options.get("num_returns", None)
+            if num_returns is None:
+                method = self._get_remote_method(self._method_name)
+                num_returns = method.__getstate__()["num_returns"]
+            return num_returns
+        else:
+            assert self._class_method_output is not None
+            return self._class_method_output.class_method_call.num_returns
+
+    @property
+    def is_class_method_call(self) -> bool:
+        """
+        Return True if the node is a class method call, False if the node is a
+        class method output.
+        """
+        return not self._is_class_method_output
+
+    @property
+    def is_class_method_output(self) -> bool:
+        """
+        Return True if the node is a class method output, False if the node is a
+        class method call.
+        """
+        return self._is_class_method_output
+
+    @property
+    def class_method_call(self) -> Optional["ClassMethodNode"]:
+        """
+        Return the upstream class method call that returns multiple values. If
+        the node is a class method output, return None.
+        """
+
+        if self._class_method_output is None:
+            return None
+        return self._class_method_output.class_method_call
+
+    @property
+    def output_idx(self) -> Optional[int]:
+        """
+        Return the output index of the return value from the upstream class
+        method call that returns multiple values. If the node is a class method
+        call, return None.
+        """
+
+        if self._class_method_output is None:
+            return None
+        return self._class_method_output.output_idx
