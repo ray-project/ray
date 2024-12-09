@@ -5,6 +5,7 @@ import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
+from attr import dataclass
 from fastapi import APIRouter, FastAPI
 
 import ray
@@ -427,6 +428,71 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@dataclass(frozen=True)
+class RunTarget:
+    target: Application
+    name: str = SERVE_DEFAULT_APP_NAME
+    route_prefix: Optional[str] = "/"
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None
+
+
+@PublicAPI(stability="beta")
+def _run_many(
+    *targets: RunTarget,
+    _blocking: bool = True,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    if not targets:
+        raise ValueError("No applications provided.")
+
+    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
+
+        _local_testing_mode = True
+
+    built_apps = []
+    for t in targets:
+        if len(t.name) == 0:
+            raise RayServeException("Application name must a non-empty string.")
+
+        if not isinstance(t.target, Application):
+            raise TypeError(
+                "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+            )
+
+        validate_route_prefix(t.route_prefix)
+
+        built_apps.append(
+            build_app(
+                t.target,
+                name=t.name,
+                route_prefix=t.route_prefix,
+                logging_config=t.logging_config,
+                make_deployment_handle=make_local_deployment_handle,
+            )
+        )
+
+    if _local_testing_mode:
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=t.logging_config or LoggingConfig(),
+            stream_handler_only=True,
+        )
+        return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
+    else:
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+            global_logging_config=targets[0].logging_config,
+        )
+
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
+
+        return client.deploy_applications(built_apps, blocking=_blocking)
+
+
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
@@ -442,50 +508,48 @@ def _run(
     This is only used internally with the _blocking not totally blocking the following
     code indefinitely until Ctrl-C'd.
     """
-    if len(name) == 0:
-        raise RayServeException("Application name must a non-empty string.")
-
-    if not isinstance(target, Application):
-        raise TypeError(
-            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        )
-
-    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
-        if not _local_testing_mode:
-            logger.info("Overriding local_testing_mode=True from environment variable.")
-
-        _local_testing_mode = True
-
-    validate_route_prefix(route_prefix)
-
-    if _local_testing_mode:
-        configure_component_logger(
-            component_name="local_test",
-            component_id="-",
-            logging_config=logging_config or LoggingConfig(),
-            stream_handler_only=True,
-        )
-        built_app = build_app(
-            target,
+    return _run_many(
+        RunTarget(
+            target=target,
             name=name,
-            make_deployment_handle=make_local_deployment_handle,
-        )
-        handle = built_app.deployment_handles[built_app.ingress_deployment_name]
-    else:
-        client = _private_api.serve_start(
-            http_options={"location": "EveryNode"},
-            global_logging_config=logging_config,
-        )
-        # Record after Ray has been started.
-        ServeUsageTag.API_VERSION.record("v2")
-        handle = client.deploy_application(
-            build_app(target, name=name),
-            blocking=_blocking,
             route_prefix=route_prefix,
             logging_config=logging_config,
-        )
+        ),
+        _blocking=_blocking,
+    )[0]
 
-    return handle
+
+@PublicAPI(stability="beta")
+def run_many(
+    *targets: RunTarget,
+    blocking: bool = False,
+    _local_testing_mode: bool = False,
+) -> List[DeploymentHandle]:
+    handles = []
+    for t in targets:
+        handles.append(
+            _run(
+                target=t.target,
+                name=t.name,
+                route_prefix=t.route_prefix,
+                logging_config=t.logging_config,
+                _local_testing_mode=_local_testing_mode,
+            )
+        )
+        logger.info(f"Deployed app '{t.name}' successfully.")
+
+    if blocking:
+        try:
+            while True:
+                # Block, letting Ray print logs to the terminal.
+                time.sleep(10)
+        except KeyboardInterrupt:
+            logger.warning("Got KeyboardInterrupt, exiting...")
+            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+            # from the main script.
+            raise
+
+    return handles
 
 
 @PublicAPI(stability="stable")
@@ -523,26 +587,14 @@ def run(
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
     """
-    handle = _run(
+    return _run_many(
         target=target,
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        blocking=blocking,
         _local_testing_mode=_local_testing_mode,
-    )
-    logger.info(f"Deployed app '{name}' successfully.")
-
-    if blocking:
-        try:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-        except KeyboardInterrupt:
-            logger.warning("Got KeyboardInterrupt, exiting...")
-            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
-            # from the main script.
-            raise
-    return handle
+    )[0]
 
 
 @PublicAPI(stability="stable")

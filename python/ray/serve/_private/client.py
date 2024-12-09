@@ -1,6 +1,7 @@
 import logging
 import random
 import time
+from collections.abc import Sequence
 from functools import wraps
 from typing import Callable, Dict, List, Optional, Tuple, Union
 
@@ -244,6 +245,81 @@ class ServeControllerClient:
             raise TimeoutError(
                 f"Application {name} did not become RUNNING after {timeout_s}s."
             )
+
+    @_ensure_connected
+    def deploy_applications(
+        self,
+        built_apps: Sequence[BuiltApplication],
+        *,
+        blocking: bool,
+    ) -> List[DeploymentHandle]:
+        handles = []
+        name_to_deployment_args_list = {}
+        for app in built_apps:
+            deployment_args_list = []
+            for deployment in app.deployments:
+                if deployment.logging_config is None and app.logging_config:
+                    deployment = deployment.options(logging_config=app.logging_config)
+
+                is_ingress = deployment.name == app.ingress_deployment_name
+                deployment_args = get_deploy_args(
+                    deployment.name,
+                    ingress=is_ingress,
+                    replica_config=deployment._replica_config,
+                    deployment_config=deployment._deployment_config,
+                    version=deployment._version or get_random_string(),
+                    route_prefix=app.route_prefix if is_ingress else None,
+                    docs_path=deployment._docs_path,
+                )
+
+                deployment_args_proto = DeploymentArgs()
+                deployment_args_proto.deployment_name = deployment_args[
+                    "deployment_name"
+                ]
+                deployment_args_proto.deployment_config = deployment_args[
+                    "deployment_config_proto_bytes"
+                ]
+                deployment_args_proto.replica_config = deployment_args[
+                    "replica_config_proto_bytes"
+                ]
+                deployment_args_proto.deployer_job_id = deployment_args[
+                    "deployer_job_id"
+                ]
+                if deployment_args["route_prefix"]:
+                    deployment_args_proto.route_prefix = deployment_args["route_prefix"]
+                deployment_args_proto.ingress = deployment_args["ingress"]
+                if deployment_args["docs_path"]:
+                    deployment_args_proto.docs_path = deployment_args["docs_path"]
+
+                deployment_args_list.append(deployment_args_proto.SerializeToString())
+
+            name_to_deployment_args_list[app.name] = deployment_args_list
+
+        ray.get(
+            self._controller.deploy_applications.remote(name_to_deployment_args_list)
+        )
+
+        # The deployment state is not guaranteed to be created after
+        # deploy_application returns; the application state manager will
+        # need another reconcile iteration to create it.
+        for app in built_apps:
+            self._wait_for_deployment_created(app.ingress_deployment_name, app.name)
+            handles.append(
+                self.get_handle(
+                    app.ingress_deployment_name, app.name, check_exists=False
+                )
+            )
+
+        if blocking:
+            for app in built_apps:
+                self._wait_for_application_running(app.name)
+                if app.route_prefix is not None:
+                    url_part = " at " + self._root_url + app.route_prefix
+                else:
+                    url_part = ""
+                logger.info(f"Application '{app.name}' is ready{url_part}.")
+
+        return handles
 
     @_ensure_connected
     def deploy_application(

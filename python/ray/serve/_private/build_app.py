@@ -1,6 +1,8 @@
 import logging
 from dataclasses import dataclass
-from typing import Callable, Dict, Generic, List, Optional, TypeVar
+from typing import Callable, Dict, Generic, List, Optional, TypeVar, Union
+
+from python.ray.serve.schema import LoggingConfig
 
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import SERVE_LOGGER_NAME
@@ -45,6 +47,8 @@ class IDDict(dict, Generic[K, V]):
 class BuiltApplication:
     # Name of the application.
     name: str
+    route_prefix: Optional[str]
+    logging_config: Optional[LoggingConfig]
     # Name of the application's 'ingress' deployment
     # (the one exposed over gRPC/HTTP/handle).
     ingress_deployment_name: str
@@ -68,6 +72,8 @@ def build_app(
     app: Application,
     *,
     name: str,
+    route_prefix: Optional[str],
+    logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     make_deployment_handle: Optional[
         Callable[[Deployment, str], DeploymentHandle]
     ] = None,
@@ -96,6 +102,8 @@ def build_app(
     )
     return BuiltApplication(
         name=name,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
         ingress_deployment_name=app._bound_deployment.name,
         deployments=deployments,
         deployment_handles={

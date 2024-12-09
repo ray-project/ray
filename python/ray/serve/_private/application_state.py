@@ -6,7 +6,7 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
@@ -222,7 +222,6 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
-        save_checkpoint_func: Callable,
         logging_config: LoggingConfig,
     ):
         """
@@ -261,7 +260,6 @@ class ApplicationState:
             deleting=False,
             api_type=APIType.UNKNOWN,
         )
-        self._save_checkpoint_func = save_checkpoint_func
         self._logging_config = logging_config
 
     @property
@@ -354,7 +352,7 @@ class ApplicationState:
                 if info.ingress:
                     self._ingress_deployment_name = name
 
-        target_state = ApplicationTargetState(
+        self._target_state = ApplicationTargetState(
             deployment_infos,
             code_version,
             target_config,
@@ -363,13 +361,6 @@ class ApplicationState:
             deleting,
             api_type=api_type,
         )
-
-        # Checkpoint ahead, so that if the controller crashes before we
-        # write to the target state, the target state will be recovered
-        # after the controller recovers
-        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
-        # Set target state
-        self._target_state = target_state
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -896,7 +887,6 @@ class ApplicationStateManager:
                     app_name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self._save_checkpoint_func,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -907,6 +897,49 @@ class ApplicationStateManager:
         if name not in self._application_states:
             return
         self._application_states[name].delete()
+
+    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+        for name, deployment_args in name_to_deployment_args.items():
+            # Make sure route_prefix is not being used by other application.
+            # TODO: this loop is bad for performance, refactor
+            live_route_prefixes: Dict[str, str] = {
+                app_state.route_prefix: app_name
+                for app_name, app_state in self._application_states.items()
+                if app_state.route_prefix is not None
+                and not app_state.status == ApplicationStatus.DELETING
+                and name != app_name
+            }
+
+            for deploy_param in deployment_args:
+                deploy_app_prefix = deploy_param.get("route_prefix", None)
+                if deploy_app_prefix is None:
+                    continue
+
+                app_name = live_route_prefixes.get(deploy_app_prefix)
+                if app_name is not None:
+                    raise RayServeException(
+                        f"Prefix {deploy_app_prefix} is being used by application "
+                        f'"{app_name}". Failed to deploy application "{name}".'
+                    )
+
+            if name not in self._application_states:
+                self._application_states[name] = ApplicationState(
+                    name,
+                    self._deployment_state_manager,
+                    self._endpoint_state,
+                    self._logging_config,
+                )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+            deployment_infos = {
+                params["deployment_name"]: deploy_args_to_deployment_info(
+                    **params, app_name=name
+                )
+                for params in deployment_args
+            }
+            self._application_states[name].deploy_app(deployment_infos)
+
+        self.save_checkpoint()
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
@@ -922,45 +955,7 @@ class ApplicationStateManager:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
         """
-
-        # Make sure route_prefix is not being used by other application.
-        live_route_prefixes: Dict[str, str] = {
-            app_state.route_prefix: app_name
-            for app_name, app_state in self._application_states.items()
-            if app_state.route_prefix is not None
-            and not app_state.status == ApplicationStatus.DELETING
-            and name != app_name
-        }
-
-        for deploy_param in deployment_args:
-            deploy_app_prefix = deploy_param.get("route_prefix", None)
-            if deploy_app_prefix is None:
-                continue
-
-            app_name = live_route_prefixes.get(deploy_app_prefix)
-            if app_name is not None:
-                raise RayServeException(
-                    f"Prefix {deploy_app_prefix} is being used by application "
-                    f'"{app_name}". Failed to deploy application "{name}".'
-                )
-
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                self._endpoint_state,
-                self._save_checkpoint_func,
-                self._logging_config,
-            )
-        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-
-        deployment_infos = {
-            params["deployment_name"]: deploy_args_to_deployment_info(
-                **params, app_name=name
-            )
-            for params in deployment_args
-        }
-        self._application_states[name].deploy_app(deployment_infos)
+        self.deploy_apps({name: deployment_args})
 
     def apply_app_configs(
         self,
@@ -984,7 +979,6 @@ class ApplicationStateManager:
                     app_config.name,
                     self._deployment_state_manager,
                     endpoint_state=self._endpoint_state,
-                    save_checkpoint_func=self._save_checkpoint_func,
                     logging_config=self._logging_config,
                 )
 
@@ -1093,9 +1087,7 @@ class ApplicationStateManager:
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]
-    ) -> None:
+    def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
 
         application_state_info = {
@@ -1103,13 +1095,7 @@ class ApplicationStateManager:
             for app_name, app_state in self._application_states.items()
         }
 
-        if writeahead_checkpoints is not None:
-            application_state_info.update(writeahead_checkpoints)
-
-        self._kv_store.put(
-            CHECKPOINT_KEY,
-            cloudpickle.dumps(application_state_info),
-        )
+        self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(application_state_info))
 
 
 @ray.remote(num_cpus=0, max_calls=1)
