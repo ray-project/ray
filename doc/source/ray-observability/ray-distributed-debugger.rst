@@ -44,7 +44,7 @@ Start a Ray cluster
   .. tab-item:: KubeRay
 
     Follow the instructions in :doc:`the RayCluster quickstart <../cluster/kubernetes/getting-started/raycluster-quick-start>` to set up a cluster.
-    You will need to connect VS Code to the cluster, one way to do that is to add
+    You need to connect VS Code to the cluster. For example, add the following to the `ray-head` container and make sure `sshd` is running in the `ray-head` container.
 
     .. code-block:: yaml
 
