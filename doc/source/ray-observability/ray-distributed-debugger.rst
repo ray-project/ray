@@ -53,7 +53,6 @@ Start a Ray cluster
           name: ssd
 
 
-    to the `ray-head` container and make sure sshd is running in the `ray-head` container.
 
     .. note::
 
