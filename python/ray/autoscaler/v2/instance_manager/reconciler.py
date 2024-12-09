@@ -768,12 +768,13 @@ class Reconciler:
         # Transition the instances to REQUESTED for instance launcher to
         # launch them.
         updates = {}
+        new_launch_request_id = str(uuid.uuid4())
         for instance_type, instances in to_launch.items():
             for instance in instances:
                 # Reuse launch request id for any QUEUED instances that have been
                 # requested before due to retry.
                 launch_request_id = (
-                    str(uuid.uuid4())
+                    new_launch_request_id
                     if len(instance.launch_request_id) == 0
                     else instance.launch_request_id
                 )
