@@ -219,7 +219,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
 
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
-  const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+  const TaskID &GetCurrentTaskId() const;
 
   const std::string GetCurrentTaskName() const {
     return worker_context_.GetCurrentTask() != nullptr
