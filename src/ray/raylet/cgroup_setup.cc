@@ -30,14 +30,16 @@
 namespace ray {
 
 namespace {
-// Cgroup path for ray system components.
+// TODO(hjiang): Use `absl::NoDestructor` to avoid non-trivially destructible global
+// objects. Cgroup path for ray system components.
 const std::string kSystemCgroupFolder = []() {
   // Append UUID to system cgroup path to avoid conflict.
   // Chances are that multiple ray cluster runs on the same filesystem.
   return absl::StrFormat("/sys/fs/cgroup/ray_system_%s", GenerateUUIDV4());
 }();
 // Cgroup PID path for ray system components.
-constexpr std::string_view kSystemCgroupProcs = "/sys/fs/cgroup/system/cgroup.procs";
+const std::string kSystemCgroupProcs =
+    ray::JoinPaths(kSystemCgroupFolder, "cgroup.procs");
 // Parent cgroup path.
 constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 // Cgroup subtree control path.
