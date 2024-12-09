@@ -674,6 +674,7 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
                                                  std::move(args));
+  // RedisRequestContext is thread safe.
   request_context->Run();
 }
 
