@@ -1036,7 +1036,7 @@ def run_rllib_example_script_experiment(
         keep_config: Set this to True, if you don't want this utility to change the
             given `base_config` in any way and leave it as-is. This is helpful
             for those example scripts which demonstrate how to set config settings
-            that are taken care of automatically in this function otherwise (e.g.
+            that are otherwise taken care of automatically in this function (e.g.
             `num_env_runners`).
 
     Returns:
@@ -1268,6 +1268,15 @@ def run_rllib_example_script_experiment(
     time_taken = time.time() - start_time
 
     ray.shutdown()
+
+    # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
+    # the CI tests w/o us knowing that they are broken (b/c some examples do not have
+    # a --as-test flag and/or any passing criteris).
+    if results.errors:
+        raise RuntimeError(
+            "Running the example script resulted in one or more errors! "
+            f"{[e.args[0].args[2] for e in results.errors]}"
+        )
 
     # If run as a test, check whether we reached the specified success criteria.
     test_passed = False

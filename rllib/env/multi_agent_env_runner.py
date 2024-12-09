@@ -13,7 +13,7 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -105,6 +105,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._cached_to_module = None
 
         # Construct the MultiRLModule.
+        self.module: Optional[MultiRLModule] = None
         self.make_module()
 
         # Create the two connector pipelines: env-to-module and module-to-env.
@@ -878,7 +879,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
-            self.module = None
+            pass
 
     @override(EnvRunner)
     def stop(self):
