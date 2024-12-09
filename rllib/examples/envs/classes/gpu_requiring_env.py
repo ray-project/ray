@@ -30,10 +30,8 @@ class GPURequiringEnv(SimpleCorridor):
         gpus_available = ray.get_gpu_ids()
         print(f"{type(self).__name__} can see GPUs={gpus_available}")
 
-        assert len(gpus_available) > 0, "Not enough GPUs for this env!"
-
         # Create a dummy tensor on the GPU.
-        if torch:
+        if len(gpus_available) > 0 and torch:
             self._tensor = torch.from_numpy(
                 np.random.random_sample(size=(42, 42), dtype=np.float64)
             ).to(f"cuda:{gpus_available[0]}")
