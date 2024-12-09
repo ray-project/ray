@@ -30,8 +30,6 @@ from ray.dag.constants import (
     PARENT_CLASS_NODE_KEY,
     P2P_OPERATION_KEY,
     BIND_INDEX_KEY,
-    WRITE_BIND_INDEX_INCREMENT,
-    READ_BIND_INDEX_DECREMENT,
 )
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
