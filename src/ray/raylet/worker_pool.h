@@ -336,6 +336,9 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
   std::shared_ptr<WorkerInterface> GetRegisteredWorker(
       const std::shared_ptr<ClientConnection> &connection) const;
 
+  /// Get the registered worker by worker id or nullptr if not found.
+  std::shared_ptr<WorkerInterface> GetRegisteredWorker(const WorkerID &worker_id) const;
+
   /// Get the client connection's registered driver.
   ///
   /// \param The client connection owned by a registered driver.
@@ -822,7 +825,7 @@ class WorkerPool : public WorkerPoolInterface, public IOWorkerPoolInterface {
       pending_exit_idle_workers_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// A callback to get the current time.
   const std::function<absl::Time()> get_time_;

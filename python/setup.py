@@ -254,7 +254,8 @@ if setup_spec.type == SetupType.RAY:
             "aiohttp >= 3.7",
             "aiohttp_cors",
             "colorful",
-            "py-spy >= 0.2.0",
+            "py-spy >= 0.2.0; python_version < '3.12'",  # noqa:E501
+            "py-spy >= 0.4.0; python_version >= '3.12'",  # noqa:E501
             "requests",
             "grpcio >= 1.32.0; python_version < '3.10'",  # noqa:E501
             "grpcio >= 1.42.0; python_version >= '3.10'",  # noqa:E501
@@ -263,12 +264,12 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
-            "memray; sys_platform != 'win32'",
         ],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
             "opentelemetry-exporter-otlp",
+            "memray; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",

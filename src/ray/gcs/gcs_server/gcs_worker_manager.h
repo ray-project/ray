@@ -29,8 +29,8 @@ namespace gcs {
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
   explicit GcsWorkerManager(size_t max_num_worker_events,
-                            std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                            std::shared_ptr<GcsPublisher> &gcs_publisher)
+                            gcs::GcsTableStorage &gcs_table_storage,
+                            GcsPublisher &gcs_publisher)
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         max_num_dead_workers_(max_num_dead_workers) {}
@@ -79,8 +79,8 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       const WorkerID &worker_id,
       std::function<void(const std::optional<WorkerTableData> &)> callback) const;
 
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  gcs::GcsTableStorage &gcs_table_storage_;
+  GcsPublisher &gcs_publisher_;
   UsageStatsClient *usage_stats_client_;
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;

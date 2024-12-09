@@ -61,7 +61,7 @@ void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
                       << job_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(load_job_table_data_callback));
+  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll(load_job_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
@@ -73,7 +73,7 @@ void GcsInitData::AsyncLoadNodeTableData(const EmptyCallback &on_done) {
                       << node_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->NodeTable().GetAll(load_node_table_data_callback));
+  RAY_CHECK_OK(gcs_table_storage_.NodeTable().GetAll(load_node_table_data_callback));
 }
 
 void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done) {
@@ -86,7 +86,7 @@ void GcsInitData::AsyncLoadPlacementGroupTableData(const EmptyCallback &on_done)
                       << placement_group_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().GetAll(
+  RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().GetAll(
       load_placement_group_table_data_callback));
 }
 
@@ -99,7 +99,7 @@ void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {
                       << actor_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->ActorTable().AsyncRebuildIndexAndGetAll(
+  RAY_CHECK_OK(gcs_table_storage_.ActorTable().AsyncRebuildIndexAndGetAll(
       load_actor_table_data_callback));
 }
 
@@ -112,7 +112,7 @@ void GcsInitData::AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done) 
                       << actor_task_spec_table_data_.size();
         on_done();
       };
-  RAY_CHECK_OK(gcs_table_storage_->ActorTaskSpecTable().GetAll(
+  RAY_CHECK_OK(gcs_table_storage_.ActorTaskSpecTable().GetAll(
       load_actor_task_spec_table_data_callback));
 }
 
