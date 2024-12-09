@@ -715,13 +715,14 @@ class ExecutableTask:
                 # Channel closed. Exit the loop.
                 return True
 
-        # To overlap GPU communication for NCCL recv, launch the NCCL recv operation,
-        # skip the normal compute operation, and return the future without waiting.
         if not self.requires_nccl_read or not overlap_gpu_communication:
+            # [CL]
+            # If overlapping, `execute` of `P2PRecvNode` does not wait for the
+            # input future. Otherwise, the input future is waited here.
             input_data = self.reset_and_wait_intermediate_future()
             try:
                 _process_return_vals(input_data, return_single_output=False)
-                # Wait for any future in the input data.
+                # Wait for future in the input data.
                 for i in range(len(input_data)):
                     val = input_data[i]
                     if isinstance(val, DAGOperationFuture):
@@ -767,12 +768,15 @@ class ExecutableTask:
                 )
 
         with self._send_stream:
-            # To overlap GPU communication for NCCL recv, write the future as output to
-            # the downstream task, which waits on the future in its compute operation.
             if self.requires_nccl_read and overlap_gpu_communication:
+                # [CL]
+                # If overlapping, the input future of `P2PRecvNode` is directly
+                # returned. The downstream task waits for the future in its `execute`.
                 output_val = self._intermediate_future
                 self._intermediate_future = None
             else:
+                # [CL]
+                # If not overlapping, the `execute` future is waited here.
                 output_val = self.reset_and_wait_intermediate_future()
             try:
                 self.output_writer.write(output_val)
@@ -1032,23 +1036,25 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def _update_nccl_p2p_nodes(self) -> None:
+    def _create_nccl_p2p_nodes(self) -> None:
         """
+        [CL]
         Find DAG nodes that involve in NCCL send/recv operations. Create nodes
         to represent these operations and add them to the DAG.
 
         Check for errors as well:
         1. The driver cannot participate in NCCL send/recv operations.
         2. An actor must be present for a NCCL send/recv operation.
-        3. NcclSendNode and NcclRecvNode should not be directly added to the DAG.
+        3. `P2PSendNode` and `P2PRecvNode` should not be directly added to the DAG.
 
+        [CL]
         Example:
 
         a.foo -(NCCL)-> b.bar
 
         is transformed to:
 
-        a.foo -(IPC)-> a.nccl_send -(NCCL)-> b.nccl_recv -(IPC)-> b.bar
+        a.foo -(IPC)-> P2PSendNode -(NCCL)-> P2PRecvNode -(IPC)-> b.bar
 
         where IPC is IntraProcessChannel.
         """
@@ -1065,29 +1071,18 @@ class CompiledDAG:
             _P2PSendNode,
         )
 
-        def get_class_method_node_bind_index(node: ClassMethodNode) -> int:
-            bind_index = node._get_bind_index()
-            if bind_index is None:
-                assert node.is_class_method_output
-                bind_index = node.class_method_call._get_bind_index()
-            assert isinstance(bind_index, int)
-            return bind_index
+        send_nodes: Dict[DAGNode, _P2PSendNode] = dict()
+        recv_nodes: Dict[DAGNode, Dict[int, _P2PRecvNode]] = defaultdict(dict)
 
-        nccl_send_nodes: Dict[DAGNode, _P2PSendNode] = dict()
-        nccl_recv_nodes: Dict[DAGNode, Dict[int, _P2PRecvNode]] = defaultdict(dict)
-
-        # Find all DAG nodes that are NCCL P2P senders. Create and cache a
-        # NcclSendNode for each of them.
+        # Create P2P send nodes for all NCCL P2P senders.
         for task in self.idx_to_task.values():
             if isinstance(task.dag_node, _P2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
-                    "adding NcclSendNode or NcclRecvNode to the DAG"
+                    "adding P2PSendNode or P2PRecvNode to the DAG"
                 )
-
             if not task.dag_node.type_hint.requires_nccl():
                 continue
-
             if isinstance(task.dag_node, InputNode):
                 raise ValueError(
                     "DAG inputs cannot be transferred via NCCL because "
@@ -1107,24 +1102,20 @@ class CompiledDAG:
                 task.dag_node._get_actor_handle()
             )
             assert send_actor_handle is not None, "Expected an actor handle"
-            nccl_send_nodes[task.dag_node] = _P2PSendNode(
+            send_nodes[task.dag_node] = _P2PSendNode(
                 method_args=(task.dag_node,),
                 other_args_to_resolve={
                     PARENT_CLASS_NODE_KEY: send_actor_handle,
                     P2P_OPERATION_KEY: _P2POperation(),
-                    # [TODO:andyub] What should the bind index be here?
-                    BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
-                    + WRITE_BIND_INDEX_INCREMENT,
+                    BIND_INDEX_KEY: task.dag_node._get_bind_index(),
                 },
             )
 
-        # Find all DAG nodes that are NCCL P2P receivers. Create and cache a
-        # NcclRecvNode for each of them.
+        # Create P2P recv nodes for all NCCL P2P receivers.
         for task in self.idx_to_task.values():
             for arg_idx, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode) or not arg.type_hint.requires_nccl():
                     continue
-
                 if isinstance(task.dag_node, MultiOutputNode):
                     raise ValueError(
                         "Outputs cannot be transferred via NCCL because the driver "
@@ -1135,7 +1126,7 @@ class CompiledDAG:
                         "NCCL P2P send/recv is only supported with ClassMethodNodes"
                     )
 
-                send_node = nccl_send_nodes[arg]
+                send_node = send_nodes[arg]
                 recv_actor_handle: "ray.actor.ActorHandle" = (
                     task.dag_node._get_actor_handle()
                 )
@@ -1145,24 +1136,22 @@ class CompiledDAG:
                     other_args_to_resolve={
                         PARENT_CLASS_NODE_KEY: recv_actor_handle,
                         P2P_OPERATION_KEY: send_node.nccl_op,
-                        # [TODO:andyub] What should the bind index be here?
-                        BIND_INDEX_KEY: get_class_method_node_bind_index(task.dag_node)
-                        - READ_BIND_INDEX_DECREMENT,
+                        BIND_INDEX_KEY: task.dag_node._get_bind_index(),
                     },
                 )
-                nccl_recv_nodes[task.dag_node][arg_idx] = recv_node
+                recv_nodes[task.dag_node][arg_idx] = recv_node
 
-        # Add the newly created NcclSendNodes to the DAG.
-        for dag_node, send_node in nccl_send_nodes.items():
+        # Add the new P2P send nodes to the DAG.
+        for dag_node, send_node in send_nodes.items():
             type_hint = dag_node.type_hint
             dag_node.with_type_hint(ChannelOutputType())
             send_node.with_type_hint(type_hint)
             self._add_node(send_node)
 
-        # Add the newly created NcclRecvNodes to the DAG.
-        for dag_node in nccl_recv_nodes:
+        # Add the new P2P recv nodes to the DAG.
+        for dag_node in recv_nodes:
             new_args: List[Any] = list(dag_node._bound_args)
-            for arg_idx, recv_node in nccl_recv_nodes[dag_node].items():
+            for arg_idx, recv_node in recv_nodes[dag_node].items():
                 new_args[arg_idx] = recv_node
                 self._add_node(recv_node)
             dag_node._bound_args = tuple(new_args)
@@ -1187,7 +1176,7 @@ class CompiledDAG:
 
         # Because type hints can be added or removed, we need to update
         # the nodes that involve in NCCL P2P operations at compile time.
-        self._update_nccl_p2p_nodes()
+        self._create_nccl_p2p_nodes()
 
         self.input_task_idx, self.output_task_idx = None, None
         self.actor_task_count.clear()
@@ -1839,7 +1828,18 @@ class CompiledDAG:
                 executable_tasks.append(executable_task)
             # Sort executable tasks based on their bind index, i.e., submission order
             # so that they will be executed in that order.
-            executable_tasks.sort(key=lambda task: task.bind_index)
+            executable_tasks.sort(
+                # If the bind index is the same, there are P2P send/recv tasks.
+                # The order is determined as follows:
+                # 1. P2P recv tasks, with `requires_nccl_read` as True.
+                # 2. Non-P2P tasks.
+                # 3. P2P send tasks, with `requires_nccl_write` as True.
+                key=lambda task: (
+                    task.bind_index,
+                    not task.requires_nccl_read,
+                    task.requires_nccl_write,
+                )
+            )
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
