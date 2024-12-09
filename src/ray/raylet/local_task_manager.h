@@ -264,9 +264,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
-
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
   // not enough memory available to dispatch the task, due to other executing
