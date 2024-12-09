@@ -268,6 +268,8 @@ class RuntimeEnv(dict):
             When a runtime env is specified by job submission API,
             only a module name (string) is allowed.
         nsight: Dictionary mapping nsight profile option name to it's value.
+        omnitrace: Dictionary mapping omnitrace profile option name and environment
+                   variables to it's value.
         config: config for runtime environment. Either
             a dict or a RuntimeEnvConfig. Field: (1) setup_timeout_seconds, the
             timeout of runtime environment creation,  timeout is in seconds.
@@ -297,6 +299,7 @@ class RuntimeEnv(dict):
         "docker",
         "worker_process_setup_hook",
         "_nsight",
+        "_omnitrace",
         "mpi",
         "image_uri",
     }
@@ -318,6 +321,7 @@ class RuntimeEnv(dict):
         env_vars: Optional[Dict[str, str]] = None,
         worker_process_setup_hook: Optional[Union[Callable, str]] = None,
         nsight: Optional[Union[str, Dict[str, str]]] = None,
+        omnitrace: Optional[Union[str, Dict[str, Dict[str, str]]]] = None,
         config: Optional[Union[Dict, RuntimeEnvConfig]] = None,
         _validate: bool = True,
         mpi: Optional[Dict] = None,
@@ -340,6 +344,8 @@ class RuntimeEnv(dict):
             runtime_env["conda"] = conda
         if nsight is not None:
             runtime_env["_nsight"] = nsight
+        if omnitrace is not None:
+            runtime_env["_omnitrace"] = omnitrace
         if container is not None:
             runtime_env["container"] = container
         if env_vars is not None:
@@ -515,6 +521,9 @@ class RuntimeEnv(dict):
 
     def nsight(self) -> Optional[Union[str, Dict[str, str]]]:
         return self.get("_nsight", None)
+
+    def omnitrace(self) -> Optional[Union[str, Dict[str, Dict[str, str]]]]:
+        return self.get("_omnitrace", None)
 
     def env_vars(self) -> Dict:
         return self.get("env_vars", {})
