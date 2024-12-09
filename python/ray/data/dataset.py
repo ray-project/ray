@@ -340,7 +340,7 @@ class Dataset:
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker.
+                Ray for each map worker.  See :meth:`~ray.runtime_env.RuntimeEnv` for details.
 
         .. seealso::
 
@@ -565,7 +565,7 @@ class Dataset:
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker. See :meth:`~ray.runtime_env.RuntimeEnv` for details.
 
         .. note::
 
@@ -755,7 +755,8 @@ class Dataset:
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks).  See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """
         # Check that batch_format
         accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
@@ -867,7 +868,8 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks).  See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """  # noqa: E501
 
         if len(cols) != len(set(cols)):
@@ -931,7 +933,8 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks).  See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """  # noqa: E501
 
         if not isinstance(cols, list):
@@ -1022,7 +1025,8 @@ class Dataset:
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks).  See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """  # noqa: E501
         if concurrency is not None and not isinstance(concurrency, int):
             raise ValueError(
@@ -1138,7 +1142,8 @@ class Dataset:
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker.  See :meth:`~ray.runtime_env.RuntimeEnv`
+                for details.
 
         .. seealso::
 
@@ -1232,7 +1237,8 @@ class Dataset:
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
         """
         # Ensure exactly one of fn or expr is provided
         resolved_expr = None
@@ -3010,7 +3016,8 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks. See
+                :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3124,6 +3131,7 @@ class Dataset:
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3206,6 +3214,7 @@ class Dataset:
                 implementation. Use this parameter to customize what your filenames
                 look like.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3310,6 +3319,7 @@ class Dataset:
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3415,6 +3425,7 @@ class Dataset:
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3502,6 +3513,7 @@ class Dataset:
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3592,6 +3604,7 @@ class Dataset:
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3669,7 +3682,7 @@ class Dataset:
                 Python DB API2
                 `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
             ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
-                write tasks.
+                write tasks. See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3737,6 +3750,7 @@ class Dataset:
             collection: The name of the collection in the database. This collection
                 must exist otherwise a ValueError is raised.
             ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3801,6 +3815,7 @@ class Dataset:
                 exists. The default behavior is to overwrite the table.
                 ``overwrite_table=False`` will append to the table if it exists.
             ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3846,6 +3861,7 @@ class Dataset:
         Args:
             datasink: The :class:`~ray.data.Datasink` to write to.
             ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
