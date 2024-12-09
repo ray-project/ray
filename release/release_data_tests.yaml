@@ -228,21 +228,25 @@
 ################
 
 - name: distributed_training
+  working_dir: nightly_tests
+
   cluster:
     byod:
       post_build_script: byod_install_mosaicml.sh
-    cluster_compute: multi_node_train_16_workers.yaml
+    cluster_compute: dataset/multi_node_train_16_workers.yaml
 
   run:
     timeout: 3600
-    script: python multi_node_train_benchmark.py --num-workers 16 --file-type parquet --target-worker-gb 50 --use-gpu
+    script: >
+      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet 
+      --target-worker-gb 50 --use-gpu
 
   variations:
     - __suffix__: regular
     - __suffix__: chaos
       run:
         prepare: >
-          python ../setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names 
+          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names 
           "_RayTrainWorker__execute.get_next"
 
 #########################
