@@ -253,7 +253,7 @@ For example:
     .. testcode::
 
         import logging
-        logger = logging.getLogger('ray.rllib')`
+        logger = logging.getLogger("ray.rllib")
 
 
 Performance and Scaling
