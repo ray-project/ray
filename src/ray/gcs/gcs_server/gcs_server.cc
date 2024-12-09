@@ -119,11 +119,10 @@ void GcsServer::Start() {
   // Init KV Manager. This needs to be initialized first here so that
   // it can be used to retrieve the cluster ID.
   InitKVManager();
-  gcs_init_data->AsyncLoad([this, gcs_init_data] {
-    GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
-      rpc_server_.SetClusterId(cluster_id);
-      DoStart(*gcs_init_data);
-    });
+  gcs_init_data->Load();
+  GetOrGenerateClusterId([this, gcs_init_data](ClusterID cluster_id) {
+    rpc_server_.SetClusterId(cluster_id);
+    DoStart(*gcs_init_data);
   });
 }
 

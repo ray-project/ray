@@ -14,10 +14,6 @@
 
 #include "ray/common/asio/instrumented_io_context.h"
 
-#include <algorithm>
-#include <cmath>
-#include <iomanip>
-#include <iostream>
 #include <utility>
 
 #include "ray/common/asio/asio_chaos.h"
@@ -76,8 +72,12 @@ void ScheduleLagProbe(instrumented_io_context &io_context) {
 }
 }  // namespace
 
-instrumented_io_context::instrumented_io_context(bool enable_lag_probe)
-    : event_stats_(std::make_shared<EventTracker>()) {
+instrumented_io_context::instrumented_io_context(bool enable_lag_probe,
+                                                 bool single_thread_run_stop)
+    // concurrency hint to enable optimizations if it's only ever run on one thread
+    : boost::asio::io_context(
+          single_thread_run_stop ? BOOST_ASIO_CONCURRENCY_HINT_UNSAFE_IO : 0),
+      event_stats_(std::make_shared<EventTracker>()) {
   if (enable_lag_probe) {
     ScheduleLagProbe(*this);
   }
@@ -99,7 +99,7 @@ void instrumented_io_context::post(std::function<void()> handler,
   }
   delay_us += ray::asio::testing::get_delay_us(name);
   if (delay_us == 0) {
-    boost::asio::io_context::post(std::move(handler));
+    boost::asio::post(*this, std::move(handler));
   } else {
     RAY_LOG(DEBUG) << "Deferring " << name << " by " << delay_us << "us";
     execute_after(*this, std::move(handler), std::chrono::microseconds(delay_us));
@@ -109,7 +109,7 @@ void instrumented_io_context::post(std::function<void()> handler,
 void instrumented_io_context::dispatch(std::function<void()> handler,
                                        const std::string &name) {
   if (!RayConfig::instance().event_stats()) {
-    return boost::asio::io_context::post(std::move(handler));
+    return boost::asio::post(*this, std::move(handler));
   }
   auto stats_handle = event_stats_->RecordStart(name);
   // References are only invalidated upon deletion of the corresponding item from the
@@ -117,8 +117,8 @@ void instrumented_io_context::dispatch(std::function<void()> handler,
   // GuardedHandlerStats synchronizes internal access, we can concurrently write to the
   // handler stats it->second from multiple threads without acquiring a table-level
   // readers lock in the callback.
-  boost::asio::io_context::dispatch(
-      [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
+  boost::asio::dispatch(
+      *this, [handler = std::move(handler), stats_handle = std::move(stats_handle)]() {
         EventTracker::RecordExecution(handler, stats_handle);
       });
 }

@@ -14,18 +14,17 @@
 
 #include "ray/gcs/gcs_server/gcs_init_data.h"
 
+#include <boost/thread/latch.hpp>
+
 namespace ray {
 namespace gcs {
-void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
+
+void GcsInitData::Load() {
   // There are 5 kinds of table data need to be loaded.
-  auto count_down = std::make_shared<int>(5);
-  auto on_load_finished = [count_down, on_done] {
-    if (--(*count_down) == 0) {
-      if (on_done) {
-        on_done();
-      }
-    }
-  };
+  boost::latch latch(5);
+  latch.count_down();
+  auto count_down = std::make_shared<std::atomic<int>>(5);
+  auto on_load_finished = [&latch] { latch.count_down(); };
 
   AsyncLoadJobTableData(on_load_finished);
 
@@ -36,6 +35,8 @@ void GcsInitData::AsyncLoad(const EmptyCallback &on_done) {
   AsyncLoadActorTaskSpecTableData(on_load_finished);
 
   AsyncLoadPlacementGroupTableData(on_load_finished);
+
+  latch.wait();
 }
 
 void GcsInitData::AsyncLoadJobTableData(const EmptyCallback &on_done) {
@@ -92,7 +93,7 @@ void GcsInitData::AsyncLoadActorTableData(const EmptyCallback &on_done) {
 void GcsInitData::AsyncLoadActorTaskSpecTableData(const EmptyCallback &on_done) {
   RAY_LOG(INFO) << "Loading actor task spec table data.";
   auto load_actor_task_spec_table_data_callback =
-      [this, on_done](const absl::flat_hash_map<ActorID, TaskSpec> &result) {
+      [this, on_done](absl::flat_hash_map<ActorID, TaskSpec> &&result) {
         actor_task_spec_table_data_ = std::move(result);
         RAY_LOG(INFO) << "Finished loading actor task spec table data, size = "
                       << actor_task_spec_table_data_.size();

@@ -78,7 +78,10 @@ class InstrumentedIOContextWithThread {
   instrumented_io_context &GetIoService() { return io_service_; }
   const std::string &GetName() const { return thread_name_; }
 
+ private:
   // Idempotent. Once it's stopped you can't restart it.
+  // TODO(dayshah): Try to get stop on same thread as run so io operations can be
+  // unsafe on io_context (if we find it makes a perf difference)
   void Stop() {
     io_service_.stop();
     if (io_thread_.joinable()) {
@@ -86,7 +89,6 @@ class InstrumentedIOContextWithThread {
     }
   }
 
- private:
   instrumented_io_context io_service_;
   boost::asio::io_service::work work_;  // to keep io_service_ running
   std::thread io_thread_;
