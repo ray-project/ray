@@ -41,7 +41,8 @@ class ClickHouseDatasource(Datasource):
             columns: Optional List of columns to select from the data source.
                 If no columns are specified, all columns will be selected by default.
             order_by: Optional Tuple containing a list of columns to order by
-                and a boolean indicating the order.
+                and a boolean indicating the order. Note: order_by is required to
+                support parallelism.
             client_settings: Optional ClickHouse server settings to be used with the
                 session/every request. For more information, see
                 `ClickHouse Client Settings doc
@@ -94,7 +95,7 @@ class ClickHouseDatasource(Datasource):
             Estimated in-memory data size in bytes, or
              None if the estimation cannot be performed.
         """
-        return self._get_estimate("size")
+        return self._get_estimate_size()
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         """
@@ -102,23 +103,32 @@ class ClickHouseDatasource(Datasource):
 
         Args:
             parallelism: The desired number of partitions to read the data into.
+                order_by must be set in the ClickHouseDatasource to
+                support parallelism.
 
         Returns:
             A list of read tasks to be executed.
         """
-        num_rows_total = self._get_estimate("count")
+        num_rows_total = self._get_estimate_count()
         if num_rows_total == 0 or num_rows_total is None:
             return []
         parallelism = min(
             parallelism, math.ceil(num_rows_total / self.MIN_ROWS_PER_READ_TASK)
         )
+        # To ensure consistent order of query results, self._order_by
+        # must be specified in order to support parallelism.
+        if self._order_by is None and parallelism > 1:
+            logger.warning(
+                "ClickHouse datasource requires order_by to "
+                "be set to support parallelism"
+            )
+            parallelism = 1
         num_rows_per_block = num_rows_total // parallelism
         num_blocks_with_extra_row = num_rows_total % parallelism
-        sample_block_accessor = BlockAccessor.for_block(self._get_sample_block())
-        estimated_size_bytes_per_row = math.ceil(
-            sample_block_accessor.size_bytes() / sample_block_accessor.num_rows()
-        )
-        sample_block_schema = sample_block_accessor.schema()
+        (
+            estimated_size_bytes_per_row,
+            sample_block_schema,
+        ) = self._get_sampled_estimates()
         read_tasks = []
         offset = 0
         for i in range(parallelism):
@@ -137,15 +147,29 @@ class ClickHouseDatasource(Datasource):
             offset += num_rows
         return read_tasks
 
-    def _get_estimate(self, query_type: str) -> Optional[int]:
+    def _get_sampled_estimates(self):
+        sample_block_accessor = BlockAccessor.for_block(self._get_sample_block())
+        estimated_size_bytes_per_row = math.ceil(
+            sample_block_accessor.size_bytes() / sample_block_accessor.num_rows()
+        )
+        sample_block_schema = sample_block_accessor.schema()
+        return (estimated_size_bytes_per_row, sample_block_schema)
+
+    def _get_estimate_count(self) -> Optional[int]:
+        return self._execute_query(self._estimates["count"])
+
+    def _get_estimate_size(self) -> Optional[int]:
+        return self._execute_query(self._estimates["size"])
+
+    def _execute_query(self, query: str) -> Optional[int]:
         client = self._init_client()
         try:
-            result = client.query(self._estimates[query_type])
+            result = client.query(query)
             if result and len(result.result_rows) > 0:
                 estimate = result.result_rows[0][0]
                 return int(estimate) if estimate is not None else None
         except Exception as e:
-            logger.warning(f"Failed to estimate query {query_type}: {e}")
+            logger.warning(f"Failed to execute query: {e}")
         finally:
             client.close()
         return None

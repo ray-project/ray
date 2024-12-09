@@ -151,33 +151,45 @@ class TestClickHouseDatasource:
         mock_stream.__iter__.return_value = [batch1, batch2]
         datasource.MIN_ROWS_PER_READ_TASK = 4
         datasource._init_client = MagicMock(return_value=mock_client)
-        datasource._get_estimate = MagicMock(return_value=16)
-        mock_block_accessor = mock.MagicMock()
-        mock_block_accessor.size_bytes.return_value = 100
-        mock_block_accessor.num_rows.return_value = 4
-        mock_block_accessor.schema.return_value = batch1.schema
-        datasource._get_sample_block = MagicMock(return_value=mock_block_accessor)
-        with mock.patch(
-            "ray.data.block.BlockAccessor.for_block", return_value=mock_block_accessor
-        ):
-            read_tasks = datasource.get_read_tasks(parallelism)
-            expected_num_tasks = parallelism
-            assert len(read_tasks) == expected_num_tasks
-            total_rows = sum(batch.num_rows for batch in [batch1, batch2])
-            rows_per_task = total_rows // parallelism
-            extra_rows = total_rows % parallelism
-            for i, read_task in enumerate(read_tasks):
-                expected_rows = rows_per_task + (1 if i < extra_rows else 0)
-                assert read_task.metadata.num_rows == expected_rows
+        datasource._get_estimate_count = MagicMock(return_value=16)
+        datasource._get_sampled_estimates = MagicMock(return_value=(100, batch1.schema))
+        read_tasks = datasource.get_read_tasks(parallelism)
+        expected_num_tasks = parallelism
+        assert len(read_tasks) == expected_num_tasks
+        total_rows = sum(batch.num_rows for batch in [batch1, batch2])
+        rows_per_task = total_rows // parallelism
+        extra_rows = total_rows % parallelism
+        for i, read_task in enumerate(read_tasks):
+            expected_rows = rows_per_task + (1 if i < extra_rows else 0)
+            assert read_task.metadata.num_rows == expected_rows
+
+    @pytest.mark.parametrize("parallelism", [1, 4])
+    def test_get_read_tasks_order_by(self, datasource, parallelism):
+        datasource._order_by = None
+        batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field2"])
+        batch2 = pa.record_batch(
+            [pa.array([9, 10, 11, 12, 13, 14, 15, 16])], names=["field2"]
+        )
+        mock_stream = MagicMock()
+        mock_client = mock.MagicMock()
+        mock_client.query_arrow_stream.return_value.__enter__.return_value = mock_stream
+        mock_stream.__iter__.return_value = [batch1, batch2]
+        datasource.MIN_ROWS_PER_READ_TASK = 4
+        datasource._init_client = MagicMock(return_value=mock_client)
+        datasource._get_estimate_count = MagicMock(return_value=16)
+        datasource._get_sampled_estimates = MagicMock(return_value=(100, batch1.schema))
+        read_tasks = datasource.get_read_tasks(parallelism)
+        assert len(read_tasks) == 1
+        for i, read_task in enumerate(read_tasks):
+            assert read_task.metadata.num_rows == 16
 
     def test_get_read_tasks_no_batches(self, datasource, mock_clickhouse_client):
         mock_reader = mock.MagicMock()
         mock_reader.__iter__.return_value = iter([])
         datasource._init_client = MagicMock(return_value=mock_clickhouse_client)
-        datasource._get_estimate = MagicMock(return_value=0)
+        datasource._get_estimate_count = MagicMock(return_value=0)
         mock_block_accessor = mock.MagicMock()
-        mock_block_accessor.size_bytes.return_value = 0
-        mock_block_accessor.num_rows.return_value = 0
+        datasource._get_sampled_estimates = MagicMock(return_value=(0, None))
         datasource._get_sample_block = MagicMock(return_value=mock_block_accessor)
         read_tasks = datasource.get_read_tasks(parallelism=2)
         assert len(read_tasks) == 0

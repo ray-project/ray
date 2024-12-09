@@ -3285,7 +3285,9 @@ def read_clickhouse(
         columns: Optional list of columns to select from the data source.
             If no columns are specified, all columns will be selected by default.
         order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
-            should be descending (True for DESC, False for ASC).
+            should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
+            parallelism. If not provided, the data will be read in a single task. This is to ensure
+            that the data is read in a consistent order across all tasks.
         client_settings: Optional ClickHouse server settings to be used with the session/every request.
             For more information, see `ClickHouse Client Settings
             <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
