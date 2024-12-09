@@ -57,7 +57,7 @@ Start a Ray cluster
     .. note::
 
         How to run `sshd` in the `ray-head` container depends on your setup. For example you can use `supervisord`.
-        A simple way to run sshd interactively for testing is by logging into the head node pod and running:
+        A simple way to run `sshd` interactively for testing is by logging into the head node pod and running:
 
         .. code-block:: bash
 
