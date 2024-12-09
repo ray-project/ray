@@ -64,7 +64,7 @@ class TicTacToe(MultiAgentEnv):
         # Return observations dict (only with the starting player, which is the one
         # we expect to act next).
         return {
-            self.current_player: np.array(self.board),
+            self.current_player: np.array(self.board, np.float32),
         }, {}
 # __sphinx_doc_3_end__
 
@@ -124,10 +124,10 @@ class TicTacToe(MultiAgentEnv):
         self.current_player = opponent
 
         return (
-            {self.current_player: np.array(self.board)},
+            {self.current_player: np.array(self.board, np.float32)},
             rewards,
             terminateds,
-            False,
+            {},
             {},
         )
 # __sphinx_doc_4_end__

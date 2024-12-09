@@ -176,22 +176,23 @@ that should act next. Agent IDs that should NOT act in the next `step()` call mu
 their observations in the returned observations dict.
 
 .. figure:: images/envs/multi_agent_episode_simultaneous.svg
-    :width: 450
+    :width: 600
 
     **Env with simultaneously acting agents:** Both agents receive their observations at each
-    time step, including right after `reset()`. Note that an agent must computed and sent an action
+    time step, including right after `reset()`. Note that an agent must compute and send an action
     into the next `step()` call whenever an observation is present for that agent in the returned
     observations dict.
 
-Note also that this rule does not apply to reward dicts or termination/truncation dicts, all of which
-may contain any agent ID at any time step regardless of whether the agent ID is expected to act or not
-in the next `step()` call. This is so that an action taken by agent A can trigger a reward for agent B, even
-though agent B is currently not acting itself. The same is true for termination flags: Agent A may act in a way
-that terminates agent B from the episode without agent B having acted itself recently.
+Note that the rule of observation dicts determining the exact order of agent moves doesn't equally apply to
+either reward dicts nor termination/truncation dicts, all of which
+may contain any agent ID at any time step regardless of whether that agent ID is expected to act or not
+in the next `step()` call. This is so that an action taken by agent A may trigger a reward for agent B, even
+though agent B currently isn't acting itself. The same is true for termination flags: Agent A may act in a way
+that terminates agent B from the episode without agent B having acted itself.
 
 .. note::
     Use the special agent ID `__all__` in the termination dicts and/or truncation dicts to indicate
-    that the episode should end for all agent IDs, regardless of which agents are still active at this point.
+    that the episode should end for all agent IDs, regardless of which agents are still active at that point.
     RLlib automatically terminates all agents in this case and ends the episode.
 
 In summary, the exact order and synchronization of agent actions in your multi-agent episode is determined
@@ -200,7 +201,7 @@ Only those agent IDs that are expected to compute and send actions into the next
 returned observation dict.
 
 .. figure:: images/envs/multi_agent_episode_turn_based.svg
-    :width: 450
+    :width: 600
 
     **Env with agents taking turns:** The two agents act by taking alternating turns. `agent_1` receives the
     first observation after the `reset()` and thus has to compute and send an action first. Upon receiving
@@ -421,8 +422,11 @@ See here for an `end-to-end example with the Connect-4 env <https://github.com/r
 of OpenSpiel trained by an RLlib algorithm, using a self-play strategy.
 
 
-Configuring Multi-Agent Training with Shared Algorithms
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+Running actual Training Experiments with a MultiAgentEnv
+--------------------------------------------------------
+
+
+
 
 If all agents use the same algorithm class to train their policies, configure
 multi-agent training as follows:

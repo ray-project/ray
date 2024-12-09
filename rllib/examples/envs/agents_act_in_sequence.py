@@ -1,10 +1,10 @@
-"""Example of running a multi-agent experiment w/ agents always acting simultaneously.
+"""Example of running a multi-agent experiment w/ agents taking turns (sequence).
 
 This example:
     - demonstrates how to write your own (multi-agent) environment using RLlib's
     MultiAgentEnv API.
     - shows how to implement the `reset()` and `step()` methods of the env such that
-    the agents act simultaneously.
+    the agents act in a fixed sequence (taking turns).
     - shows how to configure and setup this environment class within an RLlib
     Algorithm config.
     - runs the experiment with the configured algo, trying to solve the environment.
@@ -12,7 +12,7 @@ This example:
 
 How to run this script
 ----------------------
-`python [script file name].py --enable-new-api-stack --sheldon-cooper-mode`
+`python [script file name].py --enable-new-api-stack`
 
 For debugging, use the following additional command line options
 `--no-tune --num-env-runners=0`
@@ -28,24 +28,11 @@ Results to expect
 -----------------
 You should see results similar to the following in your console output:
 
-+-----------------------------------+----------+--------+------------------+-------+
-| Trial name                        | status   |   iter |   total time (s) |    ts |
-|-----------------------------------+----------+--------+------------------+-------+
-| PPO_RockPaperScissors_8cef7_00000 | RUNNING  |      3 |          16.5348 | 12000 |
-+-----------------------------------+----------+--------+------------------+-------+
-+-------------------+------------------+------------------+
-|   combined return |   return player2 |   return player1 |
-|-------------------+------------------+------------------|
-|                 0 |            -0.15 |             0.15 |
-+-------------------+------------------+------------------+
 
 Note that b/c we are playing a zero-sum game, the overall return remains 0.0 at
 all times.
 """
-from ray.rllib.examples.envs.classes.multi_agent.rock_paper_scissors import (
-    RockPaperScissors
-)
-from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
+from ray.rllib.examples.envs.classes.multi_agent.tic_tac_toe import TicTacToe
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -60,12 +47,6 @@ parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
 )
-parser.add_argument(
-    "--sheldon-cooper-mode",
-    action="store_true",
-    help="Whether to add two more actions to the game: Lizard and Spock. "
-    "Watch here for more details :) https://www.youtube.com/watch?v=x5Q6-wMx-K8",
-)
 
 
 if __name__ == "__main__":
@@ -74,28 +55,16 @@ if __name__ == "__main__":
     assert args.num_agents == 2, "Must set --num-agents=2 when running this script!"
 
     # You can also register the env creator function explicitly with:
-    # register_env("env", lambda cfg: RockPaperScissors({"sheldon_cooper_mode": False}))
-
-    # Or you can hard code certain settings into the Env's constructor (`config`).
-    # register_env(
-    #    "rock-paper-scissors-w-sheldon-mode-activated",
-    #    lambda config: RockPaperScissors({**config, **{"sheldon_cooper_mode": True}}),
-    # )
+    # register_env("tic_tac_toe", lambda cfg: TicTacToe())
 
     # Or allow the RLlib user to set more c'tor options via their algo config:
     # config.environment(env_config={[c'tor arg name]: [value]})
-    # register_env("rock-paper-scissors", lambda cfg: RockPaperScissors(cfg))
+    # register_env("tic_tac_toe", lambda cfg: TicTacToe(cfg))
 
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        .environment(
-            RockPaperScissors,
-            env_config={"sheldon_cooper_mode": args.sheldon_cooper_mode},
-        )
-        .env_runners(
-            env_to_module_connector=lambda env: FlattenObservations(multi_agent=True),
-        )
+        .environment(TicTacToe)
         .multi_agent(
             # Define two policies.
             policies={"player1", "player2"},

@@ -46,7 +46,7 @@ For more details on building a custom `Farama Gymnasium
 <https://gymnasium.farama.org/>`__ environment, consult the
 `gymnasium.Env class definition <https://github.com/Farama-Foundation/Gymnasium/blob/main/gymnasium/core.py>`__.
 
-For **multi-agent** training, see :ref:`RLlib's multi-agent API a nd supported third-party APIs <rllib-multi-agent-environments-doc>`.
+For **multi-agent** training, see :ref:`RLlib's multi-agent API and supported third-party APIs <rllib-multi-agent-environments-doc>`.
 
 .. _configuring-environments:
 
@@ -201,6 +201,7 @@ For example:
     logging instance:
 
     .. testcode::
+
         import logging
         logger = logging.getLogger('ray.rllib')`
 
@@ -212,16 +213,16 @@ Performance and Scaling
     :width: 600
 
     **EnvRunner with gym.Env setup:** Environments in RLlib are located within the :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actors, whose number
-    you can scale through the `config.env_runners(num_env_runners=..)` setting. Each such :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actor
+    (`n`) you can scale through the `config.env_runners(num_env_runners=..)` setting. Each such :py:class:`~ray.rllib.envs.env_runner.EnvRunner` actor
     itself can hold more than one `gymnasium <https://gymnasium.farama.org>`__ environment (vectorized). You can set the number
     of individual environment copies per EnvRunner through `config.env_runners(num_envs_per_env_runner=..)`.
 
 
-There are two methods to scale sample collection with RLlib and gymnasium environments, both of which
+There are two methods to scale sample collection with RLlib and `gymnasium <https://gymnasium.farama.org>`__ environments, both of which
 can be used in combination.
 
 1. **Distribute across multiple processes:** RLlib creates multiple
-   :py:class:`~ray.rllib.envs.env_runner.EnvRunner` instances (Ray actors) for experience collection,
+   :py:class:`~ray.rllib.envs.env_runner.EnvRunner` instances (each a Ray actor) for experience collection,
    controlled through your :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`:
    ``config.env_runners(num_env_runners=..)``.
 
@@ -229,8 +230,8 @@ can be used in combination.
    frame rates per core but are limited by policy inference latency. To address
    this, create multiple environments per process and thus batch the policy forward pass
    across these vectorized environments. Set ``config.env_runners(num_envs_per_env_runner=..)``
-   to create more than one environment per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
-   actor. Additionally, you can make the individual subenvironments within an environment vector
+   to create more than one environment copy per :py:class:`~ray.rllib.envs.env_runner.EnvRunner`
+   actor. Additionally, you can make the individual sub-environments within a vector
    independent processes (through python's multiprocessing used by gymnasium).
    Set `config.env_runners(remote_worker_envs=True)` to create individual subenvironments as separate processes
    and step them in parallel.
