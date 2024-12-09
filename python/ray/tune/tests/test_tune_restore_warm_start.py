@@ -25,6 +25,7 @@ from ray.tune.search.hebo import HEBOSearch
 from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
+from ray.tune.search.vizier import VizierSearch
 from ray.tune.search.zoopt import ZOOptSearch
 
 
@@ -224,6 +225,26 @@ class OptunaWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
         search_alg = OptunaSearch(
             space, sampler=TPESampler(seed=10), metric="loss", mode="min"
+        )
+        return search_alg, cost
+
+
+class VizierWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
+    def set_basic_conf(self):
+        space = {
+            "x": tune.uniform("x", 0, 10),
+            "y": tune.uniform("y", -10, 10),
+            "z": tune.uniform("z", -10, 0),
+        }
+
+        def cost(space):
+            loss = space["x"] ** 2 + space["y"] ** 2 + space["z"] ** 2
+            train.report(dict(loss=loss))
+
+        search_alg = VizierSearch(
+            space,
+            metric="loss",
+            mode="min",
         )
         return search_alg, cost
 
