@@ -264,12 +264,12 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
-            "memray; sys_platform != 'win32'",
         ],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
             "opentelemetry-exporter-otlp",
+            "memray; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",

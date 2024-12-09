@@ -717,7 +717,7 @@ httpx==0.24.1
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
-hudi==0.2.0rc1
+hudi==0.2.0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.19.4
     # via
