@@ -65,13 +65,13 @@ Start a Ray cluster
             sudo mkdir -p /run/sshd
             sudo /usr/sbin/sshd -D
 
-    You can then connect VS Code to the cluster by running:
+    You can then connect to the cluster via SSH by running:
 
     .. code-block:: bash
 
         kubectl port-forward service/raycluster-sample-head-svc 2222:22
 
-    After checking that `ssh -p 2222 ray@localhost` works, connect VS Code as described in the
+    After checking that `ssh -p 2222 ray@localhost` works, set up VS Code as described in the
     `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
 
 
