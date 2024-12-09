@@ -602,6 +602,7 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!redis_async_context_);
 
   // Remember function arguments for reconnection
+  address_ = address;
   port_ = port;
   username_ = username;
   password_ = password;
@@ -609,18 +610,16 @@ Status RedisContext::Connect(const std::string &address,
 
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
-  if (ip_address_.empty()) {
-    RAY_CHECK(!address.empty());
-    auto ip_addresses = ResolveDNS(address, port);
-    RAY_CHECK(!ip_addresses.empty())
-        << "Failed to resolve DNS for " << address << ":" << port;
+  RAY_CHECK(!address.empty());
+  auto ip_addresses = ResolveDNS(address, port);
+  RAY_CHECK(!ip_addresses.empty())
+      << "Failed to resolve DNS for " << address << ":" << port;
 
-    RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
-    ip_address_ = ip_addresses[0];
-  }
+  RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
+  const auto ip_address = ip_addresses[0];
 
   {
-    auto resp = ConnectWithRetries<redisContext>(ip_address_, port, redisConnect);
+    auto resp = ConnectWithRetries<redisContext>(ip_address, port, redisConnect);
     RAY_CHECK_OK(resp.first /* status */);
     context_ = std::move(resp.second /* redisContext */);
   }
@@ -635,7 +634,7 @@ Status RedisContext::Connect(const std::string &address,
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
   {
     auto resp =
-        ConnectWithRetries<redisAsyncContext>(ip_address_, port, redisAsyncConnect);
+        ConnectWithRetries<redisAsyncContext>(ip_address, port, redisAsyncConnect);
     RAY_CHECK_OK(resp.first);
     async_context = std::move(resp.second);
   }
@@ -658,14 +657,14 @@ Status RedisContext::Connect(const std::string &address,
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
   } else {
     return ConnectRedisCluster(
-        *this, username, password, enable_ssl, ip_address_ + ":" + std::to_string(port));
+        *this, username, password, enable_ssl, ip_address + ":" + std::to_string(port));
   }
 }
 
 Status RedisContext::Reconnect() {
   RAY_LOG(INFO) << "Try to reconnect to Redis server.";
   Disconnect();
-  return Connect("", port_, username_, password_, enable_ssl_);
+  return Connect(address_, port_, username_, password_, enable_ssl_);
 }
 
 std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
