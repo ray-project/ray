@@ -171,6 +171,7 @@ class ParquetDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Optional[Partitioning] = Partitioning("hive"),
         shuffle: Union[Literal["files"], None] = None,
+        seed: Optional[int] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -305,7 +306,7 @@ class ParquetDatasource(Datasource):
         self._include_paths = include_paths
         self._partitioning = partitioning
         if shuffle == "files":
-            self._file_metadata_shuffler = np.random.default_rng()
+            self._file_metadata_shuffler = np.random.default_rng(seed)
 
         sample_infos = sample_fragments(
             self._pq_fragments,
