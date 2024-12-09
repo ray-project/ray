@@ -149,10 +149,8 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
 
   std::shared_ptr<GcsInitData> LoadDataFromDataStorage() {
     auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
-    std::promise<void> promise;
-    gcs_init_data->AsyncLoad([&promise] { promise.set_value(); });
+    gcs_init_data->Load();
     RunIOService();
-    promise.get_future().get();
     return gcs_init_data;
   }
 

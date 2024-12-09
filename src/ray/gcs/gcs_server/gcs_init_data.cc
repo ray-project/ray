@@ -22,8 +22,6 @@ namespace gcs {
 void GcsInitData::Load() {
   // There are 5 kinds of table data need to be loaded.
   boost::latch latch(5);
-  latch.count_down();
-  auto count_down = std::make_shared<std::atomic<int>>(5);
   auto on_load_finished = [&latch] { latch.count_down(); };
 
   AsyncLoadJobTableData(on_load_finished);
