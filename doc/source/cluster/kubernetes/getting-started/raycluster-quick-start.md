@@ -48,7 +48,7 @@ kubectl get pods
 kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
 
 # Confirm that the operator is running in the namespace `ray-system`.
-kubectl get pods -n ray-system
+kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-6d57c9f797-ffvph   1/1     Running   0          2m14s
 
@@ -213,14 +213,15 @@ kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/he
 
 # Confirm that the RayCluster's pods are gone by running
 kubectl get pods
-# No resources found in default namespace.
+# NAME                                READY   STATUS    RESTARTS   AGE
+# kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 
 # [Step 6.2]: Delete the KubeRay operator
 kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
 
 # Confirm that the KubeRay operator pod is gone by running
-kubectl get pods -n ray-system
-# No resources found in ray-system namespace.
+kubectl get pods
+# No resources found in default namespace.
 
 # [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
