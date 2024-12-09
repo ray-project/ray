@@ -2,12 +2,11 @@ import logging
 from dataclasses import dataclass
 from typing import Callable, Dict, Generic, List, Optional, TypeVar, Union
 
-from python.ray.serve.schema import LoggingConfig
-
 from ray.dag.py_obj_scanner import _PyObjScanner
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve.deployment import Application, Deployment
 from ray.serve.handle import DeploymentHandle
+from ray.serve.schema import LoggingConfig
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
