@@ -6,7 +6,7 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
@@ -222,6 +222,7 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
+        save_checkpoint_func: Callable,
         logging_config: LoggingConfig,
     ):
         """
@@ -260,6 +261,7 @@ class ApplicationState:
             deleting=False,
             api_type=APIType.UNKNOWN,
         )
+        self._save_checkpoint_func = save_checkpoint_func
         self._logging_config = logging_config
 
     @property
@@ -330,6 +332,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
+        checkpoint_immediately: bool = True,
     ):
         """Set application target state.
 
@@ -352,7 +355,7 @@ class ApplicationState:
                 if info.ingress:
                     self._ingress_deployment_name = name
 
-        self._target_state = ApplicationTargetState(
+        target_state = ApplicationTargetState(
             deployment_infos,
             code_version,
             target_config,
@@ -361,6 +364,16 @@ class ApplicationState:
             deleting,
             api_type=api_type,
         )
+
+        # Checkpoint ahead, so that if the controller crashes before we
+        # write to the target state, the target state will be recovered
+        # after the controller recovers
+        if checkpoint_immediately:
+            self._save_checkpoint_func(
+                writeahead_checkpoints={self._name: target_state}
+            )
+        # Set target state
+        self._target_state = target_state
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -449,7 +462,11 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
-    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
+    def deploy_app(
+        self,
+        deployment_infos: Dict[str, DeploymentInfo],
+        checkpoint_immediately: bool = True,
+    ):
         """(Re-)deploy the application from list of deployment infos.
 
         This function should only be called to deploy an app from an
@@ -469,6 +486,7 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
+            checkpoint_immediately=checkpoint_immediately,
         )
 
     def apply_app_config(
@@ -887,6 +905,7 @@ class ApplicationStateManager:
                     app_name,
                     self._deployment_state_manager,
                     self._endpoint_state,
+                    self._save_checkpoint_func,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -927,6 +946,7 @@ class ApplicationStateManager:
                     name,
                     self._deployment_state_manager,
                     self._endpoint_state,
+                    self._save_checkpoint_func,
                     self._logging_config,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
@@ -937,9 +957,11 @@ class ApplicationStateManager:
                 )
                 for params in deployment_args
             }
-            self._application_states[name].deploy_app(deployment_infos)
+            self._application_states[name].deploy_app(
+                deployment_infos, checkpoint_immediately=False
+            )
 
-        self.save_checkpoint()
+        self._save_checkpoint_func()
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
@@ -979,6 +1001,7 @@ class ApplicationStateManager:
                     app_config.name,
                     self._deployment_state_manager,
                     endpoint_state=self._endpoint_state,
+                    save_checkpoint_func=self._save_checkpoint_func,
                     logging_config=self._logging_config,
                 )
 
@@ -1087,7 +1110,11 @@ class ApplicationStateManager:
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def save_checkpoint(self) -> None:
+    def _save_checkpoint_func(
+        self,
+        *,
+        writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]] = None,
+    ) -> None:
         """Write a checkpoint of all application states."""
 
         application_state_info = {
@@ -1095,7 +1122,13 @@ class ApplicationStateManager:
             for app_name, app_state in self._application_states.items()
         }
 
-        self._kv_store.put(CHECKPOINT_KEY, cloudpickle.dumps(application_state_info))
+        if writeahead_checkpoints is not None:
+            application_state_info.update(writeahead_checkpoints)
+
+        self._kv_store.put(
+            CHECKPOINT_KEY,
+            cloudpickle.dumps(application_state_info),
+        )
 
 
 @ray.remote(num_cpus=0, max_calls=1)
