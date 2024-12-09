@@ -7,6 +7,56 @@
 Environments
 ============
 
+.. toctree::
+    :hidden:
+
+    multi-agent-envs
+    hierarchical-envs
+    external-envs
+
+
+Overview
+--------
+
+.. grid:: 1 2 3 4
+    :gutter: 1
+    :class-container: container pb-3
+
+    .. grid-item-card::
+        :img-top: /rllib/images/envs/single_agent_env_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-single-agent-env-doc
+
+            Single-Agent Environments (this page)
+
+    .. grid-item-card::
+        :img-top: /rllib/images/envs/multi_agent_env_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-multi-agent-environments-doc
+
+            Multi-Agent Environments
+
+    .. grid-item-card::
+        :img-top: /rllib/images/envs/external_env_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-external-env-setups-doc
+
+            External Environments and Applications
+
+    .. grid-item-card::
+        :img-top: /rllib/images/envs/hierarchical_env_logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-hierarchical-environments-doc
+
+            Hierarchical Environments
+
+
+.. _rllib-single-agent-env-doc:
+
 In online reinforcement learning (RL), an algorithm trains a policy
 neural network by collecting data on-the-fly using an RL environment or simulator.
 The agent navigates within the environment choosing actions governed by this policy and collecting

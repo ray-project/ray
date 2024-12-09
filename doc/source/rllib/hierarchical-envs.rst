@@ -8,39 +8,50 @@
 Hierarchical Environments
 =========================
 
-Hierarchical training can sometimes be implemented as a special case of multi-agent RL. For example, consider a three-level hierarchy of policies, where a top-level policy issues high level actions that are executed at finer timescales by a mid-level and low-level policy. The following timeline shows one step of the top-level policy, which corresponds to two mid-level actions and five low-level actions:
+Hierarchical training can be implemented as a special case of multi-agent RL. For example, consider a two-level hierarchy of policies,
+where a top-level policy issues high level tasks that are executed at a finer timescale by one or more low-level policies.
+The following timeline shows one step of the top-level policy, which corresponds to four low-level actions:
 
 .. code-block:: text
 
-   top_level ---------------------------------------------------------------> top_level --->
-   mid_level_0 -------------------------------> mid_level_0 ----------------> mid_level_1 ->
-   low_level_0 -> low_level_0 -> low_level_0 -> low_level_1 -> low_level_1 -> low_level_2 ->
+   top-level: action_0 -------------------------------------> action_1 ->
+   low-level: action_0 -> action_1 -> action_2 -> action_3 -> action_4 ->
 
-This can be implemented as a multi-agent environment with three types of agents. Each higher-level action creates a new lower-level
-agent instance with a new id (e.g., ``low_level_0``, ``low_level_1``, ``low_level_2`` in the above example).
-These lower-level agents pop in existence at the start of higher-level steps,
-and terminate when their higher-level action ends. Their experiences are aggregated by policy meaning from RLlib's perspective the problem boils
-down to a simple independent multi-agent problem with three different types of policies.
-The configuration might look something like this:
+Alternatively, you could implement an environment, in which the two agent types don't act at the same time (overlappingly),
+but the low-level agents wait for the high-level agent to issue an action, then act n times before handing
+back control to the high-level agent:
 
-.. code-block:: python
+.. code-block:: text
 
-    "multiagent": {
-        "policies": {
-            "top_level": (custom_policy or None, ...),
-            "mid_level": (custom_policy or None, ...),
-            "low_level": (custom_policy or None, ...),
-        },
-        "policy_mapping_fn":
-            lambda agent_id:
-                "low_level" if agent_id.startswith("low_level_") else
-                "mid_level" if agent_id.startswith("mid_level_") else "top_level"
-        "policies_to_train": ["top_level"],
-    },
+   top-level: action_0 -----------------------------------> action_1 ->
+   low-level: ---------> action_0 -> action_1 -> action_2 ------------>
 
 
-In this setup, the appropriate rewards for training lower-level agents must be provided by the multi-agent env implementation.
-The environment class is also responsible for routing between the agents, e.g., conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level
+Any of these hierarchical action patterns can be implemented as a multi-agent environment with various
+types of agents, for example a high-level agent and a low-level agent. When set up using the correct
+agent to module mapping functions, from RLlib's perspective, the problem boils down to a simple independent
+multi-agent problem with different types of policies.
+
+Your configuration might look something like this:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    config = (
+        PPOConfig()
+        .multi_agent(
+            policies={"top_level", "low_level"},
+            policy_mapping_fn=(
+                lambda aid, eps, **kw: "low_level" if aid.startswith("low_level") else "top_level"
+            ),
+            policies_to_train=["top_level"],
+        )
+    )
+
+
+In this setup, the appropriate rewards at any hierarchy level should be provided by the multi-agent env implementation.
+The environment class is also responsible for routing between agents, for example conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level
 agents to lower-level agents as part of the lower-level agent observation.
 
-See this file for a runnable example: `hierarchical_training.py <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.
+See `here for a runnable example of a hierarchical env <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.

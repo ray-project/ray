@@ -25,9 +25,10 @@ class TicTacToe(MultiAgentEnv):
     Once a player completes a row, they receive +1.0 reward, the losing player receives
     -1.0 reward. In all other cases, both players receive 0.0 reward.
     """
-# __sphinx_doc_1_end__
 
-# __sphinx_doc_2_begin__
+    # __sphinx_doc_1_end__
+
+    # __sphinx_doc_2_begin__
     def __init__(self, config=None):
         super().__init__()
 
@@ -50,14 +51,21 @@ class TicTacToe(MultiAgentEnv):
 
         self.board = None
         self.current_player = None
-# __sphinx_doc_2_end__
 
-# __sphinx_doc_3_begin__
+    # __sphinx_doc_2_end__
+
+    # __sphinx_doc_3_begin__
     def reset(self, *, seed=None, options=None):
         self.board = [
-            0, 0, 0,
-            0, 0, 0,
-            0, 0, 0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
+            0,
         ]
         # Pick a random player to start the game.
         self.current_player = np.random.choice(["player1", "player2"])
@@ -66,9 +74,10 @@ class TicTacToe(MultiAgentEnv):
         return {
             self.current_player: np.array(self.board, np.float32),
         }, {}
-# __sphinx_doc_3_end__
 
-# __sphinx_doc_4_begin__
+    # __sphinx_doc_3_end__
+
+    # __sphinx_doc_4_begin__
     def step(self, action_dict):
         action = action_dict[self.current_player]
 
@@ -130,4 +139,6 @@ class TicTacToe(MultiAgentEnv):
             {},
             {},
         )
+
+
 # __sphinx_doc_4_end__

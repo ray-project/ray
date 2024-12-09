@@ -43,7 +43,7 @@ Note that b/c we are playing a zero-sum game, the overall return remains 0.0 at
 all times.
 """
 from ray.rllib.examples.envs.classes.multi_agent.rock_paper_scissors import (
-    RockPaperScissors
+    RockPaperScissors,
 )
 from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
 from ray.rllib.utils.test_utils import (
