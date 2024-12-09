@@ -53,7 +53,20 @@ Start a Ray cluster
           name: ssd
 
 
-    to the `ray-head` container and make sure sshd is running in the `ray-head` container. You can then connect VS Code to the cluster by running
+    to the `ray-head` container and make sure sshd is running in the `ray-head` container.
+
+    .. note::
+
+        How to run sshd in the `ray-head` container will depend on your setup (for example you can do it by using supervisord).
+        A simple way to run sshd interactively for testing is by logging into the head node pod and running:
+
+        .. code-block:: bash
+
+            sudo apt-get install openssh-server
+            sudo mkdir -p /run/sshd
+            sudo /usr/sbin/sshd -D
+
+    You can then connect VS Code to the cluster by running
 
     .. code-block:: bash
 
