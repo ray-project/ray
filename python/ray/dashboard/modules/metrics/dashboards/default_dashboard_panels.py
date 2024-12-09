@@ -88,7 +88,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=33,
         title="Scheduler Actor State",
-        description="Note: not impacted by \"Instance\" variable.\n\nCurrent number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent number of actors in a particular state.\n\nState: the actor state, as described by rpc::ActorTableData proto in gcs.proto.',
         unit="actors",
         targets=[
             Target(
@@ -100,7 +100,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=42,
         title="Alive Actor State",
-        description="Note: not impacted by \"Instance\" variable.\n\nCurrent number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT',
         unit="actors",
         targets=[
             Target(
@@ -112,7 +112,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=36,
         title="Requested Live Actors by Name",
-        description="Note: not impacted by \"Instance\" variable.\n\nCurrent number of (live) actors with a particular name.",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent number of (live) actors with a particular name.',
         unit="actors",
         targets=[
             Target(
@@ -184,7 +184,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=40,
         title="Scheduler Placement Groups",
-        description="Note: not impacted by \"Instance\" variable.\n\nCurrent number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.",
+        description='Note: not impacted by "Instance" variable.\n\nCurrent number of placement groups in a particular state.\n\nState: the placement group state, as described by the rpc::PlacementGroupTable proto in gcs.proto.',
         unit="placement groups",
         targets=[
             Target(
@@ -399,7 +399,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=24,
         title="Node Count",
-        description="Note: not impacted by \"Instance\" variable.\n\nA total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there's no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.",
+        description='Note: not impacted by "Instance" variable.\n\nA total number of active failed, and pending nodes from the cluster. \n\nACTIVE: A node is alive and available.\n\nFAILED: A node is dead and not available. The node is considered dead when the raylet process on the node is terminated. The node will get into the failed state if it cannot be provided (e.g., there\'s no available node from the cloud provider) or failed to setup (e.g., setup_commands have errors). \n\nPending: A node is being started by the Ray cluster launcher. The node is unavailable now because it is being provisioned and initialized.',
         unit="nodes",
         targets=[
             Target(
