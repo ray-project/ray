@@ -368,6 +368,14 @@ py_test(
 )
 
 py_test(
+    name = "test_logging",
+    size = "small",
+    srcs = ["tests/test_logging.py"],
+    tags = ["team:ml", "exclusive"],
+    deps = [":train_lib", ":conftest"]
+)
+
+py_test(
     name = "test_torch_fsdp",
     size = "small",
     srcs = ["tests/test_torch_fsdp.py"],
