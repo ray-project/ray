@@ -750,7 +750,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// actor died) and to pin objects that are in scope in the cluster.
   std::unique_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
