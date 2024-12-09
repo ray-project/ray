@@ -581,9 +581,9 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
                     f"`get_devices()` should only return one cuda device, but {devices}"
                     " was returned instead."
                 )
-                self._device = devices[0]
+                return devices[0]
             else:
-                self._device = torch.device("cpu")
+                return torch.device("cpu")
 
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.

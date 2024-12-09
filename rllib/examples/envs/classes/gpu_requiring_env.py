@@ -32,6 +32,6 @@ class GPURequiringEnv(SimpleCorridor):
 
         # Create a dummy tensor on the GPU.
         if len(gpus_available) > 0 and torch:
-            self._tensor = torch.from_numpy(
-                np.random.random_sample(size=(42, 42), dtype=np.float64)
-            ).to(f"cuda:{gpus_available[0]}")
+            self._tensor = torch.from_numpy(np.random.random_sample(size=(42, 42))).to(
+                f"cuda:{gpus_available[0]}"
+            )
