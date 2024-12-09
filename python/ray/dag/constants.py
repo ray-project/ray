@@ -4,13 +4,11 @@ import os
 PARENT_CLASS_NODE_KEY = "parent_class_node"
 PREV_CLASS_METHOD_CALL_KEY = "prev_class_method_call"
 BIND_INDEX_KEY = "bind_index"
-WRITE_BIND_INDEX_INCREMENT = 0.3
-READ_BIND_INDEX_DECREMENT = 0.3
 IS_CLASS_METHOD_OUTPUT_KEY = "is_class_method_output"
 
-# Reserved keys used to handle NCCL P2P send/recv nodes in Ray DAG building.
+# Reserved keys used to handle NCCL P2P operations in Ray DAG building.
 P2P_OPERATION_KEY = "p2p_operation"
-# Reserved keys used to handle NCCL collective output nodes in Ray DAG building.
+# Reserved keys used to handle NCCL collective operations in Ray DAG building.
 COLLECTIVE_OPERATION_KEY = "collective_operation"
 
 # Reserved key to distinguish DAGNode type and avoid collision with user dict.
