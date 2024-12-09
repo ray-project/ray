@@ -25,10 +25,6 @@
 namespace ray {
 namespace gcs {
 
-enum GcsWorkerManagerCounter {
-  kNumWorkerDeadEventsStored,
-};
-
 /// This implementation class of `WorkerInfoHandler`.
 class GcsWorkerManager : public rpc::WorkerInfoHandler {
  public:
@@ -65,6 +61,10 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
       rpc::UpdateWorkerNumPausedThreadsReply *reply,
       rpc::SendReplyCallback send_reply_callback) override;
 
+  /// Initialize with the gcs tables data synchronously.
+  /// This should be called when GCS server restarts after a failure.
+  ///
+  /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
 
   void AddWorkerDeadListener(
@@ -85,8 +85,11 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
 
-  /// The workers are sorted according to the timestamp, and the oldest is at the head of
-  /// the list.
+  /// A list where workers are store as pairs of (WorkerID, Timestamp).
+  /// The workers are sorted according to the timestamp, and the oldest is at the head of the list.
+  /// @note The pair consists of:
+  ///   - first: WorkerID (identifier for the worker)
+  ///   - second: Timestamp (time when the worker was last updated or added)
   std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
 
   /// Max number of dead workers allowed in the storage.
