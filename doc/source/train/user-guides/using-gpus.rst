@@ -23,6 +23,7 @@ the :class:`~ray.train.ScalingConfig`:
         num_workers=8
     )
 
+.. _using-gpus-or-other-accelerators:
 
 Using GPUs or other accelerators
 --------------------------------

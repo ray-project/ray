@@ -8,7 +8,7 @@ This tutorial walks through the process of converting an existing Hugging Face T
 Learn how to:
 
 1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
-2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU or :ref:`other accelerators <Using GPUs or other accelerators>` resource requirements for your training job.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU or :ref:`other accelerators <using-gpus-or-other-accelerators>` resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
