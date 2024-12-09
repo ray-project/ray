@@ -65,7 +65,7 @@ Start a Ray cluster
             sudo mkdir -p /run/sshd
             sudo /usr/sbin/sshd -D
 
-    You can then connect VS Code to the cluster by running
+    You can then connect VS Code to the cluster by running:
 
     .. code-block:: bash
 
