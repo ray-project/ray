@@ -588,7 +588,7 @@ def run(
         DeploymentHandle: A handle that can be used to call the application.
     """
     return _run_many(
-        target=target,
+        target,
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
