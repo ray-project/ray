@@ -71,7 +71,7 @@ Start a Ray cluster
 
         kubectl port-forward service/raycluster-sample-head-svc 2222:22
 
-    and after checking that `ssh -p 2222 ray@localhost` works, connect VS Code as described in the
+    After checking that `ssh -p 2222 ray@localhost` works, connect VS Code as described in the
     `VS Code SSH documentation <https://code.visualstudio.com/docs/remote/ssh>`_.
 
 
