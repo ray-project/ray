@@ -259,7 +259,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      periodical_runner_(io_service_),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
@@ -330,7 +330,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
 
   if (options_.worker_type != WorkerType::DRIVER) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds(),
         "CoreWorker.ExitIfParentRayletDies");
@@ -454,11 +454,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
-      /*channels=*/std::vector<
-          rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-      /*periodical_runner=*/&periodical_runner_,
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+      /*periodical_runner=*/*periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
@@ -788,7 +788,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats().StatsString() << "\n\n"
@@ -808,7 +808,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         const auto lost_objects = reference_counter_->FlushObjectsToRecover();
         if (!lost_objects.empty()) {
@@ -833,17 +833,17 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       100,
       "CoreWorker.RecoverObjects");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms(),
       "CoreWorker.InternalHeartbeat");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       RayConfig::instance().metrics_report_interval_ms() / 2,
       "CoreWorker.RecordMetrics");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { TryDeleteObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
       "CoreWorker.GCStreamingGeneratorMetadata");
@@ -3027,9 +3027,9 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
-  PeriodicalRunner signal_checker(task_execution_service_);
+  auto signal_checker = PeriodicalRunner::Create(task_execution_service_);
   if (options_.check_signals) {
-    signal_checker.RunFnPeriodically(
+    signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
           auto status = options_.check_signals();

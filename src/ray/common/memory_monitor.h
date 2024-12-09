@@ -233,7 +233,7 @@ class MemoryMonitor {
   /// Callback function that executes at each monitoring interval,
   /// on a dedicated thread managed by this class.
   const MemoryUsageRefreshCallback monitor_callback_;
-  PeriodicalRunner runner_;
+  std::shared_ptr<PeriodicalRunner> runner_;
 };
 
 }  // namespace ray
