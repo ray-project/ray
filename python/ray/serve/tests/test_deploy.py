@@ -213,7 +213,7 @@ def test_redeploy_multiple_replicas(serve_instance):
         ref2.result(timeout_s=1)
 
     # Redeploy new version.
-    serve._run(V2.bind(), _blocking=False, name="app")
+    h = serve._run(V2.bind(), _blocking=False, name="app")
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=2)
 
@@ -225,7 +225,7 @@ def test_redeploy_multiple_replicas(serve_instance):
         vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
         # Since there is one replica blocking, only one new
         # replica should be started up.
-        assert "v1" in vals2
+        assert set(vals2) == {"v1", "v2"}
 
     # Signal the original call to exit.
     ray.get(signal.send.remote())
@@ -324,10 +324,16 @@ def test_reconfigure_multiple_replicas(serve_instance, use_handle):
     make_nonblocking_calls({"2": 2})
 
 
-def test_reconfigure_with_queries(serve_instance):
+def test_reconfigure_does_not_run_while_there_are_active_queries(serve_instance):
+    """
+    This tests checks that reconfigure can't trigger while there are active requests,
+    so that the actor's state is not mutated mid-request.
+
+    https://github.com/ray-project/ray/pull/20315
+    """
     signal = SignalActor.remote()
 
-    @serve.deployment(max_ongoing_requests=10, num_replicas=3)
+    @serve.deployment(max_ongoing_requests=10, num_replicas=1)
     class A:
         def __init__(self):
             self.state = None
@@ -340,17 +346,36 @@ def test_reconfigure_with_queries(serve_instance):
             return self.state["a"]
 
     handle = serve.run(A.options(version="1", user_config={"a": 1}).bind())
-    responses = [handle.remote() for _ in range(30)]
+    responses = [handle.remote() for _ in range(10)]
+
+    # Give the queries time to get to the replicas before the reconfigure.
+    time.sleep(0.1)
 
     @ray.remote(num_cpus=0)
     def reconfigure():
         serve.run(A.options(version="1", user_config={"a": 2}).bind())
 
+    # Start the reconfigure;
+    # this will not complete until the signal is released
+    # to allow the queries to complete.
     reconfigure_ref = reconfigure.remote()
+
+    # Release the signal to allow the queries to complete.
     signal.send.remote()
+
+    # Wait for the reconfigure to complete.
     ray.get(reconfigure_ref)
 
-    assert all([r.result() == 1 for r in responses])
+    # These should all be 1 because the queries were sent before the reconfigure,
+    # the reconfigure blocks until they complete,
+    # and we just waited for the reconfigure to finish.
+    results = [r.result() for r in responses]
+    print(results)
+    assert all([r == 1 for r in results])
+
+    # If we query again, it should be 2,
+    # because the reconfigure will have gone through after the
+    # original queries completed.
     assert handle.remote().result() == 2
 
 
