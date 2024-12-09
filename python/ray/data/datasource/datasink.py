@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, fields
-from typing import Iterable, List, Optional
+from typing import Any, Iterable, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
@@ -67,7 +67,7 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -82,6 +82,7 @@ class Datasink:
         This can be used to "commit" a write output. This method must
         succeed prior to ``write_datasink()`` returning to the user. If this
         method fails, then ``on_write_failed()`` is called.
+        Return value of write function is stored in payload column.
 
         Args:
             write_result_blocks: The blocks resulting from executing
@@ -165,7 +166,7 @@ class DummyOutputDatasink(Datasink):
                 self.rows_written = 0
                 self.enabled = True
 
-            def write(self, block: Block) -> None:
+            def write(self, block: Block) -> Any:
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
 
@@ -181,7 +182,7 @@ class DummyOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")

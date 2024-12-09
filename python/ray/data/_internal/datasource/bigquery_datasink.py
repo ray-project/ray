@@ -3,7 +3,7 @@ import os
 import tempfile
 import time
 import uuid
-from typing import Iterable, Optional
+from typing import Any, Iterable, Optional
 
 import pyarrow.parquet as pq
 
@@ -70,7 +70,7 @@ class BigQueryDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         def _write_single_block(block: Block, project_id: str, dataset: str) -> None:
             from google.api_core import exceptions
             from google.cloud import bigquery

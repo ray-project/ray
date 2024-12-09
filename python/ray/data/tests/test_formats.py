@@ -1,6 +1,6 @@
 import os
 import sys
-from typing import Iterable, List
+from typing import Any, Iterable, List
 
 import pandas as pd
 import pyarrow as pa
@@ -236,7 +236,7 @@ class NodeLoggerOutputDatasink(Datasink):
                 self.rows_written = 0
                 self.node_ids = set()
 
-            def write(self, node_id: str, block: Block) -> str:
+            def write(self, node_id: str, block: Block) -> Any:
                 block = BlockAccessor.for_block(block)
                 self.rows_written += block.num_rows()
                 self.node_ids.add(node_id)
@@ -255,7 +255,7 @@ class NodeLoggerOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         data_sink = self.data_sink
 
         def write(b):
