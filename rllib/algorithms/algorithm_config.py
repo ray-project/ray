@@ -31,7 +31,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -71,7 +70,6 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
-    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
