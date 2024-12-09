@@ -238,9 +238,6 @@ class Learner(Checkpointable):
 
         self._distributed = self.config.num_learners > 1
         self._use_gpu = self.config.num_gpus_per_learner > 0
-        # If we are using gpu but we are not distributed, use this gpu for training.
-        self._local_gpu_idx = self.config.local_gpu_idx
-
         # whether self.build has already been called
         self._is_built = False
 

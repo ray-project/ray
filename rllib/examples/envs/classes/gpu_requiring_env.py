@@ -28,9 +28,9 @@ class GPURequiringEnv(SimpleCorridor):
         # necessarily require a GPU, you can perform the below assertion only
         # if `config.worker_index != 0`.
         gpus_available = ray.get_gpu_ids()
-        assert len(gpus_available) > 0, "Not enough GPUs for this env!"
-
         print(f"{type(self).__name__} can see GPUs={gpus_available}")
+
+        assert len(gpus_available) > 0, "Not enough GPUs for this env!"
 
         # Create a dummy tensor on the GPU.
         if torch:

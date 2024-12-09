@@ -451,24 +451,24 @@ class TorchLearner(Learner):
             # get_devices() returns a list that contains the 0th device if
             # it is called from outside a Ray Train session. It's necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
-            # option here through the local gpu id scaling config parameter.
+            # option here through `config.local_gpu_idx`.
             if self._distributed:
                 devices = get_devices()
                 assert len(devices) == 1, (
-                    "`get_devices()` should only return one cuda device, "
-                    f"but {devices} was returned instead."
+                    f"`get_devices()` should only return one cuda device, but {devices}"
+                    " was returned instead."
                 )
                 self._device = devices[0]
             else:
-                assert self._local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
+                assert self.config.local_gpu_idx < torch.cuda.device_count(), (
+                    f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU id "
+                    "or is not available."
                 )
                 # this is an index into the available cuda devices. For example if
                 # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
                 # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
                 # the gpu with id 1 on the node.
-                self._device = torch.device(self._local_gpu_idx)
+                self._device = torch.device(self.config.local_gpu_idx)
         else:
             self._device = torch.device("cpu")
 

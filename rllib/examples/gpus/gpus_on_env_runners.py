@@ -57,25 +57,19 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=180, default_timesteps=100000
 )
-parser.set_defaults(num_env_runners=2)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_env_runners=2,
+)
 parser.add_argument("--num-gpus-per-env-runner", type=float, default=0.5)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
 
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
-
     base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
-        # This script only works on the new API stack.
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(GPURequiringEnv)
         # Define Learner scaling.
         .env_runners(
