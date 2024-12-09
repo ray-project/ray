@@ -57,8 +57,8 @@ class GcsInitData {
   }
 
   /// Get placement group metadata.
-  const absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData> &
-  PlacementGroups() const {
+  const absl::flat_hash_map<PlacementGroupID, rpc::PlacementGroupTableData>
+      &PlacementGroups() const {
     return placement_group_table_data_;
   }
 
