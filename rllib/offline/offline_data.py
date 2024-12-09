@@ -176,6 +176,8 @@ class OfflineData:
             # by splitting the data stream.
             if num_shards > 1:
                 logger.debug("===> [OfflineData]: Return streaming_split ... ")
+                # In case of multiple shards, we return multiple
+                # `StreamingSplitIterator` instances.
                 self.batch_iterators = self.data.streaming_split(
                     n=num_shards,
                     # Note, `equal` must be `True`, i.e. the batch size must
@@ -204,24 +206,6 @@ class OfflineData:
         # Do we want to return an iterator or a single batch?
         if return_iterator:
             return self.batch_iterators
-            # In case of multiple shards, we return multiple
-            # `StreamingSplitIterator` instances.
-            if num_shards > 1:
-                if not self.batch_iterators:
-                    logger.debug("===> [OfflineData]: Return streaming_split ... ")
-                    self.batch_iterators = self.data.streaming_split(
-                        n=num_shards,
-                        # Note, `equal` must be `True`, i.e. the batch size must
-                        # be the same for all batches b/c otherwise remote learners
-                        # could block each others.
-                        equal=True,
-                        locality_hints=self.locality_hints,
-                    )
-                return self.batch_iterators
-
-            # Otherwise, we return a simple batch `DataIterator`.
-            else:
-                return self.batch_iterators
         else:
             # Return a single batch from the iterator.
             try:
