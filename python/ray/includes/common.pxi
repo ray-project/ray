@@ -11,6 +11,8 @@ from ray.includes.common cimport (
     kResourceUnitScaling,
     kImplicitResourcePrefix,
     kStreamingGeneratorReturn,
+    kRayLabelMaxLength,
+    kRayDefaultLabelKeyPrefix,
 )
 
 from ray.exceptions import (
@@ -119,3 +121,5 @@ WORKER_PROCESS_SETUP_HOOK_KEY_NAME_GCS = str(kWorkerSetupHookKeyName)
 RESOURCE_UNIT_SCALING = kResourceUnitScaling
 IMPLICIT_RESOURCE_PREFIX = kImplicitResourcePrefix.decode()
 STREAMING_GENERATOR_RETURN = kStreamingGeneratorReturn
+RAY_LABEL_MAX_LENGTH = kRayLabelMaxLength
+RAY_DEFAULT_LABEL_KEY_PREFIX = kRayDefaultLabelKeyPrefix.decode()
