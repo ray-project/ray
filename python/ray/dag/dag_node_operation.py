@@ -212,7 +212,7 @@ def _push_candidate_node_if_ready(
     actor_to_candidates: Dict["ray._raylet.ActorID", List[_DAGOperationGraphNode]],
     node: _DAGOperationGraphNode,
 ) -> None:
-    if node.in_degree == 0 and node.nccl_op is not None:
+    if node.nccl_op is not None:
         node.nccl_op.ready_task_idxs.add(node.task_idx)
     if node.is_ready:
         if node.nccl_op is None or not node.nccl_op.scheduled:
@@ -266,14 +266,9 @@ def _select_next_nodes(
     heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
 
     if top_priority_node.nccl_op is not None:
-        next_nodes = []
-        for idx in top_priority_node.nccl_op.task_idxs:
-            node = graph[idx]
-            assert node.is_ready
-            next_nodes.append(node)
+        next_nodes = [graph[idx] for idx in top_priority_node.nccl_op.task_idxs]
     else:
         next_nodes = [top_priority_node]
-
     return next_nodes
 
 
