@@ -309,7 +309,7 @@ def test_redis_cleanup(redis_replicas, shutdown_only):
     else:
         cli = redis.Redis(host, int(port))
 
-    table_names = ["KV", "INTERNAL_CONFIG", "WORKERS", "JobCounter", "NODE", "JOB"]
+    table_names = ["KV", "WORKERS", "JobCounter", "NODE", "JOB"]
     c1_keys = [f"RAYc1@{name}".encode() for name in table_names]
     c2_keys = [f"RAYc2@{name}".encode() for name in table_names]
     assert set(cli.keys()) == set(c1_keys + c2_keys)
