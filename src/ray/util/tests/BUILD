@@ -206,3 +206,12 @@ cc_test(
     copts = COPTS,
     tags = ["team:core"],
 )
+
+cc_library(
+    name = "resize_uninitialized",
+    hdrs = ["resize_uninitialized.h"],
+    visibility = ["//visibility:public"],
+    deps = [
+        "@com_google_absl//absl/strings:internal",
+    ],
+)
