@@ -1,6 +1,6 @@
 import asyncio
 from collections import defaultdict
-from typing import Dict, List, Optional, Tuple
+from typing import TYPE_CHECKING, Dict, List, Optional, Tuple
 
 import ray
 from ray.experimental.channel.communicator import (
@@ -8,6 +8,9 @@ from ray.experimental.channel.communicator import (
     ReduceOp,
     TorchTensorAllocator,
 )
+
+if TYPE_CHECKING:
+    import torch
 
 
 @ray.remote(num_cpus=0)
@@ -65,7 +68,7 @@ class CPUCommBarrier:
 
     def _apply_op(self, op: ReduceOp, tensors: List["torch.Tensor"]) -> "torch.Tensor":
         """Apply the specified reduction operation across a list of tensors."""
-        import torch
+
         result = tensors[0].clone()
         if op == ReduceOp.SUM:
             for tensor in tensors[1:]:

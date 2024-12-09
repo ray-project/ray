@@ -427,7 +427,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
 
         def destroy(self) -> None:
             return self._inner.destroy()
-        
+
         def get_device_type(self) -> str:
             return "nccl"
 
@@ -1155,7 +1155,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 
         def destroy(self) -> None:
             return self._inner.destroy()
-        
+
         def get_device_type(self) -> str:
             return "nccl"
 
