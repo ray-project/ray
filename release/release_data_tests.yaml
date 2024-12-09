@@ -421,97 +421,43 @@
       cluster:
         cluster_compute: compute_gpu_1g5c_gce.yaml
 
-#########################
-# Map and iteration tests
-#########################
+#################
+# Iteration tests
+#################
+
+- name: iter_batches
+
+  run:
+    timeout: 2400
+
+  variations:
+    - __suffix__: numpy
+      run:
+        script: python iter_benchmark.py iter_batches --batch-format numpy
+    - __suffix__: pandas
+      run:
+        script: python iter_benchmark.py iter_batches --batch-format pandas
+    - __suffix__: pyarrow
+      run:
+        script: python iter_benchmark.py iter_batches --batch-format pyarrow
+
+- name: to_tf
+
+  run:
+    timeout: 5400
+    script: python iter_benchmark.py to_tf 
+
+- name: iter_torch_batches
+
+  run:
+    timeout: 5400
+    script: python iter_benchmark.py iter_torch_batches 
+
+###########
+# Map tests
+###########
 
 - name: map_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python map_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python iter_tensor_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_multi_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: multi_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish within 90 minutes.
-    timeout: 5400
-    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: multi_node_benchmark_compute_gce.yaml
-
-- name: iter_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
   run:
     # Expect the benchmark to finish around 12 minutes.
     timeout: 1080
