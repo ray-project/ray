@@ -79,6 +79,8 @@ class InstrumentedIOContextWithThread {
   const std::string &GetName() const { return thread_name_; }
 
   // Idempotent. Once it's stopped you can't restart it.
+  // TODO(dayshah): Try to get stop on same thread as run so io operations can be
+  // unsafe on io_context (if we find it makes a perf difference)
   void Stop() {
     io_service_.stop();
     if (io_thread_.joinable()) {
