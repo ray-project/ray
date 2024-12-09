@@ -591,7 +591,7 @@ def test_using_grpc_context(ray_instance, ray_shutdown, streaming: bool):
     assert error_message == rpc_error.details()
     assert trailing_metadata in rpc_error.trailing_metadata()
     # request_id should always be set in the trailing metadata.
-    assert any([key == "request_id" for key, _ in rpc_error.trailing_metadata()])
+    assert any(key == "request_id" for key, _ in rpc_error.trailing_metadata())
 
 
 @pytest.mark.parametrize("streaming", [False, True])
