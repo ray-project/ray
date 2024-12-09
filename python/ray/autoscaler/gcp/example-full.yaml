@@ -109,7 +109,7 @@ available_node_types:
             # Run workers on preemtible instance by default.
             # Comment this out to use on-demand.
             scheduling:
-              - preemptible: true
+              preemptible: true
             # Un-Comment this to launch workers with the Service Account of the Head Node
             # serviceAccounts:
             # - email: ray-autoscaler-sa-v1@<project_id>.iam.gserviceaccount.com
