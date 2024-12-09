@@ -274,9 +274,7 @@ def _select_next_nodes(
 
 def _build_dag_node_operation_graph(
     idx_to_task: Dict[int, "ray.dag.compiled_dag_node.CompiledTask"],
-    actor_to_operation_nodes: Dict[
-        "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
-    ],
+    actor_to_op_nodes: Dict["ray.actor.ActorHandle", List[_DAGOperationGraphNode]],
 ) -> Dict[int, _DAGOperationGraphNode]:
     """
     Generate a DAG node operation graph by adding edges based on the
@@ -309,9 +307,9 @@ def _build_dag_node_operation_graph(
     assert idx_to_task
     graph: Dict[int, _DAGOperationGraphNode] = {}
 
-    for operation_nodes in actor_to_operation_nodes.values():
+    for op_nodes in actor_to_op_nodes.values():
         prev_node = None
-        for node in operation_nodes:
+        for node in op_nodes:
             # Add an edge from task with `bind_index` i to task with
             # `bind_index` i+1 if they belong to the same actor.
             if (
@@ -327,8 +325,7 @@ def _build_dag_node_operation_graph(
     for task_idx, task in idx_to_task.items():
         if not (isinstance(task.dag_node, ClassMethodNode)):
             # The graph is used to generate an execution schedule for each actor.
-            # The edge from the InputNode has no impact on the final execution
-            # schedule.
+            # The edge from the InputNode has no impact on the final execution schedule.
             continue
         if (
             isinstance(task.dag_node, ClassMethodNode)
@@ -603,9 +600,8 @@ def _generate_overlapped_execution_schedule(
         "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
     ] = copy.deepcopy(actor_to_execution_schedule)
     for overlapped_schedule in actor_to_overlapped_schedule.values():
-        # Swap each NCCL read operation with its previous compute node to overlap
-        # the NCCL read operation with computation. The index starts at 1 because
-        # the first node has no previous node.
+        # Swap each NCCL read with the previous compute to overlap the NCCL read
+        # with computation.
         for i in range(1, len(overlapped_schedule)):
             if (
                 overlapped_schedule[i].requires_nccl_read

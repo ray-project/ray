@@ -1931,7 +1931,7 @@ class CompiledDAG:
         assert self.idx_to_task
         assert self.actor_to_executable_tasks
 
-        actor_to_operation_nodes: Dict[
+        actor_to_op_nodes: Dict[
             "ray.actor.ActorHandle", List[_DAGOperationGraphNode]
         ] = defaultdict(list)
 
@@ -1941,7 +1941,6 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                # [TODO] Set all three requires_nccl_*.
                 requires_nccl_read = dag_node.requires_nccl_read
                 requires_nccl_write = dag_node.requires_nccl_write
                 requires_nccl_collective = dag_node.requires_nccl_collective
@@ -1956,9 +1955,9 @@ class CompiledDAG:
                     requires_nccl_collective,
                 )
 
-                actor_to_operation_nodes[actor_handle].append(compute_node)
+                actor_to_op_nodes[actor_handle].append(compute_node)
 
-        return actor_to_operation_nodes
+        return actor_to_op_nodes
 
     def _build_execution_schedule(
         self,
@@ -2071,15 +2070,13 @@ class CompiledDAG:
                 if task.dag_node.type_hint.requires_nccl():
                     assert isinstance(task.dag_node, _P2PSendNode)
                     if _is_same_actor(idx, downstream_idx):
-                        assert isinstance(
-                            self.idx_to_task[downstream_idx].dag_node, _P2PRecvNode
-                        )
+                        downstream_task = self.idx_to_task[downstream_idx]
+                        assert isinstance(downstream_task.dag_node, _P2PRecvNode)
+                        assert len(downstream_task.downstream_task_idxs) == 1
                         actor_handle = self.idx_to_task[
                             idx
                         ].dag_node._get_actor_handle()
                         method = self.idx_to_task[idx].args[0].get_method_name()
-                        downstream_task = self.idx_to_task[downstream_idx]
-                        assert len(downstream_task.downstream_task_idxs) == 1
                         downstream_method = self.idx_to_task[
                             list(downstream_task.downstream_task_idxs)[0]
                         ].dag_node.get_method_name()
