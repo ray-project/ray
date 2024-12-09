@@ -6,10 +6,20 @@ See the [GKE documentation](<https://cloud.google.com/kubernetes-engine/docs/how
 
 ## Step 1: Create a Kubernetes cluster on GKE
 
-Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install).
+Run the following commands on your local machine or on the [Google Cloud Shell](https://cloud.google.com/shell). If running from your local machine, install the [Google Cloud SDK](https://cloud.google.com/sdk/docs/install). The following examples use v4 TPU nodes, which are available in the us-central2-b compute region. For more information on TPU versions and their availability by region and zone, see [Plan TPUs in GKE](https://cloud.google.com/kubernetes-engine/docs/concepts/plan-tpus).
 
-Create a Standard GKE cluster and enable the Ray Operator in the us-central2-b compute region:
+### GKE Autopilot
 
+Create an Autopilot GKE cluster with the Ray Operator enabled:
+```sh
+gcloud container clusters create-auto kuberay-tpu-cluster \
+    --enable-ray-operator \
+    --cluster-version=1.30 \
+    --location=us-central2
+```
+
+### GKE Standard
+Create a Standard GKE cluster with the Ray Operator in the us-central2-b compute region:
 ```sh
 gcloud container clusters create kuberay-tpu-cluster \
     --addons=RayOperator \
@@ -25,9 +35,9 @@ Create a node pool with a single-host TPU topology as follows:
 gcloud container node-pools create tpu-pool \
   --zone us-central2-b \
   --cluster kuberay-tpu-cluster \
-  --num-nodes 1 \
+  --num-nodes 0 \
   --min-nodes 0 \
-  --max-nodes 10 \
+  --max-nodes 4 \
   --enable-autoscaling \
   --machine-type ct4p-hightpu-4t \
   --tpu-topology 2x2x1
@@ -39,9 +49,9 @@ Alternatively, create a multi-host node pool as follows:
 gcloud container node-pools create tpu-pool \
   --zone us-central2-b \
   --cluster kuberay-tpu-cluster \
-  --num-nodes 2 \
+  --num-nodes 0 \
   --min-nodes 0 \
-  --max-nodes 10 \
+  --max-nodes 4 \
   --enable-autoscaling \
   --machine-type ct4p-hightpu-4t \
   --tpu-topology 2x2x2
