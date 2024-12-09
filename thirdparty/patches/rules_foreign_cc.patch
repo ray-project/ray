@@ -1,0 +1,13 @@
+diff --git foreign_cc/private/framework/toolchains/linux_commands.bzl foreign_cc/private/framework/toolchains/linux_commands.bzl
+index 3cc818e..eb39696 100644
+--- foreign_cc/private/framework/toolchains/linux_commands.bzl
++++ foreign_cc/private/framework/toolchains/linux_commands.bzl
+@@ -86,7 +86,7 @@ fi
+     )
+ 
+ def copy_dir_contents_to_dir(source, target):
+-    return """cp -L -r --no-target-directory "{source}" "{target}" && find "{target}" -type f -exec touch -r "{source}" "{{}}" \\;""".format(
++    return """cp -L -r --no-target-directory "{source}" "{target}" && find "{target}" -exec chmod u+w "{{}}" + && find "{target}" -type f -exec touch -r "{source}" "{{}}" \\;""".format(
+         source = source,
+         target = target,
+     )
