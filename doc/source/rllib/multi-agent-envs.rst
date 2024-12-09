@@ -340,7 +340,7 @@ Such a group of agents can then be assigned to a single policy for centralized e
 or to specialized multi-agent policies that implement centralized training, but
 decentralized execution.
 
-You can use the :py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.with_agent_groups()``
+You can use the :py:meth:`~ray.rllib.env.multi_agent_env.MultiAgentEnv.with_agent_groups`
 method to define these groups:
 
 .. literalinclude:: ../../../rllib/env/multi_agent_env.py
@@ -384,7 +384,10 @@ multi-agent environments, directly compatible with RLlib through the built-in
 
     config = PPOConfig.environment("prison", env_config={"num_floors": 5})
 
-See `rllib_pistonball.py <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__ for a full example.
+See `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__
+for an end-to-env example with the `water world env <https://pettingzoo.farama.org/environments/sisl/waterworld/>`__
+
+Also, `see here for an example on the pistonball env with RLlib <https://github.com/Farama-Foundation/PettingZoo/blob/master/tutorials/Ray/rllib_pistonball.py>`__.
 
 
 .. _deepmind-openspiel-api:
@@ -412,6 +415,10 @@ The API is directly compatible with RLlib through the built-in
     )
 
     config = PPOConfig.environment("open_spiel_env")
+
+
+See here for an `end-to-end example with the Connect-4 env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__
+of OpenSpiel trained by an RLlib algorithm, using a self-play strategy.
 
 
 Configuring Multi-Agent Training with Shared Algorithms

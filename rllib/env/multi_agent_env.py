@@ -6,11 +6,7 @@ import numpy as np
 
 from ray.rllib.env.base_env import BaseEnv
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.utils.annotations import (
-    OldAPIStack,
-    override,
-    PublicAPI,
-)
+from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.typing import (
     AgentID,
@@ -20,7 +16,7 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
-from ray.util import log_once
+from ray.util import log_once, PublicAPI
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -28,7 +24,7 @@ ENV_STATE = "state"
 logger = logging.getLogger(__name__)
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 class MultiAgentEnv(gym.Env):
     """An environment that hosts multiple independent agents.
 

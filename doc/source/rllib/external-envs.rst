@@ -5,42 +5,45 @@
 .. _rllib-external-env-setups-doc:
 
 
-External Agents and Applications
---------------------------------
+External Environments and Applications
+--------------------------------------
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib. For example, if a policy is to be used in a web serving system, then it is more natural for an agent to query a service that serves policy decisions, and for that service to learn from experience over time. This case also naturally arises with **external simulators** (e.g. Unity3D, other game engines, or the Gazebo robotics simulator) that run independently outside the control of RLlib, but may still want to leverage RLlib for training.
+In many situations, it does not make sense for an environment to be "stepped" by RLlib.
+For example, if a policy is to be used in a web serving system, then it is more natural
+for an agent to query a service that collects experiences (in batch) and for that
+service to learn over time.
+
+This case also naturally arises with **external simulators** (e.g. Unreal Engine, other game engines,
+or the Gazebo robotics simulator) that run independently outside the control of RLlib,
+but may still want to leverage RLlib for training.
 
 .. figure:: images/rllib-training-inside-a-unity3d-env.png
     :scale: 75 %
 
     A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides the `ExternalEnv <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ class for this purpose.
-Unlike other envs, ExternalEnv has its own thread of control. At any point, agents on that thread can query the current policy for decisions via ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
+RLlib provides an external messaging protocol
+` <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ for this purpose.
+At any point, agents on that thread can query the current policy for decisions via
+``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.
 
 See these examples for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__
 and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
-scripts, in which we setup an RLlib policy server that listens on one or more ports for client connections
-and connect several clients to this server to learn the env.
+scripts, in which we setup an RLlib policy server that listens on one or more ports for
+client connections and connect several clients to this server to learn the env.
 
-Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__ shows,
-how to run a similar setup against a Unity3D external game engine.
+Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__
+shows, how to run a similar setup against a Unity3D external game engine.
 
-
-Logging off-policy actions
-~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-ExternalEnv provides a ``self.log_action()`` call to support off-policy actions. This allows the client to make independent decisions, e.g., to compare two different policies, and for RLlib to still learn from those off-policy actions. Note that this requires the algorithm used to support learning from off-policy decisions (e.g., DQN).
-
-.. seealso::
-
-    `Offline Datasets <rllib-offline.html>`__ provide higher-level interfaces for working with off-policy experience datasets.
 
 External Application Clients
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For applications that are running entirely outside the Ray cluster (i.e., cannot be packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput`` application connector, which can be connected to over the network using ``PolicyClient`` instances.
+For applications that are running entirely outside the Ray cluster (i.e., cannot be
+packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput``
+application connector, which can be connected to over the network using ``PolicyClient``
+instances.
 
 You can configure any Algorithm to launch a policy server with the following config:
 
@@ -118,12 +121,3 @@ CartPole Example:
     ...
 
 For the best performance, we recommend using ``inference_mode="local"`` when possible.
-
-Advanced Integrations
----------------------
-
-For more complex / high-performance environment integrations, you can instead extend the low-level
-`BaseEnv <https://github.com/ray-project/ray/blob/master/rllib/env/base_env.py>`__ class.
-This low-level API models multiple agents executing asynchronously in multiple environments.
-A call to ``BaseEnv:poll()`` returns observations from ready agents keyed by 1) their environment, then 2) agent ids.
-Actions for those agents are sent back via ``BaseEnv:send_actions()``. BaseEnv is used to implement all the other env types in RLlib, so it offers a superset of their functionality.
