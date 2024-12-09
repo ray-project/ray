@@ -163,6 +163,8 @@ class SingleAgentEpisode:
         "t",
         "t_started",
         "_action_space",
+        "_last_added_observation",
+        "_last_added_infos",
         "_last_step_time",
         "_observation_space",
         "_start_time",
@@ -346,6 +348,9 @@ class SingleAgentEpisode:
         self._start_time = None
         self._last_step_time = None
 
+        self._last_added_observation = None
+        self._last_added_infos = None
+
         # Validate the episode data thus far.
         self.validate()
 
@@ -379,6 +384,9 @@ class SingleAgentEpisode:
 
         self.observations.append(observation)
         self.infos.append(infos)
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Validate our data.
         self.validate()
@@ -433,6 +441,9 @@ class SingleAgentEpisode:
                 self.extra_model_outputs[k].append(v)
         self.is_terminated = terminated
         self.is_truncated = truncated
+
+        self._last_added_observation = observation
+        self._last_added_infos = infos
 
         # Only check spaces if finalized AND every n timesteps.
         if self.is_finalized and self.t % 50:
