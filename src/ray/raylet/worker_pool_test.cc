@@ -398,10 +398,10 @@ class WorkerPoolMock : public WorkerPool {
   rpc::ClientCallManager client_call_manager_;
   absl::flat_hash_map<WorkerID, std::shared_ptr<MockWorkerClient>>
       &mock_worker_rpc_clients_;
-  void HandleNewClient(ClientConnection &) {};
+  void HandleNewClient(ClientConnection &) {}
   void HandleMessage(std::shared_ptr<ClientConnection>,
                      int64_t,
-                     const std::vector<uint8_t> &) {};
+                     const std::vector<uint8_t> &) {}
 };
 
 class WorkerPoolTest : public ::testing::Test {
