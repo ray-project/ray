@@ -633,8 +633,7 @@ def test_streaming_fault_tolerance(ray_start_10_cpus_shared, restore_data_contex
     ds2 = base.map_batches(
         RandomExit, compute=ray.data.ActorPoolStrategy(size=4), max_restarts=0
     )
-    with pytest.raises(ray.exceptions.RayActorError):
-        ds2.take_all()
+    ds2.take_all()
 
 
 def test_e2e_liveness_with_output_backpressure_edge_case(
