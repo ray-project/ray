@@ -10,7 +10,7 @@ Learn how to:
 1. Configure a model to run distributed and on the correct CPU/GPU/other accelerator devices.
 2. Configure a dataloader to shard data across the :ref:`workers <train-overview-worker>` and place data on the correct CPU, GPU, or other accelerator devices.
 3. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
-4. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU, or :ref:`other accelerator <using-gpus-or-other-accelerators>` resource requirements for a training job.
+4. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU, or :ref:`other accelerator <using-other-accelerators>` resource requirements for a training job.
 5. Launch a distributed training job with a :class:`~ray.train.torch.TorchTrainer` class.
 
 Quickstart
