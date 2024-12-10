@@ -731,7 +731,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
-      gcs_client_, *actor_task_submitter_, reference_counter_);
+      gcs_client_, *actor_task_submitter_, *reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;

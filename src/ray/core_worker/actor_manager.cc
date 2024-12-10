@@ -40,7 +40,7 @@ ActorID ActorManager::RegisterActorHandle(std::unique_ptr<ActorHandle> actor_han
                             is_self,
                             /*owned*/ false));
   ObjectID actor_handle_id = ObjectID::ForActorHandle(actor_id);
-  reference_counter_->AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
+  reference_counter_.AddBorrowedObject(actor_handle_id, outer_object_id, owner_address);
   return actor_id;
 }
 
@@ -122,13 +122,13 @@ bool ActorManager::AddNewActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
   // Detached actor doesn't need ref counting.
   if (owned) {
-    reference_counter_->AddOwnedObject(actor_creation_return_id,
-                                       /*inner_ids=*/{},
-                                       caller_address,
-                                       call_site,
-                                       /*object_size*/ -1,
-                                       /*is_reconstructable=*/true,
-                                       /*add_local_ref=*/true);
+    reference_counter_.AddOwnedObject(actor_creation_return_id,
+                                      /*inner_ids=*/{},
+                                      caller_address,
+                                      call_site,
+                                      /*object_size*/ -1,
+                                      /*is_reconstructable=*/true,
+                                      /*add_local_ref=*/true);
   }
 
   return AddActorHandle(std::move(actor_handle),
@@ -150,7 +150,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
                                   bool is_self,
                                   bool owned) {
   if (add_local_ref) {
-    reference_counter_->AddLocalReference(actor_creation_return_id, call_site);
+    reference_counter_.AddLocalReference(actor_creation_return_id, call_site);
   }
   actor_task_submitter_.AddActorQueueIfNotExists(
       actor_id,
@@ -172,7 +172,7 @@ bool ActorManager::AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
   }
 
   if (inserted && owned) {
-    RAY_CHECK(reference_counter_->AddObjectOutOfScopeOrFreedCallback(
+    RAY_CHECK(reference_counter_.AddObjectOutOfScopeOrFreedCallback(
         actor_creation_return_id, [this, actor_id](const ObjectID &object_id) {
           MarkActorKilledOrOutOfScope(GetActorHandle(actor_id));
         }));
@@ -198,8 +198,8 @@ void ActorManager::WaitForActorRefDeleted(
   // already been evicted by the time we get this request, in which case we should
   // respond immediately so the gcs server can destroy the actor.
   const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
-  if (!reference_counter_->SetObjectRefDeletedCallback(actor_creation_return_id,
-                                                       callback)) {
+  if (!reference_counter_.SetObjectRefDeletedCallback(actor_creation_return_id,
+                                                      callback)) {
     RAY_LOG(DEBUG) << "ActorID reference already gone for " << actor_id;
     callback(actor_creation_return_id);
   }
