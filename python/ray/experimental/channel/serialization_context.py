@@ -97,7 +97,11 @@ class _SerializationContext:
 
         return self.serialize_to_numpy(tensor)
 
-    def serialize_to_numpy(self, tensor: "torch.Tensor") -> "np.ndarray":
+    def serialize_to_numpy(
+        self, tensor: "torch.Tensor"
+    ) -> Tuple["np.ndarray", "torch.dtype"]:
+        import torch
+
         # Transfer through Ray's shared memory store for now.
         # TODO(swang): This requires two copies, one to transfer from GPU to
         # CPU and another from CPU to shared memory. Ideally we should elide
@@ -106,7 +110,10 @@ class _SerializationContext:
         if tensor.device.type == "cuda":
             tensor = tensor.to("cpu")
 
-        return tensor.numpy()
+        # Numpy does not have an equivalent dtype for all torch dtypes, so
+        # instead of casting directly to numpy, we first use a view with a
+        # common dtype and then view as numpy array.
+        return (tensor.view(torch.uint8).numpy(), tensor.dtype)
 
     def deserialize_tensor(self, val: Union["np.ndarray", int]):
         # Found a placeholder for a tensor that was serialized via NCCL.
@@ -119,12 +126,16 @@ class _SerializationContext:
 
         return self.deserialize_from_numpy(val)
 
-    def deserialize_from_numpy(self, np_array: "np.ndarray"):
+    def deserialize_from_numpy(
+        self, np_array_dtype: Tuple["np.ndarray", "torch.dtype"]
+    ):
         import torch
 
         from ray.experimental.channel import ChannelContext
 
         ctx = ChannelContext.get_current()
+
+        np_array, dtype = np_array_dtype
 
         # TODO(swang): Support local P2P transfers if available.
         # If there is a GPU assigned to this worker, move it there.
@@ -133,7 +144,7 @@ class _SerializationContext:
             def convert_numpy_to_tensor(np_array, ctx):
                 # It does zero-copy convert np_array inside shared memroy to
                 # a tensor. Since we move data to GPU immediately, it is safe.
-                cpu_tensor = torch.from_numpy(np_array)
+                cpu_tensor = torch.from_numpy(np_array).view(dtype)
                 return cpu_tensor.to(device=ctx.torch_device)
 
             global _TORCH_WARNING_FILTER_ACTIVATE
@@ -160,4 +171,4 @@ class _SerializationContext:
         # TODO(swang): Use zero-copy from_numpy() if np_array.flags.writeable
         # is True. This is safe to set when deserializing np_array if the
         # upstream task has num_readers=1.
-        return torch.tensor(np_array, device=ctx.torch_device)
+        return torch.tensor(np_array, device=ctx.torch_device).view(dtype)
