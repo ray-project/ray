@@ -51,7 +51,7 @@ class MultiAgentEnv(gym.Env):
     # This attribute should not be changed during the lifetime of this env.
     possible_agents: List[AgentID] = []
 
-    # @OldAPIStack
+    # @OldAPIStack, use `observation_spaces` and `action_spaces`, instead.
     observation_space: Optional[gym.Space] = None
     action_space: Optional[gym.Space] = None
 
