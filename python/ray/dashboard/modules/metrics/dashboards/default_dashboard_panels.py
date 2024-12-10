@@ -56,11 +56,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
+                expr='clamp_min(sum(ray_tasks{{IsRetry="0",State!~"FINISHED|FAILED",instance=~"$Instance",{global_filters}}}) by (Name), 0)',
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
+                expr='clamp_min(sum(ray_tasks{{IsRetry!="0",State!~"FINISHED|FAILED",instance=~"$Instance",{global_filters}}}) by (Name), 0)',
                 legend="{{Name}} (retry)",
             ),
         ],
@@ -74,11 +74,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
+                expr='clamp_min(sum(ray_tasks{{IsRetry="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}) by (Name), 0)',
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry!="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
+                expr='clamp_min(sum(ray_tasks{{IsRetry!="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}) by (Name), 0)',
                 legend="{{Name}} (retry)",
             ),
         ],
