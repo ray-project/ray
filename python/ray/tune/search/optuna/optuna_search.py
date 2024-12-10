@@ -375,7 +375,7 @@ class OptunaSearch(Searcher):
         if storage:
             assert isinstance(storage, BaseStorage), (
                 "The `storage` parameter in `OptunaSearcher` must be an instance "
-                "of `optuna.samplers.BaseStorage`."
+                "of `optuna.storages.BaseStorage`."
             )
         # If storage is not provided, just set self._storage to None
         # so that the default in-memory storage is used. We don't explicitly
