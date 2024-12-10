@@ -33,7 +33,7 @@ class TestClickHouseDatasource:
     def test_init(self, datasource):
         # Test query generation with columns, filters, and order_by
         expected_query = (
-            "SELECT column1, column2 FROM default.table_name " "ORDER BY column1"
+            "SELECT column1, column2 FROM default.table_name ORDER BY column1"
         )
         assert datasource._query == expected_query
 
