@@ -74,11 +74,11 @@ DEFAULT_GRAFANA_PANELS = [
         unit="tasks",
         targets=[
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}})) by (Name)',
+                expr='sum(clamp_min(ray_tasks{{IsRetry="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
                 legend="{{Name}}",
             ),
             Target(
-                expr='sum(clamp_min(ray_tasks{{IsRetry!="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}})) by (Name)',
+                expr='sum(clamp_min(ray_tasks{{IsRetry!="0",State=~"RUNNING*",instance=~"$Instance",{global_filters}}}, 0)) by (Name)',
                 legend="{{Name}} (retry)",
             ),
         ],
