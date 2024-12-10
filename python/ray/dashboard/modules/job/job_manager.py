@@ -328,6 +328,7 @@ class JobManager:
         user_runtime_env: Dict[str, Any],
         submission_id: str,
         resources_specified: bool = False,
+        virtual_cluster_id: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Configure and return the runtime_env for the supervisor actor.
 
@@ -338,6 +339,7 @@ class JobManager:
                 in #24546 for GPU detection and just use the user's resource
                 requests, so that the behavior matches that of the user specifying
                 resources for any other actor.
+            virtual_cluster_id: ID of the virtual cluster the job belongs to.
 
         Returns:
             The runtime_env for the supervisor actor.
@@ -360,6 +362,10 @@ class JobManager:
             # driver can use GPUs if it wants to. This will be removed from
             # the driver's runtime_env so it isn't inherited by tasks & actors.
             env_vars[ray_constants.NOSET_CUDA_VISIBLE_DEVICES_ENV_VAR] = "1"
+
+        if virtual_cluster_id is not None:
+            env_vars[ray_constants.RAY_VIRTUAL_CLUSTER_ID_ENV_VAR] = virtual_cluster_id
+
         runtime_env["env_vars"] = env_vars
 
         if os.getenv(RAY_STREAM_RUNTIME_ENV_LOG_TO_JOB_DRIVER_LOG_ENV_VAR, "0") == "1":
@@ -426,6 +432,7 @@ class JobManager:
         submission_id: Optional[str] = None,
         runtime_env: Optional[Dict[str, Any]] = None,
         metadata: Optional[Dict[str, str]] = None,
+        virtual_cluster_id: Optional[str] = None,
         entrypoint_num_cpus: Optional[Union[int, float]] = None,
         entrypoint_num_gpus: Optional[Union[int, float]] = None,
         entrypoint_memory: Optional[int] = None,
@@ -528,6 +535,11 @@ class JobManager:
                 )
 
             driver_logger.info("Runtime env is setting up.")
+
+            virtual_cluster_metadata = {}
+            if virtual_cluster_id is not None:
+                virtual_cluster_metadata["virtual_cluster_id"] = virtual_cluster_id
+
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
                 name=JOB_ACTOR_NAME_TEMPLATE.format(job_id=submission_id),
@@ -537,8 +549,9 @@ class JobManager:
                 resources=entrypoint_resources,
                 scheduling_strategy=scheduling_strategy,
                 runtime_env=self._get_supervisor_runtime_env(
-                    runtime_env, submission_id, resources_specified
+                    runtime_env, submission_id, resources_specified, virtual_cluster_id
                 ),
+                _metadata=virtual_cluster_metadata,
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
             ).remote(
                 submission_id,

@@ -47,6 +47,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
                 submission_id=request_submission_id,
                 runtime_env=submit_request.runtime_env,
                 metadata=submit_request.metadata,
+                virtual_cluster_id=submit_request.virtual_cluster_id,
                 entrypoint_num_cpus=submit_request.entrypoint_num_cpus,
                 entrypoint_num_gpus=submit_request.entrypoint_num_gpus,
                 entrypoint_memory=submit_request.entrypoint_memory,
