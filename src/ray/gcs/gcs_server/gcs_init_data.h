@@ -70,6 +70,9 @@ class GcsInitData {
   }
 
  private:
+  /// Load worker metadata from the store into memory asynchronously.
+  ///
+  /// \param on_done The callback when worker metadata is loaded successfully.
   void AsyncLoadWorkerTableData(const EmptyCallback &on_done);
 
   /// Load job metadata from the store into memory asynchronously.

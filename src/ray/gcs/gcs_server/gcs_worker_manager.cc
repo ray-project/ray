@@ -351,8 +351,7 @@ void GcsWorkerManager::Initialize(const GcsInitData &gcs_init_data) {
     }
   }
   // Sort by expiration time, prioritize clearing the history first
-  sorted_dead_worker_list_.sort([](const std::pair<WorkerID, int64_t> &left,
-                                       const std::pair<WorkerID, int64_t> &right) {
+  sorted_dead_worker_list_.sort([](const auto& left, const auto& right) {
     return left.second < right.second;
   });
   RAY_LOG(INFO) << "Finished initialize gcs_worker_manager for dead workers size : " << sorted_dead_worker_list_.size();
