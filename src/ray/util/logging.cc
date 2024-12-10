@@ -412,18 +412,12 @@ void RayLog::StartRayLog(const std::string &app_name,
   }
 
   // Set sink for stderr.
-  const auto stderr_log_fname =
-      GetLogOutputFilename(log_dir, stderr_log_filepath, app_name_without_path);
-  if (stderr_log_fname.empty()) {
-    auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
-    err_sink->set_level(spdlog::level::err);
-    sinks[1] = std::move(err_sink);
-  } else {
-    auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        stderr_log_fname, log_rotation_max_size_, log_rotation_file_num_);
-    file_sink->set_level(spdlog::level::err);
-    sinks[1] = std::move(file_sink);
-  }
+  // TODO(hjiang): At the end of day, we should use `stderr_log_filepath` as the output
+  // for stderr as well, but it takes much more effort to adapt, since quite a few unit
+  // tests rely on stderr.
+  auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
+  err_sink->set_level(spdlog::level::err);
+  sinks[1] = std::move(err_sink);
 
   // Set the combined logger.
   auto logger = std::make_shared<spdlog::logger>(RayLog::GetLoggerName(),
