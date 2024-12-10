@@ -224,7 +224,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   }
 
   /// Get the local drain request.
-  optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
     return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
   }
 
@@ -523,6 +523,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                             rpc::PrestartWorkersReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReportWorkerBacklog` request.
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
@@ -551,6 +555,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
@@ -740,9 +748,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  std::shared_ptr<plasma::PlasmaClient> store_client_;
+  std::unique_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -776,9 +784,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// Wrapper client for RuntimeEnvManager. Always non-null.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

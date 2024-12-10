@@ -1,3 +1,5 @@
+import msgpack
+import msgpack_numpy as m
 import pathlib
 import shutil
 import unittest
@@ -5,6 +7,7 @@ import unittest
 import ray
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.core.columns import Columns
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.offline.offline_data import OfflineData
 from ray.rllib.offline.offline_env_runner import OfflineSingleAgentEnvRunner
@@ -15,11 +18,6 @@ class TestOfflineEnvRunner(unittest.TestCase):
         self.base_path = pathlib.Path("/tmp/")
         self.config = (
             PPOConfig()
-            # Enable new API stack and use EnvRunner.
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .env_runners(
                 # This defines how many rows per file we will
                 # have (given `num_rows_per_file` in the
@@ -34,11 +32,11 @@ class TestOfflineEnvRunner(unittest.TestCase):
             .environment("CartPole-v1")
             .rl_module(
                 # Use a small network for this test.
-                model_config_dict={
-                    "fcnet_hiddens": [32],
-                    "fcnet_activation": "linear",
-                    "vf_share_layers": True,
-                }
+                model_config=DefaultModelConfig(
+                    fcnet_hiddens=[32],
+                    fcnet_activation="linear",
+                    vf_share_layers=True,
+                )
             )
         )
         ray.init()
@@ -59,8 +57,8 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_write_episodes=True,
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
-        # Sample 1ßß episodes.
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
+        # Sample 100 episodes.
         _ = offline_env_runner.sample(
             num_episodes=100,
             random_actions=True,
@@ -81,7 +79,14 @@ class TestOfflineEnvRunner(unittest.TestCase):
         # Assert the dataset has only 100 rows (each row containing an episode).
         self.assertEqual(offline_data.data.count(), 100)
         # Take a single row and ensure its a `SingleAgentEpisode` instance.
-        self.assertIsInstance(offline_data.data.take(1)[0]["item"], SingleAgentEpisode)
+        self.assertIsInstance(
+            SingleAgentEpisode.from_state(
+                msgpack.unpackb(
+                    offline_data.data.take(1)[0]["item"], object_hook=m.decode
+                )
+            ),
+            SingleAgentEpisode,
+        )
         # The batch contains now episodes (in a numpy.NDArray).
         episodes = offline_data.data.take_batch(100)["item"]
         # The batch should contain 100 episodes (not 100 env steps).
@@ -104,7 +109,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             output_compress_columns=[],
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,
@@ -160,7 +165,7 @@ class TestOfflineEnvRunner(unittest.TestCase):
             # }
         )
 
-        offline_env_runner = OfflineSingleAgentEnvRunner(config, worker_index=1)
+        offline_env_runner = OfflineSingleAgentEnvRunner(config=config, worker_index=1)
 
         _ = offline_env_runner.sample(
             num_timesteps=100,

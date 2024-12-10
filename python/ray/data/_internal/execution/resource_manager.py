@@ -43,6 +43,7 @@ class ResourceManager:
         topology: "Topology",
         options: ExecutionOptions,
         get_total_resources: Callable[[], ExecutionResources],
+        data_context: DataContext,
     ):
         self._topology = topology
         self._options = options
@@ -69,9 +70,8 @@ class ResourceManager:
         self._downstream_object_store_memory: Dict[PhysicalOperator, float] = {}
 
         self._op_resource_allocator: Optional["OpResourceAllocator"] = None
-        ctx = DataContext.get_current()
 
-        if ctx.op_resource_reservation_enabled:
+        if data_context.op_resource_reservation_enabled:
             # We'll enable memory reservation if all operators have
             # implemented accurate memory accounting.
             should_enable = all(
@@ -79,7 +79,7 @@ class ResourceManager:
             )
             if should_enable:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
-                    self, ctx.op_resource_reservation_ratio
+                    self, data_context.op_resource_reservation_ratio
                 )
 
     def _estimate_object_store_memory(self, op, state) -> int:
@@ -127,6 +127,7 @@ class ResourceManager:
         for op, state in reversed(self._topology.items()):
             # Update `self._op_usages`, `self._op_running_usages`,
             # and `self._op_pending_usages`.
+            op.update_resource_usage()
             op_usage = op.current_processor_usage()
             op_running_usage = op.running_processor_usage()
             op_pending_usage = op.pending_processor_usage()
@@ -213,11 +214,11 @@ class ResourceManager:
     def get_op_usage_str(self, op: PhysicalOperator) -> str:
         """Return a human-readable string representation of the resource usage of
         the given operator."""
-        usage_str = f"cpu: {self._op_running_usages[op].cpu:.1f}"
+        usage_str = f"{self._op_running_usages[op].cpu:.1f} CPU"
         if self._op_running_usages[op].gpu:
-            usage_str += f", gpu: {self._op_running_usages[op].gpu:.1f}"
+            usage_str += f", {self._op_running_usages[op].gpu:.1f} GPU"
         usage_str += (
-            f", objects: {self._op_running_usages[op].object_store_memory_str()}"
+            f", {self._op_running_usages[op].object_store_memory_str()} object store"
         )
         if self._debug:
             usage_str += (
@@ -231,7 +232,7 @@ class ResourceManager:
                 budget = self._op_resource_allocator._op_budgets[op]
                 usage_str += f", budget=(cpu={budget.cpu:.1f}"
                 usage_str += f",gpu={budget.gpu:.1f}"
-                usage_str += f",objects={budget.object_store_memory_str()})"
+                usage_str += f",object store={budget.object_store_memory_str()})"
         return usage_str
 
     def get_downstream_fraction(self, op: PhysicalOperator) -> float:
@@ -556,8 +557,8 @@ class ReservationOpResourceAllocator(OpResourceAllocator):
     def _get_downstream_eligible_ops(
         self, op: PhysicalOperator
     ) -> Iterable[PhysicalOperator]:
-        """Get the downstream eligible operators of the given operator, ignoring intermediate
-        ineligible operators.
+        """Get the downstream eligible operators of the given operator, ignoring
+        intermediate ineligible operators.
 
         E.g.,
           - "cur_map->downstream_map" will return [downstream_map].

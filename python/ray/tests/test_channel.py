@@ -1,4 +1,5 @@
 # coding: utf-8
+import pickle
 import logging
 import os
 import sys
@@ -905,8 +906,12 @@ def test_composite_channel_single_reader(ray_start_cluster):
         def pass_channel(self, channel):
             self._chan = channel
 
-        def create_composite_channel(self, writer, reader_and_node_list):
-            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list)
+        def create_composite_channel(
+            self, writer, reader_and_node_list, driver_actor_id
+        ):
+            self._chan = ray_channel.CompositeChannel(
+                writer, reader_and_node_list, 10, driver_actor_id
+            )
             return self._chan
 
         def read(self):
@@ -921,19 +926,19 @@ def test_composite_channel_single_reader(ray_start_cluster):
     node2 = get_actor_node_id(actor2)
 
     # Create a channel to communicate between driver process and actor1.
-    driver_to_actor1_channel = ray_channel.CompositeChannel(None, [(actor1, node1)])
+    driver_to_actor1_channel = ray_channel.CompositeChannel(None, [(actor1, node1)], 10)
     ray.get(actor1.pass_channel.remote(driver_to_actor1_channel))
     driver_to_actor1_channel.write("hello")
     assert ray.get(actor1.read.remote()) == "hello"
 
     # Create a channel to communicate between two tasks in actor1.
-    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)]))
+    ray.get(actor1.create_composite_channel.remote(actor1, [(actor1, node1)], None))
     ray.get(actor1.write.remote("world"))
     assert ray.get(actor1.read.remote()) == "world"
 
     # Create a channel to communicate between actor1 and actor2.
     actor1_to_actor2_channel = ray.get(
-        actor1.create_composite_channel.remote(actor1, [(actor2, node2)])
+        actor1.create_composite_channel.remote(actor1, [(actor2, node2)], None)
     )
     ray.get(actor2.pass_channel.remote(actor1_to_actor2_channel))
     ray.get(actor1.write.remote("hello world"))
@@ -943,7 +948,9 @@ def test_composite_channel_single_reader(ray_start_cluster):
     driver_actor = create_driver_actor()
     actor2_to_driver_channel = ray.get(
         actor2.create_composite_channel.remote(
-            actor2, [(driver_actor, get_actor_node_id(driver_actor))]
+            actor2,
+            [(driver_actor, get_actor_node_id(driver_actor))],
+            driver_actor._actor_id.hex(),
         )
     )
     ray.get(actor2.write.remote("world hello"))
@@ -978,7 +985,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
             self._chan = channel
 
         def create_composite_channel(self, writer, reader_and_node_list):
-            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list)
+            self._chan = ray_channel.CompositeChannel(writer, reader_and_node_list, 10)
             return self._chan
 
         def read(self):
@@ -994,7 +1001,7 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
 
     # The driver writes data to CompositeChannel and actor1 and actor2 read it.
     driver_output_channel = ray_channel.CompositeChannel(
-        None, [(actor1, node1), (actor2, node2)]
+        None, [(actor1, node1), (actor2, node2)], 10
     )
     ray.get(actor1.pass_channel.remote(driver_output_channel))
     ray.get(actor2.pass_channel.remote(driver_output_channel))
@@ -1024,12 +1031,19 @@ def test_composite_channel_multiple_readers(ray_start_cluster):
         # are the same actor. Note that reading the channel multiple
         # times is supported via channel cache mechanism.
         ray.get(actor1.read.remote())
-    """
-    TODO (kevin85421): Add tests for the following cases:
-    (1) actor1 writes data to CompositeChannel and two Ray tasks on actor2 read it.
-    (2) actor1 writes data to CompositeChannel and actor2 and the driver reads it.
-    Currently, (1) is not supported, and (2) is blocked by the reference count issue.
-    """
+
+    # actor1 writes data to CompositeChannel and actor2 and the driver reads it.
+    driver_actor = create_driver_actor()
+    actor1_output_channel = ray.get(
+        actor1.create_composite_channel.remote(
+            actor1,
+            [(driver_actor, get_actor_node_id(driver_actor)), (actor2, node2)],
+        )
+    )
+    ray.get(actor2.pass_channel.remote(actor1_output_channel))
+    ray.get(actor1.write.remote("world hello"))
+    assert ray.get(actor2.read.remote()) == "world hello"
+    assert actor1_output_channel.read() == "world hello"
 
 
 @pytest.mark.skipif(
@@ -1221,6 +1235,10 @@ def test_readers_on_different_nodes(ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
+        def read(self, channel, val):
+            assert channel.read() == val
+            return val
+
     def create_actor(node):
         return Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
@@ -1238,12 +1256,12 @@ def test_readers_on_different_nodes(ray_start_cluster):
     driver_actor = create_driver_actor()
     driver_node = get_actor_node_id(driver_actor)
 
-    with pytest.raises(
-        ValueError, match="All reader actors must be on the same node.*"
-    ):
-        ray_channel.Channel(
-            None, [(driver_actor, driver_node), (a, a_node), (b, b_node)], 1000
-        )
+    ch = ray_channel.Channel(
+        None, [(driver_actor, driver_node), (a, a_node), (b, b_node)], 1000
+    )
+    val = 1
+    ch.write(val)
+    assert ray.get([a.read.remote(ch, val) for a in actors]) == [val, val]
 
 
 @pytest.mark.skipif(
@@ -1272,6 +1290,10 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
         def get_node_id(self):
             return ray.get_runtime_context().get_node_id()
 
+        def read(self, channel, val):
+            assert channel.read() == val
+            return val
+
     def create_actor(node):
         return Actor.options(
             scheduling_strategy=NodeAffinitySchedulingStrategy(node, soft=False)
@@ -1295,19 +1317,93 @@ def test_bunch_readers_on_different_nodes(ray_start_cluster):
     driver_actor = create_driver_actor()
     driver_node = get_actor_node_id(driver_actor)
 
-    with pytest.raises(
-        ValueError, match="All reader actors must be on the same node.*"
-    ):
-        ray_channel.Channel(
-            None,
-            [
-                (driver_actor, driver_node),
-                (a, a_node),
-                (b, b_node),
-                (c, c_node),
-                (d, d_node),
-            ],
-            1000,
+    ch = ray_channel.Channel(
+        None,
+        [
+            (driver_actor, driver_node),
+            (a, a_node),
+            (b, b_node),
+            (c, c_node),
+            (d, d_node),
+        ],
+        1000,
+    )
+    i = 1
+    ch.write(i)
+    assert ray.get([a.read.remote(ch, i) for a in actors]) == [
+        i for _ in range(len(actors))
+    ]
+
+
+def test_buffered_channel(shutdown_only):
+    """Test buffered shared memory channel."""
+    BUFFER_SIZE = 5
+
+    @ray.remote(num_cpus=1)
+    class Actor:
+        def __init__(self):
+            self.write_index = 0
+
+        def setup(self, driver_actor):
+            self._channel = ray_channel.BufferedSharedMemoryChannel(
+                ray.get_runtime_context().current_actor,
+                [(driver_actor, get_actor_node_id(driver_actor))],
+                BUFFER_SIZE,
+                typ=1000,
+            )
+
+        def get_channel(self):
+            return self._channel
+
+        def write(self, i, timeout=None) -> bool:
+            """Write to a channel Return False if channel times out.
+            Return true otherwise.
+            """
+            self.write_index += 1
+            try:
+                self._channel.write(i, timeout)
+            except ray.exceptions.RayChannelTimeoutError:
+                return False
+            assert self._channel.next_write_index == self.write_index % BUFFER_SIZE
+            return True
+
+    a = Actor.remote()
+    ray.get(a.setup.remote(create_driver_actor()))
+    chan = ray.get(a.get_channel.remote())
+
+    print("Test basic.")
+    # Iterate more than buffer size to make sure it works over and over again.
+    read_idx = 0
+    for i in range(BUFFER_SIZE * 3):
+        read_idx += 1
+        assert ray.get(a.write.remote(i))
+        assert chan.read() == i
+        assert chan.next_read_index == read_idx % BUFFER_SIZE
+
+    print("Test Write timeout.")
+    # Test write timeout.
+    for i in range(BUFFER_SIZE):
+        # fill the buffer withtout read.
+        ray.get(a.write.remote(i))
+    # timeout because all the buffer is exhausted without being consumed.
+    assert ray.get(a.write.remote(1, timeout=1)) is False
+
+    print("Test Read timeout.")
+    # Test read timeout.
+    for i in range(BUFFER_SIZE):
+        # This reads all previous writes.
+        assert chan.read() == i
+    # This read times out because there's no new write, and the call blocks.
+    with pytest.raises(ray.exceptions.RayChannelTimeoutError):
+        chan.read(timeout=1)
+
+    print("Test serialization/deserialization works")
+    deserialized = pickle.loads(pickle.dumps(chan))
+    assert len(chan._buffers) == len(deserialized._buffers)
+    for i in range(len(chan._buffers)):
+        assert (
+            deserialized._buffers[i]._writer._actor_id
+            == chan._buffers[i]._writer._actor_id
         )
 
 

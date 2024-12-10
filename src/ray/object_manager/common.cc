@@ -15,6 +15,7 @@
 #include "ray/object_manager/common.h"
 
 #include "absl/functional/bind_front.h"
+#include "absl/strings/str_cat.h"
 #include "absl/strings/str_format.h"
 
 namespace ray {
@@ -134,7 +135,9 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK(sem.header_sem);
 
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.object_sem, timeout_point));
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
@@ -150,6 +153,8 @@ Status PlasmaObjectHeader::WriteAcquire(
 }
 
 Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   is_sealed = true;
@@ -162,13 +167,16 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,
     const std::unique_ptr<std::chrono::steady_clock::time_point> &timeout_point) {
   RAY_CHECK(sem.header_sem);
 
-  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
+  // Header is locked only for a short time, so we don't have to apply the
+  // same `timeout_point`.
+  RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
@@ -177,9 +185,11 @@ Status PlasmaObjectHeader::ReadAcquire(
     sched_yield();
     // We need to get the desired version before timeout
     if (timeout_point && std::chrono::steady_clock::now() >= *timeout_point) {
-      return Status::ChannelTimeoutError(
-          "Timed out waiting for object available to read.");
+      return Status::ChannelTimeoutError(absl::StrCat(
+          "Timed out waiting for object available to read. ObjectID: ", object_id.Hex()));
     }
+    // Unlike other header, this is used for busy waiting, so we need to apply
+    // timeout_point.
     RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem, timeout_point));
   }
 
@@ -255,6 +265,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
 }
 
 Status PlasmaObjectHeader::ReadAcquire(
+    const ObjectID &object_id,
     Semaphores &sem,
     int64_t version_to_read,
     int64_t &version_read,

@@ -10,7 +10,6 @@ from ray.data._internal.execution.backpressure_policy import (
     get_backpressure_policies,
 )
 from ray.data._internal.execution.interfaces import (
-    ExecutionOptions,
     ExecutionResources,
     Executor,
     OutputIterator,
@@ -53,7 +52,8 @@ class StreamingExecutor(Executor, threading.Thread):
     a way that maximizes throughput under resource constraints.
     """
 
-    def __init__(self, options: ExecutionOptions, dataset_tag: str = "unknown_dataset"):
+    def __init__(self, data_context: DataContext, dataset_tag: str = "unknown_dataset"):
+        self._data_context = data_context
         self._start_time: Optional[float] = None
         self._initial_stats: Optional[DatasetStats] = None
         self._final_stats: Optional[DatasetStats] = None
@@ -77,12 +77,12 @@ class StreamingExecutor(Executor, threading.Thread):
         # Stores if an operator is completed,
         # used for marking when an op has just completed.
         self._has_op_completed: Optional[Dict[PhysicalOperator, bool]] = None
-        self._max_errored_blocks = DataContext.get_current().max_errored_blocks
+        self._max_errored_blocks = self._data_context.max_errored_blocks
         self._num_errored_blocks = 0
 
         self._last_debug_log_time = 0
 
-        Executor.__init__(self, options)
+        Executor.__init__(self, self._data_context.execution_options)
         thread_name = f"StreamingExecutor-{self._execution_id}"
         threading.Thread.__init__(self, daemon=True, name=thread_name)
 
@@ -99,8 +99,7 @@ class StreamingExecutor(Executor, threading.Thread):
         self._start_time = time.perf_counter()
 
         if not isinstance(dag, InputDataBuffer):
-            context = DataContext.get_current()
-            if context.print_on_execution_start:
+            if self._data_context.print_on_execution_start:
                 message = "Starting execution of Dataset."
                 log_path = get_log_directory()
                 if log_path is not None:
@@ -126,6 +125,7 @@ class StreamingExecutor(Executor, threading.Thread):
             self._topology,
             self._options,
             lambda: self._autoscaler.get_total_resources(),
+            self._data_context,
         )
         self._backpressure_policies = get_backpressure_policies(self._topology)
         self._autoscaler = create_autoscaler(
@@ -173,7 +173,6 @@ class StreamingExecutor(Executor, threading.Thread):
         self.shutdown()
 
     def shutdown(self, execution_completed: bool = True):
-        context = DataContext.get_current()
         global _num_shutdown
 
         with self._shutdown_lock:
@@ -188,17 +187,15 @@ class StreamingExecutor(Executor, threading.Thread):
                 state="FINISHED" if execution_completed else "FAILED",
                 force_update=True,
             )
-            # Clears metrics for this dataset so that they do
-            # not persist in the grafana dashboard after execution
-            StatsManager.clear_execution_metrics(
-                self._dataset_tag, self._get_operator_tags()
-            )
+            # Once Dataset execution completes, mark it as complete
+            # and remove last cached execution stats.
+            StatsManager.clear_last_execution_stats(self._dataset_tag)
             # Freeze the stats and save it.
             self._final_stats = self._generate_stats()
             stats_summary_string = self._final_stats.to_summary().to_string(
                 include_parent=False
             )
-            if context.enable_auto_log_stats:
+            if self._data_context.enable_auto_log_stats:
                 logger.info(stats_summary_string)
             # Close the progress bars from top to bottom to avoid them jumping
             # around in the console after completion.
@@ -354,19 +351,37 @@ class StreamingExecutor(Executor, threading.Thread):
         return len(self._output_node.outqueue) == 0
 
     def _report_current_usage(self) -> None:
+        # running_usage is the amount of resources that have been requested but
+        # not necessarily available
+        # TODO(sofian) https://github.com/ray-project/ray/issues/47520
+        # We need to split the reported resources into running, pending-scheduling,
+        # pending-node-assignment.
         running_usage = self._resource_manager.get_global_running_usage()
         pending_usage = self._resource_manager.get_global_pending_usage()
         limits = self._resource_manager.get_global_limits()
         resources_status = (
-            "Running. Resources: "
+            # TODO(scottjlee): Add dataset name/ID to progress bar output.
+            "Running Dataset. Active & requested resources: "
             f"{running_usage.cpu:.4g}/{limits.cpu:.4g} CPU, "
-            f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
-            f"{running_usage.object_store_memory_str()}/"
-            f"{limits.object_store_memory_str()} object_store_memory "
-            "(pending: "
-            f"{pending_usage.cpu:.4g} CPU, "
-            f"{pending_usage.gpu:.4g} GPU)"
         )
+        if running_usage.gpu > 0:
+            resources_status += f"{running_usage.gpu:.4g}/{limits.gpu:.4g} GPU, "
+        resources_status += (
+            f"{running_usage.object_store_memory_str()}/"
+            f"{limits.object_store_memory_str()} object store"
+        )
+
+        # Only include pending section when there are pending resources.
+        if pending_usage.cpu or pending_usage.gpu:
+            if pending_usage.cpu and pending_usage.gpu:
+                pending_str = (
+                    f"{pending_usage.cpu:.4g} CPU, {pending_usage.gpu:.4g} GPU"
+                )
+            elif pending_usage.cpu:
+                pending_str = f"{pending_usage.cpu:.4g} CPU"
+            else:
+                pending_str = f"{pending_usage.gpu:.4g} GPU"
+            resources_status += f" (pending: {pending_str})"
         if self._global_info:
             self._global_info.set_description(resources_status)
 
@@ -383,6 +398,7 @@ class StreamingExecutor(Executor, threading.Thread):
             "end_time": time.time() if state != "RUNNING" else None,
             "operators": {
                 f"{op.name}{i}": {
+                    "name": op.name,
                     "progress": op_state.num_completed_tasks,
                     "total": op.num_outputs_total(),
                     "state": state,

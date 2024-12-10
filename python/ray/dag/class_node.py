@@ -165,7 +165,6 @@ class ClassMethodNode(DAGNode):
         method_options: Dict[str, Any],
         other_args_to_resolve: Dict[str, Any],
     ):
-
         self._bound_args = method_args or []
         self._bound_kwargs = method_kwargs or {}
         self._bound_options = method_options or {}
@@ -245,6 +244,9 @@ class ClassMethodNode(DAGNode):
 
     def __str__(self) -> str:
         return get_dag_node_str(self, f"{self._method_name}()")
+
+    def __repr__(self) -> str:
+        return self.__str__()
 
     def get_method_name(self) -> str:
         return self._method_name

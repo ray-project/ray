@@ -169,7 +169,7 @@ if __name__ == "__main__":
             # Typical CartPole-v1 hyperparams known to work well:
             gamma=0.99,
             lr=0.0003,
-            num_sgd_iter=6,
+            num_epochs=6,
             vf_loss_coeff=0.01,
             use_kl_loss=True,
         )

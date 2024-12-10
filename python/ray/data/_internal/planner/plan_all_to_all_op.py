@@ -21,7 +21,9 @@ from ray.data.context import DataContext
 
 
 def plan_all_to_all_op(
-    op: AbstractAllToAll, physical_children: List[PhysicalOperator]
+    op: AbstractAllToAll,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> AllToAllOperator:
     """Get the corresponding physical operators DAG for AbstractAllToAll operators.
 
@@ -37,10 +39,8 @@ def plan_all_to_all_op(
         # Randomize block order does not actually compute anything, so we
         # want to inherit the upstream op's target max block size.
     elif isinstance(op, RandomShuffle):
-        debug_limit_shuffle_execution_to_num_blocks = (
-            DataContext.get_current().get_config(
-                "debug_limit_shuffle_execution_to_num_blocks", None
-            )
+        debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+            "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_random_shuffle_fn(
             op._seed,
@@ -48,17 +48,13 @@ def plan_all_to_all_op(
             op._ray_remote_args,
             debug_limit_shuffle_execution_to_num_blocks,
         )
-        target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
+        target_max_block_size = data_context.target_shuffle_max_block_size
     elif isinstance(op, Repartition):
         debug_limit_shuffle_execution_to_num_blocks = None
         if op._shuffle:
-            target_max_block_size = (
-                DataContext.get_current().target_shuffle_max_block_size
-            )
-            debug_limit_shuffle_execution_to_num_blocks = (
-                DataContext.get_current().get_config(
-                    "debug_limit_shuffle_execution_to_num_blocks", None
-                )
+            target_max_block_size = data_context.target_shuffle_max_block_size
+            debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+                "debug_limit_shuffle_execution_to_num_blocks", None
             )
         fn = generate_repartition_fn(
             op._num_outputs,
@@ -66,29 +62,31 @@ def plan_all_to_all_op(
             debug_limit_shuffle_execution_to_num_blocks,
         )
     elif isinstance(op, Sort):
-        debug_limit_shuffle_execution_to_num_blocks = (
-            DataContext.get_current().get_config(
-                "debug_limit_shuffle_execution_to_num_blocks", None
-            )
+        debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+            "debug_limit_shuffle_execution_to_num_blocks", None
         )
-        fn = generate_sort_fn(op._sort_key, debug_limit_shuffle_execution_to_num_blocks)
-        target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
+        fn = generate_sort_fn(
+            op._sort_key, op._batch_format, debug_limit_shuffle_execution_to_num_blocks
+        )
+        target_max_block_size = data_context.target_shuffle_max_block_size
     elif isinstance(op, Aggregate):
-        debug_limit_shuffle_execution_to_num_blocks = (
-            DataContext.get_current().get_config(
-                "debug_limit_shuffle_execution_to_num_blocks", None
-            )
+        debug_limit_shuffle_execution_to_num_blocks = data_context.get_config(
+            "debug_limit_shuffle_execution_to_num_blocks", None
         )
         fn = generate_aggregate_fn(
-            op._key, op._aggs, debug_limit_shuffle_execution_to_num_blocks
+            op._key,
+            op._aggs,
+            op._batch_format,
+            debug_limit_shuffle_execution_to_num_blocks,
         )
-        target_max_block_size = DataContext.get_current().target_shuffle_max_block_size
+        target_max_block_size = data_context.target_shuffle_max_block_size
     else:
         raise ValueError(f"Found unknown logical operator during planning: {op}")
 
     return AllToAllOperator(
         fn,
         input_physical_dag,
+        data_context,
         target_max_block_size=target_max_block_size,
         num_outputs=op._num_outputs,
         sub_progress_bar_names=op._sub_progress_bar_names,
