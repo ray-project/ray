@@ -154,7 +154,7 @@ class ChannelContext:
             return self._torch_available
 
         try:
-            import torch
+            import torch  # noqa: F401
         except ImportError:
             self._torch_available = False
             return False
