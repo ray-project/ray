@@ -23,16 +23,15 @@ You can store experiences either directly in RLlib's episode format or in table 
 format. You should use the episode format when 
 
 #. You need experiences grouped by their trajectory and ordered in time (for example, to train stateful modules).
-#. You want to use recorded experiences exclusively within RLlib.
+#. You want to use recorded experiences exclusively within RLlib (for example for offline RL or behavior cloning).
 
 Contrary, you should prefer the table (columns) format, if
 
 #. You need to read the data easily with other data tools or ML libraries.
-#. You don't need full (usually complete) trajectories in training.
 
 .. note:: RLlib's new API stack incorporates principles that support standalone applications. Consequently, the 
-    :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is available for use independently of RLlib. To enable faster 
-    access through external data tools (for example, for data transformations), it's recommended to use the table record format in these scenarios.
+    :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is usable outside of an RLlib context. To enable faster 
+    access through external data tools (for example, for data transformations), it's recommended to use the table record format.
 
 Most importantly, RLlib's offline RL API builds on top of :ref:`Ray Data <data>` and therefore features in general all read and 
 write methods supported by Ray Data (for example :py:class:`~ray.data.read_parquet`, :py:class:`~ray.data.read_json`, etc.) with
@@ -41,12 +40,12 @@ of the API is to apply as many data transformations as possible on-the-fly prior
 
 .. hint:: During the transition phase from old- to new API stack you can use the new offline RL API also with your 
     :py:class:`~ray.rllib.policy.sample_batch.SampleBatch` data recorded with the old API stack. To enable this feature set 
-    ``input_read_sample_batches=True``.
+    ``config.offline_data(input_read_sample_batches=True)``.
 
 Example: Training an Expert Policy
 ----------------------------------
 In this example you train a PPO agent on the ``CartPole-v1`` environment until it reaches an episode mean return of ``450.0``. You checkpoint 
-this agent and later use its policy to record expert data to local disk.
+this agent and then use its policy to record expert data to local disk.
 
 .. testsetup:: 
     
@@ -648,7 +647,7 @@ Scaling I/O Throughput
 
 Just as online training can be scaled, offline recording I/O throughput can also be increased by configuring the number of RLlib env-runners. Use the ``num_env_runners`` setting to scale recording during training or ``evaluation_num_env_runners``
 for scaling during evaluation-only recording. Each worker operates independently, writing experiences in parallel, enabling linear scaling of I/O throughput for write operations. Within each :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner`, episodes 
-are sampled (environments are usually vectorized) and serialized before being written to disk.
+are sampled and serialized before being written to disk.
 
 Offline RL training in RLlib is highly parallelized, encompassing data reading, post-processing, and, if applicable, updates. When training on offline data, scalability is achieved by increasing the number of ``DataWorker`` instances used to 
 transform offline experiences into a learner-compatible format (:py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch`). Ray Data optimizes reading operations under the hood by leveraging file metadata, predefined concurrency settings for batch post-processing, and available 
