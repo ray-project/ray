@@ -121,6 +121,7 @@ class ChannelOutputType:
 @dataclass
 class ChannelContext:
     serialization_context = _SerializationContext()
+    _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
     _current_stream: Optional["torch.cuda.Stream"] = None
 
@@ -143,6 +144,22 @@ class ChannelContext:
                 _default_context = ChannelContext()
 
             return _default_context
+
+    @property
+    def torch_available(self) -> bool:
+        """
+        Check if torch package is available.
+        """
+        if self._torch_available is not None:
+            return self._torch_available
+
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self._torch_available = False
+            return False
+        self._torch_available = True
+        return True
 
     @property
     def torch_device(self) -> "torch.device":
