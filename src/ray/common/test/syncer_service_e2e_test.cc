@@ -28,12 +28,13 @@
 #include "ray/common/ray_syncer/ray_syncer.h"
 using namespace std;
 using namespace ray::syncer;
+using ray::PeriodicalRunner;
 
 class LocalNode : public ReporterInterface {
  public:
   LocalNode(instrumented_io_context &io_context, ray::NodeID node_id)
-      : node_id_(node_id), timer_(io_context) {
-    timer_.RunFnPeriodically(
+      : node_id_(node_id), timer_(PeriodicalRunner::Create(io_context)) {
+    timer_->RunFnPeriodically(
         [this]() {
           auto v = static_cast<double>(std::rand()) / RAND_MAX;
           if (v < 0.3) {
@@ -66,7 +67,7 @@ class LocalNode : public ReporterInterface {
   int64_t version_ = 0;
   int state_ = 0;
   ray::NodeID node_id_;
-  ray::PeriodicalRunner timer_;
+  std::shared_ptr<PeriodicalRunner> timer_;
 };
 
 class RemoteNodes : public ReceiverInterface {

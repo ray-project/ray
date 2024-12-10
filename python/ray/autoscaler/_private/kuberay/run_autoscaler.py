@@ -98,7 +98,7 @@ def _setup_logging() -> None:
 
     # Write logs at info level to monitor.log.
     setup_component_logger(
-        logging_level=ray_constants.LOGGER_LEVEL,  # info
+        logging_level=ray_constants.LOGGER_LEVEL,
         logging_format=ray_constants.LOGGER_FORMAT,
         log_dir=log_dir,
         filename=ray_constants.MONITOR_LOG_FILE_NAME,  # monitor.log

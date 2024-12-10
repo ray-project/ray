@@ -185,11 +185,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
 
-  /// Connect to the raylet and notify that the core worker is ready.
-  /// If the options.connect_on_start is false, it doesn't need to be explicitly
-  /// called.
-  void ConnectToRaylet();
-
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
   /// notified that this worker is disconnected from a raylet.
@@ -1662,7 +1657,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
-  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor.
   void ConnectToRayletInternal();
 
   /// Shared state of the worker. Includes process-level and thread-level state.
@@ -1695,7 +1690,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1748,7 +1743,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::shared_ptr<ActorTaskSubmitter> actor_task_submitter_;
+  std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::Publisher> object_info_publisher_;

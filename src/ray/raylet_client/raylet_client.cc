@@ -22,7 +22,6 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet_client/raylet_client.h"
 
 using MessageType = ray::protocol::MessageType;
 
@@ -594,6 +593,14 @@ void raylet::RayletClient::DrainRaylet(
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
   grpc_client_->DrainRaylet(request, callback);
+}
+
+void raylet::RayletClient::IsLocalWorkerDead(
+    const WorkerID &worker_id,
+    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  grpc_client_->IsLocalWorkerDead(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(
