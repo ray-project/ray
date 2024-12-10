@@ -14,15 +14,17 @@
 
 #pragma once
 
+#include <functional>
+#include <string>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/gcs/store_client/store_client.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
-namespace ray {
-
-namespace gcs {
+namespace ray::gcs {
 
 /// \class InMemoryStoreClient
 /// Please refer to StoreClient for API semantics.
@@ -77,7 +79,7 @@ class InMemoryStoreClient : public StoreClient {
   };
 
   std::shared_ptr<InMemoryStoreClient::InMemoryTable> GetOrCreateTable(
-      const std::string &table_name);
+      const std::string &table_name) ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
@@ -88,9 +90,8 @@ class InMemoryStoreClient : public StoreClient {
   /// of the callback.
   instrumented_io_context &main_io_service_;
 
-  int job_id_ = 0;
+  /// Current job id, auto-increment when request next-id.
+  int job_id_ ABSL_GUARDED_BY(mutex_) = 0;
 };
 
-}  // namespace gcs
-
-}  // namespace ray
+}  // namespace ray::gcs

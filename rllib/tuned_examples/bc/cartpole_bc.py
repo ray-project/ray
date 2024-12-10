@@ -32,7 +32,9 @@ print(f"data_path={data_path}")
 # Define the BC config.
 config = (
     BCConfig()
-    .environment(env="CartPole-v1")
+    .environment(
+        env="CartPole-v1",
+    )
     .api_stack(
         enable_rl_module_and_learner=True,
         enable_env_runner_and_connector_v2=True,

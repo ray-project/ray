@@ -998,6 +998,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
+    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
         """Returns the thus-far collected metrics from this worker's rollouts.
 

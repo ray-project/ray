@@ -10,15 +10,15 @@ from ray.rllib.core import COMPONENT_RL_MODULE
 from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class OfflineData:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, config: AlgorithmConfig):
