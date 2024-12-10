@@ -127,6 +127,8 @@ ray_cc_library(
         "common_protocol.h",
         "id.h",
         "id_def.h",
+        "simple_id.h",
+        "virtual_cluster_id.h",
     ],
     deps = [
         ":constants",

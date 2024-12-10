@@ -43,6 +43,7 @@ enum TablePrefix {
   PLACEMENT_GROUP = 17;
   KV = 18;
   ACTOR_TASK_SPEC = 19;
+  VIRTUAL_CLUSTER = 20;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
