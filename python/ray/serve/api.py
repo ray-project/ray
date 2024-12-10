@@ -7,8 +7,6 @@ from typing import Any, Callable, Dict, List, Optional, Union
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
 
-from python.ray.serve._private.utils import wait_for_interrupt
-
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
@@ -36,6 +34,7 @@ from ray.serve._private.utils import (
     ensure_serialization_context,
     extract_self_if_method_call,
     validate_route_prefix,
+    wait_for_interrupt,
 )
 from ray.serve.config import (
     AutoscalingConfig,
