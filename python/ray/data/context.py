@@ -139,6 +139,22 @@ DEFAULT_OP_RESOURCE_RESERVATION_RATIO = float(
     os.environ.get("RAY_DATA_OP_RESERVATION_RATIO", "0.5")
 )
 
+# The fraction of the object store capacity that will be used as the default object
+# store memory limit for the streaming executor,
+# when `ReservationOpResourceAllocator` is enabled.
+# deprecate DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = float(
+    os.getenv("RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION", "0.5")
+)
+# The fraction of the object store capacity that will be used as the default object
+# store memory limit for the streaming executor,
+# when `ReservationOpResourceAllocator` is not enabled.
+DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = float(
+    os.getenv(
+        "RAY_DATA_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION", "0.25"
+    )
+)
+
 DEFAULT_MAX_ERRORED_BLOCKS = 0
 
 # Use this to prefix important warning messages for the user.
@@ -339,6 +355,13 @@ class DataContext:
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
     retried_io_errors: List[str] = field(
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
+    )
+    object_store_memory_limit_fraction: float = (
+        DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
+    )
+
+    object_store_memory_limit_fraction_wo_resource_reservation: float = (
+        DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
     )
 
     def __post_init__(self):
