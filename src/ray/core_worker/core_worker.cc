@@ -43,23 +43,9 @@ using json = nlohmann::json;
 
 namespace ray::core {
 
-JobID GetProcessJobID(const CoreWorkerOptions &options) {
-  if (options.worker_type == WorkerType::DRIVER) {
-    RAY_CHECK(!options.job_id.IsNil());
-  } else {
-    RAY_CHECK(options.job_id.IsNil());
-  }
-
-  if (options.worker_type == WorkerType::WORKER) {
-    // For workers, the job ID is assigned by Raylet via an environment variable.
-    const std::string &job_id_env = RayConfig::instance().JOB_ID();
-    RAY_CHECK(!job_id_env.empty());
-    return JobID::FromHex(job_id_env);
-  }
-  return options.job_id;
-}
-
 namespace {
+// Default capacity for serialization caches.
+constexpr size_t kDefaultSerializationCacheCap = 500;
 
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
@@ -127,6 +113,22 @@ std::optional<ObjectLocation> TryGetLocalObjectLocation(
 }
 
 }  // namespace
+
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(!options.job_id.IsNil());
+  } else {
+    RAY_CHECK(options.job_id.IsNil());
+  }
+
+  if (options.worker_type == WorkerType::WORKER) {
+    // For workers, the job ID is assigned by Raylet via an environment variable.
+    const std::string &job_id_env = RayConfig::instance().JOB_ID();
+    RAY_CHECK(!job_id_env.empty());
+    return JobID::FromHex(job_id_env);
+  }
+  return options.job_id;
+}
 
 TaskCounter::TaskCounter() {
   counter_.SetOnChangeCallback(
@@ -264,7 +266,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
-      pid_(getpid()) {
+      pid_(getpid()),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -2163,20 +2166,20 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
+json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables
   //       not specified by the child are still inherited from the parent.
   json result_runtime_env = *parent;
-  for (json::iterator it = child.begin(); it != child.end(); ++it) {
+  for (auto it = child.cbegin(); it != child.cend(); ++it) {
     if (it.key() == "env_vars" && result_runtime_env.contains("env_vars")) {
       json env_vars = it.value();
       json merged_env_vars = result_runtime_env["env_vars"];
       for (json::iterator nit = env_vars.begin(); nit != env_vars.end(); ++nit) {
         merged_env_vars[nit.key()] = nit.value();
       }
-      result_runtime_env["env_vars"] = merged_env_vars;
+      result_runtime_env["env_vars"] = std::move(merged_env_vars);
     } else {
       result_runtime_env[it.key()] = it.value();
     }
@@ -2184,8 +2187,19 @@ json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> par
   return result_runtime_env;
 }
 
+// TODO(hjiang): Current implementation is not the most ideal version, since it acquires a
+// global lock for all operations; it's acceptable for now since no heavy-lifted operation
+// is involved (considering the overall scheduling overhead is single-digit millisecond
+// magnitude). But a better solution is LRU cache native providing a native support for
+// sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
+  if (auto cached_runtime_env_info =
+          runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
+      cached_runtime_env_info != nullptr) {
+    return cached_runtime_env_info;
+  }
+
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
@@ -2219,7 +2233,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent = worker_context_.GetCurrentRuntimeEnv();
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
-  if (!parent) {
+  if (parent == nullptr) {
     return runtime_env_info;
   }
   std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
@@ -2239,6 +2253,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
       runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
     }
   }
+
+  runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
+                                            runtime_env_info);
   return runtime_env_info;
 }
 
@@ -2362,6 +2379,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        : task_options.name;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
+
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),
                       task_id,
