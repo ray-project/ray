@@ -11,7 +11,7 @@ from ray.dag import (
 from ray.dag.constants import COLLECTIVE_OPERATION_KEY
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
-from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
+from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
 
@@ -35,7 +35,7 @@ class _CollectiveOperation:
         self,
         input_nodes: List[DAGNode],
         op: _CollectiveOp,
-        transport: Optional[Union[str, GPUCommunicator]] = None,
+        transport: Optional[Union[str, Communicator]] = None,
     ):
         if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
@@ -66,7 +66,7 @@ class _CollectiveOperation:
         if transport is None:
             transport = TorchTensorType.NCCL
         self._type_hint = TorchTensorType(transport=transport, _direct_return=True)
-        if isinstance(transport, GPUCommunicator):
+        if isinstance(transport, Communicator):
             if set(transport.get_actor_handles()) != set(self._actor_handles):
                 raise ValueError(
                     "Expected actor handles to match the custom NCCL group"
@@ -103,7 +103,7 @@ class _CollectiveOperation:
         type_hint.set_nccl_group_id(nccl_group_id)
         return nccl_group_id
 
-    def get_nccl_group(self) -> GPUCommunicator:
+    def get_nccl_group(self) -> Communicator:
         if self._type_hint.nccl_group_id is not None:
             ctx = ChannelContext.get_current()
             nccl_group = ctx.nccl_groups[self._type_hint.nccl_group_id]
