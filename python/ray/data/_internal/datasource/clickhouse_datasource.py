@@ -119,8 +119,8 @@ class ClickHouseDatasource(Datasource):
         # must be specified in order to support parallelism.
         if self._order_by is None and parallelism > 1:
             logger.warning(
-                "ClickHouse datasource requires order_by to "
-                "be set to support parallelism"
+                "ClickHouse datasource requires dataset to be explicitly ordered to "
+                "support parallelism; falling back to parallelism of 1"
             )
             parallelism = 1
         num_rows_per_block = num_rows_total // parallelism
