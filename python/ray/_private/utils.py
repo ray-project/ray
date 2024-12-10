@@ -1,5 +1,7 @@
 import asyncio
 import binascii
+import random
+import string
 from collections import defaultdict
 import contextlib
 import errno
@@ -75,6 +77,18 @@ PLACEMENT_GROUP_INDEXED_BUNDLED_RESOURCE_PATTERN = re.compile(
     r"(.+)_group_(\d+)_([0-9a-zA-Z]+)"
 )
 PLACEMENT_GROUP_WILDCARD_RESOURCE_PATTERN = re.compile(r"(.+)_group_([0-9a-zA-Z]+)")
+
+
+# Match the standard alphabet used for UUIDs.
+RANDOM_STRING_ALPHABET = string.ascii_lowercase + string.digits
+
+
+def get_random_alphanumeric_string(length: int):
+    """Generates random string of length consisting exclusively of
+    - Lower-case ASCII chars
+    - Digits
+    """
+    return "".join(random.choices(RANDOM_STRING_ALPHABET, k=length))
 
 
 def get_user_temp_dir():
