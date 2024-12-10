@@ -69,7 +69,7 @@ void EnableControllersInCgroup() {
 
 bool SetupCgroupsPreparation() {
 #ifndef __linux__
-  RAY_LOG_ERROR("Cgroup is not supported on non-Linux platforms.");
+  RAY_LOG(ERROR) << "Cgroup is not supported on non-Linux platforms.";
   return true;
 #endif
 
