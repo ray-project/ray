@@ -20,15 +20,19 @@ from ray.anyscale.data._internal.planner.plan_partition_files_op import (
 from ray.anyscale.data._internal.planner.plan_read_files_op import plan_read_files_op
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.planner.planner import register_plan_logical_op_fn
+from ray.data.context import DataContext
 
 
 def _register_anyscale_plan_logical_op_fns():
     def plan_streaming_aggregate(
-        logical_op: StreamingAggregate, physical_children: List[PhysicalOperator]
+        logical_op: StreamingAggregate,
+        physical_children: List[PhysicalOperator],
+        data_context: DataContext,
     ) -> PhysicalOperator:
         assert len(physical_children) == 1
         return StreamingHashAggregate(
             input_op=physical_children[0],
+            data_context=data_context,
             key=logical_op.key,
             agg_fn=logical_op.agg_fn,
             num_aggregators=logical_op.num_aggregators,

@@ -21,6 +21,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.table_block import TableBlockAccessor
 from ray.data.block import Block, DataBatch
+from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow.dataset
@@ -45,7 +46,9 @@ class FilterMapTransformFn(MapTransformFn):
 
 
 def plan_read_files_op(
-    op: ReadFiles, physical_children: List[PhysicalOperator]
+    op: ReadFiles,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 1
     input_op = physical_children[0]
@@ -77,6 +80,7 @@ def plan_read_files_op(
     return MapOperator.create(
         map_transformer,
         input_op,
+        data_context,
         name="ReadFiles",
         target_max_block_size=None,
         ray_remote_args=op.ray_remote_args,

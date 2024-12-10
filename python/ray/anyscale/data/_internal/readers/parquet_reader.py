@@ -6,7 +6,6 @@ import pyarrow as pa
 import pyarrow.dataset
 from pyarrow.parquet import ParquetFile
 
-import ray
 from .file_reader import FileReader
 from ray.data._internal.datasource.parquet_datasource import (
     PARQUET_ENCODING_RATIO_ESTIMATE_DEFAULT,
@@ -83,6 +82,8 @@ class ParquetReader(FileReader):
         # adding partitions, we set the 'partitioning' to 'None'.
         self._dataset_kwargs["partitioning"] = None
 
+        self._data_context = DataContext.get_current()
+
     def read_paths(
         self,
         paths: List[str],
@@ -119,11 +120,10 @@ class ParquetReader(FileReader):
         *,
         filesystem: pa.fs.FileSystem,
     ) -> Tuple[List[pyarrow.dataset.ParquetFileFragment], pyarrow.Schema]:
-        ctx = DataContext.get_current()
         parquet_dataset = call_with_retry(
             lambda: get_parquet_dataset(paths, filesystem, self._dataset_kwargs),
             "create ParquetDataset",
-            match=ctx.retried_io_errors,
+            match=self._data_context.retried_io_errors,
         )
         check_for_legacy_tensor_type(parquet_dataset.schema)
         return parquet_dataset.fragments, parquet_dataset.schema
@@ -135,8 +135,7 @@ class ParquetReader(FileReader):
 
         # TODO: We should refactor the code so that we can get the results in order even
         # when using multiple threads.
-        ctx = DataContext.get_current()
-        if ctx.execution_options.preserve_order:
+        if self._data_context.execution_options.preserve_order:
             num_threads = 0
 
         return num_threads
@@ -173,8 +172,6 @@ class ParquetReader(FileReader):
         schema: pyarrow.Schema,
         columns: Optional[List[str]],
     ) -> Iterable[pyarrow.Table]:
-        ctx = ray.data.DataContext.get_current()
-
         if columns is not None:
             # The actual data might not contain all of the user-specified columns (e.g.,
             # if the user includes partition columns). So, filter out columns that
@@ -194,7 +191,9 @@ class ParquetReader(FileReader):
         # S3 can raise transient errors during iteration, and PyArrow doesn't expose a
         # way to retry specific batches.
         for batch in iterate_with_retry(
-            get_batch_iterable, "ParquetReader load batch", match=ctx.retried_io_errors
+            get_batch_iterable,
+            "ParquetReader load batch",
+            match=self._data_context.retried_io_errors,
         ):
             # TODO: If the table is much larger than the target block size, emit a
             # warning instructing the user to decrease the batch size.
@@ -218,19 +217,18 @@ class ParquetReader(FileReader):
             return ParquetFile(stream)
 
         num_rows = 0
-        ctx = DataContext.get_current()
         for path in paths:
             file = call_with_retry(
                 lambda: open_file(path),
                 description="open Parquet file",
-                match=ctx.retried_io_errors,
+                match=self._data_context.retried_io_errors,
             )
             # Getting the metadata requires network calls, so it might fail with
             # transient errors.
             num_rows += call_with_retry(
                 lambda: file.metadata.num_rows,
                 description="get count from Parquet metadata",
-                match=ctx.retried_io_errors,
+                match=self._data_context.retried_io_errors,
             )
         return num_rows
 

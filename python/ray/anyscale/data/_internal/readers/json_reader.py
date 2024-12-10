@@ -6,7 +6,6 @@ from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 
 from .native_file_reader import NativeFileReader
 from ray.data.block import DataBatch
-from ray.data.context import DataContext
 
 if TYPE_CHECKING:
     import pyarrow
@@ -65,7 +64,7 @@ class JSONReader(NativeFileReader):
         # size?)`. More information on this issue can be found here:
         # https://github.com/apache/arrow/issues/25674
         # The read will be retried with geometrically increasing block size
-        # until the size reaches `DataContext.get_current().target_max_block_size`.
+        # until the size reaches `DataContext.target_max_block_size`.
         # The initial block size will start at the PyArrow default block size
         # or it can be manually set through the `read_options` parameter as follows.
         # >>> import pyarrow.json as pajson
@@ -76,7 +75,7 @@ class JSONReader(NativeFileReader):
         # ... )
 
         init_block_size = self.read_options.block_size
-        max_block_size = DataContext.get_current().target_max_block_size
+        max_block_size = self.data_context.target_max_block_size
         while True:
             try:
                 table = pa.json.read_json(

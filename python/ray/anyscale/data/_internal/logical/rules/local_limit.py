@@ -190,6 +190,7 @@ class ApplyLocalLimitRule(Rule):
         up_op = MapOperator.create(
             new_map_transfomer,
             up_op.input_dependency,
+            up_op.data_context,
             name=new_map_op_name,
             compute_strategy=compute,
             min_rows_per_bundle=min_rows_per_block,
@@ -222,6 +223,7 @@ class ApplyLocalLimitRule(Rule):
         down_op = LimitOperator(
             n_limit,
             up_op,
+            down_op.data_context,
         )
         down_logical_op = Limit(
             up_logical_op,

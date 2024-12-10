@@ -3,7 +3,6 @@ from typing import Iterable, List, Optional
 
 import pyarrow as pa
 
-import ray
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
     FILE_SIZE_COLUMN_NAME,
     PATH_COLUMN_NAME,
@@ -20,6 +19,7 @@ from ray.data._internal.execution.operators.map_transformer import (
     MapTransformFn,
 )
 from ray.data.block import Block
+from ray.data.context import DataContext
 
 logger = logging.getLogger(__name__)
 
@@ -27,7 +27,9 @@ NUM_BLOCKS_PER_READ_TASK = 8
 
 
 def plan_partition_files_op(
-    logical_op: PartitionFiles, physical_children: List[PhysicalOperator]
+    logical_op: PartitionFiles,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 1
 
@@ -66,7 +68,7 @@ def plan_partition_files_op(
 
                 if (
                     running_in_memory_size
-                    > ray.data.DataContext.get_current().target_max_block_size
+                    > data_context.target_max_block_size
                     # To amortize overheads associated with launching Ray tasks and
                     # using multi-threading, produce multiple blocks in each read task.
                     # This doesn't change the size of the blocks, but it does change the
@@ -88,6 +90,7 @@ def plan_partition_files_op(
     return MapOperator.create(
         map_transformer,
         physical_children[0],
+        data_context,
         name="PartitionFiles",
         ray_remote_args={
             # This is operator is extremely fast. If we don't unblock backpressure, this
