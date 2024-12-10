@@ -94,7 +94,7 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
 
         def consume_fn(ds):
             feature, label = args.to_tf
-            for _ in ds.to_tf(feature=feature, label=label):
+            for _ in ds.to_tf(feature_columns=feature, label_columns=label):
                 pass
 
     elif args.write:
