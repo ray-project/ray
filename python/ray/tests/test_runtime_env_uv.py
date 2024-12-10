@@ -35,8 +35,6 @@ def test_uv_install_in_virtualenv(shutdown_only):
 
     @ray.remote
     def f():
-        import pip_install_test  # noqa: F401
-
         return virtualenv_utils.is_in_virtualenv()
 
     # Ensure that the runtime env has been installed and virtualenv is activated.
@@ -130,7 +128,9 @@ def test_package_install_with_different_versions(shutdown_only):
 # Install packages with cache enabled.
 def test_package_install_with_cache_enabled(shutdown_only):
     @ray.remote(
-        runtime_env={"uv": {"packages": ["requests==2.3.0"], "enable_uv_cache": True}}
+        runtime_env={
+            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": ""}
+        }
     )
     def f():
         import requests
@@ -138,7 +138,9 @@ def test_package_install_with_cache_enabled(shutdown_only):
         assert requests.__version__ == "2.3.0"
 
     @ray.remote(
-        runtime_env={"uv": {"packages": ["requests==2.2.0"], "enable_uv_cache": True}}
+        runtime_env={
+            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": ""}
+        }
     )
     def g():
         import requests

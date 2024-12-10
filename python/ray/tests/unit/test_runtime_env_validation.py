@@ -33,9 +33,9 @@ class TestVaidationUv:
         # Valid case w/o duplication.
         result = validation.parse_and_validate_uv({"packages": ["tensorflow"]})
         assert result == {
-            "enable_uv_cache": False,
             "packages": ["tensorflow"],
             "uv_check": False,
+            "uv_pip_install_options": "--no-cache",
         }
 
         # Valid case w/ duplication.
@@ -43,9 +43,9 @@ class TestVaidationUv:
             {"packages": ["tensorflow", "tensorflow"]}
         )
         assert result == {
-            "enable_uv_cache": False,
             "packages": ["tensorflow"],
             "uv_check": False,
+            "uv_pip_install_options": "--no-cache",
         }
 
         # Valid case, use `list` to represent necessary packages.
@@ -66,10 +66,10 @@ class TestVaidationUv:
             {"packages": ["tensorflow"], "uv_version": "==0.4.30"}
         )
         assert result == {
-            "enable_uv_cache": False,
             "packages": ["tensorflow"],
             "uv_version": "==0.4.30",
             "uv_check": False,
+            "uv_pip_install_options": "--no-cache",
         }
 
         # Valid requirement files.

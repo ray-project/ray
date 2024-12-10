@@ -166,7 +166,7 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. Provide option to enable caching for package installation.
+        # 2. Allow user to specify their own option to install packages via `uv`.
         uv_install_cmd = [
             python,
             "-m",
@@ -176,8 +176,10 @@ class UvProcessor:
             "-r",
             requirements_file,
         ]
-        if not self._uv_config.get("enable_uv_cache", False):
-            uv_install_cmd += ["--no-cache"]
+
+        uv_opt_str = self._uv_config.get("uv_pip_install_options", "--no-cache")
+        if len(uv_opt_str) > 0:
+            uv_install_cmd += [uv_opt_str]
 
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
