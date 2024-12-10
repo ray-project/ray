@@ -228,11 +228,11 @@ print("result:", get_entrypoint_name())
 
     # Test python shell
     outputs = execute_driver(["python", "-i"], input=get_entrypoint)
-    assert line_exists(outputs, ".*result: \(interactive_shell\) python -i.*")
+    assert line_exists(outputs, r".*result: \(interactive_shell\) python -i.*")
 
     # Test IPython shell
     outputs = execute_driver(["ipython"], input=get_entrypoint)
-    assert line_exists(outputs, ".*result: \(interactive_shell\).*ipython")
+    assert line_exists(outputs, r".*result: \(interactive_shell\).*ipython")
 
 
 def test_removed_internal_flags(shutdown_only):
