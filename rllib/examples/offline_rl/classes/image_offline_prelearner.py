@@ -35,7 +35,6 @@ class ImageOfflinePreLearner(OfflinePreLearner):
         self,
         config: "AlgorithmConfig",
         learner: Union[Learner, List[ActorHandle]],
-        locality_hints: Optional[List[str]] = None,
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,

@@ -58,9 +58,7 @@ config = (
         map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
-        iter_batches_kwargs={
-            "prefetch_batches": 1,
-        },
+        iter_batches_kwargs={"prefetch_batches": 1},
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training

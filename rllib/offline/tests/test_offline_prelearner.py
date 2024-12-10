@@ -164,7 +164,6 @@ class TestOfflinePreLearner(unittest.TestCase):
         ).iter_batches(
             batch_size=10,
             prefetch_batches=1,
-            local_shuffle_buffer_size=100,
         )
 
         # Now sample a single batch.
