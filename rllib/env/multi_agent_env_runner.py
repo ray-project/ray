@@ -401,6 +401,8 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         ongoing_episode_continuation = self._episode.cut(
             len_lookback_buffer=self.config.episode_lookback_horizon
         )
+        if ongoing_episode_continuation.env_t_to_agent_t["high_level_agent"].lookback > 0:
+            self._episode.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
 
         ongoing_episodes_to_return = []
         # Just started Episodes do not have to be returned. There is no data

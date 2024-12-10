@@ -140,7 +140,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 (
                     # The new target observation.
                     observation_space,
-                    # Low-level policy that should get us to target room.
+                    # Low-level policy that should get us to the new target observation.
                     gym.spaces.Discrete(3),
                 )
             ),
@@ -156,6 +156,9 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         self._agent_pos = (1, 1)
         self._low_level_steps = 0
         self._high_level_action = None
+        # Number of times the low-level agent reached the given target (by the high
+        # level agent).
+        self._num_targets_reached = 0
 
         self._ts = 0
 
@@ -204,8 +207,11 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             )
         # Low-level agent made a move (primitive action).
         else:
-            # low_level_agent = next(iter(action_dict.keys()))
             assert len(action_dict) == 1
+
+            # Increment low-level step counter.
+            self._low_level_steps += 1
+
             target_discrete_pos, low_level_agent = self._high_level_action
             low_level_agent = f"low_level_agent_{low_level_agent}"
             next_pos = _get_next_pos(action_dict[low_level_agent], self._agent_pos)
@@ -236,11 +242,15 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                     {},
                 )
 
-            # Low-level agent has reached its target location:
+            # Low-level agent has reached its target location (given by the high-level):
             # - Hand back control to high-level agent.
             # - Reward low level agent and high-level agent with small rewards.
             elif self._agent_discrete_pos == target_discrete_pos:
-                rewards = {"high_level_agent": 0.1, low_level_agent: 0.1}
+                self._num_targets_reached += 1
+                rewards = {
+                    "high_level_agent": 0.1,#0.95 ** self._num_targets_reached,
+                    low_level_agent: 1.0,
+                }
                 return (
                     {
                         "high_level_agent": self._agent_discrete_pos,
@@ -253,12 +263,11 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
 
             # Low-level agent has not reached anything.
             else:
-                # Increment low-level step counter.
-                self._low_level_steps += 1
                 # Small step penalty.
                 rewards = {low_level_agent: -0.01}
                 # Reached time budget -> Hand back control to high level agent.
                 if self._low_level_steps >= self.max_steps_low_level:
+                    rewards["high_level_agent"] = -1.0
                     return (
                         {
                             "high_level_agent": self._agent_discrete_pos,
