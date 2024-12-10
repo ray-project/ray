@@ -303,7 +303,8 @@ class ServeControllerClient:
         # deploy_application returns; the application state manager will
         # need another reconcile iteration to create it.
         for app in built_apps:
-            self._wait_for_deployment_created(app.ingress_deployment_name, app.name)
+            if blocking:
+                self._wait_for_deployment_created(app.ingress_deployment_name, app.name)
             handles.append(
                 self.get_handle(
                     app.ingress_deployment_name, app.name, check_exists=False
