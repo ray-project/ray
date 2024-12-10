@@ -205,7 +205,7 @@ Next, see these end-to-end examples below for more details:
 
 You may also find these user guides helpful:
 
-- :ref:`Configuring Scale and Resources (CPU, GPU and other accelerators) <train_scaling_config>`
+- :ref:`Configuring Scale and Resources (CPU, GPU, and other accelerators) <train_scaling_config>`
 - :ref:`Configuration and Persistent Storage <train-run-config>`
 - :ref:`Saving and Loading Checkpoints <train-checkpointing>`
 - :ref:`How to use Ray Data with Ray Train <data-ingest-torch>`

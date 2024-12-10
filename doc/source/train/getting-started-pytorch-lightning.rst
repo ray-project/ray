@@ -7,9 +7,9 @@ This tutorial walks through the process of converting an existing PyTorch Lightn
 
 Learn how to:
 
-1. Configure the Lightning Trainer so that it runs distributed with Ray and on the correct CPU, GPU or other accelerator devices.
+1. Configure the Lightning Trainer so that it runs distributed with Ray and on the correct CPU, GPU, or other accelerator devices.
 2. Configure :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
-3. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU or :ref:`other accelerators <using-gpus-or-other-accelerators>` resource requirements for a training job.
+3. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU, or :ref:`other accelerator <using-gpus-or-other-accelerators>` resource requirements for a training job.
 4. Launch a distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
@@ -31,7 +31,7 @@ For reference, the final code is as follows:
     result = trainer.fit()
 
 1. `train_func` is the Python code that executes on each distributed training worker.
-2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs or other types of accelerators such as HPUs.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs or other types of accelerators.
 3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a PyTorch Lightning training script with and without Ray Train.

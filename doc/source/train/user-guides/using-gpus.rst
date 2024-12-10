@@ -1,7 +1,7 @@
 .. _train_scaling_config:
 
-Configuring Scale and Resources (CPU, GPU and other accelerators)
-=================================================================
+Configuring Scale and Resources (CPU, GPU, and other accelerators)
+==================================================================
 Increasing the scale of a Ray Train training run is simple and can be done in a few lines of code.
 The main interface for this is the :class:`~ray.train.ScalingConfig`,
 which configures the number of workers and the resources they should use.
