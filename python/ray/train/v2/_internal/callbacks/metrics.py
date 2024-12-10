@@ -71,13 +71,13 @@ class ControllerMetricsCallback(ControllerCallback, WorkerGroupCallback):
     LOCAL_METRICS_PUSH_INTERVAL_S: float = 5.0
     CONTROLLER_TAG_KEYS = (RUN_NAME_TAG_KEY,)
 
-    def __init__(self, run_context: TrainRunContext):
+    def __init__(self, train_run_context: TrainRunContext):
         """
         This callback is initialized on the driver process and then passed to the
         controller. This callback collects metrics from the controller actor as well
         as the metrics related to the worker groups.
         """
-        self._run_name = run_context.run_name
+        self._run_name = train_run_context.get_run_config().name
         self._thread: Optional[threading.Thread] = None
         self._thread_stop_event: Optional[threading.Event] = None
         self._metrics: Optional[ControllerMetrics] = None
@@ -164,7 +164,7 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
     LOCAL_METRICS_PUSH_INTERVAL_S: float = 5.0
     WORKER_TAG_KEYS = (RUN_NAME_TAG_KEY, WORKER_WORLD_RANK_TAG_KEY)
 
-    def __init__(self, run_context: TrainRunContext):
+    def __init__(self, train_run_context: TrainRunContext):
         """
         This callback is initialized on the driver process and then passed to the
         workers. When adding more class attributes, make sure the attributes are
@@ -173,7 +173,7 @@ class WorkerMetricsCallback(WorkerCallback, TrainContextCallback):
         TODO: Making Callbacks factory methods that when they are initialized on the
         driver process, we do not need to worry about pickling the callback instances.
         """
-        self._run_name = run_context.run_name
+        self._run_name = train_run_context.get_run_config().name
         self._thread: Optional[threading.Thread] = None
         self._thread_stop_event: Optional[threading.Event] = None
         self._metrics_lock: Optional[threading.Lock] = None

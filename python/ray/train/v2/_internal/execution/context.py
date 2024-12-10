@@ -22,14 +22,21 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__file__)
 
 
-@dataclass(frozen=True)
+@dataclass
 class TrainRunContext:
     """Holds the metadata and context for the current training run."""
 
-    # The run configuration name for the current training run.
-    run_name: str
+    # TODO: Make this dataclass immutable after refactoring the train context.
+
+    # The run configuration for the current training run.
+    run_config: RunConfig
 
     # TODO: Add more fields that are shared across all workers and controllers.
+    # For example, StorageContext, ScalingConfig, etc.
+
+    def get_run_config(self) -> RunConfig:
+        """Returns the run config of the current training run."""
+        return self.run_config
 
 
 @dataclass(frozen=True)
@@ -65,8 +72,7 @@ class ExecutionContext:
 
 
 @dataclass
-class TrainContext:
-    run_config: RunConfig
+class TrainContext(TrainRunContext):
     distributed_context: DistributedContext
     execution_context: ExecutionContext
     storage_context: StorageContext

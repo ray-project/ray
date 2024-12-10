@@ -20,11 +20,11 @@ from ray.train.v2._internal.execution.context import (
     DistributedContext,
     ExecutionContext,
     TrainContext,
+    TrainRunContext,
     get_train_context,
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
-from ray.train.v2.api.config import RunConfig
 
 T = TypeVar("T")
 
@@ -153,7 +153,7 @@ class RayTrainWorker:
 
     def init_train_context(
         self,
-        run_config: RunConfig,
+        train_run_context: TrainRunContext,
         distributed_context: DistributedContext,
         synchronization_actor: SynchronizationActor,
         storage_context: StorageContext,
@@ -166,7 +166,7 @@ class RayTrainWorker:
             c for c in worker_callbacks if isinstance(c, TrainContextCallback)
         ]
         context = TrainContext(
-            run_config=run_config,
+            run_config=train_run_context.run_config,
             distributed_context=distributed_context,
             execution_context=ExecutionContext(
                 synchronization_actor=synchronization_actor,

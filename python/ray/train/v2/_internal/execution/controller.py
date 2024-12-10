@@ -29,6 +29,7 @@ from ray.train.v2._internal.execution.checkpoint.checkpoint_handler import (
 from ray.train.v2._internal.execution.checkpoint.checkpoint_manager import (
     CheckpointManager,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.failure_handling import (
     FailureDecision,
     FailurePolicy,
@@ -41,7 +42,6 @@ from ray.train.v2._internal.execution.scaling_policy import (
 from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.config import RunConfig
 from ray.train.v2.api.result import Result
 
 logger = logging.getLogger(__name__)
@@ -85,9 +85,9 @@ class TrainController:
     def __init__(
         self,
         train_fn: Callable[[Dict[str, Any]], None],
+        train_run_context: TrainRunContext,
         scaling_policy: ScalingPolicy,
         failure_policy: FailurePolicy,
-        run_config: Optional[RunConfig] = None,
         callbacks: Optional[List[Callback]] = None,
         # TODO: [Deprecation]
         resume_from_checkpoint: Optional[Checkpoint] = None,
@@ -96,7 +96,8 @@ class TrainController:
 
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
-        self._run_config = run_config or RunConfig()
+        self._train_run_context = train_run_context
+        self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
         self._resume_from_checkpoint = resume_from_checkpoint
         self._storage_context = StorageContext(
@@ -127,7 +128,8 @@ class TrainController:
         ]
 
         self._worker_group = self.worker_group_cls(
-            run_config=self._run_config, callbacks=worker_group_callbacks_to_propagate
+            train_run_context=self._train_run_context,
+            callbacks=worker_group_callbacks_to_propagate,
         )
         self._state = TrainControllerState.INITIALIZING
 

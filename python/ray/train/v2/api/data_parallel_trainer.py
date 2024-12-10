@@ -145,11 +145,12 @@ class DataParallelTrainer:
         dataset_config: Optional[DataConfig] = None,
         metadata: Optional[Dict[str, Any]] = _UNSUPPORTED,
     ):
+        self.run_config = run_config or RunConfig()
+        self.train_run_context = TrainRunContext(self.run_config)
         self.train_loop_per_worker = train_loop_per_worker
         self.train_loop_config = train_loop_config
         self.scaling_config = scaling_config
         self.backend_config = backend_config or BackendConfig()
-        self.run_config = run_config or RunConfig()
         self.datasets = datasets or {}
         self.data_config = dataset_config or DataConfig()
 
@@ -189,9 +190,8 @@ class DataParallelTrainer:
             callbacks.append(working_directory_setup_callback)
 
         if env_bool(METRICS_ENABLED_ENV_VAR, True):
-            train_run_context = TrainRunContext(run_name=self.run_config.name)
-            callbacks.append(ControllerMetricsCallback(train_run_context))
-            callbacks.append(WorkerMetricsCallback(train_run_context))
+            callbacks.append(ControllerMetricsCallback(self.train_run_context))
+            callbacks.append(WorkerMetricsCallback(self.train_run_context))
 
         # TODO: Add support for user-defined callbacks
 
@@ -208,7 +208,7 @@ class DataParallelTrainer:
             train_fn=train_fn,
             scaling_policy=create_scaling_policy(self.scaling_config),
             failure_policy=DefaultFailurePolicy(self.run_config.failure_config),
-            run_config=self.run_config,
+            train_run_context=self.train_run_context,
             callbacks=callbacks,
             resume_from_checkpoint=self.resume_from_checkpoint,
         )

@@ -9,6 +9,7 @@ from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupTimeoutError,
 )
 from ray.train.v2._internal.execution.callback import ControllerCallback
+from ray.train.v2._internal.execution.context import TrainRunContext
 from ray.train.v2._internal.execution.controller import (
     TrainController,
     TrainControllerState,
@@ -30,7 +31,7 @@ from ray.train.v2._internal.execution.worker_group import (
     WorkerStatus,
 )
 from ray.train.v2._internal.util import time_monotonic
-from ray.train.v2.api.config import ScalingConfig
+from ray.train.v2.api.config import RunConfig, ScalingConfig
 
 
 class DummyWorkerGroup(WorkerGroup):
@@ -140,8 +141,10 @@ def patch_worker_group(monkeypatch):
 
 def test_resize():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
+    train_run_context = TrainRunContext(run_config=RunConfig())
     controller = TrainController(
         train_fn=lambda: None,
+        train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=MockFailurePolicy(failure_config=None),
     )
@@ -188,8 +191,10 @@ def test_resize():
 def test_failure_handling():
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = TrainRunContext(run_config=RunConfig())
     controller = TrainController(
         train_fn=lambda: None,
+        train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
@@ -228,8 +233,10 @@ def test_worker_group_start_failure(error_type):
     """Check that controller can gracefully handle worker group start failures."""
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = TrainRunContext(run_config=RunConfig())
     controller = TrainController(
         train_fn=lambda: None,
+        train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
     )
@@ -260,9 +267,13 @@ def test_poll_frequency(monkeypatch):
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda t: sleep_calls.append(t))
+    train_run_context = TrainRunContext(run_config=RunConfig())
 
     controller = TrainController(
-        train_fn=lambda: None, scaling_policy=None, failure_policy=None
+        train_fn=lambda: None,
+        train_run_context=train_run_context,
+        scaling_policy=None,
+        failure_policy=None,
     )
     num_polls = 5
     for _ in range(num_polls):
@@ -314,8 +325,11 @@ def test_controller_callback():
 
     scaling_policy = MockScalingPolicy(scaling_config=ScalingConfig())
     failure_policy = MockFailurePolicy(failure_config=None)
+    train_run_context = TrainRunContext(run_config=RunConfig())
+
     controller = TrainController(
         train_fn=lambda: None,
+        train_run_context=train_run_context,
         scaling_policy=scaling_policy,
         failure_policy=failure_policy,
         callbacks=[callback],

@@ -32,7 +32,11 @@ from ray.train.v2._internal.execution.callback import (
     WorkerGroupCallback,
 )
 from ray.train.v2._internal.execution.checkpoint.sync_actor import SynchronizationActor
-from ray.train.v2._internal.execution.context import DistributedContext, StorageContext
+from ray.train.v2._internal.execution.context import (
+    DistributedContext,
+    StorageContext,
+    TrainRunContext,
+)
 from ray.train.v2._internal.execution.worker_group.worker import (
     RayTrainWorker,
     Worker,
@@ -44,7 +48,6 @@ from ray.train.v2._internal.util import (
     ray_get_safe,
     time_monotonic,
 )
-from ray.train.v2.api.config import RunConfig
 from ray.types import ObjectRef
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.scheduling_strategies import (
@@ -111,16 +114,17 @@ class WorkerGroup:
 
     def __init__(
         self,
-        run_config: Optional[RunConfig] = None,
+        train_run_context: TrainRunContext,
         callbacks: Optional[
             List[Union[WorkerGroupCallback, WorkerCallback, TrainContextCallback]]
         ] = None,
     ):
-        self._run_config = run_config or RunConfig()
+        self._train_run_context = train_run_context
+        run_config = self._train_run_context.run_config
         self._storage_context = StorageContext(
-            storage_path=self._run_config.storage_path,
-            experiment_dir_name=self._run_config.name,
-            storage_filesystem=self._run_config.storage_filesystem,
+            storage_path=run_config.storage_path,
+            experiment_dir_name=run_config.name,
+            storage_filesystem=run_config.storage_filesystem,
         )
         callbacks = callbacks or []
         # Group of callbacks that are specific to worker group itself.
@@ -207,7 +211,7 @@ class WorkerGroup:
     ) -> None:
         context_init_tasks = [
             worker.actor.init_train_context.remote(
-                run_config=self._run_config,
+                train_run_context=self._train_run_context,
                 distributed_context=worker.distributed_context,
                 synchronization_actor=self._sync_actor,
                 storage_context=self._storage_context,

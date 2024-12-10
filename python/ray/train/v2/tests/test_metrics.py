@@ -8,6 +8,8 @@ from ray.train.v2._internal.callbacks.metrics import (
     ControllerMetricsCallback,
     WorkerMetricsCallback,
 )
+from ray.train.v2._internal.execution.context import TrainRunContext
+from ray.train.v2.api.config import RunConfig
 
 
 class MockGauge:
@@ -46,16 +48,17 @@ def test_worker_metrics_callback(monkeypatch):
     monkeypatch.setattr(WorkerMetricsCallback, "on_report", mock_on_report)
     mock_train_context = MagicMock()
     mock_train_context.get_world_rank.return_value = 1
+    mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
     monkeypatch.setattr(
         ray.train.v2._internal.callbacks.metrics,
         "get_train_context",
         lambda: mock_train_context,
     )
     monkeypatch.setattr(ray.train.v2._internal.callbacks.metrics, "Gauge", MockGauge)
-    mock_run_context = MagicMock()
-    mock_run_context.run_name = "test_run_name"
 
-    callback = WorkerMetricsCallback(mock_run_context)
+    callback = WorkerMetricsCallback(
+        train_run_context=TrainRunContext(run_config=RunConfig(name="test_run_name"))
+    )
     callback.after_init_train_context()
 
     # Check if the gauges is updated with the correct metrics
@@ -83,10 +86,17 @@ def test_controller_metrics_callback(monkeypatch):
     )
     monkeypatch.setattr(ray.train.v2._internal.callbacks.metrics, "Gauge", MockGauge)
 
-    mock_run_context = MagicMock()
-    mock_run_context.run_name = "test_run_name"
+    mock_train_context = MagicMock()
+    mock_train_context.get_run_config.return_value = RunConfig(name="test_run_name")
+    monkeypatch.setattr(
+        ray.train.v2._internal.callbacks.metrics,
+        "get_train_context",
+        lambda: mock_train_context,
+    )
 
-    callback = ControllerMetricsCallback(mock_run_context)
+    callback = ControllerMetricsCallback(
+        train_run_context=TrainRunContext(run_config=RunConfig(name="test_run_name"))
+    )
     callback.after_controller_start()
 
     # Check if the gauges is updated with the correct metrics
