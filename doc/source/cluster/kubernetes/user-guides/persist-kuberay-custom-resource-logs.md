@@ -93,7 +93,7 @@ A few notes on the above config:
   The reason is that the directory `/tmp/ray/session_latest/logs/` does not exist
   initially (Ray must create it first). Setting the `Refresh_Interval` low allows us to see logs
   in the Fluent Bit container's stdout sooner.
-- The `POD_LABELS` variable used in the `FILTER` section is populated using the [Kubernetes downward API][KubernetesDownwardAPI]. The label is pulled from the pod's metadata label `ray.io/cluster`, which is defined in the Fluent Bit sidecar container's environment.
+- The [Kubernetes downward API][KubernetesDownwardAPI] populates the `POD_LABELS` variable used in the `FILTER` section. It pulls the label from the pod's metadata label `ray.io/cluster`, which is defined in the Fluent Bit sidecar container's environment.
 - The `tenant_id` field allows you to assign logs to different tenants. In this example, the logs are sent to the `test` tenant. This configuration can be adjusted to match the tenant ID set up in your Grafana Loki instance, enabling multi-tenancy support in Grafana.
 
 
