@@ -14,6 +14,9 @@ from ray._private.test_utils import (
 def parse_script_args():
     parser = argparse.ArgumentParser()
 
+    # '--kill-workers' to be deprecated in favor of '--chaos'
+    parser.add_argument("--kill-workers", action="store_true", default=False)
+
     parser.add_argument(
         "--chaos",
         type=str,
@@ -26,7 +29,6 @@ def parse_script_args():
 
     parser.add_argument("--kill-interval", type=int, default=60)
     parser.add_argument("--max-to-kill", type=int, default=2)
-    parser.add_argument("--batch-size-to-kill", type=int, default=1)
     parser.add_argument(
         "--no-start",
         action="store_true",
@@ -92,6 +94,8 @@ def task_node_filter(task_names):
 def get_chaos_killer(args):
     if args.chaos != "":
         chaos_type = args.chaos
+    elif args.kill_workers:
+        chaos_type = "KillWorker"
     else:
         chaos_type = "KillRaylet"  # default
 
@@ -121,12 +125,11 @@ def main():
         lifetime="detached",
         no_start=args.no_start,
         max_to_kill=args.max_to_kill,
-        batch_size_to_kill=args.batch_size_to_kill,
         kill_delay_s=args.kill_delay,
         kill_filter_fn=kill_filter_fn,
     )
     print(
-        f"Successfully deployed a {resource_killer_cls} killer."
+        f"Successfully deployed a {'worker' if args.kill_workers else 'node'} killer."
     )
 
 
