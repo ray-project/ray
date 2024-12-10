@@ -18,7 +18,10 @@
 #include <csignal>
 #include <fstream>
 #include <memory>
+#include <optional>
+#include <string>
 #include <utility>
+#include <vector>
 
 #include "absl/functional/bind_front.h"
 #include "absl/time/clock.h"
@@ -35,6 +38,7 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/raylet/worker_pool.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/event.h"
@@ -143,9 +147,13 @@ NodeManager::NodeManager(
           /*starting_worker_timeout_callback=*/
           [this] { cluster_task_manager_->ScheduleAndDispatchTasks(); },
           config.ray_debugger_external,
-          /*get_time=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; }),
+          /*get_time=*/[]() { return absl::Now(); }),
       client_call_manager_(io_service),
-      worker_rpc_pool_(client_call_manager_),
+      worker_rpc_pool_([this](const rpc::Address &addr) {
+        return std::make_shared<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+          RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+        });
+      }),
       core_worker_subscriber_(std::make_unique<pubsub::Subscriber>(
           self_node_id_,
           /*channels=*/
@@ -223,8 +231,8 @@ NodeManager::NodeManager(
             ref.set_object_id(object_id.Binary());
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
-      store_client_(std::make_shared<plasma::PlasmaClient>()),
-      periodical_runner_(io_service),
+      store_client_(std::make_unique<plasma::PlasmaClient>()),
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
       initial_config_(config),
@@ -336,7 +344,7 @@ NodeManager::NodeManager(
   }
   local_task_manager_ = std::make_shared<LocalTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       dependency_manager_,
       [this](const WorkerID &owner_worker_id, const NodeID &owner_node_id) {
         return !this->IsWorkerDead(owner_worker_id, owner_node_id);
@@ -351,14 +359,14 @@ NodeManager::NodeManager(
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       get_node_info_func,
       announce_infeasible_task,
-      local_task_manager_);
+      *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
@@ -377,7 +385,7 @@ NodeManager::NodeManager(
   dashboard_agent_manager_ = CreateDashboardAgentManager(self_node_id, config);
   runtime_env_agent_manager_ = CreateRuntimeEnvAgentManager(self_node_id, config);
 
-  runtime_env_agent_client_ = RuntimeEnvAgentClient::Create(
+  auto runtime_env_agent_client = RuntimeEnvAgentClient::Create(
       io_service_,
       config.node_manager_address,
       config.runtime_env_agent_port, /*delay_executor=*/
@@ -387,14 +395,14 @@ NodeManager::NodeManager(
       },
       shutdown_raylet_gracefully_);
 
-  worker_pool_.SetRuntimeEnvAgentClient(runtime_env_agent_client_);
+  worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
-  periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
-                                       RayConfig::instance().task_failure_entry_ttl_ms(),
-                                       "NodeManager.GCTaskFailureReason");
+  periodical_runner_->RunFnPeriodically([this]() { GCTaskFailureReason(); },
+                                        RayConfig::instance().task_failure_entry_ttl_ms(),
+                                        "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
-      store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+      *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
@@ -447,7 +455,7 @@ ray::Status NodeManager::RegisterGcs() {
 
     auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
     ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           auto triggered_by_global_gc = TryLocalGC();
           // If plasma store is under high pressure, we should try to schedule a global
@@ -492,7 +500,7 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugState();
         WarnResourceDeadlock();
@@ -501,15 +509,15 @@ ray::Status NodeManager::RegisterGcs() {
       "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
   last_metrics_recorded_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_ms_,
-                                       "NodeManager.deadline_timer.record_metrics");
+  periodical_runner_->RunFnPeriodically([this] { RecordMetrics(); },
+                                        record_metrics_period_ms_,
+                                        "NodeManager.deadline_timer.record_metrics");
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { SpillIfOverPrimaryObjectsThreshold(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.spill_objects_when_over_threshold");
@@ -518,7 +526,7 @@ ray::Status NodeManager::RegisterGcs() {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
@@ -532,7 +540,7 @@ ray::Status NodeManager::RegisterGcs() {
   // For failure cases, GCS might think this raylet dead, but this
   // raylet still think it's alive. This could happen when the cluster setup is wrong,
   // for example, there is data loss in the DB.
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         // Flag to see whether a request is running.
         static bool checking = false;
@@ -1562,8 +1570,8 @@ void NodeManager::DisconnectClient(const std::shared_ptr<ClientConnection> &clie
                 .WithField("node_id", self_node_id_.Hex())
                 .WithField("job_id", worker->GetAssignedJobId().Hex())
             << error_message_str;
-        auto error_data_ptr =
-            gcs::CreateErrorTableData(type, error_message_str, current_time_ms(), job_id);
+        auto error_data_ptr = gcs::CreateErrorTableData(
+            type, error_message_str, absl::FromUnixMillis(current_time_ms()), job_id);
         RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
       }
     }
@@ -1762,9 +1770,11 @@ void NodeManager::ProcessPushErrorRequestMessage(const uint8_t *message_data) {
 
   auto const &type = string_from_flatbuf(*message->type());
   auto const &error_message = string_from_flatbuf(*message->error_message());
+  // TODO(hjiang): Figure out what's the unit for `PushErrorRequest`.
   double timestamp = message->timestamp();
   JobID job_id = from_flatbuf<JobID>(*message->job_id());
-  auto error_data_ptr = gcs::CreateErrorTableData(type, error_message, timestamp, job_id);
+  auto error_data_ptr = gcs::CreateErrorTableData(
+      type, error_message, absl::FromUnixMillis(timestamp), job_id);
   RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
 }
 
@@ -1863,6 +1873,39 @@ void NodeManager::HandleRequestWorkerLease(rpc::RequestWorkerLeaseRequest reques
                                               request.is_selected_based_on_locality(),
                                               reply,
                                               send_reply_callback_wrapper);
+}
+
+void NodeManager::HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                                        rpc::PrestartWorkersReply *reply,
+                                        rpc::SendReplyCallback send_reply_callback) {
+  auto pop_worker_request = std::make_shared<PopWorkerRequest>(
+      request.language(),
+      rpc::WorkerType::WORKER,
+      request.has_job_id() ? JobID::FromBinary(request.job_id()) : JobID::Nil(),
+      /*root_detached_actor_id=*/ActorID::Nil(),
+      /*gpu=*/std::nullopt,
+      /*actor_worker=*/std::nullopt,
+      request.runtime_env_info(),
+      /*runtime_env_hash=*/
+      CalculateRuntimeEnvHash(request.runtime_env_info().serialized_runtime_env()),
+      /*options=*/std::vector<std::string>{},
+      absl::Seconds(request.keep_alive_duration_secs()),
+      /*callback=*/
+      [request](const std::shared_ptr<WorkerInterface> &worker,
+                PopWorkerStatus status,
+                const std::string &runtime_env_setup_error_message) {
+        // This callback does not use the worker.
+        RAY_LOG(DEBUG).WithField(worker->WorkerId())
+            << "Prestart worker started! token " << worker->GetStartupToken()
+            << ", status " << status << ", runtime_env_setup_error_message "
+            << runtime_env_setup_error_message;
+        return false;
+      });
+
+  for (uint64_t i = 0; i < request.num_workers(); i++) {
+    worker_pool_.StartNewWorker(pop_worker_request);
+  }
+  send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
 void NodeManager::HandlePrepareBundleResources(
@@ -1986,6 +2029,14 @@ void NodeManager::HandleReturnWorker(rpc::ReturnWorkerRequest request,
     status = Status::Invalid("Returned worker does not exist any more");
   }
   send_reply_callback(status, nullptr, nullptr);
+}
+
+void NodeManager::HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                                          rpc::IsLocalWorkerDeadReply *reply,
+                                          rpc::SendReplyCallback send_reply_callback) {
+  reply->set_is_dead(worker_pool_.GetRegisteredWorker(
+                         WorkerID::FromBinary(request.worker_id())) == nullptr);
+  send_reply_callback(Status::OK(), /*success=*/nullptr, /*failure=*/nullptr);
 }
 
 void NodeManager::HandleDrainRaylet(rpc::DrainRayletRequest request,
@@ -2126,8 +2177,8 @@ void NodeManager::MarkObjectsAsFailed(
              << " object may hang forever.";
       std::string error_message = stream.str();
       RAY_LOG(ERROR) << error_message;
-      auto error_data_ptr =
-          gcs::CreateErrorTableData("task", error_message, current_time_ms(), job_id);
+      auto error_data_ptr = gcs::CreateErrorTableData(
+          "task", error_message, absl::FromUnixMillis(current_time_ms()), job_id);
       RAY_CHECK_OK(gcs_client_->Errors().AsyncReportJobError(error_data_ptr, nullptr));
     }
   }

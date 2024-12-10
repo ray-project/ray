@@ -994,13 +994,14 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             batch=batch,
             timesteps=timesteps,
             num_epochs=num_epochs,
             minibatch_size=minibatch_size,
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
         )
+        return self.metrics.reduce()
 
     def update_from_episodes(
         self,
@@ -1062,7 +1063,7 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             episodes=episodes,
             timesteps=timesteps,
             num_epochs=num_epochs,
@@ -1070,6 +1071,7 @@ class Learner(Checkpointable):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             num_total_minibatches=num_total_minibatches,
         )
+        return self.metrics.reduce()
 
     def update_from_iterator(
         self,
@@ -1134,6 +1136,9 @@ class Learner(Checkpointable):
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 batch.policy_batches
             )
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             self._set_slicing_by_batch_id(batch, value=False)
             # If `num_iters` is reached break and return.
@@ -1143,9 +1148,6 @@ class Learner(Checkpointable):
         logger.info(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -1350,15 +1352,6 @@ class Learner(Checkpointable):
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
 
-        # TODO (sven): Remove this leftover hack here for the situation in which we
-        #  did not go through the learner connector.
-        #  Options:
-        #  a) Either also pass given batches through the learner connector (even if
-        #     episodes is None). (preferred solution)
-        #  b) Get rid of the option to pass in a batch altogether.
-        # if episodes is None:
-        #    batch = self._convert_batch_type(batch)
-
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
         unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
@@ -1440,9 +1433,6 @@ class Learner(Checkpointable):
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -1704,6 +1694,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
             reduce="sum",
+            with_throughput=True,
         )
 
     @Deprecated(

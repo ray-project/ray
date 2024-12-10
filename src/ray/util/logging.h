@@ -129,6 +129,11 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
+// `cond` is a `Status` class, could be `ray::Status`, or from third-party like
+// `grpc::Status`.
+#define RAY_LOG_IF_ERROR(level, cond) \
+  if (RAY_PREDICT_FALSE(!(cond).ok())) RAY_LOG(level)
+
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
 #define RAY_CHECK(condition)                                                      \
