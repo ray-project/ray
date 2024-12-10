@@ -1462,9 +1462,11 @@ def start_gcs_server(
         redis_address: The address that the Redis server is listening on.
         event_log_dir: The path of the dir where gcs event log files are created.
         ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
-            written via `RAY_LOG`.
+            written via `RAY_LOG`. If None, stdout will not be redirected.
         ray_log_stderr_filepath: The file path to dump gcs server stderr log, which is
-            written via `RAY_LOG`.
+            written via `RAY_LOG`. If None, stderr will not be redirected.
+            Invariant: either `ray_log_stdout_filepath` and `ray_log_stderr_filepath`
+            are both valid, or both of them are None.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
@@ -1508,14 +1510,28 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
+    devnull_handle = None
+    stdout_file = None
+    stderr_file = None
+    if ray_log_stdout_filepath:
+        assert ray_log_stderr_filepath is not None
+        devnull_handle = open(os.devnull, "w")
+        stdout_file = devnull_handle
+        stderr_file = devnull_handle
+    else:
+        stdout_file = None
+        stderr_file = None
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        # GCS server stdout is completely taken over by C++ side spdlog, or disabled.
-        stdout_file=open(os.devnull, "w"),
-        stderr_file=open(os.devnull, "w"),
+        stdout_file=stdout_file,
+        stderr_file=stderr_file,
         fate_share=fate_share,
     )
+
+    if devnull_handle is not None:
+        devnull_handle.close()
     return process_info
 
 

@@ -8,6 +8,7 @@ import time
 import pytest
 
 import ray
+import ray._private.ray_constants as ray_constants
 from ray._private.test_utils import (
     run_string_as_driver,
     run_string_as_driver_nonblocking,
@@ -543,6 +544,8 @@ ray.get(foo.remote("abc", "def"))
 
 
 def test_core_worker_error_message():
+    os.environ[ray_constants.LOGGING_REDIRECT_STDERR_ENVIRONMENT_VARIABLE] = "1"
+
     script = """
 import ray
 import sys
