@@ -765,20 +765,11 @@ class Dataset:
                 f"got: {batch_format}"
             )
 
-        def _raise_duplicate_column_error(col: str):
-            raise ValueError(f"Trying to add an existing column with name {col!r}")
-
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
                 import pandas as pd
 
-                assert isinstance(column, (pd.Series, Sequence)), (
-                    f"For pandas batch format, the function must return a pandas "
-                    f"Series or sequence, got: {type(column)}"
-                )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
@@ -797,10 +788,9 @@ class Dataset:
                 # which case we'll want to append it
                 column_idx = batch.schema.get_field_index(col)
                 if column_idx == -1:
-                    # Append the column to the table
                     return batch.append_column(col, column)
                 else:
-                    _raise_duplicate_column_error(col)
+                    return batch.set_column(column_idx, col, column)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -809,8 +799,6 @@ class Dataset:
                     f"For numpy batch format, the function must return a "
                     f"numpy.ndarray, got: {type(column)}"
                 )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch[col] = column
                 return batch
 
