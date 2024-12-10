@@ -1,12 +1,13 @@
 import collections
 import inspect
 import logging
-import time
 from functools import wraps
 from typing import Any, Callable, Dict, List, Optional, Union
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
+
+from python.ray.serve._private.utils import wait_for_interrupt
 
 import ray
 from ray import cloudpickle
@@ -57,6 +58,7 @@ from ray.serve.schema import LoggingConfig, ServeInstanceDetails, ServeStatus
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 from ray.serve._private import api as _private_api  # isort:skip
+
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
 
@@ -428,6 +430,7 @@ def deployment(
     return decorator(_func_or_class) if callable(_func_or_class) else decorator
 
 
+@PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class RunTarget:
     target: Application
@@ -518,18 +521,6 @@ def _run(
         _blocking=_blocking,
         _local_testing_mode=_local_testing_mode,
     )[0]
-
-
-def wait_for_interrupt() -> None:
-    try:
-        while True:
-            # Block, letting Ray print logs to the terminal.
-            time.sleep(10)
-    except KeyboardInterrupt:
-        logger.warning("Got KeyboardInterrupt, exiting...")
-        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
-        # from the main script.
-        raise
 
 
 @PublicAPI(stability="beta")
