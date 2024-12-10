@@ -21,6 +21,3 @@ worker_node_types:
       resources:
         custom_resources:
           node: 1
-
-flags:
-  allow-cross-zone-autoscaling: true
