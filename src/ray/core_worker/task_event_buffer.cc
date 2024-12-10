@@ -232,7 +232,7 @@ bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
 
 TaskEventBufferImpl::TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(io_service_),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       status_events_() {}
 
@@ -283,9 +283,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   }
 
   RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms << "ms.";
-  periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
-                                       report_interval_ms,
-                                       "CoreWorker.deadline_timer.flush_task_events");
+  periodical_runner_->RunFnPeriodically([this] { FlushEvents(/*forced= */ false); },
+                                        report_interval_ms,
+                                        "CoreWorker.deadline_timer.flush_task_events");
   return Status::OK();
 }
 
