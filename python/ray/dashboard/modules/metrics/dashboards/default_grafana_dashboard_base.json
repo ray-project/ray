@@ -77,17 +77,17 @@
           "value": ["$__all"]
         },
         "datasource": "${datasource}",
-        "definition": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, NodeAddress)",
+        "definition": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, instance)",
         "description": null,
         "error": null,
         "hide": 0,
         "includeAll": true,
         "label": null,
         "multi": true,
-        "name": "NodeAddress",
+        "name": "Instance",
         "options": [],
         "query": {
-          "query": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, NodeAddress)",
+          "query": "label_values(ray_node_network_receive_speed{{SessionName=~\"$SessionName\",{global_filters}}}, instance)",
           "refId": "Prometheus-Instance-Variable-Query"
         },
         "refresh": 2,
