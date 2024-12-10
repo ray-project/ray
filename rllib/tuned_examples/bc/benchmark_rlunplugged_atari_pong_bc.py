@@ -33,6 +33,7 @@ from ray.rllib.utils.test_utils import (
 gym.register_envs(ale_py)
 
 
+# Define a `ConnectorV2` to decode stacked encoded Atari frames.
 class DecodeObservations(ConnectorV2):
     def __init__(
         self,
@@ -244,8 +245,6 @@ config = (
         # batches per learner.
         iter_batches_kwargs={
             "prefetch_batches": 4,
-            # Do not use batch shuffling b/c it hurts performance.
-            "local_shuffle_buffer_size": None,
         },
         # Iterate over 10 batches per RLlib iteration if multiple learners
         # are used.
@@ -277,7 +276,8 @@ config = (
     )
 )
 
-# TODO (simon): Change to use the `run_rllib_example` function as soon as tuned.
+# TODO (simon): Change to use the `run_rllib_example` function as soon as this works
+# with Ray Tune.
 algo = config.build()
 
 for i in range(100):
