@@ -57,7 +57,7 @@ for Fluent Bit.
 The following ConfigMap example configures a Fluent Bit sidecar to:
 * Tail Ray logs.
 * Send logs to a Grafana Loki endpoint.
-* Add metadata to the logs for filtering by labels (e.g., `RayCluster`).
+* Add metadata to the logs for filtering by labels, for example, `RayCluster`.
 
 ```yaml
 apiVersion: v1
