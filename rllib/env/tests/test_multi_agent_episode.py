@@ -2254,29 +2254,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # --- is_terminated, is_truncated ---
 
-    def test_cut_complex(self):
-        # Simple multi-agent episode, in which all agents always step.
-        episode = self._create_simple_episode(
-            [
-                {"a0": 0},
-                {"a2": 0},
-                {"a2": 1},
-                {"a2": 2},
-                {"a0": 1},
-                {"a2": 3},
-                {"a2": 4},
-                {"a2": 5},
-                # <- expect cut here (b/c of lookback==1)
-                {"a0": 2},
-                {"a1": 0},
-            ],
-            len_lookback_buffer=0,
-        )
-
-        successor = episode.cut(len_lookback_buffer=1)
-
-        episode.print()
-
     def test_cut(self):
         # Simple multi-agent episode, in which all agents always step.
         episode = self._create_simple_episode(
@@ -2381,9 +2358,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.observations, [3])
         check(a0.actions, [])
         check(a0.rewards, [])
-        #check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 0.3})
-        #check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
@@ -2406,9 +2381,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(a0.observations, [3, 4])
         check(a0.actions, [3])
         check(a0.rewards, [0.3])
-        #check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 0.6})
-        #check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
         check(successor._hanging_extra_model_outputs_end, {})
@@ -2429,9 +2402,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check((a0.actions, a1.actions), ([3, 4], []))
         check((a0.rewards, a1.rewards), ([0.3, 0.4], []))
         # Begin caches keep accumulating a1's rewards.
-        #check(successor._hanging_actions_begin, {"a1": 0})
         check(successor._hanging_rewards_begin, {"a1": 1.0})
-        #check(successor._hanging_extra_model_outputs_begin, {"a1": {}})
         # But end caches are now empty (due to a1's observation/finished step).
         check(successor._hanging_actions_end, {})
         check(successor._hanging_rewards_end, {"a1": 0.0})
@@ -2546,6 +2517,45 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode_1.env_t_started, 0)
         check(episode_2.env_t, episode_2.env_t_started)
         check(episode_1.env_t, episode_2.env_t_started)
+
+        # Another complex case.
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0},
+                {"a2": 0},
+                {"a2": 1},
+                {"a2": 2},
+                {"a0": 1},
+                {"a2": 3},
+                {"a2": 4},
+                # <- BUT: actual cut here, b/c of hanging action of a2
+                {"a2": 5},
+                # <- would expect cut here (b/c of lookback==1)
+                {"a0": 2},
+                {"a1": 0},
+            ],
+            len_lookback_buffer=0,
+        )
+        successor = episode.cut(len_lookback_buffer=1)
+        check(len(successor), 0)
+        check(successor.env_t, 9)
+        check(successor.env_t_started, 9)
+        self.assertTrue(all(len(e) == 0 for e in successor.agent_episodes.values()))
+        self.assertTrue(all(len(e) == 1 for e in successor.env_t_to_agent_t.values()))
+        self.assertTrue(
+            all(e.lookback == 2 for e in successor.env_t_to_agent_t.values())
+        )
+        check(successor.env_t_to_agent_t["a0"].data, ["S", 0, "S"])
+        check(successor.env_t_to_agent_t["a1"].data, ["S", "S", 0])
+        check(successor.env_t_to_agent_t["a2"].data, [0, "S", "S"])
+
+        check(successor.get_observations(0), {"a1": 0})
+        with self.assertRaises(IndexError):
+            successor.get_observations(1)
+        check(successor.get_observations(-2), {"a0": 2})
+        check(successor.get_observations(-3), {"a2": 5})
+        with self.assertRaises(IndexError):
+            successor.get_observations(-4)
 
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
@@ -3369,11 +3379,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
             episode._hanging_extra_model_outputs_end,
         )
         check(episode_2._hanging_rewards_end, episode._hanging_rewards_end)
-        #check(episode_2._hanging_actions_begin, episode._hanging_actions_begin)
-        #check(
-        #    episode_2._hanging_extra_model_outputs_begin,
-        #    episode._hanging_extra_model_outputs_begin,
-        #)
         check(episode_2._hanging_rewards_begin, episode._hanging_rewards_begin)
         check(episode_2.is_terminated, episode.is_terminated)
         check(episode_2.is_truncated, episode.is_truncated)
@@ -3499,7 +3504,7 @@ class TestMultiAgentEpisode(unittest.TestCase):
             }
 
         # Sample `size` many records.
-        done_agents = set()
+        done_agents = {aid for aid, t in episode.get_terminateds().items() if t}
         for i in range(env.t, env.t + size):
             action = {
                 agent_id: i + 1 for agent_id in obs if agent_id not in done_agents

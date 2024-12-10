@@ -316,12 +316,7 @@ class SingleAgentEpisode:
         self.is_truncated = truncated
 
         # Extra model outputs, e.g. `action_dist_input` needed in the batch.
-        self.extra_model_outputs = {}#defaultdict(
-            #functools.partial(
-            #    InfiniteLookbackBuffer,
-            #    lookback=len_lookback_buffer,
-            #),
-        #)
+        self.extra_model_outputs = {}
         for k, v in (extra_model_outputs or {}).items():
             if isinstance(v, InfiniteLookbackBuffer):
                 self.extra_model_outputs[k] = v
@@ -437,20 +432,11 @@ class SingleAgentEpisode:
         self.infos.append(infos)
         self.t += 1
         if extra_model_outputs is not None:
-            if not (
-                "action_dist_inputs" in extra_model_outputs
-                and "action_logp" in extra_model_outputs
-                and "weights_seq_no" in extra_model_outputs
-                and len(extra_model_outputs) == 3
-            ):
-                print("HERE")
             for k, v in extra_model_outputs.items():
                 if k not in self.extra_model_outputs:
                     self.extra_model_outputs[k] = InfiniteLookbackBuffer([v])
                 else:
                     self.extra_model_outputs[k].append(v)
-        else:
-            assert False
         self.is_terminated = terminated
         self.is_truncated = truncated
 
@@ -1397,14 +1383,6 @@ class SingleAgentEpisode:
             at_indices=at_indices,
             neg_index_as_lookback=neg_index_as_lookback,
         )
-        ## Users wants to add a new record -> Create new buffer.
-        #else:
-        #    if at_indices is not None:
-        #        raise AttributeError(
-        #            f"Cannot set non-existing extra_model_outputs[{key}] using the "
-        #            "`at_indices` arg! Try leaving `at_indices` None."
-        #        )
-        #    self.extra_model_outputs[key] = InfiniteLookbackBuffer(data=new_data)
 
     def add_temporary_timestep_data(self, key: str, data: Any) -> None:
         """Temporarily adds (until `finalized()` called) per-timestep data to self.
