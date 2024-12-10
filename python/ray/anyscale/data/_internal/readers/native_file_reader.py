@@ -39,6 +39,11 @@ class NativeFileReader(FileReader):
         self._include_paths = include_paths
         self._partitioning = partitioning
         self._open_args = open_args
+        self._data_context = DataContext.get_current()
+
+    @property
+    def data_context(self) -> DataContext:
+        return self._data_context
 
     @abc.abstractmethod
     def read_stream(self, file: "pyarrow.NativeFile", path: str) -> Iterable[DataBatch]:
@@ -58,8 +63,7 @@ class NativeFileReader(FileReader):
 
         # TODO: We should refactor the code so that we can get the results in order even
         # when using multiple threads.
-        ctx = DataContext.get_current()
-        if ctx.execution_options.preserve_order:
+        if self._data_context.execution_options.preserve_order:
             num_threads = 0
 
         def _read_paths(paths: List[str]):
@@ -72,7 +76,7 @@ class NativeFileReader(FileReader):
                 file = call_with_retry(
                     lambda: self._open_input_source(path, filesystem=filesystem),
                     description=f"open file {path}",
-                    match=ctx.retried_io_errors,
+                    match=self._data_context.retried_io_errors,
                     max_attempts=OPEN_FILE_MAX_ATTEMPTS,
                     max_backoff_s=OPEN_FILE_RETRY_MAX_BACKOFF_SECONDS,
                 )
@@ -130,8 +134,7 @@ class NativeFileReader(FileReader):
 
         buffer_size = open_args.pop("buffer_size", None)
         if buffer_size is None:
-            ctx = DataContext.get_current()
-            buffer_size = ctx.streaming_read_buffer_size
+            buffer_size = self._data_context.streaming_read_buffer_size
 
         if compression == "snappy":
             # Arrow doesn't support streaming Snappy decompression since the canonical
@@ -148,7 +151,7 @@ class NativeFileReader(FileReader):
                 **open_args,
             ),
             description=f"open file {path}",
-            match=ctx.retried_io_errors,
+            match=self._data_context.retried_io_errors,
         )
 
         if compression == "snappy":

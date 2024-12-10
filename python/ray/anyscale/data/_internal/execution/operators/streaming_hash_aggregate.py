@@ -183,6 +183,7 @@ class StreamingHashAggregate(PhysicalOperator):
     def __init__(
         self,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         key: str,
         agg_fn: StreamingAggFn,
         num_aggregators: int,
@@ -191,6 +192,7 @@ class StreamingHashAggregate(PhysicalOperator):
         super().__init__(
             name=name,
             input_dependencies=[input_op],
+            data_context=data_context,
             target_max_block_size=None,
         )
         self._key = key

@@ -40,16 +40,20 @@ DEFAULT_MAX_NUM_LIST_FILES_TASKS = 200
 
 
 def plan_list_files_op(
-    op: ListFiles, physical_children: List[PhysicalOperator]
+    op: ListFiles,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 0
-    input_data_buffer = create_input_data_buffer(op)
-    map_operator = create_map_operator(input_data_buffer, op)
+    input_data_buffer = create_input_data_buffer(op, data_context)
+    map_operator = create_map_operator(input_data_buffer, op, data_context)
     return map_operator
 
 
-def create_input_data_buffer(logical_op: ListFiles) -> InputDataBuffer:
-    max_num_list_files_tasks = DataContext.get_current().get_config(
+def create_input_data_buffer(
+    logical_op: ListFiles, data_context: DataContext
+) -> InputDataBuffer:
+    max_num_list_files_tasks = data_context.get_config(
         "max_num_list_files_tasks", DEFAULT_MAX_NUM_LIST_FILES_TASKS
     )
     path_splits = np.array_split(
@@ -70,11 +74,13 @@ def create_input_data_buffer(logical_op: ListFiles) -> InputDataBuffer:
             owns_blocks=False,
         )
         input_data.append(ref_bundle)
-    return InputDataBuffer(input_data=input_data)
+    return InputDataBuffer(data_context, input_data=input_data)
 
 
 def create_map_operator(
-    input_op: PhysicalOperator, logical_op: ListFiles
+    input_op: PhysicalOperator,
+    logical_op: ListFiles,
+    data_context: DataContext,
 ) -> MapOperator:
     def list_files(rows: Iterable[Row], _: TaskContext) -> Iterable[Row]:
         for row in rows:
@@ -113,6 +119,7 @@ def create_map_operator(
     return MapOperator.create(
         map_transformer,
         input_op,
+        data_context,
         name="ListFiles",
         ray_remote_args={
             # This is operator is extremely fast. If we don't unblock backpressure, this
