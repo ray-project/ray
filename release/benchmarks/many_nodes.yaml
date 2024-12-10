@@ -23,5 +23,4 @@ worker_node_types:
           node: 1
 
 flags:
-  disable_nfs_mount: true
   allow-cross-zone-autoscaling: true
