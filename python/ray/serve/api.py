@@ -516,7 +516,20 @@ def _run(
             logging_config=logging_config,
         ),
         _blocking=_blocking,
+        _local_testing_mode=_local_testing_mode,
     )[0]
+
+
+def wait_for_interrupt() -> None:
+    try:
+        while True:
+            # Block, letting Ray print logs to the terminal.
+            time.sleep(10)
+    except KeyboardInterrupt:
+        logger.warning("Got KeyboardInterrupt, exiting...")
+        # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+        # from the main script.
+        raise
 
 
 @PublicAPI(stability="beta")
@@ -525,29 +538,14 @@ def run_many(
     blocking: bool = False,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
-    handles = []
-    for t in targets:
-        handles.append(
-            _run(
-                target=t.target,
-                name=t.name,
-                route_prefix=t.route_prefix,
-                logging_config=t.logging_config,
-                _local_testing_mode=_local_testing_mode,
-            )
-        )
-        logger.info(f"Deployed app '{t.name}' successfully.")
+    handles = _run_many(
+        *targets,
+        _blocking=blocking,
+        _local_testing_mode=_local_testing_mode,
+    )
 
     if blocking:
-        try:
-            while True:
-                # Block, letting Ray print logs to the terminal.
-                time.sleep(10)
-        except KeyboardInterrupt:
-            logger.warning("Got KeyboardInterrupt, exiting...")
-            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
-            # from the main script.
-            raise
+        wait_for_interrupt()
 
     return handles
 
@@ -587,14 +585,21 @@ def run(
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
     """
-    return _run_many(
-        target,
-        name=name,
-        route_prefix=route_prefix,
-        logging_config=logging_config,
-        blocking=blocking,
+    handle = _run_many(
+        RunTarget(
+            target=target,
+            name=name,
+            route_prefix=route_prefix,
+            logging_config=logging_config,
+        ),
+        _blocking=blocking,
         _local_testing_mode=_local_testing_mode,
     )[0]
+
+    if blocking:
+        wait_for_interrupt()
+
+    return handle
 
 
 @PublicAPI(stability="stable")
