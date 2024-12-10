@@ -20,17 +20,16 @@
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &io_context,
-    ClusterResourceManager &cluster_resource_manager,
-    GcsNodeManager &gcs_node_manager,
-    NodeID local_node_id,
-    std::shared_ptr<ClusterTaskManager> cluster_task_manager)
+GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
+                                       ClusterResourceManager &cluster_resource_manager,
+                                       GcsNodeManager &gcs_node_manager,
+                                       NodeID local_node_id,
+                                       ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_task_manager_(std::move(cluster_task_manager)) {}
+      cluster_task_manager_(cluster_task_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
@@ -197,7 +196,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_) {
+    if (cluster_task_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);

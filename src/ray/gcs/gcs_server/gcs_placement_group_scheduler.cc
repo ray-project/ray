@@ -23,13 +23,13 @@ namespace gcs {
 
 GcsPlacementGroupScheduler::GcsPlacementGroupScheduler(
     instrumented_io_context &io_context,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    gcs::GcsTableStorage &gcs_table_storage,
     const gcs::GcsNodeManager &gcs_node_manager,
     ClusterResourceScheduler &cluster_resource_scheduler,
     rpc::NodeManagerClientPool &raylet_client_pool)
     : io_context_(io_context),
       return_timer_(io_context),
-      gcs_table_storage_(std::move(gcs_table_storage)),
+      gcs_table_storage_(gcs_table_storage),
       gcs_node_manager_(gcs_node_manager),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       raylet_client_pool_(raylet_client_pool) {}
@@ -395,7 +395,7 @@ void GcsPlacementGroupScheduler::OnAllBundlePrepareRequestReturned(
 
   placement_group->UpdateState(rpc::PlacementGroupTableData::PREPARED);
 
-  RAY_CHECK_OK(gcs_table_storage_->PlacementGroupTable().Put(
+  RAY_CHECK_OK(gcs_table_storage_.PlacementGroupTable().Put(
       placement_group_id,
       placement_group->GetPlacementGroupTableData(),
       [this, lease_status_tracker, schedule_failure_handler, schedule_success_handler](

@@ -13,3 +13,6 @@ from ray.train.horovod.config import HorovodConfig
 from ray.train.horovod.horovod_trainer import HorovodTrainer
 
 __all__ = ["HorovodConfig", "HorovodTrainer"]
+
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.
