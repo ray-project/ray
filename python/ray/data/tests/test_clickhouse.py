@@ -140,7 +140,7 @@ class TestClickHouseDatasource:
         assert expected_query == generated_query
 
     @pytest.mark.parametrize("parallelism", [1, 2, 3, 4])
-    def test_get_read_tasks(self, datasource, parallelism):
+    def test_get_read_tasks_ordered_table(self, datasource, parallelism):
         batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field1"])
         batch2 = pa.record_batch(
             [pa.array([9, 10, 11, 12, 13, 14, 15, 16])], names=["field1"]
