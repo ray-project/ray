@@ -32,13 +32,21 @@ class TestVaidationUv:
     def test_parse_and_validate_uv(self, test_directory):
         # Valid case w/o duplication.
         result = validation.parse_and_validate_uv({"packages": ["tensorflow"]})
-        assert result == {"packages": ["tensorflow"], "uv_check": False}
+        assert result == {
+            "enable_uv_cache": False,
+            "packages": ["tensorflow"],
+            "uv_check": False,
+        }
 
         # Valid case w/ duplication.
         result = validation.parse_and_validate_uv(
             {"packages": ["tensorflow", "tensorflow"]}
         )
-        assert result == {"packages": ["tensorflow"], "uv_check": False}
+        assert result == {
+            "enable_uv_cache": False,
+            "packages": ["tensorflow"],
+            "uv_check": False,
+        }
 
         # Valid case, use `list` to represent necessary packages.
         result = validation.parse_and_validate_uv(
@@ -58,6 +66,7 @@ class TestVaidationUv:
             {"packages": ["tensorflow"], "uv_version": "==0.4.30"}
         )
         assert result == {
+            "enable_uv_cache": False,
             "packages": ["tensorflow"],
             "uv_version": "==0.4.30",
             "uv_check": False,

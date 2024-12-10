@@ -173,10 +173,12 @@ class UvProcessor:
             "uv",
             "pip",
             "install",
-            "" if self._uv_config.get("enable_uv_cache", False) else "--no-cache",
             "-r",
             requirements_file,
         ]
+        if not self._uv_config.get("enable_uv_cache", False):
+            uv_install_cmd += ["--no-cache"]
+
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
