@@ -146,10 +146,10 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
         result = dict(packages=uv, uv_check=False)
     elif isinstance(uv, dict):
-        if set(uv.keys()) - {"packages", "uv_check", "uv_version"}:
+        if set(uv.keys()) - {"packages", "uv_check", "uv_version", "enable_uv_cache"}:
             raise ValueError(
                 "runtime_env['uv'] can only have these fields: "
-                "packages, uv_check and uv_version, but got: "
+                "packages, uv_check, uv_version and enable_uv_cache, but got: "
                 f"{list(uv.keys())}"
             )
         if "packages" not in uv:
@@ -166,9 +166,15 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
                 "runtime_env['uv']['uv_version'] must be of type str, "
                 f"got {type(uv['uv_version'])}"
             )
+        if "enable_uv_cache" in uv and not isinstance(uv["enable_uv_cache"], bool):
+            raise TypeError(
+                "runtime_env['uv']['enable_uv_cache'] must be of type bool, "
+                f"got {type(uv['enable_uv_cache'])}"
+            )
 
         result = uv.copy()
         result["uv_check"] = uv.get("uv_check", False)
+        result["enable_uv_cache"] = uv.get("enable_uv_cache", False)
         if not isinstance(uv["packages"], list):
             raise ValueError(
                 "runtime_env['uv']['packages'] must be of type list, "
