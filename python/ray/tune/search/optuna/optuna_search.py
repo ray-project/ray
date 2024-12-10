@@ -378,9 +378,7 @@ class OptunaSearch(Searcher):
                 "of `optuna.storages.BaseStorage`."
             )
         # If storage is not provided, just set self._storage to None
-        # so that the default in-memory storage is used. We don't explicitly
-        # set self._storage to InMemoryStorage because it is a new API in Optuna
-        # and we want to keep the backward compatibility.
+        # so that the default in-memory storage is used.
         self._storage = storage
 
         self._completed_trials = set()
