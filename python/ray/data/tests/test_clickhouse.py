@@ -164,7 +164,7 @@ class TestClickHouseDatasource:
             assert read_task.metadata.num_rows == expected_rows
 
     @pytest.mark.parametrize("parallelism", [1, 4])
-    def test_get_read_tasks_order_by(self, datasource, parallelism):
+    def test_get_read_tasks_no_ordering(self, datasource, parallelism):
         datasource._order_by = None
         batch1 = pa.record_batch([pa.array([1, 2, 3, 4, 5, 6, 7, 8])], names=["field2"])
         batch2 = pa.record_batch(
