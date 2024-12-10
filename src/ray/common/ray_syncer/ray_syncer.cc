@@ -29,7 +29,7 @@ RaySyncer::RaySyncer(instrumented_io_context &io_context,
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(io_context) {
+      timer_(PeriodicalRunner::Create(io_context)) {
   stopped_ = std::make_shared<bool>(false);
 }
 
@@ -159,7 +159,7 @@ void RaySyncer::Register(MessageType message_type,
 
         // Set job to pull from reporter periodically
         if (reporter != nullptr && pull_from_reporter_interval_ms > 0) {
-          timer_.RunFnPeriodically(
+          timer_->RunFnPeriodically(
               [this, stopped = stopped_, message_type]() {
                 if (*stopped) {
                   return;
