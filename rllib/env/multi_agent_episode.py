@@ -520,7 +520,9 @@ class MultiAgentEpisode:
                         self.env_t_to_agent_t[agent_id].extend(
                             [self.SKIP_ENV_TS_TAG] * self.env_t + [0]
                         )
-                        self.env_t_to_agent_t[agent_id].lookback = self._len_lookback_buffers
+                        self.env_t_to_agent_t[
+                            agent_id
+                        ].lookback = self._len_lookback_buffers
                         # Make `add_env_reset` call and continue with next agent.
                         sa_episode.add_env_reset(observation=_observation, infos=_infos)
                         # Add possible reward to begin cache.
@@ -2062,7 +2064,11 @@ class MultiAgentEpisode:
                     # If we are still in the global lookback buffer segment, deduct 1
                     # from this agents' lookback buffer, b/c we don't want the agent
                     # to use this (missing) obs/data in its single-agent lookback.
-                    if len(self.env_t_to_agent_t[agent_id]) - self._len_lookback_buffers <= 0:
+                    if (
+                        len(self.env_t_to_agent_t[agent_id])
+                        - self._len_lookback_buffers
+                        <= 0
+                    ):
                         len_lookback_buffer_per_agent[agent_id] -= 1
                     self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
 
@@ -2297,7 +2303,11 @@ class MultiAgentEpisode:
                     hanging_val,
                     filter_for_skip_indices=idxes[i],
                 )
-                if what == "extra_model_outputs" and not inf_lookback_buffer and not hanging_val:
+                if (
+                    what == "extra_model_outputs"
+                    and not inf_lookback_buffer
+                    and not hanging_val
+                ):
                     continue
                 agent_value = self._get_single_agent_data_by_index(
                     what=what,

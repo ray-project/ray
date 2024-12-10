@@ -248,7 +248,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             elif self._agent_discrete_pos == target_discrete_pos:
                 self._num_targets_reached += 1
                 rewards = {
-                    "high_level_agent": 0.1,#0.95 ** self._num_targets_reached,
+                    "high_level_agent": 0.1,  # 0.95 ** self._num_targets_reached,
                     low_level_agent: 1.0,
                 }
                 return (
