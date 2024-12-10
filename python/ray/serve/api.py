@@ -2,7 +2,7 @@ import collections
 import inspect
 import logging
 from functools import wraps
-from typing import Any, Callable, Dict, List, Optional, Union
+from typing import Any, Callable, Dict, List, Optional, Sequence, Union
 
 from attr import dataclass
 from fastapi import APIRouter, FastAPI
@@ -440,7 +440,7 @@ class RunTarget:
 
 @PublicAPI(stability="beta")
 def _run_many(
-    *targets: RunTarget,
+    targets: Sequence[RunTarget],
     _blocking: bool = True,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
@@ -479,14 +479,15 @@ def _run_many(
         configure_component_logger(
             component_name="local_test",
             component_id="-",
-            logging_config=t.logging_config or LoggingConfig(),
+            logging_config=t.logging_config  # implicitly uses the last target
+            or LoggingConfig(),
             stream_handler_only=True,
         )
         return [b.deployment_handles[b.ingress_deployment_name] for b in built_apps]
     else:
         client = _private_api.serve_start(
             http_options={"location": "EveryNode"},
-            global_logging_config=targets[0].logging_config,
+            global_logging_config=t.logging_config,  # implicitly uses the last target
         )
 
         # Record after Ray has been started.
@@ -511,12 +512,14 @@ def _run(
     code indefinitely until Ctrl-C'd.
     """
     return _run_many(
-        RunTarget(
-            target=target,
-            name=name,
-            route_prefix=route_prefix,
-            logging_config=logging_config,
-        ),
+        [
+            RunTarget(
+                target=target,
+                name=name,
+                route_prefix=route_prefix,
+                logging_config=logging_config,
+            )
+        ],
         _blocking=_blocking,
         _local_testing_mode=_local_testing_mode,
     )[0]
@@ -524,12 +527,12 @@ def _run(
 
 @PublicAPI(stability="beta")
 def run_many(
-    *targets: RunTarget,
+    targets: Sequence[RunTarget],
     blocking: bool = False,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
     handles = _run_many(
-        *targets,
+        targets,
         _blocking=blocking,
         _local_testing_mode=_local_testing_mode,
     )
@@ -576,12 +579,14 @@ def run(
         DeploymentHandle: A handle that can be used to call the application.
     """
     handle = _run_many(
-        RunTarget(
-            target=target,
-            name=name,
-            route_prefix=route_prefix,
-            logging_config=logging_config,
-        ),
+        [
+            RunTarget(
+                target=target,
+                name=name,
+                route_prefix=route_prefix,
+                logging_config=logging_config,
+            )
+        ],
         _blocking=blocking,
         _local_testing_mode=_local_testing_mode,
     )[0]
