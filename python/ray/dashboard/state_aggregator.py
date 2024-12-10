@@ -469,8 +469,8 @@ class StateAPIManager:
 
             # Num pre-truncation is the number of tasks returned from
             # source + num filtered on source
-            num_after_truncation = len(result) + reply.num_filtered_on_gcs
-            num_total = reply.num_total_stored + reply.num_status_task_events_dropped
+            num_after_truncation = len(result)
+            num_total = len(result) + reply.num_status_task_events_dropped
 
             result = self._filter(result, option.filters, TaskState, option.detail)
             num_filtered = len(result)
