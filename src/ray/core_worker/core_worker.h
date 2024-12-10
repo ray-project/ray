@@ -1878,10 +1878,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// `OverrideRuntimeEnv` mutates parent job runtime env info.
   /// 2. Cleanup cache on job change.
   ///
-  /// Serialized runtime info env are cached.
-  mutable std::mutex job_runtime_env_serialization_mutex_;
   /// Maps serialized runtime env info to **immutable** deserialized protobuf.
-  mutable utils::container::SharedLruCache<std::string, rpc::RuntimeEnvInfo>
+  mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
       runtime_env_json_serialization_cache_;
 };
 

@@ -2194,7 +2194,6 @@ json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> par
 // sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
-  std::lock_guard lck(job_runtime_env_serialization_mutex_);
   if (auto cached_runtime_env_info =
           runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
       cached_runtime_env_info != nullptr) {
