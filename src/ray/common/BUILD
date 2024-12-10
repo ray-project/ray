@@ -131,6 +131,7 @@ ray_cc_library(
     deps = [
         ":constants",
         ":status",
+        "//src/ray/util:resize_uninitialized",
         "//src/ray/protobuf:common_cc_proto",
         "//src/ray/protobuf:gcs_cc_proto",
         "//src/ray/util",
