@@ -1191,7 +1191,7 @@ class Node:
         assert self._gcs_client is None, "GCS client is already connected."
 
         stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-            "gcs_server", unique=True, create_out=True, create_err=False
+            "gcs_server", unique=True, create_out=True, create_err=True
         )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
