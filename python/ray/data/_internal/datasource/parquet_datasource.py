@@ -464,7 +464,8 @@ def read_fragments(
             }
 
         def get_batch_iterable():
-            pq_file = pq.ParquetFile(fragment.path)
+            # Using `iter_batches` instead of `to_batches` to avoid excessive use of memory.
+            pq_file = pq.ParquetFile(fragment.path, filesystem=fragment.filesystem)
             return pq_file.iter_batches(
                 use_threads=use_threads,
                 columns=columns,
