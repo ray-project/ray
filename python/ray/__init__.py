@@ -3,6 +3,7 @@ from ray._private import log  # isort: skip # noqa: F401
 import logging
 import os
 import sys
+from typing import TYPE_CHECKING
 
 log.generate_logging_config()
 logger = logging.getLogger(__name__)
@@ -280,15 +281,24 @@ __all__ += [
 ]
 
 
-# Delay importing of expensive, isolated subpackages.
-def __getattr__(name: str):
-    import importlib
+# Delay importing of expensive, isolated subpackages. Note that for proper type
+# checking support these imports must be kept in sync between type checking and
+# runtime behavior.
+if TYPE_CHECKING:
+    from . import autoscaler
+    from . import data
+    from . import workflow
+else:
 
-    if name in ["data", "workflow", "autoscaler"]:
-        return importlib.import_module("." + name, __name__)
-    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+    def __getattr__(name: str):
+        import importlib
+
+        if name in ["data", "workflow", "autoscaler"]:
+            return importlib.import_module("." + name, __name__)
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
 
 
 del os
 del logging
 del sys
+del TYPE_CHECKING
