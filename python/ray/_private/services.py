@@ -1444,9 +1444,9 @@ def get_address(redis_address):
 
 def start_gcs_server(
     redis_address: str,
-    log_dir: str,
+    event_log_dir: str,
     session_name: str,
-    stdout_file: Optional[IO[AnyStr]] = None,
+    ray_log_stdout_filepath: Optional[str],
     stderr_file: Optional[IO[AnyStr]] = None,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1460,12 +1460,12 @@ def start_gcs_server(
 
     Args:
         redis_address: The address that the Redis server is listening on.
-        log_dir: The path of the dir where log files are created.
-        session_name: The session name (cluster id) of this cluster.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
+        event_log_dir: The path of the dir where gcs event log files are created.
+        ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
+            written via `RAY_LOG`.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
+        session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
         config: Optional configuration that will
@@ -1481,7 +1481,7 @@ def start_gcs_server(
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--log_dir={log_dir}",
+        f"--event_log_dir={event_log_dir}",
         f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1489,6 +1489,10 @@ def start_gcs_server(
         f"--session-name={session_name}",
         f"--ray-commit={ray.__commit__}",
     ]
+
+    if ray_log_stdout_filepath:
+        command += [f"--ray_log_stdout_filepath={ray_log_stdout_filepath}"]
+
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
@@ -1501,10 +1505,12 @@ def start_gcs_server(
         command += [f"--redis_username={redis_username}"]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_GCS_SERVER,
-        stdout_file=stdout_file,
+        # GCS server stdout is completely taken over by C++ side spdlog, or disabled.
+        stdout_file=open(os.devnull, "w"),
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
