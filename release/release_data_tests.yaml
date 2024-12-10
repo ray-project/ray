@@ -19,15 +19,16 @@
   run:
     timeout: 3600
     script: >
-      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB
-      --format parquet --iterate
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet 
+      --iter-bundles
 
 - name: read_images
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+      s3://anyscale-imagenet/ILSVRC/Data --format image --iter-bundles
 
 # TODO: Rewrite this as a multi-node test
 - name: read_tfrecords_benchmark_single_node
@@ -60,7 +61,9 @@
 - name: write_parquet
   run:
     timeout: 3600
-    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
+    script: > 
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
 ###################
 # Aggregation tests
@@ -69,7 +72,9 @@
 - name: count_parquet
   run:
     timeout: 600
-    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
 
 ###############
 # Groupby tests
@@ -430,28 +435,52 @@
   run:
     timeout: 2400
 
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
   variations:
     - __suffix__: numpy
       run:
-        script: python iter_benchmark.py iter_batches --batch-format numpy
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --materialize-read --iter-batches numpy
     - __suffix__: pandas
       run:
-        script: python iter_benchmark.py iter_batches --batch-format pandas
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --materialize-read --iter-batches pandas
     - __suffix__: pyarrow
       run:
-        script: python iter_benchmark.py iter_batches --batch-format pyarrow
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --materialize-read --iter-batches pyarrow
 
 - name: to_tf
 
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
   run:
-    timeout: 5400
-    script: python iter_benchmark.py to_tf 
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train/ --format image 
+      --materialize-read --to-tf image image
 
 - name: iter_torch_batches
 
+  cluster:
+    cluster_compute: fixed_size_cpu_compute.yaml
+
   run:
-    timeout: 5400
-    script: python iter_benchmark.py iter_torch_batches 
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/train/ --format image 
+      --materialize-read --iter-torch-batches
 
 ###########
 # Map tests
