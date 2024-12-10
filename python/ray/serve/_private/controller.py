@@ -716,41 +716,42 @@ class ServeController:
                     extra={"log_to_stderr": False},
                 )
 
-    def deploy_application(self, name: str, deployment_args_list: List[bytes]) -> None:
+    def deploy_applications(
+        self, name_to_deployment_args_list: Dict[str, List[bytes]]
+    ) -> None:
         """
         Takes in a list of dictionaries that contain deployment arguments.
-        If same app name deployed, old application will be overwrriten.
+        If same app name deployed, old application will be overwritten.
 
         Args:
             name: Application name.
-            deployment_args_list: List of serialized deployment infomation,
+            deployment_args_list: List of serialized deployment information,
                 where each item in the list is bytes representing the serialized
                 protobuf `DeploymentArgs` object. `DeploymentArgs` contains all the
                 information for the single deployment.
         """
-        deployment_args_deserialized = []
-        for deployment_args_bytes in deployment_args_list:
-            deployment_args = DeploymentArgs.FromString(deployment_args_bytes)
-            deployment_args_deserialized.append(
-                {
-                    "deployment_name": deployment_args.deployment_name,
-                    "deployment_config_proto_bytes": deployment_args.deployment_config,
-                    "replica_config_proto_bytes": deployment_args.replica_config,
-                    "deployer_job_id": deployment_args.deployer_job_id,
-                    "ingress": deployment_args.ingress,
-                    "route_prefix": (
-                        deployment_args.route_prefix
-                        if deployment_args.HasField("route_prefix")
-                        else None
-                    ),
-                    "docs_path": (
-                        deployment_args.docs_path
-                        if deployment_args.HasField("docs_path")
-                        else None
-                    ),
-                }
-            )
-        self.application_state_manager.deploy_app(name, deployment_args_deserialized)
+        name_to_deployment_args = {}
+        for name, deployment_args_list in name_to_deployment_args_list.items():
+            deployment_args_deserialized = []
+            for deployment_args_bytes in deployment_args_list:
+                args = DeploymentArgs.FromString(deployment_args_bytes)
+                deployment_args_deserialized.append(
+                    {
+                        "deployment_name": args.deployment_name,
+                        "deployment_config_proto_bytes": args.deployment_config,
+                        "replica_config_proto_bytes": args.replica_config,
+                        "deployer_job_id": args.deployer_job_id,
+                        "ingress": args.ingress,
+                        "route_prefix": (
+                            args.route_prefix if args.HasField("route_prefix") else None
+                        ),
+                        "docs_path": (
+                            args.docs_path if args.HasField("docs_path") else None
+                        ),
+                    }
+                )
+            name_to_deployment_args[name] = deployment_args_deserialized
+        self.application_state_manager.deploy_apps(name_to_deployment_args)
 
     def apply_config(
         self,
