@@ -1943,9 +1943,6 @@ class MultiAgentEpisode:
                 "Only slice objects allowed with the syntax: `episode[a:b]`."
             )
 
-    # TODO (sven, simon): This function can only deal with data if it does not contain
-    #  terminated or truncated agents (i.e. you have to provide ONLY alive agents in the
-    #  agent_ids in the constructor - the episode does not deduce the agents).
     def _init_single_agent_episodes(
         self,
         *,
@@ -1982,6 +1979,7 @@ class MultiAgentEpisode:
         rewards_per_agent = defaultdict(list)
         extra_model_outputs_per_agent = defaultdict(list)
         done_per_agent = defaultdict(bool)
+        len_lookback_buffer_per_agent = defaultdict(lambda: len_lookback_buffer)
 
         all_agent_ids = set(
             agent_episode_ids.keys() if agent_episode_ids is not None else []
@@ -1989,7 +1987,6 @@ class MultiAgentEpisode:
         agent_module_ids = agent_module_ids or {}
 
         # Step through all observations and interpret these as the (global) env steps.
-        env_t = self.env_t_started - len_lookback_buffer
         for data_idx, (obs, inf) in enumerate(zip(observations, infos)):
             # If we do have actions/extra outs/rewards for this timestep, use the data.
             # It may be that these lists have the same length as the observations list,
@@ -2028,6 +2025,7 @@ class MultiAgentEpisode:
                         self.env_t_to_agent_t[agent_id].extend(
                             [self.SKIP_ENV_TS_TAG] * data_idx
                         )
+                        len_lookback_buffer_per_agent[agent_id] -= data_idx
 
                 # Agent is still continuing (has an action for the next step).
                 if agent_id in act:
@@ -2057,10 +2055,12 @@ class MultiAgentEpisode:
             for agent_id in all_agent_ids:
                 if agent_id not in obs and agent_id not in done_per_agent:
                     self.env_t_to_agent_t[agent_id].append(self.SKIP_ENV_TS_TAG)
+                    # If we are still in the global lookback buffer segment, deduct 1
+                    # from this agents' lookback buffer, b/c we don't want the agent
+                    # to use this (missing) obs/data in its single-agent lookback.
+                    if len(self.env_t_to_agent_t[agent_id]) - len_lookback_buffer <= 0:
+                        len_lookback_buffer_per_agent[agent_id] -= 1
                     self._hanging_rewards_end[agent_id] += rew.get(agent_id, 0.0)
-
-            # Increase env timestep by one.
-            env_t += 1
 
         # - Validate per-agent data.
         # - Fix lookback buffers of env_t_to_agent_t mappings.
@@ -2076,7 +2076,7 @@ class MultiAgentEpisode:
                 == len(extra_model_outputs_per_agent[agent_id]) + 1
                 == len(rewards_per_agent[agent_id]) + 1
             )
-            self.env_t_to_agent_t[agent_id].lookback = len_lookback_buffer# len_lookback_buffer_per_agent[agent_id]
+            self.env_t_to_agent_t[agent_id].lookback = len_lookback_buffer
 
         # Now create the individual episodes from the collected per-agent data.
         for agent_id, agent_obs in observations_per_agent.items():
@@ -2119,7 +2119,7 @@ class MultiAgentEpisode:
                 terminated=terminateds.get(agent_id, False),
                 truncated=truncateds.get(agent_id, False),
                 t_started=self.agent_t_started[agent_id],
-                len_lookback_buffer=len_lookback_buffer,
+                len_lookback_buffer=max(len_lookback_buffer_per_agent[agent_id], 0),
             )
             # .. and store it.
             self.agent_episodes[agent_id] = sa_episode

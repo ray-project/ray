@@ -2254,31 +2254,6 @@ class TestMultiAgentEpisode(unittest.TestCase):
 
         # --- is_terminated, is_truncated ---
 
-    def test_cut_complex(self):
-        # Simple multi-agent episode, in which all agents always step.
-        episode = self._create_simple_episode(
-            [
-                {"a0": 0},
-                {"a2": 0},
-                {"a2": 1},
-                {"a2": 2},
-                {"a0": 1},
-                {"a2": 3},
-                {"a2": 4},
-
-                # <- BUT: actual cut here, b/c of hanging action of a2
-                {"a2": 5},
-                # <- would expect cut here (b/c of lookback==1)
-                {"a0": 2},
-                {"a1": 0},
-            ],
-            len_lookback_buffer=0,
-        )
-
-        successor = episode.cut(len_lookback_buffer=1)
-
-        episode.print()
-
     def test_cut(self):
         # Simple multi-agent episode, in which all agents always step.
         episode = self._create_simple_episode(
@@ -2542,6 +2517,45 @@ class TestMultiAgentEpisode(unittest.TestCase):
         check(episode_1.env_t_started, 0)
         check(episode_2.env_t, episode_2.env_t_started)
         check(episode_1.env_t, episode_2.env_t_started)
+
+        # Another complex case.
+        episode = self._create_simple_episode(
+            [
+                {"a0": 0},
+                {"a2": 0},
+                {"a2": 1},
+                {"a2": 2},
+                {"a0": 1},
+                {"a2": 3},
+                {"a2": 4},
+                # <- BUT: actual cut here, b/c of hanging action of a2
+                {"a2": 5},
+                # <- would expect cut here (b/c of lookback==1)
+                {"a0": 2},
+                {"a1": 0},
+            ],
+            len_lookback_buffer=0,
+        )
+        successor = episode.cut(len_lookback_buffer=1)
+        check(len(successor), 0)
+        check(successor.env_t, 9)
+        check(successor.env_t_started, 9)
+        self.assertTrue(all(len(e) == 0 for e in successor.agent_episodes.values()))
+        self.assertTrue(all(len(e) == 1 for e in successor.env_t_to_agent_t.values()))
+        self.assertTrue(
+            all(e.lookback == 2 for e in successor.env_t_to_agent_t.values())
+        )
+        check(successor.env_t_to_agent_t["a0"].data, ["S", 0, "S"])
+        check(successor.env_t_to_agent_t["a1"].data, ["S", "S", 0])
+        check(successor.env_t_to_agent_t["a2"].data, [0, "S", "S"])
+
+        check(successor.get_observations(0), {"a1": 0})
+        with self.assertRaises(IndexError):
+            successor.get_observations(1)
+        check(successor.get_observations(-2), {"a0": 2})
+        check(successor.get_observations(-3), {"a2": 5})
+        with self.assertRaises(IndexError):
+            successor.get_observations(-4)
 
         # TODO (sven): Revisit this test and the MultiAgentEpisode.episode_concat API.
         return
