@@ -100,7 +100,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=42,
         title="Live Actor State",
-        description='Current number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT',
+        description="Current number of alive actors in a particular state.\n\nState: IDLE, RUNNING_TASK, RUNNING_IN_RAY_GET, RUNNING_IN_RAY_WAIT",
         unit="actors",
         targets=[
             Target(
@@ -112,7 +112,7 @@ DEFAULT_GRAFANA_PANELS = [
     Panel(
         id=36,
         title="Live Actors by Name",
-        description='Current number of alive actors with a particular name.',
+        description="Current number of alive actors with a particular name.",
         unit="actors",
         targets=[
             Target(
