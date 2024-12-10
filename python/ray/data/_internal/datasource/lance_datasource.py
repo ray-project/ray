@@ -1,7 +1,9 @@
 import logging
-from typing import TYPE_CHECKING, Any, Dict, Iterator, List, Optional
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterator, List, Optional
 
+import lance
 import numpy as np
+from lance import schema_to_json
 
 from ray.data._internal.util import _check_import, call_with_retry
 from ray.data.block import BlockMetadata
@@ -13,6 +15,46 @@ if TYPE_CHECKING:
 
 
 logger = logging.getLogger(__name__)
+
+
+class AddColumnTask(Datasource.CustomTask):
+    def __init__(self, task_input: Datasource.TaskInput):
+        self.fragment_id = task_input.task_id
+        self.fn = task_input.fn
+        assert task_input.partition["fragment"] is not None
+        self.fragment = task_input.partition["fragment"]
+        params = task_input.partition["params"]
+        assert (
+            params is not None
+            and params["action"] == "add_column"
+            and params["read_columns"] is not None
+        )
+        self.read_columns = params["read_columns"]
+
+    def __call__(self) -> Dict[str, Any]:
+        new_fragment, new_schema = self.fragment.merge_columns(
+            self.fn, self.read_columns
+        )
+        return {
+            "commit_messages": Datasource.TaskCommitMessage(
+                task_id=self.fragment_id,
+                partition={"fragment": new_fragment, "schema": new_schema},
+            )
+        }
+
+
+class DeleteRecordTask(Datasource.CustomTask):
+    def __init__(self, task_input: Datasource.TaskInput):
+        self.fragment_id = task_input.task_id
+        assert (
+            task_input.partition["fragment"] is not None
+            and task_input.partition["delete_rows_predicate"] is not None
+        )
+        self.delete_rows_predicate = task_input.partition["delete_rows_predicate"]
+        self.fragment = task_input.partition["fragment"]
+
+    def __call__(self, *args, **kwargs) -> Datasource.TaskCommitMessage:
+        return self.fragment.delete_rows(*args, **kwargs)
 
 
 class LanceDatasource(Datasource):
@@ -34,8 +76,6 @@ class LanceDatasource(Datasource):
         scanner_options: Optional[Dict[str, Any]] = None,
     ):
         _check_import(self, module="lance", package="pylance")
-
-        import lance
 
         self.uri = uri
         self.scanner_options = scanner_options or {}
@@ -96,6 +136,40 @@ class LanceDatasource(Datasource):
     def estimate_inmemory_data_size(self) -> Optional[int]:
         # TODO(chengsu): Add memory size estimation to improve auto-tune of parallelism.
         return None
+
+    def get_custom_tasks(
+        self,
+        fn: Callable,
+        params: Dict[str, Any] = None,
+    ) -> List[Datasource.CustomTask]:
+        custom_tasks = []
+        for fragment in self.lance_ds.get_fragments():
+            task_input = Datasource.TaskInput(
+                fragment.fragment_id,
+                fn=fn,
+                partition={"fragment": fragment, "params": params},
+            )
+            if params["action"] == "add_column":
+                custom_task = AddColumnTask(task_input)
+            elif params["action"] == "delete_records":
+                custom_task = DeleteRecordTask(task_input)
+            else:
+                custom_task = Datasource.CustomTask(task_input)
+            custom_tasks.append(custom_task)
+
+        return custom_tasks
+
+    def commit_tasks(self, commit_messages: List[Datasource.TaskCommitMessage]) -> bool:
+        merged_fragments = [item["partition"]["fragment"] for item in commit_messages]
+        schema = commit_messages[0]["partition"]["schema"]
+        operation = lance.LanceOperation.Merge(merged_fragments, schema)
+        lance.LanceDataset.commit(
+            self.uri,
+            operation,
+            read_version=self.lance_ds.version,
+            storage_options=self.storage_options,
+        )
+        return True
 
 
 def _read_fragments_with_retry(

@@ -1,6 +1,8 @@
 import os
+import random
 
 import lance
+import pandas as pd
 import pyarrow as pa
 import pytest
 from pkg_resources import parse_version
@@ -10,6 +12,7 @@ import ray
 from ray._private.test_utils import wait_for_condition
 from ray._private.utils import _get_pyarrow_version
 from ray.data import Schema
+from ray.data._internal.datasource.lance_datasource import LanceDatasource
 from ray.data.datasource.path_util import _unwrap_protocol
 
 
@@ -112,6 +115,41 @@ def test_lance_read_many_files(data_path):
         return ds.count() == num_rows
 
     wait_for_condition(test_lance, timeout=10)
+
+
+def generate_label(batch: pa.RecordBatch) -> pa.RecordBatch:
+    heights = batch.column("height").to_pylist()
+    tags = []
+    for height in heights:
+        tags.append("big" if height > 5 else "small")
+    df = pd.DataFrame({"size_labels": tags})
+
+    return pa.RecordBatch.from_pandas(
+        df, schema=pa.schema([pa.field("size_labels", pa.string())])
+    )
+
+
+@pytest.mark.parametrize("data_path", [lazy_fixture("local_path")])
+def test_lance_parallel_merge_columns(data_path):
+    # NOTE: Lance only works with PyArrow 12 or above.
+    pyarrow_version = _get_pyarrow_version()
+    if pyarrow_version is not None:
+        pyarrow_version = parse_version(pyarrow_version)
+    if pyarrow_version is not None and pyarrow_version < parse_version("12.0.0"):
+        return
+
+    setup_data_path = _unwrap_protocol(data_path)
+    path = os.path.join(setup_data_path, "test.lance")
+    num_rows = 1024
+    data = pa.table(
+        {
+            "id": pa.array(range(num_rows)),
+            "height": pa.array([random.randint(0, 10)] * num_rows),
+        }
+    )
+    lance.write_dataset(data, path, max_rows_per_file=1)
+
+    ray.data.add_columns(LanceDatasource(path), generate_label, ["height"])
 
 
 if __name__ == "__main__":
