@@ -73,6 +73,9 @@ message AutoscalingConfig {
 
   // The multiplicative "gain" factor to limit downscale.
   optional double downscaling_factor = 15;
+
+  // How scaling decisions are made based on the calculated replica counts.
+  string scaling_function = 16;
 }
 
 //[Begin] LOGGING CONFIG
