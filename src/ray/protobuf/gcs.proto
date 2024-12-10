@@ -705,3 +705,32 @@ message JobTableData {
   Address driver_address = 12;
 }
 ///////////////////////////////////////////////////////////////////////////////
+
+enum JobExecMode {
+  // A single node can carray tasks for multiple jobs.
+  Mixed = 0;
+  // A single node can only carray tasks for one job.
+  Exclusive = 1;
+}
+
+message NodeInstance {
+  // The Hostname address of the node instance.
+  string hostname = 1;
+  // The template id of the node instance.
+  string template_id = 2;
+  // Whether it's dead.
+  bool is_dead = 3;
+}
+
+message VirtualClusterTableData {
+  // The virtual cluster id.
+  string id = 1;
+  // The virtual cluster name.
+  string name = 2;
+  // The mode of jobs executed in this virtual cluster.
+  JobExecMode mode = 3;
+  // Mapping from node id to it's instance.
+  map<string, NodeInstance> node_instances = 4;
+  // Version number of the last modification to the virtual cluster.
+  uint64 revision = 5;
+}

@@ -66,6 +66,7 @@ struct GcsServerConfig {
 };
 
 class GcsNodeManager;
+class GcsVirtualClusterManager;
 class GcsActorManager;
 class GcsJobManager;
 class GcsWorkerManager;
@@ -154,6 +155,9 @@ class GcsServer {
 
   /// Initialize gcs actor manager.
   void InitGcsActorManager(const GcsInitData &gcs_init_data);
+
+  /// Initialize gcs virtual cluster manager.
+  void InitGcsVirtualClusterManager(const GcsInitData &gcs_init_data);
 
   /// Initialize gcs placement group manager.
   void InitGcsPlacementGroupManager(const GcsInitData &gcs_init_data);
@@ -245,6 +249,9 @@ class GcsServer {
   std::unique_ptr<GcsNodeManager> gcs_node_manager_;
   /// The health check manager.
   std::unique_ptr<GcsHealthCheckManager> gcs_healthcheck_manager_;
+  /// The gcs virtual cluster handler and service.
+  std::shared_ptr<GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
+  std::unique_ptr<rpc::VirtualClusterInfoGrpcService> gcs_virtual_cluster_service_;
   /// The gcs redis failure detector.
   std::unique_ptr<GcsRedisFailureDetector> gcs_redis_failure_detector_;
   /// The gcs placement group manager.

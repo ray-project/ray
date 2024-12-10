@@ -170,6 +170,9 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init cluster task manager.
   InitClusterTaskManager();
 
+  // Init gcs virtual cluster manager.
+  InitGcsVirtualClusterManager(gcs_init_data);
+
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
