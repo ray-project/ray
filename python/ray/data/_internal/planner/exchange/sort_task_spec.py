@@ -35,7 +35,7 @@ class SortKey:
                 f"Key must be a string or a list of strings, but got {key}."
             )
         if isinstance(descending, bool):
-            descending = [descending for _ in key]
+            descending = [descending for _ in key] if key else [descending]
         elif isinstance(descending, list):
             if len(descending) != len(key):
                 raise ValueError(
