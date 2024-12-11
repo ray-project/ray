@@ -85,7 +85,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Set device.
         self._device = get_device(
             self.config,
-            self.config.num_gpus_per_env_runner if self.worker_index > 0 else 0,
+            0 if not self.worker_index else self.config.num_gpus_per_env_runner,
         )
 
         # Create the vectorized gymnasium env.
