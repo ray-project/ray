@@ -155,9 +155,9 @@ class DeploymentStatusInternalTrigger(str, Enum):
 #     representing a state with that status and status trigger.
 DEPLOYMENT_STATUS_RANKING_ORDER = {
     # Status ranking order is defined in a following fashion:
-    #   1. (Highest) State signalling a deploy failure.
+    #   1. (Highest) State signaling a deploy failure.
     (DeploymentStatus.DEPLOY_FAILED,): 0,
-    #   1. State signalling any non-deploy failures in the system.
+    #   1. State signaling any non-deploy failures in the system.
     (DeploymentStatus.UNHEALTHY,): 1,
     #   2. States signaling the user updated the configuration.
     (DeploymentStatus.UPDATING,): 2,
