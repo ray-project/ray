@@ -2363,6 +2363,22 @@ py_test(
 # subdirectory: envs/
 # ....................................
 py_test(
+    name = "examples/envs/agents_act_simultaneously",
+    main = "examples/envs/agents_act_simultaneously.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/agents_act_simultaneously.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
+)
+py_test(
+    name = "examples/envs/agents_act_in_sequence",
+    main = "examples/envs/agents_act_in_sequence.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/agents_act_in_sequence.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
+)
+py_test(
     name = "examples/envs/custom_env_render_method",
     main = "examples/envs/custom_env_render_method.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2370,7 +2386,6 @@ py_test(
     srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=0"]
 )
-
 py_test(
     name = "examples/envs/custom_env_render_method_multi_agent",
     main = "examples/envs/custom_env_render_method.py",
@@ -2379,7 +2394,6 @@ py_test(
     srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=2"]
 )
-
 py_test(
     name = "examples/envs/custom_gym_env",
     main = "examples/envs/custom_gym_env.py",
@@ -2388,7 +2402,6 @@ py_test(
     srcs = ["examples/envs/custom_gym_env.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
-
 py_test(
     name = "examples/envs/env_connecting_to_rllib_w_tcp_client",
     main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
@@ -2397,7 +2410,6 @@ py_test(
     srcs = ["examples/envs/env_connecting_to_rllib_w_tcp_client.py"],
     args = ["--enable-new-api-stack", "--as-test", "--port=12346"]
 )
-
 py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
@@ -2405,7 +2417,6 @@ py_test(
     size = "medium",
     args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=2"]
 )
-
 py_test(
     name = "examples/envs/env_w_protobuf_observations",
     main = "examples/envs/env_w_protobuf_observations.py",
@@ -2414,7 +2425,6 @@ py_test(
     srcs = ["examples/envs/env_w_protobuf_observations.py"],
     args = ["--enable-new-api-stack", "--as-test"]
 )
-
 #@OldAPIStack
 py_test(
     name = "examples/envs/greyscale_env",
