@@ -961,7 +961,12 @@ class MultiAgentEpisode:
             else slice(None, 0)  # -> empty slice
         )
 
+        observations = self.get_observations(
+            indices=indices_obs_and_infos, return_list=True
+        )
+        infos = self.get_infos(indices=indices_obs_and_infos, return_list=True)
         actions = self.get_actions(indices=indices_rest, return_list=True)
+        rewards = self.get_rewards(indices=indices_rest, return_list=True)
         extra_model_outputs = self.get_extra_model_outputs(
             key=None,  # all keys
             indices=indices_rest,
@@ -970,14 +975,12 @@ class MultiAgentEpisode:
         successor = MultiAgentEpisode(
             # Same ID.
             id_=self.id_,
-            observations=self.get_observations(
-                indices=indices_obs_and_infos, return_list=True
-            ),
+            observations=observations,
             observation_space=self.observation_space,
-            infos=self.get_infos(indices=indices_obs_and_infos, return_list=True),
+            infos=infos,
             actions=actions,
             action_space=self.action_space,
-            rewards=self.get_rewards(indices=indices_rest, return_list=True),
+            rewards=rewards,
             # List of MADicts, mapping agent IDs to their respective extra model output
             # dicts.
             extra_model_outputs=extra_model_outputs,
