@@ -879,7 +879,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
-            pass
+            self.module = None
 
     @override(EnvRunner)
     def stop(self):

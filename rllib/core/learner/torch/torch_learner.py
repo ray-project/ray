@@ -461,13 +461,13 @@ class TorchLearner(Learner):
                 self._device = devices[0]
             else:
                 assert self.config.local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU id "
+                    f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU ID "
                     "or is not available."
                 )
-                # this is an index into the available cuda devices. For example if
-                # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
-                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
-                # the gpu with id 1 on the node.
+                # This is an index into the available CUDA devices. For example, if
+                # `os.environ["CUDA_VISIBLE_DEVICES"] = "1"` then
+                # `torch.cuda.device_count() = 1` and torch.device(0) maps to that GPU
+                # with ID=1 on the node.
                 self._device = torch.device(self.config.local_gpu_idx)
         else:
             self._device = torch.device("cpu")

@@ -578,7 +578,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             if self.config.num_gpus_per_env_runner > 0:
                 devices = get_devices()
                 assert len(devices) == 1, (
-                    f"`get_devices()` should only return one cuda device, but {devices}"
+                    f"`get_devices()` should only return one CUDA device, but {devices}"
                     " was returned instead."
                 )
                 return devices[0]
@@ -693,7 +693,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
-            pass
+            self.module = None
 
     @override(EnvRunner)
     def stop(self):
