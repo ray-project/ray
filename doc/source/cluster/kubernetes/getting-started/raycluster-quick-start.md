@@ -6,7 +6,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4) if needed, [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
@@ -20,7 +20,11 @@ kind create cluster --image=kindest/node:v1.26.0
 (kuberay-operator-deploy)=
 ## Step 2: Deploy a KubeRay operator
 
-Deploy the KubeRay operator with the [Helm chart repository](https://github.com/ray-project/kuberay-helm).
+Deploy the KubeRay operator with the [Helm chart repository](https://github.com/ray-project/kuberay-helm) or Kustomize.
+
+`````{tab-set}
+
+````{tab-item} Helm
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
@@ -35,25 +39,52 @@ kubectl get pods
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          27s
 ```
 
-KubeRay offers multiple options for operator installations, such as Helm, Kustomize, and a single-namespaced operator. For further information, please refer to [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+````
 
+````{tab-item} Kustomize
+
+```sh
+# Install CRD and KubeRay operator v1.2.2.
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+
+# Confirm that the operator is running in the namespace `ray-system`.
+kubectl get pods -n ray-system
+# NAME                                READY   STATUS    RESTARTS   AGE
+# kuberay-operator-6d57c9f797-ffvph   1/1     Running   0          2m14s
+
+```
+
+````
+
+`````
+
+For further information, see [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+
+(raycluster-deploy)=
 ## Step 3: Deploy a RayCluster custom resource
 
-Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do so, we create a RayCluster Custom Resource (CR) in the `default` namespace.
+Once the KubeRay operator is running, you're ready to deploy a RayCluster. Create a RayCluster Custom Resource (CR) in the `default` namespace.
 
   ::::{tab-set}
 
-  :::{tab-item} ARM64 (Apple Silicon)
+  :::{tab-item} Helm ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
   helm install raycluster kuberay/ray-cluster --version 1.2.2 --set 'image.tag=2.9.0-aarch64'
   ```
   :::
 
-  :::{tab-item} x86-64 (Intel/Linux)
+  :::{tab-item} Helm x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
   helm install raycluster kuberay/ray-cluster --version 1.2.2
+  ```
+  :::
+
+  :::{tab-item} Kustomize
+  ```sh
+  # Deploy a sample RayCluster CR from the KubeRay repository:
+  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
 
@@ -142,6 +173,10 @@ See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
 
 ## Step 6: Cleanup
 
+`````{tab-set}
+
+````{tab-item} Helm
+
 ```sh
 # [Step 6.1]: Delete the RayCluster CR
 # Uninstall the RayCluster Helm chart
@@ -167,3 +202,30 @@ kubectl get pods
 # [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
 ```
+
+````
+
+````{tab-item} Kustomize
+
+```sh
+# [Step 6.1]: Delete the RayCluster CR
+kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
+
+# Confirm that the RayCluster's pods are gone by running
+kubectl get pods
+# No resources found in default namespace.
+
+# [Step 6.2]: Delete the KubeRay operator
+kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+
+# Confirm that the KubeRay operator pod is gone by running
+kubectl get pods -n ray-system
+# No resources found in ray-system namespace.
+
+# [Step 6.3]: Delete the Kubernetes cluster
+kind delete cluster
+```
+
+````
+
+`````

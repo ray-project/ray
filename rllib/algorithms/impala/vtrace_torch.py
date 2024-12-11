@@ -228,6 +228,7 @@ def multi_from_logits(
         behaviour_action_log_probs, device="cpu"
     )
     behaviour_action_log_probs = force_list(behaviour_action_log_probs)
+    # log_rhos = target_logp - behavior_logp
     log_rhos = get_log_rhos(target_action_log_probs, behaviour_action_log_probs)
 
     vtrace_returns = from_importance_weights(

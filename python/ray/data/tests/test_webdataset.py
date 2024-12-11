@@ -201,6 +201,43 @@ def test_webdataset_coding(ray_start_2_cpus, tmp_path):
         assert sample["custom"] == "custom-value"
 
 
+def test_webdataset_decoding(ray_start_2_cpus, tmp_path):
+    import numpy as np
+    import torch
+
+    image = np.random.randint(0, 255, (100, 100, 3), dtype=np.uint8)
+    gray = np.random.randint(0, 255, (100, 100), dtype=np.uint8)
+    dstruct = dict(a=np.nan, b=dict(c=2), d="hello", e={"img_filename": "for_test.jpg"})
+    ttensor = torch.tensor([1, 2, 3]).numpy()
+
+    sample = {
+        "__key__": "foo",
+        "jpg": image,
+        "gray.png": gray,
+        "mp": dstruct,
+        "json": dstruct,
+        "pt": ttensor,
+        "und": b"undecoded",
+        "custom": b"nothing",
+    }
+
+    # write the encoded data using the default encoder
+    data = [sample]
+    ds = ray.data.from_items(data).repartition(1)
+    ds.write_webdataset(path=tmp_path, try_create_dir=True)
+
+    ds = ray.data.read_webdataset(
+        paths=[str(tmp_path)],
+        override_num_blocks=1,
+        decoder=None,
+    )
+    samples = ds.take(1)
+    import json
+
+    meta_json = json.loads(samples[0]["json"].decode("utf-8"))
+    assert meta_json["e"]["img_filename"] == "for_test.jpg"
+
+
 @pytest.mark.parametrize("num_rows_per_file", [5, 10, 50])
 def test_write_num_rows_per_file(tmp_path, ray_start_regular_shared, num_rows_per_file):
     ray.data.from_items(
