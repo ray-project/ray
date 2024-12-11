@@ -177,9 +177,9 @@ class UvProcessor:
             requirements_file,
         ]
 
-        uv_opt_str = self._uv_config.get("uv_pip_install_options", "--no-cache")
-        if len(uv_opt_str) > 0:
-            uv_install_cmd += [uv_opt_str]
+        uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
+        if len(uv_opt_list) > 0:
+            uv_install_cmd += uv_opt_list
 
         logger.info("Installing python requirements to %s", virtualenv_path)
         await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)

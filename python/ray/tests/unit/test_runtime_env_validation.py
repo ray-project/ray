@@ -35,7 +35,7 @@ class TestVaidationUv:
         assert result == {
             "packages": ["tensorflow"],
             "uv_check": False,
-            "uv_pip_install_options": "--no-cache",
+            "uv_pip_install_options": ["--no-cache"],
         }
 
         # Valid case w/ duplication.
@@ -45,7 +45,7 @@ class TestVaidationUv:
         assert result == {
             "packages": ["tensorflow"],
             "uv_check": False,
-            "uv_pip_install_options": "--no-cache",
+            "uv_pip_install_options": ["--no-cache"],
         }
 
         # Valid case, use `list` to represent necessary packages.
@@ -69,7 +69,7 @@ class TestVaidationUv:
             "packages": ["tensorflow"],
             "uv_version": "==0.4.30",
             "uv_check": False,
-            "uv_pip_install_options": "--no-cache",
+            "uv_pip_install_options": ["--no-cache"],
         }
 
         # Valid requirement files.
@@ -84,6 +84,31 @@ class TestVaidationUv:
         # Invalid requiremnt files.
         with pytest.raises(ValueError):
             result = validation.parse_and_validate_uv("some random non-existent file")
+
+        # Invalid uv install options.
+        with pytest.raises(TypeError):
+            result = validation.parse_and_validate_uv(
+                {
+                    "packages": ["tensorflow"],
+                    "uv_version": "==0.4.30",
+                    "uv_pip_install_options": [1],
+                }
+            )
+
+        # Valid uv install options.
+        result = validation.parse_and_validate_uv(
+            {
+                "packages": ["tensorflow"],
+                "uv_version": "==0.4.30",
+                "uv_pip_install_options": ["--no-cache"],
+            }
+        )
+        assert result == {
+            "packages": ["tensorflow"],
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+            "uv_version": "==0.4.30",
+        }
 
 
 class TestValidatePip:

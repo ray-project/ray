@@ -128,8 +128,8 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
                install, default to False.
             c) uv_version (optional, str): user provides a specific uv to use; if
                unspecified, default version of uv will be used.
-            d) uv_pip_install_options (optional, str): user-provided options for
-              `uv pip install` command, default to "--no-cache".
+            d) uv_pip_install_options (optional, List[str]): user-provided options for
+              `uv pip install` command, default to ["--no-cache"].
 
     The returned parsed value will be a list of packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -175,18 +175,26 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
                 "runtime_env['uv']['uv_version'] must be of type str, "
                 f"got {type(uv['uv_version'])}"
             )
-        if "uv_pip_install_options" in uv and not isinstance(
-            uv["uv_pip_install_options"], str
-        ):
-            raise TypeError(
-                "runtime_env['uv']['uv_pip_install_options'] must be of type bool, "
-                f"got {type(uv['uv_pip_install_options'])}"
-            )
+        if "uv_pip_install_options" in uv:
+            if not isinstance(uv["uv_pip_install_options"], list):
+                raise TypeError(
+                    "runtime_env['uv']['uv_pip_install_options'] must be of type list "
+                    "of string, "
+                    f"got {type(uv['uv_pip_install_options'])}"
+                )
+            # Check each item in installation option.
+            for cur_opt in uv["uv_pip_install_options"]:
+                if not isinstance(cur_opt, str):
+                    raise TypeError(
+                        "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                        "list of string, "
+                        f"got {type(cur_opt)}"
+                    )
 
         result = uv.copy()
         result["uv_check"] = uv.get("uv_check", False)
         result["uv_pip_install_options"] = uv.get(
-            "uv_pip_install_options", "--no-cache"
+            "uv_pip_install_options", ["--no-cache"]
         )
         if not isinstance(uv["packages"], list):
             raise ValueError(

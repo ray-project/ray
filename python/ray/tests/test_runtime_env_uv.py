@@ -155,7 +155,10 @@ def test_package_install_with_cache_enabled(shutdown_only):
 def test_package_install_with_multiple_options(shutdown_only):
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": "--all-extras --no-cache"}
+            "uv": {
+                "packages": ["requests==2.3.0"],
+                "uv_pip_install_options": "--no-cache --color=auto",
+            }
         }
     )
     def f():
@@ -165,7 +168,10 @@ def test_package_install_with_multiple_options(shutdown_only):
 
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": "--all-extras --no-cache"}
+            "uv": {
+                "packages": ["requests==2.2.0"],
+                "uv_pip_install_options": "--no-cache --color=auto",
+            }
         }
     )
     def g():

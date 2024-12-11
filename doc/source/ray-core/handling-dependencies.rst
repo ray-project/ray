@@ -409,7 +409,7 @@ The ``runtime_env`` is a Python dictionary or a Python class :class:`ray.runtime
   the path to a local uv `“requirements.txt” <https://pip.pypa.io/en/stable/user_guide/#requirements-files>`_ file, or (3) a python dictionary that has three fields: (a) ``packages`` (required, List[str]): a list of uv packages,
   (b) ``uv_version`` (optional, str): the version of uv; Ray will spell the package name "uv" in front of the ``uv_version`` to form the final requirement string.
   (c) ``uv_check`` (optional, bool): whether to enable pip check at the end of uv install, default to False.
-  (d) ``uv_pip_install_options`` (optional, str): user-provided options for ``uv pip install`` command, default to "--no-cache".
+  (d) ``uv_pip_install_options`` (optional, List[str]): user-provided options for ``uv pip install`` command, default to ``["--no-cache"]``.
   The syntax of a requirement specifier is the same as ``pip`` requirements.
   This will be installed in the Ray workers at runtime.  Packages in the preinstalled cluster environment will still be available.
   To use a library like Ray Serve or Ray Tune, you will need to include ``"ray[serve]"`` or ``"ray[tune]"`` here.
