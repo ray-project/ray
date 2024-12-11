@@ -15,6 +15,7 @@ from ray.rllib.examples.envs.classes.nested_space_repeat_after_me_env import (
 from ray.rllib.examples.envs.classes.stateless_cartpole import StatelessCartPole
 
 
+# Backward compatibility.
 __all__ = [
     "GuessTheNumberGame",
     "TwoStepGame",

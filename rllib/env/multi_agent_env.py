@@ -16,7 +16,8 @@ from ray.rllib.utils.typing import (
     MultiAgentDict,
     MultiEnvDict,
 )
-from ray.util import log_once, PublicAPI
+from ray.util import log_once
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # If the obs space is Dict type, look for the global state under this key.
 ENV_STATE = "state"
@@ -325,7 +326,7 @@ class MultiAgentEnv(gym.Env):
         return env
 
 
-@PublicAPI(stability="beta")
+@DeveloperAPI
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
