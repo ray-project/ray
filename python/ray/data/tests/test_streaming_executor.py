@@ -7,6 +7,12 @@ import pytest
 
 import ray
 from ray._private.test_utils import run_string_as_driver_nonblocking
+from ray.data._internal.execution.execution_callback import (
+    ExecutionCallback,
+    add_execution_callback,
+    get_execution_callbacks,
+    remove_execution_callback,
+)
 from ray.data._internal.execution.interfaces import (
     ExecutionOptions,
     ExecutionResources,
@@ -638,6 +644,54 @@ def test_time_scheduling():
 
     ds_stats = ds._plan.stats()
     assert 0 < ds_stats.streaming_exec_schedule_s.get() < 1
+
+
+def test_executor_callbacks():
+    """Test ExecutionCallback."""
+
+    class CustomExecutionCallback(ExecutionCallback):
+        def __init__(self):
+            self._before_execution_starts_called = False
+            self._after_execution_succeeds_called = False
+            self._execution_error = None
+
+        def before_execution_starts(self):
+            self._before_execution_starts_called = True
+
+        def after_execution_succeeds(self):
+            self._after_execution_succeeds_called = True
+
+        def after_execution_fails(self, error: Exception):
+            self._execution_error = error
+
+    # Test the success case.
+    ctx = DataContext.get_current()
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+    assert get_execution_callbacks(ctx) == [callback]
+
+    ray.data.range(10).take_all()
+
+    assert callback._before_execution_starts_called
+    assert callback._after_execution_succeeds_called
+    assert callback._execution_error is None
+
+    remove_execution_callback(callback, ctx)
+    assert get_execution_callbacks(ctx) == []
+
+    # Test the failure case.
+    callback = CustomExecutionCallback()
+    add_execution_callback(callback, ctx)
+
+    def map(_):
+        raise ValueError("")
+
+    ray.data.range(10).map(map).take_all()
+
+    assert callback._before_execution_starts_called
+    assert not callback._after_execution_succeeds_called
+    error = callback._execution_error
+    assert isinstance(error, ValueError)
 
 
 if __name__ == "__main__":
