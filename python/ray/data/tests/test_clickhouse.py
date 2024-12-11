@@ -1,3 +1,4 @@
+import re
 from unittest import mock
 from unittest.mock import MagicMock
 
@@ -46,6 +47,55 @@ class TestClickHouseDatasource:
         mock_client.query.assert_called_once_with(
             f"SELECT SUM(byteSize(*)) AS estimate FROM ({datasource._query})"
         )
+
+    @pytest.mark.parametrize(
+        "limit_row_count, offset_row_count, expected_query",
+        [
+            (
+                10,
+                0,
+                """
+                SELECT column1, column2 FROM default.table_name ORDER BY column1
+                FETCH FIRST 10 ROWS ONLY
+                """.strip(),
+            ),
+            (
+                1,
+                0,
+                """
+                SELECT column1, column2 FROM default.table_name ORDER BY column1
+                FETCH FIRST 1 ROW ONLY
+                """.strip(),
+            ),
+            (
+                10,
+                5,
+                """
+                SELECT column1, column2 FROM default.table_name ORDER BY column1
+                OFFSET 5 ROWS
+                FETCH NEXT 10 ROWS ONLY
+                """.strip(),
+            ),
+            (
+                1,
+                1,
+                """
+                SELECT column1, column2 FROM default.table_name ORDER BY column1
+                OFFSET 1 ROW
+                FETCH NEXT 1 ROW ONLY
+                """.strip(),
+            ),
+        ],
+    )
+    def test_build_block_query(
+        self, datasource, limit_row_count, offset_row_count, expected_query
+    ):
+        generated_query = datasource._build_block_query(
+            limit_row_count, offset_row_count
+        )
+        clean_generated_query = re.sub(r"\s+", " ", generated_query.strip())
+        clean_expected_query = re.sub(r"\s+", " ", expected_query.strip())
+        assert clean_generated_query == clean_expected_query
 
     @pytest.mark.parametrize(
         "columns, expected_query_part",
