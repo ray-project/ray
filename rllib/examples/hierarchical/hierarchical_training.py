@@ -56,14 +56,20 @@ Results to expect
 -----------------
 In the console output, you can see that only a PPO algorithm that uses hierarchical
 training (`--flat` flag is NOT set) can actually learn with the command line options
-`--map=large --time-limit=50`.
+`--map=large --time-limit=500 --max-steps-low-level=40 --num-low-level-agents=3`.
 
 4 policies in a hierarchical setup (1 high level "manager", 3 low level "experts"):
-
-
-
-Single policy, w/o hierarchical setup (`--flat`):
-[DOES NOT LEARN AT ALL]
++---------------------+----------+--------+------------------+
+| Trial name          | status   |   iter |   total time (s) |
+|                     |          |        |                  |
+|---------------------+----------+--------+------------------+
+| PPO_env_58b78_00000 | RUNNING  |    100 |           278.23 |
++---------------------+----------+--------+------------------+
++-------------------+--------------------------+---------------------------+ ...
+|   combined return | return high_level_policy | return low_level_policy_0 |
+|-------------------+--------------------------+---------------------------+ ...
+|              -8.4 |                     -5.2 |                     -1.19 |
++-------------------+--------------------------+---------------------------+ ...
 """
 from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
