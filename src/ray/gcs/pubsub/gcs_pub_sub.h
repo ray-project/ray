@@ -21,6 +21,7 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
 #include "ray/common/ray_config.h"
+#include "ray/common/virtual_cluster_id.h"
 #include "ray/gcs/callback.h"
 #include "ray/pubsub/publisher.h"
 #include "ray/pubsub/subscriber.h"
@@ -86,6 +87,10 @@ class GcsPublisher {
   Status PublishResourceBatch(const rpc::ResourceUsageBatchData &message,
                               const StatusCallback &done);
 
+  Status PublishVirtualCluster(const VirtualClusterID &id,
+                               const rpc::VirtualClusterTableData &message,
+                               const StatusCallback &done);
+
   /// Prints debugging info for the publisher.
   std::string DebugString() const;
 
@@ -125,6 +130,10 @@ class GcsSubscriber {
 
   Status SubscribeAllWorkerFailures(const ItemCallback<rpc::WorkerDeltaData> &subscribe,
                                     const StatusCallback &done);
+
+  Status SubscribeAllVirtualClusters(
+      const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData> &subscribe,
+      const StatusCallback &done);
 
   /// Prints debugging info for the subscriber.
   std::string DebugString() const;

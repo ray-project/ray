@@ -133,7 +133,8 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
       std::vector<rpc::ChannelType>{rpc::ChannelType::GCS_ACTOR_CHANNEL,
                                     rpc::ChannelType::GCS_JOB_CHANNEL,
                                     rpc::ChannelType::GCS_NODE_INFO_CHANNEL,
-                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL},
+                                    rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL,
+                                    rpc::ChannelType::RAY_VIRTUAL_CLUSTER_CHANNEL},
       /*max_command_batch_size*/ RayConfig::instance().max_command_batch_size(),
       /*get_client=*/
       [this](const rpc::Address &) {
