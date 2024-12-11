@@ -551,7 +551,7 @@ def run_many(
 
     Args:
         targets:
-            A sequence of `RunTarget`s,
+            A sequence of `RunTarget`,
             each containing information about an application to deploy.
         blocking: Whether this call should be blocking. If True, it
             will loop and log status until Ctrl-C'd.
