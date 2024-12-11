@@ -1,6 +1,6 @@
 import logging
 from dataclasses import dataclass, fields
-from typing import Iterable, List, Optional
+from typing import Any, Iterable, List, Optional
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
@@ -19,10 +19,32 @@ class WriteResult:
     Attributes:
         total_num_rows: The total number of rows written.
         total_size_bytes: The total size of the written data in bytes.
+        result: every task can return a result.
     """
 
     num_rows: int = 0
     size_bytes: int = 0
+    result: Any = None
+
+    def __init__(
+        self, num_rows: int = None, size_bytes: int = None, result: Any = None
+    ) -> None:
+        if result is not None:
+            self.result = result
+        if num_rows is not None:
+            self.num_rows = num_rows
+        if size_bytes is not None:
+            self.size_bytes = size_bytes
+
+    def __getitem__(self, key):
+        if key == "total_num_rows":
+            return self.num_rows
+        elif key == "total_size_bytes":
+            return self.size_bytes
+        elif key == "result":
+            return self.result
+        else:
+            raise KeyError(f"Key {key} not found in WriteResult")
 
     @staticmethod
     def aggregate_write_results(write_results: List["WriteResult"]) -> "WriteResult":
@@ -36,14 +58,19 @@ class WriteResult:
         """
         total_num_rows = 0
         total_size_bytes = 0
+        total_result = []
 
         for write_result in write_results:
             total_num_rows += write_result.num_rows
             total_size_bytes += write_result.size_bytes
+            total_result += (
+                write_result.result if write_result.result is not None else []
+            )
 
         return WriteResult(
             num_rows=total_num_rows,
             size_bytes=total_size_bytes,
+            result=total_result,
         )
 
 
@@ -67,7 +94,7 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         """Write blocks. This is used by a single write task.
 
         Args:

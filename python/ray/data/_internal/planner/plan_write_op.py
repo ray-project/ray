@@ -26,10 +26,14 @@ def generate_write_fn(
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            datasink_or_legacy_datasource.write(it1, ctx)
+            task_result = datasink_or_legacy_datasource.write(it1, ctx)
         else:
-            datasink_or_legacy_datasource.write(it1, ctx, **write_args)
-        return it2
+            task_result = datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+
+        import pandas as pd
+
+        block = pd.DataFrame({"task_result": [task_result], "origin_block": [it2]})
+        return iter([block])
 
     return fn
 
@@ -43,7 +47,11 @@ def generate_collect_write_stats_fn() -> (
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
     def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
         """Handles stats collection for block writes."""
-        block_accessors = [BlockAccessor.for_block(block) for block in blocks]
+        # only have one element in the iterator
+        first_element = dict(next(blocks).iloc[0])
+        origin_block = first_element["origin_block"]
+        task_result = first_element["task_result"]
+        block_accessors = [BlockAccessor.for_block(block) for block in origin_block]
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
         total_size_bytes = sum(ba.size_bytes() for ba in block_accessors)
 
@@ -51,7 +59,9 @@ def generate_collect_write_stats_fn() -> (
         # type.
         import pandas as pd
 
-        write_result = WriteResult(num_rows=total_num_rows, size_bytes=total_size_bytes)
+        write_result = WriteResult(
+            num_rows=total_num_rows, size_bytes=total_size_bytes, result=task_result
+        )
         block = pd.DataFrame({"write_result": [write_result]})
         return iter([block])
 
