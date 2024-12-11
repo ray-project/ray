@@ -35,10 +35,6 @@ DEFINE_string(
     ray_log_stdout_filepath,
     "",
     "The filename to dump gcs server log on stdout, which is written via `RAY_LOG`.");
-DEFINE_string(
-    ray_log_stderr_filepath,
-    "",
-    "The filename to dump gcs server log on stderr, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -79,8 +75,7 @@ int main(int argc, char *argv[]) {
       argv[0],
       ray::RayLogLevel::INFO,
       /*log_dir=*/"",
-      /*stdout_log_filepath=*/FLAGS_ray_log_stdout_filepath,
-      /*stderr_log_filepath=*/FLAGS_ray_log_stderr_filepath);
+      /*stdout_log_filepath=*/FLAGS_ray_log_stdout_filepath);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 

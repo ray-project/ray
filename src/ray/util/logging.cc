@@ -332,18 +332,14 @@ void RayLog::InitLogFormat() {
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir,
-                         const std::string &stdout_log_filepath,
-                         const std::string &stderr_log_filepath) {
+                         const std::string &stdout_log_filepath) {
   // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
   // [stdout_log_filepath]. But they cannot be non empty at the same time. Cleanup
   // `log_dir`.
   const bool log_dir_empty = log_dir.empty();
   const bool stdout_log_filepath_empty = stdout_log_filepath.empty();
-  const bool stderr_log_filepath_empty = stderr_log_filepath.empty();
   RAY_CHECK(log_dir_empty || stdout_log_filepath_empty)
       << "Log directory and stdout log filename cannot be set at the same time.";
-  RAY_CHECK(log_dir_empty || stderr_log_filepath_empty)
-      << "Log directory and stderr log filename cannot be set at the same time.";
 
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
@@ -368,7 +364,7 @@ void RayLog::StartRayLog(const std::string &app_name,
 
   // Reset log pattern and level and we assume a log file can be rotated with
   // 10 files in max size 512M by default.
-  if (!stdout_log_filepath_empty || !stderr_log_filepath_empty) {
+  if (!stdout_log_filepath_empty) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
       long max_size = 0;
@@ -411,10 +407,8 @@ void RayLog::StartRayLog(const std::string &app_name,
     sinks[0] = std::move(console_sink);
   }
 
-  // Set sink for stderr.
-  // TODO(hjiang): At the end of day, we should use `stderr_log_filepath` as the output
-  // for stderr as well, but it takes much more effort to adapt, since quite a few unit
-  // tests rely on stderr.
+  // In all cases, log errors to the console log so they are in driver logs.
+  // https://github.com/ray-project/ray/issues/12893
   auto err_sink = std::make_shared<spdlog::sinks::stderr_color_sink_mt>();
   err_sink->set_level(spdlog::level::err);
   sinks[1] = std::move(err_sink);

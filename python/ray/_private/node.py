@@ -1190,14 +1190,18 @@ class Node:
         assert self._gcs_address is None, "GCS server is already running."
         assert self._gcs_client is None, "GCS client is already connected."
 
-        stdout_log_fname, stderr_log_fname = self.get_log_file_names(
-            "gcs_server", unique=True, create_out=True, create_err=True
+        # TODO(hjiang): Update stderr to pass filename and get spdlog to handle logging as well.
+        stdout_log_fname, _ = self.get_log_file_names(
+            "gcs_server", unique=True, create_out=True, create_err=False
+        )
+        _, stderr_file = self.get_log_file_handles(
+            "gcs_server", unique=True, create_out=False, create_err=True
         )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
             self._logs_dir,
             stdout_log_fname,
-            stderr_log_fname,
+            stderr_file,
             self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,

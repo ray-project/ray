@@ -1446,7 +1446,7 @@ def start_gcs_server(
     redis_address: str,
     event_log_dir: str,
     ray_log_stdout_filepath: Optional[str],
-    ray_log_stderr_filepath: Optional[str],
+    stderr_file: Optional[IO[AnyStr]],
     session_name: str,
     redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
@@ -1463,10 +1463,8 @@ def start_gcs_server(
         event_log_dir: The path of the dir where gcs event log files are created.
         ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
             written via `RAY_LOG`. If None, stdout will not be redirected.
-        ray_log_stderr_filepath: The file path to dump gcs server stderr log, which is
-            written via `RAY_LOG`. If None, stderr will not be redirected.
-            Invariant: either `ray_log_stdout_filepath` and `ray_log_stderr_filepath`
-            are both valid, or both of them are None.
+        stderr_file: A file handle opened for writing to redirect stderr to. If
+            no redirection should happen, then this should be None.
         session_name: The session name (cluster id) of this cluster.
         redis_username: The username of the Redis server.
         redis_password: The password of the Redis server.
@@ -1494,8 +1492,6 @@ def start_gcs_server(
 
     if ray_log_stdout_filepath:
         command += [f"--ray_log_stdout_filepath={ray_log_stdout_filepath}"]
-    if ray_log_stderr_filepath:
-        command += [f"--ray_log_stderr_filepath={ray_log_stderr_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1512,15 +1508,11 @@ def start_gcs_server(
 
     devnull_handle = None
     stdout_file = None
-    stderr_file = None
     if ray_log_stdout_filepath:
-        assert ray_log_stderr_filepath is not None
         devnull_handle = open(os.devnull, "w")
         stdout_file = devnull_handle
-        stderr_file = devnull_handle
     else:
         stdout_file = None
-        stderr_file = None
 
     process_info = start_ray_process(
         command,
