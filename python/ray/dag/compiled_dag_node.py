@@ -265,6 +265,9 @@ def _device_context_manager():
     uses the proper cuda device from channel context, otherwise,
     nullcontext will be returned.
     """
+    if not ChannelContext.get_current().torch_available:
+        return nullcontext()
+
     import torch
 
     device = ChannelContext.get_current().torch_device
