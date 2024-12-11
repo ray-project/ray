@@ -444,6 +444,11 @@ def _run_many(
     _blocking: bool = True,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments.
+
+    This is only used internally with the _blocking not totally blocking the following
+    code indefinitely until Ctrl-C'd.
+    """
     if not targets:
         raise ValueError("No applications provided.")
 
@@ -531,9 +536,9 @@ def run_many(
     blocking: bool = False,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
+    """Run many applications and return the handles to their ingress deployments."""
     handles = _run_many(
         targets,
-        _blocking=blocking,
         _local_testing_mode=_local_testing_mode,
     )
 
@@ -578,18 +583,13 @@ def run(
     Returns:
         DeploymentHandle: A handle that can be used to call the application.
     """
-    handle = _run_many(
-        [
-            RunTarget(
-                target=target,
-                name=name,
-                route_prefix=route_prefix,
-                logging_config=logging_config,
-            )
-        ],
-        _blocking=blocking,
+    handle = _run(
+        target,
+        name=name,
+        route_prefix=route_prefix,
+        logging_config=logging_config,
         _local_testing_mode=_local_testing_mode,
-    )[0]
+    )
 
     if blocking:
         wait_for_interrupt()
