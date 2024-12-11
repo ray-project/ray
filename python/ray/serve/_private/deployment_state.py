@@ -2184,7 +2184,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
@@ -2201,7 +2204,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
