@@ -365,15 +365,10 @@ class ApplicationState:
             api_type=api_type,
         )
 
-        # Checkpoint ahead, so that if the controller crashes before we
-        # write to the target state, the target state will be recovered
-        # after the controller recovers
-        if checkpoint_immediately:
-            self._save_checkpoint_func(
-                writeahead_checkpoints={self._name: target_state}
-            )
-        # Set target state
         self._target_state = target_state
+
+        if checkpoint_immediately:
+            self._save_checkpoint_func()
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -1110,20 +1105,13 @@ class ApplicationStateManager:
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(
-        self,
-        *,
-        writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]] = None,
-    ) -> None:
+    def _save_checkpoint_func(self) -> None:
         """Write a checkpoint of all application states."""
 
         application_state_info = {
             app_name: app_state.get_checkpoint_data()
             for app_name, app_state in self._application_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            application_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
