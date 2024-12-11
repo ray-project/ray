@@ -21,6 +21,7 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
+from ray.data.iterator import DataIterator
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -270,8 +271,9 @@ class Learner(Checkpointable):
         # and return the resulting (reduced) dict.
         self.metrics = MetricsLogger()
 
-        # TODO (simon): Describe for what we need this and define the type here.
-        self.iterator = None
+        # In case of offline learning and multiple learners, each learner receives a
+        # repeatable iterator that iterates over a split of the streamed data.
+        self.iterator: DataIterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Seems to make
@@ -1152,7 +1154,7 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.warning(
+        logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
 
