@@ -479,7 +479,9 @@ def _run_many(
                 name=t.name,
                 route_prefix=t.route_prefix,
                 logging_config=t.logging_config,
-                make_deployment_handle=make_local_deployment_handle,
+                make_deployment_handle=make_local_deployment_handle
+                if _local_testing_mode
+                else None,
             )
         )
 
