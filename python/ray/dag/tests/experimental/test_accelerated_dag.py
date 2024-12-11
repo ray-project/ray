@@ -223,6 +223,7 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
         dag = MultiOutputNode([o1, o2])
 
     compiled_dag = dag.experimental_compile()
+    compiled_dag.visualize(channel_details=True)
     for i in range(3):
         refs = compiled_dag.execute(1)
         if single_fetch:
@@ -2589,9 +2590,13 @@ def test_signature_mismatch(shutdown_only):
 
     with pytest.raises(
         TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
         match=(
-            r"missing a required argument: 'y'\. The function `f` has a signature "
-            r"`\(x, \*, y\)`, but the given arguments to `bind` doesn't match\. "
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
             r"args:.*kwargs:.*"
         ),
     ):

@@ -170,7 +170,7 @@ class RaySyncer {
   std::unique_ptr<NodeState> node_state_;
 
   /// Timer is used to do broadcasting.
-  ray::PeriodicalRunner timer_;
+  std::shared_ptr<PeriodicalRunner> timer_;
 
   friend class RaySyncerService;
   /// Test purpose

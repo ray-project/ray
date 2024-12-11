@@ -994,24 +994,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                 iteration_results={**train_results, **eval_results},
             )
 
-        # TODO (sven): Deprecate this API, this should be done via a custom Callback.
-        #  Provide example script/update existing one.
-        if self.config.env_task_fn is not None:
-            if not callable(self.config.env_task_fn):
-                raise ValueError(
-                    "`env_task_fn` must be None or a callable taking"
-                    " [train_results, env, env_ctx] as args!"
-                )
-
-            def fn(env, env_context, task_fn):
-                new_task = task_fn(results, env, env_context)
-                cur_task = env.get_task()
-                if cur_task != new_task:
-                    env.set_task(new_task)
-
-            fn = functools.partial(fn, task_fn=self.config.env_task_fn)
-            self.env_runner_group.foreach_env_with_context(fn)
-
         return results
 
     @PublicAPI
