@@ -9,6 +9,7 @@ from ray.data._internal.execution.backpressure_policy import (
     BackpressurePolicy,
     get_backpressure_policies,
 )
+from ray.data._internal.execution.execution_callback import get_execution_callbacks
 from ray.data._internal.execution.interfaces import (
     ExecutionResources,
     Executor,
@@ -141,6 +142,9 @@ class StreamingExecutor(Executor, threading.Thread):
             self._dataset_tag,
             self._get_operator_tags(),
         )
+        for callback in get_execution_callbacks(self._data_context):
+            callback.before_execution_starts()
+
         self.start()
         self._execution_started = True
 
@@ -233,9 +237,13 @@ class StreamingExecutor(Executor, threading.Thread):
                     )
                 if not continue_sched or self._shutdown:
                     break
+            for callback in get_execution_callbacks(self._data_context):
+                callback.after_execution_succeeds()
         except Exception as e:
             # Propagate it to the result iterator.
             self._output_node.mark_finished(e)
+            for callback in get_execution_callbacks(self._data_context):
+                callback.after_execution_fails(e)
         finally:
             # Signal end of results.
             self._output_node.mark_finished()
