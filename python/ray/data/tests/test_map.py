@@ -350,15 +350,11 @@ def test_add_column(ray_start_regular_shared):
     )
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    # Adding a column that is already there should result in an error
-    with pytest.raises(
-        ray.exceptions.UserCodeException,
-        match="Trying to add an existing column with name 'id'",
-    ):
-        ds = ray.data.range(5).add_column(
-            "id", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
-        )
-        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+    # Adding a column that is already there should not result in an error
+    ds = ray.data.range(5).add_column(
+        "id", lambda x: pc.add(x["id"], 1), batch_format="pyarrow"
+    )
+    assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     # Adding a column in the wrong format should result in an error
     with pytest.raises(
@@ -378,15 +374,11 @@ def test_add_column(ray_start_regular_shared):
     )
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    # Adding a column that is already there should result in an error
-    with pytest.raises(
-        ray.exceptions.UserCodeException,
-        match="Trying to add an existing column with name 'id'",
-    ):
-        ds = ray.data.range(5).add_column(
-            "id", lambda x: np.add(x["id"], 1), batch_format="numpy"
-        )
-        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+    # Adding a column that is already there should not result in an error
+    ds = ray.data.range(5).add_column(
+        "id", lambda x: np.add(x["id"], 1), batch_format="numpy"
+    )
+    assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     # Adding a column in the wrong format should result in an error
     with pytest.raises(
@@ -402,22 +394,23 @@ def test_add_column(ray_start_regular_shared):
     ds = ray.data.range(5).add_column("foo", lambda x: x["id"] + 1)
     assert ds.take(1) == [{"id": 0, "foo": 1}]
 
-    # Adding a column that is already there should result in an error
-    with pytest.raises(
-        ray.exceptions.UserCodeException,
-        match="Trying to add an existing column with name 'id'",
-    ):
-        ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
-        assert ds.take(2) == [{"id": 1}, {"id": 2}]
+    # Adding a column that is already there should not result in an error
+    ds = ray.data.range(5).add_column("id", lambda x: x["id"] + 1)
+    assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
-    # Adding a column in the wrong format should result in an error
+    # Adding a column in the wrong format may result in an error
     with pytest.raises(
-        ray.exceptions.UserCodeException, match="For pandas batch format"
+        ray.exceptions.UserCodeException
     ):
         ds = ray.data.range(5).add_column(
-            "id", lambda x: np.array([1]), batch_format="pandas"
+            "id", lambda x: range(7), batch_format="pandas"
         )
         assert ds.take(2) == [{"id": 1}, {"id": 2}]
+    
+    ds = ray.data.range(5).add_column(
+        "const", lambda _: 3, batch_format="pandas"
+    )
+    assert ds.take(2) == [{"id": 0, "const": 3}, {"id": 1, "const": 3}]
 
     with pytest.raises(ValueError):
         ds = ray.data.range(5).add_column("id", 0)
