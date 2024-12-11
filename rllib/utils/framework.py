@@ -45,6 +45,7 @@ def convert_to_tensor(
         f"framework={framework} not supported in `convert_to_tensor()`!"
     )
 
+
 @PublicAPI
 def get_device(config: "AlgorithmConfig", num_gpus_requested: int = 1):
     """Returns a single device (CPU or some GPU) depending on a config.

@@ -664,23 +664,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             #  `RLModule.to()` override.
             self.module.to(self._device)
 
-            #if self.worker_index > 0 and self.config.num_gpus_per_env_runner > 0:
-            #    # We are a remote worker (WORKER_MODE=1):
-            #    if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-            #        # GPUs should be assigned to us by ray.
-            #        gpu_ids = ray.get_gpu_ids()
-            #        if len(gpu_ids) < self.config.num_gpus_per_env_runner:
-            #            raise RuntimeError(
-            #                f"Number of Ray-assigned GPUs on {type(self).__name__} is "
-            #                f"smaller than config.num_gpus_per_env_runner "
-            #                f"({self.config.num_gpus_per_env_runner})!"
-            #            )
-            #        if self.config.framework_str == "torch":
-            #            # TODO (sven): Maybe make this a RLModule API?
-            #            # TODO (sven): What if a model requires more than 1 GPU?
-            #            #  Basically, offer pipelining/model-parallelism in RLModule.
-            #            self.module = self.module.to(f"cuda:{gpu_ids[0]}")
-
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:
