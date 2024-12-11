@@ -178,7 +178,7 @@ class UvProcessor:
         ]
 
         uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
-        if len(uv_opt_list) > 0:
+        if uv_opt_list:
             uv_install_cmd += uv_opt_list
 
         logger.info("Installing python requirements to %s", virtualenv_path)
