@@ -19,7 +19,7 @@ class TicTacToe(MultiAgentEnv):
     | 6| 7| 8|
     ----------
 
-    The action space is Discrete(9) and actions landing on an alredy occupied field
+    The action space is Discrete(9) and actions landing on an already occupied field
     are simply ignored (and thus useless to the player taking these actions).
 
     Once a player completes a row, they receive +1.0 reward, the losing player receives
