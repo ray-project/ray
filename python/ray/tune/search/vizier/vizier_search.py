@@ -233,6 +233,8 @@ class VizierSearch(Searcher):
             obj = json.load(f)
 
         self._study_id = obj['study_id']
+        # TODO: This will return a `ResourceNotFoundError` if study doesn't exist.
+        # Consider adding more explicit error handling later on if this is opaque.
         self._study_client = clients.Study.from_owner_and_id('raytune', self._study_id)
         self._metric = (
             self._study_client.materialize_study_config().metric_information.item()
