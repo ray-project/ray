@@ -1445,7 +1445,7 @@ def get_address(redis_address):
 def start_gcs_server(
     redis_address: str,
     event_log_dir: str,
-    ray_log_stdout_filepath: Optional[str],
+    ray_log_filepath: Optional[str],
     stderr_file: Optional[IO[AnyStr]],
     session_name: str,
     redis_username: Optional[str] = None,
@@ -1461,7 +1461,7 @@ def start_gcs_server(
     Args:
         redis_address: The address that the Redis server is listening on.
         event_log_dir: The path of the dir where gcs event log files are created.
-        ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
+        ray_log_filepath: The file path to dump gcs server stdout log, which is
             written via `RAY_LOG`. If None, stdout will not be redirected.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
@@ -1490,8 +1490,8 @@ def start_gcs_server(
         f"--ray-commit={ray.__commit__}",
     ]
 
-    if ray_log_stdout_filepath:
-        command += [f"--ray_log_stdout_filepath={ray_log_stdout_filepath}"]
+    if ray_log_filepath:
+        command += [f"--ray_log_filepath={ray_log_filepath}"]
 
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1508,7 +1508,7 @@ def start_gcs_server(
 
     devnull_handle = None
     stdout_file = None
-    if ray_log_stdout_filepath:
+    if ray_log_filepath:
         devnull_handle = open(os.devnull, "w")
         stdout_file = devnull_handle
     else:
@@ -1557,7 +1557,7 @@ def start_raylet(
     runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
-    ray_log_stdout_filepath: Optional[str] = None,
+    ray_log_filepath: Optional[str] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
     config: Optional[dict] = None,
     huge_pages: bool = False,
@@ -1612,7 +1612,7 @@ def start_raylet(
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
-        ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
+        ray_log_filepath: The file path to dump gcs server stdout log, which is
             written via `RAY_LOG`. If None, stdout will not be redirected.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
@@ -1769,7 +1769,7 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
     ]
-    if ray_log_stdout_filepath is None and stderr_file is None:
+    if ray_log_filepath is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         dashboard_agent_command.append("--logging-filename=")
@@ -1833,8 +1833,8 @@ def start_raylet(
         f"--cluster-id={cluster_id}",
     ]
 
-    if ray_log_stdout_filepath:
-        command.append(f"--ray_log_stdout_filepath={ray_log_stdout_filepath}")
+    if ray_log_filepath:
+        command.append(f"--ray_log_filepath={ray_log_filepath}")
 
     if is_head_node:
         command.append("--head")
@@ -1864,7 +1864,7 @@ def start_raylet(
         )
 
     stdout_file = None
-    if ray_log_stdout_filepath:
+    if ray_log_filepath:
         stdout_file = open(os.devnull, "w")
     else:
         stdout_file = None

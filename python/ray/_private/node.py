@@ -1276,7 +1276,7 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            ray_log_stdout_filepath=stdout_log_fname,
+            ray_log_filepath=stdout_log_fname,
             stderr_file=stderr_file,
             config=self._config,
             huge_pages=self._ray_params.huge_pages,
