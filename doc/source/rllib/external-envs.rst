@@ -6,10 +6,10 @@
 
 
 External Environments and Applications
---------------------------------------
+======================================
 
 In many situations, it does not make sense for an RL environment to be "stepped" by RLlib.
-For example, if we train one or more policies inside a complex simulator, for example, a game engine
+For example, if you train one or more policies inside a complex simulator, for example a game engine
 or a robotics simulation, it would be more natural and user friendly to flip this setup around
 and - instead of RLlib "stepping" the env - allow the simulations and the agents to fully control
 their own stepping. An external RLlib-powered service would be available for either querying for
@@ -38,33 +38,45 @@ together with a dummy (CartPole) client providing a template for any external ap
     External application support is still work-in-progress on RLlib's new API stack. The Ray team
     is working on more examples for custom EnvRunner implementations (besides
     `the already available tcp-based one <https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py>`__)
-    as well as client-side, non-python RLlib-adapters, for example for popular game engines and other
+    as well as various client-side, non-python RLlib-adapters, for example for popular game engines and other
     simulation software.
 
 
+Example: External client connecting to tcp-based EnvRunner
+----------------------------------------------------------
+
+Let's walk through an end-to-end setup to demonstrate how to use RLlib's external env APIs
+and messaging protocols. You are going to implement a simple, custom :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+capable of accepting a tcp client connection and exchanging messages with
 
 
 
-
-At any point, agents on that thread can query the current policy for decisions via
-``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
-This can be done for multiple concurrent episodes as well.
-
-See these examples for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__
-and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
-scripts, in which we setup an RLlib policy server that listens on one or more ports for
-client connections and connect several clients to this server to learn the env.
+.. testcode::
 
 
-External Application Clients
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # Define the RLlib (server) config.
+    base_config = (
+        get_trainable_cls(args.algo)
+        .get_default_config()
+        .environment(
+            observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+            action_space=gym.spaces.Discrete(2),
+            # EnvRunners listen on `port` + their worker index.
+            env_config={"port": args.port},
+        )
+        .env_runners(
+            # Point RLlib to the custom EnvRunner to be used here.
+            env_runner_cls=TcpClientInferenceEnvRunner,
+        )
+        .training(
+            num_epochs=10,
+            vf_loss_coeff=0.01,
+        )
+        .rl_module(model_config=DefaultModelConfig(vf_share_layers=True))
+    )
 
-For applications that are running entirely outside the Ray cluster (i.e., cannot be
-packaged into a Python environment of any form), RLlib provides the ``PolicyServerInput``
-application connector, which can be connected to over the network using ``PolicyClient``
-instances.
 
-You can configure any Algorithm to launch a policy server with the following config:
+
 
 .. code-block:: python
 
@@ -80,6 +92,15 @@ You can configure any Algorithm to launch a policy server with the following con
         # Use the existing algorithm process to run the server.
         "num_env_runners": 0,
     }
+
+
+
+See these examples for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__
+and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
+scripts, in which we setup an RLlib policy server that listens on one or more ports for
+client connections and connect several clients to this server to learn the env.
+
+
 
 Clients can then connect in either *local* or *remote* inference mode.
 In local inference mode, copies of the policy are downloaded from the server and cached on the client for a configurable period of time.
@@ -107,36 +128,3 @@ Try it yourself by launching either a
 (`cartpole_client.py <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__) or
 run a `Unity3D learning sever <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__
 against distributed Unity game engines in the cloud.
-
-CartPole Example:
-
-.. code-block:: bash
-
-    # Start the server by running:
-    >>> python rllib/examples/envs/external_envs/cartpole_server.py --run=PPO
-    --
-    -- Starting policy server at localhost:9900
-    --
-
-    # To connect from a client with inference_mode="remote".
-    >>> python rllib/examples/envs/external_envs/cartpole_client.py --inference-mode=remote
-    Total reward: 10.0
-    Total reward: 58.0
-    ...
-    Total reward: 200.0
-    ...
-
-    # To connect from a client with inference_mode="local" (faster).
-    >>> python rllib/examples/envs/external_envs/cartpole_client.py --inference-mode=local
-    Querying server for new policy weights.
-    Generating new batch of experiences.
-    Total reward: 13.0
-    Total reward: 11.0
-    ...
-    Sending batch of 1000 steps back to server.
-    Querying server for new policy weights.
-    ...
-    Total reward: 200.0
-    ...
-
-For the best performance, we recommend using ``inference_mode="local"`` when possible.
