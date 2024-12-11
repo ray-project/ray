@@ -1570,7 +1570,9 @@ class NodeKillerBase(ResourceKillerActor):
             candidates = [
                 node
                 for node in ray.nodes()
-                if node["Alive"] and (node["NodeID"] != self.head_node_id)
+                if node["Alive"]
+                and (node["NodeID"] != self.head_node_id)
+                and (node["NodeID"] not in self.killed)
             ]
             if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), candidates))
