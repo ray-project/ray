@@ -137,9 +137,9 @@ click the dropdowns below:
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **High-throughput Architectures**                                                                                                                                          |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **Model-based RL**                                                                                                                                                         |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
@@ -193,8 +193,14 @@ click the dropdowns below:
     |                                                                                           |
     | .. code-block:: python                                                                    |
     |                                                                                           |
-    |     config.environment("CartPole-v1")  # Classic Control                                  |
-    |     config.environment("ale_py:ALE/Pong-v5")  # Atari                                     |
+    |     from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole            |
+    |     from ray import tune                                                                  |
+    |     tune.register_env("env", lambda cfg: MultiAgentCartPole(cfg))                         |
+    |     config.environment("env", env_config={"num_agents": 2})                               |
+    |     config.multi_agent(                                                                   |
+    |         policies={"p0", "p1"},                                                            |
+    |         policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",                                |
+    |     )                                                                                     |
     +-------------------------------------------------------------------------------------------+
 
 

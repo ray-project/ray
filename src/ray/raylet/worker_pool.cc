@@ -32,7 +32,6 @@
 #include "ray/stats/metric_defs.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet/worker_pool.h"
 
 DEFINE_stats(worker_register_time_ms,
              "end to end latency of register a worker process.",
@@ -115,7 +114,7 @@ WorkerPool::WorkerPool(instrumented_io_context &io_service,
       first_job_driver_wait_num_python_workers_(
           std::min(num_prestarted_python_workers, maximum_startup_concurrency_)),
       num_prestart_python_workers(num_prestarted_python_workers),
-      periodical_runner_(io_service),
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
       get_time_(std::move(get_time)) {
   RAY_CHECK_GT(maximum_startup_concurrency_, 0);
   // We need to record so that the metric exists. This way, we report that 0
@@ -171,7 +170,7 @@ WorkerPool::~WorkerPool() {
 
 void WorkerPool::Start() {
   if (RayConfig::instance().kill_idle_workers_interval_ms() > 0) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { TryKillingIdleWorkers(); },
         RayConfig::instance().kill_idle_workers_interval_ms(),
         "RayletWorkerPool.deadline_timer.kill_idle_workers");

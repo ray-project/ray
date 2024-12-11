@@ -30,9 +30,9 @@ as well as multi-GPU training on multi-node (GPU) clusters when using the `Anysc
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **High-throughput on- and off policy**                                                                                                                                           |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>`     | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
+| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`              | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| | |cont_actions| |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
-| :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`              | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
+| :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>`     | |single_agent| |multi_agent| | |multi_gpu| |multi_node_multi_gpu| |                |discr_actions| |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
 | **Model-based RL**                                                                                                                                                               |
 +-----------------------------------------------------------------------------+------------------------------+------------------------------------+--------------------------------+
@@ -162,6 +162,43 @@ Soft Actor Critic (SAC)
 High-Throughput On- and Off-Policy
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+.. _appo:
+
+Asynchronous Proximal Policy Optimization (APPO)
+------------------------------------------------
+
+.. tip::
+
+    APPO was originally `published under the name "IMPACT" <https://arxiv.org/abs/1707.06347>`__. RLlib's APPO exactly matches the algorithm described in the paper.
+
+`[paper] <https://arxiv.org/abs/1707.06347>`__
+`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
+
+.. figure:: images/algos/appo-architecture.svg
+    :width: 750
+
+    **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
+    but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
+    In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
+    samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
+    APPO then passes these episode references to the Learners for asynchronous updates of the model.
+    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
+    To account for the EnvRunners being off-policy, APPO uses a procedure called v-trace,
+    `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
+    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
+    for updating the model.
+
+
+**Tuned examples:**
+`Pong-v5 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong_appo.py>`__
+`HalfCheetah-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/halfcheetah_appo.py>`__
+
+**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
+
+.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
+   :members: training
+
+
 .. _impala:
 
 Importance Weighted Actor-Learner Architecture (IMPALA)
@@ -198,41 +235,6 @@ Tuned examples:
 **IMPALA-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
 
 .. autoclass:: ray.rllib.algorithms.impala.impala.IMPALAConfig
-   :members: training
-
-
-.. _appo:
-
-Asynchronous Proximal Policy Optimization (APPO)
-------------------------------------------------
-`[paper] <https://arxiv.org/abs/1707.06347>`__
-`[implementation] <https://github.com/ray-project/ray/blob/master/rllib/algorithms/appo/appo.py>`__
-
-.. tip::
-
-    APPO isn't always more efficient; it's often better to use :ref:`standard PPO <ppo>` or :ref:`IMPALA <impala>`.
-
-.. figure:: images/algos/appo-architecture.svg
-    :width: 750
-
-    **APPO architecture:** APPO is an asynchronous variant of :ref:`Proximal Policy Optimization (PPO) <ppo>` based on the IMPALA architecture,
-    but using a surrogate policy loss with clipping, allowing for multiple SGD passes per collected train batch.
-    In a training iteration, APPO requests samples from all EnvRunners asynchronously and the collected episode
-    samples are returned to the main algorithm process as Ray references rather than actual objects available on the local process.
-    APPO then passes these episode references to the Learners for asynchronous updates of the model.
-    RLlib doesn't always synch back the weights to the EnvRunners right after a new model version is available.
-    To account for the EnvRunners being off-policy, APPO uses a procedure called v-trace,
-    `described in the IMPALA paper <https://arxiv.org/abs/1802.01561>`__.
-    APPO scales out on both axes, supporting multiple EnvRunners for sample collection and multiple GPU- or CPU-based Learners
-    for updating the model.
-
-
-**Tuned examples:**
-`PongNoFrameskip-v4 <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/appo/pong-appo.yaml>`__
-
-**APPO-specific configs** (see also `common configs <rllib-training.html#common-parameters>`__):
-
-.. autoclass:: ray.rllib.algorithms.appo.appo.APPOConfig
    :members: training
 
 

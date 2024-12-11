@@ -22,7 +22,6 @@
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/util/logging.h"
 #include "ray/util/util.h"
-#include "src/ray/raylet_client/raylet_client.h"
 
 using MessageType = ray::protocol::MessageType;
 
