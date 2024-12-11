@@ -183,9 +183,15 @@ class RayClusterOnSpark:
                         > _RAY_CONNECT_CLUSTER_POLL_PROGRESS_TIMEOUT
                     ):
                         if cur_alive_worker_count == 0:
-                            job_server_host, job_server_port = self.spark_job_server.server_address[:2]
+                            (
+                                job_server_host,
+                                job_server_port,
+                            ) = self.spark_job_server.server_address[:2]
                             response = requests.post(
-                                url=f"http://{job_server_host}:{job_server_port}/query_last_worker_err",
+                                url=(
+                                    f"http://{job_server_host}:{job_server_port}"
+                                    "/query_last_worker_err"
+                                ),
                                 json={"spark_job_group_id": None},
                             )
                             response.raise_for_status()
@@ -951,7 +957,11 @@ def _setup_ray_cluster_internal(
             total_mem_bytes,
         )
 
-    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes,) = (
+    (
+        num_cpus_spark_worker,
+        num_gpus_spark_worker,
+        spark_worker_mem_bytes,
+    ) = (
         spark.sparkContext.parallelize([1], 1)
         .map(_get_spark_worker_resources)
         .collect()[0]
@@ -1674,9 +1684,9 @@ def _start_ray_worker_nodes(
     hook_entry = _create_hook_entry(is_global=(ray_temp_dir is None))
     hook_entry.on_spark_job_created(spark_job_group_id)
 
-    err_msg, is_task_reschedule_failure = (
-        job_rdd.mapPartitions(ray_cluster_job_mapper).collect()[0]
-    )
+    err_msg, is_task_reschedule_failure = job_rdd.mapPartitions(
+        ray_cluster_job_mapper
+    ).collect()[0]
     if not is_task_reschedule_failure:
         spark_job_server.last_worker_error = err_msg
         return err_msg

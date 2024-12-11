@@ -15,10 +15,9 @@ DATABRICKS_CLIENT_SECRET = "DATABRICKS_CLIENT_SECRET"
 
 
 def verify_databricks_auth_env():
-    return (
-        DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ
-    ) or (
-        DATABRICKS_HOST in os.environ and DATABRICKS_CLIENT_ID in os.environ
+    return (DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ) or (
+        DATABRICKS_HOST in os.environ
+        and DATABRICKS_CLIENT_ID in os.environ
         and DATABRICKS_CLIENT_SECRET in os.environ
     )
 
@@ -203,14 +202,16 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             warn_msg = (
                 "MLflow support is not correctly configured within Ray tasks."
                 "To enable MLflow integration, "
-                "you need to set environmental variables DATABRICKS_HOST + DATABRICKS_TOKEN,"
-                "or set environmental variables "
+                "you need to set environmental variables DATABRICKS_HOST + "
+                "DATABRICKS_TOKEN, or set environmental variables "
                 "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
                 "before calling `ray.util.spark.setup_ray_cluster`, these variables "
                 "are used to set up authentication with Databricks MLflow "
                 "service. For details, you can refer to Databricks documentation at "
-                "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>Databricks PAT auth</a> or "
-                "<a href='https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'>Databricks OAuth</a>."
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>"
+                "Databricks PAT auth</a> or "
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/"
+                "oauth-m2m.html'>Databricks OAuth</a>."
             )
             get_databricks_display_html_function()(
                 f"<b style='color:red;'>{warn_msg}<br></b>"

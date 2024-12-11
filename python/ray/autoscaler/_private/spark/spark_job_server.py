@@ -76,7 +76,9 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                     if spark_job_group_id in self.server.task_status_dict:
                         self.server.task_status_dict.pop(spark_job_group_id)
 
-                    msg = f"Spark job {spark_job_group_id} hosting Ray worker node exit."
+                    msg = (
+                        f"Spark job {spark_job_group_id} hosting Ray worker node exit."
+                    )
                     if self._logger.level > logging.DEBUG:
                         self._logger.warning(
                             f"{msg} To see details, you can set "
@@ -85,9 +87,9 @@ class SparkJobServerRequestHandler(BaseHTTPRequestHandler):
                         )
                     else:
                         # This branch is only for debugging Ray-on-Spark purpose.
-                        # User can configure 'RAY_ON_SPARK_JOB_SERVER_VERBOSE' environment
-                        # variable to make the spark job server logging showing
-                        # full exception stack here.
+                        # User can configure 'RAY_ON_SPARK_JOB_SERVER_VERBOSE'
+                        # environment variable to make the spark job server logging
+                        # showing full exception stack here.
                         self._logger.debug(msg, exc_info=True)
 
             threading.Thread(
