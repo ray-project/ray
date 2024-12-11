@@ -174,6 +174,15 @@ py_test(
 )
 
 py_test(
+    name = "test_lightgbm_trainer",
+    size = "small",
+    srcs = ["tests/test_lightgbm_trainer.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_xgboost_trainer",
     size = "small",
     srcs = ["tests/test_xgboost_trainer.py"],
