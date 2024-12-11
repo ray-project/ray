@@ -419,7 +419,7 @@
     prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
     script: >
       python dataset/gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
 # 10 TB image classification parquet data with autoscaling heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
