@@ -441,7 +441,8 @@ class RunTarget:
 @PublicAPI(stability="beta")
 def _run_many(
     targets: Sequence[RunTarget],
-    _blocking: bool = True,
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
     """Run many applications and return the handles to their ingress deployments.
@@ -498,7 +499,11 @@ def _run_many(
         # Record after Ray has been started.
         ServeUsageTag.API_VERSION.record("v2")
 
-        return client.deploy_applications(built_apps, blocking=_blocking)
+        return client.deploy_applications(
+            built_apps,
+            wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+            wait_for_applications_running=wait_for_applications_running,
+        )
 
 
 @PublicAPI(stability="stable")
@@ -525,7 +530,7 @@ def _run(
                 logging_config=logging_config,
             )
         ],
-        _blocking=_blocking,
+        wait_for_applications_running=_blocking,
         _local_testing_mode=_local_testing_mode,
     )[0]
 
@@ -534,11 +539,34 @@ def _run(
 def run_many(
     targets: Sequence[RunTarget],
     blocking: bool = False,
+    wait_for_ingress_deployment_creation: bool = True,
+    wait_for_applications_running: bool = True,
     _local_testing_mode: bool = False,
 ) -> List[DeploymentHandle]:
-    """Run many applications and return the handles to their ingress deployments."""
+    """Run many applications and return the handles to their ingress deployments.
+
+    Args:
+        targets:
+            A sequence of `RunTarget`s,
+            each containing information about an application to deploy.
+        blocking: Whether this call should be blocking. If True, it
+            will loop and log status until Ctrl-C'd.
+        wait_for_ingress_deployment_creation: Whether to wait for the ingress
+            deployments to be created.
+        wait_for_applications_running: Whether to wait for the applications to be
+            running. Note that this effectively implies
+            `wait_for_ingress_deployment_creation=True`,
+            because the ingress deployments must be created
+            before the applications can be running.
+
+    Returns:
+        List[DeploymentHandle]: A list of handles that can be used
+            to call the applications.
+    """
     handles = _run_many(
         targets,
+        wait_for_ingress_deployment_creation=wait_for_ingress_deployment_creation,
+        wait_for_applications_running=wait_for_applications_running,
         _local_testing_mode=_local_testing_mode,
     )
 
