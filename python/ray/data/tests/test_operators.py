@@ -1027,21 +1027,23 @@ def test_map_estimated_blocks_split():
 def test_map_kwargs(ray_start_regular_shared, use_actors):
     """Test propagating additional kwargs to map tasks."""
     foo = 1
-    bar = ray.put(np.zeros(1024 * 1024))
+    bar = np.random.random(1024 * 1024)
     kwargs = {
         "foo": foo,  # Pass by value
-        "bar": bar,  # Pass by ObjectRef
+        "bar": ray.put(bar),  # Pass by ObjectRef
     }
 
     def map_fn(block_iter: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        nonlocal foo, bar
         assert ctx.kwargs["foo"] == foo
         # bar should be automatically deref'ed.
-        assert ctx.kwargs["bar"] == bar
+        assert np.array_equal(ctx.kwargs["bar"], bar)
 
         yield from block_iter
 
     input_op = InputDataBuffer(
-        DataContext.get_current(), make_ref_bundles([[i] for i in range(100)])
+        DataContext.get_current(),
+        make_ref_bundles([[i] for i in range(10)]),
     )
     compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
     op = MapOperator.create(
