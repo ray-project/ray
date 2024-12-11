@@ -1880,6 +1880,7 @@ def read_webdataset(
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
+    expand_json: bool = False,
 ) -> Dataset:
     """Create a :class:`~ray.data.Dataset` from
     `WebDataset <https://webdataset.github.io/webdataset/>`_ files.
@@ -1917,6 +1918,8 @@ def read_webdataset(
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources. You shouldn't manually set this
             value in most cases.
+        expand_json: If ``True``, expand JSON objects into individual samples.
+            Defaults to ``False``.
 
     Returns:
         A :class:`~ray.data.Dataset` that contains the example features.
@@ -1945,6 +1948,7 @@ def read_webdataset(
         shuffle=shuffle,
         include_paths=include_paths,
         file_extensions=file_extensions,
+        expand_json=expand_json,
     )
     return read_datasource(
         datasource,
