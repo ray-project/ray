@@ -432,6 +432,8 @@ def deployment(
 @PublicAPI(stability="beta")
 @dataclass(frozen=True)
 class RunTarget:
+    """Represents a Serve application to run for `serve.run_many`."""
+
     target: Application
     name: str = SERVE_DEFAULT_APP_NAME
     route_prefix: Optional[str] = "/"

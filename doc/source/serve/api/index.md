@@ -67,6 +67,8 @@ See the [model composition guide](serve-model-composition) for how to update cod
 
    serve.start
    serve.run
+   serve.run_many
+   serve.RunTarget
    serve.delete
    serve.status
    serve.shutdown
