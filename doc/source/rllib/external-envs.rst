@@ -17,22 +17,34 @@ individual actions or for accepting batched sample data. The service would cover
 of training the policies, but would not pose any restrictions on when and how often
 per second the simulation should step.
 
+.. figure:: images/envs/external_env_setup_client_inference.svg
+    :width: 600
+    **External application with client-side inference**: An external simulator (for example a game engine)
+    connects to RLlib, which runs as a server through a tcp-cabable, custom EnvRunner.
+    The simulator sends batches of data from time to time to the server and in turn receives weights updates.
+    For better performance, actions are computed locally on the client side.
+
 .. todo (sven): show new image here with UE5
 .. .. figure:: images/rllib-training-inside-a-unity3d-env.png
 .. scale: 75 %
 ..    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
-RLlib provides an external messaging protocol
-` <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ for this purpose
-as well as the option to customize the EnvRunner class used for collecting training data (sampling
-from an RL environment). An example, tcp-based EnvRunner implementation is available here, together with
-a dummy (CartPole) client providing a template for any external application or simulator.
+RLlib provides an `external messaging protocol <https://github.com/ray-project/ray/blob/master/rllib/env/utils/external_env_protocol.py>`__
+for this purpose as well as the option to customize your :py:class:`~ray.rllib.env.env_runner.EnvRunner` class used for collecting
+training data. An example, `tcp-based EnvRunner implementation is available here <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__,
+together with a dummy (CartPole) client providing a template for any external application or simulator.
 
 .. note::
-    External application support is still work-in-progress on the new API stack. The Ray team
-    is working on a) more examples for custom EnvRunner implementations (besides the already
-    available tcp-based one) and b) client-side, non-python RLlib-adapters, for example for
-    popular game engines and other simulation software.
+    External application support is still work-in-progress on RLlib's new API stack. The Ray team
+    is working on more examples for custom EnvRunner implementations (besides
+    `the already available tcp-based one <https://github.com/ray-project/ray/blob/master/rllib/env/tcp_client_inference_env_runner.py>`__)
+    as well as client-side, non-python RLlib-adapters, for example for popular game engines and other
+    simulation software.
+
+
+
+
+
 
 At any point, agents on that thread can query the current policy for decisions via
 ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
@@ -42,9 +54,6 @@ See these examples for a `simple "CartPole-v1" server <https://github.com/ray-pr
 and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
 scripts, in which we setup an RLlib policy server that listens on one or more ports for
 client connections and connect several clients to this server to learn the env.
-
-Another `example <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/unity3d_server.py>`__
-shows, how to run a similar setup against a Unity3D external game engine.
 
 
 External Application Clients
