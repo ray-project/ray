@@ -314,4 +314,6 @@ class LocalRouter(Router):
         return noop_future
 
     def shutdown(self):
-        pass
+        noop_future = concurrent.futures.Future()
+        noop_future.set_result(None)
+        return noop_future

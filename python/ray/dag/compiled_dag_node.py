@@ -101,7 +101,7 @@ def do_allocate_channel(
     self,
     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
     typ: ChannelOutputType,
-    read_by_adag_driver: bool,
+    driver_actor_id: Optional[str] = None,
 ) -> ChannelInterface:
     """Generic actor method to allocate an output channel.
 
@@ -109,8 +109,8 @@ def do_allocate_channel(
         reader_and_node_list: A list of tuples, where each tuple contains a reader
             actor handle and the node ID where the actor is located.
         typ: The output type hint for the channel.
-        read_by_adag_driver: True if the channel will be read by an aDAG driver
-            (Ray driver or actor and task that creates an aDAG).
+        driver_actor_id: If this channel is read by a driver and that driver is an
+            actual actor, this will be the actor ID of that driver actor.
 
     Returns:
         The allocated channel.
@@ -126,7 +126,7 @@ def do_allocate_channel(
     output_channel = typ.create_channel(
         writer,
         reader_and_node_list,
-        read_by_adag_driver,
+        driver_actor_id,
     )
     return output_channel
 
@@ -256,6 +256,30 @@ def _get_nccl_group_id(type_hint: ChannelOutputType) -> Optional[str]:
         assert isinstance(type_hint, TorchTensorType)
         return type_hint.nccl_group_id
     return None
+
+
+def _device_context_manager():
+    """
+    Return a context manager for executing communication operations
+    (i.e., READ and WRITE). For NCCL operations, the context manager
+    uses the proper cuda device from channel context, otherwise,
+    nullcontext will be returned.
+    """
+    if not ChannelContext.get_current().torch_available:
+        return nullcontext()
+
+    import torch
+
+    device = ChannelContext.get_current().torch_device
+
+    if device.type == "cuda" and torch.cuda.is_available():
+        # In the case of mocked NCCL, we may get a device with type "cuda"
+        # but CUDA is not available. We return nullcontext() in that case,
+        # otherwise torch raises a runtime error if the cuda device context
+        # manager is used.
+        # TODO(rui): consider better mocking NCCL to support device context.
+        return torch.cuda.device(device)
+    return nullcontext()
 
 
 @DeveloperAPI
@@ -640,13 +664,15 @@ class ExecutableTask:
             True if the next operation should not be executed; otherwise, False.
         """
         if op_type == _DAGNodeOperationType.READ:
-            with self._recv_stream:
-                return self._read(overlap_gpu_communication)
+            with _device_context_manager():
+                with self._recv_stream:
+                    return self._read(overlap_gpu_communication)
         elif op_type == _DAGNodeOperationType.COMPUTE:
             return self._compute(overlap_gpu_communication, class_handle)
         elif op_type == _DAGNodeOperationType.WRITE:
-            with self._send_stream:
-                return self._write()
+            with _device_context_manager():
+                with self._send_stream:
+                    return self._write()
 
 
 @dataclass
@@ -803,7 +829,6 @@ class CompiledDAG:
         # dag.execute.
         self._input_num_positional_args: Optional[int] = None
         self._input_kwargs: Tuple[str, ...] = None
-        self.actor_task_count: Dict["ray._raylet.ActorID", int] = defaultdict(int)
 
         # Cached attributes that are set during compilation.
         self.dag_input_channels: Optional[List[ChannelInterface]] = None
@@ -920,7 +945,6 @@ class CompiledDAG:
         from ray.dag.collective_node import _CollectiveOperation
 
         self.input_task_idx, self.output_task_idx = None, None
-        self.actor_task_count.clear()
 
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
@@ -994,8 +1018,6 @@ class CompiledDAG:
                         "that is already created with Actor.remote()"
                     )
 
-                self.actor_task_count[actor_handle._actor_id] += 1
-
                 # Collect actors for NCCL P2P methods.
                 if dag_node.type_hint.requires_nccl():
                     nccl_actors_p2p.add(actor_handle)
@@ -1057,7 +1079,6 @@ class CompiledDAG:
             for _, arg in enumerate(task.args):
                 if not isinstance(arg, DAGNode):
                     continue
-
                 upstream_node_idx = self.dag_node_to_idx[arg]
                 upstream_task = self.idx_to_task[upstream_node_idx]
                 downstream_actor_handle = None
@@ -1312,73 +1333,46 @@ class CompiledDAG:
                         output_to_readers[task].append(downstream_task)
                 fn = task.dag_node._get_remote_method("__ray_call__")
                 for output, readers in output_to_readers.items():
-                    dag_nodes = [reader.dag_node for reader in readers]
-                    read_by_multi_output_node = False
-                    for dag_node in dag_nodes:
-                        if isinstance(dag_node, MultiOutputNode):
-                            read_by_multi_output_node = True
-                            break
-
                     reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-                    if read_by_multi_output_node:
-                        if len(readers) != 1:
-                            raise ValueError(
-                                "DAG outputs currently can only be read by the "
-                                "driver or the same actor that is also the "
-                                "InputNode, not by both the driver and actors.",
-                            )
-
-                        # This node is a multi-output node, which means it will
-                        # only be read by the driver or the actor that is also
-                        # the InputNode.
-
-                        # TODO(jhumphri): Handle case where there is an actor,
-                        # other than just the driver actor, also reading the
-                        # output from the `task` node. For example, the following
-                        # currently does not work:
-                        # def test_blah(ray_start_regular):
-                        #     a = Actor.remote(0)
-                        #     b = Actor.remote(10)
-                        #     with InputNode() as inp:
-                        #         x = a.inc.bind(inp)
-                        #         y = b.inc.bind(x)
-                        #         dag = MultiOutputNode([x, y])
-
-                        #     compiled_dag = dag.experimental_compile()
-                        #     output_channel = compiled_dag.execute(1)
-                        #     result = output_channel.read()
-                        #     print(result)
-
-                        #     compiled_dag.teardown()
-
-                        assert self._proxy_actor is not None
-                        for reader in readers:
-                            reader_and_node_list.append(
+                    # Use reader_handles_set to deduplicate readers on the
+                    # same actor, because with CachedChannel each actor will
+                    # only read from the upstream channel once.
+                    reader_handles_set = set()
+                    read_by_multi_output_node = False
+                    for reader in readers:
+                        if isinstance(reader.dag_node, MultiOutputNode):
+                            read_by_multi_output_node = True
+                            # inserting at 0 to make sure driver is first reader as
+                            # expected by CompositeChannel read
+                            reader_and_node_list.insert(
+                                0,
                                 (
                                     self._proxy_actor,
                                     self._get_node_id(self._proxy_actor),
-                                )
+                                ),
                             )
-                    else:
-                        # Use reader_handles_set to deduplicate readers on the
-                        # same actor, because with CachedChannel each actor will
-                        # only read from the upstream channel once.
-                        reader_handles_set = set()
-                        for reader in readers:
+                        else:
                             reader_handle = reader.dag_node._get_actor_handle()
                             if reader_handle not in reader_handles_set:
+                                reader_handle = reader.dag_node._get_actor_handle()
                                 reader_and_node_list.append(
                                     (reader_handle, self._get_node_id(reader_handle))
                                 )
-                            reader_handles_set.add(reader_handle)
+                                reader_handles_set.add(reader_handle)
 
+                    # if driver is an actual actor, gets driver actor id
+                    driver_actor_id = (
+                        ray.get_runtime_context().get_actor_id()
+                        if read_by_multi_output_node
+                        else None
+                    )
                     # Create an output channel for each output of the current node.
                     output_channel = ray.get(
                         fn.remote(
                             do_allocate_channel,
                             reader_and_node_list,
                             type_hint,
-                            read_by_multi_output_node,
+                            driver_actor_id,
                         )
                     )
                     output_idx = None
@@ -1444,7 +1438,7 @@ class CompiledDAG:
                         self,
                         reader_and_node_list,
                         type_hint,
-                        False,
+                        None,
                     )
                     task.output_channels.append(output_channel)
                     task.output_idxs.append(
@@ -2139,7 +2133,7 @@ class CompiledDAG:
             RayChannelTimeoutError: If the execution does not complete within
                 self._execution_timeout seconds.
 
-        NOTE: Not threadsafe due to _execution_index etc.
+        NOTE: Not thread-safe due to _execution_index etc.
         """
         if self._enable_asyncio:
             raise ValueError("Use execute_async if enable_asyncio=True")
@@ -2197,7 +2191,7 @@ class CompiledDAG:
     ) -> Union[CompiledDAGFuture, List[CompiledDAGFuture]]:
         """Execute this DAG using the compiled execution path.
 
-        NOTE: Not threadsafe.
+        NOTE: Not thread-safe.
 
         Args:
             args: Args to the InputNode.
@@ -2240,6 +2234,341 @@ class CompiledDAG:
         self._execution_index += 1
         return fut
 
+    def _visualize_ascii(self) -> str:
+        """
+        Visualize the compiled graph in
+        ASCII format with directional markers.
+
+        This function generates an ASCII visualization of a Compiled Graph,
+        where each task node is labeled,
+        and edges use `<` and `>` markers to show data flow direction.
+
+        This method is called by:
+            - `compiled_dag.visualize(format="ascii")`
+
+
+
+        High-Level Algorithm:
+        - Topological Sorting: Sort nodes topologically to organize
+            them into layers based on dependencies.
+        - Grid Initialization: Set up a 2D grid canvas with dimensions based
+            on the number of layers and the maximum number of nodes per layer.
+        - Node Placement: Position each node on the grid according to its
+            layer and relative position within that layer.
+            Spacing is added for readability, and directional markers (`<` and `>`)
+            are added to edges to show input/output flow clearly.
+
+        This method should be called
+          **after** compiling the graph with `experimental_compile()`.
+
+        Returns:
+            ASCII representation of the CG with Nodes Information,
+            Edges Information and Graph Built.
+
+        Limitations:
+        - Note: This is only used for quick visualization for small graphs.
+            For complex graph (i.e. more than 20 tasks), please use graphviz.
+        - Scale: Works best for smaller CGs (typically fewer than 20 tasks).
+            Larger CGs may result in dense, less readable ASCII
+            outputs due to limited space for node and edge rendering.
+        - Shape: Ideal for relatively shallow CGs with clear dependency paths.
+            For deep, highly branched or densely connected CGs,
+            readability may suffer.
+        - Edge Overlap: In cases with high fan-out (i.e., nodes with many children)
+            or fan-in (nodes with many parents), edge lines may intersect or overlap
+            in the ASCII visualization, potentially obscuring some connections.
+        - Multi-output Tasks: Multi-output tasks can be visualized, but positioning
+            may cause line breaks or overlap when a task has multiple outputs that
+            feed into nodes at varying depths.
+
+        Example:
+            Basic Visualization:
+            ```python
+            # Print the CG structure in ASCII format
+            print(compiled_dag.visualize(format="ascii"))
+            ```
+
+            Example of Ordered Visualization (task is build in order
+                to reduce line intersection):
+            ```python
+            with InputNode() as i:
+                o1, o2, o3 = a.return_three.bind(i)
+                o4 = b.echo.bind(o1)
+                o5 = b.echo.bind(o2)
+                o6, o7 = b.return_two.bind(o3)
+                dag = MultiOutputNode([o4, o5, o6, o7])
+
+            compiled_dag = dag.experimental_compile()
+            compiled_dag.visualize(format="ascii",view=True)
+
+
+            # Output:
+            # 0:InputNode
+            # |
+            # 1:Actor_54777d:return_three
+            # |---------------------------->|---------------------------->|                                                  # noqa
+            # 2:Output[0]                   3:Output[1]                   4:Output[2]                                        # noqa
+            # |                             |                             |                                                  # noqa
+            # 5:Actor_c927c9:echo           6:Actor_c927c9:echo           7:Actor_c927c9:return_two                          # noqa
+            # |                             |                             |---------------------------->|                    # noqa
+            # |                             |                             9:Output[0]                   10:Output[1]         # noqa
+            # |<----------------------------|-----------------------------|-----------------------------|                    # noqa
+            # 8:MultiOutputNode
+            ```
+
+            Example of Anti-pattern Visualization (There are intersections):
+            # We can swtich the nodes ordering to reduce intersections, i.e. swap o2 and o3
+            ```python
+            with InputNode() as i:
+                o1, o2, o3 = a.return_three.bind(i)
+                o4 = b.echo.bind(o1)
+                o5 = b.echo.bind(o3)
+                o6, o7 = b.return_two.bind(o2)
+                dag = MultiOutputNode([o4, o5, o6, o7])
+            compiled_dag = dag.experimental_compile()
+            compiled_dag.visualize(format="ascii",view=True)
+
+            # Output (Nodes 5, 7, 9, 10 should connect to Node 8):
+            # 0:InputNode
+            # |
+            # 1:Actor_84835a:return_three
+            # |---------------------------->|---------------------------->|                            # noqa
+            # 2:Output[0]                   3:Output[1]                   4:Output[2]                  # noqa
+            # |                             |                             |                            # noqa
+            # 5:Actor_02a6a1:echo           6:Actor_02a6a1:return_two     7:Actor_02a6a1:echo          # noqa
+            # |                             |---------------------------->|                            # noqa
+            # |                             9:Output[0]                   10:Output[1]                 # noqa
+            # |<----------------------------------------------------------|                            # noqa
+            # 8:MultiOutputNod
+            ```
+        """
+
+        from ray.dag import (
+            InputAttributeNode,
+            InputNode,
+            MultiOutputNode,
+            ClassMethodNode,
+            DAGNode,
+        )
+
+        # Check that the DAG has been compiled
+        if not hasattr(self, "idx_to_task") or not self.idx_to_task:
+            raise ValueError(
+                "The DAG must be compiled before calling 'visualize()'. "
+                "Please call 'experimental_compile()' first."
+            )
+
+        # Check that each CompiledTask has a valid dag_node
+        for idx, task in self.idx_to_task.items():
+            if not hasattr(task, "dag_node") or not isinstance(task.dag_node, DAGNode):
+                raise ValueError(
+                    f"Task at index {idx} does not have a valid 'dag_node'. "
+                    "Ensure that 'experimental_compile()' completed successfully."
+                )
+
+        from collections import defaultdict, deque
+
+        # Create adjacency list representation of the DAG
+        # Adjacency list for DAG; maps a node index to its downstream nodes.
+        adj_list: Dict[int, List[int]] = defaultdict(list)
+        # Indegree count for topological sorting; maps a node index to its indegree.
+        indegree: Dict[int, int] = defaultdict(int)
+
+        # Tracks whether a node is a multi-output node.
+        is_multi_output: Dict[int, bool] = defaultdict(bool)
+        # Maps child node indices to their parent node indices.
+        child2parent: Dict[int, int] = defaultdict(int)
+        ascii_visualization = ""
+        # Node information; maps a node index to its descriptive label.
+        node_info: Dict[int, str] = {}
+        # Edge information; tuples of (upstream_index, downstream_index, edge_label).
+        edge_info: List[Tuple[int, int, str]] = []
+
+        for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+            label = f"Task {idx}  "
+
+            # Determine the type and label of the node
+            if isinstance(dag_node, InputNode):
+                label += "InputNode"
+            elif isinstance(dag_node, InputAttributeNode):
+                label += f"InputAttributeNode[{dag_node.key}]"
+            elif isinstance(dag_node, MultiOutputNode):
+                label += "MultiOutputNode"
+            elif isinstance(dag_node, ClassMethodNode):
+                if dag_node.is_class_method_call:
+                    method_name = dag_node.get_method_name()
+                    actor_handle = dag_node._get_actor_handle()
+                    actor_id = (
+                        actor_handle._actor_id.hex()[:6] if actor_handle else "unknown"
+                    )
+                    label += f"Actor: {actor_id}... Method: {method_name}"
+                elif dag_node.is_class_method_output:
+                    label += f"ClassMethodOutputNode[{dag_node.output_idx}]"
+                else:
+                    label += "ClassMethodNode"
+            else:
+                label += type(dag_node).__name__
+
+            node_info[idx] = label
+
+            for arg_index, arg in enumerate(dag_node.get_args()):
+                if isinstance(arg, DAGNode):
+                    upstream_task_idx = self.dag_node_to_idx[arg]
+
+                    # Get the type hint for this argument
+                    if arg_index < len(task.arg_type_hints):
+                        if task.arg_type_hints[arg_index].requires_nccl():
+                            type_hint = "Nccl"
+                        else:
+                            type_hint = type(task.arg_type_hints[arg_index]).__name__
+                    else:
+                        type_hint = "UnknownType"
+
+                    adj_list[upstream_task_idx].append(idx)
+                    indegree[idx] += 1
+                    edge_info.append((upstream_task_idx, idx, type_hint))
+
+        width_adjust = 0
+        for upstream_task_idx, child_idx_list in adj_list.items():
+            # Mark as multi-output if the node has more than one output path
+            if len(child_idx_list) > 1:
+                for child in child_idx_list:
+                    is_multi_output[child] = True
+                    child2parent[child] = upstream_task_idx
+                width_adjust = max(width_adjust, len(child_idx_list))
+
+        # Topological sort to determine layers
+        layers = defaultdict(list)
+        zero_indegree = deque([idx for idx in self.idx_to_task if indegree[idx] == 0])
+        layer_index = 0
+
+        while zero_indegree:
+            next_layer = deque()
+            while zero_indegree:
+                task_idx = zero_indegree.popleft()
+                layers[layer_index].append(task_idx)
+                for downstream in adj_list[task_idx]:
+                    indegree[downstream] -= 1
+                    if indegree[downstream] == 0:
+                        next_layer.append(downstream)
+            zero_indegree = next_layer
+            layer_index += 1
+
+        # Print detailed node information
+        ascii_visualization += "Nodes Information:\n"
+        for idx, info in node_info.items():
+            ascii_visualization += f'{idx} [label="{info}"] \n'
+
+        # Print edges
+        ascii_visualization += "\nEdges Information:\n"
+        for upstream_task, downstream_task, type_hint in edge_info:
+            if type_hint == "Nccl":
+                edgs_channel = "+++"
+            else:
+                edgs_channel = "---"
+            ascii_visualization += (
+                f"{upstream_task} {edgs_channel}>" f" {downstream_task}\n"
+            )
+
+        # Add the legend to the output
+        ascii_visualization += "\nLegend:\n"
+        ascii_visualization += "+++> : Represents Nccl-type data channels\n"
+        ascii_visualization += "---> : Represents Shared Memory data channels\n"
+
+        # Find the maximum width (number of nodes in any layer)
+        max_width = max(len(layer) for layer in layers.values()) + width_adjust
+        height = len(layers)
+
+        # Build grid for ASCII visualization
+        grid = [[" " for _ in range(max_width * 20)] for _ in range(height * 2 - 1)]
+
+        # Place nodes in the grid with more details
+        task_to_pos = {}
+        for layer_num, layer_tasks in layers.items():
+            layer_y = layer_num * 2  # Every second row is for nodes
+            for col_num, task_idx in enumerate(layer_tasks):
+                task = self.idx_to_task[task_idx]
+                task_info = f"{task_idx}:"
+
+                # Determine if it's an actor method or a regular task
+                if isinstance(task.dag_node, ClassMethodNode):
+                    if task.dag_node.is_class_method_call:
+                        method_name = task.dag_node.get_method_name()
+                        actor_handle = task.dag_node._get_actor_handle()
+                        actor_id = (
+                            actor_handle._actor_id.hex()[:6]
+                            if actor_handle
+                            else "unknown"
+                        )
+                        task_info += f"Actor_{actor_id}:{method_name}"
+                    elif task.dag_node.is_class_method_output:
+                        task_info += f"Output[{task.dag_node.output_idx}]"
+                    else:
+                        task_info += "UnknownMethod"
+                else:
+                    task_info += type(task.dag_node).__name__
+
+                adjust_col_num = 0
+                if task_idx in is_multi_output:
+                    adjust_col_num = layers[layer_num - 1].index(child2parent[task_idx])
+                col_x = (col_num + adjust_col_num) * 30  # Every 30th column for spacing
+                # Place the task information into the grid
+                for i, char in enumerate(task_info):
+                    if col_x + i < len(grid[0]):  # Ensure we don't overflow the grid
+                        grid[layer_y][col_x + i] = char
+
+                task_to_pos[task_idx] = (layer_y, col_x)
+
+        # Connect the nodes with lines
+        for upstream_task, downstream_tasks in adj_list.items():
+            upstream_y, upstream_x = task_to_pos[upstream_task]
+            for downstream_task in downstream_tasks:
+                downstream_y, downstream_x = task_to_pos[downstream_task]
+
+                # Draw vertical line
+                for y in range(upstream_y + 1, downstream_y):
+                    if grid[y][upstream_x] == " ":
+                        grid[y][upstream_x] = "|"
+
+                    # Draw horizontal line with directional arrows
+                if upstream_x != downstream_x:
+                    for x in range(
+                        min(upstream_x, downstream_x) + 1,
+                        max(upstream_x, downstream_x),
+                    ):
+                        grid[downstream_y - 1][x] = (
+                            "-"
+                            if grid[downstream_y - 1][x] == " "
+                            else grid[downstream_y - 1][x]
+                        )
+
+                    # Add arrows to indicate flow direction
+                    if downstream_x > upstream_x:
+                        grid[downstream_y - 1][downstream_x - 1] = ">"
+                    else:
+                        grid[downstream_y - 1][downstream_x + 1] = "<"
+
+                # Draw connection to the next task
+                grid[downstream_y - 1][downstream_x] = "|"
+
+        # Ensure proper multi-output task connection
+        for idx, task in self.idx_to_task.items():
+            if isinstance(task.dag_node, MultiOutputNode):
+                output_tasks = task.dag_node.get_args()
+                for i, output_task in enumerate(output_tasks):
+                    if isinstance(output_task, DAGNode):
+                        output_task_idx = self.dag_node_to_idx[output_task]
+                        if output_task_idx in task_to_pos:
+                            output_y, output_x = task_to_pos[output_task_idx]
+                            grid[output_y - 1][output_x] = "|"
+
+        # Convert grid to string for printing
+        ascii_visualization += "\nGraph Built:\n"
+        ascii_visualization += "\n".join("".join(row) for row in grid)
+
+        return ascii_visualization
+
     def get_channel_details(
         self, channel: ChannelInterface, downstream_actor_id: str
     ) -> str:
@@ -2277,11 +2606,13 @@ class CompiledDAG:
         filename="compiled_graph",
         format="png",
         view=False,
-        return_dot=False,
         channel_details=False,
-    ):
+    ) -> str:
         """
         Visualize the compiled graph using Graphviz.
+
+        For non-ASCII formats, the visualization will be saved to a file specified
+        by the `filename` argument.
 
         This method generates a graphical representation of the compiled graph,
         showing tasks and their dependencies.This method should be called
@@ -2289,16 +2620,34 @@ class CompiledDAG:
 
         Args:
             filename: The name of the output file (without extension).
-            format: The format of the output file (e.g., 'png', 'pdf').
-            view: Whether to open the file with the default viewer.
-            return_dot: If True, returns the DOT source as a string instead of figure.
-            show_channel_details: If True, adds channel details to edges.
+            format: The format of the output file (e.g., 'png', 'pdf', 'ascii').
+            view: For non-ascii: Whether to open the file with the default viewer.
+                For ascii: Whether to print the visualization and return None
+                    or return the ascii visualization string directly.
+            channel_details: If True, adds channel details to edges.
+
+        Returns:
+            str:
+                - For Graphviz-based formats (e.g., 'png', 'pdf', 'jpeg'), returns
+                the Graphviz DOT string representation of the compiled graph.
+                - For ASCII format, returns the ASCII string representation of the
+                compiled graph.
 
         Raises:
             ValueError: If the graph is empty or not properly compiled.
             ImportError: If the `graphviz` package is not installed.
 
         """
+        if format == "ascii":
+            if channel_details:
+                raise ValueError(
+                    "Parameters 'channel_details' are"
+                    " not compatible with 'ascii' format."
+                )
+            ascii_visualiztion_str = self._visualize_ascii()
+            if view:
+                print(ascii_visualiztion_str)
+            return ascii_visualiztion_str
         try:
             import graphviz
         except ImportError:
@@ -2329,7 +2678,7 @@ class CompiledDAG:
                     "Ensure that 'experimental_compile()' completed successfully."
                 )
 
-        # Dot file for debuging
+        # Dot file for debugging
         dot = graphviz.Digraph(name="compiled_graph", format=format)
         # Give every actor a unique color, colors between 24k -> 40k tested as readable
         # other colors may be too dark, especially when wrapping back around to 0
@@ -2428,11 +2777,8 @@ class CompiledDAG:
             if type(task.dag_node) == InputAttributeNode:
                 # Add an edge from the InputAttributeNode to the InputNode
                 dot.edge(str(self.input_task_idx), str(idx))
-        if return_dot:
-            return dot.source
-        else:
-            # Render the graph to a file
-            dot.render(filename, view=view)
+        dot.render(filename, view=view)
+        return dot.source
 
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
