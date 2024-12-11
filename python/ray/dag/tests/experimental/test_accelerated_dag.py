@@ -223,6 +223,7 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
         dag = MultiOutputNode([o1, o2])
 
     compiled_dag = dag.experimental_compile()
+    compiled_dag.visualize(channel_details=True)
     for i in range(3):
         refs = compiled_dag.execute(1)
         if single_fetch:
@@ -2550,6 +2551,68 @@ def test_multi_arg_exception_async(shutdown_only):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
+
+
+def test_signature_mismatch(shutdown_only):
+    @ray.remote
+    class Worker:
+        def w(self, x):
+            return 1
+
+        def f(self, x, *, y):
+            pass
+
+        def g(self, x, y, z=1):
+            pass
+
+    worker = Worker.remote()
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"got an unexpected keyword argument 'y'\. The function `w` has a "
+            r"signature `\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r".*args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, y=inp)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"too many positional arguments\. The function `w` has a signature "
+            r"`\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, inp)
+
+    with pytest.raises(
+        TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
+        match=(
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.f.bind(inp)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"missing a required argument: 'y'\. The function `g` has a signature "
+            r"`\(x, y, z=1\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.g.bind(inp)
 
 
 if __name__ == "__main__":

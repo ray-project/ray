@@ -220,7 +220,7 @@ int main(int argc, char *argv[]) {
     if (ray::SetThisProcessAsSubreaper()) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
                                 /*period_ms=*/10000,
                                 "Raylet.KillUnknownChildren");
