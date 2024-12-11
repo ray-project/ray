@@ -9,11 +9,16 @@ from ray.rllib.core.columns import Columns
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+    OverrideToImplementCustomLogic,
+)
 from ray.rllib.utils.compression import pack_if_needed
 from ray.rllib.utils.spaces.space_utils import to_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.debug import log_once
+from ray.util.annotations import PublicAPI
 
 logger = logging.Logger(__file__)
 
@@ -21,10 +26,12 @@ logger = logging.Logger(__file__)
 #  calls only get_state.
 
 
+@PublicAPI(stability="alpha")
 class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
     """The environment runner to record the single agent case."""
 
     @override(SingleAgentEnvRunner)
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(self, *, config: AlgorithmConfig, **kwargs):
         # Initialize the parent.
         super().__init__(config=config, **kwargs)
@@ -111,6 +118,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         self._samples = []
 
     @override(SingleAgentEnvRunner)
+    @OverrideToImplementCustomLogic
     def sample(
         self,
         *,
@@ -206,6 +214,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
         return samples
 
     @override(EnvRunner)
+    @OverrideToImplementCustomLogic
     def stop(self) -> None:
         """Writes the reamining samples to disk
 
@@ -243,6 +252,7 @@ class OfflineSingleAgentEnvRunner(SingleAgentEnvRunner):
 
         logger.debug(f"Experience buffer length: {len(self._samples)}")
 
+    @OverrideToImplementCustomLogic
     def _map_episodes_to_data(self, samples: List[EpisodeType]) -> None:
         """Converts list of episodes to list of single dict experiences.
 
