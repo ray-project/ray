@@ -91,6 +91,7 @@ def get_type_spec(
     dtypes: Dict[str, Union[np.dtype, pa.DataType]] = dict(
         zip(schema.names, schema.types)
     )
+
     def get_dtype(dtype: Union[np.dtype, pa.DataType]) -> tf.dtypes.DType:
         if isinstance(dtype, pa.ListType):
             dtype = dtype.value_type
