@@ -6,11 +6,14 @@ import time
 from typing import Dict
 
 import xgboost as xgb
+import lightgbm as lgb
 
 import ray
 from ray import data
-from ray.train.lightgbm import LightGBMTrainer
-from ray.train.xgboost import XGBoostTrainer
+from ray.train.lightgbm.v2 import LightGBMTrainer
+from ray.train.xgboost.v2 import XGBoostTrainer
+from ray.train.xgboost import RayTrainReportCallback as XGBoostReportCallback
+from ray.train.lightgbm import RayTrainReportCallback as LightGBMReportCallback
 from ray.train import RunConfig, ScalingConfig
 
 _TRAINING_TIME_THRESHOLD = 600
@@ -57,22 +60,69 @@ class LightGBMPredictor(BasePredictor):
         return {"predictions": self.model.predict(data)}
 
 
+def xgboost_train_loop_function(config: Dict):
+    # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+    train_ds_iter = ray.train.get_dataset_shard("train")
+    train_df = train_ds_iter.materialize().to_pandas()
+
+    label_column, params = config["label_column"], config["params"]
+    train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+
+    dtrain = xgb.DMatrix(train_X, label=train_y)
+
+    # 2. Do distributed data-parallel training.
+    # Ray Train sets up the necessary coordinator processes and
+    # environment variables for your workers to communicate with each other.
+    xgb.train(
+        params,
+        dtrain=dtrain,
+        num_boost_round=10,
+        callbacks=[XGBoostReportCallback()],
+    )
+
+
+def lightgbm_train_loop_function(config: Dict):
+    # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+    train_ds_iter = ray.train.get_dataset_shard("train")
+    train_df = train_ds_iter.materialize().to_pandas()
+
+    label_column, params = config["label_column"], config["params"]
+    train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+
+    # 2. Do distributed data-parallel training.
+    # Ray Train sets up the necessary coordinator processes and
+    # environment variables for your workers to communicate with each other.
+    lgb.train(
+        params,
+        train_set=train_X,
+        label=train_y,
+        num_boost_round=10,
+        callbacks=[LightGBMReportCallback()],
+    )
+
+
 _FRAMEWORK_PARAMS = {
     "xgboost": {
         "trainer_cls": XGBoostTrainer,
         "predictor_cls": XGBoostPredictor,
-        "params": {
-            "objective": "binary:logistic",
-            "eval_metric": ["logloss", "error"],
+        "train_loop_function": xgboost_train_loop_function,
+        "train_loop_config": {
+            "params": {
+                "objective": "binary:logistic",
+                "eval_metric": ["logloss", "error"],
+            },
+            "label_column": "labels",
         },
     },
     "lightgbm": {
         "trainer_cls": LightGBMTrainer,
         "predictor_cls": LightGBMPredictor,
+        "train_loop_function": lightgbm_train_loop_function,
         "params": {
             "objective": "binary",
             "metric": ["binary_logloss", "binary_error"],
         },
+        "label_column": "labels",
     },
 }
 
@@ -84,15 +134,15 @@ def train(
     framework_params = _FRAMEWORK_PARAMS[framework]
 
     trainer_cls = framework_params["trainer_cls"]
+    framework_train_loop_fn = framework_params["train_loop_function"]
 
     trainer = trainer_cls(
-        params=framework_params["params"],
+        train_loop_function=framework_train_loop_fn,
+        train_loop_config=framework_params["train_loop_config"],
         scaling_config=ScalingConfig(
             num_workers=num_workers,
             resources_per_worker={"CPU": cpus_per_worker},
-            trainer_resources={"CPU": 0},
         ),
-        label_column="labels",
         datasets={"train": ds},
         run_config=RunConfig(
             storage_path="/mnt/cluster_storage", name=f"{framework}_benchmark"
