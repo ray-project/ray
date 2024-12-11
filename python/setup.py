@@ -235,6 +235,9 @@ if setup_spec.type == SetupType.RAY:
         "adag": [
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
+        "cg": [
+            "torch-cuda12x; sys_platform != 'darwin'",
+        ],
         "client": [
             # The Ray client needs a specific range of gRPC to work:
             # Tracking issues: https://github.com/grpc/grpc/issues/33714
