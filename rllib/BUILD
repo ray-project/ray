@@ -2596,9 +2596,9 @@ py_test(
     name = "examples/hierarchical/hierarchical_training",
     main = "examples/hierarchical/hierarchical_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "large",
+    size = "medium",
     srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-iters=10", "--map=small", "--time-limit=100", "--max-low-level-steps=15"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-iters=10", "--map=small", "--time-limit=100", "--max-steps-low-level=15"]
 )
 
 # subdirectory: inference/
