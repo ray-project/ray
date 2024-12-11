@@ -31,7 +31,6 @@ from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env import INPUT_ENV_SPACES
-from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.env.wrappers.atari_wrappers import is_atari
 from ray.rllib.evaluation.collectors.sample_collector import SampleCollector
@@ -71,7 +70,6 @@ from ray.rllib.utils.typing import (
     MultiAgentPolicyConfigDict,
     PartialAlgorithmConfigDict,
     PolicyID,
-    ResultDict,
     RLModuleSpecType,
     SampleBatchType,
 )
@@ -314,7 +312,6 @@ class AlgorithmConfig(_Config):
         self._is_atari = None
         self.disable_env_checking = False
         # Deprecated settings:
-        self.env_task_fn = None
         self.render_env = False
         self.action_mask_key = "action_mask"
 
@@ -568,6 +565,7 @@ class AlgorithmConfig(_Config):
         # TODO: Remove, once all deprecation_warning calls upon using these keys
         #  have been removed.
         # === Deprecated keys ===
+        self.env_task_fn = DEPRECATED_VALUE
         self.enable_connectors = DEPRECATED_VALUE
         self.simple_optimizer = DEPRECATED_VALUE
         self.monitor = DEPRECATED_VALUE
@@ -1632,9 +1630,6 @@ class AlgorithmConfig(_Config):
         env_config: Optional[EnvConfigDict] = NotProvided,
         observation_space: Optional[gym.spaces.Space] = NotProvided,
         action_space: Optional[gym.spaces.Space] = NotProvided,
-        env_task_fn: Optional[
-            Callable[[ResultDict, EnvType, EnvContext], Any]
-        ] = NotProvided,
         render_env: Optional[bool] = NotProvided,
         clip_rewards: Optional[Union[bool, float]] = NotProvided,
         normalize_actions: Optional[bool] = NotProvided,
@@ -1643,7 +1638,7 @@ class AlgorithmConfig(_Config):
         is_atari: Optional[bool] = NotProvided,
         action_mask_key: Optional[str] = NotProvided,
         # Deprecated args.
-        auto_wrap_old_gym_envs=DEPRECATED_VALUE,
+        env_task_fn=DEPRECATED_VALUE,
     ) -> "AlgorithmConfig":
         """Sets the config's RL-environment settings.
 
@@ -1659,10 +1654,6 @@ class AlgorithmConfig(_Config):
                 `worker_index`, `vector_index`, and `remote`).
             observation_space: The observation space for the Policies of this Algorithm.
             action_space: The action space for the Policies of this Algorithm.
-            env_task_fn: A callable taking the last train results, the base env and the
-                env context as args and returning a new task to set the env to.
-                The env must be a `TaskSettableEnv` sub-class for this to work.
-                See `examples/curriculum_learning.py` for an example.
             render_env: If True, try to render the environment on the local worker or on
                 worker 1 (if num_env_runners > 0). For vectorized envs, this usually
                 means that only the first sub-environment is rendered.
@@ -1698,9 +1689,9 @@ class AlgorithmConfig(_Config):
         Returns:
             This updated AlgorithmConfig object.
         """
-        if auto_wrap_old_gym_envs != DEPRECATED_VALUE:
+        if env_task_fn != DEPRECATED_VALUE:
             deprecation_warning(
-                old="AlgorithmConfig.environment(auto_wrap_old_gym_envs=..)",
+                old="AlgorithmConfig.environment(env_task_fn=..)",
                 error=True,
             )
         if env is not NotProvided:
@@ -1711,8 +1702,6 @@ class AlgorithmConfig(_Config):
             self.observation_space = observation_space
         if action_space is not NotProvided:
             self.action_space = action_space
-        if env_task_fn is not NotProvided:
-            self.env_task_fn = env_task_fn
         if render_env is not NotProvided:
             self.render_env = render_env
         if clip_rewards is not NotProvided:
@@ -4590,16 +4579,6 @@ class AlgorithmConfig(_Config):
     # TODO (sven): Once everything is on the new API stack, we won't need this method
     #  anymore.
     def _validate_to_be_deprecated_settings(self):
-        # Env task fn is about to be deprecated.
-        if self.enable_rl_module_and_learner and self.env_task_fn is not None:
-            deprecation_warning(
-                old="AlgorithmConfig.env_task_fn",
-                help="The `env_task_fn` API is not supported on the new API stack! "
-                "Curriculum learning should instead be implemented solely via "
-                "custom callbacks. Check out our curriculum learning example "
-                "script for more information: "
-                "https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py",  # noqa
-            )
         # `render_env` is deprecated on new API stack.
         if self.enable_env_runner_and_connector_v2 and self.render_env is not False:
             deprecation_warning(
