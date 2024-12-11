@@ -1,47 +1,36 @@
 import logging
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 from pyarrow.fs import FileSelector, S3FileSystem
 
 from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
-    CheckpointFilter,
     CheckpointWriter,
+    RowBasedCheckpointFilter,
+    S3CheckpointIO,
 )
 from ray.data import DataContext
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.util import call_with_retry
 from ray.data.block import Block, BlockAccessor
-from ray.data.datasource.path_util import _unwrap_protocol
 
 logger = logging.getLogger(__name__)
 
 
-def _get_default_s3_checkpoint_output_path() -> Optional[str]:
-    artifact_storage = os.environ.get("ANYSCALE_ARTIFACT_STORAGE")
-    if artifact_storage is None:
-        return None
-    return f"{artifact_storage}/ray_data_checkpoint"
-
-
-class RowBasedS3CheckpointFilter(CheckpointFilter):
+class RowBasedS3CheckpointFilter(RowBasedCheckpointFilter, S3CheckpointIO):
     """CheckpointFilter implementation for S3 backend, reading
-    one checkpoint file per input row."""
+    one checkpoint file per input row.
+
+    For a more efficient implementation, see `S3CheckpointFilter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
-        self.output_path = _unwrap_protocol(self.output_path)
-
         if self.fs is None:
             self.fs = S3FileSystem()
 
-    def _get_default_ckpt_output_path(self) -> Optional[str]:
-        return _get_default_s3_checkpoint_output_path()
-
-    def filter_rows_for_block(self, block: Block, **kwargs) -> Block:
+    def filter_rows_for_block(self, block: Block) -> Block:
         block_accessor = BlockAccessor.for_block(block)
         files = []
         for row in block_accessor.iter_rows(False):
@@ -82,20 +71,17 @@ class RowBasedS3CheckpointFilter(CheckpointFilter):
         return mask_file_exists
 
 
-class RowBasedS3CheckpointWriter(CheckpointWriter):
+class RowBasedS3CheckpointWriter(CheckpointWriter, S3CheckpointIO):
     """CheckpointWriter implementation for S3 backend, writing
-    one checkpoint file per input row."""
+    one checkpoint file per input row.
+
+    For a more efficient implementation, see `S3CheckpointWriter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
 
-        self.output_path = _unwrap_protocol(self.output_path)
-
         if self.fs is None:
             self.fs = S3FileSystem()
-
-    def _get_default_ckpt_output_path(self) -> Optional[str]:
-        return _get_default_s3_checkpoint_output_path()
 
     def write_row_checkpoint(self, row: Dict[str, Any]):
         """Write a checkpoint for a single row to the checkpoint

@@ -103,6 +103,25 @@ class MapOperator(OneToOneOperator, ABC):
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
+        # Callback functions that generate additional task kwargs
+        # for the map task.
+        self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
+        """Add a callback function that generates additional kwargs for the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def get_map_task_kwargs(self) -> Dict[str, Any]:
+        """Get the kwargs for the map task.
+        Subclasses should pass the returned kwargs to the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        kwargs = {}
+        for fn in self._map_task_kwargs_fns:
+            kwargs.update(fn())
+        return kwargs
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -468,6 +487,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
 
@@ -481,6 +501,7 @@ def _map_task(
         as the last generator return.
     """
     DataContext._set_current(data_context)
+    ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):

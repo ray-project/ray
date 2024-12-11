@@ -1,16 +1,26 @@
+import functools
 import itertools
-from typing import Iterable, List
+import logging
+import time
+from typing import Iterable, List, Optional, Tuple, Union
 
+import ray
 from ray.anyscale.data._internal.logical.operators.read_files_operator import ReadFiles
 from ray.anyscale.data.checkpoint.interfaces import (
+    BatchBasedCheckpointFilter,
     CheckpointBackend,
     CheckpointConfig,
-    CheckpointFilter,
     CheckpointWriter,
     InvalidCheckpointingConfig,
     InvalidCheckpointingOperators,
+    RowBasedCheckpointFilter,
 )
 from ray.data import DataContext
+from ray.data._internal.execution.execution_callback import (
+    ExecutionCallback,
+    add_execution_callback,
+    remove_execution_callback,
+)
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
@@ -25,18 +35,91 @@ from ray.data._internal.logical.operators.read_operator import Read
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor, DataBatch
 from ray.data.datasource.datasink import Datasink
+from ray.types import ObjectRef
+from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+# Keyword arg name for checkpointed ids
+CHECKPOINTED_IDS_KWARG_NAME = "checkpointed_ids"
+
+logger = logging.getLogger(__name__)
+
+
+@ray.remote(num_cpus=0)
+def load_checkpoint(ckpt_filter: BatchBasedCheckpointFilter) -> Block:
+    start_t = time.time()
+    checkpoint = ckpt_filter.load_checkpoint()
+    num_rows = BlockAccessor.for_block(checkpoint).num_rows()
+    logger.debug(
+        "Checkpoint loaded in %.2f seconds with %d rows.",
+        time.time() - start_t,
+        num_rows,
+    )
+    return checkpoint
+
+
+class CheckpointExecutionCallback(ExecutionCallback):
+    """ExecutionCallback that handles checkpoints."""
+
+    def __init__(self, config: CheckpointConfig, context: DataContext):
+        assert config.is_batch_based()
+        self._context = context
+        self._ckpt_filter = BatchBasedCheckpointFilter.create(config)
+        self._checkpoint_ref: Optional[ObjectRef[Block]] = None
+
+    def before_execution_starts(self):
+        # Load checkpoint data before execution starts.
+        scheduling_strategy = NodeAffinitySchedulingStrategy(
+            ray.get_runtime_context().get_node_id(),
+            soft=False,
+        )
+        self._checkpoint_ref = load_checkpoint.options(
+            scheduling_strategy=scheduling_strategy,
+        ).remote(self._ckpt_filter)
+
+    def after_execution_succeeds(self):
+        # Remove the callback from the DataContext.
+        remove_execution_callback(self, self._context)
+        # Delete checkpoint data.
+        try:
+            self._ckpt_filter.delete_checkpoint()
+        except Exception:
+            logger.warn("Failed to delete checkpoint data.", exc_info=True)
+
+    def after_execution_fails(self, _: Exception):
+        # Remove the callback from the DataContext.
+        remove_execution_callback(self, self._context)
+
+    def get_checkpoint_ref(self) -> ObjectRef[Block]:
+        assert self._checkpoint_ref is not None
+        return self._checkpoint_ref
 
 
 def filter_checkpointed_rows_for_blocks(
-    blocks: Iterable[Block], _: "TaskContext"
+    blocks: Iterable[Block],
+    task_context: TaskContext,
+    checkpoint_config: CheckpointConfig,
 ) -> Iterable[Block]:
     """For each block, filter rows that have already been checkpointed
     and yield the resulting block."""
-    ckpt_filter = CheckpointFilter.create_checkpoint_filter()
+    if checkpoint_config.is_batch_based():
+        ckpt_filter = BatchBasedCheckpointFilter.create(checkpoint_config)
+        checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
+
+        def filter_fn(block):
+            return ckpt_filter.filter_rows_for_block(
+                block,
+                checkpointed_ids,
+            )
+
+    else:
+        ckpt_filter = RowBasedCheckpointFilter.create(checkpoint_config)
+
+        def filter_fn(block):
+            return ckpt_filter.filter_rows_for_block(block)
 
     for block in blocks:
         block = ckpt_filter.generate_id_column_for_block(block)
-        filtered_block = ckpt_filter.filter_rows_for_block(block)
+        filtered_block = filter_fn(block)
         ba = BlockAccessor.for_block(filtered_block)
         if ba.num_rows() > 0:
             yield filtered_block
@@ -44,15 +127,29 @@ def filter_checkpointed_rows_for_blocks(
 
 def filter_checkpointed_rows_for_batches(
     batches: Iterable[DataBatch],
-    _: TaskContext,
+    task_context: TaskContext,
+    checkpoint_config: CheckpointConfig,
 ) -> Iterable[DataBatch]:
     """For each batch, filter rows that have already been checkpointed
     and yield the resulting batches."""
-    ckpt_filter = CheckpointFilter.create_checkpoint_filter()
+    if checkpoint_config.is_batch_based():
+        ckpt_filter = BatchBasedCheckpointFilter.create(checkpoint_config)
+        checkpointed_ids = task_context.kwargs[CHECKPOINTED_IDS_KWARG_NAME]
+
+        def filter_fn(batch):
+            return ckpt_filter.filter_rows_for_batch(
+                batch, checkpointed_ids=checkpointed_ids
+            )
+
+    else:
+        ckpt_filter = RowBasedCheckpointFilter.create(checkpoint_config)
+
+        def filter_fn(batch):
+            return ckpt_filter.filter_rows_for_batch(batch)
 
     for batch in batches:
         batch = ckpt_filter.generate_id_column_for_batch(batch)
-        filtered_batch = ckpt_filter.filter_rows_for_batch(batch)
+        filtered_batch = filter_fn(batch)
         yield filtered_batch
 
 
@@ -94,7 +191,7 @@ class InsertCheckpointingLayerRule(Rule):
         # If the plan doesn't terminate in a `Write` op,
         # skip inserting the checkpoint filter step.
         if not plan._context._skip_checkpoint_temp:
-            plan = self._insert_read_filter_checkpoint(plan)
+            plan = self._insert_read_filter_checkpoint(plan, config)
         return plan
 
     def _check_valid_checkpoint_config(self, config: CheckpointConfig):
@@ -130,7 +227,7 @@ class InsertCheckpointingLayerRule(Rule):
                 f"{type(datasink)}"
             )
 
-        checkpoint_writer = CheckpointWriter.create_checkpoint_writer()
+        checkpoint_writer = CheckpointWriter.create(config)
 
         # MapTransformFn for writing checkpoint files after write completes.
         def write_checkpoint_for_block(
@@ -164,7 +261,39 @@ class InsertCheckpointingLayerRule(Rule):
 
         return plan
 
-    def _insert_read_filter_checkpoint(self, plan: Plan) -> Plan:
+    def _insert_read_filter_checkpoint(
+        self, plan: Plan, checkpoint_config: CheckpointConfig
+    ) -> Plan:
+        # 1. Find the read op
+        physical_op, logical_op = self._find_read_op(plan)
+
+        # 2. If the checkpoint backend is batch based, add a callback
+        # to load the checkpoint data before the execution starts.
+        if checkpoint_config.is_batch_based():
+            # Need to make StreamingExecutor use the DataContext from the plan first.
+            context = plan.context
+            checkpoint_callback = CheckpointExecutionCallback(
+                checkpoint_config,
+                context,
+            )
+            add_execution_callback(checkpoint_callback, context)
+            # Pass the checkpointed_ids block as a keyword arg to the map task.
+            physical_op.add_map_task_kwargs_fn(
+                lambda: {
+                    CHECKPOINTED_IDS_KWARG_NAME: checkpoint_callback.get_checkpoint_ref()  # noqa: E501
+                }
+            )
+
+        # 3. Insert the FilterCheckpointedRows transform
+        self._insert_filter_transform_fn(
+            physical_op,
+            logical_op,
+            checkpoint_config,
+        )
+
+        return plan
+
+    def _find_read_op(self, plan: Plan) -> Tuple[MapOperator, Union[ReadFiles, Read]]:
         # Traverse the DAG and find the Read or ReadFiles op.
         physical_op = plan.dag
         assert isinstance(physical_op, PhysicalOperator)
@@ -199,14 +328,21 @@ class InsertCheckpointingLayerRule(Rule):
             logical_op = physical_op._logical_operators[0]
 
         assert isinstance(physical_op, MapOperator), type(physical_op)
+        assert isinstance(logical_op, (ReadFiles, Read)), type(logical_op)
+        return physical_op, logical_op
+
+    def _insert_filter_transform_fn(
+        self,
+        physical_op: MapOperator,
+        logical_op: Union[ReadFiles, Read],
+        checkpoint_config: CheckpointConfig,
+    ):
         transform_fns: List[
             MapTransformFn
         ] = physical_op._map_transformer.get_transform_fns().copy()
-
         # Check that `transform_fns` are compatible with `write_checkpoint_for_block`.
         assert len(transform_fns) >= 2, transform_fns
 
-        # Insert the FilterCheckpointedRows transform
         if isinstance(logical_op, ReadFiles):
             assert transform_fns[1].output_type == MapTransformFnDataType.Batch
             assert transform_fns[2].input_type == MapTransformFnDataType.Batch
@@ -216,9 +352,16 @@ class InsertCheckpointingLayerRule(Rule):
             # -> BatchMapTransformFn(read_paths)
             # -> BatchMapTransformFn(filter_checkpointed_rows_for_batches) -> ...
             transform_fns.insert(
-                2, BatchMapTransformFn(filter_checkpointed_rows_for_batches)
+                2,
+                BatchMapTransformFn(
+                    functools.partial(
+                        filter_checkpointed_rows_for_batches,
+                        checkpoint_config=checkpoint_config,
+                    )
+                ),
             )
-        elif isinstance(logical_op, Read):
+        else:
+            assert isinstance(logical_op, Read)
             assert transform_fns[0].output_type == MapTransformFnDataType.Block
             assert transform_fns[1].input_type == MapTransformFnDataType.Block
 
@@ -227,13 +370,13 @@ class InsertCheckpointingLayerRule(Rule):
             # -> BlockMapTransformFn(filter_checkpointed_rows_for_blocks)
             # -> BlocksToBatchesMapTransformFn() -> ...
             transform_fns.insert(
-                1, BlockMapTransformFn(filter_checkpointed_rows_for_blocks)
+                1,
+                BlockMapTransformFn(
+                    functools.partial(
+                        filter_checkpointed_rows_for_blocks,
+                        checkpoint_config=checkpoint_config,
+                    )
+                ),
             )
-        else:
-            raise Exception(
-                f"Expected source op to be (Read, ReadFiles) but "
-                f"instead found: `{logical_op}`."
-            )
-        physical_op._map_transformer.set_transform_fns(transform_fns)
 
-        return plan
+        physical_op._map_transformer.set_transform_fns(transform_fns)

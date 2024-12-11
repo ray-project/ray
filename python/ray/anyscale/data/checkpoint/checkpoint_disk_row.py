@@ -6,8 +6,9 @@ from typing import Any, Dict
 
 from ray.anyscale.data.checkpoint.interfaces import (
     CheckpointConfig,
-    CheckpointFilter,
     CheckpointWriter,
+    DiskCheckpointIO,
+    RowBasedCheckpointFilter,
 )
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block, BlockAccessor
@@ -15,13 +16,11 @@ from ray.data.block import Block, BlockAccessor
 logger = logging.getLogger(__name__)
 
 
-# Default checkpoint storage path when using disk backend.
-DEFAULT_CHECKPOINT_DIR_LOCAL_FS = "/mnt/cluster_storage/ray_data_checkpoint"
-
-
-class RowBasedDiskCheckpointFilter(CheckpointFilter):
+class RowBasedDiskCheckpointFilter(RowBasedCheckpointFilter, DiskCheckpointIO):
     """CheckpointFilter implementation for disk backend, reading
-    one checkpoint file per input row."""
+    one checkpoint file per input row.
+
+    For a more efficient implementation, see `DiskCheckpointFilter`."""
 
     def __init__(self, config: CheckpointConfig):
         super().__init__(config)
@@ -35,12 +34,7 @@ class RowBasedDiskCheckpointFilter(CheckpointFilter):
                 f"Ensure that the correct checkpoint directory was configured."
             )
 
-    def _get_default_ckpt_output_path(self):
-        # If a checkpoint output path is not configured, use the default
-        # Anyscale cluster storage.
-        return DEFAULT_CHECKPOINT_DIR_LOCAL_FS
-
-    def filter_rows_for_block(self, block: Block, **kwargs) -> Block:
+    def filter_rows_for_block(self, block: Block) -> Block:
         if self._checkpoint_dir_does_not_exist:
             # If the checkpoint directory does not exist,
             # simply return the original block.
@@ -80,26 +74,17 @@ class RowBasedDiskCheckpointFilter(CheckpointFilter):
         return {path: exists for path, exists in zip(files, file_exists)}
 
 
-class RowBasedDiskCheckpointWriter(CheckpointWriter):
+class RowBasedDiskCheckpointWriter(CheckpointWriter, DiskCheckpointIO):
     """CheckpointWriter implementation for disk backend, writing
-    one checkpoint file per input row."""
+    one checkpoint file per input row.
+
+    For a more efficient implementation, see `DiskCheckpointWriter`."""
 
     def __init__(self, config: CheckpointConfig):
-        # If a checkpoint output path is not configured, use the default
-        # Anyscale cluster storage.
-        if config.output_path is None:
-            config.output_path = DEFAULT_CHECKPOINT_DIR_LOCAL_FS
-
-        # If the checkpoint output directory does not exist, create it.
-        if not os.path.exists(config.output_path):
-            os.makedirs(config.output_path)
-
         super().__init__(config)
-
-    def _get_default_ckpt_output_path(self):
-        # If a checkpoint output path is not configured, use the default
-        # Anyscale cluster storage.
-        return DEFAULT_CHECKPOINT_DIR_LOCAL_FS
+        # If the checkpoint output directory does not exist, create it.
+        if not os.path.exists(self.output_path):
+            os.makedirs(self.output_path)
 
     def write_block_checkpoint(self, block: BlockAccessor):
         with ThreadPoolExecutor(max_workers=self.write_num_threads) as executor:

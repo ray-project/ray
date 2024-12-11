@@ -2,7 +2,6 @@ import copy
 import csv
 import os
 import random
-import time
 from typing import List
 
 import pandas as pd
@@ -11,6 +10,7 @@ from pyarrow.fs import FileSelector
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray._private.test_utils import wait_for_condition
 from ray.anyscale.data._internal.execution.rules.insert_checkpointing import (
     InsertCheckpointingLayerRule,
 )
@@ -32,12 +32,17 @@ from ray.data.datasource.path_util import _unwrap_protocol
 from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
+ID_COL = "id"
+
+# Auto-use `restore_data_context` for each test.
+pytestmark = pytest.mark.usefixtures("restore_data_context")
+
 
 @pytest.fixture
 def generate_sample_data_csv(tmp_path):
     # Generate a dummy dataset with 5 rows and columns ["id", "col1"]
     data = [{"id": i, "col1": random.random()} for i in range(5)]
-    f_path = f"{tmp_path}/sample_data.csv"
+    f_path = os.path.join(tmp_path, "sample_data.csv")
     with open(f_path, mode="w", newline="") as file:
         writer = csv.DictWriter(file, fieldnames=data[0].keys())
         writer.writeheader()
@@ -51,11 +56,11 @@ def generate_sample_data_csv(tmp_path):
 @pytest.fixture
 def generate_sample_data_parquet(tmp_path):
     # Generate a dummy dataset with 5 rows and columns ["id", "col1"]
-    f_dir = f"{tmp_path}/sample_data_parquet/"
+    f_dir = os.path.join(tmp_path, "sample_data_parquet")
     os.makedirs(f_dir, exist_ok=True)
 
     df = pd.DataFrame([{"id": i, "col1": random.random()} for i in range(5)])
-    f_path = f"{f_dir}/sample_data.parquet"
+    f_path = os.path.join(f_dir, "sample_data.parquet")
     df.to_parquet(f_path)
     yield f_dir
 
@@ -70,7 +75,8 @@ def generate_sample_physical_plan(generate_sample_data_csv, tmp_path):
     datasource = CSVDatasource(generate_sample_data_csv)
 
     read_op = Read(datasource, datasource, -1, None)
-    write_op = Write(read_op, ParquetDatasink(f"{tmp_path}/output"))
+    write_path = os.path.join(tmp_path, "output")
+    write_op = Write(read_op, ParquetDatasink(write_path))
     logical_plan = LogicalPlan(write_op, ctx)
     physical_plan = get_execution_plan(logical_plan)
     yield physical_plan
@@ -86,11 +92,71 @@ def generate_ckpt_config(backend, output_path, id_col, fs):
     )
 
 
-def get_checkpoint_files(ckpt_path) -> List[str]:
-    try:
-        return [f"{ckpt_path}/{fname}" for fname in os.listdir(ckpt_path)]
-    except FileNotFoundError:
-        return []
+def read_ids_from_checkpoint_files(config: CheckpointConfig) -> List[int]:
+    """Reads the checkpoint files and returns a sorted list of IDs
+    which have been checkpointed."""
+    backend = config.backend
+    ckpt_path = config.output_path
+    fs = config.fs
+
+    if backend in (CheckpointBackend.DISK_ROW, CheckpointBackend.S3_ROW):
+        if fs is None:
+            try:
+                actual_checkpoint_file_paths = [
+                    os.path.join(ckpt_path, fname) for fname in os.listdir(ckpt_path)
+                ]
+            except FileNotFoundError:
+                return []
+        else:
+            files = fs.get_file_info(
+                FileSelector(_unwrap_protocol(ckpt_path), allow_not_found=True)
+            )
+            actual_checkpoint_file_paths = []
+            for file_info in files:
+                if file_info.is_file:
+                    actual_checkpoint_file_paths.append(file_info.path)
+        # Parse the checkpoint file paths to get the ID.
+        # Paths are of form `.../id.jsonl`.
+        # Split the path by / and jsonl file extension.
+        return sorted(
+            [
+                int(os.path.basename(f).split(".")[0])
+                for f in actual_checkpoint_file_paths
+            ]
+        )
+
+    if backend in (CheckpointBackend.DISK_BATCH, CheckpointBackend.S3_BATCH):
+        if fs is None:
+            try:
+                actual_checkpoint_file_paths = [
+                    os.path.join(ckpt_path, fname) for fname in os.listdir(ckpt_path)
+                ]
+            except FileNotFoundError:
+                return []
+
+            read_ckpt_ids = []
+            for file in actual_checkpoint_file_paths:
+                with open(file, "r") as f:
+                    ckpt_df = pd.read_csv(f)
+                    read_ckpt_ids.extend(ckpt_df[ID_COL].tolist())
+            return sorted(read_ckpt_ids)
+        else:
+            actual_checkpoint_file_paths = []
+            files = fs.get_file_info(
+                FileSelector(_unwrap_protocol(ckpt_path), allow_not_found=True)
+            )
+            for file_info in files:
+                if file_info.is_file:
+                    actual_checkpoint_file_paths.append(file_info.path)
+
+            read_ckpt_ids = []
+            for fpath in actual_checkpoint_file_paths:
+                with fs.open_input_file(fpath) as f:
+                    ckpt_df = pd.read_csv(f)
+                    read_ckpt_ids.extend(ckpt_df[ID_COL].tolist())
+
+            return sorted(read_ckpt_ids)
+    raise Exception(f"Invalid backend: {backend}")
 
 
 class TestInsertCheckpointingLayerRule:
@@ -104,7 +170,7 @@ class TestInsertCheckpointingLayerRule:
         physical_plan._context = ctx
         ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
         base_checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK, ckpt_path, "id", None
+            CheckpointBackend.DISK_ROW, ckpt_path, "id", None
         )
 
         # Backend must be configured.
@@ -135,14 +201,15 @@ class TestInsertCheckpointingLayerRule:
 
         # Sort op is not allowed for checkpointing.
         sort_op = Sort(read_op, "id")
-        write_op = Write(sort_op, ParquetDatasink(f"{tmp_path}/output"))
+        write_path = os.path.join(tmp_path, "output")
+        write_op = Write(sort_op, ParquetDatasink(write_path))
         logical_plan = LogicalPlan(write_op, ctx)
         optimized_logical_plan = LogicalOptimizer().optimize(logical_plan)
         physical_plan = Planner().plan(optimized_logical_plan)
 
         ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
         ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK, ckpt_path, "id", None
+            CheckpointBackend.DISK_ROW, ckpt_path, "id", None
         )
 
         with pytest.raises(InvalidCheckpointingOperators, match="Sort"):
@@ -154,8 +221,17 @@ class TestInsertCheckpointingLayerRule:
         generate_sample_physical_plan,
         tmp_path,
     ):
+        checkpoint_config = generate_ckpt_config(
+            CheckpointBackend.DISK_ROW,
+            os.path.join(tmp_path, "ckpt"),
+            "id",
+            None,
+        )
+
         rule = InsertCheckpointingLayerRule()
-        new_plan = rule._insert_read_filter_checkpoint(generate_sample_physical_plan)
+        new_plan = rule._insert_read_filter_checkpoint(
+            generate_sample_physical_plan, checkpoint_config
+        )
 
         # Check that a MapTransform was inserted with
         # filter_checkpointed_rows_for_blocks.
@@ -173,8 +249,8 @@ class TestInsertCheckpointingLayerRule:
     ):
         ctx = ray.data.DataContext.get_current()
         ctx.checkpoint_config = generate_ckpt_config(
-            CheckpointBackend.DISK,
-            f"{tmp_path}/ckpt",
+            CheckpointBackend.DISK_ROW,
+            os.path.join(tmp_path, "ckpt"),
             "id",
             None,
         )
@@ -193,20 +269,29 @@ class TestInsertCheckpointingLayerRule:
 
 @pytest.mark.parametrize("read_code_path", ["runtime", "oss_fallback"])
 @pytest.mark.parametrize(
-    "backend,fs,data_path,endpoint_url",
+    "backend,fs,data_path",
     [
-        (CheckpointBackend.DISK, None, lazy_fixture("local_path"), None),
+        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
         (
-            CheckpointBackend.DISK,
+            CheckpointBackend.DISK_ROW,
             lazy_fixture("local_fs"),
             lazy_fixture("local_path"),
-            None,
         ),
         (
-            CheckpointBackend.S3,
+            CheckpointBackend.S3_ROW,
             lazy_fixture("s3_fs"),
             lazy_fixture("s3_path"),
-            lazy_fixture("s3_server"),
+        ),
+        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_BATCH,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_BATCH,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
         ),
     ],
 )
@@ -217,7 +302,6 @@ def test_checkpoint(
     backend,
     fs,
     data_path,
-    endpoint_url,
 ):
     class TestActor:
         def __init__(self):
@@ -226,8 +310,6 @@ def test_checkpoint(
         def __call__(self, batch):
             return batch
 
-    ID_COL = "id"
-
     ctx = ray.data.DataContext.get_current()
     ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
     ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
@@ -235,75 +317,94 @@ def test_checkpoint(
     if read_code_path == "runtime":
         ds = ray.data.read_csv(generate_sample_data_csv)
     elif read_code_path == "oss_fallback":
-        # Pass `override_num_blocks` arg to trigger fallback
-        # to OSS read_api code path.
-        ds = ray.data.read_csv(generate_sample_data_csv, override_num_blocks=5)
+        ds = ray.data.read_api.read_csv(generate_sample_data_csv)
     else:
         raise Exception(f"Invalid `read_code_path`: {read_code_path}")
 
+    # Execute the dataset with checkpointing enabled.
     ds = ds.map_batches(TestActor, concurrency=1)
-    data_output_path = f"{data_path}/output/"
+    data_output_path = os.path.join(data_path, "output")
     ds.write_parquet(data_output_path, filesystem=fs)
 
-    # Generate the list of expected files from the ID column.
     # Disable checkpointing prior to reading back the data, so we don't skip any rows.
     ctx.checkpoint_config.enabled = False
-    ds = ray.data.read_parquet(data_output_path, filesystem=fs)
-    expected_checkpoint_file_paths = []
-    for row in ds.iter_rows():
-        ckpt_file = _unwrap_protocol(f"{ckpt_path}/{row.get(ID_COL)}.jsonl")
-        expected_checkpoint_file_paths.append(ckpt_file)
 
-    # Get the list of actual checkpoint files in the checkpoint output path.
-    if fs is None:
-        actual_checkpoint_file_paths = [
-            f"{ckpt_path}/{fname}" for fname in os.listdir(ckpt_path)
-        ]
+    # Ensure that the written data is correct.
+    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
+    actual_output = sorted([row["id"] for row in ds_readback.iter_rows()])
+    expected_output = sorted([row["id"] for row in ds.iter_rows()])
+    assert actual_output == expected_output
+
+    # When execution succeeds, checkpoint data should be automatically deleted.
+    # TODO(haochen): Also delete checkpoint for row-based backends.
+    checkpoint_ids = read_ids_from_checkpoint_files(ctx.checkpoint_config)
+    if ctx.checkpoint_config.is_batch_based():
+        assert checkpoint_ids == []
     else:
-        files = fs.get_file_info(FileSelector(_unwrap_protocol(ckpt_path)))
-        actual_checkpoint_file_paths = []
-        for file_info in files:
-            if file_info.is_file:
-                actual_checkpoint_file_paths.append(file_info.path)
-
-    expected_checkpoint_file_paths = set(expected_checkpoint_file_paths)
-    actual_checkpoint_file_paths = set(actual_checkpoint_file_paths)
-
-    # Check all expected checkpoint files have been created.
-    assert expected_checkpoint_file_paths == actual_checkpoint_file_paths, (
-        f"Missing "
-        f"{len(expected_checkpoint_file_paths) - len(actual_checkpoint_file_paths)} "
-        f"checkpoint files: "
-        f"{expected_checkpoint_file_paths - actual_checkpoint_file_paths}"
-    )
+        expected_checkpoint_ids = sorted([row[ID_COL] for row in ds.iter_rows()])
+        assert checkpoint_ids == expected_checkpoint_ids
 
 
+@pytest.mark.parametrize("read_code_path", ["runtime", "oss_fallback"])
+@pytest.mark.parametrize(
+    "backend,fs,data_path",
+    [
+        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_ROW,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_ROW,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_BATCH,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_BATCH,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+    ],
+)
 def test_full_dataset_executed_for_non_write(
     ray_start_10_cpus_shared,
-    tmp_path,
     generate_sample_data_parquet,
+    read_code_path,
+    backend,
+    fs,
+    data_path,
 ):
     """Tests that for an already fully checkpointed Dataset,
     calling `schema()` and `count()` should not skip checkpointing
     and should execute the full Dataset to get the correct information.
     """
-    ID_COL = "id"
 
     ctx = ray.data.DataContext.get_current()
-    ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(
-        CheckpointBackend.DISK, ckpt_path, ID_COL, None
-    )
+    ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
+    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
 
     ds = ray.data.read_parquet(generate_sample_data_parquet)
+
+    if read_code_path == "runtime":
+        ds = ray.data.read_parquet(generate_sample_data_parquet)
+    elif read_code_path == "oss_fallback":
+        ds = ray.data.read_api.read_parquet(generate_sample_data_parquet, concurrency=1)
+
     ds = ds.map(lambda row: row)
 
     # Get the schema and count prior to writing the dataset.
     schema_before_write = ds.schema()
     count_before_write = ds.count()
 
-    data_output_path = f"{tmp_path}/output/"
-    ds.write_parquet(data_output_path)
+    data_output_path = os.path.join(data_path, "output")
+    ds.write_parquet(data_output_path, filesystem=fs)
 
     # Recreate the same dataset, so that it will skip checkpointed rows.
     ds2 = ray.data.read_parquet(generate_sample_data_parquet)
@@ -315,22 +416,63 @@ def test_full_dataset_executed_for_non_write(
     assert ds2.count() == count_before_write
 
 
+@pytest.mark.parametrize("read_code_path", ["runtime", "oss_fallback"])
+@pytest.mark.parametrize(
+    "backend,fs,data_path",
+    [
+        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_ROW,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_ROW,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_BATCH,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_BATCH,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+    ],
+)
 def test_recovery_skips_checkpointed_rows(
     ray_start_10_cpus_shared,
-    tmp_path,
-    generate_sample_data_parquet,
+    read_code_path,
+    backend,
+    fs,
+    data_path,
 ):
     """Tests that for a Dataset which fails partway and is recovered,
     it skips rows which have already been checkpointed."""
 
-    ID_COL = "id"
     ctx = ray.data.DataContext.get_current()
-    ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(
-        CheckpointBackend.DISK, ckpt_path, ID_COL, None
-    )
+    ctx.execution_options.preserve_order = True
+    ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
+    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
     # Catch the custom TestException raised by FailActor.
     ctx.raise_original_map_exception = True
+
+    @ray.remote(num_cpus=0)
+    class Coordinator:
+        def __init__(self):
+            self._should_fail = True
+
+        def disable_failure(self):
+            self._should_fail = False
+
+        def should_fail(self):
+            return self._should_fail
+
+    coordinator_actor = Coordinator.remote()
 
     class TestException(Exception):
         pass
@@ -338,40 +480,106 @@ def test_recovery_skips_checkpointed_rows(
     class FailActor:
         """Simple passthrough actor, which fails after a certain number of rows."""
 
-        def __init__(self, max_before_fail):
-            self.max_before_fail = max_before_fail
-            self.count = 0
+        def __init__(self, coordinator_actor, max_num_items, checkpoint_config):
+            self._should_fail = ray.get(coordinator_actor.should_fail.remote())
+            self._max_num_items = max_num_items
+            self._checkpoint_config = checkpoint_config
 
-        def __call__(self, row):
-            if self.count > self.max_before_fail:
-                raise TestException(f"FailActor: Failing on row {row['id']}")
-            time.sleep(1)
-            self.count += 1
-            return row
+        def __call__(self, batch):
+            assert len(batch[ID_COL]) == 1
+            id = batch[ID_COL][0]
+            if self._should_fail and id == self._max_num_items // 2:
+                # Fail the Dataset when the first half of rows are
+                # finished and checkpointed.
+                wait_for_condition(self._wait_until_checkpoint_written)
+                raise TestException(f"FailActor: Failing on row {batch['id']}")
 
-    n = 10
-    max_before_fail = 6
-    ds = ray.data.range(n, concurrency=1)
-    ds = ds.map(FailActor, fn_constructor_args=[max_before_fail], concurrency=1)
+            return batch
 
-    data_output_path = f"{tmp_path}/output/"
-    # Fails after writing first `max_before_fail` rows.
+        def _wait_until_checkpoint_written(self):
+            checkpointed_ids = set(
+                read_ids_from_checkpoint_files(self._checkpoint_config)
+            )
+            return checkpointed_ids == set(range(self._max_num_items // 2))
+
+    max_num_items = 10
+    if read_code_path == "runtime":
+        ds = ray.data.range(max_num_items, override_num_blocks=max_num_items)
+    elif read_code_path == "oss_fallback":
+        ds = ray.data.read_api.range(max_num_items, override_num_blocks=max_num_items)
+    else:
+        raise ValueError(f"Invalid `read_code_path`: {read_code_path}")
+    ds = ds.map_batches(
+        FailActor,
+        fn_constructor_args=[coordinator_actor, max_num_items, ctx.checkpoint_config],
+        concurrency=1,
+        batch_size=None,
+        num_cpus=1.1,  # Use a different num_cpus to avoid operater fusion.
+    )
+
+    data_output_path = os.path.join(data_path, "output")
+    # Should fail in the middle.
     with pytest.raises(TestException):
-        ds.write_parquet(data_output_path)
+        ds.write_parquet(data_output_path, filesystem=fs, concurrency=1)
 
-    assert len(get_checkpoint_files(ckpt_path)) == max_before_fail
+    ray.get(coordinator_actor.disable_failure.remote())
+    # When executing the same dataset again, this should skip the already
+    # checkpointed rows.
+    ds.write_parquet(data_output_path, filesystem=fs, concurrency=1)
+    # When execution succeeds, checkpoint data should be automatically deleted.
+    # TODO(haochen): Also delete checkpoint for row-based backends.
+    if ctx.checkpoint_config.is_batch_based():
+        assert read_ids_from_checkpoint_files(ctx.checkpoint_config) == []
+    else:
+        assert read_ids_from_checkpoint_files(ctx.checkpoint_config) == list(
+            range(max_num_items)
+        )
 
-    # When executing the same dataset again, this should skip the already written
-    # `max_before_fail` rows, and continue from row `max_before_fail+1` until the
-    # end of the dataset. The limit of `max_before_fail` is not reached,
-    # since there are only three remaining rows.
-    ds.write_parquet(data_output_path)
+    # Disable checkpointing prior to reading back the data, so we don't skip any rows.
+    ctx.checkpoint_config.enabled = False
 
-    assert len(get_checkpoint_files(ckpt_path)) == n
+    # Ensure that the written data is correct.
+    ds_readback = ray.data.read_parquet(data_output_path, filesystem=fs)
+    actual_output = sorted([row["id"] for row in ds_readback.iter_rows()])
+    expected_output = sorted(range(max_num_items))
+    assert actual_output == expected_output
 
 
+@pytest.mark.parametrize("read_code_path", ["runtime", "oss_fallback"])
+@pytest.mark.parametrize(
+    "backend,fs,data_path",
+    [
+        (CheckpointBackend.DISK_ROW, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_ROW,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_ROW,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+        (CheckpointBackend.DISK_BATCH, None, lazy_fixture("local_path")),
+        (
+            CheckpointBackend.DISK_BATCH,
+            lazy_fixture("local_fs"),
+            lazy_fixture("local_path"),
+        ),
+        (
+            CheckpointBackend.S3_BATCH,
+            lazy_fixture("s3_fs"),
+            lazy_fixture("s3_path"),
+        ),
+    ],
+)
 def test_skip_checkpoint_flag(
-    ray_start_10_cpus_shared, generate_sample_data_csv, tmp_path
+    ray_start_10_cpus_shared,
+    generate_sample_data_csv,
+    read_code_path,
+    backend,
+    fs,
+    data_path,
 ):
     """Test that for a valid Dataset with checkpointing enabled, calling methods like
     `schema()` and `count()` should skip checkpointing and not create any checkpoint
@@ -379,31 +587,40 @@ def test_skip_checkpoint_flag(
     checkpointing enabled."""
 
     ctx = ray.data.DataContext.get_current()
-    ckpt_path = os.path.join(tmp_path, "test_checkpoint_output_files")
-    ctx.checkpoint_config = generate_ckpt_config(
-        CheckpointBackend.DISK, ckpt_path, "id", None
-    )
+    ckpt_path = os.path.join(data_path, "test_checkpoint_output_files")
+    ctx.checkpoint_config = generate_ckpt_config(backend, ckpt_path, ID_COL, fs)
 
     def generate_ds():
-        ds = ray.data.read_csv(generate_sample_data_csv)
+        if read_code_path == "runtime":
+            ds = ray.data.read_csv(generate_sample_data_csv)
+        elif read_code_path == "oss_fallback":
+            ds = ray.data.read_api.read_csv(generate_sample_data_csv)
+
         ds = ds.map(lambda row: row)
         return ds
 
-    # Calling `ds.schema()` should skip checkpointing.
     ds = generate_ds()
+    assert not ds._plan._context._skip_checkpoint_temp
+
+    # Calling `ds.schema()` should skip checkpointing.
     assert ds.schema() is not None
     assert ds._plan._context._skip_checkpoint_temp
-    assert len(get_checkpoint_files(ckpt_path)) == 0
+    assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
 
     # Calling `ds.count()` should skip checkpointing.
     ds = generate_ds()
     assert ds.count() is not None
     assert ds._plan._context._skip_checkpoint_temp
-    assert len(get_checkpoint_files(ckpt_path)) == 0
+    assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
 
     # Calling `ds.write_xxx()` afterwards should enable checkpointing.
-    ds.write_parquet(f"{tmp_path}/output")
-    assert len(get_checkpoint_files(ckpt_path)) == 5
+    ds.write_parquet(os.path.join(data_path, "output"), filesystem=fs)
+    # When execution succeeds, checkpoint data should be automatically deleted.
+    # TODO(haochen): Also delete checkpoint for row-based backends.
+    if ctx.checkpoint_config.is_batch_based():
+        assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 0
+    else:
+        assert len(read_ids_from_checkpoint_files(ctx.checkpoint_config)) == 5
 
 
 if __name__ == "__main__":
