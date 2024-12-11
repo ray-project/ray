@@ -1397,6 +1397,13 @@ def test_map_batches_async_generator_fast_yield(shutdown_only):
     assert len(output) == len(expected_output), (len(output), len(expected_output))
 
 
+def test_empty_repartition():
+    ds = ray.data.from_items([])
+    assert ds._plan.initial_num_blocks() == 0
+    ds = ds.repartition(10)
+    assert ds.count() == 0
+
+
 if __name__ == "__main__":
     import sys
 
