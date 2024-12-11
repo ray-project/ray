@@ -10,7 +10,6 @@ schema={
       d_t: float
    }
 """
-import ale_py
 import gymnasium as gym
 import io
 import numpy as np
@@ -28,9 +27,6 @@ from ray.rllib.utils.annotations import override
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
 )
-
-# Register all ALE environments with gymnasium.
-gym.register_envs(ale_py)
 
 
 # Define a `ConnectorV2` to decode stacked encoded Atari frames.
