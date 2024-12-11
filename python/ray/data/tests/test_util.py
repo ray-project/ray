@@ -16,7 +16,6 @@ from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
     NULL_SENTINEL,
     _check_pyarrow_version,
-    _split_list,
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -149,21 +148,6 @@ def test_memory_tracing(enabled):
         assert "test3" not in report, report
         assert "test4" not in report, report
         assert "test5" not in report, report
-
-
-def test_list_splits():
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), 0)
-
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), -1)
-
-    assert _split_list(list(range(5)), 7) == [[0], [1], [2], [3], [4], [], []]
-    assert _split_list(list(range(5)), 2) == [[0, 1, 2], [3, 4]]
-    assert _split_list(list(range(6)), 2) == [[0, 1, 2], [3, 4, 5]]
-    assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
-    assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
-    assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
 
 
 def get_parquet_read_logical_op(
