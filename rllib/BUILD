@@ -2600,24 +2600,15 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
-#@OldAPIStack
+# TODO (sven): Add this script to the release tests as well. The problem is too hard to be solved
+#  in < 10min on a few CPUs.
 py_test(
-    name = "examples/hierarchical/hierarchical_training_tf",
+    name = "examples/hierarchical/hierarchical_training",
     main = "examples/hierarchical/hierarchical_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = [ "--framework=tf", "--stop-reward=0.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/hierarchical/hierarchical_training_torch",
-    main = "examples/hierarchical/hierarchical_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = ["--framework=torch", "--stop-reward=0.0"]
+    args = ["--enable-new-api-stack", "--stop-iters=5", "--map=small", "--time-limit=100", "--max-steps-low-level=15"]
 )
 
 # subdirectory: inference/
