@@ -49,6 +49,12 @@ def _import_optuna_search():
     return OptunaSearch
 
 
+def _import_vizier_search():
+    from ray.tune.search.vizier.vizier_search import VizierSearch
+
+    return VizierSearch
+
+
 def _import_zoopt_search():
     from ray.tune.search.zoopt.zoopt_search import ZOOptSearch
 
@@ -70,6 +76,7 @@ SEARCH_ALG_IMPORT = {
     "bohb": _import_bohb_search,
     "nevergrad": _import_nevergrad_search,
     "optuna": _import_optuna_search,
+    "vizier": _import_vizier_search,
     "zoopt": _import_zoopt_search,
     "hebo": _import_hebo_search,
 }
