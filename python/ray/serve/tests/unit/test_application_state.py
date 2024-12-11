@@ -126,6 +126,9 @@ class MockDeploymentStateManager:
     def set_deployment_unhealthy(self, id: DeploymentID):
         self.deployment_statuses[id].status = DeploymentStatus.UNHEALTHY
 
+    def set_deployment_deploy_failed(self, id: DeploymentID):
+        self.deployment_statuses[id].status = DeploymentStatus.DEPLOY_FAILED
+
     def set_deployment_healthy(self, id: DeploymentID):
         self.deployment_statuses[id].status = DeploymentStatus.HEALTHY
 
@@ -419,7 +422,7 @@ class TestDetermineAppStatus:
             ),
             DeploymentStatusInfo(
                 "c",
-                DeploymentStatus.UNHEALTHY,
+                DeploymentStatus.DEPLOY_FAILED,
                 DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
             ),
         ]
@@ -574,7 +577,7 @@ def test_app_deploy_failed_and_redeploy(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment unhealthy -> app should be DEPLOY_FAILED
-    deployment_state_manager.set_deployment_unhealthy(d1_id)
+    deployment_state_manager.set_deployment_deploy_failed(d1_id)
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
 
@@ -625,7 +628,7 @@ def test_app_deploy_failed_and_recover(mocked_application_state):
     assert app_state.status == ApplicationStatus.DEPLOYING
 
     # Mark deployment unhealthy -> app should be DEPLOY_FAILED
-    deployment_state_manager.set_deployment_unhealthy(deployment_id)
+    deployment_state_manager.set_deployment_deploy_failed(deployment_id)
     app_state.update()
     assert app_state.status == ApplicationStatus.DEPLOY_FAILED
     app_state.update()
