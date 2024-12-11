@@ -17,6 +17,7 @@ from ray.data._internal.execution.interfaces import (
     PhysicalOperator,
     RefBundle,
 )
+from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.actor_pool_map_operator import (
     ActorPoolMapOperator,
 )
@@ -1020,6 +1021,47 @@ def test_map_estimated_blocks_split():
     op.all_inputs_done()
     # Each output block is split in 2, so the number of blocks double.
     assert op._estimated_num_output_bundles == 100
+
+
+@pytest.mark.parametrize("use_actors", [False, True])
+def test_map_kwargs(ray_start_regular_shared, use_actors):
+    """Test propagating additional kwargs to map tasks."""
+    foo = 1
+    bar = np.random.random(1024 * 1024)
+    kwargs = {
+        "foo": foo,  # Pass by value
+        "bar": ray.put(bar),  # Pass by ObjectRef
+    }
+
+    def map_fn(block_iter: Iterable[Block], ctx: TaskContext) -> Iterable[Block]:
+        nonlocal foo, bar
+        assert ctx.kwargs["foo"] == foo
+        # bar should be automatically deref'ed.
+        assert np.array_equal(ctx.kwargs["bar"], bar)
+
+        yield from block_iter
+
+    input_op = InputDataBuffer(
+        DataContext.get_current(),
+        make_ref_bundles([[i] for i in range(10)]),
+    )
+    compute_strategy = ActorPoolStrategy() if use_actors else TaskPoolStrategy()
+    op = MapOperator.create(
+        create_map_transformer_from_block_fn(map_fn),
+        input_op=input_op,
+        data_context=DataContext.get_current(),
+        name="TestMapper",
+        compute_strategy=compute_strategy,
+    )
+    op.add_map_task_kwargs_fn(lambda: kwargs)
+    op.start(ExecutionOptions())
+    while input_op.has_next():
+        op.add_input(input_op.get_next(), 0)
+    op.all_inputs_done()
+    run_op_tasks_sync(op)
+
+    _take_outputs(op)
+    assert op.completed()
 
 
 def test_limit_estimated_num_output_bundles():

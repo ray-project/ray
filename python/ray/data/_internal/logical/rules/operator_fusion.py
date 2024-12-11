@@ -1,3 +1,4 @@
+import itertools
 from typing import List, Optional, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
@@ -330,6 +331,10 @@ class OperatorFusionRule(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
+        for map_task_kwargs_fn in itertools.chain(
+            up_op._map_task_kwargs_fns, down_op._map_task_kwargs_fns
+        ):
+            op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
