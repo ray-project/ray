@@ -291,6 +291,59 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_overlap2(ray_start_regular):
+    """
+    Test GPU communication can be overlapped when NCCL read and write
+    peers are different.
+
+    Our prior overlap algorithm works by moving a candidate READ (NCCL)
+    operation before a COMPUTE operation. If there are other READ (NCCL)
+    or WRITE (NCCL) operations in between, the swap is skipped to avoid
+    deadlock.
+
+    Now we make the algorithm less conservative by removing the constraint for a
+    WRITE (NCCL) operation in between. Specifically, if there is a WRITE (NCCL)
+    operation in between, and if its peer rank is different from the peer rank
+    of the candidate READ (NCCL) operation, we still allow the swap to happen.
+    We test this case here.
+    """
+
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 3
+    ), "This test requires at least 3 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    worker1 = actor_cls.remote()
+    worker2 = actor_cls.remote()
+    worker3 = actor_cls.remote()
+
+    shape = (10,)
+    dtype = torch.float16
+
+    # Test normal execution.
+    with InputNode() as inp:
+        w2 = worker2.send.bind(inp.shape, inp.dtype, inp[0])
+        w2 = w2.with_type_hint(TorchTensorType(transport="nccl"))
+        w3_out = worker3.recv.bind(w2)
+        w1 = worker1.send.bind(inp.shape, inp.dtype, inp[0])
+        w1 = w1.with_type_hint(TorchTensorType(transport="nccl"))
+        w2_out = worker2.recv.bind(w1)
+        dag = MultiOutputNode([w2_out, w3_out])
+
+    compiled_dag = dag.experimental_compile(_overlap_gpu_communication=True)
+
+    # Test that we can pass different shapes and data.
+    for i in range(3):
+        shape = (10 * (i + 1),)
+        ref = compiled_dag.execute(i, shape=shape, dtype=dtype)
+        assert ray.get(ref) == [(i, shape, dtype)] * 2
+
+
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
