@@ -426,6 +426,8 @@ class JobSubmitRequest:
     # to reserve for the entrypoint command, separately from any Ray tasks
     # or actors that are created by it.
     entrypoint_resources: Optional[Dict[str, float]] = None
+    # Optional virtual cluster ID for job.
+    virtual_cluster_id: Optional[str] = None
 
     def __post_init__(self):
         if not isinstance(self.entrypoint, str):
@@ -510,6 +512,14 @@ class JobSubmitRequest:
                             "entrypoint_resources values must be numbers, "
                             f"got {type(v)}"
                         )
+
+        if self.virtual_cluster_id is not None and not isinstance(
+            self.virtual_cluster_id, str
+        ):
+            raise TypeError(
+                "virtual_cluster_id must be a string if provided, "
+                f"got {type(self.virtual_cluster_id)}"
+            )
 
 
 @dataclass
