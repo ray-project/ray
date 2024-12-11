@@ -169,11 +169,6 @@ if __name__ == "__main__":
             policy_mapping_fn=policy_mapping_fn,
             policies={"high_level_policy"}
             | {f"low_level_policy_{i}" for i in range(args.num_low_level_agents)},
-            algorithm_config_overrides_per_module={
-                "high_level_policy": PPOConfig.overrides(
-                    entropy_coeff=0.5,
-                ),
-            },
         )
 
     run_rllib_example_script_experiment(base_config, args)
