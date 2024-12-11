@@ -79,7 +79,6 @@ class LongPollClient:
         host_actor,
         key_listeners: Dict[KeyType, UpdateStateCallable],
         call_in_event_loop: AbstractEventLoop,
-        only_once: bool = False,
     ) -> None:
         # We used to allow this to be optional, but due to Ray Client issue
         # we now enforce all long poll client to post callback to event loop
@@ -89,7 +88,6 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-        self.only_once = only_once
 
         self.snapshot_ids: Dict[KeyType, int] = {
             # The initial snapshot id for each key is < 0,
@@ -101,6 +99,10 @@ class LongPollClient:
         self.is_running = True
 
         self._poll_next()
+
+    def stop(self) -> None:
+        """Stop the long poll client after the next RPC returns."""
+        self.is_running = False
 
     def add_key_listeners(
         self, key_listeners: Dict[KeyType, UpdateStateCallable]
@@ -135,6 +137,9 @@ class LongPollClient:
         """Poll the update. The callback is expected to scheduler another
         _poll_next call.
         """
+        if not self.is_running:
+            return
+
         self._callbacks_processed_count = 0
         self._current_ref = self.host_actor.listen_for_change.remote(self.snapshot_ids)
         self._current_ref._on_completed(lambda update: self._process_update(update))

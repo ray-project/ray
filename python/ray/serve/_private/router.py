@@ -406,10 +406,8 @@ class AsyncioRouter:
         # However, for efficiency, we don't want to create a LongPollClient for every
         # DeploymentHandle, so we use a shared LongPollClient that all Routers
         # register themselves with. But first, the router needs to get a fast initial
-        # update so that it can start serving requests, which we do with a
-        # LongPollClient that is told to run only once. This client gets the
-        # first update quickly, and then future updates are handled
-        # by the SharedRouterLongPollClient.
+        # update so that it can start serving requests, which we do with a dedicated
+        # LongPollClient that stops running once the shared client takes over.
 
         self.long_poll_client = LongPollClient(
             controller_handle,
@@ -424,7 +422,6 @@ class AsyncioRouter:
                 ): self.update_deployment_config,
             },
             call_in_event_loop=self._event_loop,
-            only_once=True,
         )
 
         shared = SharedRouterLongPollClient.get_or_create(
@@ -712,7 +709,7 @@ class SharedRouterLongPollClient:
         # We use a WeakSet to store the Routers so that we don't prevent them
         # from being garbage-collected.
         self.routers: MutableMapping[
-            DeploymentID, weakref.WeakSet[Router]
+            DeploymentID, weakref.WeakSet[AsyncioRouter]
         ] = defaultdict(weakref.WeakSet)
 
         # Creating the LongPollClient implicitly starts it
@@ -736,14 +733,16 @@ class SharedRouterLongPollClient:
     ) -> None:
         for router in self.routers[deployment_id]:
             router.update_running_replicas(running_replicas)
+            router.long_poll_client.stop()
 
     def update_deployment_config(
         self, deployment_config: DeploymentConfig, deployment_id: DeploymentID
     ) -> None:
         for router in self.routers[deployment_id]:
             router.update_deployment_config(deployment_config)
+            router.long_poll_client.stop()
 
-    def register(self, router: Router) -> None:
+    def register(self, router: AsyncioRouter) -> None:
         self.routers[router.deployment_id].add(router)
 
         # Remove the entries for any deployment ids that no longer have any routers.
