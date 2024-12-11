@@ -83,7 +83,7 @@ export const JobMetadataSection = ({ job }: JobMetadataSectionProps) => {
           label: "Status",
           content: (
             <React.Fragment>
-              <JobStatusWithIcon job={job} />{" "}
+              <JobStatusWithIcon job={job} killable />{" "}
               {job.message && (
                 <CodeDialogButton
                   title="Status details"

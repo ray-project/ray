@@ -182,6 +182,7 @@ class HttpServerDashboardHead:
             # start with Mozilla at the time of writing.
             request.headers["User-Agent"].startswith("Mozilla")
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
+            and not request.path.endswith("/stop")
         ):
             return aiohttp.web.Response(
                 status=405, text="Method Not Allowed for browser traffic."

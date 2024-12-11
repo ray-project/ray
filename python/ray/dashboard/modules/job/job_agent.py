@@ -87,7 +87,7 @@ class JobAgent(dashboard_utils.DashboardAgentModule):
             )
         if job.type is not JobType.SUBMISSION:
             return Response(
-                text="Can only stop submission type jobs",
+                text=f"Can only stop submission type jobs, currently {job.type}",
                 status=aiohttp.web.HTTPBadRequest.status_code,
             )
 
