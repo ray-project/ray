@@ -35,7 +35,6 @@ struct MemoryStoreStats {
 };
 
 class GetRequest;
-class CoreWorkerMemoryStore;
 
 /// The class provides implementations for local process memory store.
 /// An example usage for this is to retrieve the returned objects from direct
@@ -50,7 +49,7 @@ class CoreWorkerMemoryStore {
   /// \param[in] raylet_client If not null, used to notify tasks blocked / unblocked.
   explicit CoreWorkerMemoryStore(
       instrumented_io_context &io_context,
-      std::shared_ptr<ReferenceCounter> counter = nullptr,
+      ReferenceCounter *counter = nullptr,
       std::shared_ptr<raylet::RayletClient> raylet_client = nullptr,
       std::function<Status()> check_signals = nullptr,
       std::function<void(const RayObject &)> unhandled_exception_handler = nullptr,
@@ -200,7 +199,7 @@ class CoreWorkerMemoryStore {
 
   /// If enabled, holds a reference to local worker ref counter. TODO(ekl) make this
   /// mandatory once Java is supported.
-  std::shared_ptr<ReferenceCounter> ref_counter_ = nullptr;
+  ReferenceCounter *ref_counter_ = nullptr;
 
   // If set, this will be used to notify worker blocked / unblocked on get calls.
   std::shared_ptr<raylet::RayletClient> raylet_client_ = nullptr;

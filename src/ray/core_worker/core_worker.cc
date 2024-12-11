@@ -522,7 +522,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
       local_raylet_client_,
-      reference_counter_,
+      *reference_counter_,
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
@@ -530,7 +530,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter_,
+      reference_counter_.get(),
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
