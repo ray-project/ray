@@ -166,7 +166,7 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. Allow user to specify their own option to install packages via `uv`.
+        # 2. Allow user to specify their own options to install packages via `uv`.
         uv_install_cmd = [
             python,
             "-m",

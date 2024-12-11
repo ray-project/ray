@@ -178,17 +178,15 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
         if "uv_pip_install_options" in uv:
             if not isinstance(uv["uv_pip_install_options"], list):
                 raise TypeError(
-                    "runtime_env['uv']['uv_pip_install_options'] must be of type list "
-                    "of string, "
-                    f"got {type(uv['uv_pip_install_options'])}"
+                    "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                    f"list[str] got {type(uv['uv_pip_install_options'])}"
                 )
             # Check each item in installation option.
-            for cur_opt in uv["uv_pip_install_options"]:
+            for idx, cur_opt in enumerate(uv["uv_pip_install_options"]):
                 if not isinstance(cur_opt, str):
                     raise TypeError(
                         "runtime_env['uv']['uv_pip_install_options'] must be of type "
-                        "list of string, "
-                        f"got {type(cur_opt)}"
+                        f"list[str] got {type(cur_opt)} for {idx}-th item."
                     )
 
         result = uv.copy()
