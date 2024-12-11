@@ -35,7 +35,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -56,11 +56,6 @@ from ray.rllib.utils.typing import (
 )
 
 torch, nn = try_import_torch()
-
-if torch:
-    from ray.air._internal.torch_utils import get_devices
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -70,9 +65,6 @@ class TorchLearner(Learner):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        # Will be set during build.
-        self._device = None
 
         # Whether to compile the RL Module of this learner. This implies that the.
         # forward_train method of the RL Module will be compiled. Further more,
@@ -436,41 +428,14 @@ class TorchLearner(Learner):
         """Builds the TorchLearner.
 
         This method is specific to TorchLearner. Before running super() it will
-        initialze the device properly based on the `_use_gpu` and `_distributed`
-        flags, so that `_make_module()` can place the created module on the correct
-        device. After running super() it will wrap the module in a TorchDDPRLModule
-        if `_distributed` is True.
+        initialize the device properly based on `self.config`, so that `_make_module()`
+        can place the created module on the correct device. After running super() it
+        wraps the module in a TorchDDPRLModule if `config.num_learners > 0`.
         Note, in inherited classes it is advisable to call the parent's `build()`
         after setting up all variables because `configure_optimizer_for_module` is
         called in this `Learner.build()`.
         """
-        # TODO (Kourosh): How do we handle model parallelism?
-        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
-        #  API in ray.train but allow for session to be None without any errors raised.
-        if self._use_gpu:
-            # get_devices() returns a list that contains the 0th device if
-            # it is called from outside a Ray Train session. It's necessary to give
-            # the user the option to run on the gpu of their choice, so we enable that
-            # option here through `config.local_gpu_idx`.
-            if self._distributed:
-                devices = get_devices()
-                assert len(devices) == 1, (
-                    f"`get_devices()` should only return one cuda device, but {devices}"
-                    " was returned instead."
-                )
-                self._device = devices[0]
-            else:
-                assert self.config.local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self.config.local_gpu_idx} is not a valid GPU ID "
-                    "or is not available."
-                )
-                # This is an index into the available CUDA devices. For example, if
-                # `os.environ["CUDA_VISIBLE_DEVICES"] = "1"` then
-                # `torch.cuda.device_count() = 1` and torch.device(0) maps to that GPU
-                # with ID=1 on the node.
-                self._device = torch.device(self.config.local_gpu_idx)
-        else:
-            self._device = torch.device("cpu")
+        self._device = get_device(self.config, self.config.num_gpus_per_learner)
 
         super().build()
 
@@ -561,7 +526,7 @@ class TorchLearner(Learner):
         # TODO (Kourosh): This can result in missing modules if the user does not
         #  register them in the MultiRLModule. We should find a better way to
         #  handle this.
-        if self._distributed:
+        if self.config.num_learners > 1:
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(

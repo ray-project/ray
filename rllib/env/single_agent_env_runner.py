@@ -28,7 +28,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -54,10 +54,6 @@ from ray.rllib.utils.spaces.space_utils import unbatch
 from ray.rllib.utils.typing import EpisodeID, ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
-
-torch, _ = try_import_torch()
-if torch:
-    from ray.air._internal.torch_utils import get_devices
 
 logger = logging.getLogger("ray.rllib")
 
@@ -88,7 +84,10 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
         # Set device.
-        self._device = self._get_device()
+        self._device = get_device(
+            self.config,
+            self.config.num_gpus_per_env_runner if self.worker_index > 0 else 0,
+        )
 
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.vector.VectorEnvWrapper] = None
@@ -573,18 +572,6 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         # Make sure, we have built our gym.vector.Env and RLModule properly.
         assert self.env and hasattr(self, "module")
 
-    def _get_device(self):
-        if self.config.framework_str == "torch":
-            if self.config.num_gpus_per_env_runner > 0:
-                devices = get_devices()
-                assert len(devices) == 1, (
-                    f"`get_devices()` should only return one CUDA device, but {devices}"
-                    " was returned instead."
-                )
-                return devices[0]
-            else:
-                return torch.device("cpu")
-
     def make_env(self) -> None:
         """Creates a vectorized gymnasium env and stores it in `self.env`.
 
@@ -671,24 +658,28 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             # Build the module from its spec.
             self.module = module_spec.build()
 
-            # We should have GPUs on this EnvRunner -> Check whether we need to move the
-            # module to a GPU.
-            if self.worker_index > 0 and self.config.num_gpus_per_env_runner > 0:
-                # We are a remote worker (WORKER_MODE=1):
-                if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
-                    # GPUs should be assigned to us by ray.
-                    gpu_ids = ray.get_gpu_ids()
-                    if len(gpu_ids) < self.config.num_gpus_per_env_runner:
-                        raise RuntimeError(
-                            f"Number of Ray-assigned GPUs on {type(self).__name__} is "
-                            f"smaller than config.num_gpus_per_env_runner "
-                            f"({self.config.num_gpus_per_env_runner})!"
-                        )
-                    if self.config.framework_str == "torch":
-                        # TODO (sven): Maybe make this a RLModule API?
-                        # TODO (sven): What if a model requires more than 1 GPU?
-                        #  Basically, offer pipelining/model-parallelism in RLModule.
-                        self.module = self.module.to(f"cuda:{gpu_ids[0]}")
+            # Move the RLModule to our device.
+            # TODO (sven): In order to make this framework-agnostic, we should maybe
+            #  make the RLModule.build() method accept a device OR create an additional
+            #  `RLModule.to()` override.
+            self.module.to(self._device)
+
+            #if self.worker_index > 0 and self.config.num_gpus_per_env_runner > 0:
+            #    # We are a remote worker (WORKER_MODE=1):
+            #    if ray._private.worker._mode() == ray._private.worker.WORKER_MODE:
+            #        # GPUs should be assigned to us by ray.
+            #        gpu_ids = ray.get_gpu_ids()
+            #        if len(gpu_ids) < self.config.num_gpus_per_env_runner:
+            #            raise RuntimeError(
+            #                f"Number of Ray-assigned GPUs on {type(self).__name__} is "
+            #                f"smaller than config.num_gpus_per_env_runner "
+            #                f"({self.config.num_gpus_per_env_runner})!"
+            #            )
+            #        if self.config.framework_str == "torch":
+            #            # TODO (sven): Maybe make this a RLModule API?
+            #            # TODO (sven): What if a model requires more than 1 GPU?
+            #            #  Basically, offer pipelining/model-parallelism in RLModule.
+            #            self.module = self.module.to(f"cuda:{gpu_ids[0]}")
 
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.

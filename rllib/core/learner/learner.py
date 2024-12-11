@@ -236,9 +236,7 @@ class Learner(Checkpointable):
         if self.config.seed is not None:
             update_global_seed_if_necessary(self.framework, self.config.seed)
 
-        self._distributed = self.config.num_learners > 1
-        self._use_gpu = self.config.num_gpus_per_learner > 0
-        # whether self.build has already been called
+        # Whether self.build has already been called.
         self._is_built = False
 
         # These are the attributes that are set during build.
@@ -306,7 +304,7 @@ class Learner(Checkpointable):
     @property
     def distributed(self) -> bool:
         """Whether the learner is running in distributed mode."""
-        return self._distributed
+        return self.config.num_learners > 1
 
     @property
     def module(self) -> MultiRLModule:

@@ -237,9 +237,9 @@ class TfLearner(Learner):
             A strategy for the learner to use for distributed training.
 
         """
-        if self._distributed:
+        if self.config.num_learners > 1:
             strategy = tf.distribute.MultiWorkerMirroredStrategy()
-        elif self._use_gpu:
+        elif self.config.num_gpus_per_learner > 0:
             # mirrored strategy is typically used for multi-gpu training
             # on a single machine, however we can use it for single-gpu
             devices = tf.config.list_logical_devices("GPU")
