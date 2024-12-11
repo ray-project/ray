@@ -217,6 +217,8 @@ def test_redeploy_multiple_replicas(serve_instance):
     with pytest.raises(TimeoutError):
         client._wait_for_application_running("app", timeout_s=2)
 
+    time.sleep(60)
+
     if RAY_SERVE_EAGERLY_START_REPLACEMENT_REPLICAS:
         # Two new replicas should be started.
         vals2, pids2 = zip(*[h.remote(block=False).result() for _ in range(10)])
