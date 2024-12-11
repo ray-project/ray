@@ -67,7 +67,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
 
     get_databricks_display_html_function()(
         f"""
-      <div style="margin-bottom: 16px">
+      <div style="margin-top: 16px;margin-bottom: 16px">
           <a href="{proxy_link}">
               Open {title} in a new tab
           </a>
@@ -213,7 +213,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 "<a href='https://docs.databricks.com/en/dev-tools/auth/oauth-m2m.html'>Databricks OAuth</a>."
             )
             get_databricks_display_html_function()(
-                f"<b style='color:red;'>{warn_msg}</b>"
+                f"<b style='color:red;'>{warn_msg}<br></b>"
             )
 
         return conf

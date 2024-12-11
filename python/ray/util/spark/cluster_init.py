@@ -1037,7 +1037,7 @@ def _setup_ray_cluster_internal(
             )
 
             get_databricks_display_html_function()(
-                f"<b style='background-color:Cyan;'>{warn_msg}</b>"
+                f"<b style='background-color:Cyan;'>{warn_msg}<br></b>"
             )
         else:
             _logger.warning(warn_msg)
