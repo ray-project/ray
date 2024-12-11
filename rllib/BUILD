@@ -2590,13 +2590,15 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
+# TODO (sven): Add this script to the release tests as well. The problem is too hard to be solved
+#  in < 10min on a few CPUs.
 py_test(
     name = "examples/hierarchical/hierarchical_training",
     main = "examples/hierarchical/hierarchical_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "large",
     srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=4.0", "--map=large", "--time-limit=50"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-iters=20", "--map=small", "--time-limit=100", "--max-low-level-steps=15"]
 )
 
 # subdirectory: inference/

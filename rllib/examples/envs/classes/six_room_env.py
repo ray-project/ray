@@ -109,15 +109,11 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
         self.max_steps_low_level = config.get("max_steps_low_level", 15)
         self.time_limit = config.get("time_limit", 50)
+        self.num_low_level_agents = config.get("num_low_level_agents", 3)
 
-        # self.flat = config.get("flat", False)
-        self.possible_agents = [
-            "high_level_agent",
-            "low_level_agent_0",
-            "low_level_agent_1",
-            "low_level_agent_2",
+        self.agents = self.possible_agents = ["high_level_agent"] + [
+            f"low_level_agent_{i}" for i in range(self.num_low_level_agents)
         ]
-        self.agents = self.possible_agents
 
         # Define basic observation space: Discrete, index fields.
         observation_space = gym.spaces.Discrete(len(self.map) * len(self.map[0]))
@@ -129,25 +125,29 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
         # Primitive actions: up, down, left, right.
         low_level_action_space = gym.spaces.Discrete(4)
 
-        self.observation_spaces = {
-            "high_level_agent": observation_space,
-            "low_level_agent_0": low_level_observation_space,
-            "low_level_agent_1": low_level_observation_space,
-            "low_level_agent_2": low_level_observation_space,
-        }
+        self.observation_spaces = {"high_level_agent": observation_space}
+        self.observation_spaces.update(
+            {
+                f"low_level_agent_{i}": low_level_observation_space
+                for i in range(self.num_low_level_agents)
+            }
+        )
         self.action_spaces = {
             "high_level_agent": gym.spaces.Tuple(
                 (
                     # The new target observation.
                     observation_space,
                     # Low-level policy that should get us to the new target observation.
-                    gym.spaces.Discrete(3),
+                    gym.spaces.Discrete(self.num_low_level_agents),
                 )
-            ),
-            "low_level_agent_0": low_level_action_space,
-            "low_level_agent_1": low_level_action_space,
-            "low_level_agent_2": low_level_action_space,
+            )
         }
+        self.action_spaces.update(
+            {
+                f"low_level_agent_{i}": low_level_action_space
+                for i in range(self.num_low_level_agents)
+            }
+        )
 
         # Initialize environment state.
         self.reset()
@@ -221,11 +221,8 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             if self.map[next_pos[0]][next_pos[1]] != "W":
                 self._agent_pos = next_pos
 
-            print(self._agent_pos)
-
             # Check if the agent has reached the global goal state.
             if self.map[self._agent_pos[0]][self._agent_pos[1]] == "G":
-                print("goal reached!")
                 rewards = {
                     "high_level_agent": 10.0,
                     # +1.0 if the goal position was also the target position for the
@@ -249,7 +246,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             elif self._agent_discrete_pos == target_discrete_pos:
                 self._num_targets_reached += 1
                 rewards = {
-                    "high_level_agent": 0.1,  # 0.95 ** self._num_targets_reached,
+                    "high_level_agent": 1.0,
                     low_level_agent: 1.0,
                 }
                 return (
@@ -266,7 +263,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 rewards = {low_level_agent: -0.01}
                 # Reached time budget -> Hand back control to high level agent.
                 if self._low_level_steps >= self.max_steps_low_level:
-                    rewards["high_level_agent"] = -1.0
+                    rewards["high_level_agent"] = -0.01
                     return (
                         {"high_level_agent": self._agent_discrete_pos},
                         rewards,

@@ -109,6 +109,12 @@ parser.add_argument(
     "handed back to the high-level policy (to pick a next goal position plus the next "
     "low level policy).",
 )
+parser.add_argument(
+    "--num-low-level-agents",
+    type=int,
+    default=3,
+    help="The number of low-level agents/policies to use.",
+)
 parser.set_defaults(enable_new_api_stack=True)
 
 
@@ -132,6 +138,7 @@ if __name__ == "__main__":
                 "map": args.map,
                 "max_steps_low_level": args.max_steps_low_level,
                 "time_limit": args.time_limit,
+                "num_low_level_agents": args.num_low_level_agents,
             },
         )
         .env_runners(
@@ -141,8 +148,8 @@ if __name__ == "__main__":
             ),
         )
         .training(
-            lr=0.0003,
-            num_epochs=10,
+            lr=0.0002,
+            num_epochs=12,
             entropy_coeff=0.1,
         )
     )
@@ -160,11 +167,12 @@ if __name__ == "__main__":
 
         base_config.multi_agent(
             policy_mapping_fn=policy_mapping_fn,
-            policies={
-                "high_level_policy",
-                "low_level_policy_0",
-                "low_level_policy_1",
-                "low_level_policy_2",
+            policies={"high_level_policy"}
+            | {f"low_level_policy_{i}" for i in range(args.num_low_level_agents)},
+            algorithm_config_overrides_per_module={
+                "high_level_policy": PPOConfig.overrides(
+                    entropy_coeff=0.5,
+                ),
             },
         )
 
