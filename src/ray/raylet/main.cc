@@ -127,6 +127,7 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 }
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
   InitShutdownRAII ray_log_shutdown_raii(
       ray::RayLog::StartRayLog,
       ray::RayLog::ShutDownRayLog,
@@ -134,10 +135,10 @@ int main(int argc, char *argv[]) {
       ray::RayLogLevel::INFO,
       /*log_dir=*/"",
       /*ray_log_stdout_filepath=*/FLAGS_ray_log_stdout_filepath);
+
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");

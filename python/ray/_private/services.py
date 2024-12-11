@@ -1863,11 +1863,9 @@ def start_raylet(
             f"--node-name={node_name}",
         )
 
-    devnull_handle = None
     stdout_file = None
     if ray_log_stdout_filepath:
-        devnull_handle = open(os.devnull, "w")
-        stdout_file = devnull_handle
+        stdout_file = open(os.devnull, "w")
     else:
         stdout_file = None
 
