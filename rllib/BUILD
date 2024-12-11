@@ -2366,7 +2366,7 @@ py_test(
     name = "examples/envs/agents_act_simultaneously",
     main = "examples/envs/agents_act_simultaneously.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/envs/agents_act_simultaneously.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
 )
@@ -2374,7 +2374,7 @@ py_test(
     name = "examples/envs/agents_act_in_sequence",
     main = "examples/envs/agents_act_in_sequence.py",
     tags = ["team:rllib", "exclusive", "examples"],
-    size = "small",
+    size = "medium",
     srcs = ["examples/envs/agents_act_in_sequence.py"],
     args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
 )
