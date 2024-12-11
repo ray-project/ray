@@ -5,7 +5,6 @@ advanced_configurations_json:
     IamInstanceProfile: {"Name": "ray-autoscaler-v1"}
 
 head_node_type:
-    name: head_node
     instance_type: m5.16xlarge
     resources:
       cpu: 0
