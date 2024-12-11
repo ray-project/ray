@@ -890,7 +890,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             #  additional `(Multi)RLModule.to()` override.
             if torch:
                 self.module.foreach_module(
-                    lambda mod: (
+                    lambda mid, mod: (
                         mod.to(self._device)
                         if isinstance(mod, torch.nn.Module)
                         else mod
