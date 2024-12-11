@@ -107,7 +107,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
 
         # User can provide a custom map or a recognized map name (small, medium, large).
         self.map = config.get("custom_map", MAPS.get(config.get("map"), MAPS["small"]))
-        self.max_steps_low_level = config.get("max_steps_low_level", 10)
+        self.max_steps_low_level = config.get("max_steps_low_level", 15)
         self.time_limit = config.get("time_limit", 50)
 
         # self.flat = config.get("flat", False)
@@ -221,8 +221,11 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
             if self.map[next_pos[0]][next_pos[1]] != "W":
                 self._agent_pos = next_pos
 
+            print(self._agent_pos)
+
             # Check if the agent has reached the global goal state.
             if self.map[self._agent_pos[0]][self._agent_pos[1]] == "G":
+                print("goal reached!")
                 rewards = {
                     "high_level_agent": 10.0,
                     # +1.0 if the goal position was also the target position for the
@@ -259,7 +262,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
 
             # Low-level agent has not reached anything.
             else:
-                # Small step penalty.
+                # Small step penalty for low-level agent.
                 rewards = {low_level_agent: -0.01}
                 # Reached time budget -> Hand back control to high level agent.
                 if self._low_level_steps >= self.max_steps_low_level:

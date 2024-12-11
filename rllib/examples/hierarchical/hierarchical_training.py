@@ -91,7 +91,7 @@ parser.add_argument(
     "--map",
     type=str,
     choices=["small", "medium", "large"],
-    default="small",
+    default="medium",
     help="The built-in map to use.",
 )
 parser.add_argument(
@@ -135,12 +135,13 @@ if __name__ == "__main__":
             },
         )
         .env_runners(
+            # num_envs_per_env_runner=10,
             env_to_module_connector=(
                 lambda env: FlattenObservations(multi_agent=not args.flat)
             ),
         )
         .training(
-            lr=0.0001,
+            lr=0.0003,
             num_epochs=10,
             entropy_coeff=0.1,
         )
