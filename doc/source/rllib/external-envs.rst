@@ -8,22 +8,32 @@
 External Environments and Applications
 --------------------------------------
 
-In many situations, it does not make sense for an environment to be "stepped" by RLlib.
-For example, if a policy is to be used in a web serving system, then it is more natural
-for an agent to query a service that collects experiences (in batch) and for that
-service to learn over time.
+In many situations, it does not make sense for an RL environment to be "stepped" by RLlib.
+For example, if we train one or more policies inside a complex simulator, for example, a game engine
+or a robotics simulation, it would be more natural and user friendly to flip this setup around
+and - instead of RLlib "stepping" the env - allow the simulations and the agents to fully control
+their own stepping. An external RLlib-powered service would be available for either querying for
+individual actions or for accepting batched sample data. The service would cover the task
+of training the policies, but would not pose any restrictions on when and how often
+per second the simulation should step.
 
-This case also naturally arises with **external simulators** (e.g. Unreal Engine, other game engines,
-or the Gazebo robotics simulator) that run independently outside the control of RLlib,
-but may still want to leverage RLlib for training.
-
-.. figure:: images/rllib-training-inside-a-unity3d-env.png
-    :scale: 75 %
-
-    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
+.. todo (sven): show new image here with UE5
+.. .. figure:: images/rllib-training-inside-a-unity3d-env.png
+.. scale: 75 %
+..    A Unity3D soccer game being learnt by RLlib via the ExternalEnv API.
 
 RLlib provides an external messaging protocol
-` <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ for this purpose.
+` <https://github.com/ray-project/ray/blob/master/rllib/env/external_env.py>`__ for this purpose
+as well as the option to customize the EnvRunner class used for collecting training data (sampling
+from an RL environment). An example, tcp-based EnvRunner implementation is available here, together with
+a dummy (CartPole) client providing a template for any external application or simulator.
+
+.. note::
+    External application support is still work-in-progress on the new API stack. The Ray team
+    is working on a) more examples for custom EnvRunner implementations (besides the already
+    available tcp-based one) and b) client-side, non-python RLlib-adapters, for example for
+    popular game engines and other simulation software.
+
 At any point, agents on that thread can query the current policy for decisions via
 ``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
 This can be done for multiple concurrent episodes as well.

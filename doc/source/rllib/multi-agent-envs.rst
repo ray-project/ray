@@ -209,7 +209,18 @@ returned observation dict.
     for `agent_2`, a next observation for `agent_1` is returned and so on and so forth.
 
 This simple rule allows you to design any type of multi-agent environment, from turn-based games to
-environments where all agents always act simultaneously, to any arbitrarily complex combination of these two patterns.
+environments where all agents always act simultaneously, to any arbitrarily complex combination of these two patterns:
+
+
+.. figure:: images/envs/multi_agent_episode_complex_order.svg
+    :width: 600
+
+    **Env with a complex order of turns:** Three agents act in a seemingly chaotic order. `agent_1` and `agent_3` receive their
+    initial observation after the `reset()` and thus has to compute and send actions first. Upon receiving
+    these two actions, the env responds with an observation for `agent_1` and `agent_2`, who now have to act simultaneously.
+    After receiving the actions for `agent_1` and `agent_2`, observations for `agent_2` and `agent_3` are returned and so on and
+    so forth.
+
 
 Let's take a look at two specific, complete :py:class:`~ray.rllib.env.multi_agent_env.MultiAgentEnv` example implementations,
 one where agents always act simultaneously and one where agents act in a turn-based sequence.
