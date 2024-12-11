@@ -493,6 +493,7 @@ ray_cc_library(
     name = "gcs_pub_sub_lib",
     srcs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.cc",
+        "src/ray/gcs/pubsub/gcs_pub_sub.ant.cc",
     ],
     hdrs = [
         "src/ray/gcs/pubsub/gcs_pub_sub.h",
