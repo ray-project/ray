@@ -1,152 +1,182 @@
-# @OldAPIStack
+"""Example of running a hierarchichal training setup in RLlib using its multi-agent API.
 
-"""Example of hierarchical training using the multi-agent API.
+This example is very loosely based on this paper:
+[1] Hierarchical RL Based on Subgoal Discovery and Subpolicy Specialization -
+B. Bakker & J. Schmidhuber - 2003
 
-The example env is that of a "windy maze". The agent observes the current wind
-direction and can either choose to stand still, or move in that direction.
+The approach features one high level policy, which picks the next target state to be
+reached by one of three low level policies as well as the actual low level policy to
+take over control.
+A low level policy - once chosen by the high level one - has up to 10 primitive
+timesteps to reach the given target state. If it reaches it, both high level and low
+level policy are rewarded and the high level policy takes another action (choses a new
+target state and a new low level policy).
+A global goal state must be reached to deem the overall task to be solved. Once one
+of the lower level policies reaches that goal state, the high level policy receives
+a large reward and the episode ends.
+The approach utilizes the possibility for low level policies to specialize in reaching
+certain sub-goals and the high level policy to know, which sub goals to pick next and
+which "expert" (low level policy) to allow to reach the subgoal.
 
-You can try out the env directly with:
+This example:
+    - demonstrates how to write a relatively simple custom multi-agent environment and
+    have it behave, such that it mimics a hierarchical RL setup with higher- and lower
+    level agents acting on different abstract time axes (the higher level policy
+    only acts occasionally, picking a new lower level policy and the lower level
+    policies have each n primitive timesteps to reach the given target state, after
+    which control is handed back to the high level policy for the next pick).
+    - shows how to setup a plain multi-agent RL algo (here: PPO) to learn in this
+    hierarchical setup and solve tasks that are otherwise very difficult to solve
+    only with a single, primitive-action picking low level policy.
 
-    $ python hierarchical_training.py --flat
+We use the `SixRoomEnv` and `HierarchicalSixRoomEnv`, both sharing the same built-in
+maps. The envs are similar to the FrozenLake-v1 env, but support walls (inner and outer)
+through which the agent cannot walk.
 
-A simple hierarchical formulation involves a high-level agent that issues goals
-(i.e., go north / south / east / west), and a low-level agent that executes
-these goals over a number of time-steps. This can be implemented as a
-multi-agent environment with a top-level agent and low-level agents spawned
-for each higher-level action. The lower level agent is rewarded for moving
-in the right direction.
 
-You can try this formulation with:
+How to run this script
+----------------------
+`python [script file name].py --enable-new-api-stack --map=large --time-limit=50`
 
-    $ python hierarchical_training.py  # gets ~100 rew after ~100k timesteps
+Use the `--flat` option to disable the hierarchical setup and learn the simple (flat)
+SixRoomEnv with only one policy. You should observe that it's much harder for the algo
+to reach the global goal state in this setting.
 
-Note that the hierarchical formulation actually converges slightly slower than
-using --flat in this example.
+For debugging, use the following additional command line options
+`--no-tune --num-env-runners=0`
+which should allow you to set breakpoints anywhere in the RLlib code and
+have the execution stop there for inspection and debugging.
+
+For logging to your WandB account, use:
+`--wandb-key=[your WandB API key] --wandb-project=[some project name]
+--wandb-run-name=[optional: WandB run name (within the defined project)]`
+
+
+Results to expect
+-----------------
+In the console output, you can see that only a PPO algorithm that uses hierarchical
+training (`--flat` flag is NOT set) can actually learn with the command line options
+`--map=large --time-limit=500 --max-steps-low-level=40 --num-low-level-agents=3`.
+
+4 policies in a hierarchical setup (1 high level "manager", 3 low level "experts"):
++---------------------+----------+--------+------------------+
+| Trial name          | status   |   iter |   total time (s) |
+|                     |          |        |                  |
+|---------------------+----------+--------+------------------+
+| PPO_env_58b78_00000 | RUNNING  |    100 |           278.23 |
++---------------------+----------+--------+------------------+
++-------------------+--------------------------+---------------------------+ ...
+|   combined return | return high_level_policy | return low_level_policy_0 |
+|-------------------+--------------------------+---------------------------+ ...
+|              -8.4 |                     -5.2 |                     -1.19 |
++-------------------+--------------------------+---------------------------+ ...
 """
-
-import argparse
-from gymnasium.spaces import Discrete, Tuple
-import logging
-import os
-
-import ray
-from ray import air, tune
-from ray.air.constants import TRAINING_ITERATION
+from ray import tune
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.classes.windy_maze_env import (
-    WindyMazeEnv,
-    HierarchicalWindyMazeEnv,
+from ray.rllib.connectors.env_to_module.flatten_observations import FlattenObservations
+from ray.rllib.examples.envs.classes.six_room_env import (
+    HierarchicalSixRoomEnv,
+    SixRoomEnv,
 )
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    NUM_ENV_STEPS_SAMPLED_LIFETIME,
-)
-from ray.rllib.utils.test_utils import check_learning_achieved
-
-parser = argparse.ArgumentParser()
-parser.add_argument("--flat", action="store_true")
-parser.add_argument(
-    "--framework",
-    choices=["tf", "tf2", "torch"],
-    default="torch",
-    help="The DL framework specifier.",
-)
-parser.add_argument(
-    "--as-test",
-    action="store_true",
-    help="Whether this script should be run as a test: --stop-reward must "
-    "be achieved within --stop-timesteps AND --stop-iters.",
-)
-parser.add_argument(
-    "--stop-iters", type=int, default=200, help="Number of iterations to train."
-)
-parser.add_argument(
-    "--stop-timesteps", type=int, default=100000, help="Number of timesteps to train."
-)
-parser.add_argument(
-    "--stop-reward", type=float, default=0.0, help="Reward at which we stop training."
-)
-parser.add_argument(
-    "--local-mode",
-    action="store_true",
-    help="Init Ray in local mode for easier debugging.",
+from ray.rllib.utils.test_utils import (
+    add_rllib_example_script_args,
+    run_rllib_example_script_experiment,
 )
 
-logger = logging.getLogger(__name__)
+parser = add_rllib_example_script_args(
+    default_reward=7.0,
+    default_timesteps=4000000,
+    default_iters=800,
+)
+parser.add_argument(
+    "--flat",
+    action="store_true",
+    help="Use the non-hierarchical, single-agent flat `SixRoomEnv` instead.",
+)
+parser.add_argument(
+    "--map",
+    type=str,
+    choices=["small", "medium", "large"],
+    default="medium",
+    help="The built-in map to use.",
+)
+parser.add_argument(
+    "--time-limit",
+    type=int,
+    default=100,
+    help="The max. number of (primitive) timesteps per episode.",
+)
+parser.add_argument(
+    "--max-steps-low-level",
+    type=int,
+    default=15,
+    help="The max. number of steps a low-level policy can take after having been "
+    "picked by the high level policy. After this number of timesteps, control is "
+    "handed back to the high-level policy (to pick a next goal position plus the next "
+    "low level policy).",
+)
+parser.add_argument(
+    "--num-low-level-agents",
+    type=int,
+    default=3,
+    help="The number of low-level agents/policies to use.",
+)
+parser.set_defaults(enable_new_api_stack=True)
+
 
 if __name__ == "__main__":
     args = parser.parse_args()
-    ray.init(local_mode=args.local_mode)
 
-    stop = {
-        TRAINING_ITERATION: args.stop_iters,
-        NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": args.stop_reward,
-    }
-
+    # Run the flat (non-hierarchical env).
     if args.flat:
-        results = tune.Tuner(
-            "PPO",
-            run_config=air.RunConfig(stop=stop),
-            param_space=(
-                PPOConfig()
-                .api_stack(
-                    enable_env_runner_and_connector_v2=False,
-                    enable_rl_module_and_learner=False,
-                )
-                .environment(WindyMazeEnv)
-                .env_runners(num_env_runners=0)
-                .framework(args.framework)
-            ).to_dict(),
-        ).fit()
+        cls = SixRoomEnv
+    # Run in hierarchical mode.
     else:
-        maze = WindyMazeEnv(None)
+        cls = HierarchicalSixRoomEnv
 
-        def policy_mapping_fn(agent_id, episode, worker, **kwargs):
+    tune.register_env("env", lambda cfg: cls(config=cfg))
+
+    base_config = (
+        PPOConfig()
+        .environment(
+            "env",
+            env_config={
+                "map": args.map,
+                "max_steps_low_level": args.max_steps_low_level,
+                "time_limit": args.time_limit,
+                "num_low_level_agents": args.num_low_level_agents,
+            },
+        )
+        .env_runners(
+            # num_envs_per_env_runner=10,
+            env_to_module_connector=(
+                lambda env: FlattenObservations(multi_agent=not args.flat)
+            ),
+        )
+        .training(
+            train_batch_size_per_learner=4000,
+            minibatch_size=512,
+            lr=0.0003,
+            num_epochs=20,
+            entropy_coeff=0.025,
+        )
+    )
+
+    # Configure a proper multi-agent setup for the hierarchical env.
+    if not args.flat:
+
+        def policy_mapping_fn(agent_id, episode, **kwargs):
+            # Map each low level agent to its respective (low-level) policy.
             if agent_id.startswith("low_level_"):
-                return "low_level_policy"
+                return f"low_level_policy_{agent_id[-1]}"
+            # Map the high level agent to the high level policy.
             else:
                 return "high_level_policy"
 
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=False,
-                enable_rl_module_and_learner=False,
-            )
-            .environment(HierarchicalWindyMazeEnv)
-            .framework(args.framework)
-            .env_runners(num_env_runners=0)
-            .training(entropy_coeff=0.01)
-            .multi_agent(
-                policies={
-                    "high_level_policy": (
-                        None,
-                        maze.observation_space,
-                        Discrete(4),
-                        PPOConfig.overrides(gamma=0.9),
-                    ),
-                    "low_level_policy": (
-                        None,
-                        Tuple([maze.observation_space, Discrete(4)]),
-                        maze.action_space,
-                        PPOConfig.overrides(gamma=0.0),
-                    ),
-                },
-                policy_mapping_fn=policy_mapping_fn,
-            )
-            # Use GPUs iff `RLLIB_NUM_GPUS` env var set to > 0.
-            .resources(num_gpus=int(os.environ.get("RLLIB_NUM_GPUS", "0")))
+        base_config.multi_agent(
+            policy_mapping_fn=policy_mapping_fn,
+            policies={"high_level_policy"}
+            | {f"low_level_policy_{i}" for i in range(args.num_low_level_agents)},
         )
 
-        results = tune.Tuner(
-            "PPO",
-            param_space=config.to_dict(),
-            run_config=air.RunConfig(stop=stop, verbose=1),
-        ).fit()
-
-    if args.as_test:
-        check_learning_achieved(results, args.stop_reward)
-
-    ray.shutdown()
+    run_rllib_example_script_experiment(base_config, args)
