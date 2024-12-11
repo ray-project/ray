@@ -233,9 +233,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 }
                 terminateds["__all__"] = True
                 return (
-                    {
-                        "high_level_agent": self._agent_discrete_pos,
-                    },
+                    {"high_level_agent": self._agent_discrete_pos},
                     rewards,
                     terminateds,
                     truncateds,
@@ -252,9 +250,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                     low_level_agent: 1.0,
                 }
                 return (
-                    {
-                        "high_level_agent": self._agent_discrete_pos,
-                    },
+                    {"high_level_agent": self._agent_discrete_pos},
                     rewards,
                     terminateds,
                     truncateds,
@@ -269,9 +265,7 @@ class HierarchicalSixRoomEnv(MultiAgentEnv):
                 if self._low_level_steps >= self.max_steps_low_level:
                     rewards["high_level_agent"] = -1.0
                     return (
-                        {
-                            "high_level_agent": self._agent_discrete_pos,
-                        },
+                        {"high_level_agent": self._agent_discrete_pos},
                         rewards,
                         terminateds,
                         truncateds,

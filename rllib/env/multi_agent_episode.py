@@ -2194,12 +2194,16 @@ class MultiAgentEpisode:
         one_hot_discrete,
         extra_model_outputs_key,
     ):
+        # Return requested data by agent-steps.
         ret = {}
+        # For each agent, we retrieve the data through passing the given indices into
+        # the SingleAgentEpisode of that agent.
         for agent_id, sa_episode in self.agent_episodes.items():
             if agent_id not in agent_ids:
                 continue
             inf_lookback_buffer = getattr(sa_episode, what)
             hanging_val = self._get_hanging_value(what, agent_id)
+            # User wants a specific `extra_model_outputs` key.
             if extra_model_outputs_key is not None:
                 inf_lookback_buffer = inf_lookback_buffer[extra_model_outputs_key]
                 hanging_val = hanging_val[extra_model_outputs_key]
@@ -2221,59 +2225,11 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_index_as_lookback: bool = False,
-        fill: Optional[Any] = None,
-        one_hot_discrete: bool = False,
-        extra_model_outputs_key: Optional[str] = None,
+        neg_index_as_lookback: bool,
+        fill: Any,
+        one_hot_discrete,
+        extra_model_outputs_key: str,
     ) -> List[MultiAgentDict]:
-        """Returns data from the episode based on env step indices, as a list.
-
-        The returned list contains n MultiAgentDict objects, one for each env timestep
-        defined via `indices`.
-
-        Args:
-            what: A (str) descriptor of what data to collect. Must be one of
-                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
-            indices: A single int is interpreted as an index, from which to return the
-                individual data stored at this (env step) index.
-                A list of ints is interpreted as a list of indices from which to gather
-                individual data in a batch of size len(indices).
-                A slice object is interpreted as a range of data to be returned.
-                Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_index_as_lookback=True` option is used, in which case
-                negative indices are interpreted as "before ts=0", meaning going back
-                into the lookback buffer.
-            agent_ids: A collection of AgentIDs to filter for. Only data for those
-                agents will be returned, all other agents will be ignored.
-            neg_index_as_lookback: If True, negative values in `indices` are
-                interpreted as "before ts=0", meaning going back into the lookback
-                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
-                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
-                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
-            fill: An optional float value to use for filling up the returned results at
-                the boundaries. This filling only happens if the requested index range's
-                start/stop boundaries exceed the buffer's boundaries (including the
-                lookback buffer on the left side). This comes in very handy, if users
-                don't want to worry about reaching such boundaries and want to zero-pad.
-                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
-                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
-                will respond to `indices=slice(-7, -2)` and `fill=0.0`
-                with `[0.0, 0.0, 10, 11, 12]`.
-            one_hot_discrete: If True, will return one-hot vectors (instead of
-                int-values) for those sub-components of a (possibly complex) space
-                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
-                requested `indices` are out of the range of our data, the returned
-                one-hot vectors will actually be zero-hot (all slots zero).
-            extra_model_outputs_key: Only if what is "extra_model_outputs", this
-                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
-                STATE_OUT or ACTION_DIST_INPUTS.
-
-        Returns:
-            A list of MultiAgentDict, where each item in the list corresponds to one
-            env timestep defined via `indices`.
-        """
-
         # Collect indices for each agent first, so we can construct the list in
         # the next step.
         agent_indices = {}
@@ -2319,8 +2275,8 @@ class MultiAgentEpisode:
                     index_incl_lookback=indices_to_use,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    hanging_val=hanging_val,
                     extra_model_outputs_key=extra_model_outputs_key,
+                    hanging_val=hanging_val,
                 )
                 if agent_value is not None:
                     ret2[agent_id] = agent_value
@@ -2333,60 +2289,11 @@ class MultiAgentEpisode:
         what: str,
         indices: Union[int, slice, List[int]],
         agent_ids: Collection[AgentID],
-        neg_index_as_lookback: bool = False,
-        fill: Optional[Any] = None,
-        one_hot_discrete: bool = False,
-        extra_model_outputs_key: Optional[str] = None,
+        neg_index_as_lookback: bool,
+        fill: Any,
+        one_hot_discrete: bool,
+        extra_model_outputs_key: str,
     ) -> MultiAgentDict:
-        """Returns data from the episode based on env step indices, as a MultiAgentDict.
-
-        The returned dict maps AgentID keys to individual or batched values, where the
-        batch size matches the env timesteps defined via `indices`.
-
-        Args:
-            what: A (str) descriptor of what data to collect. Must be one of
-                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
-            indices: A single int is interpreted as an index, from which to return the
-                individual data stored at this (env step) index.
-                A list of ints is interpreted as a list of indices from which to gather
-                individual data in a batch of size len(indices).
-                A slice object is interpreted as a range of data to be returned.
-                Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_index_as_lookback=True` option is used, in which case
-                negative indices are interpreted as "before ts=0", meaning going back
-                into the lookback buffer.
-            agent_ids: A collection of AgentIDs to filter for. Only data for those
-                agents will be returned, all other agents will be ignored.
-            neg_index_as_lookback: If True, negative values in `indices` are
-                interpreted as "before ts=0", meaning going back into the lookback
-                buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
-                where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
-                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
-            fill: An optional float value to use for filling up the returned results at
-                the boundaries. This filling only happens if the requested index range's
-                start/stop boundaries exceed the buffer's boundaries (including the
-                lookback buffer on the left side). This comes in very handy, if users
-                don't want to worry about reaching such boundaries and want to zero-pad.
-                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
-                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
-                will respond to `indices=slice(-7, -2)` and `fill=0.0`
-                with `[0.0, 0.0, 10, 11, 12]`.
-            one_hot_discrete: If True, will return one-hot vectors (instead of
-                int-values) for those sub-components of a (possibly complex) space
-                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
-                requested `indices` are out of the range of our data, the returned
-                one-hot vectors will actually be zero-hot (all slots zero).
-            extra_model_outputs_key: Only if what is "extra_model_outputs", this
-                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
-                STATE_OUT or ACTION_DIST_INPUTS.
-
-        Returns:
-            A single MultiAgentDict with individual leaf-values (in case `indices` is an
-            int), or batched leaf-data (in case `indices` is a list of ints or a slice
-            object). In the latter case, the batch size matches the env timesteps
-            defined via `indices`.
-        """
         ignore_last_ts = what not in ["observations", "infos"]
         ret = {}
         for agent_id, sa_episode in self.agent_episodes.items():
@@ -2429,8 +2336,8 @@ class MultiAgentEpisode:
                     index_incl_lookback=agent_indices,
                     fill=fill,
                     one_hot_discrete=one_hot_discrete,
-                    hanging_val=hanging_val,
                     extra_model_outputs_key=extra_model_outputs_key,
+                    hanging_val=hanging_val,
                 )
                 if agent_values is not None:
                     ret[agent_id] = agent_values
@@ -2443,56 +2350,11 @@ class MultiAgentEpisode:
         inf_lookback_buffer: InfiniteLookbackBuffer,
         agent_id: AgentID,
         index_incl_lookback: Union[int, str],
-        fill: Optional[Any] = None,
-        one_hot_discrete: bool = False,
-        extra_model_outputs_key: Optional[str] = None,
-        hanging_val: Optional[Any] = None,
+        fill: Any,
+        one_hot_discrete: dict,
+        extra_model_outputs_key: str,
+        hanging_val: Any,
     ) -> Any:
-        """Returns single data item from the episode based on given (env step) index.
-
-        Args:
-            what: A (str) descriptor of what data to collect. Must be one of
-                "observations", "infos", "actions", "rewards", or "extra_model_outputs".
-            inf_lookback_buffer: The InfiniteLookbackBuffer to use for extracting the
-                data.
-            index_incl_lookback: An int specifying, which index to pull from the given
-                `inf_lookback_buffer`, but disregarding the special logic of the
-                lookback buffer. Meaning if the `index_incl_lookback` is 0, then the
-                first value in the lookback buffer should be returned, not the first
-                value after the lookback buffer (which would be normal behavior for
-                pulling items from an InfiniteLookbackBuffer object).
-                If the value is `self.SKIP_ENV_TS_TAG`, either None is returned (if
-                `fill` is None) or the provided `fill` value.
-            agent_id: The individual agent ID to pull data for. Used to lookup the
-                `SingleAgentEpisode` object for this agent in `self`.
-            fill: An optional float value to use for filling up the returned results at
-                the boundaries. This filling only happens if the requested index range's
-                start/stop boundaries exceed the buffer's boundaries (including the
-                lookback buffer on the left side). This comes in very handy, if users
-                don't want to worry about reaching such boundaries and want to zero-pad.
-                For example, a buffer with data [10, 11,  12, 13, 14] and lookback
-                buffer size of 2 (meaning `10` and `11` are part of the lookback buffer)
-                will respond to `index_incl_lookback=-6` and `fill=0.0`
-                with `0.0`.
-            one_hot_discrete: If True, will return one-hot vectors (instead of
-                int-values) for those sub-components of a (possibly complex) space
-                that are Discrete or MultiDiscrete. Note that if `fill=0` and the
-                requested `index_incl_lookback` is out of the range of our data, the
-                returned one-hot vectors will actually be zero-hot (all slots zero).
-            extra_model_outputs_key: Only if what is "extra_model_outputs", this
-                specifies the sub-key (str) inside the extra_model_outputs dict, e.g.
-                STATE_OUT or ACTION_DIST_INPUTS.
-            hanging_val: In case we are pulling actions, rewards, or extra_model_outputs
-                data, there might be information "hanging" (cached). For example,
-                if an agent receives an observation o0 and then immediately sends an
-                action a0 back, but then does NOT immediately reveive a next
-                observation, a0 is now cached (not fully logged yet with this
-                episode). The currently cached value must be provided here to be able
-                to return it in case the index is -1 (most recent timestep).
-
-        Returns:
-            A data item corresponding to the provided args.
-        """
         sa_episode = self.agent_episodes[agent_id]
 
         if index_incl_lookback == self.SKIP_ENV_TS_TAG:
@@ -2511,39 +2373,40 @@ class MultiAgentEpisode:
                 ),
                 **one_hot_discrete,
             )
-        # No skip timestep -> Provide value at given index for this agent.
-        else:
-            if what == "extra_model_outputs":
-                # Special case: extra_model_outputs and key=None (return all keys as
-                # a dict). Note that `inf_lookback_buffer` is NOT an infinite lookback
-                # buffer, but a dict mapping keys to individual infinite lookback
-                # buffers.
-                if extra_model_outputs_key is None:
-                    assert hanging_val is None or isinstance(hanging_val, dict)
-                    ret = {}
-                    if inf_lookback_buffer:
-                        for key, sub_buffer in inf_lookback_buffer.items():
-                            ret[key] = sub_buffer.get(
-                                indices=index_incl_lookback - sub_buffer.lookback,
-                                neg_index_as_lookback=True,
-                                fill=fill,
-                                _add_last_ts_value=(
-                                    None if hanging_val is None else hanging_val[key]
-                                ),
-                                **one_hot_discrete,
-                            )
-                    else:
-                        for key in hanging_val.keys():
-                            ret[key] = InfiniteLookbackBuffer().get(
-                                indices=index_incl_lookback,
-                                neg_index_as_lookback=True,
-                                fill=fill,
-                                _add_last_ts_value=hanging_val[key],
-                                **one_hot_discrete,
-                            )
-                    return ret
 
-            # Extract data directly from the infinite lookback buffer object.
+        # No skip timestep -> Provide value at given index for this agent.
+
+        # Special case: extra_model_outputs and key=None (return all keys as
+        # a dict). Note that `inf_lookback_buffer` is NOT an infinite lookback
+        # buffer, but a dict mapping keys to individual infinite lookback
+        # buffers.
+        elif what == "extra_model_outputs" and extra_model_outputs_key is None:
+            assert hanging_val is None or isinstance(hanging_val, dict)
+            ret = {}
+            if inf_lookback_buffer:
+                for key, sub_buffer in inf_lookback_buffer.items():
+                    ret[key] = sub_buffer.get(
+                        indices=index_incl_lookback - sub_buffer.lookback,
+                        neg_index_as_lookback=True,
+                        fill=fill,
+                        _add_last_ts_value=(
+                            None if hanging_val is None else hanging_val[key]
+                        ),
+                        **one_hot_discrete,
+                    )
+            else:
+                for key in hanging_val.keys():
+                    ret[key] = InfiniteLookbackBuffer().get(
+                        indices=index_incl_lookback,
+                        neg_index_as_lookback=True,
+                        fill=fill,
+                        _add_last_ts_value=hanging_val[key],
+                        **one_hot_discrete,
+                    )
+            return ret
+
+        # Extract data directly from the infinite lookback buffer object.
+        else:
             return inf_lookback_buffer.get(
                 indices=index_incl_lookback - inf_lookback_buffer.lookback,
                 neg_index_as_lookback=True,
