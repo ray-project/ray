@@ -843,6 +843,7 @@ def get_top_level_dir_from_compressed_package(package_path: str):
     returns None.
 
     Ignores a second top-level directory if it is named __MACOSX.
+    Returns None if the top level directory starts with "..".
     """
 
     package_zip = ZipFile(package_path, "r")
@@ -874,6 +875,11 @@ def get_top_level_dir_from_compressed_package(package_path: str):
                 MAC_OS_ZIP_HIDDEN_DIR_NAME,
             ]:
                 return None
+
+    # If the top level directory starts with "..", it is an invalid base
+    # directory and we should return None
+    if top_level_directory and top_level_directory.startswith(".."):
+        return None
 
     return top_level_directory
 
