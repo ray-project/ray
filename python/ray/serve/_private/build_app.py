@@ -71,7 +71,7 @@ def build_app(
     app: Application,
     *,
     name: str,
-    route_prefix: Optional[str],
+    route_prefix: Optional[str] = None,
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
     make_deployment_handle: Optional[
         Callable[[Deployment, str], DeploymentHandle]
