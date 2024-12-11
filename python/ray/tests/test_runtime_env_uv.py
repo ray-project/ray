@@ -129,7 +129,7 @@ def test_package_install_with_different_versions(shutdown_only):
 def test_package_install_with_cache_enabled(shutdown_only):
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": ""}
+            "uv": {"packages": ["requests==2.3.0"], "uv_pip_install_options": []}
         }
     )
     def f():
@@ -139,7 +139,7 @@ def test_package_install_with_cache_enabled(shutdown_only):
 
     @ray.remote(
         runtime_env={
-            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": ""}
+            "uv": {"packages": ["requests==2.2.0"], "uv_pip_install_options": []}
         }
     )
     def g():
@@ -157,7 +157,7 @@ def test_package_install_with_multiple_options(shutdown_only):
         runtime_env={
             "uv": {
                 "packages": ["requests==2.3.0"],
-                "uv_pip_install_options": "--no-cache --color=auto",
+                "uv_pip_install_options": ["--no-cache", "--color=auto"],
             }
         }
     )
@@ -170,7 +170,7 @@ def test_package_install_with_multiple_options(shutdown_only):
         runtime_env={
             "uv": {
                 "packages": ["requests==2.2.0"],
-                "uv_pip_install_options": "--no-cache --color=auto",
+                "uv_pip_install_options": ["--no-cache", "--color=auto"],
             }
         }
     )
