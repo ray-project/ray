@@ -364,7 +364,9 @@ void RayLog::StartRayLog(const std::string &app_name,
 
   // Reset log pattern and level and we assume a log file can be rotated with
   // 10 files in max size 512M by default.
-  if (!stdout_log_filepath_empty) {
+  const auto stdout_log_fname =
+      GetLogOutputFilename(log_dir, stdout_log_filepath, app_name_without_path);
+  if (!stdout_log_fname.empty()) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
       long max_size = 0;
@@ -385,8 +387,6 @@ void RayLog::StartRayLog(const std::string &app_name,
   }
 
   // Set sink for stdout.
-  const auto stdout_log_fname =
-      GetLogOutputFilename(log_dir, stdout_log_filepath, app_name_without_path);
   if (!stdout_log_fname.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
@@ -396,6 +396,7 @@ void RayLog::StartRayLog(const std::string &app_name,
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
+
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
         stdout_log_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);

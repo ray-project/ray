@@ -1237,7 +1237,12 @@ class Node:
             use_profiler: True if we should start the process in the
                 valgrind profiler.
         """
-        stdout_file, stderr_file = self.get_log_file_handles("raylet", unique=True)
+        stdout_log_fname, _ = self.get_log_file_names(
+            "raylet", unique=True, create_out=True, create_err=False
+        )
+        _, stderr_file = self.get_log_file_handles(
+            "raylet", unique=True, create_out=False, create_err=True
+        )
         process_info = ray._private.services.start_raylet(
             self.redis_address,
             self.gcs_address,
@@ -1271,7 +1276,7 @@ class Node:
             dashboard_agent_listen_port=self._ray_params.dashboard_agent_listen_port,
             use_valgrind=use_valgrind,
             use_profiler=use_profiler,
-            stdout_file=stdout_file,
+            ray_log_stdout_filepath=stdout_log_fname,
             stderr_file=stderr_file,
             config=self._config,
             huge_pages=self._ray_params.huge_pages,

@@ -1521,9 +1521,6 @@ def start_gcs_server(
         stderr_file=stderr_file,
         fate_share=fate_share,
     )
-
-    if devnull_handle is not None:
-        devnull_handle.close()
     return process_info
 
 
@@ -1560,8 +1557,8 @@ def start_raylet(
     runtime_env_agent_port: Optional[int] = None,
     use_valgrind: bool = False,
     use_profiler: bool = False,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    ray_log_stdout_filepath: Optional[str] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
     config: Optional[dict] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
@@ -1615,8 +1612,8 @@ def start_raylet(
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
-        stdout_file: A file handle opened for writing to redirect stdout to. If
-            no redirection should happen, then this should be None.
+        ray_log_stdout_filepath: The file path to dump gcs server stdout log, which is
+            written via `RAY_LOG`. If None, stdout will not be redirected.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         tracing_startup_hook: Tracing startup hook.
@@ -1772,7 +1769,7 @@ def start_raylet(
         f"--gcs-address={gcs_address}",
         f"--cluster-id-hex={cluster_id}",
     ]
-    if stdout_file is None and stderr_file is None:
+    if ray_log_stdout_filepath is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
         # This will cause log records to go to stderr.
         dashboard_agent_command.append("--logging-filename=")
@@ -1822,7 +1819,7 @@ def start_raylet(
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
-        f"--log_dir={log_dir}",
+        f"--event_log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",
@@ -1835,6 +1832,9 @@ def start_raylet(
         f"--labels={labels_json_str}",
         f"--cluster-id={cluster_id}",
     ]
+
+    if ray_log_stdout_filepath:
+        command.append(f"--ray_log_stdout_filepath={ray_log_stdout_filepath}")
 
     if is_head_node:
         command.append("--head")
@@ -1862,6 +1862,15 @@ def start_raylet(
         command.append(
             f"--node-name={node_name}",
         )
+
+    devnull_handle = None
+    stdout_file = None
+    if ray_log_stdout_filepath:
+        devnull_handle = open(os.devnull, "w")
+        stdout_file = devnull_handle
+    else:
+        stdout_file = None
+
     process_info = start_ray_process(
         command,
         ray_constants.PROCESS_TYPE_RAYLET,
@@ -1874,7 +1883,6 @@ def start_raylet(
         fate_share=fate_share,
         env_updates=env_updates,
     )
-
     return process_info
 
 
