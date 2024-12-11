@@ -43,7 +43,7 @@ class VizierSearch(Searcher):
         metric: The training result objective value attribute. If None
             but a mode was passed, the anonymous metric `_metric` will be used
             per default.
-        mode: One of {min, max}. Determines whether objective is
+        mode: One of {"min", "max"}. Determines whether objective is
             minimizing or maximizing the metric attribute.
         algorithm: Specific algorithm from Vizier's library to use. "DEFAULT" corresponds to GP-UCB-PE. See 
             https://oss-vizier.readthedocs.io/en/latest/guides/user/supported_algorithms.html for more options.
