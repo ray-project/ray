@@ -24,7 +24,7 @@ new_compute_config_id = anyscale.compute_config.get(name=new_compute_config_name
 print(f"new compute config {new_compute_config_id}")
 
 response = requests.put(
-    f"https://console.anyscale.com/api/v2/sessions/{cluster_id}/cluster_config_with_session_idle_timeout",
+    f"https://console.anyscale-staging.com/api/v2/sessions/{cluster_id}/cluster_config_with_session_idle_timeout",
     params={
         "build_id": cluster.result.cluster_environment_build_id,
         "compute_template_id": new_compute_config_id,
