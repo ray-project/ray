@@ -22,7 +22,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
-from ray.rllib.utils.framework import get_device
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -47,6 +47,7 @@ from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDic
 from ray.tune.registry import ENV_CREATOR, _global_registry
 from ray.util.annotations import PublicAPI
 
+torch, _ = try_import_torch()
 logger = logging.getLogger("ray.rllib")
 
 
@@ -885,9 +886,16 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             self.module = module_spec.build()
             # Move the RLModule to our device.
             # TODO (sven): In order to make this framework-agnostic, we should maybe
-            #  make the RLModule.build() method accept a device OR create an additional
-            #  `RLModule.to()` override.
-            self.module.to(self._device)
+            #  make the MultiRLModule.build() method accept a device OR create an
+            #  additional `(Multi)RLModule.to()` override.
+            if torch:
+                self.module.foreach_module(
+                    lambda mod: (
+                        mod.to(self._device)
+                        if isinstance(mod, torch.nn.Module)
+                        else mod
+                    )
+                )
 
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
