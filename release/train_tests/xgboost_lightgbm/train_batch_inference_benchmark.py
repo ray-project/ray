@@ -82,7 +82,7 @@ def xgboost_train_loop_function(config: Dict):
 
 
 def lightgbm_train_loop_function(config: Dict):
-    # 1. Get the dataset shard for the worker and convert to a `xgboost.DMatrix`
+    # 1. Get the dataset shard for the worker and convert to a DataFrame
     train_ds_iter = ray.train.get_dataset_shard("train")
     train_df = train_ds_iter.materialize().to_pandas()
 
