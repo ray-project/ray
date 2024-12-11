@@ -325,7 +325,7 @@ class MultiAgentEnv(gym.Env):
         return env
 
 
-@PublicAPI
+@PublicAPI(stability="beta")
 def make_multi_agent(
     env_name_or_creator: Union[str, EnvCreator],
 ) -> Type["MultiAgentEnv"]:
