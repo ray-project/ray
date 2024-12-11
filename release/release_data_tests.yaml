@@ -646,5 +646,5 @@
     cluster_compute: all_to_all_compute.yaml
 
   run:
-    timeout: 2400
+    timeout: 48000
     script: python tpch_q1.py --sf 100
