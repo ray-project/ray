@@ -1572,16 +1572,17 @@ class NodeKillerBase(ResourceKillerActor):
                 for node in ray.nodes()
                 if node["Alive"] and (node["NodeID"] != self.head_node_id)
             ]
-            if self.kill_filter_fn is not None:
+            if self.kill_filter_fn:
                 candidates = list(filter(self.kill_filter_fn(), candidates))
 
-            # make sure at least 1 worker node is alive.
-            if (len(candidates) - 1) <= self.batch_size_to_kill:
+            # Ensure at least one worker node remains alive.
+            if len(candidates) < self.batch_size_to_kill + 1:
                 # Give the cluster some time to start.
                 await asyncio.sleep(1)
                 continue
 
-            for candidate in candidates:
+            # Collect nodes to kill, limited by batch size.
+            for candidate in candidates[: self.batch_size_to_kill]:
                 nodes_to_kill.append(
                     (
                         candidate["NodeID"],
@@ -1589,8 +1590,6 @@ class NodeKillerBase(ResourceKillerActor):
                         candidate["NodeManagerPort"],
                     )
                 )
-                if len(nodes_to_kill) == self.batch_size_to_kill:
-                    break
 
         return nodes_to_kill
 
