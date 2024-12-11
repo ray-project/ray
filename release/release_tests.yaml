@@ -3737,25 +3737,6 @@
 # Core Chaos tests
 ##################
 
-- name: chaos_update_compute_config
-  group: core-nightly-test
-  working_dir: nightly_tests
-
-  frequency: nightly
-  team: core
-  cluster:
-    byod: {}
-    cluster_compute: chaos_test/compute_template.yaml
-
-  run:
-    timeout: 3600
-    wait_for_nodes:
-      num_nodes: 10
-    script: python chaos_test/test_update_compute_config.py
-
-  variations:
-    - __suffix__: aws
-
 - name: chaos_many_tasks_kill_raylet
   group: core-nightly-test
   working_dir: nightly_tests
