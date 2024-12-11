@@ -2569,7 +2569,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "gpu"],
     size = "medium",
     srcs = ["examples/gpus/gpus_on_env_runners.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--stop-iters=5", "--num-gpus-per-env-runner=0.5", "--num-gpus-per-learner=0"]
+    args = ["--enable-new-api-stack", "--as-test", "--stop-reward=0.9", "--num-gpus-per-env-runner=0.5", "--num-gpus-per-learner=0"]
 )
 py_test(
     name = "examples/gpus/mixed_precision_training_float16_inference",

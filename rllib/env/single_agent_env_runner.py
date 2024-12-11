@@ -8,7 +8,6 @@ import gymnasium as gym
 from gymnasium.wrappers.vector import DictInfoToList
 from gymnasium.envs.registration import VectorizeMode
 
-import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.core import (
