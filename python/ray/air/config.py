@@ -102,6 +102,8 @@ def _repr_dataclass(obj, *, default_values: Optional[Dict[str, Any]] = None) -> 
 class ScalingConfig:
     """Configuration for scaling training.
 
+    For more details, see :ref:`train_scaling_config`.
+
     Args:
         trainer_resources: Resources to allocate for the training coordinator.
             The training coordinator launches the worker group and executes
@@ -120,8 +122,9 @@ class ScalingConfig:
             argument.
         resources_per_worker: If specified, the resources
             defined in this Dict is reserved for each worker.
-            Define the ``"CPU"`` and ``"GPU"`` keys (case-sensitive) to
-            override the number of CPU or GPUs used by each worker.
+            Define the ``"CPU"`` key (case-sensitive) to
+            override the number of CPUs used by each worker.
+            This can also be used to request :ref:`custom resources <custom-resources>`.
         placement_strategy: The placement strategy to use for the
             placement group of the Ray actors. See :ref:`Placement Group
             Strategies <pgroup-strategy>` for the possible options.
@@ -142,8 +145,8 @@ class ScalingConfig:
                 num_workers=2,
                 # Turn on/off GPU.
                 use_gpu=True,
-                # Specify resources used for trainer.
-                trainer_resources={"CPU": 1},
+                # Assign extra CPU/GPU/custom resources per worker.
+                resources_per_worker={"GPU": 1, "CPU": 1, "memory": 1e9, "custom": 1.0},
                 # Try to schedule workers on different nodes.
                 placement_strategy="SPREAD",
             )
