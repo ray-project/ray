@@ -957,11 +957,7 @@ def _setup_ray_cluster_internal(
             total_mem_bytes,
         )
 
-    (
-        num_cpus_spark_worker,
-        num_gpus_spark_worker,
-        spark_worker_mem_bytes,
-    ) = (
+    (num_cpus_spark_worker, num_gpus_spark_worker, spark_worker_mem_bytes,) = (
         spark.sparkContext.parallelize([1], 1)
         .map(_get_spark_worker_resources)
         .collect()[0]
