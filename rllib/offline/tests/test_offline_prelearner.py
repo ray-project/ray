@@ -74,7 +74,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         algo = self.config.build()
         # Build the `OfflinePreLearner` and add the learner.
         oplr = OfflinePreLearner(
-            self.config,
+            config=self.config,
             learner=algo.offline_data.learner_handles[0],
         )
 
@@ -192,7 +192,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         algo = self.config.build()
         # Build the `OfflinePreLearner` and add the learner.
         oplr = OfflinePreLearner(
-            self.config,
+            config=self.config,
             learner=algo.offline_data.learner_handles[0],
         )
         # Now, pull a batch of defined size formt he dataset.

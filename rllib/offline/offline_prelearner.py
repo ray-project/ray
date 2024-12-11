@@ -84,6 +84,7 @@ class OfflinePreLearner:
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def __init__(
         self,
+        *,
         config: "AlgorithmConfig",
         learner: Union[Learner, list[ActorHandle]],
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
