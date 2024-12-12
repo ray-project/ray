@@ -1300,7 +1300,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
 
-                print(f"Eval round {_round} ... sampling {_num} ts ...")
+                #print(f"Eval round {_round} ... sampling {_num} ts ...")
 
                 self.eval_env_runner_group.foreach_worker_async(
                     func=functools.partial(
