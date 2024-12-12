@@ -35,6 +35,8 @@ def test_uv_install_in_virtualenv(shutdown_only):
 
     @ray.remote
     def f():
+        import pip_install_test  # noqa: F401
+
         return virtualenv_utils.is_in_virtualenv()
 
     # Ensure that the runtime env has been installed and virtualenv is activated.
