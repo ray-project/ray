@@ -375,6 +375,7 @@ class StandardAutoscaler:
         try:
             self.reset(errors_fatal=False)
             self._update()
+            self.num_failures = 0
         except Exception as e:
             self.prom_metrics.update_loop_exceptions.inc()
             logger.exception("StandardAutoscaler: Error during autoscaling.")
