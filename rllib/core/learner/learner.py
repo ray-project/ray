@@ -1371,6 +1371,9 @@ class Learner(Checkpointable):
         # Log all timesteps (env, agent, modules) based on given episodes/batch.
         self._log_steps_trained_metrics(batch)
 
+        if self.config.learner_config_dict.get("_training_step_sample_and_concat_batches"):
+            return
+
         if minibatch_size:
             if self._learner_connector is not None:
                 batch_iter = partial(

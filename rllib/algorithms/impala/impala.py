@@ -1038,6 +1038,10 @@ class IMPALA(Algorithm):
 
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
+
+        if self.config.learner_config_dict.get("_training_step_sample_and_concat_batches"):
+            return {}
+
         # Move train batches (of size `total_train_batch_size`) onto learner queue.
         self._place_processed_samples_on_learner_thread_queue()
         # Extract most recent train results from learner thread.
