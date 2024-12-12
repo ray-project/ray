@@ -173,11 +173,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
-  // Init synchronization service
-  InitRaySyncer(gcs_init_data);
-
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
+
+  // Init synchronization service
+  InitRaySyncer(gcs_init_data);
 
   // Init KV service.
   InitKVService();
@@ -527,6 +527,12 @@ void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
+
+  // Register completion callback on health check.
+  ray_syncer_->SetRayletCompletedRpcCallbackForOnce([this](const NodeID &node_id) {
+    gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
+  });
+
   ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(*ray_syncer_);
   rpc_server_.RegisterService(*ray_syncer_service_);
 }

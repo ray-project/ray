@@ -82,6 +82,12 @@ class GcsHealthCheckManager {
   /// \return A list of node id which are being monitored by this class.
   std::vector<NodeID> GetAllNodes() const;
 
+  /// Mark the given node as healthy, so health check manager could save some checking
+  /// rpcs. Notice: have to invoke from io-context thread.
+  ///
+  /// \param node_id The id of the node.
+  void MarkNodeHealthy(const NodeID &node_id);
+
  private:
   /// Fail a node when health check failed. It'll stop the health checking and
   /// call `on_node_death_callback_`.
@@ -111,12 +117,19 @@ class GcsHealthCheckManager {
 
     void Stop();
 
+    void SetLatestHealthTimestamp(absl::Time ts) {
+      lastest_known_healthy_timestamp_ = ts;
+    }
+
    private:
     void StartHealthCheck();
 
     GcsHealthCheckManager *manager_;
 
     NodeID node_id_;
+
+    // Timestamp for latest known status when node is healthy.
+    absl::Time lastest_known_healthy_timestamp_ = absl::InfinitePast();
 
     // Whether the health check has stopped.
     bool stopped_ = false;

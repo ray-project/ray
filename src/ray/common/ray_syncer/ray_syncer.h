@@ -145,6 +145,11 @@ class RaySyncer {
 
   std::vector<std::string> GetAllConnectedNodeIDs() const;
 
+  /// Set the observer callable for sync message response for once.
+  /// This function is expected to call only once, repeated invocations throws exception.
+  void SetRayletCompletedRpcCallbackForOnce(
+      RayletCompletedRpcCallback on_raylet_rpc_completion);
+
  private:
   void Connect(RaySyncerBidiReactor *connection);
 

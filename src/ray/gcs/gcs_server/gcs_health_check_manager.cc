@@ -82,15 +82,39 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
   return nodes;
 }
 
+void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
+  auto iter = health_check_contexts_.find(node_id);
+
+  // A small chance other components (i.e. ray syncer) are initialized before health
+  // manager.
+  if (iter == health_check_contexts_.end()) {
+    return;
+  }
+
+  auto *ctx = iter->second;
+  ctx->SetLatestHealthTimestamp(absl::Now());
+}
+
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
+
+  // Check latest health status, see whether a new rpc message is needed.
+  const auto now = absl::Now();
+  absl::Time next_check_time =
+      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager_->period_ms_);
+  if (now <= next_check_time) {
+    // Update message is fresh enough, skip current check and schedule later.
+    int64_t next_schedule_millisec = (next_check_time - now) / absl::Milliseconds(1);
+    timer_.expires_from_now(boost::posix_time::milliseconds(next_schedule_millisec));
+    timer_.async_wait([this](auto) { StartHealthCheck(); });
+    return;
+  }
 
   // Reset the context/request/response for the next request.
   context_.~ClientContext();
   new (&context_) grpc::ClientContext();
   response_.Clear();
 
-  const auto now = absl::Now();
   const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
   context_.set_deadline(absl::ToChronoTime(deadline));
   stub_->async()->Check(
