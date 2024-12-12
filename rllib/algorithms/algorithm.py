@@ -1484,7 +1484,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     agent_steps += ag_s
                     all_metrics.append(met)
                     num_units_done += (
-                        met[NUM_EPISODES].peek()
+                        (met[NUM_EPISODES].peek() if NUM_EPISODES in met else 0)
                         if unit == "episodes"
                         else (
                             env_s if self.config.count_steps_by == "env_steps" else ag_s
@@ -3403,7 +3403,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             remote_worker_ids=selected_eval_worker_ids,
         )
         # Run training and collect the training results.
-        train_results, train_iter_ctx = self._run_one_training_iteration()
+        train_results, train_iter_ctx = self._run_one_training_iteration_old_api_stack()
 
         # Collect the evaluation results.
         eval_results = self.eval_env_runner_group.fetch_ready_async_reqs(
