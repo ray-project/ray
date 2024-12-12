@@ -936,7 +936,7 @@ class ApplicationStateManager:
                 existing_app_name = live_route_prefixes.get(deploy_app_prefix)
                 # It's ok to redeploy an app with the same prefix
                 # if it has the same name as the app already using that prefix.
-                if existing_app_name != name:
+                if existing_app_name is not None and existing_app_name != name:
                     raise RayServeException(
                         f"Prefix {deploy_app_prefix} is being used by application "
                         f'"{existing_app_name}". Failed to deploy application "{name}".'
