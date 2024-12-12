@@ -151,14 +151,14 @@ std::shared_ptr<RayObject> GetRequest::Get(const ObjectID &object_id) const {
 
 CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
-    std::shared_ptr<ReferenceCounter> counter,
+    ReferenceCounter *counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
     std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
-      ref_counter_(std::move(counter)),
+      ref_counter_(counter),
       raylet_client_(std::move(raylet_client)),
       check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
