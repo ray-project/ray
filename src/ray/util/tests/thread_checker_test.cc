@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "src/ray/util/thread_checker.h"
+#include "ray/util/thread_checker.h"
 
 #include <gtest/gtest.h>
 

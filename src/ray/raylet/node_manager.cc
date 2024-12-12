@@ -232,7 +232,7 @@ NodeManager::NodeManager(
             MarkObjectsAsFailed(error_type, {ref}, JobID::Nil());
           }),
       store_client_(std::make_unique<plasma::PlasmaClient>()),
-      periodical_runner_(io_service),
+      periodical_runner_(PeriodicalRunner::Create(io_service)),
       report_resources_period_ms_(config.report_resources_period_ms),
       temp_dir_(config.temp_dir),
       initial_config_(config),
@@ -359,14 +359,14 @@ NodeManager::NodeManager(
       max_task_args_memory);
   cluster_task_manager_ = std::make_shared<ClusterTaskManager>(
       self_node_id_,
-      std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
+      *std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_),
       get_node_info_func,
       announce_infeasible_task,
-      local_task_manager_);
+      *local_task_manager_);
   placement_group_resource_manager_ = std::make_shared<NewPlacementGroupResourceManager>(
       std::dynamic_pointer_cast<ClusterResourceScheduler>(cluster_resource_scheduler_));
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this]() { cluster_task_manager_->ScheduleAndDispatchTasks(); },
       RayConfig::instance().worker_cap_initial_backoff_delay_ms(),
       "NodeManager.ScheduleAndDispatchTasks");
@@ -397,9 +397,9 @@ NodeManager::NodeManager(
 
   worker_pool_.SetRuntimeEnvAgentClient(std::move(runtime_env_agent_client));
   worker_pool_.Start();
-  periodical_runner_.RunFnPeriodically([this]() { GCTaskFailureReason(); },
-                                       RayConfig::instance().task_failure_entry_ttl_ms(),
-                                       "NodeManager.GCTaskFailureReason");
+  periodical_runner_->RunFnPeriodically([this]() { GCTaskFailureReason(); },
+                                        RayConfig::instance().task_failure_entry_ttl_ms(),
+                                        "NodeManager.GCTaskFailureReason");
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
       *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
@@ -455,7 +455,7 @@ ray::Status NodeManager::RegisterGcs() {
 
     auto gcs_channel = gcs_client_->GetGcsRpcClient().GetChannel();
     ray_syncer_.Connect(kGCSNodeID.Binary(), gcs_channel);
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           auto triggered_by_global_gc = TryLocalGC();
           // If plasma store is under high pressure, we should try to schedule a global
@@ -500,7 +500,7 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugState();
         WarnResourceDeadlock();
@@ -509,15 +509,15 @@ ray::Status NodeManager::RegisterGcs() {
       "NodeManager.deadline_timer.debug_state_dump");
   uint64_t now_ms = current_time_ms();
   last_metrics_recorded_at_ms_ = now_ms;
-  periodical_runner_.RunFnPeriodically([this] { RecordMetrics(); },
-                                       record_metrics_period_ms_,
-                                       "NodeManager.deadline_timer.record_metrics");
+  periodical_runner_->RunFnPeriodically([this] { RecordMetrics(); },
+                                        record_metrics_period_ms_,
+                                        "NodeManager.deadline_timer.record_metrics");
   if (RayConfig::instance().free_objects_period_milliseconds() > 0) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { local_object_manager_.FlushFreeObjects(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.flush_free_objects");
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { SpillIfOverPrimaryObjectsThreshold(); },
         RayConfig::instance().free_objects_period_milliseconds(),
         "NodeManager.deadline_timer.spill_objects_when_over_threshold");
@@ -526,7 +526,7 @@ ray::Status NodeManager::RegisterGcs() {
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           std::stringstream debug_msg;
           debug_msg << DebugString() << "\n\n";
@@ -540,7 +540,7 @@ ray::Status NodeManager::RegisterGcs() {
   // For failure cases, GCS might think this raylet dead, but this
   // raylet still think it's alive. This could happen when the cluster setup is wrong,
   // for example, there is data loss in the DB.
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         // Flag to see whether a request is running.
         static bool checking = false;

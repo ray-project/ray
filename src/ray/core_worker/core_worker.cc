@@ -43,23 +43,9 @@ using json = nlohmann::json;
 
 namespace ray::core {
 
-JobID GetProcessJobID(const CoreWorkerOptions &options) {
-  if (options.worker_type == WorkerType::DRIVER) {
-    RAY_CHECK(!options.job_id.IsNil());
-  } else {
-    RAY_CHECK(options.job_id.IsNil());
-  }
-
-  if (options.worker_type == WorkerType::WORKER) {
-    // For workers, the job ID is assigned by Raylet via an environment variable.
-    const std::string &job_id_env = RayConfig::instance().JOB_ID();
-    RAY_CHECK(!job_id_env.empty());
-    return JobID::FromHex(job_id_env);
-  }
-  return options.job_id;
-}
-
 namespace {
+// Default capacity for serialization caches.
+constexpr size_t kDefaultSerializationCacheCap = 500;
 
 // Implements setting the transient RUNNING_IN_RAY_GET and RUNNING_IN_RAY_WAIT states.
 // These states override the RUNNING state of a task.
@@ -127,6 +113,22 @@ std::optional<ObjectLocation> TryGetLocalObjectLocation(
 }
 
 }  // namespace
+
+JobID GetProcessJobID(const CoreWorkerOptions &options) {
+  if (options.worker_type == WorkerType::DRIVER) {
+    RAY_CHECK(!options.job_id.IsNil());
+  } else {
+    RAY_CHECK(options.job_id.IsNil());
+  }
+
+  if (options.worker_type == WorkerType::WORKER) {
+    // For workers, the job ID is assigned by Raylet via an environment variable.
+    const std::string &job_id_env = RayConfig::instance().JOB_ID();
+    RAY_CHECK(!job_id_env.empty());
+    return JobID::FromHex(job_id_env);
+  }
+  return options.job_id;
+}
 
 TaskCounter::TaskCounter() {
   counter_.SetOnChangeCallback(
@@ -257,14 +259,15 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       worker_context_(options_.worker_type, worker_id, GetProcessJobID(options_)),
       io_work_(io_service_),
       client_call_manager_(new rpc::ClientCallManager(io_service_)),
-      periodical_runner_(io_service_),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
       resource_ids_(new ResourceMappingType()),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
-      pid_(getpid()) {
+      pid_(getpid()),
+      runtime_env_json_serialization_cache_(kDefaultSerializationCacheCap) {
   // Notify that core worker is initialized.
   auto initialzed_scope_guard = absl::MakeCleanup([this] {
     absl::MutexLock lock(&initialize_mutex_);
@@ -327,7 +330,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       options_.raylet_ip_address, options_.node_manager_port, *client_call_manager_);
 
   if (options_.worker_type != WorkerType::DRIVER) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] { ExitIfParentRayletDies(); },
         RayConfig::instance().raylet_death_check_interval_milliseconds(),
         "CoreWorker.ExitIfParentRayletDies");
@@ -451,11 +454,11 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       });
 
   object_info_publisher_ = std::make_unique<pubsub::Publisher>(
-      /*channels=*/std::vector<
-          rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
-                            rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
-                            rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
-      /*periodical_runner=*/&periodical_runner_,
+      /*channels=*/
+      std::vector<rpc::ChannelType>{rpc::ChannelType::WORKER_OBJECT_EVICTION,
+                                    rpc::ChannelType::WORKER_REF_REMOVED_CHANNEL,
+                                    rpc::ChannelType::WORKER_OBJECT_LOCATIONS_CHANNEL},
+      /*periodical_runner=*/*periodical_runner_,
       /*get_time_ms=*/[]() { return absl::GetCurrentTimeNanos() / 1e6; },
       /*subscriber_timeout_ms=*/RayConfig::instance().subscriber_timeout_ms(),
       /*publish_batch_size_=*/RayConfig::instance().publish_batch_size(),
@@ -519,7 +522,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
       local_raylet_client_,
-      reference_counter_,
+      *reference_counter_,
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
@@ -527,7 +530,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter_,
+      reference_counter_.get(),
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
@@ -670,7 +673,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 
   actor_creator_ = std::make_shared<DefaultActorCreator>(gcs_client_);
 
-  actor_task_submitter_ = std::make_shared<ActorTaskSubmitter>(*core_worker_client_pool_,
+  actor_task_submitter_ = std::make_unique<ActorTaskSubmitter>(*core_worker_client_pool_,
                                                                *memory_store_,
                                                                *task_manager_,
                                                                *actor_creator_,
@@ -731,7 +734,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
-      gcs_client_, actor_task_submitter_, reference_counter_);
+      gcs_client_, *actor_task_submitter_, *reference_counter_);
 
   std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_fn;
@@ -785,7 +788,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   const auto event_stats_print_interval_ms =
       RayConfig::instance().event_stats_print_interval_ms();
   if (event_stats_print_interval_ms != -1 && RayConfig::instance().event_stats()) {
-    periodical_runner_.RunFnPeriodically(
+    periodical_runner_->RunFnPeriodically(
         [this] {
           RAY_LOG(INFO) << "Event stats:\n\n"
                         << io_service_.stats().StatsString() << "\n\n"
@@ -805,7 +808,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       ray::rpc::Event_SourceType::Event_SourceType_CORE_WORKER,
       {{"worker_id", worker_id.Hex()}});
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] {
         const auto lost_objects = reference_counter_->FlushObjectsToRecover();
         if (!lost_objects.empty()) {
@@ -830,17 +833,17 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       100,
       "CoreWorker.RecoverObjects");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { InternalHeartbeat(); },
       RayConfig::instance().core_worker_internal_heartbeat_ms(),
       "CoreWorker.InternalHeartbeat");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { RecordMetrics(); },
       RayConfig::instance().metrics_report_interval_ms() / 2,
       "CoreWorker.RecordMetrics");
 
-  periodical_runner_.RunFnPeriodically(
+  periodical_runner_->RunFnPeriodically(
       [this] { TryDeleteObjectRefStreams(); },
       RayConfig::instance().local_gc_min_interval_s() * 1000,
       "CoreWorker.GCStreamingGeneratorMetadata");
@@ -2163,20 +2166,20 @@ Status CoreWorker::PushError(const JobID &job_id,
   return local_raylet_client_->PushError(job_id, type, error_message, timestamp);
 }
 
-json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> parent) {
+json CoreWorker::OverrideRuntimeEnv(const json &child, std::shared_ptr<json> parent) {
   // By default, the child runtime env inherits non-specified options from the
   // parent. There is one exception to this:
   //     - The env_vars dictionaries are merged, so environment variables
   //       not specified by the child are still inherited from the parent.
   json result_runtime_env = *parent;
-  for (json::iterator it = child.begin(); it != child.end(); ++it) {
+  for (auto it = child.cbegin(); it != child.cend(); ++it) {
     if (it.key() == "env_vars" && result_runtime_env.contains("env_vars")) {
       json env_vars = it.value();
       json merged_env_vars = result_runtime_env["env_vars"];
       for (json::iterator nit = env_vars.begin(); nit != env_vars.end(); ++nit) {
         merged_env_vars[nit.key()] = nit.value();
       }
-      result_runtime_env["env_vars"] = merged_env_vars;
+      result_runtime_env["env_vars"] = std::move(merged_env_vars);
     } else {
       result_runtime_env[it.key()] = it.value();
     }
@@ -2184,8 +2187,19 @@ json CoreWorker::OverrideRuntimeEnv(json &child, const std::shared_ptr<json> par
   return result_runtime_env;
 }
 
+// TODO(hjiang): Current implementation is not the most ideal version, since it acquires a
+// global lock for all operations; it's acceptable for now since no heavy-lifted operation
+// is involved (considering the overall scheduling overhead is single-digit millisecond
+// magnitude). But a better solution is LRU cache native providing a native support for
+// sharding and `GetOrCreate` API.
 std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvInfo(
     const std::string &serialized_runtime_env_info) const {
+  if (auto cached_runtime_env_info =
+          runtime_env_json_serialization_cache_.Get(serialized_runtime_env_info);
+      cached_runtime_env_info != nullptr) {
+    return cached_runtime_env_info;
+  }
+
   // TODO(Catch-Bull,SongGuyang): task runtime env not support the field eager_install
   // yet, we will overwrite the filed eager_install when it did.
   std::shared_ptr<json> parent = nullptr;
@@ -2219,7 +2233,7 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
     parent = worker_context_.GetCurrentRuntimeEnv();
     parent_runtime_env_info = worker_context_.GetCurrentRuntimeEnvInfo();
   }
-  if (!parent) {
+  if (parent == nullptr) {
     return runtime_env_info;
   }
   std::string serialized_runtime_env = runtime_env_info->serialized_runtime_env();
@@ -2239,6 +2253,9 @@ std::shared_ptr<rpc::RuntimeEnvInfo> CoreWorker::OverrideTaskOrActorRuntimeEnvIn
       runtime_env_info->mutable_uris()->add_py_modules_uris(uri);
     }
   }
+
+  runtime_env_json_serialization_cache_.Put(serialized_runtime_env_info,
+                                            runtime_env_info);
   return runtime_env_info;
 }
 
@@ -2362,6 +2379,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                        : task_options.name;
   int64_t depth = worker_context_.GetTaskDepth() + 1;
   // TODO(ekl) offload task building onto a thread pool for performance
+
   BuildCommonTaskSpec(builder,
                       worker_context_.GetCurrentJobID(),
                       task_id,
@@ -3008,9 +3026,9 @@ std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
 }
 
 void CoreWorker::RunTaskExecutionLoop() {
-  PeriodicalRunner signal_checker(task_execution_service_);
+  auto signal_checker = PeriodicalRunner::Create(task_execution_service_);
   if (options_.check_signals) {
-    signal_checker.RunFnPeriodically(
+    signal_checker->RunFnPeriodically(
         [this] {
           /// The overhead of this is only a single digit microsecond.
           auto status = options_.check_signals();

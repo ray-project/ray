@@ -33,10 +33,10 @@ FileSystemMonitor::FileSystemMonitor(std::vector<std::string> paths,
         boost::asio::io_service::work io_service_work_(io_context_);
         io_context_.run();
       }),
-      runner_(io_context_) {
-  runner_.RunFnPeriodically([this] { over_capacity_ = CheckIfAnyPathOverCapacity(); },
-                            monitor_interval_ms,
-                            "FileSystemMonitor.CheckIfAnyPathOverCapacity");
+      runner_(PeriodicalRunner::Create(io_context_)) {
+  runner_->RunFnPeriodically([this] { over_capacity_ = CheckIfAnyPathOverCapacity(); },
+                             monitor_interval_ms,
+                             "FileSystemMonitor.CheckIfAnyPathOverCapacity");
 }
 
 FileSystemMonitor::FileSystemMonitor()
