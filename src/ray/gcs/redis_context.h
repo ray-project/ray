@@ -178,11 +178,21 @@ class RedisContext {
   instrumented_io_context &io_service() { return io_service_; }
 
  private:
+  bool IsRedisSentinel();
+
   bool ConnectToIPAddress(const std::string &ip_address,
                           int port,
                           const std::string &username,
                           const std::string &password,
                           bool enable_ssl);
+
+  Status ConnectRedisCluster(const std::string &username,
+                             const std::string &password,
+                             bool enable_ssl);
+
+  Status ConnectRedisSentinel(const std::string &username,
+                              const std::string &password,
+                              bool enable_ssl);
 
   instrumented_io_context &io_service_;
 
