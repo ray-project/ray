@@ -184,7 +184,7 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
     // Reconnect if connection is lost or the error is a MOVED error.
     if (redis_reply == nullptr ||
         std::string(redis_reply->str).find("MOVED") != std::string::npos) {
-      request_cxt->redis_context_.Reconnect();
+      RAY_CHECK_OK(request_cxt->redis_context_.Reconnect());
     }
     auto delay = request_cxt->exp_back_off_.Current();
     request_cxt->exp_back_off_.Next();
@@ -740,7 +740,7 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 
     // Reconnect if the error message is MOVED.
     if (std::string(redis_reply->str).find("MOVED") != std::string::npos) {
-      Reconnect();
+      RAY_CHECK_OK(Reconnect());
       continue;
     }
 
