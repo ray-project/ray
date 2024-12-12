@@ -24,7 +24,7 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+from ray.dag.constants import RAY_CG_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -187,8 +187,8 @@ def do_profile_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        if not hasattr(self, "__ray_adag_events"):
-            self.__ray_adag_events = []
+        if not hasattr(self, "__ray_cg_events"):
+            self.__ray_cg_events = []
 
         done = False
         while True:
@@ -202,7 +202,7 @@ def do_profile_tasks(
                 )
                 end_t = time.perf_counter()
 
-                self.__ray_adag_events.append(
+                self.__ray_cg_events.append(
                     _ExecutableTaskRecord(
                         actor_classname=self.__class__.__name__,
                         actor_name=ray.get_runtime_context().get_actor_name(),
@@ -1484,14 +1484,14 @@ class CompiledDAG:
                         "Please bind the task to proper DAG nodes."
                     )
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+        from ray.dag.constants import RAY_CG_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
+        if RAY_CG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "RAY_CG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
@@ -1573,9 +1573,9 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
-        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+        from ray.dag.constants import RAY_CG_ENABLE_PROFILING
 
-        if RAY_ADAG_ENABLE_PROFILING:
+        if RAY_CG_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:
             exec_task_func = do_exec_tasks
@@ -1774,7 +1774,7 @@ class CompiledDAG:
                 actor_to_execution_schedule
             )
 
-        if RAY_ADAG_VISUALIZE_SCHEDULE:
+        if RAY_CG_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
                 actor_to_execution_schedule, actor_to_overlapped_schedule, graph
             )
