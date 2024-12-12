@@ -951,11 +951,13 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
 
-        # Find the input node to the DAG.
+        # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+            elif isinstance(task.dag_node, InputAttributeNode):
+                self.input_attr_task_idx_list.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1454,7 +1456,6 @@ class CompiledDAG:
                     # used to determine whether to create a CachedChannel.
                     if isinstance(input_dag_node, InputAttributeNode):
                         input_attr_idx = self.dag_node_to_idx[input_dag_node]
-                        self.input_attr_task_idx_list.append(input_attr_idx)
                         input_attr_task = self.idx_to_task[input_attr_idx]
                         input_attr_task.output_channels.append(output_channel)
                         assert len(input_attr_task.output_channels) == 1
