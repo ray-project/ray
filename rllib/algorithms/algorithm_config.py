@@ -2727,8 +2727,8 @@ class AlgorithmConfig(_Config):
                 per batch. The default is RLlib's `EpisodeReplayBuffer`.
             prelearner_buffer_kwargs: Optional keyword arguments for intializing the
                 `EpisodeReplayBuffer`. In most cases this value is simply the `capacity`
-                for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it may
-                differ if the `prelearner_buffer_class` uses a custom buffer.
+                for the default buffer that RLlib uses (`EpisodeReplayBuffer`), but it
+                may differ if the `prelearner_buffer_class` uses a custom buffer.
             prelearner_module_synch_period: The period (number of batches converted)
                 after which the `RLModule` held by the `PreLearner` should sync weights.
                 The `PreLearner` is used to preprocess batches for the learners. The
@@ -2793,12 +2793,12 @@ class AlgorithmConfig(_Config):
                 given by `output_filesystem`. See `gcsfs.GCSFilesystem` for GCS,
                 `pyarrow.fs.S3FileSystem`, for S3, and `ablfs.AzureBlobFilesystem` for
                 ABS filesystem arguments.
-            output_write_episodes: If RLlib should record data in its RLlib's `EpisodeType`
-                format (that is, `SingleAgentEpisode` objects). Use this format, if you
-                need RLlib to order data in time and directly group by episodes for
-                example to train stateful modules or if you plan to use recordings
-                exclusively in RLlib. Otherwise RLlib records data in tabular (columnar)
-                format. Default is `True`.
+            output_write_episodes: If RLlib should record data in its RLlib's
+                `EpisodeType` format (that is, `SingleAgentEpisode` objects). Use this
+                format, if you need RLlib to order data in time and directly group by
+                episodes for example to train stateful modules or if you plan to use
+                recordings exclusively in RLlib. Otherwise RLlib records data in tabular
+                (columnar) format. Default is `True`.
             offline_sampling: Whether sampling for the Algorithm happens via
                 reading from offline data. If True, EnvRunners don't limit the number
                 of collected batches within the same `sample()` call based on
