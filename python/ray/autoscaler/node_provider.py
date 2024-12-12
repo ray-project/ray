@@ -2,7 +2,7 @@ import logging
 from types import ModuleType
 from typing import Any, Dict, List, Optional
 
-from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
+from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.util.annotations import DeveloperAPI
 
@@ -231,7 +231,9 @@ class NodeProvider:
             "use_internal_ip": use_internal_ip,
         }
         if docker_config and docker_config["container_name"] != "":
-            return DockerCommandRunner(docker_config, **common_args)
+            raise ValueError(
+                "The docker backend of the VM cluster launcher has been removed, we recommend KubeRay for container based Ray deployments going forward"
+            )
         else:
             return SSHCommandRunner(**common_args)
 
