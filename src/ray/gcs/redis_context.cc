@@ -150,7 +150,7 @@ const std::vector<std::optional<std::string>> &CallbackReply::ReadAsStringArray(
 
 RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
                                          RedisCallback callback,
-                                         RedisAsyncContext *context,
+                                         RedisContext &context,
                                          std::vector<std::string> args)
     : exp_back_off_(RayConfig::instance().redis_retry_base_ms(),
                     RayConfig::instance().redis_retry_multiplier(),
@@ -169,7 +169,7 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
   }
 }
 
-void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_context,
+void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
                                           void *raw_reply,
                                           void *privdata) {
   auto *request_cxt = static_cast<RedisRequestContext *>(privdata);
@@ -177,10 +177,15 @@ void RedisRequestContext::RedisResponseFn(struct redisAsyncContext *async_contex
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
     auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;
-    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-                   << "]"
-                   << " failed due to error " << error_msg << ". "
-                   << request_cxt->pending_retries_ << " retries left.";
+    RAY_LOG(INFO) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+                  << "]"
+                  << " failed due to error " << error_msg << ". "
+                  << request_cxt->pending_retries_ << " retries left.";
+    // Reconnect if connection is lost or the error is a MOVED error.
+    if (redis_reply == nullptr ||
+        std::string(redis_reply->str).find("MOVED") != std::string::npos) {
+      request_cxt->redis_context_.Reconnect();
+    }
     auto delay = request_cxt->exp_back_off_.Current();
     request_cxt->exp_back_off_.Next();
     // Retry the request after a while.
@@ -213,11 +218,12 @@ void RedisRequestContext::Run() {
 
   --pending_retries_;
 
-  Status status = redis_context_->RedisAsyncCommandArgv(
+  Status status = redis_context_.async_context().RedisAsyncCommandArgv(
       RedisResponseFn, this, argv_.size(), argv_.data(), argc_.data());
 
   if (!status.ok()) {
-    RedisResponseFn(redis_context_->GetRawRedisAsyncContext(), nullptr, this);
+    RedisResponseFn(
+        redis_context_.async_context().GetRawRedisAsyncContext(), nullptr, this);
   }
 }
 
@@ -725,12 +731,18 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
         ::redisCommandArgv(context_.get(), args.size(), argv.data(), argc.data())));
     // Disconnected. Try to reconnect first.
     if (redis_reply == nullptr) {
-      RAY_CHECK_OK(this->Reconnect());
+      RAY_CHECK_OK(Reconnect());
       continue;
     }
 
     if (redis_reply->type != REDIS_REPLY_ERROR) {
       return std::make_unique<CallbackReply>(*redis_reply);
+    }
+
+    // Reconnect if the error message is MOVED.
+    if (std::string(redis_reply->str).find("MOVED") != std::string::npos) {
+      Reconnect();
+      continue;
     }
 
     // Error happened, retry with same connection.
@@ -756,10 +768,8 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
   if (redis_async_context_ == nullptr) {
     RAY_CHECK_OK(this->Reconnect());
   }
-  auto request_context = new RedisRequestContext(io_service_,
-                                                 std::move(redis_callback),
-                                                 redis_async_context_.get(),
-                                                 std::move(args));
+  auto request_context = new RedisRequestContext(
+      io_service_, std::move(redis_callback), *this, std::move(args));
   // RedisRequestContext is thread safe.
   request_context->Run();
 }
