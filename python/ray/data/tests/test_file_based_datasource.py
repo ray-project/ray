@@ -1,5 +1,4 @@
 import os
-from pathlib import Path
 from typing import Iterator
 from unittest import mock
 
@@ -132,7 +131,7 @@ def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffl
     FileBasedDatasource("example://iris.csv", shuffle=shuffle)
 
 
-def test_read_parquet_deterministic_shuffling():
+def test_read_parquet_deterministic_shuffling(restore_data_context, tmp_path):
     def write_parquet_file(path, file_index):
         """Write a dummy Parquet file with test data."""
         # Create a dummy dataset with unique data for each file
@@ -146,31 +145,23 @@ def test_read_parquet_deterministic_shuffling():
     ctx = ray.data.DataContext.get_current()
     ctx.execution_options.preserve_order = True
     # Use the current working directory
-    current_dir = Path(os.getcwd())
 
     # Create temporary Parquet files for testing in the current directory
-    paths = [current_dir / f"test_file_{i}.parquet" for i in range(5)]
-    try:
-        for i, path in enumerate(paths):
-            # Write dummy Parquet files
-            write_parquet_file(path, i)
+    paths = [tmp_path / f"test_file_{i}.parquet" for i in range(5)]
+    for i, path in enumerate(paths):
+        # Write dummy Parquet files
+        write_parquet_file(path, i)
 
-        # Convert paths to strings for read_parquet
-        string_paths = [str(path) for path in paths]
+    # Convert paths to strings for read_parquet
+    string_paths = [str(path) for path in paths]
 
-        # Read with deterministic shuffling
-        shuffle_config = FileShuffleConfig(seed=42)
-        ds1 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
-        ds2 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
+    # Read with deterministic shuffling
+    shuffle_config = FileShuffleConfig(seed=42)
+    ds1 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
+    ds2 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
 
-        # Verify deterministic behavior
-        assert ds1.take_all() == ds2.take_all()
-
-    finally:
-        # Cleanup generated files after test
-        for path in paths:
-            if path.exists():
-                path.unlink()
+    # Verify deterministic behavior
+    assert ds1.take_all() == ds2.take_all()
 
 
 if __name__ == "__main__":
