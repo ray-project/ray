@@ -1864,6 +1864,7 @@ class CompiledDAG:
                 # Lock to make sure that we only perform teardown for this DAG
                 # once.
                 self.in_teardown_lock = threading.Lock()
+                self.in_teardown_cond = threading.Condition(self.in_teardown_lock)
                 self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
@@ -1872,7 +1873,6 @@ class CompiledDAG:
 
                 ctx = DAGContext.get_current()
                 teardown_timeout = ctx.teardown_timeout
-
                 for actor, ref in outer.worker_task_refs.items():
                     timeout = False
                     try:
@@ -1906,7 +1906,7 @@ class CompiledDAG:
 
             def teardown(self, kill_actors: bool = False):
                 do_teardown = False
-                with self.in_teardown_lock:
+                with self.in_teardown_cond:
                     if self._teardown_done:
                         return
 
@@ -1916,12 +1916,9 @@ class CompiledDAG:
 
                 if not do_teardown:
                     # Teardown is already being performed.
-                    while True:
-                        with self.in_teardown_lock:
-                            if self._teardown_done:
-                                return
-
-                        time.sleep(0.1)
+                    with self.in_teardown_cond:
+                        self.in_teardown_cond.wait_for(lambda: self._teardown_done)
+                        return
 
                 logger.info("Tearing down compiled DAG")
                 outer._dag_submitter.close()
@@ -1940,6 +1937,7 @@ class CompiledDAG:
                     except ray.exceptions.RayChannelError:
                         # Channel error happens when a channel is closed
                         # or timed out. In this case, do not log.
+                        logger.log("RayChannelError when cancelling worker task")
                         pass
                     except Exception:
                         logger.exception("Error cancelling worker task")
@@ -1952,8 +1950,9 @@ class CompiledDAG:
                 self.wait_teardown()
                 logger.info("Teardown complete")
 
-                with self.in_teardown_lock:
+                with self.in_teardown_cond:
                     self._teardown_done = True
+                    self.in_teardown_cond.notify_all()
 
             def run(self):
                 try:

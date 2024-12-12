@@ -1079,12 +1079,6 @@ def test_dag_exception_chained(ray_start_regular, capsys):
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
 
-    # Note: somehow the auto triggered teardown() from ray.shutdown()
-    # does not finish in time for this test, leading to a segfault
-    # of the following test (likely due to a dangling monitor thread
-    # upon the new Ray init).
-    compiled_dag.teardown()
-
 
 @pytest.mark.parametrize("single_fetch", [True, False])
 def test_dag_exception_multi_output(ray_start_regular, single_fetch, capsys):
