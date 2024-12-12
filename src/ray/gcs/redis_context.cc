@@ -680,7 +680,7 @@ Status RedisContext::Connect(const std::string &address,
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
   RAY_CHECK(!address.empty());
-  auto ip_addresses = ResolveDNS(address, port);
+  auto ip_addresses = ResolveDNS(io_service_, address, port);
   RAY_CHECK(!ip_addresses.empty())
       << "Failed to resolve DNS for " << address << ":" << port;
 
