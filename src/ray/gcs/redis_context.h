@@ -185,6 +185,7 @@ class RedisContext {
   std::unique_ptr<RedisAsyncContext> redis_async_context_;
 
   // Remember Connect function arguments for reconnection
+  bool is_first_connect_{true};
   std::string address_;
   int port_;
   std::string username_;
