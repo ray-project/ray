@@ -1308,7 +1308,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
+                    return_obj_refs=False, timeout_seconds=0.1
                 )
                 for wid, (env_s, ag_s, metrics, iter) in results:
                     # Ignore eval results kicked off in an earlier iteration.
