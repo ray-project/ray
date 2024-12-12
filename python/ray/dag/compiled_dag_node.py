@@ -492,7 +492,6 @@ class ExecutableTask:
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
-            print("input_type_hints", self.input_type_hints)
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
@@ -1117,6 +1116,7 @@ class CompiledDAG:
                             "kwargs."
                         )
                     direct_input = False
+
                     # If the upstream node is an InputAttributeNode, treat the
                     # DAG's input node as the actual upstream node
                     upstream_task = self.idx_to_task[self.input_task_idx]
