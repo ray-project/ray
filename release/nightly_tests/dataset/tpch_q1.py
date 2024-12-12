@@ -22,6 +22,9 @@ def main(args):
     benchmark = Benchmark("tpch-q1")
 
     def benchmark_fn():
+        # The TPC-H queries are a widely used set of benchmarks to measure the
+        # performance of data processing systems. See
+        # https://examples.citusdata.com/tpch_queries.html.
         (
             ray.data.read_parquet(path)
             .filter(
