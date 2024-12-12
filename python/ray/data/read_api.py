@@ -608,7 +608,7 @@ def read_parquet(
     meta_provider: Optional[ParquetMetadataProvider] = None,
     partition_filter: Optional[PathPartitionFilter] = None,
     partitioning: Optional[Partitioning] = Partitioning("hive"),
-    shuffle: Union[Literal["files"], None, FileShuffleConfig] = None,
+    shuffle: Optional[Literal["files"], FileShuffleConfig] = None,
     include_paths: bool = False,
     file_extensions: Optional[List[str]] = None,
     concurrency: Optional[int] = None,
