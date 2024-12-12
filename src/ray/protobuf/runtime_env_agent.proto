@@ -31,6 +31,10 @@ message GetOrCreateRuntimeEnvRequest {
   /// For details, checkout "//src/ray/common/id.h".
   bytes job_id = 3;
   string source_process = 4;
+
+  /// A UUID used to indicate a unique context for physical mode execution in control of memory.
+  /// The UUID should be the same as [DeleteRuntimeEnvIfPossibleRequest].
+  string physical_mode_execution_context_memory_uuid = 5;
 }
 
 message GetOrCreateRuntimeEnvReply {
@@ -45,6 +49,10 @@ message DeleteRuntimeEnvIfPossibleRequest {
   /// Json serialized [RuntimeEnv].
   string serialized_runtime_env = 1;
   string source_process = 2;
+
+  /// A UUID used to indicate a unique context for physical mode execution in control of memory.
+  /// The UUID should be the same as [GetOrCreateRuntimeEnvRequest].
+  string physical_mode_execution_context_memory_uuid = 3;
 }
 
 message DeleteRuntimeEnvIfPossibleReply {
