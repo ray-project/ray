@@ -261,6 +261,13 @@ def aiohttp_cache(
 
 
 def is_browser_request(req: Request) -> bool:
+    """Checks if a request is made by a browser like user agent.
+
+    This heuristic is very weak, but hard for a browser to bypass- eg,
+    fetch/xhr and friends cannot alter the user-agent, but requests made with
+    an http library can stumble into this if they choose to user a browser like
+    user agent.
+    """
     return req.headers["User-Agent"].startswith("Mozilla")
 
 
