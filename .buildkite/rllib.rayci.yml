@@ -51,7 +51,7 @@ steps:
 
   - label: ":brain: rllib: examples"
     tags: rllib
-    parallelism: 5
+    parallelism: 6
     instance_type: large
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //rllib/... rllib

@@ -1456,13 +1456,6 @@ py_test(
 )
 
 py_test(
-    name = "test_models",
-    tags = ["team:rllib", "models"],
-    size = "medium",
-    srcs = ["models/tests/test_models.py"]
-)
-
-py_test(
     name = "test_preprocessors",
     tags = ["team:rllib", "models"],
     size = "medium",
@@ -1978,34 +1971,6 @@ py_test(
 # ----------------------
 # Old API stack examples
 # ----------------------
-# subdirectory: _old_api_stack/
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_tf",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=tf"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_tf_eager",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=tf2"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_torch",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=torch"],
-)
-
 # subdirectory: _old_api_stack/connectors/
 py_test(
     name = "examples/_old_api_stack/connectors/run_connector_policy",
@@ -2023,25 +1988,6 @@ py_test(
     srcs = ["examples/_old_api_stack/connectors/run_connector_policy.py"],
     args = ["--use-lstm"],
 )
-
-py_test(
-    name = "examples/_old_api_stack/connectors/adapt_connector_policy",
-    main = "examples/_old_api_stack/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/connectors/adapt_connector_policy.py"],
-)
-
-# py_test(
-#     name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
-#     main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
-#     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-#     size = "small",
-#     srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
-#     args = [
-#         "--train_iteration=1"  # Smoke test.
-#     ]
-# )
 
 # ----------------------
 # New API stack
@@ -2633,26 +2579,6 @@ py_test(
 
 #@OldAPIStack
 py_test(
-    name = "examples/inference/policy_inference_after_training_with_attention_tf",
-    main = "examples/inference/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/inference/policy_inference_after_training_with_attention_torch",
-    main = "examples/inference/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=torch"]
-)
-
-#@OldAPIStack
-py_test(
     name = "examples/inference/policy_inference_after_training_with_lstm_tf",
     main = "examples/inference/policy_inference_after_training_with_lstm.py",
     tags = ["team:rllib", "exclusive", "examples"],
@@ -2895,17 +2821,6 @@ py_test(
 #     srcs = ["examples/offline_rl/pretrain_bc_single_agent_evaluate_as_multi_agent.py"],
 #     data = ["tests/data/cartpole/large.json"],
 #     args = ["--as-test"]
-# )
-
-#@OldAPIStack
-# TODO (sven): Doesn't seem to learn at the moment. Uncomment once fixed.
-# py_test(
-#    name = "examples/offline_rl/custom_input_api_cql_torch",
-#    main = "examples/offline_rl/custom_input_api.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/offline_rl/custom_input_api.py"],
-#    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
 # )
 
 #@OldAPIStack
