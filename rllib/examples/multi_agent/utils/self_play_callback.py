@@ -19,20 +19,25 @@ class SelfPlayCallback(DefaultCallbacks):
         # Report the matchup counters (who played against whom?).
         self._matching_stats = defaultdict(int)
 
+    def on_episode_end(
+        self,
+        *,
+        episode,
+        env_runner,
+        metrics_logger,
+        env,
+        env_index,
+        rl_module,
+        **kwargs,
+    ) -> None:
+        # Compute the win rate for this episode and log it with a window of 100.
+        main_agent = 0 if episode.module_for(0) == "main" else 1
+        main_won = episode.get_rewards()[main_agent][-1] == 1.0
+        metrics_logger.log_value("main_agent_won", main_won)
+        print("here")
+
     def on_train_result(self, *, algorithm, metrics_logger=None, result, **kwargs):
-        # Get the win rate for the train batch.
-        # Note that normally, one should set up a proper evaluation config,
-        # such that evaluation always happens on the already updated policy,
-        # instead of on the already used train_batch.
-        main_rew = result[ENV_RUNNER_RESULTS]["hist_stats"].pop("policy_main_reward")
-        opponent_rew = list(result[ENV_RUNNER_RESULTS]["hist_stats"].values())[0]
-        assert len(main_rew) == len(opponent_rew)
-        won = 0
-        for r_main, r_opponent in zip(main_rew, opponent_rew):
-            if r_main > r_opponent:
-                won += 1
-        win_rate = won / len(main_rew)
-        result["win_rate"] = win_rate
+        win_rate = result[ENV_RUNNER_RESULTS]["win_rate"]
         print(f"Iter={algorithm.iteration} win-rate={win_rate} -> ", end="")
         # If win rate is good -> Snapshot current policy and play against
         # it next, keeping the snapshot fixed and only improving the "main"
