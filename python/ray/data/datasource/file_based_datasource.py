@@ -88,9 +88,9 @@ class FileShuffleConfig:
         >>> ctx.execution_options.preserve_order = True
 
         >>> def write_parquet_file(path, file_index):
-        >>>    # Create a dummy dataset with unique data for each file
-        >>> data = {'col1': range(10 * file_index, 10 * (file_index + 1)),
-        >>>          'col2': ['foo', 'bar'] * 5}
+        >>>     # Create a dummy dataset with unique data for each file
+        >>>     data = {'col1': range(10 * file_index, 10 * (file_index + 1)),
+        >>>              'col2': ['foo', 'bar'] * 5}
         >>>     table = pa.Table.from_pydict(data)
         >>>     pq.write_table(table, path)
         >>> current_dir = Path(os.getcwd())
