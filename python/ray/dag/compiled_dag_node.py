@@ -1583,7 +1583,7 @@ class CompiledDAG:
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
-                concurrency_group="_ray_system"
+                concurrency_group=None
             ).remote(
                 exec_task_func,
                 executable_tasks,
