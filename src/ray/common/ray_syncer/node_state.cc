@@ -24,6 +24,7 @@ NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 void NodeState::SetRayletCompletedRpcCallbackForOnce(
     RayletCompletedRpcCallback on_raylet_rpc_completion) {
   RAY_CHECK(on_raylet_rpc_completion);
+  RAY_CHECK(!on_raylet_rpc_completion_);
   on_raylet_rpc_completion_ = std::move(on_raylet_rpc_completion);
 }
 
