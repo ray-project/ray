@@ -211,7 +211,7 @@ struct SyncerServerTest {
 
   SyncerServerTest(std::string port,
                    NodeID node_id,
-                   SuccessfulRpcCallback ray_sync_observer)
+                   RpcCompletionCallback ray_sync_observer)
       : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
@@ -432,9 +432,9 @@ class SyncerTest : public ::testing::Test {
 
   SyncerServerTest &MakeServer(std::string port,
                                NodeID node_id,
-                               SuccessfulRpcCallback on_rpc_success) {
+                               RpcCompletionCallback on_rpc_completion) {
     servers.emplace_back(std::make_unique<SyncerServerTest>(
-        port, std::move(node_id), std::move(on_rpc_success)));
+        port, std::move(node_id), std::move(on_rpc_completion)));
     return *servers.back();
   }
 

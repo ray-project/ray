@@ -86,10 +86,10 @@ class RaySyncer {
   ///
   /// \param io_context The io context for this component.
   /// \param node_id The id of current node.
-  /// \param on_rpc_success A callback which invokes after a sync rpc succeeds.
+  /// \param on_rpc_completion A callback which invokes after a sync rpc succeeds.
   RaySyncer(instrumented_io_context &io_context,
             const std::string &node_id,
-            SuccessfulRpcCallback on_rpc_success = {});
+            RpcCompletionCallback on_rpc_completion = {});
   ~RaySyncer();
 
   /// Connect to a node.
@@ -173,7 +173,7 @@ class RaySyncer {
 
   /// Sync message observer, which is a callback on received message response for
   /// [RaySyncerBidiReactor], so should be passed to each of them.
-  SuccessfulRpcCallback on_rpc_success_;
+  RpcCompletionCallback on_rpc_completion_;
 
   friend class RaySyncerService;
   /// Test purpose

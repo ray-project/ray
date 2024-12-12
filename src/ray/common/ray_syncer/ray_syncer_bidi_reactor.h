@@ -96,10 +96,10 @@ class RaySyncerBidiReactor {
 
   /// Set rpc completion callback, which is called after rpc read finishes.
   /// This function is expected to call only once, repeated invocations throws exception.
-  void SetSuccessfulRpcCallbackForOnce(SuccessfulRpcCallback on_rpc_success) {
-    RAY_CHECK(on_rpc_success);
-    RAY_CHECK(!on_rpc_success_);
-    on_rpc_success_ = std::move(on_rpc_success);
+  void SetRpcCompletionCallbackForOnce(RpcCompletionCallback on_rpc_completion) {
+    RAY_CHECK(on_rpc_completion);
+    RAY_CHECK(!on_rpc_completion_);
+    on_rpc_completion_ = std::move(on_rpc_completion);
   }
 
   /// Return true if it's disconnected.
@@ -109,7 +109,7 @@ class RaySyncerBidiReactor {
 
  protected:
   /// Sync message observer, which is a callback on received message response.
-  SuccessfulRpcCallback on_rpc_success_;
+  RpcCompletionCallback on_rpc_completion_;
 
  private:
   virtual void DoDisconnect() = 0;
