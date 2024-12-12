@@ -1957,7 +1957,12 @@ class CompiledDAG:
 
             def run(self):
                 try:
-                    ray.get(list(outer.worker_task_refs.values()))
+                    waiting_refs = list(outer.worker_task_refs.values())
+                    while waiting_refs:
+                        ready_refs, waiting_refs = ray.wait(
+                            waiting_refs, num_returns=10
+                        )
+                        ray.get(ready_refs)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
