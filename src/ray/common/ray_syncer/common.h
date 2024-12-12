@@ -32,6 +32,6 @@ inline constexpr size_t kComponentArraySize =
 //
 // A callback, which is called whenever a rpc completes between the current process and
 // raylet, which represents the node.
-using RayletCompletedRpcCallback = std::function<void(const NodeID &)>;
+using CompletedRpcCallback = std::function<void(const NodeID &)>;
 
 }  // namespace ray::syncer

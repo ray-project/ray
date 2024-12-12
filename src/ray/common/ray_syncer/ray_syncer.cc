@@ -111,6 +111,11 @@ void RaySyncer::Connect(const std::string &node_id,
 }
 
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
+  // Bind rpc completion callback.
+  if (on_rpc_completion_) {
+    reactor->SetCompletedRpcCallbackForOnce(on_rpc_completion_);
+  }
+
   boost::asio::dispatch(
       io_context_.get_executor(), std::packaged_task<void()>([this, reactor]() {
         auto [_, is_new] = sync_reactors_.emplace(reactor->GetRemoteNodeID(), reactor);
@@ -147,9 +152,10 @@ void RaySyncer::Disconnect(const std::string &node_id) {
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
-void RaySyncer::SetRayletCompletedRpcCallbackForOnce(
-    RayletCompletedRpcCallback on_raylet_rpc_completion) {
-  node_state_->SetRayletCompletedRpcCallbackForOnce(std::move(on_raylet_rpc_completion));
+void RaySyncer::SetCompletedRpcCallbackForOnce(CompletedRpcCallback on_rpc_completion) {
+  RAY_CHECK(on_rpc_completion);
+  RAY_CHECK(!on_rpc_completion_);
+  on_rpc_completion_ = std::move(on_rpc_completion);
 }
 
 void RaySyncer::Register(MessageType message_type,
@@ -215,7 +221,8 @@ ServerBidiReactor *RaySyncerService::StartSync(grpc::CallbackServerContext *cont
       context,
       syncer_.GetIOContext(),
       syncer_.GetLocalNodeID(),
-      [this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*message_processor=*/[this](auto msg) mutable { syncer_.BroadcastMessage(msg); },
+      /*cleanup_cb=*/
       [this](RaySyncerBidiReactor *reactor, bool reconnect) mutable {
         // No need to reconnect for server side.
         RAY_CHECK(!reconnect);

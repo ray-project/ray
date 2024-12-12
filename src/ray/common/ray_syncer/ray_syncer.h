@@ -147,8 +147,7 @@ class RaySyncer {
 
   /// Set the observer callable for sync message response for once.
   /// This function is expected to call only once, repeated invocations throws exception.
-  void SetRayletCompletedRpcCallbackForOnce(
-      RayletCompletedRpcCallback on_raylet_rpc_completion);
+  void SetCompletedRpcCallbackForOnce(CompletedRpcCallback on_rpc_completion);
 
  private:
   void Connect(RaySyncerBidiReactor *connection);
@@ -172,6 +171,10 @@ class RaySyncer {
 
   /// Timer is used to do broadcasting.
   std::shared_ptr<PeriodicalRunner> timer_;
+
+  /// Sync message observer, which is a callback on received message response for
+  /// [RaySyncerBidiReactor], so should be passed to each of them.
+  CompletedRpcCallback on_rpc_completion_;
 
   friend class RaySyncerService;
   /// Test purpose

@@ -21,13 +21,6 @@ namespace ray::syncer {
 
 NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 
-void NodeState::SetRayletCompletedRpcCallbackForOnce(
-    RayletCompletedRpcCallback on_raylet_rpc_completion) {
-  RAY_CHECK(on_raylet_rpc_completion);
-  RAY_CHECK(!on_raylet_rpc_completion_);
-  on_raylet_rpc_completion_ = std::move(on_raylet_rpc_completion);
-}
-
 bool NodeState::SetComponent(MessageType message_type,
                              const ReporterInterface *reporter,
                              ReceiverInterface *receiver) {
@@ -74,9 +67,6 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   }
 
   current = message;
-  if (on_raylet_rpc_completion_) {
-    on_raylet_rpc_completion_(NodeID::FromBinary(message->node_id()));
-  }
   auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {
     RAY_LOG(DEBUG).WithField(NodeID::FromBinary(message->node_id()))

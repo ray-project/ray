@@ -75,11 +75,6 @@ class NodeState {
   /// \return true if the local node doesn't have message with newer version.
   bool ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message);
 
-  /// Set the observer callable for sync message response for once.
-  /// This function is expected to call only once, repeated invocations throws exception.
-  void SetRayletCompletedRpcCallbackForOnce(
-      RayletCompletedRpcCallback on_raylet_rpc_completion);
-
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
       std::string,
@@ -105,12 +100,6 @@ class NodeState {
       std::string,
       std::array<std::shared_ptr<const RaySyncMessage>, kComponentArraySize>>
       cluster_view_;
-
-  /// Sync message observer, which is a callback on received message response.
-  ///
-  /// As of now we only have one single usage for health check status update, update to
-  /// vector if we have more observers.
-  RayletCompletedRpcCallback on_raylet_rpc_completion_;
 };
 
 }  // namespace ray::syncer
