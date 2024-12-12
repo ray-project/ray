@@ -14,11 +14,15 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include <algorithm>
+#include <boost/range/adaptor/reversed.hpp>
 #include <cstddef>
+#include <stdexcept>
 
 #include "absl/strings/match.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
+#include "src/ray/common/id.h"
 
 namespace ray {
 namespace gcs {
@@ -357,6 +361,37 @@ void GcsTaskManager::GcsTaskManagerStorage::AddOrReplaceTaskEvent(
   }
 }
 
+template <typename T>
+bool apply_predicate(const T &lhs, rpc::FilterPredicate predicate, const T &rhs) {
+  switch (predicate) {
+  case rpc::FilterPredicate::EQUAL:
+    return lhs == rhs;
+  case rpc::FilterPredicate::NOT_EQUAL:
+    return lhs != rhs;
+  default:
+    RAY_LOG(ERROR) << "Unknown filter predicate: " << rpc::FilterPredicate_Name(predicate)
+                   << ". Supported predicates are '=' and '!='.";
+    throw std::invalid_argument("Unknown filter predicate: " +
+                                rpc::FilterPredicate_Name(predicate));
+  }
+}
+
+bool apply_predicate_ignore_case(std::string_view lhs,
+                                 rpc::FilterPredicate predicate,
+                                 std::string_view rhs) {
+  switch (predicate) {
+  case rpc::FilterPredicate::EQUAL:
+    return absl::EqualsIgnoreCase(lhs, rhs);
+  case rpc::FilterPredicate::NOT_EQUAL:
+    return !absl::EqualsIgnoreCase(lhs, rhs);
+  default:
+    RAY_LOG(ERROR) << "Unknown filter predicate: " << rpc::FilterPredicate_Name(predicate)
+                   << ". Supported predicates are '=' and '!='.";
+    throw std::invalid_argument("Unknown filter predicate: " +
+                                rpc::FilterPredicate_Name(predicate));
+  }
+}
+
 void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::GetTaskEventsReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
@@ -372,18 +407,31 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         task_ids.insert(TaskID::FromBinary(task_filter_obj.task_id()));
       }
     }
-    if (!task_ids.empty()) {
+    if (task_ids.size() == 1) {
       task_events = task_event_storage_->GetTaskEvents(task_ids);
+    } else if (task_ids.size() > 1) {
+      task_events = std::vector<rpc::TaskEvents>();
     }
-  } else if (filters.has_job_filter() &&
-             filters.job_filter().predicate() == rpc::FilterPredicate::EQUAL) {
-    const auto job_id = JobID::FromBinary(filters.job_filter().job_id());
-    task_events = task_event_storage_->GetTaskEvents(job_id);
-    // Populate per-job data loss.
-    if (task_event_storage_->HasJob(job_id)) {
-      const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
-      reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
-      reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+  } else if (filters.job_filters_size() > 0) {
+    absl::flat_hash_set<JobID> job_ids;
+    for (const auto &job_filter_obj : filters.job_filters()) {
+      if (job_filter_obj.predicate() == rpc::FilterPredicate::EQUAL) {
+        job_ids.insert(JobID::FromBinary(job_filter_obj.job_id()));
+      }
+    }
+
+    if (job_ids.size() == 1) {
+      JobID job_id = *job_ids.begin();
+      task_events = task_event_storage_->GetTaskEvents(job_id);
+
+      // Populate per-job data loss.
+      if (task_event_storage_->HasJob(job_id)) {
+        const auto &job_summary = task_event_storage_->GetJobTaskSummary(job_id);
+        reply->set_num_profile_task_events_dropped(job_summary.NumProfileEventsDropped());
+        reply->set_num_status_task_events_dropped(job_summary.NumTaskAttemptsDropped());
+      }
+    } else if (job_ids.size() > 1) {
+      task_events = std::vector<rpc::TaskEvents>();
     }
   }
 
@@ -418,46 +466,57 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
     }
 
     if (filters.task_filters_size() > 0) {
-      for (const auto &task_filter_obj : filters.task_filters()) {
-        if (task_filter_obj.predicate() == rpc::FilterPredicate::NOT_EQUAL &&
-            TaskID::FromBinary(task_event.task_id()) ==
-                TaskID::FromBinary(task_filter_obj.task_id())) {
-          return false;
-        }
+      if (!std::all_of(filters.task_filters().begin(),
+                       filters.task_filters().end(),
+                       [&task_event](const auto &task_filter) {
+                         return apply_predicate(
+                             TaskID::FromBinary(task_event.task_id()),
+                             task_filter.predicate(),
+                             TaskID::FromBinary(task_filter.task_id()));
+                       })) {
+        return false;
       }
     }
 
-    if (filters.has_job_filter() &&
-        ((filters.job_filter().predicate() == rpc::FilterPredicate::EQUAL &&
-          JobID::FromBinary(task_event.task_info().job_id()) !=
-              JobID::FromBinary(filters.job_filter().job_id())) ||
-         (filters.job_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
-          JobID::FromBinary(task_event.task_info().job_id()) ==
-              JobID::FromBinary(filters.job_filter().job_id())))) {
-      return false;
+    if (filters.job_filters_size() > 0) {
+      if (!std::all_of(filters.job_filters().begin(),
+                       filters.job_filters().end(),
+                       [&task_event](const auto &job_filter) {
+                         return apply_predicate(
+                             JobID::FromBinary(task_event.task_info().job_id()),
+                             job_filter.predicate(),
+                             JobID::FromBinary(job_filter.job_id()));
+                       })) {
+        return false;
+      }
     }
 
-    if (filters.has_actor_filter() && task_event.task_info().has_actor_id() &&
-        ((filters.actor_filter().predicate() == rpc::FilterPredicate::EQUAL &&
-          ActorID::FromBinary(task_event.task_info().actor_id()) !=
-              ActorID::FromBinary(filters.actor_filter().actor_id())) ||
-         (filters.actor_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
-          ActorID::FromBinary(task_event.task_info().actor_id()) ==
-              ActorID::FromBinary(filters.actor_filter().actor_id())))) {
-      return false;
+    if (filters.actor_filters_size() > 0) {
+      if (!std::all_of(filters.actor_filters().begin(),
+                       filters.actor_filters().end(),
+                       [&task_event](const auto &actor_filter) {
+                         return apply_predicate(
+                             ActorID::FromBinary(task_event.task_info().actor_id()),
+                             actor_filter.predicate(),
+                             ActorID::FromBinary(actor_filter.actor_id()));
+                       })) {
+        return false;
+      }
     }
 
-    if (filters.has_name_filter() &&
-        ((filters.name_filter().predicate() == rpc::FilterPredicate::EQUAL &&
-          !absl::EqualsIgnoreCase(task_event.task_info().name(),
-                                  filters.name_filter().name())) ||
-         (filters.name_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
-          absl::EqualsIgnoreCase(task_event.task_info().name(),
-                                 filters.name_filter().name())))) {
-      return false;
+    if (filters.task_name_filters_size() > 0) {
+      if (!std::all_of(filters.task_name_filters().begin(),
+                       filters.task_name_filters().end(),
+                       [&task_event](const auto &task_name_filter) {
+                         return apply_predicate_ignore_case(task_event.task_info().name(),
+                                                            task_name_filter.predicate(),
+                                                            task_name_filter.task_name());
+                       })) {
+        return false;
+      }
     }
 
-    if (filters.has_state_filter()) {
+    if (filters.state_filters_size() > 0) {
       const google::protobuf::EnumDescriptor *task_status_descriptor =
           ray::rpc::TaskStatus_descriptor();
 
@@ -474,14 +533,14 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
         }
       }
 
-      if ((filters.state_filter().predicate() == rpc::FilterPredicate::EQUAL &&
-           !absl::EqualsIgnoreCase(
-               filters.state_filter().state(),
-               task_status_descriptor->FindValueByNumber(state)->name())) ||
-          (filters.state_filter().predicate() == rpc::FilterPredicate::NOT_EQUAL &&
-           absl::EqualsIgnoreCase(
-               filters.state_filter().state(),
-               task_status_descriptor->FindValueByNumber(state)->name()))) {
+      if (!std::all_of(filters.state_filters().begin(),
+                       filters.state_filters().end(),
+                       [&state, &task_status_descriptor](const auto &state_filter) {
+                         return apply_predicate_ignore_case(
+                             task_status_descriptor->FindValueByNumber(state)->name(),
+                             state_filter.predicate(),
+                             state_filter.state());
+                       })) {
         return false;
       }
     }
@@ -490,35 +549,43 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
   };
 
   int64_t num_filtered = 0;
-  for (auto itr = task_events->rbegin(); itr != task_events->rend(); ++itr) {
-    auto &task_event = *itr;
-    if (!filter_fn(task_event)) {
-      num_filtered++;
-      continue;
+  Status status = Status::OK();
+  try {
+    for (auto &task_event : *task_events | boost::adaptors::reversed) {
+      if (!filter_fn(task_event)) {
+        num_filtered++;
+        continue;
+      }
+
+      if (limit < 0 || count++ < limit) {
+        auto events = reply->add_events_by_task();
+        events->Swap(&task_event);
+      } else {
+        num_profile_event_limit += task_event.has_profile_events()
+                                       ? task_event.profile_events().events_size()
+                                       : 0;
+        num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
+        num_limit_truncated++;
+      }
     }
 
-    if (limit < 0 || count++ < limit) {
-      auto events = reply->add_events_by_task();
-      events->Swap(&task_event);
-    } else {
-      num_profile_event_limit +=
-          task_event.has_profile_events() ? task_event.profile_events().events_size() : 0;
-      num_status_event_limit += task_event.has_state_updates() ? 1 : 0;
-      num_limit_truncated++;
-    }
+    // Take into account truncation.
+    reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
+                                               num_profile_event_limit);
+    reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
+                                              num_status_event_limit);
+
+    reply->set_num_total_stored(task_events->size());
+    reply->set_num_truncated(num_limit_truncated);
+    reply->set_num_filtered_on_gcs(num_filtered);
+
+  } catch (std::invalid_argument &e) {
+    // When encounter invalid filter predicate
+    status = Status::InvalidArgument(e.what());
+    reply->Clear();
   }
 
-  // Take into account truncation.
-  reply->set_num_profile_task_events_dropped(reply->num_profile_task_events_dropped() +
-                                             num_profile_event_limit);
-  reply->set_num_status_task_events_dropped(reply->num_status_task_events_dropped() +
-                                            num_status_event_limit);
-
-  reply->set_num_total_stored(task_events->size());
-  reply->set_num_truncated(num_limit_truncated);
-  reply->set_num_filtered_on_gcs(num_filtered);
-
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   return;
 }
 

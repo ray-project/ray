@@ -772,7 +772,6 @@ message AddTaskEventDataReply {
 message GetTaskEventsRequest {
   // Filter object where predicates are AND together.
   message Filters {
-
     // The filter to filter on the job id of a task.
     message JobIdFilter {
       // The prediate of the filter.
@@ -781,7 +780,7 @@ message GetTaskEventsRequest {
       bytes job_id = 2;
     }
 
-    // The filter to filter on the task id.
+    // The filter to filter on the task id of a task.
     message TaskIdFilter {
       // The prediate of the filter.
       FilterPredicate predicate = 1;
@@ -789,7 +788,7 @@ message GetTaskEventsRequest {
       bytes task_id = 2;
     }
 
-    // The filter to filter on the actor id of a task.   
+    // The filter to filter on the actor id of a task.
     message ActorIdFilter {
       // The prediate of the filter.
       FilterPredicate predicate = 1;
@@ -798,11 +797,11 @@ message GetTaskEventsRequest {
     }
 
     // The filter to filer on the task name.
-    message NameFilter {
+    message TaskNameFilter {
       // The predicate of the filter.
       FilterPredicate predicate = 1;
       // The task name to filter on.
-      string name = 2;
+      string task_name = 2;
     }
 
     // The filter to filter on the latest state of a task.
@@ -813,18 +812,18 @@ message GetTaskEventsRequest {
       string state = 2;
     }
 
-    // Task events filter by a job id.
-    optional JobIdFilter job_filter = 1;
-    // Task events filter by a set of task filters.
+    // Task events filter by job ids
+    repeated JobIdFilter job_filters = 1;
+    // Task events filter by task ids
     repeated TaskIdFilter task_filters = 2;
-    // Task events filter by an actor id.
-    optional ActorIdFilter actor_filter = 3;
-    // Task events filter by a task name.
-    optional NameFilter name_filter = 4;
+    // Task events filter by actor ids
+    repeated ActorIdFilter actor_filters = 3;
+    // Task events filter by task names.
+    repeated TaskNameFilter task_name_filters = 4;
     // True if task events from driver (only profiling events) should be excluded.
     optional bool exclude_driver = 5;
-    // Task events filter by a certain state.
-    optional StateFilter state_filter = 6;
+    // Task events filter by certain states.
+    repeated StateFilter state_filters = 6;
   }
 
   // Maximum number of TaskEvents to return.
