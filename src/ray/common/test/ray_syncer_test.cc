@@ -26,7 +26,10 @@
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
 
+#include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
 #include "mock/ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
@@ -98,6 +101,7 @@ class RaySyncerTest : public ::testing::Test {
 
   void TearDown() override {
     work_guard_->reset();
+    io_context_.stop();
     thread_->join();
   }
 
@@ -501,17 +505,13 @@ TEST_F(SyncerTest, Test1To1) {
   std::mt19937 gen(rd());
   std::uniform_int_distribution<> rand_sleep(0, 10000);
   std::uniform_int_distribution<> choose_component(0, kTestComponents - 1);
-  size_t s1_updated = 0;
-  size_t s2_updated = 0;
 
   auto start = steady_clock::now();
   for (int i = 0; i < 10000; ++i) {
     if (choose_component(gen) == 0) {
       s1.local_versions[0]++;
-      ++s1_updated;
     } else {
       s2.local_versions[choose_component(gen)]++;
-      ++s2_updated;
     }
     if (rand_sleep(gen) < 5) {
       std::this_thread::sleep_for(1s);
@@ -542,30 +542,30 @@ TEST_F(SyncerTest, Test1To1) {
 
 TEST_F(SyncerTest, Reconnect) {
   // This test is to check reconnect works.
-  // Firstly
-  //    s1 -> s3
-  // Then,
-  //    s2 -> s3
-  // And we need to ensure s3 is connecting to s2
-
   auto &s1 = MakeServer("19990");
   auto &s2 = MakeServer("19991");
-  auto &s3 = MakeServer("19992");
 
-  s1.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
+  s1.syncer->Connect(s2.syncer->GetLocalNodeID(), MakeChannel("19991"));
 
   // Make sure the setup is correct
   ASSERT_TRUE(s1.WaitUntil(
       [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
       5));
-
-  ASSERT_TRUE(s1.WaitUntil(
-      [&s3]() { return s3.syncer->sync_reactors_.size() == 1 && s3.snapshot_taken == 1; },
-      5));
-  s2.syncer->Connect(s3.syncer->GetLocalNodeID(), MakeChannel("19992"));
-
-  ASSERT_TRUE(s1.WaitUntil(
+  ASSERT_TRUE(s2.WaitUntil(
       [&s2]() { return s2.syncer->sync_reactors_.size() == 1 && s2.snapshot_taken == 1; },
+      5));
+
+  s1.syncer->Disconnect(s2.syncer->GetLocalNodeID());
+  s1.syncer->Connect(s2.syncer->GetLocalNodeID(), MakeChannel("19991"));
+  ASSERT_TRUE(s1.WaitUntil(
+      [&s1]() { return s1.syncer->sync_reactors_.size() == 1 && s1.snapshot_taken == 1; },
+      5));
+
+  s1.local_versions[0] = 1;
+  ASSERT_TRUE(s2.WaitUntil(
+      [&s2, node_id = s1.syncer->GetLocalNodeID()]() {
+        return s2.received_versions[node_id][0] == 1;
+      },
       5));
 }
 
@@ -789,7 +789,7 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
   MockRaySyncerService(
       instrumented_io_context &_io_context,
       std::function<void(std::shared_ptr<const RaySyncMessage>)> _message_processor,
-      std::function<void(const std::string &, bool)> _cleanup_cb)
+      std::function<void(RaySyncerBidiReactor *reactor, bool)> _cleanup_cb)
       : message_processor(_message_processor),
         cleanup_cb(_cleanup_cb),
         node_id(NodeID::FromRandom()),
@@ -802,7 +802,7 @@ struct MockRaySyncerService : public ray::rpc::syncer::RaySyncer::CallbackServic
   }
 
   std::function<void(std::shared_ptr<const RaySyncMessage>)> message_processor;
-  std::function<void(const std::string &, bool)> cleanup_cb;
+  std::function<void(RaySyncerBidiReactor *reactor, bool)> cleanup_cb;
   NodeID node_id;
   instrumented_io_context &io_context;
   RayServerBidiReactor *reactor = nullptr;
@@ -814,8 +814,8 @@ class SyncerReactorTest : public ::testing::Test {
     rpc_service_ = std::make_unique<MockRaySyncerService>(
         io_context_,
         [this](auto msg) { server_received_message.set_value(msg); },
-        [this](auto &node, bool restart) {
-          server_cleanup.set_value(std::make_pair(node, restart));
+        [this](RaySyncerBidiReactor *reactor, bool restart) {
+          server_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), restart));
         });
     grpc::ServerBuilder builder;
     builder.AddListeningPort("0.0.0.0:18990", grpc::InsecureServerCredentials());
@@ -825,16 +825,17 @@ class SyncerReactorTest : public ::testing::Test {
     client_node_id = NodeID::FromRandom();
     cli_channel = MakeChannel("18990");
     auto cli_stub = ray::rpc::syncer::RaySyncer::NewStub(cli_channel);
-    cli_reactor = std::make_unique<RayClientBidiReactor>(
-                      rpc_service_->node_id.Binary(),
-                      client_node_id.Binary(),
-                      io_context_,
-                      [this](auto msg) { client_received_message.set_value(msg); },
-                      [this](const std::string &n, bool r) {
-                        client_cleanup.set_value(std::make_pair(n, r));
-                      },
-                      std::move(cli_stub))
-                      .release();
+    cli_reactor =
+        std::make_unique<RayClientBidiReactor>(
+            rpc_service_->node_id.Binary(),
+            client_node_id.Binary(),
+            io_context_,
+            [this](auto msg) { client_received_message.set_value(msg); },
+            [this](RaySyncerBidiReactor *reactor, bool r) {
+              client_cleanup.set_value(std::make_pair(reactor->GetRemoteNodeID(), r));
+            },
+            std::move(cli_stub))
+            .release();
     cli_reactor->StartCall();
 
     work_guard_ = std::make_unique<work_guard_type>(io_context_.get_executor());

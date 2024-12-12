@@ -41,9 +41,11 @@ being achieved by a simple PPO policy (no tuning, just using RLlib's default set
 """
 
 from ray.rllib.connectors.env_to_module import FlattenObservations
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.examples.envs.classes.two_step_game import TwoStepGameWithGroupedAgents
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.examples.envs.classes.multi_agent.two_step_game import (
+    TwoStepGameWithGroupedAgents,
+)
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
     run_rllib_example_script_experiment,
@@ -79,9 +81,9 @@ if __name__ == "__main__":
             policy_mapping_fn=lambda aid, *a, **kw: "p0",
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs={
-                    "p0": SingleAgentRLModuleSpec(),
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs={
+                    "p0": RLModuleSpec(),
                 },
             )
         )

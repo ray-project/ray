@@ -1,26 +1,22 @@
 import abc
-
-from typing import TYPE_CHECKING
+from typing import Any, Dict, Optional
 
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
-    AddObservationsFromEpisodesToBatch,
-)
-from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
-    AddNextObservationsFromEpisodesToTrainBatch,
-)
+from ray.rllib.core.learner.utils import update_target_network
+from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
 from ray.rllib.utils.metrics import (
     LAST_TARGET_UPDATE_TS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
     NUM_TARGET_UPDATES,
 )
-from ray.rllib.utils.typing import ModuleID
+from ray.rllib.utils.typing import ModuleID, ShouldModuleBeUpdatedFn
 
-if TYPE_CHECKING:
-    from ray.rllib.algorithms.dqn.dqn import DQNConfig
 
 # Now, this is double defined: In `SACRLModule` and here. I would keep it here
 # or push it into the `Learner` as these are recurring keys in RL.
@@ -43,50 +39,66 @@ class DQNRainbowLearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
-        # Prepend a NEXT_OBS from episodes to train batch connector piece (right
-        # after the observation default piece).
-        if self.config.add_default_connectors_to_learner_pipeline:
-            self._learner_connector.insert_after(
-                AddObservationsFromEpisodesToBatch,
-                AddNextObservationsFromEpisodesToTrainBatch(),
-            )
 
-    @override(Learner)
-    def additional_update_for_module(
-        self, *, module_id: ModuleID, config: "DQNConfig", timestep: int, **kwargs
-    ) -> None:
-        """Updates the target Q Networks."""
-        super().additional_update_for_module(
-            module_id=module_id,
-            config=config,
-            timestep=timestep,
+        # Make target networks.
+        self.module.foreach_module(
+            lambda mid, mod: (
+                mod.make_target_networks()
+                if isinstance(mod, TargetNetworkAPI)
+                else None
+            )
         )
 
-        # TODO (Sven): APPO uses `config.target_update_frequency`. Can we
-        #  choose a standard here?
-        last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
-        if (
-            timestep - self.metrics.peek(last_update_ts_key, default=0)
-            >= config.target_network_update_freq
-        ):
-            self._update_module_target_networks(module_id, config)
-            # Increase lifetime target network update counter by one.
-            self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
-            # Update the (single-value -> window=1) last updated timestep metric.
-            self.metrics.log_value(last_update_ts_key, timestep, window=1)
+    @override(Learner)
+    def add_module(
+        self,
+        *,
+        module_id: ModuleID,
+        module_spec: RLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        marl_spec = super().add_module(
+            module_id=module_id,
+            module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
+        )
+        # Create target networks for added Module, if applicable.
+        if isinstance(self.module[module_id].unwrapped(), TargetNetworkAPI):
+            self.module[module_id].unwrapped().make_target_networks()
+        return marl_spec
 
-    @abc.abstractmethod
-    def _update_module_target_networks(
-        self, module_id: ModuleID, config: "DQNConfig"
-    ) -> None:
-        """Update the target Q network(s) of each module with the current Q network.
+    @override(Learner)
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Updates the target Q Networks."""
+        super().after_gradient_based_update(timesteps=timesteps)
 
-        The update is made via Polyak averaging.
+        timestep = timesteps.get(NUM_ENV_STEPS_SAMPLED_LIFETIME, 0)
 
-        Args:
-            module_id: The module ID whose target Q network(s) should be updated.
-            config: The `AlgorithmConfig` specific in the given `module_id`.
-        """
+        # TODO (sven): Maybe we should have a `after_gradient_based_update`
+        #  method per module?
+        for module_id, module in self.module._rl_modules.items():
+            config = self.config.get_config_for_module(module_id)
+            last_update_ts_key = (module_id, LAST_TARGET_UPDATE_TS)
+            if timestep - self.metrics.peek(
+                last_update_ts_key, default=0
+            ) >= config.target_network_update_freq and isinstance(
+                module.unwrapped(), TargetNetworkAPI
+            ):
+                for (
+                    main_net,
+                    target_net,
+                ) in module.unwrapped().get_target_network_pairs():
+                    update_target_network(
+                        main_net=main_net,
+                        target_net=target_net,
+                        tau=config.tau,
+                    )
+                # Increase lifetime target network update counter by one.
+                self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
+                # Update the (single-value -> window=1) last updated timestep metric.
+                self.metrics.log_value(last_update_ts_key, timestep, window=1)
 
     @abc.abstractmethod
     def _reset_noise(self) -> None:

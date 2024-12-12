@@ -13,6 +13,7 @@ from ray.data._internal.execution.util import locality_string
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.stats import StatsDict
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.types import ObjectRef
 
 
@@ -36,10 +37,14 @@ class OutputSplitter(PhysicalOperator):
         input_op: PhysicalOperator,
         n: int,
         equal: bool,
+        data_context: DataContext,
         locality_hints: Optional[List[NodeIdStr]] = None,
     ):
         super().__init__(
-            f"split({n}, equal={equal})", [input_op], target_max_block_size=None
+            f"split({n}, equal={equal})",
+            [input_op],
+            data_context,
+            target_max_block_size=None,
         )
         self._equal = equal
         # Buffer of bundles not yet assigned to output splits.
@@ -68,6 +73,15 @@ class OutputSplitter(PhysicalOperator):
             self._min_buffer_size = 0
         self._locality_hits = 0
         self._locality_misses = 0
+
+    def num_outputs_total(self) -> Optional[int]:
+        # OutputSplitter does not change the number of blocks,
+        # so we can return the number of blocks from the input op.
+        return self.input_dependencies[0].num_outputs_total()
+
+    def num_output_rows_total(self) -> Optional[int]:
+        # The total number of rows is the same as the number of input rows.
+        return self.input_dependencies[0].num_output_rows_total()
 
     def start(self, options: ExecutionOptions) -> None:
         super().start(options)

@@ -64,7 +64,7 @@ To write data to formats other than Parquet, read the :ref:`Input/Output referen
 
             ds.write_parquet("s3://my-bucket/my-folder")
 
-        Ray Data relies on PyArrow for authenticaion with Amazon S3. For more on how to configure
+        Ray Data relies on PyArrow to authenticate with Amazon S3. For more on how to configure
         your credentials to be compatible with PyArrow, see their
         `S3 Filesytem docs <https://arrow.apache.org/docs/python/filesystems.html#s3>`_.
 
@@ -147,7 +147,7 @@ number of output files, configure ``num_rows_per_file``.
 
 .. note::
 
-    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or 
+    ``num_rows_per_file`` is a hint, not a strict limit. Ray Data might write more or
     fewer rows to each file.
 
 .. testcode::
@@ -163,7 +163,7 @@ number of output files, configure ``num_rows_per_file``.
 .. testoutput::
     :options: +MOCK
 
-    ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']                                                          
+    ['0_000001_000000.csv', '0_000000_000000.csv', '0_000002_000000.csv']
 
 Converting Datasets to other Python libraries
 =============================================

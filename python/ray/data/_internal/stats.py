@@ -3,7 +3,7 @@ import logging
 import threading
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, fields
+from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Set, Tuple, Union
 from uuid import uuid4
 
@@ -12,7 +12,10 @@ import numpy as np
 import ray
 from ray.actor import ActorHandle
 from ray.data._internal.block_list import BlockList
-from ray.data._internal.execution.interfaces.op_runtime_metrics import OpRuntimeMetrics
+from ray.data._internal.execution.interfaces.op_runtime_metrics import (
+    MetricsGroup,
+    OpRuntimeMetrics,
+)
 from ray.data._internal.util import capfirst
 from ray.data.block import BlockMetadata
 from ray.data.context import DataContext
@@ -209,7 +212,7 @@ class _StatsActor:
         # Inputs-related metrics
         self.execution_metrics_inputs = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="inputs",
+                metrics_group=MetricsGroup.INPUTS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -217,7 +220,7 @@ class _StatsActor:
         # Outputs-related metrics
         self.execution_metrics_outputs = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="outputs",
+                metrics_group=MetricsGroup.OUTPUTS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -225,7 +228,7 @@ class _StatsActor:
         # Task-related metrics
         self.execution_metrics_tasks = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="tasks",
+                metrics_group=MetricsGroup.TASKS,
                 tag_keys=op_tags_keys,
             )
         )
@@ -233,7 +236,7 @@ class _StatsActor:
         # Object store memory-related metrics
         self.execution_metrics_obj_store_memory = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="obj_store_memory",
+                metrics_group=MetricsGroup.OBJECT_STORE_MEMORY,
                 tag_keys=op_tags_keys,
             )
         )
@@ -241,7 +244,7 @@ class _StatsActor:
         # Miscellaneous metrics
         self.execution_metrics_misc = (
             self._create_prometheus_metrics_for_execution_metrics(
-                metrics_group="misc",
+                metrics_group=MetricsGroup.MISC,
                 tag_keys=op_tags_keys,
             )
         )
@@ -264,15 +267,15 @@ class _StatsActor:
         )
 
     def _create_prometheus_metrics_for_execution_metrics(
-        self, metrics_group: str, tag_keys: Tuple[str, ...]
+        self, metrics_group: MetricsGroup, tag_keys: Tuple[str, ...]
     ) -> Dict[str, Gauge]:
         metrics = {}
-        for field in fields(OpRuntimeMetrics):
-            if not field.metadata.get("metrics_group") == metrics_group:
+        for metric in OpRuntimeMetrics.get_metrics():
+            if not metric.metrics_group == metrics_group:
                 continue
-            metric_name = f"data_{field.name}"
-            metric_description = field.metadata.get("description")
-            metrics[field.name] = Gauge(
+            metric_name = f"data_{metric.name}"
+            metric_description = metric.description
+            metrics[metric.name] = Gauge(
                 metric_name,
                 description=metric_description,
                 tag_keys=tag_keys,
@@ -374,39 +377,6 @@ class _StatsActor:
         self.iter_total_blocked_s.set(stats.iter_total_blocked_s.get(), tags)
         self.iter_user_s.set(stats.iter_user_s.get(), tags)
         self.iter_initialize_s.set(stats.iter_initialize_s.get(), tags)
-
-    def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
-        for operator_tag in operator_tags:
-            tags = self._create_tags(dataset_tag, operator_tag)
-            self.spilled_bytes.set(0, tags)
-            self.allocated_bytes.set(0, tags)
-            self.freed_bytes.set(0, tags)
-            self.current_bytes.set(0, tags)
-            self.output_bytes.set(0, tags)
-            self.output_rows.set(0, tags)
-            self.cpu_usage_cores.set(0, tags)
-            self.gpu_usage_cores.set(0, tags)
-
-            for prom_metric in self.execution_metrics_inputs.values():
-                prom_metric.set(0, tags)
-
-            for prom_metric in self.execution_metrics_outputs.values():
-                prom_metric.set(0, tags)
-
-            for prom_metric in self.execution_metrics_tasks.values():
-                prom_metric.set(0, tags)
-
-            for prom_metric in self.execution_metrics_obj_store_memory.values():
-                prom_metric.set(0, tags)
-
-            for prom_metric in self.execution_metrics_misc.values():
-                prom_metric.set(0, tags)
-
-    def clear_iteration_metrics(self, dataset_tag: str):
-        tags = self._create_tags(dataset_tag)
-        self.iter_total_blocked_s.set(0, tags)
-        self.iter_user_s.set(0, tags)
-        self.iter_initialize_s.set(0, tags)
 
     def register_dataset(self, job_id: str, dataset_tag: str, operator_tags: List[str]):
         self.datasets[dataset_tag] = {
@@ -596,18 +566,12 @@ class _StatsManager:
                 self._last_execution_stats[dataset_tag] = args
             self._start_thread_if_not_running()
 
-    def clear_execution_metrics(self, dataset_tag: str, operator_tags: List[str]):
+    def clear_last_execution_stats(self, dataset_tag: str):
+        # After dataset completes execution, remove cached execution stats.
+        # Marks the dataset as finished on job page's Ray Data Overview.
         with self._stats_lock:
             if dataset_tag in self._last_execution_stats:
                 del self._last_execution_stats[dataset_tag]
-
-        try:
-            self._stats_actor(
-                create_if_not_exists=False
-            ).clear_execution_metrics.remote(dataset_tag, operator_tags)
-        except Exception:
-            # Cluster may be shut down.
-            pass
 
     # Iteration methods
 
@@ -617,17 +581,14 @@ class _StatsManager:
         self._start_thread_if_not_running()
 
     def clear_iteration_metrics(self, dataset_tag: str):
+        # Delete the last iteration stats so that update thread will have
+        # a chance to terminate.
+        # Note we don't reset the actual metric values through the StatsActor
+        # since the value is essentially a counter value. See
+        # https://github.com/ray-project/ray/pull/48618 for more context.
         with self._stats_lock:
             if dataset_tag in self._last_iteration_stats:
                 del self._last_iteration_stats[dataset_tag]
-
-        try:
-            self._stats_actor(
-                create_if_not_exists=False
-            ).clear_iteration_metrics.remote(dataset_tag)
-        except Exception:
-            # Cluster may be shut down.
-            pass
 
     # Other methods
 

@@ -13,6 +13,7 @@ from ray.rllib.connectors.env_to_module.env_to_module_pipeline import (
 from ray.rllib.connectors.env_to_module.flatten_observations import (
     FlattenObservations,
 )
+from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
 from ray.rllib.connectors.env_to_module.prev_actions_prev_rewards import (
     PrevActionsPrevRewards,
 )
@@ -28,6 +29,7 @@ __all__ = [
     "BatchIndividualItems",
     "EnvToModulePipeline",
     "FlattenObservations",
+    "MeanStdFilter",
     "NumpyToTensor",
     "PrevActionsPrevRewards",
     "WriteObservationsToEpisodes",

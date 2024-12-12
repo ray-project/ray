@@ -1,4 +1,5 @@
 import os
+import sys
 import time
 from dataclasses import astuple, dataclass
 
@@ -9,10 +10,10 @@ import pytest
 
 import ray
 from ray.data import Dataset
-from ray.data._internal.arrow_block import ArrowBlockAccessor
+from ray.data._internal.arrow_block import ArrowBlockBuilder
+from ray.data._internal.datasource.csv_datasource import CSVDatasource
 from ray.data.block import BlockMetadata
 from ray.data.datasource import Datasource
-from ray.data.datasource.csv_datasource import CSVDatasource
 from ray.data.datasource.datasource import ReadTask
 from ray.data.tests.conftest import (
     CoreExecutionMetrics,
@@ -67,7 +68,7 @@ class RandomBytesDatasource(Datasource):
                             (self.num_rows_per_batch, self.row_size), dtype=np.uint8
                         )
                     }
-                    block = ArrowBlockAccessor.numpy_to_block(batch)
+                    block = ArrowBlockBuilder._table_from_pydict(batch)
                     yield block
                 else:
                     yield pd.DataFrame(
@@ -202,7 +203,6 @@ def test_dataset(
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_datasource_or_legacy_reader": 1,
                 "ReadRandomBytes": lambda count: count < num_tasks,
             },
             object_store_stats={
@@ -398,6 +398,10 @@ def test_write_large_data_csv(shutdown_only, tmp_path):
     )
 
 
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12),
+    reason="Skip due to incompatibility tensorflow with Python 3.12+",
+)
 def test_write_large_data_tfrecords(shutdown_only, tmp_path):
     _test_write_large_data(
         tmp_path,

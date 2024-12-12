@@ -12,9 +12,12 @@ import ray
 from ray import serve
 from ray._private.pydantic_compat import BaseModel, ValidationError
 from ray._private.test_utils import SignalActor, wait_for_condition
-from ray.serve._private.api import call_app_builder_with_args_if_necessary
+from ray.serve._private.api import call_user_app_builder_with_args_if_necessary
 from ray.serve._private.common import DeploymentID
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.constants import (
+    DEFAULT_MAX_ONGOING_REQUESTS,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve.deployment import Application
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
@@ -346,7 +349,7 @@ def test_deploy_application_basic(serve_instance):
     def g():
         return "got g"
 
-    @serve.deployment(route_prefix="/my_prefix")
+    @serve.deployment
     def h():
         return "got h"
 
@@ -357,7 +360,7 @@ def test_deploy_application_basic(serve_instance):
 
     app = FastAPI()
 
-    @serve.deployment(route_prefix="/hello")
+    @serve.deployment
     @serve.ingress(app)
     class MyFastAPIDeployment:
         @app.get("/")
@@ -376,12 +379,12 @@ def test_deploy_application_basic(serve_instance):
 
     # Test function deployment with app name and route_prefix set in deployment
     # decorator
-    h_handle = serve.run(h.bind(), name="app_h")
+    h_handle = serve.run(h.bind(), name="app_h", route_prefix="/my_prefix")
     assert h_handle.remote().result() == "got h"
     assert requests.get("http://127.0.0.1:8000/my_prefix").text == "got h"
 
     # Test FastAPI
-    serve.run(MyFastAPIDeployment.bind(), name="FastAPI")
+    serve.run(MyFastAPIDeployment.bind(), name="FastAPI", route_prefix="/hello")
     assert requests.get("http://127.0.0.1:8000/hello").text == '"Hello, world!"'
 
 
@@ -410,6 +413,52 @@ def test_delete_application(serve_instance):
     # make sure no affect to app_g
     assert g_handle.remote().result() == "got g"
     assert requests.get("http://127.0.0.1:8000/app_g").text == "got g"
+
+
+@pytest.mark.asyncio
+async def test_delete_while_initializing(serve_instance):
+    """Test that __del__ runs when a replica terminates while initializing."""
+
+    @ray.remote
+    class Counter:
+        def __init__(self):
+            self.count = 0
+
+        def incr(self):
+            self.count += 1
+
+        def get_count(self) -> int:
+            return self.count
+
+    signal = SignalActor.remote()
+    counter = Counter.remote()
+
+    @serve.deployment(graceful_shutdown_timeout_s=0.01)
+    class HangingStart:
+        async def __init__(
+            self, signal: ray.actor.ActorHandle, counter: ray.actor.ActorHandle
+        ):
+            self.signal = signal
+            self.counter = counter
+            await signal.send.remote()
+            print("HangingStart set the EventHolder.")
+            await asyncio.sleep(10000)
+
+        async def __del__(self):
+            print("Running __del__")
+            await self.counter.incr.remote()
+
+    serve._run(HangingStart.bind(signal, counter), _blocking=False)
+
+    print("Waiting for the deployment to start initialization.")
+    await signal.wait.remote()
+
+    print("Calling serve.delete().")
+    serve.delete(name=SERVE_DEFAULT_APP_NAME)
+
+    # Ensure that __del__ ran once, even though the deployment terminated
+    # during initialization.
+    assert (await counter.get_count.remote()) == 1
 
 
 def test_deployment_name_with_app_name(serve_instance):
@@ -502,55 +551,6 @@ def test_deploy_application_with_route_prefix_conflict(serve_instance):
     assert requests.get("http://127.0.0.1:8000/").text == "got model"
 
 
-@pytest.mark.parametrize(
-    "ingress_route,app_route",
-    [
-        ("/hello", "/"),
-        ("/hello", "/override"),
-        ("/", "/override"),
-        (None, "/override"),
-        ("/hello", None),
-        (None, None),
-    ],
-)
-def test_application_route_prefix_override(serve_instance, ingress_route, app_route):
-    """
-    Set route prefix in serve.run to a non-None value, check it overrides correctly.
-    """
-
-    @serve.deployment
-    def f():
-        return "hello"
-
-    node = f.options(route_prefix=ingress_route).bind()
-    serve.run(node, route_prefix=app_route)
-    if app_route is None:
-        routes = requests.get("http://localhost:8000/-/routes").json()
-        assert len(routes) == 0
-    else:
-        assert requests.get(f"http://localhost:8000{app_route}").text == "hello"
-
-
-@pytest.mark.parametrize("ingress_route", ["/hello", "/"])
-def test_application_route_prefix_override1(serve_instance, ingress_route):
-    """
-    Don't set route prefix in serve.run, check it always uses the ingress deployment
-    route.
-    """
-
-    @serve.deployment
-    def f():
-        return "hello"
-
-    node = f.options(route_prefix=ingress_route).bind()
-    serve.run(node)
-    if ingress_route is None:
-        routes = requests.get("http://localhost:8000/-/routes").json()
-        assert len(routes) == 0
-    else:
-        assert requests.get(f"http://localhost:8000{ingress_route}").text == "hello"
-
-
 class TestAppBuilder:
     @serve.deployment
     class A:
@@ -566,16 +566,16 @@ class TestAppBuilder:
 
     def test_prebuilt_app(self):
         a = self.A.bind()
-        assert call_app_builder_with_args_if_necessary(a, {}) == a
+        assert call_user_app_builder_with_args_if_necessary(a, {}) == a
 
         f = self.f.bind()
-        assert call_app_builder_with_args_if_necessary(f, {}) == f
+        assert call_user_app_builder_with_args_if_necessary(f, {}) == f
 
         with pytest.raises(
             ValueError,
             match="Arguments can only be passed to an application builder function",
         ):
-            call_app_builder_with_args_if_necessary(f, {"key": "val"})
+            call_user_app_builder_with_args_if_necessary(f, {"key": "val"})
 
     def test_invalid_builder(self):
         class ThisShouldBeAFunction:
@@ -588,7 +588,7 @@ class TestAppBuilder:
                 "or an application builder function"
             ),
         ):
-            call_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
+            call_user_app_builder_with_args_if_necessary(ThisShouldBeAFunction, {})
 
     def test_invalid_signature(self):
         def builder_with_two_args(args1, args2):
@@ -598,7 +598,7 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions should take exactly one parameter",
         ):
-            call_app_builder_with_args_if_necessary(builder_with_two_args, {})
+            call_user_app_builder_with_args_if_necessary(builder_with_two_args, {})
 
     def test_builder_returns_bad_type(self):
         def return_none(args):
@@ -608,7 +608,7 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions must return a",
         ):
-            call_app_builder_with_args_if_necessary(return_none, {})
+            call_user_app_builder_with_args_if_necessary(return_none, {})
 
         def return_unbound_deployment(args):
             return self.f
@@ -617,21 +617,22 @@ class TestAppBuilder:
             TypeError,
             match="Application builder functions must return a",
         ):
-            call_app_builder_with_args_if_necessary(return_unbound_deployment, {})
+            call_user_app_builder_with_args_if_necessary(return_unbound_deployment, {})
 
     def test_basic_no_args(self):
         def build_function(args):
             return self.A.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_function, {}), Application
+            call_user_app_builder_with_args_if_necessary(build_function, {}),
+            Application,
         )
 
         def build_class(args):
             return self.f.bind()
 
         assert isinstance(
-            call_app_builder_with_args_if_necessary(build_class, {}), Application
+            call_user_app_builder_with_args_if_necessary(build_class, {}), Application
         )
 
     def test_args_dict(self):
@@ -645,7 +646,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
     def test_args_typed(self):
@@ -658,7 +659,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         def build(args: Dict[str, str]):
@@ -668,7 +669,7 @@ class TestAppBuilder:
                 args["message"]
             )
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         class ForwardRef:
@@ -679,7 +680,7 @@ class TestAppBuilder:
                     args["message"]
                 )
 
-        app = call_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(ForwardRef.build, args_dict)
         assert isinstance(app, Application)
 
         def build(args: self.TypedArgs):
@@ -690,7 +691,7 @@ class TestAppBuilder:
             assert args.num_replicas == 3
             return self.A.options(num_replicas=args.num_replicas).bind(args.message)
 
-        app = call_app_builder_with_args_if_necessary(build, args_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, args_dict)
         assert isinstance(app, Application)
 
         # Sanity check that pydantic validation works.
@@ -701,7 +702,7 @@ class TestAppBuilder:
             assert args.num_replicas is None
             return self.A.bind()
 
-        app = call_app_builder_with_args_if_necessary(
+        app = call_user_app_builder_with_args_if_necessary(
             check_missing_optional, {"message": "hiya"}
         )
         assert isinstance(app, Application)
@@ -711,7 +712,7 @@ class TestAppBuilder:
             assert False, "Shouldn't get here because validation failed."
 
         with pytest.raises(ValidationError, match="field required"):
-            call_app_builder_with_args_if_necessary(
+            call_user_app_builder_with_args_if_necessary(
                 check_missing_required, {"num_replicas": "10"}
             )
 
@@ -742,7 +743,7 @@ class TestAppBuilder:
             assert args.age == cat_dict["age"]
             return self.A.bind(f"My {args.color} cat is {args.age} years old.")
 
-        app = call_app_builder_with_args_if_necessary(build, cat_dict)
+        app = call_user_app_builder_with_args_if_necessary(build, cat_dict)
         assert isinstance(app, Application)
 
 
@@ -758,7 +759,11 @@ def test_no_slash_route_prefix(serve_instance):
         pass
 
     with pytest.raises(
-        ValueError, match=r"The route_prefix must start with a forward slash \('/'\)"
+        ValueError,
+        match=(
+            r"Invalid route_prefix 'no_slash', "
+            "must start with a forward slash \('/'\)"
+        ),
     ):
         serve.run(f.bind(), route_prefix="no_slash")
 
@@ -843,15 +848,32 @@ def test_status_constructor_error(serve_instance):
 
     serve._run(A.bind(), _blocking=False)
 
-    def check_for_failed_deployment():
+    def check_for_failed_app():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         error_substr = "ZeroDivisionError: division by zero"
-        return (
+        assert (
             default_app.status == "DEPLOY_FAILED"
             and error_substr in default_app.deployments["A"].message
         )
+        assert default_app.deployments["A"].status == "DEPLOY_FAILED"
+        return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_app)
+
+    @serve.deployment
+    class A:
+        def __init__(self):
+            pass
+
+    serve._run(A.bind(), _blocking=False)
+
+    def check_for_running_app():
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert default_app.status == "RUNNING"
+        assert default_app.deployments["A"].status == "HEALTHY"
+        return True
+
+    wait_for_condition(check_for_running_app)
 
 
 @pytest.mark.skipif(
@@ -1003,9 +1025,7 @@ def test_deployment_handle_nested_in_obj(serve_instance):
 
 
 def test_max_ongoing_requests_none(serve_instance):
-    """We should not allow setting `max_ongoing_requests` to None. To maintain backwards
-    compatibility, we SHOULD allow setting `max_concurrent_queries` to None.
-    """
+    """We should not allow setting `max_ongoing_requests` to None."""
 
     def get_max_ongoing_requests():
         details = serve_instance.get_serve_details()
@@ -1020,35 +1040,18 @@ def test_max_ongoing_requests_none(serve_instance):
         serve.deployment(max_ongoing_requests=None)(A).bind()
     with pytest.raises(ValueError):
         serve.deployment(A).options(max_ongoing_requests=None).bind()
-    with pytest.raises(ValueError):
-        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=None)(
-            A
-        ).bind()
 
-    with pytest.raises(ValueError):
-        serve.deployment(max_ongoing_requests=None, max_concurrent_queries=7)(A).bind()
-
-    with pytest.raises(ValueError):
-        serve.deployment(A).options(
-            max_ongoing_requests=None, max_concurrent_queries=7
-        ).bind()
-
-    serve.run(serve.deployment(max_concurrent_queries=None)(A).bind())
-    assert get_max_ongoing_requests() == 100
-
-    serve.run(serve.deployment(A).options(max_concurrent_queries=None).bind())
-    assert get_max_ongoing_requests() == 100
+    serve.run(serve.deployment(A).bind())
+    assert get_max_ongoing_requests() == DEFAULT_MAX_ONGOING_REQUESTS
 
     serve.run(
-        serve.deployment(max_ongoing_requests=8, max_concurrent_queries=None)(A).bind()
+        serve.deployment(max_ongoing_requests=8, graceful_shutdown_timeout_s=2)(
+            A
+        ).bind()
     )
     assert get_max_ongoing_requests() == 8
 
-    serve.run(
-        serve.deployment(A)
-        .options(max_ongoing_requests=12, max_concurrent_queries=None)
-        .bind()
-    )
+    serve.run(serve.deployment(A).options(max_ongoing_requests=12).bind())
     assert get_max_ongoing_requests() == 12
 
 

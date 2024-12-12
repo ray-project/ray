@@ -135,7 +135,6 @@ if __name__ == "__main__":
         .env_runners(
             num_env_runners=args.num_workers,
             rollout_fragment_length=20,
-            enable_connectors=False,
         )
         .environment(
             env=None,

@@ -1,6 +1,7 @@
 import logging
 import os
 import sys
+import types
 from unittest import mock
 
 import numpy as np
@@ -12,6 +13,8 @@ from pytest_lazyfixture import lazy_fixture
 
 import ray
 import ray.cloudpickle as pickle
+import ray.data
+import ray.train
 from ray._private.arrow_serialization import (
     _align_bit_offset,
     _bytes_for_bits,
@@ -21,6 +24,10 @@ from ray._private.arrow_serialization import (
     _copy_offsets_buffer_if_needed,
 )
 from ray._private.utils import _get_pyarrow_version
+from ray.data.extensions.object_extension import (
+    ArrowPythonObjectArray,
+    _object_extension_type_allowed,
+)
 from ray.data.extensions.tensor_extension import (
     ArrowTensorArray,
     ArrowVariableShapedTensorArray,
@@ -352,6 +359,16 @@ def complex_nested_array():
     )
 
 
+@pytest.fixture
+def pickled_objects_array():
+    elements = ["test", 20, False, {"some": "value"}, None, np.zeros((10, 10))]
+    elements *= 1 + 1000 // len(elements)
+    elements = elements[:1000]
+
+    arr = np.array(elements, dtype=object)
+    return ArrowPythonObjectArray.from_objects(arr)
+
+
 pytest_custom_serialization_arrays = [
     # Null array
     (lazy_fixture("null_array"), 1.0),
@@ -405,6 +422,12 @@ pytest_custom_serialization_arrays = [
     # Complex nested array
     (lazy_fixture("complex_nested_array"), 0.1),
 ]
+
+if _object_extension_type_allowed():
+    pytest_custom_serialization_arrays.append(
+        # Array of pickled objects
+        (lazy_fixture("pickled_objects_array"), 0.1),
+    )
 
 
 @pytest.mark.parametrize("data,cap_mult", pytest_custom_serialization_arrays)
@@ -524,6 +547,25 @@ def test_arrow_scalar_conversion(ray_start_regular_shared):
     ds = ds.map_batches(fn)
     res = ds.take()
     assert res == [{"id": 1}], res
+
+
+@pytest.mark.skipif(
+    not _object_extension_type_allowed(), reason="Object extension not supported."
+)
+def test_arrow_object_and_array_support(ray_start_regular_shared):
+    obj = types.SimpleNamespace(some_attribute="test")
+
+    def f(batch):
+        batch_size = len(batch["id"])
+        return {
+            "array": np.zeros((batch_size, 32, 32, 3)),
+            "unsupported": [obj] * batch_size,
+        }
+
+    res = ray.data.range(5).map_batches(f, batch_size=None).take(1)
+    assert res[0]["array"].shape == (32, 32, 3)
+    assert np.all(res[0]["array"] == 0)
+    assert res[0]["unsupported"] == obj
 
 
 def test_custom_arrow_data_serializer_parquet_roundtrip(

@@ -25,7 +25,6 @@ from ray.serve._private.constants import (
     DEFAULT_HEALTH_CHECK_TIMEOUT_S,
     DEFAULT_MAX_ONGOING_REQUESTS,
     MAX_REPLICAS_PER_NODE_MAX_VALUE,
-    NEW_DEFAULT_MAX_ONGOING_REQUESTS,
 )
 from ray.serve._private.utils import DEFAULT, DeploymentOptionUpdateType
 from ray.serve.config import AutoscalingConfig
@@ -87,7 +86,7 @@ class DeploymentConfig(BaseModel):
             handles requests to this deployment. Defaults to 1.
         max_ongoing_requests: The maximum number of queries
             that is sent to a replica of this deployment without receiving
-            a response. Defaults to 100.
+            a response. Defaults to 5.
         max_queued_requests: Maximum number of requests to this deployment that will be
             queued at each *caller* (proxy or DeploymentHandle). Once this limit is
             reached, subsequent requests will raise a BackPressureError (for handles) or
@@ -332,18 +331,11 @@ def handle_num_replicas_auto(
     """Return modified `max_ongoing_requests` and `autoscaling_config`
     for when num_replicas="auto".
 
-    If `max_ongoing_requests` is unspecified (DEFAULT.VALUE), returns
-    the modified value NEW_DEFAULT_MAX_ONGOING_REQUESTS. Otherwise,
-    doesn't change `max_ongoing_requests`.
-
     If `autoscaling_config` is unspecified, returns the modified value
     AutoscalingConfig.default().
     If it is specified, the specified fields in `autoscaling_config`
     override that of AutoscalingConfig.default().
     """
-
-    if max_ongoing_requests is DEFAULT.VALUE:
-        max_ongoing_requests = NEW_DEFAULT_MAX_ONGOING_REQUESTS
 
     if autoscaling_config in [DEFAULT.VALUE, None]:
         # If autoscaling config wasn't specified, use default

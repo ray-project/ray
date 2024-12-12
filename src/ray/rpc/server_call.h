@@ -276,6 +276,7 @@ class ServerCallImpl : public ServerCall {
       (service_handler_.*handle_request_function_)(
           std::move(request_),
           reply_,
+          /*send_reply_callback=*/
           [this](Status status,
                  std::function<void()> success,
                  std::function<void()> failure) {

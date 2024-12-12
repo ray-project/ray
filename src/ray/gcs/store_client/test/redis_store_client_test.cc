@@ -67,7 +67,7 @@ class RedisStoreClientTest : public StoreClientTestBase {
   }
 
   void InitStoreClient() override {
-    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "");
+    RedisClientOptions options("127.0.0.1", TEST_REDIS_SERVER_PORTS.front(), "", "");
     redis_client_ = std::make_shared<RedisClient>(options);
     RAY_CHECK_OK(redis_client_->Connect(*io_service_pool_->Get()));
 
@@ -306,7 +306,7 @@ TEST_F(RedisStoreClientTest, Random) {
 
   auto m_get = [&, counter, this](size_t idx) {
     auto k = std::to_string(std::rand() % 1000);
-    boost::optional<std::string> v;
+    std::optional<std::string> v;
     if (dict.count(k)) {
       v = dict[k];
     }

@@ -9,14 +9,12 @@ from collections import Counter
 from functools import partial
 from unittest.mock import patch
 
-import gymnasium as gym
 import numpy as np
 import pytest
 
 import ray
 from ray import train, tune
 from ray.air.constants import TIME_THIS_ITER_S, TRAINING_ITERATION
-from ray.rllib import _register_all
 from ray.train import CheckpointConfig
 from ray.train._internal.session import shutdown_session
 from ray.train._internal.storage import (
@@ -74,7 +72,7 @@ class TrainableFunctionApiTest(unittest.TestCase):
 
     def tearDown(self):
         ray.shutdown()
-        _register_all()  # re-register the evicted objects
+        # _register_all()  # re-register the evicted objects
         shutil.rmtree(self.tmpdir)
 
     def checkAndReturnConsistentLogs(self, results, sleep_per_iter=None):
@@ -424,8 +422,10 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertRaises(TuneError, f)
 
     def testBadParams6(self):
+        register_trainable("f1", lambda x: x)
+
         def f():
-            run_experiments({"foo": {"run": "PPO", "resources_per_trial": {"asdf": 1}}})
+            run_experiments({"foo": {"run": "f1", "invalid_key": {"asdf": 1}}})
 
         self.assertRaises(TuneError, f)
 
@@ -673,51 +673,6 @@ class TrainableFunctionApiTest(unittest.TestCase):
         self.assertEqual(Counter(t.status for t in trials)["ERROR"], 5)
         new_trials = tune.run(test, resume="AUTO+ERRORED_ONLY", **config).trials
         self.assertEqual(Counter(t.status for t in new_trials)["ERROR"], 0)
-        self.assertTrue(all(t.last_result.get("hello") == 123 for t in new_trials))
-
-    def testRerunRlLib(self):
-        class TestEnv(gym.Env):
-            counter = 0
-
-            def __init__(self, config):
-                self.observation_space = gym.spaces.Discrete(1)
-                self.action_space = gym.spaces.Discrete(1)
-                TestEnv.counter += 1
-
-            def reset(self):
-                return 0
-
-            def step(self, act):
-                return [0, 1, True, {}]
-
-        class FailureInjectionCallback(Callback):
-            def on_step_end(self, **info):
-                raise RuntimeError
-
-        with self.assertRaises(Exception):
-            tune.run(
-                "PPO",
-                config={
-                    "env": TestEnv,
-                    "framework": "torch",
-                    "num_workers": 0,
-                },
-                name="my_experiment",
-                callbacks=[FailureInjectionCallback()],
-                stop={"training_iteration": 1},
-            )
-        trials = tune.run(
-            "PPO",
-            config={
-                "env": TestEnv,
-                "framework": "torch",
-                "num_workers": 0,
-            },
-            name="my_experiment",
-            resume="AUTO+ERRORED_ONLY",
-            stop={"training_iteration": 1},
-        ).trials
-        assert len(trials) == 1 and trials[0].status == Trial.TERMINATED
 
     def testTrialInfoAccess(self):
         class TestTrainable(Trainable):
@@ -1570,7 +1525,7 @@ class ApiTestFast(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-        _register_all()
+        # _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()
@@ -1749,7 +1704,7 @@ class MaxConcurrentTrialsTest(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         ray.shutdown()
-        _register_all()
+        # _register_all()
 
     def setUp(self):
         self.tmpdir = tempfile.mkdtemp()

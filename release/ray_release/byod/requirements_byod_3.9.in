@@ -6,11 +6,12 @@ boto3
 cmake
 crc32c
 cython
+dask[complete]
 fastapi
 gcsfs==2023.5.0
 gsutil
-gym
-gym[atari]
+gymnasium
+gymnasium[atari]
 importlib-metadata
 jsonschema==4.17.3
 lightgbm
@@ -24,11 +25,12 @@ pydantic>=2.5.0
 pytest
 requests>=2.31.0
 semidbm
+s3fs
 scikit-learn
 scipy
 tblib
 terminado
-tensorboardx==2.6
+tensorboardx==2.6.2.2
 tensorflow
 trueskill
 tqdm
@@ -36,5 +38,4 @@ typer
 typing-extensions==4.8.0
 xarray
 xgboost
-wandb==0.13.4
 zarr

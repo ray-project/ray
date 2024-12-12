@@ -30,10 +30,8 @@ using rpc::ActorTableData;
 using rpc::ErrorTableData;
 using rpc::GcsNodeInfo;
 using rpc::JobTableData;
-using rpc::ObjectTableData;
 using rpc::PlacementGroupTableData;
 using rpc::ResourceUsageBatchData;
-using rpc::StoredConfig;
 using rpc::TaskSpec;
 using rpc::WorkerTableData;
 
@@ -112,8 +110,8 @@ class GcsTableWithJobId : public GcsTable<Key, Data> {
   /// \param key The key that will be written to the table. The job id can be obtained
   /// from the key.
   /// \param value The value of the key that will be written to the table.
-  /// \param callback Callback that will be called after write finishes.
-  /// \return Status
+  /// \param callback Callback that will be called after write finishes, whether it
+  /// succeeds or not. \return Status for issuing the asynchronous write operation.
   Status Put(const Key &key, const Data &value, const StatusCallback &callback) override;
 
   /// Get all the data of the specified job id from the table asynchronously.
@@ -210,14 +208,6 @@ class GcsWorkerTable : public GcsTable<WorkerID, WorkerTableData> {
   }
 };
 
-class GcsInternalConfigTable : public GcsTable<UniqueID, StoredConfig> {
- public:
-  explicit GcsInternalConfigTable(std::shared_ptr<StoreClient> store_client)
-      : GcsTable(std::move(store_client)) {
-    table_name_ = TablePrefix_Name(TablePrefix::INTERNAL_CONFIG);
-  }
-};
-
 /// \class GcsTableStorage
 ///
 /// This class is not meant to be used directly. All gcs table storage classes should
@@ -232,7 +222,6 @@ class GcsTableStorage {
     placement_group_table_ = std::make_unique<GcsPlacementGroupTable>(store_client_);
     node_table_ = std::make_unique<GcsNodeTable>(store_client_);
     worker_table_ = std::make_unique<GcsWorkerTable>(store_client_);
-    system_config_table_ = std::make_unique<GcsInternalConfigTable>(store_client_);
   }
 
   virtual ~GcsTableStorage() = default;
@@ -267,11 +256,6 @@ class GcsTableStorage {
     return *worker_table_;
   }
 
-  GcsInternalConfigTable &InternalConfigTable() {
-    RAY_CHECK(system_config_table_ != nullptr);
-    return *system_config_table_;
-  }
-
   int GetNextJobID() {
     RAY_CHECK(store_client_);
     return store_client_->GetNextJobID();
@@ -285,7 +269,6 @@ class GcsTableStorage {
   std::unique_ptr<GcsPlacementGroupTable> placement_group_table_;
   std::unique_ptr<GcsNodeTable> node_table_;
   std::unique_ptr<GcsWorkerTable> worker_table_;
-  std::unique_ptr<GcsInternalConfigTable> system_config_table_;
 };
 
 /// \class RedisGcsTableStorage

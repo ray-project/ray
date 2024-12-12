@@ -74,6 +74,7 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.connectors.env_to_module.mean_std_filter import MeanStdFilter
+from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.test_utils import (
@@ -122,7 +123,7 @@ if __name__ == "__main__":
     else:
         register_env("lopsided-pend", lambda _: LopsidedObs(gym.make("Pendulum-v1")))
 
-    config = (
+    base_config = (
         get_trainable_cls(args.algo)
         .get_default_config()
         .environment("lopsided-pend")
@@ -144,22 +145,18 @@ if __name__ == "__main__":
         )
         .training(
             train_batch_size_per_learner=512,
-            mini_batch_size_per_learner=64,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.0003 * (args.num_gpus or 1),
-            lambda_=0.1,
-            vf_clip_param=10.0,
+            lr=0.0003 * (args.num_learners or 1),
             vf_loss_coeff=0.01,
         )
         .rl_module(
-            model_config_dict={
-                "fcnet_activation": "relu",
-                "fcnet_weights_initializer": torch.nn.init.xavier_uniform_,
-                "fcnet_bias_initializer": torch.nn.init.constant_,
-                "fcnet_bias_initializer_config": {"val": 0.0},
-                "uses_new_env_runners": True,
-            }
+            model_config=DefaultModelConfig(
+                fcnet_activation="relu",
+                fcnet_kernel_initializer=torch.nn.init.xavier_uniform_,
+                fcnet_bias_initializer=torch.nn.init.constant_,
+                fcnet_bias_initializer_kwargs={"val": 0.0},
+            ),
         )
         # In case you would like to run with a evaluation EnvRunners, make sure your
         # `evaluation_config` key contains the `use_worker_filter_stats=False` setting
@@ -183,11 +180,19 @@ if __name__ == "__main__":
         # )
     )
 
+    # PPO specific settings.
+    if args.algo == "PPO":
+        base_config.training(
+            minibatch_size=64,
+            lambda_=0.1,
+            vf_clip_param=10.0,
+        )
+
     # Add a simple multi-agent setup.
     if args.num_agents > 0:
-        config = config.multi_agent(
+        base_config.multi_agent(
             policies={f"p{i}" for i in range(args.num_agents)},
             policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
         )
 
-    run_rllib_example_script_experiment(config, args)
+    run_rllib_example_script_experiment(base_config, args)

@@ -431,7 +431,7 @@ def _copy_dir(
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             _delete_path_unsafe(target_dir)
 
-            _ignore = None
+            _ignore_func = None
             if exclude:
 
                 def _ignore(path, names):
@@ -445,7 +445,9 @@ def _copy_dir(
                                 break
                     return ignored_names
 
-            shutil.copytree(source_dir, target_dir, ignore=_ignore)
+                _ignore_func = _ignore
+
+            shutil.copytree(source_dir, target_dir, ignore=_ignore_func)
     except TimeoutError:
         # wait, but do not do anything
         with TempFileLock(f"{target_dir}.lock"):

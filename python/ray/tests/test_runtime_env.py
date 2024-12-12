@@ -130,7 +130,7 @@ def test_get_master_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/master/<test_commit>/`.
-    test_commit = "0910639b6eba1b77b9a36b9f3350c5aa274578dd"
+    test_commit = "593d04aba2726a0104280d1bdbc2779e3a8ba7d4"
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             url = get_master_wheel_url(
@@ -144,7 +144,7 @@ def test_get_release_wheel_url():
     # This should be a commit for which wheels have already been built for
     # all platforms and python versions at
     # `s3://ray-wheels/releases/2.2.0/<commit>/`.
-    test_commits = {"2.7.0": "904dbce085bc542b93fbe06d75f3b02a65d3a2b4"}
+    test_commits = {"2.31.0": "1240d3fc326517f9be28bb7897c1c88619f0d984"}
     for sys_platform in ["darwin", "linux", "win32"]:
         for py_version in ray_constants.RUNTIME_ENV_CONDA_PY_VERSIONS:
             for version, commit in test_commits.items():
@@ -962,8 +962,6 @@ def test_runtime_env_interface():
 
 
 if __name__ == "__main__":
-    import sys
-
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

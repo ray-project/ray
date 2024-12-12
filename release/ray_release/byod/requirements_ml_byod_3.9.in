@@ -6,8 +6,6 @@ bitsandbytes
 boto3
 cmake
 crc32c
-cupy-cuda113
-dataset
 datasets
 decord
 deepspeed>=0.12.3
@@ -18,13 +16,9 @@ fastapi
 filelock
 gcsfs==2023.5.0
 gsutil
-# Ray Data progress bars do not load with newer versions of
-# ipywidgets + older versions of VSCode Web. Pin the version
-# until VSCode Web is updated, as recommended in
-# https://github.com/microsoft/vscode-jupyter/issues/8552.
-ipywidgets==7.7.2
+ipywidgets
 jupytext
-lm_eval
+lm_eval==0.4.0
 locust==2.18.0
 matplotlib
 memray
@@ -47,12 +41,11 @@ statsforecast
 tblib
 tensorboardX
 tiktoken
-torch
-torch 
+triton==2.3.0
+torch==2.3.0
 torchaudio
 torchmetrics
 torchtext
-torchvision
 tqdm
 transformers
 trueskill

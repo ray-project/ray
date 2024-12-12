@@ -18,6 +18,7 @@ steps:
           - "3.9"
           - "3.10"
           - "3.11"
+          - "3.12"
         cuda:
           - "11.7.1-cudnn8"
           - "11.8.0-cudnn8"
@@ -41,6 +42,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
 
@@ -58,7 +60,7 @@ steps:
           - "3.10"
           - "3.11"
         cuda:
-          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"

@@ -14,6 +14,7 @@
 
 #include "ray/raylet_client/raylet_client.h"
 
+#include "absl/synchronization/notification.h"
 #include "ray/common/client_connection.h"
 #include "ray/common/common_protocol.h"
 #include "ray/common/ray_config.h"
@@ -182,6 +183,12 @@ Status raylet::RayletClient::Disconnect(
   auto status = conn_->WriteMessage(MessageType::DisconnectClient, &fbb);
   // Don't be too strict for disconnection errors.
   // Just create logs and prevent it from crash.
+  // TODO (myan): In the current implementation, if raylet is already terminated in the
+  // "WriteMessage" function above, the worker process will exit early in the function
+  // and will not reach here. However, the code path here is shared between graceful
+  // shutdown and force termination. We need to make sure the above early exit
+  // shouldn't happen during the graceful shutdown scenario and there shouldn't be any
+  // leak if early exit is triggered
   if (!status.ok()) {
     RAY_LOG(WARNING)
         << status.ToString()
@@ -352,6 +359,12 @@ void raylet::RayletClient::RequestWorkerLease(
   grpc_client_->RequestWorkerLease(*request, callback);
 }
 
+void raylet::RayletClient::PrestartWorkers(
+    const rpc::PrestartWorkersRequest &request,
+    const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) {
+  grpc_client_->PrestartWorkers(request, callback);
+}
+
 std::shared_ptr<grpc::Channel> raylet::RayletClient::GetChannel() const {
   return grpc_client_->Channel();
 }
@@ -363,10 +376,10 @@ void raylet::RayletClient::ReportWorkerBacklog(
   request.set_worker_id(worker_id.Binary());
   request.mutable_backlog_reports()->Add(backlog_reports.begin(), backlog_reports.end());
   grpc_client_->ReportWorkerBacklog(
-      request, [](const Status &status, const rpc::ReportWorkerBacklogReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error reporting task backlog information: " << status;
-        }
+      request,
+      [](const Status &status, rpc::ReportWorkerBacklogReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status)
+            << "Error reporting task backlog information: " << status;
       });
 }
 
@@ -383,10 +396,8 @@ Status raylet::RayletClient::ReturnWorker(
   request.set_disconnect_worker_error_detail(disconnect_worker_error_detail);
   request.set_worker_exiting(worker_exiting);
   grpc_client_->ReturnWorker(
-      request, [](const Status &status, const rpc::ReturnWorkerReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error returning worker: " << status;
-        }
+      request, [](const Status &status, rpc::ReturnWorkerReply &&reply /*unused*/) {
+        RAY_LOG_IF_ERROR(INFO, status) << "Error returning worker: " << status;
       });
   return Status::OK();
 }
@@ -397,12 +408,9 @@ void raylet::RayletClient::GetTaskFailureCause(
   rpc::GetTaskFailureCauseRequest request;
   request.set_task_id(task_id.Binary());
   grpc_client_->GetTaskFailureCause(
-      request,
-      [callback](const Status &status, const rpc::GetTaskFailureCauseReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error getting task result: " << status;
-        }
-        callback(status, reply);
+      request, [callback](const Status &status, rpc::GetTaskFailureCauseReply &&reply) {
+        RAY_LOG_IF_ERROR(INFO, status) << "Error getting task result: " << status;
+        callback(status, std::move(reply));
       });
 }
 
@@ -424,21 +432,43 @@ void raylet::RayletClient::PushMutableObject(
     uint64_t metadata_size,
     void *data,
     const ray::rpc::ClientCallback<ray::rpc::PushMutableObjectReply> &callback) {
-  rpc::PushMutableObjectRequest request;
-  request.set_writer_object_id(writer_object_id.Binary());
-  request.set_data_size(data_size);
-  request.set_metadata_size(metadata_size);
-  // This assumes that the format of the object is a contiguous buffer of (data |
-  // metadata).
-  request.set_data(data, data_size + metadata_size);
-  grpc_client_->PushMutableObject(
-      request,
-      [callback](const Status &status, const rpc::PushMutableObjectReply &reply) {
-        if (!status.ok()) {
-          RAY_LOG(INFO) << "Error pushing mutable object: " << status;
-        }
-        callback(status, reply);
-      });
+  // Ray sets the gRPC max payload size to ~512 MiB. We set the max chunk size to a
+  // slightly lower value to allow extra padding just in case.
+  uint64_t kMaxGrpcPayloadSize = RayConfig::instance().max_grpc_message_size() * 0.98;
+  uint64_t total_size = data_size + metadata_size;
+  uint64_t total_num_chunks = total_size / kMaxGrpcPayloadSize;
+  // If `total_size` is not a multiple of `kMaxGrpcPayloadSize`, then we need to send an
+  // extra chunk with the remaining data.
+  if (total_size % kMaxGrpcPayloadSize) {
+    total_num_chunks++;
+  }
+
+  for (uint64_t i = 0; i < total_num_chunks; i++) {
+    rpc::PushMutableObjectRequest request;
+    request.set_writer_object_id(writer_object_id.Binary());
+    request.set_total_data_size(data_size);
+    request.set_total_metadata_size(metadata_size);
+
+    uint64_t chunk_size = (i < total_num_chunks - 1) ? kMaxGrpcPayloadSize
+                                                     : (total_size % kMaxGrpcPayloadSize);
+    uint64_t offset = i * kMaxGrpcPayloadSize;
+    request.set_offset(offset);
+    request.set_chunk_size(chunk_size);
+    // This assumes that the format of the object is a contiguous buffer of (data |
+    // metadata).
+    request.set_payload(static_cast<char *>(data) + offset, chunk_size);
+
+    // TODO: Add failure recovery, retries, and timeout.
+    grpc_client_->PushMutableObject(
+        request, [callback](const Status &status, rpc::PushMutableObjectReply &&reply) {
+          RAY_LOG_IF_ERROR(ERROR, status) << "Error pushing mutable object: " << status;
+          if (reply.done()) {
+            // The callback is only executed once the receiver node receives all chunks
+            // for the mutable object write.
+            callback(status, std::move(reply));
+          }
+        });
+  }
 }
 
 void raylet::RayletClient::ReleaseUnusedActorWorkers(
@@ -450,13 +480,13 @@ void raylet::RayletClient::ReleaseUnusedActorWorkers(
   }
   grpc_client_->ReleaseUnusedActorWorkers(
       request,
-      [callback](const Status &status, const rpc::ReleaseUnusedActorWorkersReply &reply) {
+      [callback](const Status &status, rpc::ReleaseUnusedActorWorkersReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing workers from raylet, the raylet may have died:"
               << status;
         }
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -512,14 +542,13 @@ void raylet::RayletClient::ReleaseUnusedBundles(
     request.add_bundles_in_use()->CopyFrom(bundle);
   }
   grpc_client_->ReleaseUnusedBundles(
-      request,
-      [callback](const Status &status, const rpc::ReleaseUnusedBundlesReply &reply) {
+      request, [callback](const Status &status, rpc::ReleaseUnusedBundlesReply &&reply) {
         if (!status.ok()) {
           RAY_LOG(WARNING)
               << "Error releasing bundles from raylet, the raylet may have died:"
               << status;
         }
-        callback(status, reply);
+        callback(status, std::move(reply));
       });
 }
 
@@ -538,9 +567,9 @@ void raylet::RayletClient::PinObjectIDs(
   }
   pins_in_flight_++;
   auto rpc_callback = [this, callback = std::move(callback)](
-                          Status status, const rpc::PinObjectIDsReply &reply) {
+                          Status status, rpc::PinObjectIDsReply &&reply) {
     pins_in_flight_--;
-    callback(status, reply);
+    callback(status, std::move(reply));
   };
   grpc_client_->PinObjectIDs(request, rpc_callback);
 }
@@ -564,6 +593,14 @@ void raylet::RayletClient::DrainRaylet(
   request.set_reason_message(reason_message);
   request.set_deadline_timestamp_ms(deadline_timestamp_ms);
   grpc_client_->DrainRaylet(request, callback);
+}
+
+void raylet::RayletClient::IsLocalWorkerDead(
+    const WorkerID &worker_id,
+    const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) {
+  rpc::IsLocalWorkerDeadRequest request;
+  request.set_worker_id(worker_id.Binary());
+  grpc_client_->IsLocalWorkerDead(request, callback);
 }
 
 void raylet::RayletClient::GlobalGC(

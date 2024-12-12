@@ -39,11 +39,10 @@ enum TablePrefix {
   DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
-  INTERNAL_CONFIG = 16;
-  PLACEMENT_GROUP_SCHEDULE = 17;
-  PLACEMENT_GROUP = 18;
-  KV = 19;
-  ACTOR_TASK_SPEC = 20;
+  PLACEMENT_GROUP_SCHEDULE = 16;
+  PLACEMENT_GROUP = 17;
+  KV = 18;
+  ACTOR_TASK_SPEC = 19;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -75,11 +74,6 @@ message GcsEntry {
   repeated bytes entries = 3;
 }
 
-message ObjectTableData {
-  // The node manager ID that this object appeared on or was evicted by.
-  bytes manager = 1;
-}
-
 message ActorTableData {
   // State of an actor.
   enum ActorState {
@@ -99,10 +93,6 @@ message ActorTableData {
   bytes actor_id = 1;
   // The ID of the caller of the actor creation task.
   bytes parent_id = 2;
-  // The dummy object ID returned by the actor creation task. If the actor
-  // dies, then this is the object that should be restarted for the actor
-  // to be recreated.
-  bytes actor_creation_dummy_object_id = 3;
   // The ID of the job that created the actor.
   bytes job_id = 4;
   // Current state of this actor.
@@ -162,6 +152,8 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Number of times this actor is restarted due to lineage reconstructions.
+  uint64 num_restarts_due_to_lineage_reconstruction = 33;
 }
 
 message ErrorTableData {
@@ -172,6 +164,8 @@ message ErrorTableData {
   // The error message.
   string error_message = 3;
   // The timestamp of the error message.
+  // Unit: millisecond.
+  // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
 }
 
@@ -220,18 +214,6 @@ message TaskLogInfo {
 message TaskStateUpdate {
   // Node that runs the task.
   optional bytes node_id = 1;
-  // Timestamp when status changes to PENDING_ARGS_AVAIL.
-  optional int64 pending_args_avail_ts = 2;
-  // Timestamp when status changes to PENDING_NODE_ASSIGNMENT.
-  optional int64 pending_node_assignment_ts = 3;
-  // Timestamp when status changes to SUBMITTED_TO_WORKER.
-  optional int64 submitted_to_worker_ts = 4;
-  // Timestamp when status changes to RUNNING.
-  optional int64 running_ts = 5;
-  // Timestamp when status changes to FINISHED.
-  optional int64 finished_ts = 6;
-  // Timestamp when status changes to FAILED.
-  optional int64 failed_ts = 7;
   // Worker that runs the task.
   optional bytes worker_id = 8;
   // Task faulure info.
@@ -244,6 +226,9 @@ message TaskStateUpdate {
   optional int32 worker_pid = 12;
   // Is task paused by debugger.
   optional bool is_debugger_paused = 13;
+  // Key is the integer value of TaskStatus enum (protobuf doesn't support Enum as key).
+  // Value is the timestamp when status changes to the target status indicated by the key.
+  map<int32, int64> state_ts_ns = 14;
 }
 
 // Represents events and state changes from a single task run.
@@ -483,10 +468,6 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message StoredConfig {
-  string config = 1;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
@@ -644,12 +625,14 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
+    // Placement Group is scheduled, and all nodes have prepared the resources.
+    PREPARED = 1;
     // Placement Group is created.
-    CREATED = 1;
+    CREATED = 2;
     // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2;
+    REMOVED = 3;
     // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3;
+    RESCHEDULING = 4;
   }
 
   // ID of the PlacementGroup.
@@ -716,7 +699,8 @@ message JobTableData {
   // The optional JobInfo from the Ray Job API.
   optional JobsAPIInfo job_info = 10;
   // Whether this job has running tasks.
-  bool is_running_tasks = 11;
+  // In GetAllJobInfo, if GCS can't reach the driver, it will be unset.
+  optional bool is_running_tasks = 11;
   // Address of the driver that started this job.
   Address driver_address = 12;
 }

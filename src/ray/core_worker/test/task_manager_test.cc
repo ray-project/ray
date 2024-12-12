@@ -20,6 +20,7 @@
 #include "mock/ray/pubsub/publisher.h"
 #include "mock/ray/pubsub/subscriber.h"
 #include "ray/common/task/task_spec.h"
+#include "ray/common/task/task_util.h"
 #include "ray/common/test_util.h"
 #include "ray/core_worker/reference_count.h"
 #include "ray/core_worker/store_provider/memory_store/memory_store.h"
@@ -108,8 +109,8 @@ class MockTaskEventBuffer : public worker::TaskEventBuffer {
 
 class TaskManagerTest : public ::testing::Test {
  public:
-  TaskManagerTest(bool lineage_pinning_enabled = false,
-                  int64_t max_lineage_bytes = 1024 * 1024 * 1024)
+  explicit TaskManagerTest(bool lineage_pinning_enabled = false,
+                           int64_t max_lineage_bytes = 1024 * 1024 * 1024)
       : lineage_pinning_enabled_(lineage_pinning_enabled),
         addr_(GetRandomWorkerAddr()),
         publisher_(std::make_shared<pubsub::MockPublisher>()),
@@ -121,8 +122,9 @@ class TaskManagerTest : public ::testing::Test {
             subscriber_.get(),
             [this](const NodeID &node_id) { return all_nodes_alive_; },
             lineage_pinning_enabled))),
-        store_(std::shared_ptr<CoreWorkerMemoryStore>(
-            new CoreWorkerMemoryStore(reference_counter_))),
+        io_context_("TaskManagerTest"),
+        store_(std::shared_ptr<CoreWorkerMemoryStore>(new CoreWorkerMemoryStore(
+            io_context_.GetIoService(), reference_counter_.get()))),
         manager_(
             store_,
             reference_counter_,
@@ -180,6 +182,7 @@ class TaskManagerTest : public ::testing::Test {
   std::shared_ptr<pubsub::MockSubscriber> subscriber_;
   std::unique_ptr<MockTaskEventBuffer> task_event_buffer_mock_;
   std::shared_ptr<ReferenceCounter> reference_counter_;
+  InstrumentedIOContextWithThread io_context_;
   std::shared_ptr<CoreWorkerMemoryStore> store_;
   bool all_nodes_alive_ = true;
   TaskManager manager_;
@@ -635,14 +638,15 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   auto return_id = spec.ReturnId(0);
   auto node_id = NodeID::FromRandom();
   int object_size = 100;
-  store_->GetAsync(return_id, [&](std::shared_ptr<RayObject> obj) {
-    // By the time the return object is available to get, we should be able
-    // to get the locality data too.
-    auto locality_data = reference_counter_->GetLocalityData(return_id);
-    ASSERT_TRUE(locality_data.has_value());
-    ASSERT_EQ(locality_data->object_size, object_size);
-    ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
-  });
+  store_->GetAsync(
+      return_id, [return_id, object_size, node_id, this](std::shared_ptr<RayObject> obj) {
+        // By the time the return object is available to get, we should be able
+        // to get the locality data too.
+        auto locality_data = reference_counter_->GetLocalityData(return_id);
+        ASSERT_TRUE(locality_data.has_value());
+        ASSERT_EQ(locality_data->object_size, object_size);
+        ASSERT_TRUE(locality_data->nodes_containing_object.contains(node_id));
+      });
 
   rpc::PushTaskReply reply;
   auto return_object = reply.add_return_objects();
@@ -653,6 +657,68 @@ TEST_F(TaskManagerTest, TestLocalityDataAdded) {
   worker_addr.set_raylet_id(node_id.Binary());
   manager_.AddPendingTask(rpc::Address(), spec, "", 0);
   manager_.CompletePendingTask(spec.TaskId(), reply, worker_addr, false);
+}
+
+// Test to make sure that the task spec and actor
+// for an actor task return object are
+// pinned when lineage pinning is enabled in the ReferenceCounter.
+TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
+  rpc::Address caller_address;
+  ActorID actor_id = ActorID::FromHex("f4ce02420592ca68c1738a0d01000000");
+  const ObjectID actor_creation_dummy_object_id =
+      ObjectID::FromIndex(TaskID::ForActorCreationTask(actor_id), /*index=*/1);
+  int num_retries = 3;
+  TaskSpecBuilder builder;
+  builder.SetCommonTaskSpec(
+      TaskID::ForActorTask(JobID::Nil(), TaskID::Nil(), 0, actor_id),
+      "dummy_actor_task",
+      Language::PYTHON,
+      FunctionDescriptorBuilder::BuildPython("a", "", "", ""),
+      JobID::Nil(),
+      rpc::JobConfig(),
+      TaskID::Nil(),
+      0,
+      TaskID::Nil(),
+      rpc::Address(),
+      1,
+      false,
+      false,
+      -1,
+      {},
+      {},
+      "",
+      0,
+      TaskID::Nil());
+  builder.SetActorTaskSpec(
+      actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
+  TaskSpecification spec = builder.Build();
+
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 0);
+  manager_.AddPendingTask(caller_address, spec, "", num_retries);
+  auto return_id = spec.ReturnId(0);
+  ASSERT_TRUE(manager_.IsTaskPending(spec.TaskId()));
+  // 2 objects are in scope: actor handle and actor task return object.
+  ASSERT_EQ(reference_counter_->NumObjectIDsInScope(), 2);
+
+  // The task completes.
+  rpc::PushTaskReply reply;
+  auto return_object = reply.add_return_objects();
+  return_object->set_object_id(return_id.Binary());
+  auto data = GenerateRandomBuffer();
+  return_object->set_data(data->Data(), data->Size());
+  return_object->set_in_plasma(true);
+  manager_.CompletePendingTask(spec.TaskId(), reply, rpc::Address(), false);
+
+  // The task should still be in the lineage because its return ID is in scope.
+  ASSERT_TRUE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_TRUE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_TRUE(reference_counter_->HasReference(return_id));
+
+  // All lineage should be erased.
+  reference_counter_->RemoveLocalReference(return_id, nullptr);
+  ASSERT_FALSE(manager_.IsTaskSubmissible(spec.TaskId()));
+  ASSERT_FALSE(reference_counter_->HasReference(spec.ActorCreationDummyObjectId()));
+  ASSERT_FALSE(reference_counter_->HasReference(return_id));
 }
 
 // Test to make sure that the task spec and dependencies for an object are
@@ -921,7 +987,6 @@ TEST_F(TaskManagerLineageTest, TestResubmitTask) {
   ASSERT_EQ(last_delay_ms_, 0);
   ASSERT_EQ(last_object_recovery_, true);
   resubmitted_task_deps.clear();
-  ASSERT_TRUE(reference_counter_->IsObjectPendingCreation(return_id));
 
   // The return ID goes out of scope.
   reference_counter_->RemoveLocalReference(return_id, nullptr);

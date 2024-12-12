@@ -1,6 +1,6 @@
 import os
 import sys
-import mock
+from unittest import mock
 import pytest
 import requests
 from unittest.mock import patch
@@ -18,6 +18,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
         "/dev/accel2",
         "/dev/accel3",
     ]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -26,6 +27,7 @@ def test_autodetect_num_tpus_accel(mock_glob):
 def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
     mock_glob.return_value = []
     mock_list.return_value = [f"{i}" for i in range(4)]
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 4
 
 
@@ -34,6 +36,7 @@ def test_autodetect_num_tpus_vfio(mock_list, mock_glob):
 def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
     mock_list.side_effect = FileNotFoundError
     mock_glob.return_value = []
+    TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
     assert TPUAcceleratorManager.get_current_node_num_accelerators() == 0
 
 
@@ -48,6 +51,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gce", "v4-2048", "TPU-V4"),
         ("gce", "v5p-8", "TPU-V5P"),
         ("gce", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gce", "v6e-8", "TPU-V6E"),
         ("gke", "v2-8", "TPU-V2"),
         ("gke", "v2-32", "TPU-V2"),
         ("gke", "v3-8", "TPU-V3"),
@@ -56,6 +60,7 @@ def test_autodetect_num_tpus_without_devices(mock_list, mock_glob):
         ("gke", "v4-2048", "TPU-V4"),
         ("gke", "v5p-8", "TPU-V5P"),
         ("gke", "v5litepod-8", "TPU-V5LITEPOD"),
+        ("gke", "v6e-8", "TPU-V6E"),
     ],
 )
 @patch("requests.get")
@@ -198,6 +203,7 @@ def test_set_tpu_visible_ids_and_bounds(mock_glob, test_case):
     num_devices, tpu_chips = test_case
     mock_glob.return_value = ["/dev/accel" + str(x) for x in range(num_devices)]
     with patch.dict("os.environ", {}, clear=True):
+        TPUAcceleratorManager.get_current_node_num_accelerators.cache_clear()
         TPUAcceleratorManager.set_current_process_visible_accelerator_ids(tpu_chips)
         if len(tpu_chips) == 1:
             assert (

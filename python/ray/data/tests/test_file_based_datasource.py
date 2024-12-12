@@ -118,6 +118,17 @@ def test_windows_path():
         assert _is_local_windows_path("c:\\some\\where/mixed")
 
 
+@pytest.mark.parametrize("shuffle", [True, False, "file"])
+def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
+    with pytest.raises(ValueError):
+        FileBasedDatasource("example://iris.csv", shuffle=shuffle)
+
+
+@pytest.mark.parametrize("shuffle", [None, "files"])
+def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
+    FileBasedDatasource("example://iris.csv", shuffle=shuffle)
+
+
 if __name__ == "__main__":
     import sys
 

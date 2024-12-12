@@ -13,6 +13,7 @@ from ray.rllib.utils.spaces.space_utils import get_base_struct_from_space
 from ray.rllib.utils.typing import (
     LocalOptimizer,
     ModelGradients,
+    NetworkType,
     PartialAlgorithmConfigDict,
     SpaceStruct,
     TensorStructType,
@@ -738,6 +739,28 @@ def two_hot(
         updates,
         shape=(tf.shape(value)[0], num_buckets),
     )
+
+
+@PublicAPI
+def update_target_network(
+    main_net: NetworkType,
+    target_net: NetworkType,
+    tau: float,
+) -> None:
+    """Updates a keras.Model target network using Polyak averaging.
+
+    new_target_net_weight = (
+        tau * main_net_weight + (1.0 - tau) * current_target_net_weight
+    )
+
+    Args:
+        main_net: The keras.Model to update from.
+        target_net: The target network to update.
+        tau: The tau value to use in the Polyak averaging formula.
+    """
+    for old_var, current_var in zip(target_net.variables, main_net.variables):
+        updated_var = tau * current_var + (1.0 - tau) * old_var
+        old_var.assign(updated_var)
 
 
 @PublicAPI

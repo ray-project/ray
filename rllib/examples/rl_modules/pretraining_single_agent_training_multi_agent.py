@@ -28,8 +28,8 @@ import gymnasium as gym
 from ray.rllib.algorithms.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -90,7 +90,7 @@ if __name__ == "__main__":
         .environment("CartPole-v1")
         .rl_module(
             # Use a different number of hidden units for the pre-trained module.
-            model_config_dict={"fcnet_hiddens": [64]},
+            model_config={"fcnet_hiddens": [64]},
         )
     )
 
@@ -99,30 +99,30 @@ if __name__ == "__main__":
     # Get the checkpoint path.
     module_chkpt_path = results.get_best_result().checkpoint.path
 
-    # Create a new MARL Module using the pre-trained module for policy 0.
+    # Create a new MultiRLModule using the pre-trained module for policy 0.
     env = gym.make("CartPole-v1")
     module_specs = {}
     module_class = PPOTorchRLModule
     for i in range(args.num_agents):
-        module_specs[f"policy_{i}"] = SingleAgentRLModuleSpec(
+        module_specs[f"policy_{i}"] = RLModuleSpec(
             module_class=PPOTorchRLModule,
             observation_space=env.observation_space,
             action_space=env.action_space,
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config={"fcnet_hiddens": [32]},
             catalog_class=PPOCatalog,
         )
 
     # Swap in the pre-trained module for policy 0.
-    module_specs["policy_0"] = SingleAgentRLModuleSpec(
+    module_specs["policy_0"] = RLModuleSpec(
         module_class=PPOTorchRLModule,
         observation_space=env.observation_space,
         action_space=env.action_space,
-        model_config_dict={"fcnet_hiddens": [64]},
+        model_config={"fcnet_hiddens": [64]},
         catalog_class=PPOCatalog,
         # Note, we load here the module directly from the checkpoint.
         load_state_path=module_chkpt_path,
     )
-    marl_module_spec = MultiAgentRLModuleSpec(module_specs=module_specs)
+    multi_rl_module_spec = MultiRLModuleSpec(rl_module_specs=module_specs)
 
     # Register our environment with tune if we use multiple agents.
     register_env(
@@ -136,7 +136,7 @@ if __name__ == "__main__":
         .environment(
             "multi-agent-carpole-env" if args.num_agents > 0 else "CartPole-v1"
         )
-        .rl_module(rl_module_spec=marl_module_spec)
+        .rl_module(rl_module_spec=multi_rl_module_spec)
     )
 
     # Restore the user's stopping criteria for the training run.

@@ -126,6 +126,8 @@ void TaskSpecification::ComputeResources() {
     // Map the scheduling class descriptor to an integer for performance.
     sched_cls_id_ = GetSchedulingClass(sched_cls_desc);
   }
+
+  runtime_env_hash_ = CalculateRuntimeEnvHash(SerializedRuntimeEnv());
 }
 
 // Task specification getter methods.
@@ -179,15 +181,15 @@ ray::FunctionDescriptor TaskSpecification::FunctionDescriptor() const {
   return ray::FunctionDescriptorBuilder::FromProto(message_->function_descriptor());
 }
 
-rpc::RuntimeEnvInfo TaskSpecification::RuntimeEnvInfo() const {
+const rpc::RuntimeEnvInfo &TaskSpecification::RuntimeEnvInfo() const {
   return message_->runtime_env_info();
 }
 
-std::string TaskSpecification::SerializedRuntimeEnv() const {
+const std::string &TaskSpecification::SerializedRuntimeEnv() const {
   return message_->runtime_env_info().serialized_runtime_env();
 }
 
-rpc::RuntimeEnvConfig TaskSpecification::RuntimeEnvConfig() const {
+const rpc::RuntimeEnvConfig &TaskSpecification::RuntimeEnvConfig() const {
   return message_->runtime_env_info().runtime_env_config();
 }
 
@@ -201,19 +203,12 @@ bool TaskSpecification::IsRetry() const { return AttemptNumber() > 0; }
 
 int32_t TaskSpecification::MaxRetries() const { return message_->max_retries(); }
 
-int TaskSpecification::GetRuntimeEnvHash() const {
-  WorkerCacheKey env = {SerializedRuntimeEnv(),
-                        GetRequiredResources().GetResourceMap(),
-                        IsActorCreationTask(),
-                        GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0,
-                        !(RootDetachedActorId().IsNil())};
-  return env.IntHash();
-}
+int TaskSpecification::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
 const SchedulingClass TaskSpecification::GetSchedulingClass() const {
   if (!IsActorTask()) {
     // Actor task doesn't have scheudling id, so we don't need to check this.
-    RAY_CHECK(sched_cls_id_ > 0);
+    RAY_CHECK_GT(sched_cls_id_, 0);
   }
   return sched_cls_id_;
 }
@@ -406,6 +401,14 @@ int64_t TaskSpecification::MaxActorRestarts() const {
   return message_->actor_creation_task_spec().max_actor_restarts();
 }
 
+std::vector<std::string> TaskSpecification::DynamicWorkerOptionsOrEmpty() const {
+  if (!IsActorCreationTask()) {
+    return {};
+  }
+  return VectorFromProtobuf(
+      message_->actor_creation_task_spec().dynamic_worker_options());
+}
+
 std::vector<std::string> TaskSpecification::DynamicWorkerOptions() const {
   RAY_CHECK(IsActorCreationTask());
   return VectorFromProtobuf(
@@ -446,17 +449,12 @@ ObjectID TaskSpecification::ActorCreationDummyObjectId() const {
       message_->actor_task_spec().actor_creation_dummy_object_id());
 }
 
-ObjectID TaskSpecification::ActorDummyObject() const {
-  RAY_CHECK(IsActorTask() || IsActorCreationTask());
-  return ReturnId(NumReturns() - 1);
-}
-
 int TaskSpecification::MaxActorConcurrency() const {
   RAY_CHECK(IsActorCreationTask());
   return message_->actor_creation_task_spec().max_concurrency();
 }
 
-std::string TaskSpecification::ConcurrencyGroupName() const {
+const std::string &TaskSpecification::ConcurrencyGroupName() const {
   RAY_CHECK(IsActorTask());
   return message_->concurrency_group_name();
 }
@@ -598,62 +596,15 @@ std::string TaskSpecification::CallSiteString() const {
   return stream.str();
 }
 
-WorkerCacheKey::WorkerCacheKey(
-    const std::string serialized_runtime_env,
-    const absl::flat_hash_map<std::string, double> &required_resources,
-    bool is_actor,
-    bool is_gpu,
-    bool is_root_detached_actor)
-    : serialized_runtime_env(serialized_runtime_env),
-      required_resources(RayConfig::instance().worker_resource_limits_enabled()
-                             ? required_resources
-                             : absl::flat_hash_map<std::string, double>{}),
-      is_actor(is_actor && RayConfig::instance().isolate_workers_across_task_types()),
-      is_gpu(is_gpu && RayConfig::instance().isolate_workers_across_resource_types()),
-      is_root_detached_actor(is_root_detached_actor),
-      hash_(CalculateHash()) {}
-
-std::size_t WorkerCacheKey::CalculateHash() const {
-  size_t hash = 0;
-  if (EnvIsEmpty()) {
+int CalculateRuntimeEnvHash(const std::string &serialized_runtime_env) {
+  if (IsRuntimeEnvEmpty(serialized_runtime_env)) {
     // It's useful to have the same predetermined value for both unspecified and empty
     // runtime envs.
-    if (is_actor) {
-      hash = 1;
-    } else {
-      hash = 0;
-    }
-  } else {
-    boost::hash_combine(hash, serialized_runtime_env);
-    boost::hash_combine(hash, is_actor);
-    boost::hash_combine(hash, is_gpu);
-    boost::hash_combine(hash, is_root_detached_actor);
-
-    std::vector<std::pair<std::string, double>> resource_vars(required_resources.begin(),
-                                                              required_resources.end());
-    // Sort the variables so different permutations yield the same hash.
-    std::sort(resource_vars.begin(), resource_vars.end());
-    for (auto &pair : resource_vars) {
-      boost::hash_combine(hash, pair.first);
-      boost::hash_combine(hash, pair.second);
-    }
+    return 0;
   }
-  return hash;
+  size_t hash = std::hash<std::string>()(serialized_runtime_env);
+  return static_cast<int>(hash);
 }
-
-bool WorkerCacheKey::operator==(const WorkerCacheKey &k) const {
-  // FIXME we should compare fields
-  return Hash() == k.Hash();
-}
-
-bool WorkerCacheKey::EnvIsEmpty() const {
-  return IsRuntimeEnvEmpty(serialized_runtime_env) && required_resources.empty() &&
-         !is_gpu && !is_root_detached_actor;
-}
-
-std::size_t WorkerCacheKey::Hash() const { return hash_; }
-
-int WorkerCacheKey::IntHash() const { return (int)Hash(); }
 
 std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
   RAY_CHECK(IsActorCreationTask());
@@ -665,6 +616,7 @@ std::vector<ConcurrencyGroup> TaskSpecification::ConcurrencyGroups() const {
     auto &curr_group_message = actor_creation_task_spec.concurrency_groups(i);
     std::vector<ray::FunctionDescriptor> function_descriptors;
     const auto func_descriptors_size = curr_group_message.function_descriptors_size();
+    function_descriptors.reserve(func_descriptors_size);
     for (auto j = 0; j < func_descriptors_size; ++j) {
       function_descriptors.push_back(FunctionDescriptorBuilder::FromProto(
           curr_group_message.function_descriptors(j)));

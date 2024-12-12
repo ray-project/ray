@@ -5,6 +5,7 @@ FROM $DOCKER_IMAGE_BASE_BUILD
 
 ARG RAYCI_IS_GPU_BUILD=false
 ARG RAYCI_LIGHTNING_2=false
+ARG PYTHON
 
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
@@ -21,9 +22,16 @@ RUN <<EOF
 
 set -euo pipefail
 
-DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
-  INSTALL_HOROVOD=1 INSTALL_HDFS=1 \
-  ./ci/env/install-dependencies.sh
+if [[ "${PYTHON-}" == "3.12" ]]; then
+  # hebo and doc test depdencies are not needed for 3.12 test jobs
+  TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
+    INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+else
+  DOC_TESTING=1 TRAIN_TESTING=1 TUNE_TESTING=1 DATA_PROCESSING_TESTING=1 \
+    INSTALL_HDFS=1 ./ci/env/install-dependencies.sh
+
+  pip install HEBO==0.3.5
+fi
 
 if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
   pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt

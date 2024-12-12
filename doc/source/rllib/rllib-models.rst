@@ -200,7 +200,7 @@ Custom TensorFlow Models
 
 Custom TensorFlow models should subclass `TFModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/tf/tf_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
 ``forward()`` takes a dict of tensor inputs (mapping str to Tensor types), whose keys and values depend on
-the `view requirements <rllib-sample-collection.html>`__ of the model.
+the view requirements of the model.
 Normally, this input dict contains only the current observation ``obs`` and an ``is_training`` boolean flag, as well as an optional list of RNN states.
 ``forward()`` should return the model output (of size ``self.num_outputs``) and - if applicable - a new list of internal
 states (in case of RNNs or attention nets). You can also override extra methods of the model such as ``value_function`` to implement
@@ -251,7 +251,7 @@ Custom PyTorch Models
 Similarly, you can create and register custom PyTorch models by subclassing
 `TorchModelV2 <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_modelv2.py>`__ and implement the ``__init__()`` and ``forward()`` methods.
 ``forward()`` takes a dict of tensor inputs (mapping str to PyTorch tensor types), whose keys and values depend on
-the `view requirements <rllib-sample-collection.html>`__ of the model.
+the view requirements of the model.
 Usually, the dict contains only the current observation ``obs`` and an ``is_training`` boolean flag, as well as an optional list of RNN states.
 ``forward()`` should return the model output (of size ``self.num_outputs``) and - if applicable - a new list of internal
 states (in case of RNNs or attention nets). You can also override extra methods of the model such as ``value_function`` to implement
@@ -364,59 +364,7 @@ calculating head on top of your policy model. In order to expand a Model's API, 
 define and implement a new method (e.g. ``get_q_values()``) in your TF- or TorchModelV2 sub-class.
 
 You can now wrap this new API either around RLlib's default models or around
-your custom (``forward()``-overriding) model classes. Here are two examples that illustrate how to do this:
-
-**The Q-head API: Adding a dueling layer on top of a default RLlib model**.
-
-The following code adds a ``get_q_values()`` method to the automatically chosen
-default Model (e.g. a ``FullyConnectedNetwork`` if the observation space is a 1D Box
-or Discrete):
-
-.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/custom_model_api.py
-   :language: python
-   :start-after: __sphinx_doc_model_api_1_begin__
-   :end-before: __sphinx_doc_model_api_1_end__
-
-Now, for your algorithm that needs to have this model API to work properly (e.g. DQN),
-you use this following code to construct the complete final Model using the
-``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
-
-.. literalinclude:: ../../../rllib/examples/custom_model_api.py
-   :language: python
-   :start-after: __sphinx_doc_model_construct_1_begin__
-   :end-before: __sphinx_doc_model_construct_1_end__
-
-With the model object constructed above, you can get the underlying intermediate output (before the dueling head)
-by calling ``my_dueling_model`` directly (``out = my_dueling_model([input_dict])``), and then passing ``out`` into
-your custom ``get_q_values`` method: ``q_values = my_dueling_model.get_q_values(out)``.
-
-
-**The single Q-value API for SAC**.
-
-Our DQN model from above takes an observation and outputs one Q-value per (discrete) action.
-Continuous SAC - on the other hand - uses Models that calculate one Q-value only
-for a single (**continuous**) action, given an observation and that particular action.
-
-Let's take a look at how we would construct this API and wrap it around a custom model:
-
-.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/custom_model_api.py
-   :language: python
-   :start-after: __sphinx_doc_model_api_2_begin__
-   :end-before: __sphinx_doc_model_api_2_end__
-
-Now, for your algorithm that needs to have this model API to work properly (e.g. SAC),
-you use this following code to construct the complete final Model using the
-``ModelCatalog.get_model_v2`` factory function (`code here <https://github.com/ray-project/ray/blob/master/rllib/models/catalog.py>`__):
-
-.. literalinclude:: ../../../rllib/examples/custom_model_api.py
-   :language: python
-   :start-after: __sphinx_doc_model_construct_2_begin__
-   :end-before: __sphinx_doc_model_construct_2_end__
-
-With the model object constructed above, you can get the underlying intermediate output (before the q-head)
-by calling ``my_cont_action_q_model`` directly (``out = my_cont_action_q_model([input_dict])``), and then passing ``out``
-and some action into your custom ``get_single_q_value`` method:
-``q_value = my_cont_action_q_model.get_signle_q_value(out, action)``.
+your custom (``forward()``-overriding) model classes.
 
 
 More examples for Building Custom Models
@@ -441,30 +389,6 @@ Take a look at this model example that does exactly that:
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
 
-
-**Using the Trajectory View API: Passing in the last n actions (or rewards or observations) as inputs to a custom Model**
-
-It is sometimes helpful for learning not only to look at the current observation
-in order to calculate the next action, but also at the past n observations.
-In other cases, you may want to provide the most recent rewards or actions to the model as well
-(like our LSTM wrapper does if you specify: ``use_lstm=True`` and ``lstm_use_prev_action/reward=True``).
-All this may even be useful when not working with partially observable environments (PO-MDPs)
-and/or RNN/Attention models, as for example in classic Atari runs, where we usually use framestacking of
-the last four observed images.
-
-The `trajectory view API <rllib-sample-collection.html#trajectory-view-api>`__ allows your models
-to specify these more complex "view requirements".
-
-Here is a simple (non-RNN/Attention) example of a Model that takes as input
-the last 3 observations (very similar to the recommended "framestacking" for
-learning in Atari environments):
-
-.. literalinclude:: ../../../rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py
-   :language: python
-   :start-after: __sphinx_doc_begin__
-   :end-before: __sphinx_doc_end__
-
-A PyTorch version of the above model is also `given in the same file <https://github.com/ray-project/ray/blob/master/rllib/examples/_old_api_stack/models/trajectory_view_utilizing_models.py>`__.
 
 
 Custom Action Distributions
@@ -506,7 +430,7 @@ Supervised Model Losses
 
 You can mix supervised losses into any RLlib algorithm through custom models. For example, you can add an imitation learning loss on expert experiences, or a self-supervised autoencoder loss within the model. These losses can be defined over either policy evaluation inputs, or data read from `offline storage <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
 
-**TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``metrics()`` method. Here is a `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_model_loss_and_metrics.py>`__ of adding an imitation loss to CartPole training that is defined over a `offline dataset <rllib-offline.html#input-pipeline-for-supervised-losses>`__.
+**TensorFlow**: To add a supervised loss to a custom TF model, you need to override the ``custom_loss()`` method. This method takes in the existing policy loss for the algorithm, which you can add your own supervised loss to before returning. For debugging, you can also return a dictionary of scalar tensors in the ``metrics()`` method.
 
 **PyTorch**: There is no explicit API for adding losses to custom torch models. However, you can modify the loss in the policy definition directly. Like for TF models, offline datasets can be incorporated by creating an input reader and calling ``reader.next()`` in the loss forward pass.
 

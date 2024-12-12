@@ -151,13 +151,13 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
                 # Set the weights of the new polic(y/ies).
                 if initializing_exploiters:
                     main_state = algorithm.get_policy("main").get_state()
-                    pol_map = algorithm.workers.local_worker().policy_map
+                    pol_map = algorithm.env_runner.policy_map
                     pol_map["main_0"].set_state(main_state)
                     pol_map["league_exploiter_1"].set_state(main_state)
                     pol_map["main_exploiter_1"].set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers as well.
-                    algorithm.workers.sync_weights(
+                    algorithm.env_runner_group.sync_weights(
                         policies=["main_0", "league_exploiter_1", "main_exploiter_1"]
                     )
 
@@ -165,7 +165,7 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
                         worker.set_policy_mapping_fn(policy_mapping_fn)
                         worker.set_is_policy_to_train(_trainable_policies)
 
-                    algorithm.workers.foreach_worker(_set)
+                    algorithm.env_runner_group.foreach_worker(_set)
                 else:
                     new_policy = algorithm.add_policy(
                         policy_id=new_pol_id,
@@ -177,7 +177,7 @@ class SelfPlayLeagueBasedCallbackOldAPIStack(DefaultCallbacks):
                     new_policy.set_state(main_state)
                     # We need to sync the just copied local weights to all the
                     # remote workers as well.
-                    algorithm.workers.sync_weights(policies=[new_pol_id])
+                    algorithm.env_runner_group.sync_weights(policies=[new_pol_id])
 
                 self._print_league()
 

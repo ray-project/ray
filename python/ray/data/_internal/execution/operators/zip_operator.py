@@ -1,5 +1,5 @@
 import itertools
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
@@ -14,6 +14,7 @@ from ray.data.block import (
     BlockMetadata,
     BlockPartition,
 )
+from ray.data.context import DataContext
 
 
 class ZipOperator(PhysicalOperator):
@@ -28,6 +29,7 @@ class ZipOperator(PhysicalOperator):
         self,
         left_input_op: PhysicalOperator,
         right_input_op: PhysicalOperator,
+        data_context: DataContext,
     ):
         """Create a ZipOperator.
 
@@ -40,10 +42,13 @@ class ZipOperator(PhysicalOperator):
         self._output_buffer: List[RefBundle] = []
         self._stats: StatsDict = {}
         super().__init__(
-            "Zip", [left_input_op, right_input_op], target_max_block_size=None
+            "Zip",
+            [left_input_op, right_input_op],
+            data_context,
+            target_max_block_size=None,
         )
 
-    def num_outputs_total(self) -> int:
+    def num_outputs_total(self) -> Optional[int]:
         left_num_outputs = self.input_dependencies[0].num_outputs_total()
         right_num_outputs = self.input_dependencies[1].num_outputs_total()
         if left_num_outputs is not None and right_num_outputs is not None:
@@ -52,6 +57,16 @@ class ZipOperator(PhysicalOperator):
             return left_num_outputs
         else:
             return right_num_outputs
+
+    def num_output_rows_total(self) -> Optional[int]:
+        left_num_rows = self.input_dependencies[0].num_output_rows_total()
+        right_num_rows = self.input_dependencies[1].num_output_rows_total()
+        if left_num_rows is not None and right_num_rows is not None:
+            return max(left_num_rows, right_num_rows)
+        elif left_num_rows is not None:
+            return left_num_rows
+        else:
+            return right_num_rows
 
     def _add_input_inner(self, refs: RefBundle, input_index: int) -> None:
         assert not self.completed()

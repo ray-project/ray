@@ -42,7 +42,7 @@ are represented by slightly different maps that the agent has to navigate.
    :end-before: __END_curriculum_learning_example_env_options__
 
 Then, define the central piece controlling the curriculum, which is a custom callbacks class
-overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_result`.
+overriding the :py:meth:`~ray.rllib.algorithms.callbacks.DefaultCallbacks.on_train_result`.
 
 
 .. TODO move to doc_code and make it use algo configs.
@@ -60,7 +60,7 @@ overriding the :py:meth:`~ray.rllib.algorithms.callbacks.Callbacks.on_train_resu
                 task = 1
             else:
                 task = 0
-            algorithm.workers.foreach_worker(
+            algorithm.env_runner_group.foreach_worker(
                 lambda ev: ev.foreach_env(
                     lambda env: env.set_task(task)))
 
@@ -265,9 +265,9 @@ indicating every how many ``Algorithm.train()`` calls an "evaluation step" shoul
    :start-after: __rllib-adv_api_evaluation_1_begin__
    :end-before: __rllib-adv_api_evaluation_1_end__
 
-An evaluation step runs - using its own ``EnvRunner``s - for ``evaluation_duration``
-episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can
-take values of either ``"episodes"`` (default) or ``"timesteps"``.
+An evaluation step runs - using its own ``EnvRunner`` instances - for ``evaluation_duration``
+episodes or time-steps, depending on the ``evaluation_duration_unit`` setting, which can take values
+of either ``"episodes"`` (default) or ``"timesteps"``.
 
 .. literalinclude:: ./doc_code/advanced_api.py
    :language: python
@@ -362,7 +362,7 @@ of such environment behavior:
 
 Note that with or without parallel evaluation, all
 :ref:`fault tolerance settings <rllib-scaling-guide>`, such as
-``ignore_env_runner_failures`` or ``recreate_failed_env_runners`` are respected and applied
+``ignore_env_runner_failures`` or ``restart_failed_env_runners`` are respected and applied
 to the failed evaluation workers.
 
 Here's an example:

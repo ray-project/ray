@@ -109,9 +109,8 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
 
-  # Remove some pins from upstream dependencies:
-  # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
+  # Remove some pins from upstream dependencies: ray
+  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
   # Delete local installation
   sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
@@ -275,8 +274,8 @@ test_cpp() {
   BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
   bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
-    --test_arg=--ray_redis_password="1234"
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+    --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
   bazel test --test_output=all //cpp:test_python_call_cpp
 
   # run the cpp example, currently does not work on mac

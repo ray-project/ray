@@ -360,9 +360,9 @@ Increasing batch size results in faster execution because inference is a vectori
 Handling GPU out-of-memory failures
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease 
-the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your 
-batch size is already set to 1, then use either a smaller model or GPU devices with more 
+If you run into CUDA out-of-memory issues, your batch size is likely too large. Decrease
+the batch size by following :ref:`these steps <batch_inference_batch_size>`. If your
+batch size is already set to 1, then use either a smaller model or GPU devices with more
 memory.
 
 For advanced users working with large models, you can use model parallelism to shard the model across multiple GPUs.

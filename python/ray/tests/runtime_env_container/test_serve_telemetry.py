@@ -11,6 +11,7 @@ from ray.serve.schema import ServeDeploySchema
 from ray.serve._private.test_utils import (
     TelemetryStorage,
     check_ray_started,
+    check_ray_stopped,
 )
 
 parser = argparse.ArgumentParser(
@@ -98,6 +99,7 @@ config["applications"].append(
     {
         "name": "app1",
         "import_path": "serve_application:app",
+        "route_prefix": "/app1",
         "runtime_env": runtime_env,
     },
 )
@@ -105,16 +107,22 @@ client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app1", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_app)
 
-# Deploy with container runtime env set at application level
+deployment_runtime_env = dict(runtime_env)
+deployment_runtime_env["working_dir"] = None
+# Deploy with container runtime env set at deployment level
 config["applications"].append(
     {
         "name": "app2",
-        "import_path": "serve_application:app",
+        "import_path": "read_file:app",
+        "route_prefix": "/app2",
+        "runtime_env": {
+            "working_dir": "https://github.com/ray-project/test_dag/archive/4d2c9a59d9eabfd4c8a9e04a7aae44fc8f5b416f.zip"  # noqa
+        },
         "deployments": [
             {
                 "name": "Model",
                 "ray_actor_options": {
-                    "runtime_env": runtime_env,
+                    "runtime_env": deployment_runtime_env,
                 },
             }
         ],
@@ -124,3 +132,7 @@ client.deploy_apps(ServeDeploySchema.parse_obj(config))
 wait_for_condition(check_app, app_name="app2", expected="helloworldalice", timeout=300)
 wait_for_condition(check_telemetry_deployment)
 print("Telemetry checks passed!")
+
+# Stop ray
+subprocess.check_output(["ray", "stop", "--force"])
+wait_for_condition(check_ray_stopped, timeout=15)

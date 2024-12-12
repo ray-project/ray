@@ -3,22 +3,28 @@ This file stores global state for a Serve application. Deployment replicas
 can use this state to access metadata or the Serve controller.
 """
 
+import asyncio
 import contextvars
 import logging
+from collections import defaultdict
 from dataclasses import dataclass
-from typing import Callable, Optional
+from typing import Callable, Dict, Optional
 
 import ray
 from ray.exceptions import RayActorError
 from ray.serve._private.client import ServeControllerClient
 from ray.serve._private.common import ReplicaID
 from ray.serve._private.config import DeploymentConfig
-from ray.serve._private.constants import SERVE_CONTROLLER_NAME, SERVE_NAMESPACE
+from ray.serve._private.constants import (
+    SERVE_CONTROLLER_NAME,
+    SERVE_LOGGER_NAME,
+    SERVE_NAMESPACE,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.grpc_util import RayServegRPCContext
 from ray.util.annotations import DeveloperAPI
 
-logger = logging.getLogger(__file__)
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 _INTERNAL_REPLICA_CONTEXT: "ReplicaContext" = None
 _global_client: ServeControllerClient = None
@@ -171,6 +177,7 @@ class _RequestContext:
     app_name: str = ""
     multiplexed_model_id: str = ""
     grpc_context: Optional[RayServegRPCContext] = None
+    is_http_request: bool = False
 
 
 _serve_request_context = contextvars.ContextVar(
@@ -200,3 +207,42 @@ def _set_request_context(
             or current_request_context.multiplexed_model_id,
         )
     )
+
+
+# `_requests_pending_assignment` is a map from request ID to a
+# dictionary of asyncio tasks.
+# The request ID points to an ongoing request that is executing on the
+# current replica, and the asyncio tasks are ongoing tasks started on
+# the router to assign child requests to downstream replicas.
+
+# A dictionary is used over a set to track the asyncio tasks for more
+# efficient addition and deletion time complexity. A uniquely generated
+# `response_id` is used to identify each task.
+
+_requests_pending_assignment: Dict[str, Dict[str, asyncio.Task]] = defaultdict(dict)
+
+
+# Note that the functions below that manipulate
+# `_requests_pending_assignment` are NOT thread-safe. They are only
+# expected to be called from the same thread/asyncio event-loop.
+
+
+def _get_requests_pending_assignment(parent_request_id: str) -> Dict[str, asyncio.Task]:
+    if parent_request_id in _requests_pending_assignment:
+        return _requests_pending_assignment[parent_request_id]
+
+    return {}
+
+
+def _add_request_pending_assignment(parent_request_id: str, response_id: str, task):
+    # NOTE: `parent_request_id` is the `internal_request_id` corresponding
+    # to an ongoing Serve request, so it is always non-empty.
+    _requests_pending_assignment[parent_request_id][response_id] = task
+
+
+def _remove_request_pending_assignment(parent_request_id: str, response_id: str):
+    if response_id in _requests_pending_assignment[parent_request_id]:
+        del _requests_pending_assignment[parent_request_id][response_id]
+
+    if len(_requests_pending_assignment[parent_request_id]) == 0:
+        del _requests_pending_assignment[parent_request_id]

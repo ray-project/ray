@@ -38,7 +38,7 @@ def run_task_workload(total_num_cpus, smoke):
         multiplier = 1
     TOTAL_TASKS = int(total_num_cpus * 2 * multiplier)
 
-    pb = ProgressBar("Chaos test", TOTAL_TASKS)
+    pb = ProgressBar("Chaos test", TOTAL_TASKS, "task")
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
     pb.block_until_complete(results)
     pb.close()
@@ -98,7 +98,7 @@ def run_actor_workload(total_num_cpus, smoke):
         for _ in range(NUM_CPUS)
     ]
 
-    pb = ProgressBar("Chaos test", TOTAL_TASKS * NUM_CPUS)
+    pb = ProgressBar("Chaos test", TOTAL_TASKS * NUM_CPUS, "task")
     actors = []
     for db_actor in db_actors:
         actors.append(ReportActor.remote(db_actor))

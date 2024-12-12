@@ -490,8 +490,11 @@ class StandardAutoscaler:
         assert self.non_terminated_nodes
         assert self.provider
 
-        last_used = self.load_metrics.last_used_time_by_ip
-        horizon = now - (60 * self.config["idle_timeout_minutes"])
+        last_used = self.load_metrics.ray_nodes_last_used_time_by_ip
+
+        idle_timeout_s = 60 * self.config["idle_timeout_minutes"]
+
+        last_used_cutoff = now - idle_timeout_s
 
         # Sort based on last used to make sure to keep min_workers that
         # were most recently used. Otherwise, _keep_min_workers_of_node_type
@@ -539,7 +542,8 @@ class StandardAutoscaler:
                 continue
 
             node_ip = self.provider.internal_ip(node_id)
-            if node_ip in last_used and last_used[node_ip] < horizon:
+
+            if node_ip in last_used and last_used[node_ip] < last_used_cutoff:
                 self.schedule_node_termination(node_id, "idle", logger.info)
                 # Get the local time of the node's last use as a string.
                 formatted_last_used_time = time.asctime(

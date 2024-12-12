@@ -20,10 +20,6 @@ class OpenSpielEnv(MultiAgentEnv):
         # Stores the current open-spiel game state.
         self.state = None
 
-        # Extract observation- and action spaces from game.
-        self._obs_space_in_preferred_format = True
-        self._action_space_in_preferred_format = True
-
         self.observation_space = gym.spaces.Dict(
             {
                 aid: gym.spaces.Box(

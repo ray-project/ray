@@ -11,4 +11,4 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN DOC_TESTING=1 INSTALL_HOROVOD=1 ./ci/env/install-dependencies.sh
+RUN DOC_TESTING=1 ./ci/env/install-dependencies.sh

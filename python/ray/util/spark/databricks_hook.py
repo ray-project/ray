@@ -83,7 +83,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
 
-        if ray_cluster_handler.autoscale or self.is_global:
+        if self.is_global:
             # Disable auto shutdown if
             # 1) autoscaling enabled
             #  because in autoscaling mode, background spark job will be killed

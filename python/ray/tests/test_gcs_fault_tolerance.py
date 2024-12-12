@@ -1,4 +1,5 @@
 import sys
+import asyncio
 import os
 import threading
 from time import sleep
@@ -19,9 +20,12 @@ from ray._private.test_utils import (
     wait_for_condition,
     wait_for_pid_to_exit,
     run_string_as_driver,
+    redis_sentinel_replicas,
 )
 from ray.job_submission import JobSubmissionClient, JobStatus
 from ray._raylet import GcsClient
+from ray._private.runtime_env.plugin import RuntimeEnvPlugin
+from ray.util.state import list_placement_groups
 
 import psutil
 
@@ -285,7 +289,7 @@ def test_del_actor_after_gcs_server_restart(ray_start_regular_with_external_redi
     # Wait for the actor dead.
     wait_for_condition(condition, timeout=10)
 
-    # If `PollOwnerForActorOutOfScope` was successfully called,
+    # If `ReportActorOutOfScope` was successfully called,
     # name should be properly deleted.
     with pytest.raises(ValueError):
         ray.get_actor("abc")
@@ -431,12 +435,9 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
             continue
 
 
-@pytest.mark.parametrize("auto_reconnect", [True, False])
-def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
+def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(
-        address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
-    )
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -444,11 +445,7 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     passed = [False]
 
     def kv_get():
-        if not auto_reconnect:
-            with pytest.raises(Exception):
-                gcs_client.internal_kv_get(b"a", None)
-        else:
-            assert gcs_client.internal_kv_get(b"a", None) == b"b"
+        assert gcs_client.internal_kv_get(b"a", None) == b"b"
         passed[0] = True
 
     ray._private.worker._global_node.kill_gcs_server()
@@ -460,10 +457,7 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     assert passed[0]
 
 
-@pytest.mark.parametrize("auto_reconnect", [True, False])
-def test_gcs_aio_client_reconnect(
-    ray_start_regular_with_external_redis, auto_reconnect
-):
+def test_gcs_aio_client_reconnect(ray_start_regular_with_external_redis):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
@@ -473,17 +467,10 @@ def test_gcs_aio_client_reconnect(
     passed = [False]
 
     async def async_kv_get():
-        if not auto_reconnect:
-            with pytest.raises(Exception):
-                gcs_aio_client = gcs_utils.GcsAioClient(
-                    address=gcs_address, nums_reconnect_retry=0
-                )
-                await gcs_aio_client.internal_kv_get(b"a", None)
-        else:
-            gcs_aio_client = gcs_utils.GcsAioClient(
-                address=gcs_address, nums_reconnect_retry=20
-            )
-            assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20
+        )
+        assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 
     def kv_get():
@@ -863,6 +850,120 @@ print("DONE")
 
 
 @pytest.mark.parametrize(
+    "ray_start_cluster_head_with_external_redis_sentinel",
+    [
+        generate_system_config_map(
+            gcs_rpc_server_reconnect_timeout_s=60,
+            gcs_server_request_timeout_seconds=10,
+            redis_db_connect_retries=50,
+        )
+    ],
+    indirect=True,
+)
+def test_redis_with_sentinel_failureover(
+    ray_start_cluster_head_with_external_redis_sentinel,
+):
+    """This test is to cover ray cluster's behavior with Redis sentinel.
+    The expectation is Redis sentinel should manage failover
+    automatically, and GCS can continue talking to the same address
+    without any human intervention on Redis.
+    For this test we ensure:
+    - When Redis master failed, Ray should crash (TODO: GCS should
+        autommatically try re-connect to sentinel).
+    - When restart Ray, it should continue talking to sentinel, which
+        should return information about new master.
+    """
+    cluster = ray_start_cluster_head_with_external_redis_sentinel
+    import redis
+
+    redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
+    ip, port = redis_addr.split(":")
+    redis_cli = redis.Redis(ip, port)
+    print(redis_cli.info("sentinel"))
+    redis_name = redis_cli.info("sentinel")["master0"]["name"]
+
+    def get_sentinel_nodes():
+        leader_address = (
+            redis_cli.sentinel_master(redis_name)["ip"],
+            redis_cli.sentinel_master(redis_name)["port"],
+        )
+        follower_addresses = [
+            (x["ip"], x["port"]) for x in redis_cli.sentinel_slaves(redis_name)
+        ]
+        return [leader_address] + follower_addresses
+
+    wait_for_condition(lambda: len(get_sentinel_nodes()) == redis_sentinel_replicas())
+
+    @ray.remote(max_restarts=-1)
+    class Counter:
+        def r(self, v):
+            return v
+
+        def pid(self):
+            import os
+
+            return os.getpid()
+
+    c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
+    c_pid = ray.get(c.pid.remote())
+    c_process = psutil.Process(pid=c_pid)
+    r = ray.get(c.r.remote(10))
+    assert r == 10
+
+    head_node = cluster.head_node
+    gcs_server_process = head_node.all_processes["gcs_server"][0].process
+    gcs_server_pid = gcs_server_process.pid
+
+    leader_cli = redis.Redis(*get_sentinel_nodes()[0])
+    leader_pid = leader_cli.info()["process_id"]
+    follower_cli = [redis.Redis(*x) for x in get_sentinel_nodes()[1:]]
+
+    # Wait until all data is updated in the replica
+    leader_cli.set("_hole", "0")
+    wait_for_condition(lambda: all([b"_hole" in f.keys("*") for f in follower_cli]))
+    current_leader = get_sentinel_nodes()[0]
+
+    # Now kill pid
+    leader_process = psutil.Process(pid=leader_pid)
+    leader_process.kill()
+
+    print(">>> Waiting gcs server to exit", gcs_server_pid)
+    wait_for_pid_to_exit(gcs_server_pid, 1000)
+    print("GCS killed")
+
+    wait_for_condition(lambda: current_leader != get_sentinel_nodes()[0])
+
+    # Kill Counter actor. It should restart after GCS is back
+    c_process.kill()
+    # Cleanup the in memory data and then start gcs
+    cluster.head_node.kill_gcs_server(False)
+
+    print("Start gcs")
+    sleep(2)
+    cluster.head_node.start_gcs_server()
+
+    assert len(ray.nodes()) == 1
+    assert ray.nodes()[0]["alive"]
+
+    driver_script = f"""
+import ray
+ray.init('{cluster.address}')
+@ray.remote
+def f():
+    return 10
+assert ray.get(f.remote()) == 10
+
+c = ray.get_actor("c", namespace="test")
+v = ray.get(c.r.remote(10))
+assert v == 10
+print("DONE")
+"""
+
+    # Make sure the cluster is usable
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
+
+
+@pytest.mark.parametrize(
     "ray_start_regular",
     [
         generate_system_config_map(
@@ -1031,7 +1132,7 @@ def test_job_finished_after_head_node_restart(
 
     def get_job_info(submission_id):
         gcs_client = GcsClient(cluster.address)
-        all_job_info = gcs_client.get_all_job_info()
+        all_job_info = gcs_client.get_all_job_info(job_or_submission_id=submission_id)
 
         return list(
             filter(
@@ -1211,6 +1312,87 @@ def test_gcs_server_restart_destroys_out_of_scope_actors(
         assert ray.get(regular2.getpid.remote()) == regular_pid
     else:
         raise ValueError(f"Unknown case: {case}")
+
+
+MyPlugin = "MyPlugin"
+MY_PLUGIN_CLASS_PATH = "ray.tests.test_gcs_fault_tolerance.HangPlugin"
+
+
+class HangPlugin(RuntimeEnvPlugin):
+    name = MyPlugin
+
+    async def create(
+        self,
+        uri,
+        runtime_env,
+        ctx,
+        logger,  # noqa: F821
+    ) -> float:
+        while True:
+            await asyncio.sleep(1)
+
+    @staticmethod
+    def validate(runtime_env_dict: dict) -> str:
+        return 1
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular_with_external_redis",
+    [
+        generate_system_config_map(
+            gcs_rpc_server_reconnect_timeout_s=60,
+            testing_asio_delay_us="NodeManagerService.grpc_server.CancelResourceReserve=500000000:500000000",  # noqa: E501
+        ),
+    ],
+    indirect=True,
+)
+@pytest.mark.parametrize(
+    "set_runtime_env_plugins",
+    [
+        '[{"class":"' + MY_PLUGIN_CLASS_PATH + '"}]',
+    ],
+    indirect=True,
+)
+def test_placement_group_removal_after_gcs_restarts(
+    set_runtime_env_plugins, ray_start_regular_with_external_redis
+):
+    @ray.remote
+    def task():
+        pass
+
+    pg = ray.util.placement_group(bundles=[{"CPU": 1}])
+    _ = task.options(
+        max_retries=0,
+        num_cpus=1,
+        scheduling_strategy=PlacementGroupSchedulingStrategy(
+            placement_group=pg,
+        ),
+        runtime_env={
+            MyPlugin: {"name": "f2"},
+            "config": {"setup_timeout_seconds": -1},
+        },
+    ).remote()
+
+    # The task should be popping worker
+    # TODO(jjyao) Use a more determinstic way to
+    # decide whether the task is popping worker
+    sleep(5)
+
+    ray.util.remove_placement_group(pg)
+    # The PG is marked as REMOVED in redis but not removed yet from raylet
+    # due to the injected delay of CancelResourceReserve rpc
+    wait_for_condition(lambda: list_placement_groups()[0].state == "REMOVED")
+
+    ray._private.worker._global_node.kill_gcs_server()
+    # After GCS restarts, it will try to remove the PG resources
+    # again via ReleaseUnusedBundles rpc
+    ray._private.worker._global_node.start_gcs_server()
+
+    def verify_pg_resources_cleaned():
+        r_keys = ray.available_resources().keys()
+        return all("group" not in k for k in r_keys)
+
+    wait_for_condition(verify_pg_resources_cleaned, timeout=30)
 
 
 if __name__ == "__main__":

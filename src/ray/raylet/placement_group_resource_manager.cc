@@ -26,7 +26,7 @@ void PlacementGroupResourceManager::ReturnUnusedBundle(
     const std::unordered_set<BundleID, pair_hash> &in_use_bundles) {
   for (auto iter = bundle_spec_map_.begin(); iter != bundle_spec_map_.end();) {
     if (0 == in_use_bundles.count(iter->first)) {
-      RAY_CHECK(ReturnBundle(*iter->second).ok());
+      RAY_CHECK_OK(ReturnBundle(*iter->second));
       bundle_spec_map_.erase(iter++);
     } else {
       iter++;

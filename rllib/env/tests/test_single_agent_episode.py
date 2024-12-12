@@ -521,22 +521,22 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(e1.observations[11], e2.observations[11], false=True)
         # Make sure the lookback buffers of both chunks are still working.
         check(
-            e1.get_observations(-1, neg_indices_left_of_zero=True),
+            e1.get_observations(-1, neg_index_as_lookback=True),
             episode.observations.data[len_lookback_buffer - 1],
         )
         check(
-            e1.get_actions(-1, neg_indices_left_of_zero=True),
+            e1.get_actions(-1, neg_index_as_lookback=True),
             episode.actions.data[len_lookback_buffer - 1],
         )
         check(
-            e2.get_observations([-5, -2], neg_indices_left_of_zero=True),
+            e2.get_observations([-5, -2], neg_index_as_lookback=True),
             [
                 episode.observations.data[20 + len_lookback_buffer - 5],
                 episode.observations.data[20 + len_lookback_buffer - 2],
             ],
         )
         check(
-            e2.get_rewards([-5, -2], neg_indices_left_of_zero=True),
+            e2.get_rewards([-5, -2], neg_index_as_lookback=True),
             [
                 episode.rewards.data[20 + len_lookback_buffer - 5],
                 episode.rewards.data[20 + len_lookback_buffer - 2],

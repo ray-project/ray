@@ -11,7 +11,7 @@ import gymnasium as gym
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.models.distributions import Distribution
 from ray.rllib.models.torch.torch_distributions import TorchDeterministic
 
@@ -77,7 +77,7 @@ class CustomPPOCatalog(PPOCatalog):
 algo = (
     PPOConfig()
     .environment("CartPole-v1")
-    .rl_module(rl_module_spec=SingleAgentRLModuleSpec(catalog_class=CustomPPOCatalog))
+    .rl_module(rl_module_spec=RLModuleSpec(catalog_class=CustomPPOCatalog))
     .build()
 )
 results = algo.train()

@@ -9,22 +9,25 @@ https://arxiv.org/pdf/2010.02193.pdf
 """
 from collections import defaultdict
 from functools import partial
-from typing import List, Tuple
+from typing import Collection, List, Optional, Tuple, Union
 
 import gymnasium as gym
+from gymnasium.wrappers.vector import DictInfoToList
 import numpy as np
 import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core import DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
+from ray.rllib.core import COMPONENT_RL_MODULE, DEFAULT_AGENT_ID, DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
+from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.env.wrappers.atari_wrappers import NoopResetEnv, MaxAndSkipEnv
 from ray.rllib.env.wrappers.dm_control_wrapper import DMCEnv
 from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
+from ray.rllib.utils.deprecation import Deprecated
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
@@ -46,7 +49,7 @@ from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.numpy import convert_to_numpy, one_hot
 from ray.rllib.utils.spaces.space_utils import batch, unbatch
 from ray.rllib.utils.torch_utils import convert_to_torch_tensor
-from ray.rllib.utils.typing import ResultDict
+from ray.rllib.utils.typing import ResultDict, StateDict
 from ray.tune.registry import ENV_CREATOR, _global_registry
 
 _, tf, _ = try_import_tf()
@@ -73,7 +76,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Create the gym.vector.Env object.
         # Atari env.
-        if self.config.env.startswith("ALE/"):
+        if self.config.env.startswith("ale_py:ALE/"):
             # TODO (sven): This import currently causes a Tune test to fail. Either way,
             #  we need to figure out how to properly setup the CI environment with
             #  the correct versions of all gymnasium-related packages.
@@ -112,17 +115,21 @@ class DreamerV3EnvRunner(EnvRunner):
 
             gym.register("rllib-single-agent-env-v0", entry_point=_entry_point)
 
-            self.env = gym.vector.make(
-                "rllib-single-agent-env-v0",
-                num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
-                wrappers=[
-                    partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
-                    partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
-                    NormalizedImageEnv,
-                    NoopResetEnv,
-                    MaxAndSkipEnv,
-                ],
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    "rllib-single-agent-env-v0",
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=(
+                        "async" if self.config.remote_worker_envs else "sync"
+                    ),
+                    wrappers=[
+                        partial(gym.wrappers.TimeLimit, max_episode_steps=108000),
+                        partial(resize_v1, x_size=64, y_size=64),  # resize to 64x64
+                        NormalizedImageEnv,
+                        NoopResetEnv,
+                        MaxAndSkipEnv,
+                    ],
+                )
             )
         # DeepMind Control.
         elif self.config.env.startswith("DMC/"):
@@ -137,12 +144,16 @@ class DreamerV3EnvRunner(EnvRunner):
                     parts[1], parts[2], from_pixels=from_pixels, channels_first=False
                 ),
             )
-            self.env = gym.vector.make(
-                "dmc_env-v0",
-                wrappers=[ActionClip],
-                num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=self.config.remote_worker_envs,
-                **dict(self.config.env_config),
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    "dmc_env-v0",
+                    wrappers=[ActionClip],
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=(
+                        "async" if self.config.remote_worker_envs else "sync"
+                    ),
+                    **dict(self.config.env_config),
+                )
             )
         # All other envs (gym or `tune.register_env()`'d by the user).
         else:
@@ -160,18 +171,22 @@ class DreamerV3EnvRunner(EnvRunner):
                     env_descriptor=self.config.env,
                 ),
             )
-            # Create the vectorized gymnasium env.
-            self.env = gym.vector.make(
-                "dreamerv3-custom-env-v0",
-                num_envs=self.config.num_envs_per_env_runner,
-                asynchronous=False,  # self.config.remote_worker_envs,
+            # Wrap into `DictInfoToList` wrapper to get infos as lists.
+            self.env = DictInfoToList(
+                gym.make_vec(
+                    "dreamerv3-custom-env-v0",
+                    num_envs=self.config.num_envs_per_env_runner,
+                    vectorization_mode=(
+                        "async" if self.config.remote_worker_envs else "sync"
+                    ),
+                )
             )
         self.num_envs = self.env.num_envs
         assert self.num_envs == self.config.num_envs_per_env_runner
 
         # Create our RLModule to compute actions with.
         policy_dict, _ = self.config.get_multi_agent_setup(env=self.env)
-        self.marl_module_spec = self.config.get_marl_module_spec(
+        self.multi_rl_module_spec = self.config.get_multi_rl_module_spec(
             policy_dict=policy_dict
         )
         if self.config.share_module_between_env_runner_and_learner:
@@ -181,7 +196,9 @@ class DreamerV3EnvRunner(EnvRunner):
         # weight-synched each iteration).
         else:
             # TODO (sven): DreamerV3 is currently single-agent only.
-            self.module = self.marl_module_spec.build()[DEFAULT_MODULE_ID]
+            self.module = self.multi_rl_module_spec.build()[DEFAULT_MODULE_ID]
+
+        self._cached_to_module = None
 
         self.metrics = MetricsLogger()
 
@@ -256,7 +273,7 @@ class DreamerV3EnvRunner(EnvRunner):
 
         # Sample n timesteps.
         if num_timesteps is not None:
-            return self._sample_timesteps(
+            return self._sample(
                 num_timesteps=num_timesteps,
                 explore=explore,
                 random_actions=random_actions,
@@ -267,7 +284,7 @@ class DreamerV3EnvRunner(EnvRunner):
             # `_sample_episodes` returns only one list (with completed episodes)
             # return empty list for incomplete ones.
             return (
-                self._sample_episodes(
+                self._sample(
                     num_episodes=num_episodes,
                     explore=explore,
                     random_actions=random_actions,
@@ -275,18 +292,18 @@ class DreamerV3EnvRunner(EnvRunner):
                 [],
             )
 
-    def _sample_timesteps(
+    def _sample(
         self,
-        num_timesteps: int,
+        *,
+        num_timesteps: Optional[int] = None,
+        num_episodes: Optional[int] = None,
         explore: bool = True,
         random_actions: bool = False,
         force_reset: bool = False,
     ) -> List[SingleAgentEpisode]:
-        """Helper method to run n timesteps.
+        """Helper method to sample n timesteps or m episodes."""
 
-        See docstring of self.sample() for more details.
-        """
-        done_episodes_to_return = []
+        done_episodes_to_return: List[SingleAgentEpisode] = []
 
         # Get initial states for all `batch_size_B` rows in the forward batch.
         initial_states = tree.map_structure(
@@ -295,193 +312,160 @@ class DreamerV3EnvRunner(EnvRunner):
         )
 
         # Have to reset the env (on all vector sub-envs).
-        if force_reset or self._needs_initial_reset:
-            obs, _ = self.env.reset()
+        if force_reset or num_episodes is not None or self._needs_initial_reset:
+            episodes = self._episodes = [None for _ in range(self.num_envs)]
+            self._reset_envs(episodes, initial_states)
+            # We just reset the env. Don't have to force this again in the next
+            # call to `self._sample()`.
             self._needs_initial_reset = False
-
-            self._episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
 
             # Set initial obs and states in the episodes.
             for i in range(self.num_envs):
-                self._episodes[i].add_env_reset(observation=obs[i])
                 self._states[i] = None
-
-        # Don't reset existing envs; continue in already started episodes.
         else:
-            # Pick up stored observations and states from previous timesteps.
-            obs = np.stack([eps.observations[-1] for eps in self._episodes])
+            episodes = self._episodes
 
-        # Loop through env for n timesteps.
+        # Loop through `num_timesteps` timesteps or `num_episodes` episodes.
         ts = 0
-        while ts < num_timesteps:
+        eps = 0
+        while (
+            (ts < num_timesteps) if num_timesteps is not None else (eps < num_episodes)
+        ):
             # Act randomly.
             if random_actions:
                 actions = self.env.action_space.sample()
-            # Compute an action using our RLModule.
+            # Compute an action using the RLModule.
             else:
-                is_first = np.zeros((self.num_envs,))
-                for i, eps in enumerate(self._episodes):
-                    if self._states[i] is None:
-                        is_first[i] = 1.0
-                        self._states[i] = {k: s[i] for k, s in initial_states.items()}
-                to_module = {
-                    Columns.STATE_IN: tree.map_structure(
-                        lambda s: self.convert_to_tensor(s), batch(self._states)
-                    ),
-                    Columns.OBS: self.convert_to_tensor(obs),
-                    "is_first": self.convert_to_tensor(is_first),
-                }
-                # Explore or not.
+                # Env-to-module connector (already cached).
+                to_module = self._cached_to_module
+                assert to_module is not None
+                self._cached_to_module = None
+
+                # RLModule forward pass: Explore or not.
                 if explore:
-                    outs = self.module.forward_exploration(to_module)
+                    to_env = self.module.forward_exploration(to_module)
                 else:
-                    outs = self.module.forward_inference(to_module)
+                    to_env = self.module.forward_inference(to_module)
 
                 # Model outputs one-hot actions (if discrete). Convert to int actions
                 # as well.
-                actions = convert_to_numpy(outs[Columns.ACTIONS])
+                actions = convert_to_numpy(to_env[Columns.ACTIONS])
                 if isinstance(self.env.single_action_space, gym.spaces.Discrete):
                     actions = np.argmax(actions, axis=-1)
-                self._states = unbatch(convert_to_numpy(outs[Columns.STATE_OUT]))
+                self._states = unbatch(convert_to_numpy(to_env[Columns.STATE_OUT]))
 
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
-            ts += self.num_envs
+            observations, rewards, terminateds, truncateds, infos = self.env.step(
+                actions
+            )
 
-            for i in range(self.num_envs):
-                # The last entry in self.observations[i] is already the reset
-                # obs of the new episode.
-                if terminateds[i] or truncateds[i]:
-                    # Finish the episode with the actual terminal observation stored in
-                    # the info dict.
-                    self._episodes[i].add_env_step(
-                        observation=infos["final_observation"][i],
-                        action=actions[i],
-                        reward=rewards[i],
-                        terminated=terminateds[i],
-                        truncated=truncateds[i],
+            call_on_episode_start = set()
+            for env_index in range(self.num_envs):
+                # Episode has no data in it yet -> Was just reset and needs to be called
+                # with its `add_env_reset()` method.
+                if not episodes[env_index].is_reset:
+                    episodes[env_index].add_env_reset(
+                        observation=observations[env_index],
+                        infos=infos[env_index],
                     )
-                    self._states[i] = None
-                    done_episodes_to_return.append(self._episodes[i])
-                    # Create a new episode object.
-                    self._episodes[i] = SingleAgentEpisode(observations=[obs[i]])
+                    call_on_episode_start.add(env_index)
+                    self._states[env_index] = None
+
+                # Call `add_env_step()` method on episode.
                 else:
-                    self._episodes[i].add_env_step(
-                        observation=obs[i],
-                        action=actions[i],
-                        reward=rewards[i],
+                    # Only increase ts when we actually stepped (not reset'd as a reset
+                    # does not count as a timestep).
+                    ts += 1
+                    episodes[env_index].add_env_step(
+                        observation=observations[env_index],
+                        action=actions[env_index],
+                        reward=rewards[env_index],
+                        infos=infos[env_index],
+                        terminated=terminateds[env_index],
+                        truncated=truncateds[env_index],
                     )
 
-        # Return done episodes ...
-        self._done_episodes_for_metrics.extend(done_episodes_to_return)
-        # ... and all ongoing episode chunks. Also, make sure, we return
-        # a copy and start new chunks so that callers of this function
-        # don't alter our ongoing and returned Episode objects.
-        ongoing_episodes = self._episodes
-        self._episodes = [eps.cut() for eps in self._episodes]
-        for eps in ongoing_episodes:
-            self._ongoing_episodes_for_metrics[eps.id_].append(eps)
-
-        self._increase_sampled_metrics(ts)
-
-        return done_episodes_to_return + ongoing_episodes
-
-    def _sample_episodes(
-        self,
-        num_episodes: int,
-        explore: bool = True,
-        random_actions: bool = False,
-    ) -> List[SingleAgentEpisode]:
-        """Helper method to run n episodes.
-
-        See docstring of `self.sample()` for more details.
-        """
-        done_episodes_to_return = []
-
-        obs, _ = self.env.reset()
-        episodes = [SingleAgentEpisode() for _ in range(self.num_envs)]
-
-        # Multiply states n times according to our vector env batch size (num_envs).
-        states = tree.map_structure(
-            lambda s: np.repeat(s, self.num_envs, axis=0),
-            convert_to_numpy(self.module.get_initial_state()),
-        )
-        is_first = np.ones((self.num_envs,))
-
-        for i in range(self.num_envs):
-            episodes[i].add_env_reset(observation=obs[i])
-
-        eps = 0
-        while eps < num_episodes:
-            if random_actions:
-                actions = self.env.action_space.sample()
-            else:
-                batch = {
+            # Cache results as we will do the RLModule forward pass only in the next
+            # `while`-iteration.
+            if self.module is not None:
+                is_first = np.zeros((self.num_envs,))
+                for env_index, episode in enumerate(episodes):
+                    if self._states[env_index] is None:
+                        is_first[env_index] = 1.0
+                        self._states[env_index] = {
+                            k: s[env_index] for k, s in initial_states.items()
+                        }
+                self._cached_to_module = {
                     Columns.STATE_IN: tree.map_structure(
-                        lambda s: self.convert_to_tensor(s), states
+                        lambda s: self.convert_to_tensor(s), batch(self._states)
                     ),
-                    Columns.OBS: self.convert_to_tensor(obs),
+                    Columns.OBS: self.convert_to_tensor(observations),
                     "is_first": self.convert_to_tensor(is_first),
                 }
 
-                if explore:
-                    outs = self.module.forward_exploration(batch)
-                else:
-                    outs = self.module.forward_inference(batch)
+        for env_index in range(self.num_envs):
+            # Episode is not done.
+            if not episodes[env_index].is_done:
+                continue
 
-                actions = convert_to_numpy(outs[Columns.ACTIONS])
-                if isinstance(self.env.single_action_space, gym.spaces.Discrete):
-                    actions = np.argmax(actions, axis=-1)
-                states = convert_to_numpy(outs[Columns.STATE_OUT])
+            eps += 1
 
-            obs, rewards, terminateds, truncateds, infos = self.env.step(actions)
+            # Then finalize (numpy'ize) the episode.
+            done_episodes_to_return.append(episodes[env_index].finalize())
 
-            for i in range(self.num_envs):
-                # The last entry in self.observations[i] is already the reset
-                # obs of the new episode.
-                if terminateds[i] or truncateds[i]:
-                    eps += 1
+            # Also early-out if we reach the number of episodes within this
+            # for-loop.
+            if eps == num_episodes:
+                break
 
-                    episodes[i].add_env_step(
-                        observation=infos["final_observation"][i],
-                        action=actions[i],
-                        reward=rewards[i],
-                        terminated=terminateds[i],
-                        truncated=truncateds[i],
-                    )
-                    done_episodes_to_return.append(episodes[i])
+            # Create a new episode object with no data in it and execute
+            # `on_episode_created` callback (before the `env.reset()` call).
+            episodes[env_index] = SingleAgentEpisode(
+                observation_space=self.env.single_observation_space,
+                action_space=self.env.single_action_space,
+            )
 
-                    # Also early-out if we reach the number of episodes within this
-                    # for-loop.
-                    if eps == num_episodes:
-                        break
-
-                    # Reset h-states to the model's initial ones b/c we are starting a
-                    # new episode.
-                    for k, v in convert_to_numpy(
-                        self.module.get_initial_state()
-                    ).items():
-                        states[k][i] = v
-                    is_first[i] = True
-
-                    episodes[i] = SingleAgentEpisode(observations=[obs[i]])
-                else:
-                    episodes[i].add_env_step(
-                        observation=obs[i],
-                        action=actions[i],
-                        reward=rewards[i],
-                    )
-                    is_first[i] = False
-
+        # Return done episodes ...
+        # TODO (simon): Check, how much memory this attribute uses.
         self._done_episodes_for_metrics.extend(done_episodes_to_return)
+        # ... and all ongoing episode chunks.
 
-        # If user calls sample(num_timesteps=..) after this, we must reset again
-        # at the beginning.
-        self._needs_initial_reset = True
+        # Also, make sure we start new episode chunks (continuing the ongoing episodes
+        # from the to-be-returned chunks).
+        ongoing_episodes_to_return = []
+        # Only if we are doing individual timesteps: We have to maybe cut an ongoing
+        # episode and continue building it on the next call to `sample()`.
+        if num_timesteps is not None:
+            ongoing_episodes_continuations = [
+                episode.cut(len_lookback_buffer=self.config.episode_lookback_horizon)
+                for episode in episodes
+            ]
 
-        ts = sum(map(len, done_episodes_to_return))
+            for episode in episodes:
+                # Just started Episodes do not have to be returned. There is no data
+                # in them anyway.
+                if episode.t == 0:
+                    continue
+                episode.validate()
+                self._ongoing_episodes_for_metrics[episode.id_].append(episode)
+                # Return finalized (numpy'ized) Episodes.
+                ongoing_episodes_to_return.append(episode.finalize())
+
+            # Continue collecting into the cut Episode chunks.
+            self._episodes = ongoing_episodes_continuations
+
         self._increase_sampled_metrics(ts)
 
-        return done_episodes_to_return
+        # Return collected episode data.
+        return done_episodes_to_return + ongoing_episodes_to_return
+
+    def get_spaces(self):
+        return {
+            INPUT_ENV_SPACES: (self.env.observation_space, self.env.action_space),
+            DEFAULT_MODULE_ID: (
+                self.env.single_observation_space,
+                self.env.single_action_space,
+            ),
+        }
 
     def get_metrics(self) -> ResultDict:
         # Compute per-episode metrics (only on already completed episodes).
@@ -518,22 +502,30 @@ class DreamerV3EnvRunner(EnvRunner):
         # Return reduced metrics.
         return self.metrics.reduce()
 
-    def get_weights(self, policies, inference_only):
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         """Returns the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
             return {}
         else:
             return {
-                DEFAULT_MODULE_ID: self.module.get_state(inference_only=inference_only),
+                COMPONENT_RL_MODULE: {
+                    DEFAULT_MODULE_ID: self.module.get_state(**kwargs),
+                },
             }
 
-    def set_weights(self, weights, global_vars=None):
+    def set_state(self, state: StateDict) -> None:
         """Writes the weights of our (single-agent) RLModule."""
         if self.module is None:
             assert self.config.share_module_between_env_runner_and_learner
         else:
-            self.module.set_state(weights[DEFAULT_MODULE_ID])
+            self.module.set_state(state[COMPONENT_RL_MODULE][DEFAULT_MODULE_ID])
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -544,6 +536,51 @@ class DreamerV3EnvRunner(EnvRunner):
     def stop(self):
         # Close our env object via gymnasium's API.
         self.env.close()
+
+    def _reset_envs(self, episodes, initial_states):
+        # Create n new episodes and make the `on_episode_created` callbacks.
+        for env_index in range(self.num_envs):
+            self._new_episode(env_index, episodes)
+
+        # Erase all cached ongoing episodes (these will never be completed and
+        # would thus never be returned/cleaned by `get_metrics` and cause a memory
+        # leak).
+        self._ongoing_episodes_for_metrics.clear()
+
+        observations, infos = self.env.reset()
+        observations = unbatch(observations)
+
+        # Set initial obs and infos in the episodes.
+        for env_index in range(self.num_envs):
+            episodes[env_index].add_env_reset(
+                observation=observations[env_index],
+                infos=infos[env_index],
+            )
+
+        # Run the env-to-module connector to make sure the reset-obs/infos have
+        # properly been processed (if applicable).
+        self._cached_to_module = None
+        if self.module:
+            is_first = np.zeros((self.num_envs,))
+            for i, eps in enumerate(self._episodes):
+                if self._states[i] is None:
+                    is_first[i] = 1.0
+                    self._states[i] = {k: s[i] for k, s in initial_states.items()}
+            self._cached_to_module = {
+                Columns.STATE_IN: tree.map_structure(
+                    lambda s: self.convert_to_tensor(s), batch(self._states)
+                ),
+                Columns.OBS: self.convert_to_tensor(observations),
+                "is_first": self.convert_to_tensor(is_first),
+            }
+            # self._cached_to_module = TODO!!
+
+    def _new_episode(self, env_index, episodes=None):
+        episodes = episodes if episodes is not None else self._episodes
+        episodes[env_index] = SingleAgentEpisode(
+            observation_space=self.env.single_observation_space,
+            action_space=self.env.single_action_space,
+        )
 
     def _increase_sampled_metrics(self, num_steps):
         # Per sample cycle stats.
@@ -590,6 +627,20 @@ class DreamerV3EnvRunner(EnvRunner):
         self.metrics.log_value(EPISODE_RETURN_MIN, ret, reduce="min")
         self.metrics.log_value(EPISODE_LEN_MAX, length, reduce="max")
         self.metrics.log_value(EPISODE_RETURN_MAX, ret, reduce="max")
+
+    @Deprecated(
+        new="DreamerV3EnvRunner.get_state(components='rl_module')",
+        error=True,
+    )
+    def get_weights(self, *args, **kwargs):
+        pass
+
+    @Deprecated(
+        new="DreamerV3EnvRunner.get_state()",
+        error=True,
+    )
+    def set_weights(self, *args, **kwargs):
+        pass
 
 
 class NormalizedImageEnv(gym.ObservationWrapper):

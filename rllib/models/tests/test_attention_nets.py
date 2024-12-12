@@ -13,12 +13,12 @@ from ray.rllib.utils.metrics import (
     EPISODE_RETURN_MEAN,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
 )
-from ray.rllib.utils.test_utils import framework_iterator
 
 
 class TestAttentionNets(unittest.TestCase):
 
     config = {
+        "_enable_new_api_stack": False,
         "env": StatelessCartPole,
         "gamma": 0.99,
         "num_envs_per_env_runner": 20,
@@ -41,6 +41,7 @@ class TestAttentionNets(unittest.TestCase):
     def test_attention_nets_w_prev_actions_and_prev_rewards(self):
         """Tests attention prev-a/r input insertions using complex actions."""
         config = {
+            "_enable_new_api_stack": False,
             "env": RandomEnv,
             "env_config": {
                 "config": {
@@ -69,18 +70,17 @@ class TestAttentionNets(unittest.TestCase):
                 "attention_use_n_prev_actions": 3,
                 "attention_use_n_prev_rewards": 2,
             },
-            "num_sgd_iter": 1,
+            "num_epochs": 1,
             "train_batch_size": 200,
-            "sgd_minibatch_size": 50,
+            "minibatch_size": 50,
             "rollout_fragment_length": 100,
             "num_env_runners": 1,
         }
-        for _ in framework_iterator(config):
-            tune.Tuner(
-                "PPO",
-                param_space=config,
-                run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
-            ).fit()
+        tune.Tuner(
+            "PPO",
+            param_space=config,
+            run_config=air.RunConfig(stop={TRAINING_ITERATION: 1}, verbose=1),
+        ).fit()
 
     def test_ppo_attention_net_learning(self):
         ModelCatalog.register_custom_model("attention_net", GTrXLNet)
@@ -90,7 +90,7 @@ class TestAttentionNets(unittest.TestCase):
                 "num_env_runners": 0,
                 "entropy_coeff": 0.001,
                 "vf_loss_coeff": 1e-5,
-                "num_sgd_iter": 5,
+                "num_epochs": 5,
                 "model": {
                     "custom_model": "attention_net",
                     "max_seq_len": 10,
@@ -111,38 +111,6 @@ class TestAttentionNets(unittest.TestCase):
             param_space=config,
             run_config=air.RunConfig(stop=self.stop, verbose=1),
         ).fit()
-
-    # TODO: (sven) causes memory failures/timeouts on Travis.
-    #  Re-enable this once we have fast attention in master branch.
-    def test_impala_attention_net_learning(self):
-        return
-        # ModelCatalog.register_custom_model("attention_net", GTrXLNet)
-        # config = dict(
-        #    self.config, **{
-        #        "num_env_runners": 4,
-        #        "num_gpus": 0,
-        #        "entropy_coeff": 0.01,
-        #        "vf_loss_coeff": 0.001,
-        #        "lr": 0.0008,
-        #        "model": {
-        #            "custom_model": "attention_net",
-        #            "max_seq_len": 65,
-        #            "custom_model_config": {
-        #                "num_transformer_units": 1,
-        #                "attention_dim": 64,
-        #                "num_heads": 1,
-        #                "memory_inference": 10,
-        #                "memory_training": 10,
-        #                "head_dim": 32,
-        #                "position_wise_mlp_dim": 32,
-        #            },
-        #        },
-        #    })
-        # tune.Tuner(
-        #     "IMPALA",
-        #     param_space=config,
-        #     run_config=air.RunConfig(stop=self.stop, verbose=1),
-        # ).fit()
 
 
 if __name__ == "__main__":

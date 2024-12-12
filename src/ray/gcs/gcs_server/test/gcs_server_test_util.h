@@ -49,7 +49,7 @@ struct GcsServerMocker {
       if (exit) {
         reply.set_worker_exiting(true);
       }
-      callback(status, reply);
+      callback(status, std::move(reply));
       callbacks.pop_front();
       return true;
     }
@@ -78,7 +78,7 @@ struct GcsServerMocker {
         const ray::rpc::ClientCallback<ray::rpc::GetTaskFailureCauseReply> &callback)
         override {
       ray::rpc::GetTaskFailureCauseReply reply;
-      callback(Status::OK(), reply);
+      callback(Status::OK(), std::move(reply));
       num_get_task_failure_causes += 1;
     }
 
@@ -97,6 +97,12 @@ struct GcsServerMocker {
         const bool is_selected_based_on_locality) override {
       num_workers_requested += 1;
       callbacks.push_back(callback);
+    }
+
+    void PrestartWorkers(
+        const rpc::PrestartWorkersRequest &request,
+        const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+      RAY_LOG(FATAL) << "Not implemented";
     }
 
     /// WorkerLeaseInterface
@@ -170,7 +176,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         callbacks.pop_front();
         return true;
       }
@@ -183,7 +189,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = cancel_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         cancel_callbacks.pop_front();
         return true;
       }
@@ -195,7 +201,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = release_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         release_callbacks.pop_front();
         return true;
       }
@@ -208,7 +214,7 @@ struct GcsServerMocker {
         rpc::DrainRayletReply reply;
         reply.set_is_accepted(true);
         auto callback = drain_raylet_callbacks.front();
-        callback(Status::OK(), reply);
+        callback(Status::OK(), std::move(reply));
         drain_raylet_callbacks.pop_front();
         return true;
       }
@@ -256,7 +262,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = lease_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         lease_callbacks.pop_front();
         return true;
       }
@@ -269,7 +275,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = commit_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         commit_callbacks.pop_front();
         return true;
       }
@@ -283,7 +289,7 @@ struct GcsServerMocker {
         return false;
       } else {
         auto callback = return_callbacks.front();
-        callback(status, reply);
+        callback(status, std::move(reply));
         return_callbacks.pop_front();
         return true;
       }
@@ -320,6 +326,10 @@ struct GcsServerMocker {
       reply.set_is_accepted(true);
       drain_raylet_callbacks.push_back(callback);
     };
+
+    void IsLocalWorkerDead(
+        const WorkerID &worker_id,
+        const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback) override{};
 
     void NotifyGCSRestart(
         const rpc::ClientCallback<rpc::NotifyGCSRestartReply> &callback) override{};
@@ -383,6 +393,16 @@ struct GcsServerMocker {
 
     size_t GetWaitingRemovedBundlesSize() { return waiting_removed_bundles_.size(); }
 
+    using gcs::GcsPlacementGroupScheduler::ScheduleUnplacedBundles;
+    // Extra conveinence overload for the mock tests to keep using the old interface.
+    void ScheduleUnplacedBundles(
+        const std::shared_ptr<gcs::GcsPlacementGroup> &placement_group,
+        gcs::PGSchedulingFailureCallback failure_callback,
+        gcs::PGSchedulingSuccessfulCallback success_callback) {
+      ScheduleUnplacedBundles(
+          gcs::SchedulePgRequest{placement_group, failure_callback, success_callback});
+    };
+
    protected:
     friend class GcsPlacementGroupSchedulerTest;
     FRIEND_TEST(GcsPlacementGroupSchedulerTest, TestCheckingWildcardResource);
@@ -436,8 +456,8 @@ struct GcsServerMocker {
       return Status::OK();
     }
 
-    Status AsyncGetAll(
-        const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback) override {
+    Status AsyncGetAll(const gcs::MultiItemCallback<rpc::GcsNodeInfo> &callback,
+                       int64_t timeout_ms) override {
       if (callback) {
         callback(Status::OK(), {});
       }

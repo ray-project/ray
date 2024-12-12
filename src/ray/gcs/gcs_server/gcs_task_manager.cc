@@ -14,18 +14,12 @@
 
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 
+#include "absl/strings/match.h"
 #include "ray/common/ray_config.h"
 #include "ray/common/status.h"
 
 namespace ray {
 namespace gcs {
-
-void GcsTaskManager::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
-}
 
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
@@ -95,13 +89,13 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTasksFailedOnWorkerDead(
 
   for (const auto &task_locator : task_attempts_itr->second) {
     MarkTaskAttemptFailedIfNeeded(
-        task_locator, worker_failure_data.end_time_ms() * 1000, error_info);
+        task_locator, worker_failure_data.end_time_ms() * 1000 * 1000, error_info);
   }
 }
 
 void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
     const std::shared_ptr<TaskEventLocator> &locator,
-    int64_t failed_ts,
+    int64_t failed_ts_ns,
     const rpc::RayErrorInfo &error_info) {
   auto &task_events = locator->GetTaskEventsMutable();
   // We don't mark tasks as failed if they are already terminated.
@@ -112,7 +106,7 @@ void GcsTaskManager::GcsTaskManagerStorage::MarkTaskAttemptFailedIfNeeded(
   // We could mark the task as failed even if might not have state updates yet (i.e. only
   // profiling events are reported).
   auto state_updates = task_events.mutable_state_updates();
-  state_updates->set_failed_ts(failed_ts);
+  (*state_updates->mutable_state_ts_ns())[ray::rpc::TaskStatus::FAILED] = failed_ts_ns;
   state_updates->mutable_error_info()->CopyFrom(error_info);
 }
 
@@ -419,8 +413,33 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
       return false;
     }
 
-    if (filters.has_name() && task_event.task_info().name() != filters.name()) {
+    if (filters.has_name() &&
+        !absl::EqualsIgnoreCase(task_event.task_info().name(), filters.name())) {
       return false;
+    }
+
+    if (filters.has_state()) {
+      const google::protobuf::EnumDescriptor *task_status_descriptor =
+          ray::rpc::TaskStatus_descriptor();
+
+      // Figure out the latest state of a task.
+      ray::rpc::TaskStatus state = ray::rpc::TaskStatus::NIL;
+      if (task_event.has_state_updates()) {
+        for (int i = task_status_descriptor->value_count() - 1; i >= 0; --i) {
+          if (task_event.state_updates().state_ts_ns().contains(
+                  task_status_descriptor->value(i)->number())) {
+            state = static_cast<ray::rpc::TaskStatus>(
+                task_status_descriptor->value(i)->number());
+            break;
+          }
+        }
+      }
+
+      if (!absl::EqualsIgnoreCase(
+              filters.state(),
+              task_status_descriptor->FindValueByNumber(state)->name())) {
+        return false;
+      }
     }
 
     return true;

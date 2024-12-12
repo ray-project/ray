@@ -20,6 +20,7 @@ package ray.rpc;
 import "src/ray/protobuf/common.proto";
 import "src/ray/protobuf/gcs.proto";
 import "src/ray/protobuf/autoscaler.proto";
+import "src/ray/protobuf/runtime_env_common.proto";
 
 message WorkerBacklogReport {
   // TaskSpec indicating the scheduling class.
@@ -93,6 +94,20 @@ message RequestWorkerLeaseReply {
   // Must be an empty string if failure_type is `NOT_FAILED`.
   string scheduling_failure_message = 10;
 }
+
+// Request to prestart workers. At this time we don't yet know the resource, or task type.
+message PrestartWorkersRequest {
+  Language language = 1;
+  // Job ID for the workers. Note: root_detached_actor_id is not supported.
+  optional bytes job_id = 2;
+  RuntimeEnvInfo runtime_env_info = 3;
+  // Started idle workers will be kept alive for this duration. Reset on task assignment.
+  uint64 keep_alive_duration_secs = 4;
+  // Raylet will try to start `num_workers` workers.
+  uint64 num_workers = 5;
+}
+
+message PrestartWorkersReply {}
 
 message PrepareBundleResourcesRequest {
   // Bundles that containing the requested resources.
@@ -356,14 +371,35 @@ message RegisterMutableObjectReply {
 }
 
 message PushMutableObjectRequest {
+  // The object ID of the object written to on the writer node.
   bytes writer_object_id = 1;
-  uint64 data_size = 2;
-  uint64 metadata_size = 3;
-  bytes data = 4;
+  // The total size of the data (across all chunks).
+  uint64 total_data_size = 2;
+  // The total size of the metadata (across all chunks).
+  uint64 total_metadata_size = 3;
+
+  // The offset of the chunk (in bytes) within the object.
+  uint64 offset = 4;
+  // The size of this chunk. Note that this size could include both data and metadata.
+  uint64 chunk_size = 5;
+  // The chunk payload. Note that this could include both data and metadata.
+  bytes payload = 6;
 }
 
 message PushMutableObjectReply {
-  // Empty for now.
+  // The receiver sets this to true once it has received all chunks for a mutable object
+  // write, false otherwise (i.e., the receiver still expects to receive more chunks).
+  bool done = 1;
+}
+
+message IsLocalWorkerDeadRequest {
+  // Binary worker id of the target worker.
+  bytes worker_id = 1;
+}
+
+message IsLocalWorkerDeadReply {
+  // Whether the target worker is dead or not.
+  bool is_dead = 1;
 }
 
 // Service for inter-node-manager communication.
@@ -374,6 +410,8 @@ service NodeManagerService {
   rpc GetResourceLoad(GetResourceLoadRequest) returns (GetResourceLoadReply);
   // Request a worker from the raylet.
   rpc RequestWorkerLease(RequestWorkerLeaseRequest) returns (RequestWorkerLeaseReply);
+  // Request to prestart workers.
+  rpc PrestartWorkers(PrestartWorkersRequest) returns (PrestartWorkersReply);
   // Report task backlog information from a worker to the raylet
   rpc ReportWorkerBacklog(ReportWorkerBacklogRequest) returns (ReportWorkerBacklogReply);
   // Release a worker back to its raylet.
@@ -429,4 +467,5 @@ service NodeManagerService {
   rpc RegisterMutableObject(RegisterMutableObjectRequest)
       returns (RegisterMutableObjectReply);
   rpc PushMutableObject(PushMutableObjectRequest) returns (PushMutableObjectReply);
+  rpc IsLocalWorkerDead(IsLocalWorkerDeadRequest) returns (IsLocalWorkerDeadReply);
 }

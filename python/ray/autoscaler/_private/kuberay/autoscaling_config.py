@@ -30,7 +30,7 @@ RAYCLUSTER_FETCH_RETRY_S = 5
 
 # Logical group name for the KubeRay head group.
 # Used as the name of the "head node type" by the autoscaler.
-_HEAD_GROUP_NAME = "head-group"
+_HEAD_GROUP_NAME = "headgroup"
 
 
 class AutoscalingConfigProducer:
@@ -82,7 +82,10 @@ class AutoscalingConfigProducer:
 
     def _fetch_ray_cr_from_k8s(self) -> Dict[str, Any]:
         result = requests.get(
-            self._ray_cr_url, headers=self._headers, verify=self._verify
+            self._ray_cr_url,
+            headers=self._headers,
+            timeout=node_provider.KUBERAY_REQUEST_TIMEOUT_S,
+            verify=self._verify,
         )
         if not result.status_code == 200:
             result.raise_for_status()
@@ -216,7 +219,7 @@ def _node_type_from_group_spec(
 
     resources = _get_ray_resources_from_group_spec(group_spec, is_head)
 
-    return {
+    node_type = {
         "min_workers": min_workers,
         "max_workers": max_workers,
         # `node_config` is a legacy field required for compatibility.
@@ -224,6 +227,12 @@ def _node_type_from_group_spec(
         "node_config": {},
         "resources": resources,
     }
+
+    idle_timeout_s = group_spec.get(IDLE_SECONDS_KEY)
+    if idle_timeout_s is not None:
+        node_type["idle_timeout_s"] = float(idle_timeout_s)
+
+    return node_type
 
 
 def _get_ray_resources_from_group_spec(
@@ -249,6 +258,7 @@ def _get_ray_resources_from_group_spec(
     num_cpus = _get_num_cpus(ray_start_params, k8s_resource_limits, group_name)
     num_gpus = _get_num_gpus(ray_start_params, k8s_resource_limits, group_name)
     custom_resource_dict = _get_custom_resources(ray_start_params, group_name)
+    num_tpus = _get_num_tpus(custom_resource_dict, k8s_resource_limits)
     memory = _get_memory(ray_start_params, k8s_resource_limits)
 
     # It's not allowed to use object store memory as a resource request, so we don't
@@ -261,6 +271,33 @@ def _get_ray_resources_from_group_spec(
 
     if num_gpus is not None:
         resources["GPU"] = num_gpus
+
+    if num_tpus is not None:
+        # Add TPU Ray resource if not already added by ray_start_params,
+        # but specified in k8s_resource_limits.
+        if "TPU" not in custom_resource_dict:
+            resources["TPU"] = num_tpus
+
+        """Add TPU head resource, similar to the GCP node_provider.
+        Sets the Ray resource TPU-{...}-head to ensure the Ray autoscaler
+        has sufficient resources to make scaling decisions.
+        TPU worker groups treat each TPU podslice as a replica, with `NumOfHosts`
+        specifying the number of workers per slice. Each replica of a TPU worker
+        group has one TPU head.
+
+        For example, a v4-16 worker group with 2 replicas should have the following
+        resource labels on worker 0 of each replica:
+            worker 0: resources = {"TPU": 4, "TPU-v4-16-head": 1}
+        """
+        topology = group_spec["template"]["spec"]["nodeSelector"][
+            "cloud.google.com/gke-tpu-topology"
+        ]
+        accelerator = group_spec["template"]["spec"]["nodeSelector"][
+            "cloud.google.com/gke-tpu-accelerator"
+        ]
+        accelerator_type = utils.tpu_node_selectors_to_type(topology, accelerator)
+        if accelerator_type:
+            resources[f"TPU-{accelerator_type}-head"] = 1
 
     if memory is not None:
         resources["memory"] = memory
@@ -330,6 +367,28 @@ def _get_num_gpus(
                     # Only one GPU type supported for now, break out on first
                     # "/gpu" match.
                     return num_gpus
+    return None
+
+
+def _get_num_tpus(
+    custom_resource_dict: Dict[str, str],
+    k8s_resource_limits: Dict[str, Any],
+) -> Optional[int]:
+    """Get TPU custom resource annotation from custom_resource_dict in ray_start_params,
+    or k8s_resource_limits, with priority for custom_resource_dict.
+    """
+    if "TPU" in custom_resource_dict:
+        return int(custom_resource_dict["TPU"])
+    else:
+        for key in k8s_resource_limits:
+            if key == "google.com/tpu":
+                # Typically, this is a string representing an integer, e.g. "1".
+                tpu_resource_quantity = k8s_resource_limits[key]
+                # Convert to int, making no assumptions on the tpu_resource_quantity,
+                # besides that it's valid as a K8s resource quantity.
+                num_tpus = _round_up_k8s_quantity(tpu_resource_quantity)
+                if num_tpus > 0:
+                    return num_tpus
     return None
 
 

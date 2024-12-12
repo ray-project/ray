@@ -35,8 +35,8 @@ import numpy as np
 
 import ray
 from ray.air.constants import TRAINING_ITERATION
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.env.utils import try_import_pyspiel, try_import_open_spiel
 from ray.rllib.env.wrappers.open_spiel import OpenSpielEnv
 from ray.rllib.examples.multi_agent.utils import (
@@ -129,7 +129,7 @@ if __name__ == "__main__":
         if args.enable_new_api_stack:
             policies = names
             spec = {
-                mid: SingleAgentRLModuleSpec(
+                mid: RLModuleSpec(
                     module_class=(
                         RandomRLModule
                         if mid in ["main_exploiter_0", "league_exploiter_0"]
@@ -177,18 +177,11 @@ if __name__ == "__main__":
             num_env_runners=(args.num_env_runners or 2),
             num_envs_per_env_runner=1 if args.enable_new_api_stack else 5,
         )
-        .learners(
-            num_learners=args.num_gpus,
-            num_gpus_per_learner=1 if args.num_gpus else 0,
-        )
         .resources(
             num_cpus_for_main_process=1,
         )
         .training(
-            num_sgd_iter=20,
-            model=dict(
-                **({"uses_new_env_runners": True} if args.enable_new_api_stack else {}),
-            ),
+            num_epochs=20,
         )
         .multi_agent(
             # Initial policy map: All PPO. This will be expanded
@@ -205,8 +198,8 @@ if __name__ == "__main__":
             policies_to_train=["main"],
         )
         .rl_module(
-            rl_module_spec=MultiAgentRLModuleSpec(
-                module_specs=_get_multi_agent()["spec"]
+            rl_module_spec=MultiRLModuleSpec(
+                rl_module_specs=_get_multi_agent()["spec"]
             ),
         )
     )
@@ -252,9 +245,7 @@ if __name__ == "__main__":
                 else:
                     obs = np.array(time_step.observations["info_state"][player_id])
                     if config.enable_env_runner_and_connector_v2:
-                        action = algo.workers.local_worker().module.forward_inference(
-                            {"obs": obs}
-                        )
+                        action = algo.env_runner.module.forward_inference({"obs": obs})
                     else:
                         action = algo.compute_single_action(obs, policy_id="main")
                     # In case computer chooses an invalid action, pick a

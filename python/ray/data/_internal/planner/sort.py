@@ -20,6 +20,7 @@ from ray.data.context import DataContext
 
 def generate_sort_fn(
     sort_key: SortKey,
+    batch_format: str,
     _debug_limit_shuffle_execution_to_num_blocks: Optional[int] = None,
 ) -> AllToAllTransformFn:
     """Generate function to sort blocks by the specified key column or key function."""
@@ -44,14 +45,21 @@ def generate_sort_fn(
 
         # Sample boundaries for sort key.
         if not sort_key.boundaries:
-            boundaries = SortTaskSpec.sample_boundaries(blocks, sort_key, num_outputs)
+            sample_bar = ctx.sub_progress_bar_dict[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME
+            ]
+            boundaries = SortTaskSpec.sample_boundaries(
+                blocks, sort_key, num_outputs, sample_bar
+            )
         else:
             boundaries = [(b,) for b in sort_key.boundaries]
             num_outputs = len(boundaries) + 1
         _, ascending = sort_key.to_pandas_sort_args()
         if not ascending:
             boundaries.reverse()
-        sort_spec = SortTaskSpec(boundaries=boundaries, sort_key=sort_key)
+        sort_spec = SortTaskSpec(
+            boundaries=boundaries, sort_key=sort_key, batch_format=batch_format
+        )
 
         if DataContext.get_current().use_push_based_shuffle:
             scheduler = PushBasedShuffleTaskScheduler(sort_spec)

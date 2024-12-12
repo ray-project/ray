@@ -150,6 +150,7 @@ void StoreClientInternalKV::Keys(const std::string &ns,
       MakeKey(ns, prefix),
       [callback = std::move(callback)](std::vector<std::string> keys) {
         std::vector<std::string> true_keys;
+        true_keys.reserve(keys.size());
         for (auto &key : keys) {
           true_keys.emplace_back(ExtractKey(key));
         }
