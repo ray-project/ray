@@ -928,22 +928,25 @@ class ApplicationStateManager:
 
         for name, deployment_args in name_to_deployment_args.items():
             for deploy_param in deployment_args:
-                deploy_app_prefix = deploy_param.get("route_prefix", None)
+                # Make sure route_prefix is not being used by other application.
+                deploy_app_prefix = deploy_param.get("route_prefix")
                 if deploy_app_prefix is None:
                     continue
 
-                # Make sure route_prefix is not being used by other application.
-                app_name = live_route_prefixes.get(deploy_app_prefix)
-                if app_name is not None:
+                existing_app_name = live_route_prefixes.get(deploy_app_prefix)
+                # It's ok to redeploy an app with the same prefix
+                # if it has the same name as the app already using that prefix.
+                if existing_app_name != name:
                     raise RayServeException(
                         f"Prefix {deploy_app_prefix} is being used by application "
-                        f'"{app_name}". Failed to deploy application "{name}".'
+                        f'"{existing_app_name}". Failed to deploy application "{name}".'
                     )
-                else:
-                    # We might be deploying more than one app,
-                    # so we need to add this app's prefix to the
-                    # set of live route prefixes.
-                    live_route_prefixes[deploy_app_prefix] = name
+
+                # We might be deploying more than one app,
+                # so we need to add this app's prefix to the
+                # set of live route prefixes that we're checking
+                # against during this batch operation.
+                live_route_prefixes[deploy_app_prefix] = name
 
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(
