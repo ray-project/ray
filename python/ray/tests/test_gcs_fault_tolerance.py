@@ -734,10 +734,8 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     The management of the Redis cluster is not covered by Ray, but Ray should handle
     the failure correctly.
     For this test we ensure:
-    - When Redis master failed, Ray should crash (TODO: make ray automatically switch to
-      new master).
-    - After Redis recovered, Ray should be able to use the new Master.
-    - When the master becomes slaves, Ray should crash.
+    - When Redis master failed, Ray should reconnect to new master
+    - When the master becomes slaves, Ray should reconnect to new master
     """
     cluster = ray_start_cluster_head_with_external_redis
     import redis
@@ -782,14 +780,8 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
             return os.getpid()
 
     c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
-    c_pid = ray.get(c.pid.remote())
-    c_process = psutil.Process(pid=c_pid)
     r = ray.get(c.r.remote(10))
     assert r == 10
-
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
 
     # Wait until all data is updated in the replica
     leader_cli.set("_hole", "0")
@@ -799,24 +791,11 @@ def test_redis_failureover(redis_replicas, ray_start_cluster_head_with_external_
     leader_process = psutil.Process(pid=leader_pid)
     leader_process.kill()
 
-    print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
-    print("GCS killed")
-
     follower_cli[0].cluster("failover", "takeover")
     wait_for_condition(
         lambda: len(get_connected_nodes())
         == int(os.environ.get("TEST_EXTERNAL_REDIS_REPLICAS")) - 1
     )
-
-    # Kill Counter actor. It should restart after GCS is back
-    c_process.kill()
-    # Cleanup the in memory data and then start gcs
-    cluster.head_node.kill_gcs_server(False)
-
-    print("Start gcs")
-    sleep(20)
-    cluster.head_node.start_gcs_server()
 
     assert len(ray.nodes()) == 1
     assert ray.nodes()[0]["alive"]
@@ -841,12 +820,8 @@ print("DONE")
     # Now make follower_cli[0] become replica
     # and promote follower_cli[1] as leader
     follower_cli[1].cluster("failover", "takeover")
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
-    # GCS should exit in this case
-    print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 10000)
+    sleep(5)
+    wait_for_condition(lambda: "DONE" in run_string_as_driver(driver_script))
 
 
 @pytest.mark.parametrize(
