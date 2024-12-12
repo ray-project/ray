@@ -3359,7 +3359,7 @@ def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
     if shuffle not in [None, "files"] and not isinstance(shuffle, FileShuffleConfig):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', 'FileShuffleConfig'."
+            "Valid values are None, 'files', `FileShuffleConfig`."
         )
 
 
