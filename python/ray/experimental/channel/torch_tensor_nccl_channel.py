@@ -9,7 +9,8 @@ import ray
 import ray.util.serialization
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.common import ChannelInterface
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
+from ray.experimental.channel.cpu_communicator import CPUCommunicator
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -314,7 +315,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         assert self._typ.nccl_group_id is not None, "No NCCL group specified."
         self._nccl_group_id: str = self._typ.nccl_group_id
-        self._nccl_group: "GPUCommunicator" = ctx.nccl_groups[self._typ.nccl_group_id]
+        self._nccl_group: "Communicator" = ctx.nccl_groups[self._typ.nccl_group_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -549,19 +550,21 @@ def _do_init_nccl_group(
     rank,
     actor_handles,
     use_communication_streams,
-    custom_nccl_group: Optional[GPUCommunicator] = None,
+    custom_nccl_group: Optional[Communicator] = None,
 ):
     import torch
 
-    assert (
-        ray.get_gpu_ids()
-    ), "Actors participating in NCCL group must have at least one GPU assigned"
+    if not custom_nccl_group:
+        assert (
+            ray.get_gpu_ids()
+        ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
     if custom_nccl_group is not None:
         custom_nccl_group.initialize(rank)
         ctx.nccl_groups[group_id] = custom_nccl_group
     else:
+        # default to NcclGroup
         ctx.nccl_groups[group_id] = _NcclGroup(
             world_size,
             comm_id,
@@ -576,7 +579,6 @@ def _do_destroy_nccl_group(self, group_id):
     ctx = ChannelContext.get_current()
     if group_id not in ctx.nccl_groups:
         return
-
     ctx.nccl_groups[group_id].destroy()
 
     # Keep the NCCL group in the map after destruction in case there is still a
@@ -594,7 +596,7 @@ def _do_get_unique_nccl_id(self) -> bool:
 
 
 def _get_ranks(
-    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[GPUCommunicator]
+    actors: List[ray.actor.ActorHandle], custom_nccl_group: Optional[Communicator]
 ) -> List[int]:
     """
     Get ranks for the NCCL group to use. If custom_nccl_group is specified,
@@ -628,7 +630,7 @@ def _get_ranks(
 
 def _init_nccl_group(
     actors: List[ray.actor.ActorHandle],
-    custom_nccl_group: Optional[GPUCommunicator] = None,
+    custom_nccl_group: Optional[Communicator] = None,
     use_communication_streams: bool = False,
 ) -> str:
     """
@@ -644,11 +646,15 @@ def _init_nccl_group(
     """
     ctx = ChannelContext.get_current()
 
+    is_cpu_communicator = custom_nccl_group and isinstance(
+        custom_nccl_group, CPUCommunicator
+    )
+
     has_gpus = ray.get(
         [actor.__ray_call__.remote(_do_check_has_gpu) for actor in actors]
     )
     for has_gpu, actor in zip(has_gpus, actors):
-        if not has_gpu:
+        if not has_gpu and not is_cpu_communicator:
             raise ValueError(
                 f"Actor {actor} returns a tensor with type hint "
                 'TorchTensor(transport="nccl") or '
@@ -662,7 +668,11 @@ def _init_nccl_group(
     # Allocate a communicator ID on one of the actors that will participate in
     # the group. This is in case the driver is not on the same node as one of
     # the NCCL actors.
-    nccl_comm_id = ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+    nccl_comm_id = (
+        ray.get(actors[0].__ray_call__.remote(_do_get_unique_nccl_id))
+        if not is_cpu_communicator
+        else str(uuid.uuid4())
+    )
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
