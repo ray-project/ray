@@ -28,16 +28,6 @@ class ResourceManager:
     # The interval in seconds at which the global resource limits are refreshed.
     GLOBAL_LIMITS_UPDATE_INTERVAL_S = 10
 
-    # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION = 0.5
-
-    # The fraction of the object store capacity that will be used as the default object
-    # store memory limit for the streaming executor,
-    # when `ReservationOpResourceAllocator` is not enabled.
-    DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION = 0.25
-
     def __init__(
         self,
         topology: "Topology",
@@ -81,6 +71,12 @@ class ResourceManager:
                 self._op_resource_allocator = ReservationOpResourceAllocator(
                     self, data_context.op_resource_reservation_ratio
                 )
+
+        self._object_store_memory_limit_fraction = (
+            data_context.override_object_store_memory_limit_fraction
+            if self.op_resource_allocator_enabled()
+            else data_context.override_object_store_memory_limit_fraction * 0.5
+        )
 
     def _estimate_object_store_memory(self, op, state) -> int:
         # Don't count input refs towards dynamic memory usage, as they have been
@@ -198,11 +194,7 @@ class ResourceManager:
         default_limits = self._options.resource_limits
         exclude = self._options.exclude_resources
         total_resources = self._get_total_resources()
-        default_mem_fraction = (
-            self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION
-            if self.op_resource_allocator_enabled()
-            else self.DEFAULT_OBJECT_STORE_MEMORY_LIMIT_FRACTION_WO_RESOURCE_RESERVATION
-        )
+        default_mem_fraction = self._object_store_memory_limit_fraction
         total_resources.object_store_memory *= default_mem_fraction
         self._global_limits = default_limits.min(total_resources).subtract(exclude)
         return self._global_limits
