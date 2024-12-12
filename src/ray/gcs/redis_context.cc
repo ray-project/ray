@@ -602,11 +602,14 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!redis_async_context_);
 
   // Remember function arguments for reconnection
-  address_ = address;
-  port_ = port;
-  username_ = username;
-  password_ = password;
-  enable_ssl_ = enable_ssl;
+  if (is_first_connect_) {
+    is_first_connect_ = false;
+    address_ = address;
+    port_ = port;
+    username_ = username;
+    password_ = password;
+    enable_ssl_ = enable_ssl;
+  }
 
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
