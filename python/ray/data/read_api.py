@@ -1084,7 +1084,7 @@ def read_json(
     partitioning: Partitioning = Partitioning("hive"),
     include_paths: bool = False,
     ignore_missing_paths: bool = False,
-    shuffle: Union[Literal["files"], None, FileShuffleConfig] = None,
+    shuffle: Optional[Literal["files"], FileShuffleConfig] = None,
     file_extensions: Optional[List[str]] = JSONDatasource._FILE_EXTENSIONS,
     concurrency: Optional[int] = None,
     override_num_blocks: Optional[int] = None,
