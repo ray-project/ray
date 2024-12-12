@@ -455,11 +455,7 @@ void ValidateRedisDB(RedisContext &context) {
 
 bool isRedisSentinel(RedisContext &context) {
   auto reply = context.RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
-  if (reply->IsNil() || reply->IsError() || reply->ReadAsString().length() == 0) {
-    return false;
-  } else {
-    return true;
-  }
+  return !reply->IsNil() && !reply->IsError() && !reply->ReadAsString().empty();
 }
 
 Status ConnectRedisCluster(RedisContext &context,
@@ -579,6 +575,56 @@ std::vector<std::string> ResolveDNS(instrumented_io_context &io_service,
   return ip_addresses;
 }
 
+bool RedisContext::ConnectToIPAddress(const std::string &ip_address,
+                                      int port,
+                                      const std::string &username,
+                                      const std::string &password,
+                                      bool enable_ssl) {
+  {
+    auto resp = ConnectWithRetries<redisContext>(ip_address, port, redisConnect);
+    if (!resp.first.ok()) {
+      return false;
+    }
+    context_ = std::move(resp.second /* redisContext */);
+  }
+
+  std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
+  {
+    auto resp =
+        ConnectWithRetries<redisAsyncContext>(ip_address, port, redisAsyncConnect);
+    if (!resp.first.ok()) {
+      return false;
+    }
+    async_context = std::move(resp.second);
+  }
+
+  if (enable_ssl) {
+    RAY_CHECK(ssl_context_ != nullptr);
+    if (redisInitiateSSLWithContext(context_.get(), ssl_context_) != REDIS_OK) {
+      RAY_LOG(INFO) << "Failed to setup encrypted redis for sync context: "
+                    << context_->errstr;
+      return false;
+    }
+    if (redisInitiateSSLWithContext(&async_context->c, ssl_context_) != REDIS_OK) {
+      RAY_LOG(INFO) << "Failed to setup encrypted redis for async context: "
+                    << async_context->errstr;
+      return false;
+    }
+  }
+  if (!AuthenticateRedis(context_.get(), username, password).ok()) {
+    return false;
+  }
+  if (!AuthenticateRedis(async_context.get(), username, password).ok()) {
+    return false;
+  }
+
+  redis_async_context_.reset(
+      new RedisAsyncContext(io_service_, std::move(async_context)));
+  SetDisconnectCallback(this);
+
+  return true;
+}
+
 Status RedisContext::Connect(const std::string &address,
                              int port,
                              const std::string &username,
@@ -619,37 +665,11 @@ Status RedisContext::Connect(const std::string &address,
       << "Failed to resolve DNS for " << address << ":" << port;
 
   RAY_LOG(INFO) << "Resolve Redis address to " << absl::StrJoin(ip_addresses, ", ");
-  const auto ip_address = ip_addresses[0];
+  const auto &ip_address = ip_addresses[0];
 
-  {
-    auto resp = ConnectWithRetries<redisContext>(ip_address, port, redisConnect);
-    RAY_CHECK_OK(resp.first /* status */);
-    context_ = std::move(resp.second /* redisContext */);
+  if (!ConnectToIPAddress(ip_address, port, username, password, enable_ssl)) {
+    return Status::RedisError("Failed to connect to Redis.");
   }
-
-  if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(context_.get(), ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << context_->errstr;
-  }
-  RAY_CHECK_OK(AuthenticateRedis(context_.get(), username, password));
-
-  std::unique_ptr<redisAsyncContext, RedisContextDeleter> async_context;
-  {
-    auto resp =
-        ConnectWithRetries<redisAsyncContext>(ip_address, port, redisAsyncConnect);
-    RAY_CHECK_OK(resp.first);
-    async_context = std::move(resp.second);
-  }
-  if (enable_ssl) {
-    RAY_CHECK(ssl_context_ != nullptr);
-    RAY_CHECK(redisInitiateSSLWithContext(&async_context->c, ssl_context_) == REDIS_OK)
-        << "Failed to setup encrypted redis: " << async_context->errstr;
-  }
-  RAY_CHECK_OK(AuthenticateRedis(async_context.get(), username, password));
-  redis_async_context_.reset(
-      new RedisAsyncContext(io_service_, std::move(async_context)));
-  SetDisconnectCallback(this);
 
   // Check all contexts are connected before proceeding.
   RAY_CHECK(context_ != nullptr || redis_async_context_ != nullptr)
@@ -658,10 +678,9 @@ Status RedisContext::Connect(const std::string &address,
   // handle validation and primary connection for different types of redis
   if (isRedisSentinel(*this)) {
     return ConnectRedisSentinel(*this, username, password, enable_ssl);
-  } else {
-    return ConnectRedisCluster(
-        *this, username, password, enable_ssl, ip_address + ":" + std::to_string(port));
   }
+  return ConnectRedisCluster(
+      *this, username, password, enable_ssl, ip_address + ":" + std::to_string(port));
 }
 
 Status RedisContext::Reconnect() {
