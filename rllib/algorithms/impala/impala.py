@@ -646,6 +646,9 @@ class IMPALA(Algorithm):
                 )
             )
 
+        if self.config.learner_config_dict.get("_training_step_sample_only"):
+            return
+
         # TODO (sven): When and how long to sleep best is an ongoing investigation.
         #  We observe
         # Balance the backpressures: Sampling vs training through sleeping a small
@@ -1029,6 +1032,10 @@ class IMPALA(Algorithm):
         for batch in batches:
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
+
+        if self.config.learner_config_dict.get("_training_step_sample_only"):
+            return
+
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
         # Move train batches (of size `total_train_batch_size`) onto learner queue.
