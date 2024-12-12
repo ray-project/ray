@@ -130,7 +130,7 @@ class LongPollClient:
         way to serialize the callback invocations between object versions.
         """
         self._callbacks_processed_count += 1
-        if not self.only_once and self._callbacks_processed_count == trigger_at:
+        if self._callbacks_processed_count == trigger_at:
             self._poll_next()
 
     def _poll_next(self):
