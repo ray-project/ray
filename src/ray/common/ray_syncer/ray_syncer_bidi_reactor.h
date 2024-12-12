@@ -105,6 +105,7 @@ class RaySyncerBidiReactor {
   /// Return true if it's disconnected.
   std::shared_ptr<bool> IsDisconnected() const { return disconnected_; }
 
+  // Node id which is communicating with the current reactor.
   std::string remote_node_id_;
 
  protected:

@@ -188,7 +188,7 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           // Successful rpc completion callback.
           RAY_CHECK(!msg->node_id().empty());
           if (on_rpc_completion_) {
-            on_rpc_completion_(NodeID::FromBinary(msg->node_id()));
+            on_rpc_completion_(NodeID::FromBinary(remote_node_id));
           }
           ReceiveUpdate(std::move(msg));
           StartPull();
