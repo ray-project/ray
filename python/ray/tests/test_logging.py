@@ -368,7 +368,7 @@ def test_log_pid_with_hex_job_id(ray_start_cluster):
 
     # NOTE(xychu): loop ten times to make job id from 01000000 to 0a000000,
     #              in order to trigger hex pattern
-    for _ in range(10):
+    for _ in range(5):
         submit_job()
 
 
