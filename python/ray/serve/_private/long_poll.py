@@ -88,7 +88,6 @@ class LongPollClient:
         self.host_actor = host_actor
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
-
         self.snapshot_ids: Dict[KeyType, int] = {
             # The initial snapshot id for each key is < 0,
             # but real snapshot keys in the long poll host are always >= 0,
@@ -274,8 +273,8 @@ class LongPollHost:
         """Listen for changed objects.
 
         This method will return a dictionary of updated objects. It returns
-        immediately if the snapshot_ids are outdated, otherwise it will block
-        until there's an update.
+        immediately if any of the snapshot_ids are outdated,
+        otherwise it will block until there's an update.
         """
         # If there are no keys to listen for,
         # just wait for a short time to provide backpressure,
