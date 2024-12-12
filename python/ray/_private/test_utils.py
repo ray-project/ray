@@ -1664,9 +1664,16 @@ class WorkerKillerActor(ResourceKillerActor):
         head_node_id,
         kill_interval_s: float = 60,
         max_to_kill: int = 2,
+        batch_size_to_kill: int = 1,
         kill_filter_fn: Optional[Callable] = None,
     ):
-        super().__init__(head_node_id, kill_interval_s, max_to_kill, kill_filter_fn)
+        super().__init__(
+            head_node_id,
+            kill_interval_s,
+            max_to_kill,
+            batch_size_to_kill,
+            kill_filter_fn,
+        )
 
         # Kill worker immediately so that the task does
         # not finish successfully on its own.
