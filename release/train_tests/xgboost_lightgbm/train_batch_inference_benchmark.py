@@ -137,7 +137,7 @@ def train(
     framework_train_loop_fn = framework_params["train_loop_function"]
 
     trainer = trainer_cls(
-        train_loop_function=framework_train_loop_fn,
+        train_loop_per_worker=framework_train_loop_fn,
         train_loop_config=framework_params["train_loop_config"],
         scaling_config=ScalingConfig(
             num_workers=num_workers,
