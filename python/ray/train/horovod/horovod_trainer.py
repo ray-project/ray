@@ -1,4 +1,4 @@
-from typing import Any, Callable, Dict, Optional, Union
+from typing import Any, Callable, Dict, Mapping, Optional, Union
 
 from ray.air.config import RunConfig, ScalingConfig
 from ray.train import Checkpoint, DataConfig
@@ -185,7 +185,7 @@ class HorovodTrainer(DataParallelTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
