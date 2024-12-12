@@ -89,14 +89,16 @@ class SplitRepartitionTaskScheduler(ExchangeTaskScheduler):
             if len(split_block_refs[j]) > 0
         ]
 
-        reduce_block_refs, reduce_metadata = zip(*reduce_return)
+        reduce_block_refs, reduce_metadata = (
+            zip(*reduce_return) if reduce_return else ([], [])
+        )
         reduce_metadata = reduce_bar.fetch_until_complete(list(reduce_metadata))
         reduce_block_refs, reduce_metadata = list(reduce_block_refs), list(
             reduce_metadata
         )
 
         # Handle empty blocks.
-        if len(reduce_block_refs) < output_num_blocks:
+        if len(reduce_block_refs) < output_num_blocks and len(reduce_metadata) > 0:
             import pyarrow as pa
 
             from ray.data._internal.arrow_block import ArrowBlockBuilder
