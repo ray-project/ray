@@ -42,8 +42,8 @@ _EXPERIMENT_PARAMS = {
 
 
 class BasePredictor:
-    def __init__(self, trainer_cls, result: ray.train.Result):
-        self.model = trainer_cls.get_model(result.checkpoint)
+    def __init__(self, report_callback_cls, result: ray.train.Result):
+        self.model = report_callback_cls.get_model(result.checkpoint)
 
     def __call__(self, data):
         raise NotImplementedError
@@ -73,11 +73,12 @@ def xgboost_train_loop_function(config: Dict):
     # 2. Do distributed data-parallel training.
     # Ray Train sets up the necessary coordinator processes and
     # environment variables for your workers to communicate with each other.
+    report_callback = config["report_callback_cls"]
     xgb.train(
         params,
         dtrain=dtrain,
         num_boost_round=10,
-        callbacks=[XGBoostReportCallback()],
+        callbacks=[report_callback()],
     )
 
 
@@ -92,12 +93,13 @@ def lightgbm_train_loop_function(config: Dict):
     # 2. Do distributed data-parallel training.
     # Ray Train sets up the necessary coordinator processes and
     # environment variables for your workers to communicate with each other.
+    report_callback = config["report_callback_cls"]
     lgb.train(
         params,
         train_set=train_X,
         label=train_y,
         num_boost_round=10,
-        callbacks=[LightGBMReportCallback()],
+        callbacks=[report_callback()],
     )
 
 
@@ -112,17 +114,21 @@ _FRAMEWORK_PARAMS = {
                 "eval_metric": ["logloss", "error"],
             },
             "label_column": "labels",
+            "report_callback_cls": XGBoostReportCallback,
         },
     },
     "lightgbm": {
         "trainer_cls": LightGBMTrainer,
         "predictor_cls": LightGBMPredictor,
         "train_loop_function": lightgbm_train_loop_function,
-        "params": {
-            "objective": "binary",
-            "metric": ["binary_logloss", "binary_error"],
+        "train_loop_config": {
+            "params": {
+                "objective": "binary",
+                "metric": ["binary_logloss", "binary_error"],
+            },
+            "label_column": "labels",
+            "report_callback_cls": LightGBMReportCallback,
         },
-        "label_column": "labels",
     },
 }
 
@@ -167,7 +173,9 @@ def predict(framework: str, result: ray.train.Result, data_path: str):
         batch_size=8192,
         concurrency=concurrency,
         fn_constructor_kwargs={
-            "trainer_cls": framework_params["trainer_cls"],
+            "report_callback_cls": framework_params["train_loop_config"][
+                "report_callback_cls"
+            ],
             "result": result,
         },
         batch_format="pandas",
