@@ -64,6 +64,12 @@ config = (
             vf_share_layers=False,
         ),
     )
+    .evaluation(
+        evaluation_interval=1,
+        evaluation_num_env_runners=2,
+        evaluation_duration="auto",
+        evaluation_parallel_to_training=True,
+    )
 )
 
 
