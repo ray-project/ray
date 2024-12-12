@@ -500,6 +500,7 @@ class Channel(ChannelInterface):
             ret = self._worker.get_objects(
                 [self._local_reader_ref], timeout=timeout, return_exceptions=True
             )[0][0]
+
         return ret
 
     def close(self) -> None:

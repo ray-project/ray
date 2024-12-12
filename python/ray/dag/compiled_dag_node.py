@@ -1090,41 +1090,41 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                if isinstance(upstream_task.dag_node, InputAttributeNode):
-                    # Record all of the keys used to index the InputNode.
-                    # During execution, we will check that the user provides
-                    # the same args and kwargs.
-                    if isinstance(upstream_task.dag_node.key, int):
-                        input_positional_args.add(upstream_task.dag_node.key)
-                    elif isinstance(upstream_task.dag_node.key, str):
-                        input_kwargs.add(upstream_task.dag_node.key)
+                if isinstance(upstream_task.dag_node, InputAttributeNode) or isinstance(upstream_task.dag_node, InputNode):
+                    # Add the type hint of the upstream node to the task.
+                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+                    if isinstance(upstream_task.dag_node, InputAttributeNode):
+                        # Record all of the keys used to index the InputNode.
+                        # During execution, we will check that the user provides
+                        # the same args and kwargs.
+                        if isinstance(upstream_task.dag_node.key, int):
+                            input_positional_args.add(upstream_task.dag_node.key)
+                        elif isinstance(upstream_task.dag_node.key, str):
+                            input_kwargs.add(upstream_task.dag_node.key)
+                        else:
+                            raise ValueError(
+                                "InputNode() can only be indexed using int "
+                                "for positional args or str for kwargs."
+                            )
+
+                        if direct_input is not None and direct_input:
+                            raise ValueError(
+                                "All tasks must either use InputNode() "
+                                "directly, or they must index to specific args or "
+                                "kwargs."
+                            )
+                        direct_input = False
+                        # If the upstream node is an InputAttributeNode, treat the
+                        # DAG's input node as the actual upstream node
+                        upstream_task = self.idx_to_task[self.input_task_idx]
+
                     else:
-                        raise ValueError(
-                            "InputNode() can only be indexed using int "
-                            "for positional args or str for kwargs."
-                        )
-
-                    if direct_input is not None and direct_input:
-                        raise ValueError(
-                            "All tasks must either use InputNode() "
-                            "directly, or they must index to specific args or "
-                            "kwargs."
-                        )
-                    direct_input = False
-
-                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
-                    # If the upstream node is an InputAttributeNode, treat the
-                    # DAG's input node as the actual upstream node
-                    upstream_task = self.idx_to_task[self.input_task_idx]
-
-                elif isinstance(upstream_task.dag_node, InputNode):
-                    if direct_input is not None and not direct_input:
-                        raise ValueError(
-                            "All tasks must either use InputNode() directly, "
-                            "or they must index to specific args or kwargs."
-                        )
-                    direct_input = True
-                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+                        if direct_input is not None and not direct_input:
+                            raise ValueError(
+                                "All tasks must either use InputNode() directly, "
+                                "or they must index to specific args or kwargs."
+                            )
+                        direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
@@ -1500,12 +1500,6 @@ class CompiledDAG:
             )
 
         input_task = self.idx_to_task[self.input_task_idx]
-        # Register custom serializers for inputs provided to dag.execute().        
-        input_task.dag_node.type_hint.register_custom_serializer()
-        for input_attr_task_idx in self.input_attr_task_idx_list:
-            input_attr_task = self.idx_to_task[input_attr_task_idx]
-            input_attr_task.dag_node.type_hint.register_custom_serializer()
-
         self.dag_input_channels = input_task.output_channels
         assert self.dag_input_channels is not None
 
@@ -1607,8 +1601,9 @@ class CompiledDAG:
             task = self.idx_to_task[output_idx]
             assert len(task.output_channels) == 1
             self.dag_output_channels.append(task.output_channels[0])
-            # Register custom serializers for DAG outputs.
-            output.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input, input attribute, and output nodes.
+        self._register_input_output_custom_serializer()
 
         assert self.dag_input_channels
         assert self.dag_output_channels
@@ -2787,6 +2782,26 @@ class CompiledDAG:
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
         return dot.source
+    
+    def _register_input_output_custom_serializer(self):
+        """
+        Register custom serializers for input, input attribute, and output nodes.
+        """
+        assert self.input_task_idx is not None
+        assert self.output_task_idx is not None
+        
+        # Register custom serializers for input node.
+        input_task = self.idx_to_task[self.input_task_idx]   
+        input_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input attribute nodes.
+        for input_attr_task_idx in self.input_attr_task_idx_list:
+            input_attr_task = self.idx_to_task[input_attr_task_idx]
+            input_attr_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for output nodes.
+        for output in self.idx_to_task[self.output_task_idx].args:
+            output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
