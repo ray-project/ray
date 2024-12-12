@@ -39,6 +39,7 @@ using ray::WorkerID;
 using ray::Language;
 
 using MessageType = ray::protocol::MessageType;
+// Maps from resource name to its allocation.
 using ResourceMappingType =
     std::unordered_map<std::string, std::vector<std::pair<int64_t, double>>>;
 using WaitResultPair = std::pair<std::vector<ObjectID>, std::vector<ObjectID>>;
