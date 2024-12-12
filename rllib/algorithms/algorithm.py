@@ -1302,13 +1302,13 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
 
                 #print(f"Eval round {_round} ... sampling {_num} ts ...")
 
+                results = self.eval_env_runner_group.fetch_ready_async_reqs(
+                    return_obj_refs=False, timeout_seconds=0.0
+                )
                 self.eval_env_runner_group.foreach_worker_async(
                     func=functools.partial(
                         _env_runner_remote, num=_num, round=_round, iter=algo_iteration
                     ),
-                )
-                results = self.eval_env_runner_group.fetch_ready_async_reqs(
-                    return_obj_refs=False, timeout_seconds=0.01
                 )
                 for wid, (env_s, ag_s, metrics, iter) in results:
                     # Ignore eval results kicked off in an earlier iteration.
@@ -1319,6 +1319,7 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     agent_steps += ag_s
                     all_metrics.append(metrics)
                 print(f"Eval round {_round} ... sampling {_num} ts ...")
+                time.sleep(0.01)
 
             # Old API stack -> RolloutWorkers return batches.
             else:
