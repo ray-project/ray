@@ -332,7 +332,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
-        checkpoint_immediately: bool = True,
+        do_checkpoint: bool = True,
     ):
         """Set application target state.
 
@@ -342,6 +342,12 @@ class ApplicationState:
             (target_deployments, False)
         When a request to delete the application has been received, this should be
             ({}, True)
+
+        If do_checkpoint is True, the entire ApplicationStateManager
+        (not just this ApplicationState!) will checkpoint at the end of this call.
+        *If do_checkpoint is False, the caller is responsible for
+        checkpointing the ApplicationStateManager and must do so before any actual
+        changes are made to the cluster (e.g., starting actors)*.
         """
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
@@ -367,7 +373,7 @@ class ApplicationState:
 
         self._target_state = target_state
 
-        if checkpoint_immediately:
+        if do_checkpoint:
             self._save_checkpoint_func()
 
     def _set_target_state_deleting(self):
@@ -460,7 +466,7 @@ class ApplicationState:
     def deploy_app(
         self,
         deployment_infos: Dict[str, DeploymentInfo],
-        checkpoint_immediately: bool = True,
+        do_checkpoint: bool = True,
     ):
         """(Re-)deploy the application from list of deployment infos.
 
@@ -481,7 +487,7 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
-            checkpoint_immediately=checkpoint_immediately,
+            do_checkpoint=do_checkpoint,
         )
 
     def apply_app_config(
@@ -953,7 +959,7 @@ class ApplicationStateManager:
                 for params in deployment_args
             }
             self._application_states[name].deploy_app(
-                deployment_infos, checkpoint_immediately=False
+                deployment_infos, do_checkpoint=False
             )
 
         self._save_checkpoint_func()
