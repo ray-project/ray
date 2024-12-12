@@ -1,6 +1,6 @@
 (kuberay-auth)=
 
-# Configure Ray Clusters with Authentication and Access Control using KubeRay
+# Configure Ray clusters with authentication and access control using KubeRay
 
 This guide demonstrates how to secure Ray clusters deployed with KubeRay by enabling authentication and access control using Kubernetes Role-Based Access Control (RBAC). 
 
@@ -8,15 +8,15 @@ This guide demonstrates how to secure Ray clusters deployed with KubeRay by enab
 
 ## Prerequisites
 
-* A Kubernetes cluster (this guide uses GKE, but the concepts apply to other Kubernetes distributions).
+* A Kubernetes cluster. This guide uses GKE, but the concepts apply to other Kubernetes distributions.
 * `kubectl` installed and configured to interact with your cluster.
-* `gcloud` CLI installed and configured (if using GKE).
+* `gcloud` CLI installed and configured, if using GKE.
 * [Helm](https://helm.sh/) installed.
 * Ray installed locally.
 
-## Create a GKE Cluster (or use an existing cluster)
+## Create or use an existing GKE Cluster
 
-If you don't have a Kubernetes cluster, create one using the following command (or adapt it for your cloud provider):
+If you don't have a Kubernetes cluster, create one using the following command, or adapt it for your cloud provider:
 
 ```bash
 gcloud container clusters create kuberay-cluster \
@@ -27,7 +27,7 @@ gcloud container clusters create kuberay-cluster \
 
 Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the latest stable KubeRay operator from the Helm repository.
 
-## Deploy a Ray Cluster with Authentication Enabled
+## Deploy a Ray cluster with authentication enabled
 
 Deploy a RayCluster configured with `kube-rbac-proxy` for authentication and authorization:
 
@@ -40,7 +40,7 @@ This command deploys:
 * A `ConfigMap` for kube-rbac-proxy, containing resource attributes required for authorization.
 * A `ServiceAccount`, `ClusterRole`, and `ClusterRoleBinding` that allow the `kube-rbac-proxy` to access the Kubernetes TokenReview and SubjectAccessReview APIs.
 
-## Verify Initial Unauthorized Access
+## Verify initial unauthorized access
 
 Attempt to submit a Ray job to the cluster to verify that authentication is required. You should receive a `401 Unauthorized` error:
 
@@ -49,16 +49,16 @@ kubectl port-forward svc/ray-cluster-with-auth-head-svc 8265:8265 &
 ray job submit --address http://localhost:8265  -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-You'll see an error similar to this:
+You may see an error similar to this:
 
 ```
 ...
 requests.exceptions.HTTPError: 401 Client Error: Unauthorized for url: http://localhost:8265/api/version
 ```
 
-This confirms that the Ray cluster requires authentication.
+This error confirms that the Ray cluster requires authentication.
 
-## Configure Kubernetes RBAC for Access Control
+## Configure Kubernetes RBAC for access control
 
 To access the RayCluster, you need:
 *  **Authentication:** Provide a valid authentication token (e.g., a Kubernetes service account token or a cloud IAM token) in the request headers.
@@ -66,15 +66,15 @@ To access the RayCluster, you need:
 
 This guide demonstrates granting access using a Kubernetes service account, but the same principles apply to individual Kubernetes users or cloud IAM users.
 
-### Create a Kubernetes Service Account
+### Create a Kubernetes service account
 
-Create a service account that will represent your Ray job submitter:
+Create a service account that represents your Ray job submitter:
 
 ```bash
 kubectl create serviceaccount ray-user
 ```
 
-Confirm that the service account currently cannot access the `RayCluster` resource:
+Confirm that the service account currently can't access the `RayCluster` resource:
 
 ```bash
 kubectl auth can-i get rayclusters.ray.io/ray-cluster-with-auth --as=system:serviceaccount:default:ray-user
@@ -82,7 +82,7 @@ kubectl auth can-i get rayclusters.ray.io/ray-cluster-with-auth --as=system:serv
 
 The output should be `no`.
 
-### Grant Access using Kubernetes RBAC
+### Grant access using Kubernetes RBAC
 
 Create a `Role` and `RoleBinding` to grant the necessary permissions to the `ray-user` service account:
 
@@ -121,7 +121,7 @@ Apply the RBAC configuration:
 kubectl apply -f ray-cluster-rbac.yaml
 ```
 
-### Verify Access
+### Verify access
 
 Confirm that the service account now has access to the `RayCluster` resource:
 
@@ -131,7 +131,7 @@ kubectl auth can-i get rayclusters.ray.io/ray-cluster-with-auth --as=system:serv
 
 The output should be `yes`.
 
-## Submit a Ray Job with Authentication
+## Submit a Ray job with authentication
 
 Now you can submit a Ray job using the service account's authentication token.
 
@@ -149,7 +149,7 @@ Submit the Ray job:
 ray job submit --address http://localhost:8265  -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-The job should now succeed, and you'll see output similar to this:
+The job should now succeed, and you should see output similar to this:
 
 ```bash
 Job submission server address: http://localhost:8265
@@ -176,9 +176,9 @@ Job 'raysubmit_...' succeeded
 ------------------------------------------
 ```
 
-## Verify Access Using Cloud IAM (Optional)
+## Verify access using cloud IAM (Optional)
 
-Most cloud providers allow you to authenticate to your Kubernetes cluster as your cloud IAM user. This is a convenient way to interact with the cluster without managing separate Kubernetes credentials.
+Most cloud providers allow you to authenticate to the Kubernetes cluster as your cloud IAM user. This method is a convenient way to interact with the cluster without managing separate Kubernetes credentials.
 
 **Example using Google Cloud (GKE):**
 
@@ -194,7 +194,7 @@ Submit a Ray job using the IAM token:
 ray job submit --address http://localhost:8265  -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-The job should succeed if your cloud user has the necessary Kubernetes RBAC permissions (you may need to configure additional RBAC rules for your cloud user).
+The job should succeed if your cloud user has the necessary Kubernetes RBAC permissions. You may need to configure additional RBAC rules for your cloud user.
 
 ## View the Ray dashboard (optional)
 
