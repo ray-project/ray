@@ -438,6 +438,12 @@ class Channel(ChannelInterface):
             # )
 
     def write(self, value: Any, timeout: Optional[float] = None) -> None:
+        import torch
+        if isinstance(value, torch.Tensor):
+            print("write", "shared memory tensor", value.device, value)
+        else:
+            print("write", "shared memory", value)
+
         self.ensure_registered_as_writer()
         assert (
             timeout is None or timeout >= 0 or timeout == -1
@@ -500,6 +506,12 @@ class Channel(ChannelInterface):
             ret = self._worker.get_objects(
                 [self._local_reader_ref], timeout=timeout, return_exceptions=True
             )[0][0]
+
+        import torch
+        if isinstance(ret, torch.Tensor):
+            print("read", "shared memory tensor", ret.device, ret)
+        else:
+            print("read", "shared memory", ret)
 
         return ret
 

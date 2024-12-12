@@ -64,6 +64,7 @@ class RayDAGArgs(NamedTuple):
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
     def register_custom_serializer(self) -> None:
+        print("ChannelOutputType.register_custom_serializer")
         """
         Register any custom serializers needed to pass data of this type. This
         method should be run on the reader(s) and writer of a channel, which

@@ -823,6 +823,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
+        # List of task indices that are input attribute nodes.
+        self.input_attr_task_idx_list: List[int] = []
         # Denotes whether execute/execute_async returns a list of refs/futures.
         self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
@@ -1110,6 +1112,7 @@ class CompiledDAG:
                         )
                     direct_input = False
 
+                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
                     # If the upstream node is an InputAttributeNode, treat the
                     # DAG's input node as the actual upstream node
                     upstream_task = self.idx_to_task[self.input_task_idx]
@@ -1121,9 +1124,9 @@ class CompiledDAG:
                             "or they must index to specific args or kwargs."
                         )
                     direct_input = True
+                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
@@ -1451,6 +1454,7 @@ class CompiledDAG:
                     # used to determine whether to create a CachedChannel.
                     if isinstance(input_dag_node, InputAttributeNode):
                         input_attr_idx = self.dag_node_to_idx[input_dag_node]
+                        self.input_attr_task_idx_list.append(input_attr_idx)
                         input_attr_task = self.idx_to_task[input_attr_idx]
                         input_attr_task.output_channels.append(output_channel)
                         assert len(input_attr_task.output_channels) == 1
@@ -1496,8 +1500,12 @@ class CompiledDAG:
             )
 
         input_task = self.idx_to_task[self.input_task_idx]
-        # Register custom serializers for inputs provided to dag.execute().
+        # Register custom serializers for inputs provided to dag.execute().        
         input_task.dag_node.type_hint.register_custom_serializer()
+        for input_attr_task_idx in self.input_attr_task_idx_list:
+            input_attr_task = self.idx_to_task[input_attr_task_idx]
+            input_attr_task.dag_node.type_hint.register_custom_serializer()
+
         self.dag_input_channels = input_task.output_channels
         assert self.dag_input_channels is not None
 

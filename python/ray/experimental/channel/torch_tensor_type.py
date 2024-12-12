@@ -97,6 +97,7 @@ class TorchTensorType(ChannelOutputType):
         return self._direct_return
 
     def register_custom_serializer(self) -> None:
+        print("TorchTensorType.register_custom_serializer")
         super().register_custom_serializer()
 
         import torch
