@@ -116,6 +116,10 @@ class ChannelOutputType:
     def set_nccl_group_id(self, group_id: str) -> None:
         raise NotImplementedError
 
+    def requires_gloo(self) -> bool:
+        # By default, channels do not require Gloo.
+        return False
+
 
 @DeveloperAPI
 @dataclass
@@ -128,6 +132,10 @@ class ChannelContext:
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
         self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
+        # Used for the Gloo group transport.
+        from ray.experimental.channel.gloo_group import _GlooGroup
+
+        self.gloo_groups: Dict[str, "_GlooGroup"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
