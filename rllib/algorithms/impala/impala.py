@@ -1034,7 +1034,7 @@ class IMPALA(Algorithm):
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
 
         if self.config.learner_config_dict.get("_training_step_sample_only"):
-            return
+            return {}
 
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
