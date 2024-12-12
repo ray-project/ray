@@ -1611,6 +1611,8 @@ class CompiledDAG:
             assert len(self.dag_output_channels) == 1
 
         # Driver should ray.put on input, ray.get/release on output
+        if getattr(self, "_monitor", None) is not None:
+            self._monitor.join()
         self._monitor = self._monitor_failures()
         input_task = self.idx_to_task[self.input_task_idx]
         if self._enable_asyncio:
@@ -1957,12 +1959,7 @@ class CompiledDAG:
 
             def run(self):
                 try:
-                    waiting_refs = list(outer.worker_task_refs.values())
-                    while waiting_refs:
-                        ready_refs, waiting_refs = ray.wait(
-                            waiting_refs, num_returns=10
-                        )
-                        ray.get(ready_refs)
+                    ray.get(list(outer.worker_task_refs.values()))
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
