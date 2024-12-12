@@ -341,12 +341,14 @@ class TestGetTopLevelDirFromCompressedPackage:
         )
         assert top_level_dir_name is None
 
-
-    def test_get_top_level_parent_dir(self, random_zip_file_with_parent_dir_as_top_level_dir):
+    def test_get_top_level_parent_dir(
+        self, random_zip_file_with_parent_dir_as_top_level_dir
+    ):
         top_level_dir_name = get_top_level_dir_from_compressed_package(
             str(random_zip_file_with_parent_dir_as_top_level_dir)
         )
         assert top_level_dir_name is None
+
 
 class TestRemoveDirFromFilepaths:
     def test_valid_removal(self, random_zip_file_with_top_level_dir):
