@@ -2621,9 +2621,13 @@ def test_signature_mismatch(shutdown_only):
 
     with pytest.raises(
         TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
         match=(
-            r"missing a required argument: 'y'\. The function `f` has a signature "
-            r"`\(x, \*, y\)`, but the given arguments to `bind` doesn't match\. "
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
             r"args:.*kwargs:.*"
         ),
     ):

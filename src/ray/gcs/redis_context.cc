@@ -164,6 +164,8 @@ RedisRequestContext::RedisRequestContext(instrumented_io_context &io_service,
       callback_(std::move(callback)),
       start_time_(absl::Now()),
       redis_cmds_(std::move(args)) {
+  argc_.reserve(redis_cmds_.size());
+  argv_.reserve(redis_cmds_.size());
   for (size_t i = 0; i < redis_cmds_.size(); ++i) {
     argv_.push_back(redis_cmds_[i].data());
     argc_.push_back(redis_cmds_[i].size());
@@ -560,10 +562,11 @@ Status ConnectRedisSentinel(RedisContext &context,
   }
 }
 
-std::vector<std::string> ResolveDNS(const std::string &address, int port) {
+std::vector<std::string> ResolveDNS(instrumented_io_context &io_service,
+                                    const std::string &address,
+                                    int port) {
   using namespace boost::asio;
-  io_context ctx;
-  ip::tcp::resolver resolver(ctx);
+  ip::tcp::resolver resolver(io_service);
   ip::tcp::resolver::iterator iter = resolver.resolve(address, std::to_string(port));
   ip::tcp::resolver::iterator end;
   std::vector<std::string> ip_addresses;
@@ -597,7 +600,7 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!redis_async_context_);
   // Fetch the ip address from the address. It might return multiple
   // addresses and only the first one will be used.
-  auto ip_addresses = ResolveDNS(address, port);
+  auto ip_addresses = ResolveDNS(io_service_, address, port);
   RAY_CHECK(!ip_addresses.empty())
       << "Failed to resolve DNS for " << address << ":" << port;
 
@@ -674,6 +677,7 @@ void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                                  std::move(redis_callback),
                                                  redis_async_context_.get(),
                                                  std::move(args));
+  // RedisRequestContext is thread safe.
   request_context->Run();
 }
 

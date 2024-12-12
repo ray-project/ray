@@ -118,7 +118,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
+      : mock_actor_scheduler_(new MockActorScheduler()),
+        periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -142,7 +143,7 @@ class GcsActorManagerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/&periodical_runner_,
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
@@ -250,7 +251,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
 };
 
