@@ -46,6 +46,7 @@ from ray.experimental.channel import (
     CompositeChannel,
     IntraProcessChannel,
 )
+from ray.experimental.channel.gloo_group import _init_gloo_group
 from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
@@ -70,6 +71,8 @@ from ray.dag.dag_node_operation import (
 )
 
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+from ray.experimental.channel.gloo_channel import _destroy_gloo_group
 
 if TYPE_CHECKING:
     import cupy as cp
@@ -1223,6 +1226,16 @@ class CompiledDAG:
             set(custom_nccl_group_to_id.values())
         )
 
+        gloo_p2p_actors = []
+        for idx, task in self.idx_to_task.items():
+            dag_node = task.dag_node
+            requires_gloo = dag_node.type_hint.requires_gloo()
+            if requires_gloo:
+                gloo_p2p_actors.append(dag_node._get_actor_handle())
+                for downstream_actor_handle in task.downstream_task_idxs.values():
+                    gloo_p2p_actors.append(downstream_actor_handle)
+        _init_gloo_group("gloo_group", gloo_p2p_actors)
+
         if direct_input:
             self._input_num_positional_args = 1
         elif not input_positional_args:
@@ -1926,6 +1939,12 @@ class CompiledDAG:
                 logger.info("Tearing down compiled DAG")
                 outer._dag_submitter.close()
                 outer._dag_output_fetcher.close()
+
+                # TODO (kevin85421): can't teardown successfully
+                ctx = ChannelContext.get_current()
+                gloo_groups = ctx.gloo_groups
+                for group_id, _ in gloo_groups.items():
+                    _destroy_gloo_group(group_id)
 
                 for actor in outer.actor_refs:
                     logger.info(f"Cancelling compiled worker on actor: {actor}")

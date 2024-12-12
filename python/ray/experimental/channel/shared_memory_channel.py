@@ -105,11 +105,15 @@ class _ResizeChannel:
 
 
 class SharedMemoryType(ChannelOutputType):
+    SHM = "shm"
+    GLOO = "gloo"
+
     def __init__(
         self,
         *,
         buffer_size_bytes: Optional[int] = None,
         num_shm_buffers: Optional[int] = None,
+        transport: str = SHM,
     ):
         """
         Args:
@@ -119,6 +123,9 @@ class SharedMemoryType(ChannelOutputType):
             num_shm_buffers: The number of shared memory buffer per channel.
         """
         super().__init__()
+        self.transport = transport
+        if transport == self.GLOO:
+            return
         if buffer_size_bytes is None:
             buffer_size_bytes = DEFAULT_MAX_BUFFER_SIZE
         self.buffer_size_bytes = buffer_size_bytes
@@ -147,12 +154,24 @@ class SharedMemoryType(ChannelOutputType):
             A ChannelInterface that can be used to pass data
                 of this type.
         """
+        if self.transport == self.GLOO:
+            # TODO(kevin85421): Currently, we hardcode the group name to "gloo_channel".
+            from ray.experimental.channel.gloo_channel import GlooChannel
+
+            return GlooChannel(
+                writer,
+                [reader for reader, _ in reader_and_node_list],
+                "gloo_group",
+            )
         return CompositeChannel(
             writer,
             reader_and_node_list,
             self._num_shm_buffers,
             driver_actor_id,
         )
+
+    def requires_gloo(self) -> bool:
+        return self.transport == self.GLOO
 
 
 @PublicAPI(stability="alpha")

@@ -1,9 +1,12 @@
+import logging
 from typing import List, Optional
 
 import ray
 import ray.util.collective as col
 from ray.experimental.channel import ChannelContext
 from ray.util.collective.types import Backend
+
+logger = logging.getLogger(__name__)
 
 
 class _GlooGroup:
@@ -29,6 +32,7 @@ class _GlooGroup:
         self._actor_handles = actor_handles
         # The number of participating actors/devices.
         self._world_size = len(actor_handles)
+        self._closed = False
         if self._rank is not None:
             col.init_collective_group(
                 self._world_size,
@@ -76,6 +80,12 @@ class _GlooGroup:
         """
         Destroy the Gloo group.
         """
+        # TODO (kevin85421): can't teardown successfully
+        if self._closed:
+            return
+
+        self._closed = True
+
         col.destroy_collective_group(self._group_name)
 
 

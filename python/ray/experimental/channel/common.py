@@ -116,6 +116,10 @@ class ChannelOutputType:
     def set_nccl_group_id(self, group_id: str) -> None:
         raise NotImplementedError
 
+    def requires_gloo(self) -> bool:
+        # By default, channels do not require Gloo.
+        return False
+
 
 @DeveloperAPI
 @dataclass

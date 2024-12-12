@@ -7,6 +7,7 @@ import ray
 from ray.experimental.channel.gloo_group import _init_gloo_group
 from ray.experimental.channel import ChannelContext
 import numpy as np
+from ray.experimental.channel.gloo_channel import _destroy_gloo_group
 
 
 @ray.remote
@@ -79,6 +80,8 @@ def test_gloo_group_3_workers():
     send_and_recv(2, 1)
     send_and_recv(2, 0)
     send_and_recv(0, 2)
+
+    _destroy_gloo_group(gloo_group_name)
 
 
 if __name__ == "__main__":
