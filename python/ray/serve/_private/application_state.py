@@ -332,6 +332,7 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
+        do_checkpoint: bool = True,
     ):
         """Set application target state.
 
@@ -341,6 +342,12 @@ class ApplicationState:
             (target_deployments, False)
         When a request to delete the application has been received, this should be
             ({}, True)
+
+        If do_checkpoint is True, the entire ApplicationStateManager
+        (not just this ApplicationState!) will checkpoint at the end of this call.
+        *If do_checkpoint is False, the caller is responsible for
+        checkpointing the ApplicationStateManager and must do so before any actual
+        changes are made to the cluster (e.g., starting actors)*.
         """
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
@@ -364,12 +371,10 @@ class ApplicationState:
             api_type=api_type,
         )
 
-        # Checkpoint ahead, so that if the controller crashes before we
-        # write to the target state, the target state will be recovered
-        # after the controller recovers
-        self._save_checkpoint_func(writeahead_checkpoints={self._name: target_state})
-        # Set target state
         self._target_state = target_state
+
+        if do_checkpoint:
+            self._save_checkpoint_func()
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -458,7 +463,11 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
-    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
+    def deploy_app(
+        self,
+        deployment_infos: Dict[str, DeploymentInfo],
+        do_checkpoint: bool = True,
+    ):
         """(Re-)deploy the application from list of deployment infos.
 
         This function should only be called to deploy an app from an
@@ -478,6 +487,7 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
+            do_checkpoint=do_checkpoint,
         )
 
     def apply_app_config(
@@ -914,6 +924,58 @@ class ApplicationStateManager:
             return
         self._application_states[name].delete()
 
+    def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
+        live_route_prefixes: Dict[str, str] = {
+            app_state.route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
+        }
+
+        for name, deployment_args in name_to_deployment_args.items():
+            for deploy_param in deployment_args:
+                # Make sure route_prefix is not being used by other application.
+                deploy_app_prefix = deploy_param.get("route_prefix")
+                if deploy_app_prefix is None:
+                    continue
+
+                existing_app_name = live_route_prefixes.get(deploy_app_prefix)
+                # It's ok to redeploy an app with the same prefix
+                # if it has the same name as the app already using that prefix.
+                if existing_app_name is not None and existing_app_name != name:
+                    raise RayServeException(
+                        f"Prefix {deploy_app_prefix} is being used by application "
+                        f'"{existing_app_name}". Failed to deploy application "{name}".'
+                    )
+
+                # We might be deploying more than one app,
+                # so we need to add this app's prefix to the
+                # set of live route prefixes that we're checking
+                # against during this batch operation.
+                live_route_prefixes[deploy_app_prefix] = name
+
+            if name not in self._application_states:
+                self._application_states[name] = ApplicationState(
+                    name,
+                    self._deployment_state_manager,
+                    self._endpoint_state,
+                    self._save_checkpoint_func,
+                    self._logging_config,
+                )
+            ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+            deployment_infos = {
+                params["deployment_name"]: deploy_args_to_deployment_info(
+                    **params, app_name=name
+                )
+                for params in deployment_args
+            }
+            self._application_states[name].deploy_app(
+                deployment_infos, do_checkpoint=False
+            )
+
+        self._save_checkpoint_func()
+
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
 
@@ -928,45 +990,7 @@ class ApplicationStateManager:
             RayServeException: If the list of deployments is trying to
                 use a route prefix that is already used by another application
         """
-
-        # Make sure route_prefix is not being used by other application.
-        live_route_prefixes: Dict[str, str] = {
-            app_state.route_prefix: app_name
-            for app_name, app_state in self._application_states.items()
-            if app_state.route_prefix is not None
-            and not app_state.status == ApplicationStatus.DELETING
-            and name != app_name
-        }
-
-        for deploy_param in deployment_args:
-            deploy_app_prefix = deploy_param.get("route_prefix", None)
-            if deploy_app_prefix is None:
-                continue
-
-            app_name = live_route_prefixes.get(deploy_app_prefix)
-            if app_name is not None:
-                raise RayServeException(
-                    f"Prefix {deploy_app_prefix} is being used by application "
-                    f'"{app_name}". Failed to deploy application "{name}".'
-                )
-
-        if name not in self._application_states:
-            self._application_states[name] = ApplicationState(
-                name,
-                self._deployment_state_manager,
-                self._endpoint_state,
-                self._save_checkpoint_func,
-                self._logging_config,
-            )
-        ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
-
-        deployment_infos = {
-            params["deployment_name"]: deploy_args_to_deployment_info(
-                **params, app_name=name
-            )
-            for params in deployment_args
-        }
-        self._application_states[name].deploy_app(deployment_infos)
+        self.deploy_apps({name: deployment_args})
 
     def apply_app_configs(
         self,
@@ -1099,18 +1123,13 @@ class ApplicationStateManager:
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, ApplicationTargetState]]
-    ) -> None:
+    def _save_checkpoint_func(self) -> None:
         """Write a checkpoint of all application states."""
 
         application_state_info = {
             app_name: app_state.get_checkpoint_data()
             for app_name, app_state in self._application_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            application_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
