@@ -1252,6 +1252,9 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
   case protocol::MessageType::AnnounceWorkerPort: {
     ProcessAnnounceWorkerPortMessage(client, message_data);
   } break;
+  case protocol::MessageType::RegisterClientWithPortRequest: {
+    ProcessRegisterClientAndAnnouncePortMessage(client, message_data);
+  } break;
   case protocol::MessageType::ActorCreationTaskDone: {
     if (registered_worker) {
       // Worker may send this message after it was disconnected.
@@ -1308,9 +1311,15 @@ void NodeManager::ProcessClientMessage(const std::shared_ptr<ClientConnection> &
 
 void NodeManager::ProcessRegisterClientRequestMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  auto *message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
+  ProcessRegisterClientRequestMessageImpl(client, message);
+}
+
+void NodeManager::ProcessRegisterClientRequestMessageImpl(
+    const std::shared_ptr<ClientConnection> &client,
+    const ray::protocol::RegisterClientRequest *message) {
   client->Register();
 
-  auto message = flatbuffers::GetRoot<protocol::RegisterClientRequest>(message_data);
   Language language = static_cast<Language>(message->language());
   const JobID job_id = from_flatbuf<JobID>(*message->job_id());
   const int runtime_env_hash = static_cast<int>(message->runtime_env_hash());
@@ -1389,6 +1398,13 @@ void NodeManager::ProcessRegisterClientRequestMessage(
 
 void NodeManager::ProcessAnnounceWorkerPortMessage(
     const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  auto *message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
+  ProcessAnnounceWorkerPortMessageImpl(client, message);
+}
+
+void NodeManager::ProcessAnnounceWorkerPortMessageImpl(
+    const std::shared_ptr<ClientConnection> &client,
+    const ray::protocol::AnnounceWorkerPort *message) {
   bool is_worker = true;
   std::shared_ptr<WorkerInterface> worker = worker_pool_.GetRegisteredWorker(client);
   if (worker == nullptr) {
@@ -1398,7 +1414,6 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
   RAY_CHECK(worker != nullptr) << "No worker exists for CoreWorker with client: "
                                << client->DebugString();
 
-  auto message = flatbuffers::GetRoot<protocol::AnnounceWorkerPort>(message_data);
   int port = message->port();
   worker->Connect(port);
   if (is_worker) {
@@ -1450,6 +1465,14 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
               });
         }));
   }
+}
+
+void NodeManager::ProcessRegisterClientAndAnnouncePortMessage(
+    const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data) {
+  auto *message =
+      flatbuffers::GetRoot<protocol::RegisterClientWithPortRequest>(message_data);
+  ProcessRegisterClientRequestMessageImpl(client, message->request_client_request());
+  ProcessAnnounceWorkerPortMessageImpl(client, message->announcement_port_request());
 }
 
 void NodeManager::HandleWorkerAvailable(const std::shared_ptr<WorkerInterface> &worker) {

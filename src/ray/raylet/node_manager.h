@@ -432,6 +432,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+  void ProcessRegisterClientRequestMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::RegisterClientRequest *message);
 
   /// Process client message of AnnounceWorkerPort
   ///
@@ -440,6 +443,13 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
+  void ProcessAnnounceWorkerPortMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::AnnounceWorkerPort *message);
+
+  /// Process client registration and port announcement.
+  void ProcessRegisterClientAndAnnouncePortMessage(
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///

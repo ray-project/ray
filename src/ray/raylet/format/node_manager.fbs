@@ -70,6 +70,14 @@ enum MessageType:int {
   ConnectClient,
   // Subscribe to Plasma updates.
   SubscribePlasmaReady,
+  // [RegisterClientWithPort] series is the combination for [RegisterClient] and [AnnounceWorkerPort].
+  //
+  // Send an initial connection message to the raylet with port assigned. This is sent
+  // from a worker or driver to a raylet.
+  RegisterClientWithPortRequest,
+  // Send a reply confirming the successful registration of a worker or driver.
+  // This is sent from the raylet to a worker or driver.
+  RegisterClientWithPortReply,
 }
 
 table Task {
@@ -142,6 +150,20 @@ table RegisterClientReply {
   raylet_id: string;
   // Port that this worker should listen on.
   port: int;
+}
+
+table RegisterClientWithPortRequest {
+  // Request to register client.
+  request_client_request: RegisterClientRequest;
+  // Request to assign port.
+  announcement_port_request: AnnounceWorkerPort;
+}
+
+table RegisterClientWithPortResponse {
+  // Response to register client.
+  request_client_request: [RegisterClientReply];
+  // Response to assign port.
+  announcement_port_request: [AnnounceWorkerPortReply];
 }
 
 table AnnounceWorkerPort {
