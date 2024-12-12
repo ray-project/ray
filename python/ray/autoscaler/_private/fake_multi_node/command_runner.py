@@ -7,13 +7,13 @@ from ray.autoscaler.command_runner import CommandRunnerInterface
 
 
 class FakeDockerCommandRunner(CommandRunnerInterface):
-    """Command runner for the fke docker multinode cluster.
+    """Command runner for the fake docker multinode cluster.
 
     This command runner uses ``docker exec`` and ``docker cp`` to
     run commands and copy files, respectively.
 
     The regular ``DockerCommandRunner`` is made for use in SSH settings
-    where Docker runs on a remote hose. In contrast, this command runner
+    where Docker runs on a remote host. In contrast, this command runner
     does not wrap the docker commands in ssh calls.
     """
 
