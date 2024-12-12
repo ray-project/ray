@@ -110,10 +110,10 @@ class RedisContext;
 struct RedisRequestContext {
   RedisRequestContext(instrumented_io_context &io_service,
                       RedisCallback callback,
-                      RedisAsyncContext *context,
+                      RedisContext &context,
                       std::vector<std::string> args);
 
-  static void RedisResponseFn(struct redisAsyncContext *async_context,
+  static void RedisResponseFn(redisAsyncContext *async_context,
                               void *raw_reply,
                               void *privdata);
 
@@ -122,7 +122,7 @@ struct RedisRequestContext {
  private:
   ExponentialBackOff exp_back_off_;
   instrumented_io_context &io_service_;
-  RedisAsyncContext *redis_context_;
+  RedisContext &redis_context_;
   size_t pending_retries_;
   RedisCallback callback_;
   absl::Time start_time_;
