@@ -619,6 +619,14 @@ py_test(
 )
 
 py_test(
+    name = "test_clickhouse",
+    size = "small",
+    srcs = ["tests/test_clickhouse.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_lance",
     size = "small",
     srcs = ["tests/test_lance.py"],
