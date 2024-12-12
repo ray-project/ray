@@ -52,7 +52,11 @@ config = (
         #entropy_coeff=0.0,
         learner_config_dict={
             "_training_step_sample_only": True,
-        }
+        },
+        model={
+            "fcnet_hiddens": [2048, 2048, 2048],
+            "vf_share_layers": False,
+        },
     )
     .rl_module(
         model_config=DefaultModelConfig(
