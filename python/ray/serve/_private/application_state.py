@@ -919,28 +919,31 @@ class ApplicationStateManager:
         self._application_states[name].delete()
 
     def deploy_apps(self, name_to_deployment_args: Dict[str, List[Dict]]) -> None:
-        for name, deployment_args in name_to_deployment_args.items():
-            # Make sure route_prefix is not being used by other application.
-            # TODO: this loop is bad for performance, refactor
-            live_route_prefixes: Dict[str, str] = {
-                app_state.route_prefix: app_name
-                for app_name, app_state in self._application_states.items()
-                if app_state.route_prefix is not None
-                and not app_state.status == ApplicationStatus.DELETING
-                and name != app_name
-            }
+        live_route_prefixes: Dict[str, str] = {
+            app_state.route_prefix: app_name
+            for app_name, app_state in self._application_states.items()
+            if app_state.route_prefix is not None
+            and not app_state.status == ApplicationStatus.DELETING
+        }
 
+        for name, deployment_args in name_to_deployment_args.items():
             for deploy_param in deployment_args:
                 deploy_app_prefix = deploy_param.get("route_prefix", None)
                 if deploy_app_prefix is None:
                     continue
 
+                # Make sure route_prefix is not being used by other application.
                 app_name = live_route_prefixes.get(deploy_app_prefix)
                 if app_name is not None:
                     raise RayServeException(
                         f"Prefix {deploy_app_prefix} is being used by application "
                         f'"{app_name}". Failed to deploy application "{name}".'
                     )
+                else:
+                    # We might be deploying more than one app,
+                    # so we need to add this app's prefix to the
+                    # set of live route prefixes.
+                    live_route_prefixes[deploy_app_prefix] = name
 
             if name not in self._application_states:
                 self._application_states[name] = ApplicationState(
