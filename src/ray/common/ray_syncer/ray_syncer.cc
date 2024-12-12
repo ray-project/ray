@@ -25,18 +25,20 @@
 namespace ray::syncer {
 
 RaySyncer::RaySyncer(instrumented_io_context &io_context,
-                     const std::string &local_node_id)
+                     const std::string &local_node_id,
+                     SuccessfulRpcCallback on_rpc_success)
     : io_context_(io_context),
       local_node_id_(local_node_id),
       node_state_(std::make_unique<NodeState>()),
-      timer_(PeriodicalRunner::Create(io_context)) {
+      timer_(PeriodicalRunner::Create(io_context)),
+      on_rpc_success_(std::move(on_rpc_success)) {
   stopped_ = std::make_shared<bool>(false);
 }
 
 RaySyncer::~RaySyncer() {
   *stopped_ = true;
   boost::asio::dispatch(io_context_.get_executor(), [reactors = sync_reactors_]() {
-    for (auto [_, reactor] : reactors) {
+    for (auto &[_, reactor] : reactors) {
       reactor->Disconnect();
     }
   });
@@ -112,8 +114,8 @@ void RaySyncer::Connect(const std::string &node_id,
 
 void RaySyncer::Connect(RaySyncerBidiReactor *reactor) {
   // Bind rpc completion callback.
-  if (on_rpc_completion_) {
-    reactor->SetCompletedRpcCallbackForOnce(on_rpc_completion_);
+  if (on_rpc_success_) {
+    reactor->SetSuccessfulRpcCallbackForOnce(on_rpc_success_);
   }
 
   boost::asio::dispatch(
@@ -150,12 +152,6 @@ void RaySyncer::Disconnect(const std::string &node_id) {
     reactor->Disconnect();
   });
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
-}
-
-void RaySyncer::SetCompletedRpcCallbackForOnce(CompletedRpcCallback on_rpc_completion) {
-  RAY_CHECK(on_rpc_completion);
-  RAY_CHECK(!on_rpc_completion_);
-  on_rpc_completion_ = std::move(on_rpc_completion);
 }
 
 void RaySyncer::Register(MessageType message_type,
