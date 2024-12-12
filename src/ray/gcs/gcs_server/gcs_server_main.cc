@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
@@ -26,7 +28,13 @@
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(event_log_dir,
+              "",
+              "The path of the dir where event log files are created.");
+DEFINE_string(
+    ray_log_filepath,
+    "",
+    "The filename to dump gcs server log on stdout, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -40,15 +48,35 @@ DEFINE_string(session_name,
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  if (const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+      rotation_max_bytes == nullptr) {
+    const long max_rotation_size = std::numeric_limits<long>::max();
+    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
+    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
+  }
+
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*stdout_log_filepath=*/FLAGS_ray_log_filepath);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
-
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   RAY_LOG(INFO)
           .WithField("ray_version", kRayVersion)
@@ -57,7 +85,7 @@ int main(int argc, char *argv[]) {
 
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
-  const std::string log_dir = FLAGS_log_dir;
+  const std::string event_log_dir = FLAGS_event_log_dir;
   const int gcs_server_port = static_cast<int>(FLAGS_gcs_server_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   std::string config_list;
@@ -91,7 +119,7 @@ int main(int argc, char *argv[]) {
   ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
+  if (RayConfig::instance().event_log_reporter_enabled() && !event_log_dir.empty()) {
     // This GCS server process emits GCS standard events, and
     // Node, Actor, and Driver Job export events
     // so the various source types are passed to RayEventInit. The type of an
@@ -103,7 +131,7 @@ int main(int argc, char *argv[]) {
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
     ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
-                      log_dir,
+                      event_log_dir,
                       RayConfig::instance().event_level(),
                       RayConfig::instance().emit_event_to_log_file());
   }
@@ -120,7 +148,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
-  gcs_server_config.log_dir = log_dir;
+  gcs_server_config.log_dir = event_log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);
