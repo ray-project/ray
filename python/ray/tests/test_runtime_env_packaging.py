@@ -110,6 +110,18 @@ def random_zip_file_without_top_level_dir(random_dir):
 
 
 @pytest.fixture
+def random_zip_file_with_parent_dir_as_top_level_dir(random_dir):
+    # Create zip file with ".." as top level directory
+    make_archive(
+        random_dir / ARCHIVE_NAME[: ARCHIVE_NAME.rfind(".")],
+        "zip",
+        random_dir,
+        "..",
+    )
+    yield str(random_dir / ARCHIVE_NAME)
+
+
+@pytest.fixture
 def random_zip_file_with_top_level_dir(tmp_path):
     path = tmp_path
     top_level_dir = path / TOP_LEVEL_DIR_NAME
@@ -329,6 +341,12 @@ class TestGetTopLevelDirFromCompressedPackage:
         )
         assert top_level_dir_name is None
 
+
+    def test_get_top_level_parent_dir(self, random_zip_file_with_parent_dir_as_top_level_dir):
+        top_level_dir_name = get_top_level_dir_from_compressed_package(
+            str(random_zip_file_with_parent_dir_as_top_level_dir)
+        )
+        assert top_level_dir_name is None
 
 class TestRemoveDirFromFilepaths:
     def test_valid_removal(self, random_zip_file_with_top_level_dir):
