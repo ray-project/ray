@@ -21,9 +21,10 @@ namespace ray::syncer {
 
 NodeState::NodeState() { sync_message_versions_taken_.fill(-1); }
 
-void NodeState::SetRaySyncMsgObserverForOnce(RaySyncMsgObserver ray_sync_msg_observer) {
-  RAY_CHECK(!ray_sync_msg_observer_);
-  ray_sync_msg_observer_ = std::move(ray_sync_msg_observer);
+void NodeState::SetRayletCompletedRpcCallbackForOnce(
+    RayletCompletedRpcCallback on_raylet_rpc_completion) {
+  RAY_CHECK(on_raylet_rpc_completion);
+  on_raylet_rpc_completion_ = std::move(on_raylet_rpc_completion);
 }
 
 bool NodeState::SetComponent(MessageType message_type,
@@ -72,8 +73,8 @@ bool NodeState::ConsumeSyncMessage(std::shared_ptr<const RaySyncMessage> message
   }
 
   current = message;
-  if (ray_sync_msg_observer_) {
-    ray_sync_msg_observer_(*message);
+  if (on_raylet_rpc_completion_) {
+    on_raylet_rpc_completion_(NodeID::FromBinary(message->node_id()));
   }
   auto receiver = receivers_[message->message_type()];
   if (receiver != nullptr) {

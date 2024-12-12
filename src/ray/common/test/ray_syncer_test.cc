@@ -209,7 +209,9 @@ struct SyncerServerTest {
             std::move(port), /*node_id=*/NodeID::FromRandom(), /*ray_sync_observer=*/{}) {
   }
 
-  SyncerServerTest(std::string port, NodeID node_id, RaySyncMsgObserver ray_sync_observer)
+  SyncerServerTest(std::string port,
+                   NodeID node_id,
+                   RayletCompletedRpcCallback ray_sync_observer)
       : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
@@ -219,7 +221,7 @@ struct SyncerServerTest {
     // Setup syncer and grpc server
     syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
     if (ray_sync_observer) {
-      syncer->SetRaySyncMsgObserverForOnce(std::move(ray_sync_observer));
+      syncer->SetRayletCompletedRpcCallbackForOnce(std::move(ray_sync_observer));
     }
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
@@ -432,9 +434,9 @@ class SyncerTest : public ::testing::Test {
 
   SyncerServerTest &MakeServer(std::string port,
                                NodeID node_id,
-                               RaySyncMsgObserver ran_sync_observer) {
+                               RayletCompletedRpcCallback on_raylet_rpc_completion) {
     servers.emplace_back(std::make_unique<SyncerServerTest>(
-        port, std::move(node_id), std::move(ran_sync_observer)));
+        port, std::move(node_id), std::move(on_raylet_rpc_completion)));
     return *servers.back();
   }
 
@@ -460,11 +462,10 @@ TEST_F(SyncerTest, Test1To1) {
   int s2_observer_cb_call_cnt = 0;
 
   // Register observer callback for syncers.
-  auto syncer_observer_cb = [&](const ::ray::rpc::syncer::RaySyncMessage &msg) {
-    const auto &cur_node_id = NodeID::FromBinary(msg.node_id());
-    if (cur_node_id == node_id1) {
+  auto syncer_observer_cb = [&](const NodeID &node_id) {
+    if (node_id == node_id1) {
       ++s1_observer_cb_call_cnt;
-    } else if (cur_node_id == node_id2) {
+    } else if (node_id == node_id2) {
       ++s2_observer_cb_call_cnt;
     }
   };

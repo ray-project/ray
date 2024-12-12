@@ -77,7 +77,8 @@ class NodeState {
 
   /// Set the observer callable for sync message response for once.
   /// This function is expected to call only once, repeated invocations throws exception.
-  void SetRaySyncMsgObserverForOnce(RaySyncMsgObserver ray_sync_msg_observer);
+  void SetRayletCompletedRpcCallbackForOnce(
+      RayletCompletedRpcCallback on_raylet_rpc_completion);
 
   /// Return the cluster view of this local node.
   const absl::flat_hash_map<
@@ -109,7 +110,7 @@ class NodeState {
   ///
   /// As of now we only have one single usage for health check status update, update to
   /// vector if we have more observers.
-  RaySyncMsgObserver ray_sync_msg_observer_;
+  RayletCompletedRpcCallback on_raylet_rpc_completion_;
 };
 
 }  // namespace ray::syncer
