@@ -16,8 +16,10 @@ rllib.env.multi_agent_env.MultiAgentEnv
     .. automethod:: __init__
     .. automethod:: reset
     .. automethod:: step
-    .. automethod:: render
+    .. automethod:: get_observation_space
+    .. automethod:: get_action_space
     .. automethod:: with_agent_groups
+    .. automethod:: render
 
 
 Convert gym.Env into MultiAgentEnv
