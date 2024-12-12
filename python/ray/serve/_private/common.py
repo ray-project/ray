@@ -114,6 +114,7 @@ class DeploymentStatus(str, Enum):
     UPDATING = "UPDATING"
     HEALTHY = "HEALTHY"
     UNHEALTHY = "UNHEALTHY"
+    DEPLOY_FAILED = "DEPLOY_FAILED"
     UPSCALING = "UPSCALING"
     DOWNSCALING = "DOWNSCALING"
 
@@ -154,19 +155,21 @@ class DeploymentStatusInternalTrigger(str, Enum):
 #     representing a state with that status and status trigger.
 DEPLOYMENT_STATUS_RANKING_ORDER = {
     # Status ranking order is defined in a following fashion:
-    #   1. (Highest) State signalling any failures in the system
-    (DeploymentStatus.UNHEALTHY,): 0,
+    #   0. (Highest) State signaling a deploy failure.
+    (DeploymentStatus.DEPLOY_FAILED,): 0,
+    #   1. State signaling any non-deploy failures in the system.
+    (DeploymentStatus.UNHEALTHY,): 1,
     #   2. States signaling the user updated the configuration.
-    (DeploymentStatus.UPDATING,): 1,
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 1,
+    (DeploymentStatus.UPDATING,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.CONFIG_UPDATE_STARTED): 2,
     (
         DeploymentStatus.DOWNSCALING,
         DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
-    ): 1,
+    ): 2,
     #   3. Steady state or autoscaling.
-    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 2,
-    (DeploymentStatus.HEALTHY,): 2,
+    (DeploymentStatus.UPSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.DOWNSCALING, DeploymentStatusTrigger.AUTOSCALING): 3,
+    (DeploymentStatus.HEALTHY,): 3,
 }
 
 
@@ -286,16 +289,16 @@ class DeploymentStatusInfo:
             }:
                 return self
 
-            # Failures occurred
+            # Failures occurred while a deployment was being updated
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
                     message=message,
                 )
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
@@ -345,17 +348,17 @@ class DeploymentStatusInfo:
                     status=DeploymentStatus.DOWNSCALING, message=message
                 )
 
-            # Failures occurred
-            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
-                return self._updated_copy(
-                    status=DeploymentStatus.UNHEALTHY,
-                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
-                    message=message,
-                )
+            # Failures occurred while upscaling/downscaling
             elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
                     status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )
 
@@ -439,6 +442,37 @@ class DeploymentStatusInfo:
             elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
                 return self._updated_copy(
                     status=DeploymentStatus.UNHEALTHY,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
+        elif self.status == DeploymentStatus.DEPLOY_FAILED:
+            # The deployment recovered
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                    message=message,
+                )
+
+            # A new configuration is being deployed.
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
                     status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
                     message=message,
                 )

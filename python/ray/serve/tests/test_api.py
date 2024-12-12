@@ -848,15 +848,32 @@ def test_status_constructor_error(serve_instance):
 
     serve._run(A.bind(), _blocking=False)
 
-    def check_for_failed_deployment():
+    def check_for_failed_app():
         default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
         error_substr = "ZeroDivisionError: division by zero"
-        return (
+        assert (
             default_app.status == "DEPLOY_FAILED"
             and error_substr in default_app.deployments["A"].message
         )
+        assert default_app.deployments["A"].status == "DEPLOY_FAILED"
+        return True
 
-    wait_for_condition(check_for_failed_deployment)
+    wait_for_condition(check_for_failed_app)
+
+    @serve.deployment
+    class A:
+        def __init__(self):
+            pass
+
+    serve._run(A.bind(), _blocking=False)
+
+    def check_for_running_app():
+        default_app = serve.status().applications[SERVE_DEFAULT_APP_NAME]
+        assert default_app.status == "RUNNING"
+        assert default_app.deployments["A"].status == "HEALTHY"
+        return True
+
+    wait_for_condition(check_for_running_app)
 
 
 @pytest.mark.skipif(

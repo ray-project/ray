@@ -828,7 +828,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
         return true;
       }));
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc);
+  CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));

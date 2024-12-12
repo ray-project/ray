@@ -1,16 +1,8 @@
 import numpy as np
-import pickle
 import unittest
 
-import ray
-from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.examples.envs.classes.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples._old_api_stack.models.rnn_spy_model import RNNSpyModel
-from ray.rllib.models import ModelCatalog
 from ray.rllib.policy.rnn_sequencing import chop_into_sequences
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.test_utils import check
-from ray.tune.registry import register_env
 
 
 class TestLSTMUtils(unittest.TestCase):
@@ -164,101 +156,6 @@ class TestLSTMUtils(unittest.TestCase):
         self.assertEqual([f.tolist() for f in f_pad], [[1, 0, 1, 1]])
         self.assertEqual([s.tolist() for s in s_init], [[1, 1]])
         self.assertEqual(seq_lens.tolist(), [1, 2])
-
-
-class TestRNNSequencing(unittest.TestCase):
-    def setUp(self) -> None:
-        ray.init(num_cpus=4)
-
-    def tearDown(self) -> None:
-        ray.shutdown()
-
-    def test_minibatch_sequencing(self):
-        ModelCatalog.register_custom_model("rnn", RNNSpyModel)
-        register_env("counter", lambda _: DebugCounterEnv())
-        config = (
-            PPOConfig()
-            .api_stack(
-                enable_env_runner_and_connector_v2=False,
-                enable_rl_module_and_learner=False,
-            )
-            .environment("counter")
-            .framework("tf")
-            .env_runners(num_env_runners=0, rollout_fragment_length=20)
-            .training(
-                train_batch_size=20,
-                minibatch_size=10,
-                num_epochs=1,
-                model={
-                    "custom_model": "rnn",
-                    "max_seq_len": 4,
-                    "vf_share_layers": True,
-                },
-            )
-        )
-        ppo = config.build()
-        ppo.train()
-        ppo.train()
-        ppo.stop()
-
-        # first epoch: 20 observations get split into 2 minibatches of 8
-        # four observations are discarded
-        batch0 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_0")
-        )
-        batch1 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_1")
-        )
-        if batch0["sequences"][0][0][0] > batch1["sequences"][0][0][0]:
-            batch0, batch1 = batch1, batch0  # sort minibatches
-        self.assertEqual(batch0[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
-        self.assertEqual(batch1[SampleBatch.SEQ_LENS].tolist(), [2, 3, 4, 1])
-        check(
-            batch0["sequences"],
-            [
-                [[0], [1], [2], [3]],
-                [[4], [5], [6], [7]],
-                [[8], [9], [0], [0]],
-            ],
-        )
-        check(
-            batch1["sequences"],
-            [
-                [[10], [11], [0], [0]],
-                [[12], [13], [14], [0]],
-                [[0], [1], [2], [3]],
-                [[4], [0], [0], [0]],
-            ],
-        )
-
-        # second epoch: 20 observations get split into 2 minibatches of 8
-        # four observations are discarded
-        batch2 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_2")
-        )
-        batch3 = pickle.loads(
-            ray.experimental.internal_kv._internal_kv_get("rnn_spy_in_3")
-        )
-        if batch2["sequences"][0][0][0] > batch3["sequences"][0][0][0]:
-            batch2, batch3 = batch3, batch2
-        self.assertEqual(batch2[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
-        self.assertEqual(batch3[SampleBatch.SEQ_LENS].tolist(), [4, 4, 2])
-        check(
-            batch2["sequences"],
-            [
-                [[0], [1], [2], [3]],
-                [[4], [5], [6], [7]],
-                [[8], [9], [0], [0]],
-            ],
-        )
-        check(
-            batch3["sequences"],
-            [
-                [[5], [6], [7], [8]],
-                [[9], [10], [11], [12]],
-                [[13], [14], [0], [0]],
-            ],
-        )
 
 
 if __name__ == "__main__":

@@ -56,14 +56,14 @@ BufferTracker::UsedObjects() const {
 CoreWorkerPlasmaStoreProvider::CoreWorkerPlasmaStoreProvider(
     const std::string &store_socket,
     const std::shared_ptr<raylet::RayletClient> raylet_client,
-    const std::shared_ptr<ReferenceCounter> reference_counter,
+    ReferenceCounter &reference_counter,
     std::function<Status()> check_signals,
     bool warmup,
     std::function<std::string()> get_current_call_site)
     : raylet_client_(raylet_client),
       store_client_(std::make_shared<plasma::PlasmaClient>()),
       reference_counter_(reference_counter),
-      check_signals_(check_signals) {
+      check_signals_(std::move(check_signals)) {
   if (get_current_call_site != nullptr) {
     get_current_call_site_ = get_current_call_site;
   } else {
@@ -172,7 +172,7 @@ Status CoreWorkerPlasmaStoreProvider::FetchAndGetFromPlasmaStore(
     const TaskID &task_id,
     absl::flat_hash_map<ObjectID, std::shared_ptr<RayObject>> *results,
     bool *got_exception) {
-  const auto owner_addresses = reference_counter_->GetOwnerAddresses(batch_ids);
+  const auto owner_addresses = reference_counter_.GetOwnerAddresses(batch_ids);
   RAY_RETURN_NOT_OK(raylet_client_->FetchOrReconstruct(
       batch_ids, owner_addresses, fetch_only, task_id));
 
@@ -390,7 +390,7 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
       should_break = remaining_timeout <= 0;
     }
 
-    const auto owner_addresses = reference_counter_->GetOwnerAddresses(id_vector);
+    const auto owner_addresses = reference_counter_.GetOwnerAddresses(id_vector);
     RAY_RETURN_NOT_OK(raylet_client_->Wait(id_vector,
                                            owner_addresses,
                                            num_objects,
