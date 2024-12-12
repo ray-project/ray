@@ -230,6 +230,14 @@ class ParquetDatasource(Datasource):
         # duplicating the partition data, we disable PyArrow's partitioning.
         dataset_kwargs["partitioning"] = None
 
+        # `read_schema` is the schema object that will be used to perform
+        # read operations.
+        # It should be None, unless user has specified the schema or columns.
+        # We don't use the inferred schema for read, because the pyarrow only infers
+        # schema based on the first file. Thus, files with different schemas will end
+        # up producing blocks with wrong schema.
+        # See https://github.com/ray-project/ray/issues/47960 for more context.
+        read_schema = schema
         pq_ds = get_parquet_dataset(paths, filesystem, dataset_kwargs)
 
         if schema is None:
@@ -240,6 +248,7 @@ class ParquetDatasource(Datasource):
             schema = pa.schema(
                 [schema.field(column) for column in columns], schema.metadata
             )
+            read_schema = schema
 
         check_for_legacy_tensor_type(schema)
 
@@ -247,17 +256,13 @@ class ParquetDatasource(Datasource):
             # Try to infer dataset schema by passing dummy table through UDF.
             dummy_table = schema.empty_table()
             try:
-                inferred_schema = _block_udf(dummy_table).schema
-                inferred_schema = inferred_schema.with_metadata(schema.metadata)
+                schema = _block_udf(dummy_table).schema.with_metadata(schema.metadata)
             except Exception:
                 logger.debug(
                     "Failed to infer schema of dataset by passing dummy table "
                     "through UDF due to the following exception:",
                     exc_info=True,
                 )
-                inferred_schema = schema
-        else:
-            inferred_schema = schema
 
         try:
             prefetch_remote_args = {}
@@ -291,10 +296,10 @@ class ParquetDatasource(Datasource):
         self._pq_fragments = [SerializedFragment(p) for p in pq_ds.fragments]
         self._pq_paths = [p.path for p in pq_ds.fragments]
         self._meta_provider = meta_provider
-        self._inferred_schema = inferred_schema
         self._block_udf = _block_udf
         self._to_batches_kwargs = to_batch_kwargs
         self._columns = columns
+        self._read_schema = read_schema
         self._schema = schema
         self._file_metadata_shuffler = None
         self._include_paths = include_paths
@@ -306,7 +311,7 @@ class ParquetDatasource(Datasource):
             self._pq_fragments,
             to_batches_kwargs=to_batch_kwargs,
             columns=columns,
-            schema=schema,
+            schema=self._read_schema,
             local_scheduling=self._local_scheduling,
         )
         self._encoding_ratio = estimate_files_encoding_ratio(sample_infos)
@@ -358,7 +363,7 @@ class ParquetDatasource(Datasource):
 
             meta = self._meta_provider(
                 paths,
-                self._inferred_schema,
+                self._schema,
                 num_fragments=len(fragments),
                 prefetched_metadata=metadata,
             )
@@ -375,7 +380,7 @@ class ParquetDatasource(Datasource):
                 to_batches_kwargs,
                 default_read_batch_size_rows,
                 columns,
-                schema,
+                read_schema,
                 include_paths,
                 partitioning,
             ) = (
@@ -383,7 +388,7 @@ class ParquetDatasource(Datasource):
                 self._to_batches_kwargs,
                 self._default_read_batch_size_rows,
                 self._columns,
-                self._schema,
+                self._read_schema,
                 self._include_paths,
                 self._partitioning,
             )
@@ -394,7 +399,7 @@ class ParquetDatasource(Datasource):
                         to_batches_kwargs,
                         default_read_batch_size_rows,
                         columns,
-                        schema,
+                        read_schema,
                         f,
                         include_paths,
                         partitioning,

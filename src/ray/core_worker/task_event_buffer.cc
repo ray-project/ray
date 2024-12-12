@@ -202,9 +202,37 @@ void TaskProfileEvent::ToRpcTaskExportEvents(
   event_entry->set_extra_data(std::move(extra_data_));
 }
 
+bool TaskEventBuffer::RecordTaskStatusEventIfNeeded(
+    const TaskID &task_id,
+    const JobID &job_id,
+    int32_t attempt_number,
+    const TaskSpecification &spec,
+    rpc::TaskStatus status,
+    bool include_task_info,
+    absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update) {
+  if (!Enabled()) {
+    return false;
+  }
+  if (!spec.EnableTaskEvents()) {
+    return false;
+  }
+
+  auto task_event = std::make_unique<TaskStatusEvent>(
+      task_id,
+      job_id,
+      attempt_number,
+      status,
+      /* timestamp */ absl::GetCurrentTimeNanos(),
+      include_task_info ? std::make_shared<const TaskSpecification>(spec) : nullptr,
+      std::move(state_update));
+
+  AddTaskEvent(std::move(task_event));
+  return true;
+}
+
 TaskEventBufferImpl::TaskEventBufferImpl(std::shared_ptr<gcs::GcsClient> gcs_client)
     : work_guard_(boost::asio::make_work_guard(io_service_)),
-      periodical_runner_(io_service_),
+      periodical_runner_(PeriodicalRunner::Create(io_service_)),
       gcs_client_(std::move(gcs_client)),
       status_events_() {}
 
@@ -255,9 +283,9 @@ Status TaskEventBufferImpl::Start(bool auto_flush) {
   }
 
   RAY_LOG(INFO) << "Reporting task events to GCS every " << report_interval_ms << "ms.";
-  periodical_runner_.RunFnPeriodically([this] { FlushEvents(/* forced */ false); },
-                                       report_interval_ms,
-                                       "CoreWorker.deadline_timer.flush_task_events");
+  periodical_runner_->RunFnPeriodically([this] { FlushEvents(/*forced= */ false); },
+                                        report_interval_ms,
+                                        "CoreWorker.deadline_timer.flush_task_events");
   return Status::OK();
 }
 

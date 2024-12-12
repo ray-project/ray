@@ -32,6 +32,7 @@
 #include <iosfwd>
 #include <string>
 
+#include "ray/common/source_location.h"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/visibility.h"
@@ -55,26 +56,17 @@ class error_code;
     }                                  \
   } while (0)
 
-#define RAY_RETURN_NOT_OK_ELSE(s, else_) \
-  do {                                   \
-    ::ray::Status _s = (s);              \
-    if (!_s.ok()) {                      \
-      else_;                             \
-      return _s;                         \
-    }                                    \
-  } while (0)
-
 // If 'to_call' returns a bad status, CHECK immediately with a logged message
 // of 'msg' followed by the status.
 #define RAY_CHECK_OK_PREPEND(to_call, msg)                \
   do {                                                    \
-    ::ray::Status _s = (to_call);                         \
+    const ::ray::Status &_s = (to_call);                  \
     RAY_CHECK(_s.ok()) << (msg) << ": " << _s.ToString(); \
   } while (0)
 
 // If the status is bad, CHECK immediately, appending the status to the
 // logged message.
-#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND(s, "Bad status")
+#define RAY_CHECK_OK(s) RAY_CHECK_OK_PREPEND((s), "Bad status")
 
 namespace ray {
 
@@ -133,6 +125,7 @@ class RAY_EXPORT Status {
   ~Status() { delete state_; }
 
   Status(StatusCode code, const std::string &msg, int rpc_code = -1);
+  Status(StatusCode code, const std::string &msg, SourceLocation loc, int rpc_code = -1);
 
   // Copy the specified status.
   Status(const Status &s);
@@ -334,6 +327,7 @@ class RAY_EXPORT Status {
   struct State {
     StatusCode code;
     std::string msg;
+    SourceLocation loc;
     // If code is RpcError, this contains the RPC error code
     int rpc_code;
   };

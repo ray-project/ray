@@ -380,7 +380,7 @@ std::string GlobalStateAccessor::GetSystemConfig() {
   std::promise<std::string> promise;
   {
     absl::ReaderMutexLock lock(&mutex_);
-    RAY_CHECK_OK(gcs_client_->Nodes().AsyncGetInternalConfig(
+    RAY_CHECK_OK(gcs_client_->InternalKV().AsyncGetInternalConfig(
         [&promise](const Status &status,
                    const std::optional<std::string> &stored_raylet_config) {
           RAY_CHECK_OK(status);

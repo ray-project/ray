@@ -28,7 +28,7 @@ A new Ray session creates a new folder to the temp directory. The latest session
 
 Usually, temp directories are cleared up whenever the machines reboot. As a result, log files may get lost whenever your cluster or some of the nodes are stopped or terminated.
 
-If you need to inspect logs after the clusters are stopped or terminated, you need to store and persist the logs. View the instructions for how to process and export logs for {ref}`clusters on VMs <vm-logging>` and {ref}`KubeRay Clusters <kuberay-logging>`.
+If you need to inspect logs after the clusters stop or terminate, you need to store and persist the logs. See the instructions for how to process and export logs for {ref}`Log persistence <vm-logging>` and {ref}`KubeRay Clusters <persist-kuberay-custom-resource-logs>`.
 
 (logging-directory-structure)=
 ## Log files in logging directory
@@ -62,7 +62,7 @@ System logs may include information about your applications. For example, ``runt
   This is the log file of the agent containing logs of create or delete requests and cache hits and misses.
   For the logs of the actual installations (for example, ``pip install`` logs), see the ``runtime_env_setup-[job_id].log`` file (see below).
 - ``runtime_env_setup-ray_client_server_[port].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a job when connecting with {ref}`Ray Client <ray-client-ref>`.
-- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`Runtime Environments <runtime-environments>` for a Task, Actor or Job.  This file is only present if a Runtime Environment is installed.
+- ``runtime_env_setup-[job_id].log``: Logs from installing {ref}`runtime environments <runtime-environments>` for a Task, Actor, or Job. This file is only present if you install a runtime environment.
 
 
 (log-redirection-to-driver)=
@@ -131,18 +131,63 @@ ray.get([task.remote() for _ in range(100)])
 The output is as follows:
 
 ```bash
-2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265 
+2023-03-27 15:08:34,195	INFO worker.py:1603 -- Started a local Ray instance. View the dashboard at http://127.0.0.1:8265
 (task pid=534172) Hello there, I am a task 0.20583517821231412
 (task pid=534174) Hello there, I am a task 0.17536720316370757 [repeated 99x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication)
 ```
 
-This feature is especially useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when imported. Configure this feature as follows:
+This feature is useful when importing libraries such as `tensorflow` or `numpy`, which may emit many verbose warning messages when you import them.
 
-1. Set ``RAY_DEDUP_LOGS=0`` to disable this feature entirely.
-2. Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the agggregation window.
-3. Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
-4. Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+Configure the following environment variables on the driver process **before importing Ray** to customize log deduplication:
 
+* Set ``RAY_DEDUP_LOGS=0`` to turn off this feature entirely.
+* Set ``RAY_DEDUP_LOGS_AGG_WINDOW_S=<int>`` to change the aggregation window.
+* Set ``RAY_DEDUP_LOGS_ALLOW_REGEX=<string>`` to specify log messages to never deduplicate.
+    * Example:
+        ```python
+        import os
+        os.environ["RAY_DEDUP_LOGS_ALLOW_REGEX"] = "ABC"
+
+        import ray
+
+        @ray.remote
+        def f():
+            print("ABC")
+            print("DEF")
+
+        ray.init()
+        ray.get([f.remote() for _ in range(5)])
+
+        # 2024-10-10 17:54:19,095 INFO worker.py:1614 -- Connecting to existing Ray cluster at address: 172.31.13.10:6379...
+        # 2024-10-10 17:54:19,102 INFO worker.py:1790 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265
+        # (f pid=1574323) ABC
+        # (f pid=1574323) DEF
+        # (f pid=1574321) ABC
+        # (f pid=1574318) ABC
+        # (f pid=1574320) ABC
+        # (f pid=1574322) ABC
+        # (f pid=1574322) DEF [repeated 4x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)
+        ```
+* Set ``RAY_DEDUP_LOGS_SKIP_REGEX=<string>`` to specify log messages to skip printing.
+    * Example:
+        ```python
+        import os
+        os.environ["RAY_DEDUP_LOGS_SKIP_REGEX"] = "ABC"
+
+        import ray
+
+        @ray.remote
+        def f():
+            print("ABC")
+            print("DEF")
+
+        ray.init()
+        ray.get([f.remote() for _ in range(5)])
+        # 2024-10-10 17:55:05,308 INFO worker.py:1614 -- Connecting to existing Ray cluster at address: 172.31.13.10:6379...
+        # 2024-10-10 17:55:05,314 INFO worker.py:1790 -- Connected to Ray cluster. View the dashboard at 127.0.0.1:8265
+        # (f pid=1574317) DEF
+        # (f pid=1575229) DEF [repeated 4x across cluster] (Ray deduplicates logs by default. Set RAY_DEDUP_LOGS=0 to disable log deduplication, or see https://docs.ray.io/en/master/ray-observability/user-guides/configure-logging.html#log-deduplication for more options.)
+        ```
 
 
 ## Distributed progress bars (tqdm)
@@ -202,8 +247,8 @@ ray_tune_logger.addHandler(logging.FileHandler("extra_ray_tune_log.log"))
 Implement structured logging to enable downstream users and applications to consume the logs efficiently.
 
 ### Application logs
-A Ray applications include both driver and worker processes. For Python applications, use Python loggers to format and structure your logs. 
-As a result, Python loggers need to be set up for both driver and worker processes.
+A Ray app includes both driver and worker processes. For Python apps, use Python loggers to format and structure your logs.
+As a result, you need to set up Python loggers for both driver and worker processes.
 
 ::::{tab-set}
 
@@ -427,4 +472,4 @@ The max size of a log file, including its backup, is `RAY_ROTATION_MAX_BYTES * R
 
 ## Log persistence
 
-To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <kuberay-logging>` and {ref}`log persistence on VMs <vm-logging>` for more details.
+To process and export logs to external stroage or management systems, view {ref}`log persistence on Kubernetes <persist-kuberay-custom-resource-logs>` see {ref}`log persistence on VMs <vm-logging>` for more details.

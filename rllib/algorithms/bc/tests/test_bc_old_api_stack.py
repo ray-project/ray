@@ -37,6 +37,10 @@ class TestBC(unittest.TestCase):
 
         config = (
             bc.BCConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_env_runners=1,

@@ -313,7 +313,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             data = await req.read()
             await get_or_create_event_loop().run_in_executor(
-                self._dashboard_head._thread_pool_executor,
+                None,
                 upload_package_to_gcs,
                 package_uri,
                 data,

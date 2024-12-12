@@ -33,10 +33,11 @@ namespace ray {
 
 using ::testing::_;
 using ::testing::Return;
+using json = nlohmann::json;
 
 class MockActorScheduler : public gcs::GcsActorSchedulerInterface {
  public:
-  MockActorScheduler() {}
+  MockActorScheduler() = default;
 
   void Schedule(std::shared_ptr<gcs::GcsActor> actor) { actors.push_back(actor); }
   void Reschedule(std::shared_ptr<gcs::GcsActor> actor) {}
@@ -117,7 +118,8 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
+      : mock_actor_scheduler_(new MockActorScheduler()),
+        periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -141,20 +143,20 @@ class GcsActorManagerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/&periodical_runner_,
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
 
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(std::move(publisher));
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(std::move(publisher));
     store_client_ = std::make_shared<gcs::InMemoryStoreClient>(io_service_);
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
         mock_actor_scheduler_,
-        gcs_table_storage_,
-        gcs_publisher_,
+        gcs_table_storage_.get(),
+        gcs_publisher_.get(),
         *runtime_env_mgr_,
         *function_manager_,
         [](const ActorID &actor_id) {},
@@ -223,7 +225,8 @@ class GcsActorManagerTest : public ::testing::Test {
     io_service_.post(
         [this, request, &promise]() {
           auto status = gcs_actor_manager_->RegisterActor(
-              request, [&promise](std::shared_ptr<gcs::GcsActor> actor) {
+              request,
+              [&promise](std::shared_ptr<gcs::GcsActor> actor, const Status &status) {
                 promise.set_value(std::move(actor));
               });
           if (!status.ok()) {
@@ -248,7 +251,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
 };
 
@@ -298,7 +301,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       "DEPENDENCIES_UNREADY", "PENDING_CREATION", "ALIVE", "DEAD"};
   std::vector<std::string> vc;
   for (int i = 0; i < num_retry; i++) {
-    Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+    Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
     if ((int)vc.size() == num_export_events) {
       for (int event_idx = 0; event_idx < num_export_events; event_idx++) {
         json export_event_as_json = json::parse(vc[event_idx]);
@@ -319,7 +322,7 @@ TEST_F(GcsActorManagerTest, TestBasic) {
       vc.clear();
     }
   }
-  Mocker::ReadContentFromFile(vc, log_dir_ + "/events/event_EXPORT_ACTOR.log");
+  Mocker::ReadContentFromFile(vc, log_dir_ + "/export_events/event_EXPORT_ACTOR.log");
   std::ostringstream lines;
   for (auto line : vc) {
     lines << line << "\n";

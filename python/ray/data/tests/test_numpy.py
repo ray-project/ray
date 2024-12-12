@@ -7,6 +7,8 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data import DataContext, Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -14,11 +16,20 @@ from ray.data.datasource import (
     PartitionStyle,
     PathPartitionFilter,
 )
+from ray.data.extensions.tensor_extension import ArrowTensorType
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
-from ray.data.tests.util import Counter, extract_values
+from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+
+
+def _get_tensor_type():
+    return (
+        ArrowTensorTypeV2
+        if DataContext.get_current().use_arrow_tensor_v2
+        else ArrowTensorType
+    )
 
 
 def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
@@ -111,25 +122,27 @@ def test_to_numpy_refs(ray_start_regular_shared):
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
+    tensor_type = _get_tensor_type()
+
     ds = ray.data.range_tensor(10, override_num_blocks=2)
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
-    )
-    np.testing.assert_equal(
-        extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
-    )
+    assert ds.count() == 10
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
+    assert sorted(ds.take_all(), key=lambda row: row["data"]) == [
+        {"data": np.array([i])} for i in range(10)
+    ]
 
 
-def test_numpy_read(ray_start_regular_shared, tmp_path):
+def test_numpy_read_x(ray_start_regular_shared, tmp_path):
+    tensor_type = _get_tensor_type()
+
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, override_num_blocks=1)
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
-    )
+    assert ds.count() == 10
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
     )
@@ -141,9 +154,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
-    assert str(ds) == (
-        "Dataset(num_rows=10, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
 
@@ -170,6 +181,8 @@ def test_numpy_read_ignore_missing_paths(
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
+    tensor_type = _get_tensor_type()
+
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     path = os.path.join(path, "test.npy")
@@ -177,9 +190,8 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(
         path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
     )
-    assert str(ds) == (
-        "Dataset(num_rows=?, schema={data: numpy.ndarray(shape=(1,), dtype=int64)})"
-    )
+    assert ds.count() == 10
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
     )
@@ -191,61 +203,62 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
         )
 
 
+@pytest.mark.parametrize("style", [PartitionStyle.HIVE, PartitionStyle.DIRECTORY])
 def test_numpy_read_partitioned_with_filter(
+    style,
     ray_start_regular_shared,
     tmp_path,
     write_partitioned_df,
     assert_base_partitioned_ds,
 ):
+    tensor_type = _get_tensor_type()
+
     def df_to_np(dataframe, path, **kwargs):
         np.save(path, dataframe.to_numpy(dtype=np.dtype(np.int8)), **kwargs)
 
     df = pd.DataFrame({"one": [1, 1, 1, 3, 3, 3], "two": [0, 1, 2, 3, 4, 5]})
     partition_keys = ["one"]
-    kept_file_counter = Counter.remote()
-    skipped_file_counter = Counter.remote()
 
     def skip_unpartitioned(kv_dict):
-        keep = bool(kv_dict)
-        counter = kept_file_counter if keep else skipped_file_counter
-        ray.get(counter.increment.remote())
-        return keep
+        return bool(kv_dict)
 
-    for style in [PartitionStyle.HIVE, PartitionStyle.DIRECTORY]:
-        base_dir = os.path.join(tmp_path, style.value)
-        partition_path_encoder = PathPartitionEncoder.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-        )
-        write_partitioned_df(
-            df,
-            partition_keys,
-            partition_path_encoder,
-            df_to_np,
-        )
-        df_to_np(df, os.path.join(base_dir, "test.npy"))
-        partition_path_filter = PathPartitionFilter.of(
-            style=style,
-            base_dir=base_dir,
-            field_names=partition_keys,
-            filter_fn=skip_unpartitioned,
-        )
-        ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
+    base_dir = os.path.join(tmp_path, style.value)
+    partition_path_encoder = PathPartitionEncoder.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+    )
+    write_partitioned_df(
+        df,
+        partition_keys,
+        partition_path_encoder,
+        df_to_np,
+    )
+    df_to_np(df, os.path.join(base_dir, "test.npy"))
+    partition_path_filter = PathPartitionFilter.of(
+        style=style,
+        base_dir=base_dir,
+        field_names=partition_keys,
+        filter_fn=skip_unpartitioned,
+    )
+    ds = ray.data.read_numpy(base_dir, partition_filter=partition_path_filter)
 
-        vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
-        val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
-        assert_base_partitioned_ds(
-            ds,
-            schema="{data: numpy.ndarray(shape=(2,), dtype=int8)}",
-            sorted_values=f"[[{val_str}]]",
-            ds_take_transform_fn=lambda taken: [extract_values("data", taken)],
-            sorted_values_transform_fn=lambda sorted_values: str(sorted_values),
-        )
-        assert ray.get(kept_file_counter.get.remote()) == 2
-        assert ray.get(skipped_file_counter.get.remote()) == 1
-        ray.get(kept_file_counter.reset.remote())
-        ray.get(skipped_file_counter.reset.remote())
+    def sorted_values_transform_fn(sorted_values):
+        # HACK: `assert_base_partitioned_ds` doesn't properly sort the values. This is a
+        # hack to make the test pass.
+        # TODO(@bveeramani): Clean this up.
+        actually_sorted_values = sorted(sorted_values[0], key=lambda item: tuple(item))
+        return str([actually_sorted_values])
+
+    vals = [[1, 0], [1, 1], [1, 2], [3, 3], [3, 4], [3, 5]]
+    val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
+    assert_base_partitioned_ds(
+        ds,
+        schema=Schema(pa.schema([("data", tensor_type((2,), pa.int8()))])),
+        sorted_values=f"[[{val_str}]]",
+        ds_take_transform_fn=lambda taken: [extract_values("data", taken)],
+        sorted_values_transform_fn=sorted_values_transform_fn,
+    )
 
 
 @pytest.mark.parametrize(

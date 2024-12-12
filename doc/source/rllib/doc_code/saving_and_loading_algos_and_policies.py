@@ -4,7 +4,14 @@
 # Create a PPO algorithm object using a config object ..
 from ray.rllib.algorithms.ppo import PPOConfig
 
-my_ppo_config = PPOConfig().environment("CartPole-v1")
+my_ppo_config = (
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
+    .environment("CartPole-v1")
+)
 my_ppo = my_ppo_config.build()
 
 # .. train one iteration ..
@@ -60,21 +67,28 @@ import os
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 
 # Set up a multi-agent Algorithm, training two policies independently.
-my_ma_config = PPOConfig().multi_agent(
-    # Which policies should RLlib create and train?
-    policies={"pol1", "pol2"},
-    # Let RLlib know, which agents in the environment (we'll have "agent1"
-    # and "agent2") map to which policies.
-    policy_mapping_fn=(
-        lambda agent_id, episode, worker, **kw: (
-            "pol1" if agent_id == "agent1" else "pol2"
-        )
-    ),
-    # Setting these isn't necessary. All policies will always be trained by default.
-    # However, since we do provide a list of IDs here, we need to remain in charge of
-    # changing this `policies_to_train` list, should we ever alter the Algorithm
-    # (e.g. remove one of the policies or add a new one).
-    policies_to_train=["pol1", "pol2"],  # Again, `None` would be totally fine here.
+my_ma_config = (
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
+    .multi_agent(
+        # Which policies should RLlib create and train?
+        policies={"pol1", "pol2"},
+        # Let RLlib know, which agents in the environment (we'll have "agent1"
+        # and "agent2") map to which policies.
+        policy_mapping_fn=(
+            lambda agent_id, episode, worker, **kw: (
+                "pol1" if agent_id == "agent1" else "pol2"
+            )
+        ),
+        # Setting these isn't necessary. All policies will always be trained by default.
+        # However, since we do provide a list of IDs here, we need to remain in charge of
+        # changing this `policies_to_train` list, should we ever alter the Algorithm
+        # (e.g. remove one of the policies or add a new one).
+        policies_to_train=["pol1", "pol2"],  # Again, `None` would be totally fine here.
+    )
 )
 
 # Add the MultiAgentCartPole env to our config and build our Algorithm.
@@ -168,6 +182,10 @@ from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 # Set up an Algorithm with 5 Policies.
 algo_w_5_policies = (
     PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
     .environment(
         env=MultiAgentCartPole,
         env_config={
@@ -225,7 +243,13 @@ from ray.rllib.algorithms.ppo import PPOConfig
 # Create a new Algorithm (which contains a Policy, which contains a NN Model).
 # Switch on for native models to be included in the Policy checkpoints.
 ppo_config = (
-    PPOConfig().environment("Pendulum-v1").checkpointing(export_native_model_files=True)
+    PPOConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=False,
+    )
+    .environment("Pendulum-v1")
+    .checkpointing(export_native_model_files=True)
 )
 
 # The default framework is TensorFlow, but if you would like to do this example with

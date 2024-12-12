@@ -15,6 +15,7 @@
 #pragma once
 
 #include <list>
+#include <utility>
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -35,7 +36,7 @@
 template <typename K>
 class CounterMap {
  public:
-  CounterMap(){};
+  CounterMap() = default;
 
   CounterMap(const CounterMap &other) = delete;
 
@@ -45,7 +46,7 @@ class CounterMap {
   /// Changes are buffered until `FlushOnChangeCallbacks()` is called to enable
   /// batching for performance reasons.
   void SetOnChangeCallback(std::function<void(const K &)> on_change) {
-    on_change_ = on_change;
+    on_change_ = std::move(on_change);
   }
 
   /// Flush any pending on change callbacks.

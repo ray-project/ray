@@ -82,6 +82,10 @@ if __name__ == "__main__":
     config = (
         get_trainable_cls(args.run)
         .get_default_config()
+        .api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         .environment("FrozenLake-v1")
         # Run with tracing enabled for tf2?
         .framework(args.framework)

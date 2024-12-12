@@ -1,6 +1,6 @@
 import inspect
 import logging
-from typing import Any, Callable, Dict, Iterable, Optional, Union
+from typing import TYPE_CHECKING, Any, Callable, Dict, Iterable, List, Optional, Union
 
 from ray.data._internal.compute import ComputeStrategy, TaskPoolStrategy
 from ray.data._internal.logical.interfaces import LogicalOperator
@@ -8,6 +8,10 @@ from ray.data._internal.logical.operators.one_to_one_operator import AbstractOne
 from ray.data.block import UserDefinedFunction
 from ray.data.context import DEFAULT_BATCH_SIZE
 from ray.data.preprocessor import Preprocessor
+
+if TYPE_CHECKING:
+    import pyarrow as pa
+
 
 logger = logging.getLogger(__name__)
 
@@ -215,15 +219,21 @@ class Filter(AbstractUDFMap):
     def __init__(
         self,
         input_op: LogicalOperator,
-        fn: UserDefinedFunction,
+        fn: Optional[UserDefinedFunction] = None,
+        filter_expr: Optional["pa.dataset.Expression"] = None,
         compute: Optional[Union[str, ComputeStrategy]] = None,
         ray_remote_args_fn: Optional[Callable[[], Dict[str, Any]]] = None,
         ray_remote_args: Optional[Dict[str, Any]] = None,
     ):
+        # Ensure exactly one of fn or filter_expr is provided
+        if not ((fn is None) ^ (filter_expr is None)):
+            raise ValueError("Exactly one of 'fn' or 'filter_expr' must be provided")
+        self._filter_expr = filter_expr
+
         super().__init__(
             "Filter",
             input_op,
-            fn,
+            fn=fn,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -232,6 +242,32 @@ class Filter(AbstractUDFMap):
     @property
     def can_modify_num_rows(self) -> bool:
         return True
+
+
+class Project(AbstractMap):
+    """Logical operator for select_columns."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        cols: List[str],
+        compute: Optional[Union[str, ComputeStrategy]] = None,
+        ray_remote_args: Optional[Dict[str, Any]] = None,
+    ):
+        super().__init__("Project", input_op=input_op, ray_remote_args=ray_remote_args)
+        self._compute = compute
+        self._batch_size = DEFAULT_BATCH_SIZE
+        self._cols = cols
+        self._batch_format = "pyarrow"
+        self._zero_copy_batch = True
+
+    @property
+    def cols(self) -> List[str]:
+        return self._cols
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return False
 
 
 class FlatMap(AbstractUDFMap):

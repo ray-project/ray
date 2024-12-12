@@ -42,17 +42,14 @@ class CQLTorchRLModule(SACTorchRLModule):
         # First for the random actions (from the mu-distribution as named by Kumar et
         # al. (2020)).
         low = torch.tensor(
-            self.config.action_space.low,
+            self.action_space.low,
             device=fwd_out[QF_PREDS].device,
         )
         high = torch.tensor(
-            self.config.action_space.high,
+            self.action_space.high,
             device=fwd_out[QF_PREDS].device,
         )
-        num_samples = (
-            batch[Columns.ACTIONS].shape[0]
-            * self.config.model_config_dict["num_actions"]
-        )
+        num_samples = batch[Columns.ACTIONS].shape[0] * self.model_config["num_actions"]
         actions_rand_repeat = low + (high - low) * torch.rand(
             (num_samples, low.shape[0]), device=fwd_out[QF_PREDS].device
         )
@@ -128,7 +125,7 @@ class CQLTorchRLModule(SACTorchRLModule):
     ) -> Dict[str, TensorType]:
         """Generated actions and Q-values for repeated observations.
 
-        The `self.config.model_condfig_dict["num_actions"]` define a multiplier
+        The `self.model_config["num_actions"]` define a multiplier
         used for generating `num_actions` as many actions as the batch size.
         Observations are repeated and then a model forward pass is made.
 
@@ -145,7 +142,7 @@ class CQLTorchRLModule(SACTorchRLModule):
         # Receive the batch size.
         batch_size = obs.shape[0]
         # Receive the number of action to sample.
-        num_actions = self.config.model_config_dict["num_actions"]
+        num_actions = self.model_config["num_actions"]
         # Repeat the observations `num_actions` times.
         obs_repeat = tree.map_structure(
             lambda t: self._repeat_tensor(t, num_actions), obs

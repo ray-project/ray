@@ -10,7 +10,7 @@ from packaging import version
 import tree  # pip install dm_tree
 
 from ray.rllib.models.repeated_values import RepeatedValues
-from ray.rllib.utils.annotations import Deprecated, PublicAPI, DeveloperAPI
+from ray.rllib.utils.annotations import PublicAPI, DeveloperAPI
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import SMALL_NUMBER
 from ray.rllib.utils.typing import (
@@ -93,11 +93,6 @@ def apply_grad_clipping(
         # No grads available
         return {}
     return {"grad_gnorm": grad_gnorm}
-
-
-@Deprecated(old="ray.rllib.utils.torch_utils.atanh", new="torch.math.atanh", error=True)
-def atanh(x: TensorType) -> TensorType:
-    pass
 
 
 @PublicAPI
@@ -234,11 +229,6 @@ def concat_multi_gpu_td_errors(
         "td_error": td_error,
         "mean_td_error": torch.mean(td_error),
     }
-
-
-@Deprecated(new="ray/rllib/utils/numpy.py::convert_to_numpy", error=True)
-def convert_to_non_torch_type(stats: TensorStructType) -> TensorStructType:
-    pass
 
 
 @PublicAPI

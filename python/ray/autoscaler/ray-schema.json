@@ -345,6 +345,7 @@
                        },
                        "min_workers": {"type": "integer"},
                        "max_workers": {"type": "integer"},
+                       "idle_timeout_s": {"type": "number", "nullable": true},
                        "resources": {
 						   "type": "object",
 						   "patternProperties": {

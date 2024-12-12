@@ -100,7 +100,7 @@ Some users employ this method to set up environment variables used by `ray start
     # Prerequisite: There is a KubeRay operator in the Kubernetes cluster.
 
     # Download `ray-cluster.head-command.yaml`
-    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.head-command.yaml
+    curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.head-command.yaml
 
     # Create a RayCluster
     kubectl apply -f ray-cluster.head-command.yaml

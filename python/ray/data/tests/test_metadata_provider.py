@@ -296,7 +296,6 @@ def test_default_file_metadata_provider_many_files_partitioned(
     data_path,
     endpoint_url,
     write_partitioned_df,
-    assert_base_partitioned_ds,
 ):
     if endpoint_url is None:
         storage_options = {}

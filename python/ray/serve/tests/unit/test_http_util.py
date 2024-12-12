@@ -10,7 +10,7 @@ from ray.serve._private.http_util import ASGIReceiveProxy, MessageQueue
 
 
 @pytest.mark.asyncio
-async def test_message_queue():
+async def test_message_queue_nowait():
     queue = MessageQueue()
 
     # Check that wait_for_message hangs until a message is sent.
@@ -62,6 +62,78 @@ async def test_message_queue():
             await queue({"hello": "world"})
         await queue.wait_for_message()
         assert queue.get_messages_nowait() == []
+
+
+@pytest.mark.asyncio
+async def test_message_queue_wait():
+    queue = MessageQueue()
+
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(queue.get_one_message(), 0.001)
+
+    queue.put_nowait("A")
+    assert await queue.get_one_message() == "A"
+
+    # Check that messages are cleared after being consumed.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(queue.get_one_message(), 0.001)
+
+    # Check that consecutive messages are returned in order.
+    queue.put_nowait("B")
+    queue.put_nowait("C")
+    assert await queue.get_one_message() == "B"
+    assert await queue.get_one_message() == "C"
+
+    # Check that messages are cleared after being consumed.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(queue.get_one_message(), 0.001)
+
+    # Check that a concurrent waiter is notified when a message is available.
+    loop = asyncio.get_running_loop()
+    fetch_task = loop.create_task(queue.get_one_message())
+    for _ in range(1000):
+        assert not fetch_task.done()
+    queue.put_nowait("D")
+    assert await fetch_task == "D"
+
+
+@pytest.mark.asyncio
+async def test_message_queue_wait_closed():
+    queue = MessageQueue()
+
+    queue.put_nowait("A")
+    assert await queue.get_one_message() == "A"
+
+    # Check that once the queue is closed, ongoing and subsequent calls
+    # to get_one_message should raise an exception
+    loop = asyncio.get_running_loop()
+    fetch_task = loop.create_task(queue.get_one_message())
+    queue.close()
+    with pytest.raises(StopAsyncIteration):
+        await fetch_task
+
+    for _ in range(10):
+        with pytest.raises(StopAsyncIteration):
+            await queue.get_one_message()
+
+
+@pytest.mark.asyncio
+async def test_message_queue_wait_error():
+    queue = MessageQueue()
+
+    queue.put_nowait("A")
+    assert await queue.get_one_message() == "A"
+
+    # Check setting an error
+    loop = asyncio.get_running_loop()
+    fetch_task = loop.create_task(queue.get_one_message())
+    queue.set_error(TypeError("uh oh! something went wrong."))
+    with pytest.raises(TypeError, match="uh oh! something went wrong"):
+        await fetch_task
+
+    for _ in range(10):
+        with pytest.raises(TypeError, match="uh oh! something went wrong"):
+            await queue.get_one_message()
 
 
 @pytest.fixture

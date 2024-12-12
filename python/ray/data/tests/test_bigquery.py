@@ -1,3 +1,4 @@
+from typing import Iterator
 from unittest import mock
 
 import pyarrow as pa
@@ -10,6 +11,9 @@ from google.cloud.bigquery_storage_v1.types import stream as gcbqs_stream
 import ray
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.bigquery_datasource import BigQueryDatasource
+from ray.data._internal.planner.plan_write_op import generate_collect_write_stats_fn
+from ray.data.block import Block
+from ray.data.datasource.datasink import WriteResult
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -197,6 +201,9 @@ class TestReadBigQuery:
 class TestWriteBigQuery:
     """Tests for BigQuery Write."""
 
+    def _extract_write_result(self, stats: Iterator[Block]):
+        return dict(next(stats).iloc[0])["write_result"]
+
     def test_write(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
             project_id=_TEST_GCP_PROJECT_ID,
@@ -204,11 +211,15 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        status = bq_datasink.write(
+        bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
-        assert status == "ok"
+
+        collect_stats_fn = generate_collect_write_stats_fn()
+        stats = collect_stats_fn([block], None)
+        write_result = self._extract_write_result(stats)
+        assert write_result == WriteResult(num_rows=4, size_bytes=32)
 
     def test_write_dataset_exists(self, ray_get_mock):
         bq_datasink = BigQueryDatasink(
@@ -217,11 +228,14 @@ class TestWriteBigQuery:
         )
         arr = pa.array([2, 4, 5, 100])
         block = pa.Table.from_arrays([arr], names=["data"])
-        status = bq_datasink.write(
+        bq_datasink.write(
             blocks=[block],
             ctx=None,
         )
-        assert status == "ok"
+        collect_stats_fn = generate_collect_write_stats_fn()
+        stats = collect_stats_fn([block], None)
+        write_result = self._extract_write_result(stats)
+        assert write_result == WriteResult(num_rows=4, size_bytes=32)
 
 
 if __name__ == "__main__":

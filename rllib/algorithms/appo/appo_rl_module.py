@@ -9,7 +9,10 @@ from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.apis import TargetNetworkAPI
 from ray.rllib.utils.typing import NetworkType
 
-from ray.rllib.utils.annotations import override
+from ray.rllib.utils.annotations import (
+    override,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
+)
 
 
 class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
@@ -31,12 +34,13 @@ class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
         old_action_dist_logits = self._old_pi(old_pi_inputs_encoded)
         return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}
 
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(PPORLModule)
     def get_non_inference_attributes(self) -> List[str]:
         # Get the NON inference-only attributes from the parent class
         # `PPOTorchRLModule`.
         ret = super().get_non_inference_attributes()
-        # Add the two (APPO) target networks to it (also NOT needed in
+        # Add the two (APPO) target networks to it (NOT needed in
         # inference-only mode).
         ret += ["_old_encoder", "_old_pi"]
         return ret

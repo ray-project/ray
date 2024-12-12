@@ -48,10 +48,10 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   ///
   /// \param gcs_publisher GCS message publisher.
   /// \param gcs_table_storage GCS table external storage accessor.
-  explicit GcsNodeManager(std::shared_ptr<GcsPublisher> gcs_publisher,
-                          std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
-                          std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool,
-                          const ClusterID &cluster_id);
+  GcsNodeManager(GcsPublisher *gcs_publisher,
+                 gcs::GcsTableStorage *gcs_table_storage,
+                 rpc::NodeManagerClientPool *raylet_client_pool,
+                 const ClusterID &cluster_id);
 
   /// Handle register rpc request come from raylet.
   void HandleGetClusterId(rpc::GetClusterIdRequest request,
@@ -77,11 +77,6 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   void HandleGetAllNodeInfo(rpc::GetAllNodeInfoRequest request,
                             rpc::GetAllNodeInfoReply *reply,
                             rpc::SendReplyCallback send_reply_callback) override;
-
-  /// Handle get internal config.
-  void HandleGetInternalConfig(rpc::GetInternalConfigRequest request,
-                               rpc::GetInternalConfigReply *reply,
-                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle check alive request for GCS.
   void HandleCheckAlive(rpc::CheckAliveRequest request,
@@ -249,11 +244,11 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
   std::vector<std::function<void(std::shared_ptr<rpc::GcsNodeInfo>)>>
       node_removed_listeners_;
   /// A publisher for publishing gcs messages.
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsPublisher *gcs_publisher_;
   /// Storage for GCS tables.
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  gcs::GcsTableStorage *gcs_table_storage_;
   /// Raylet client pool.
-  std::shared_ptr<rpc::NodeManagerClientPool> raylet_client_pool_;
+  rpc::NodeManagerClientPool *raylet_client_pool_ = nullptr;
   /// Cluster ID to be shared with clients when connecting.
   const ClusterID cluster_id_;
 
@@ -262,8 +257,7 @@ class GcsNodeManager : public rpc::NodeInfoHandler {
     REGISTER_NODE_REQUEST = 0,
     DRAIN_NODE_REQUEST = 1,
     GET_ALL_NODE_INFO_REQUEST = 2,
-    GET_INTERNAL_CONFIG_REQUEST = 3,
-    CountType_MAX = 4,
+    CountType_MAX = 3,
   };
   uint64_t counts_[CountType::CountType_MAX] = {0};
 

@@ -28,6 +28,8 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
         batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
+        module = self.module[module_id].unwrapped()
+
         # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
         #  bootstrap values at the end of rollouts in the new stack, we might make
         #  this a more flexible, configurable parameter for users, e.g.
@@ -46,17 +48,17 @@ class IMPALATorchLearner(IMPALALearner, TorchLearner):
 
         # Behavior actions logp and target actions logp.
         behaviour_actions_logp = batch[Columns.ACTION_LOGP]
-        target_policy_dist = (
-            self.module[module_id]
-            .unwrapped()
-            .get_train_action_dist_cls()
-            .from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
+        target_policy_dist = module.get_train_action_dist_cls().from_logits(
+            fwd_out[Columns.ACTION_DIST_INPUTS]
         )
         target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
 
         # Values and bootstrap values.
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
         values_time_major = make_time_major(
-            fwd_out[Columns.VF_PREDS],
+            values,
             trajectory_len=rollout_frag_or_episode_len,
             recurrent_seq_len=recurrent_seq_len,
         )

@@ -128,6 +128,7 @@ def test_lazy_reads(
                 runtime_env={
                     "py_modules": [
                         str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
                         Path(os.path.dirname(__file__))
                         / "pip_install_test-0.5-py3-none-any.whl",
                     ]
@@ -140,6 +141,7 @@ def test_lazy_reads(
                     "working_dir": tmp_working_dir,
                     "py_modules": [
                         str(Path(tmp_working_dir) / "test_module"),
+                        str(Path(tmp_working_dir) / "file_module.py"),
                         Path(os.path.dirname(__file__))
                         / "pip_install_test-0.5-py3-none-any.whl",
                     ],
@@ -163,15 +165,16 @@ def test_lazy_reads(
     @ray.remote
     def test_import():
         import test_module
+        import file_module
 
         assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
-        return test_module.one()
+        return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(ImportError):
             ray.get(test_import.remote())
     else:
-        assert ray.get(test_import.remote()) == 1
+        assert ray.get(test_import.remote()) == (1, "hello")
 
     if option in {"py_modules", "working_dir_and_py_modules"}:
 
@@ -205,9 +208,10 @@ def test_lazy_reads(
     class Actor:
         def test_import(self):
             import test_module
+            import file_module
 
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
-            return test_module.one()
+            return test_module.one(), file_module.hello()
 
         def test_read(self):
             assert TEST_IMPORT_DIR in os.environ.get("PYTHONPATH", "")
@@ -216,11 +220,11 @@ def test_lazy_reads(
     a = Actor.remote()
     if option == "failure":
         with pytest.raises(ImportError):
-            assert ray.get(a.test_import.remote()) == 1
+            assert ray.get(a.test_import.remote()) == (1, "hello")
         with pytest.raises(FileNotFoundError):
             assert ray.get(a.test_read.remote()) == "world"
     elif option in {"working_dir_and_py_modules", "working_dir"}:
-        assert ray.get(a.test_import.remote()) == 1
+        assert ray.get(a.test_import.remote()) == (1, "hello")
         assert ray.get(a.test_read.remote()) == "world"
 
 
@@ -243,7 +247,10 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
             ray.init(
                 address,
                 runtime_env={
-                    "py_modules": [os.path.join(tmp_working_dir, "test_module")]
+                    "py_modules": [
+                        os.path.join(tmp_working_dir, "test_module"),
+                        os.path.join(tmp_working_dir, "file_module.py"),
+                    ]
                 },
             )
 
@@ -262,31 +269,32 @@ def test_captured_import(start_cluster, tmp_working_dir, option: str):
     # Import in the driver.
     sys.path.insert(0, tmp_working_dir)
     import test_module
+    import file_module
 
     @ray.remote
     def test_import():
-        return test_module.one()
+        return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(Exception):
             ray.get(test_import.remote())
     else:
-        assert ray.get(test_import.remote()) == 1
+        assert ray.get(test_import.remote()) == (1, "hello")
 
     reinit()
 
     @ray.remote
     class Actor:
         def test_import(self):
-            return test_module.one()
+            return test_module.one(), file_module.hello()
 
     if option == "failure":
         with pytest.raises(Exception):
             a = Actor.remote()
-            assert ray.get(a.test_import.remote()) == 1
+            assert ray.get(a.test_import.remote()) == (1, "hello")
     else:
         a = Actor.remote()
-        assert ray.get(a.test_import.remote()) == 1
+        assert ray.get(a.test_import.remote()) == (1, "hello")
 
 
 def test_empty_working_dir(start_cluster):

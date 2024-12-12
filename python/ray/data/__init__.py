@@ -12,7 +12,6 @@ from ray.data._internal.execution.interfaces import (
     NodeIdStr,
 )
 from ray.data._internal.logging import configure_logging
-from ray.data._internal.progress_bar import set_progress_bars
 from ray.data.context import DataContext, DatasetContext
 from ray.data.dataset import Dataset, Schema
 from ray.data.datasource import (
@@ -45,10 +44,12 @@ from ray.data.read_api import (  # noqa: F401
     read_avro,
     read_bigquery,
     read_binary_files,
+    read_clickhouse,
     read_csv,
     read_databricks_tables,
     read_datasource,
     read_delta_sharing_tables,
+    read_hudi,
     read_iceberg,
     read_images,
     read_json,
@@ -137,9 +138,11 @@ __all__ = [
     "read_avro",
     "read_text",
     "read_binary_files",
+    "read_clickhouse",
     "read_csv",
     "read_datasource",
     "read_delta_sharing_tables",
+    "read_hudi",
     "read_iceberg",
     "read_images",
     "read_json",
@@ -151,7 +154,6 @@ __all__ = [
     "read_sql",
     "read_tfrecords",
     "read_webdataset",
-    "set_progress_bars",
     "Preprocessor",
     "TFXReadOptions",
 ]

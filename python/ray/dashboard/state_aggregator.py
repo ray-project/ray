@@ -65,7 +65,7 @@ NODE_QUERY_FAILURE_WARNING = (
 def _convert_filters_type(
     filter: List[Tuple[str, PredicateType, SupportedFilterType]],
     schema: StateSchema,
-) -> List[Tuple[str, SupportedFilterType]]:
+) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
     This method is necessary because click can only accept a single type
@@ -155,7 +155,7 @@ class StateAPIManager:
     def _filter(
         self,
         data: List[dict],
-        filters: List[Tuple[str, SupportedFilterType]],
+        filters: List[Tuple[str, PredicateType, SupportedFilterType]],
         state_dataclass: StateSchema,
         detail: bool,
     ) -> List[dict]:
@@ -181,6 +181,8 @@ class StateAPIManager:
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
+                        "Enter filters with –-filter key=value "
+                        "or –-filter key!=value "
                         f"Supported filter columns: {filterable_columns}"
                     )
 

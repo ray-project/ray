@@ -62,6 +62,7 @@ Status GcsTable<Key, Data>::GetAll(const MapCallback<Key, Data> &callback) {
       return;
     }
     absl::flat_hash_map<Key, Data> values;
+    values.reserve(result.size());
     for (auto &item : result) {
       if (!item.second.empty()) {
         values[Key::FromBinary(item.first)].ParseFromString(item.second);
@@ -167,7 +168,8 @@ template <typename Key, typename Data>
 Status GcsTableWithJobId<Key, Data>::BatchDelete(const std::vector<Key> &keys,
                                                  const StatusCallback &callback) {
   std::vector<std::string> keys_to_delete;
-  for (auto key : keys) {
+  keys_to_delete.reserve(keys.size());
+  for (auto &key : keys) {
     keys_to_delete.push_back(key.Binary());
   }
   return this->store_client_->AsyncBatchDelete(
@@ -208,7 +210,6 @@ template class GcsTable<JobID, ErrorTableData>;
 template class GcsTable<WorkerID, WorkerTableData>;
 template class GcsTable<ActorID, ActorTableData>;
 template class GcsTable<ActorID, TaskSpec>;
-template class GcsTable<UniqueID, StoredConfig>;
 template class GcsTableWithJobId<ActorID, ActorTableData>;
 template class GcsTableWithJobId<ActorID, TaskSpec>;
 template class GcsTable<PlacementGroupID, PlacementGroupTableData>;

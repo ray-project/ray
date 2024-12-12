@@ -9,7 +9,7 @@ from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
@@ -114,7 +114,7 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
@@ -123,22 +123,20 @@ class _FileDatasink(Datasink):
 
         if block_accessor.num_rows() == 0:
             logger.warning(f"Skipped writing empty block to {self.path}")
-            return "skip"
+            return
 
         self.write_block(block_accessor, 0, ctx)
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        if not self.has_created_dir:
-            return
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
+        aggregated_results = super().on_write_complete(write_result_blocks)
 
-        if all(write_results == "skip" for write_results in write_results):
+        # If no rows were written, we can delete the directory.
+        if self.has_created_dir and aggregated_results.num_rows == 0:
             self.filesystem.delete_dir(self.path)
+        return aggregated_results
 
     @property
     def supports_distributed_writes(self) -> bool:

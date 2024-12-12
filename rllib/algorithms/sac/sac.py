@@ -15,12 +15,10 @@ from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType, ResultDict
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -33,20 +31,39 @@ class SACConfig(AlgorithmConfig):
 
     .. testcode::
 
-        config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
-        config = config.resources(num_gpus=0)
-        config = config.env_runners(num_env_runners=1)
-
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        config = (
+            SACConfig()
+            .environment("Pendulum-v1")
+            .env_runners(num_env_runners=1)
+            .training(
+                gamma=0.9,
+                actor_lr=0.001,
+                critic_lr=0.002,
+                train_batch_size_per_learner=32,
+            )
+        )
+        # Build the SAC algo object from the config and run 1 training iteration.
+        algo = config.build()
         algo.train()
     """
 
     def __init__(self, algo_class=None):
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or SAC)
+
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
+        # `.training()`
         self.twin_q = True
         self.q_model_config = {
             "fcnet_hiddens": [256, 256],
@@ -69,18 +86,18 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
+
+        # Replay buffer configuration.
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
-            "type": "MultiAgentPrioritizedReplayBuffer",
+            "type": "PrioritizedEpisodeReplayBuffer",
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
             "capacity": int(1e6),
-            # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_eps": 1e-6,
-            # Whether to compute priorities already on the remote worker side.
-            "worker_side_prioritization": False,
+            "alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "beta": 0.4,
         }
+
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
@@ -92,25 +109,13 @@ class SACConfig(AlgorithmConfig):
         self.critic_lr = 3e-4
         self.alpha_lr = 3e-4
         # Set `lr` parameter to `None` and ensure it is not used.
-        self.lr = 3e-4
+        self.lr = None
         self.grad_clip = None
         self.target_network_update_freq = 0
 
         # .env_runners()
         # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-        self.compress_observations = False
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
-
-        # .training()
         self.train_batch_size_per_learner = 256
         self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
@@ -419,7 +424,6 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
-        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
         if (
             self.enable_env_runner_and_connector_v2
             and self.replay_buffer_config["type"]
@@ -448,13 +452,42 @@ class SACConfig(AlgorithmConfig):
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
             )
-
-        if self.enable_rl_module_and_learner and self.lr is not None:
+        elif not self.enable_env_runner_and_connector_v2 and (
+            (
+                isinstance(self.replay_buffer_config["type"], str)
+                and "Episode" in self.replay_buffer_config["type"]
+            )
+            or (
+                isinstance(self.replay_buffer_config["type"], type)
+                and issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            )
+        ):
             raise ValueError(
-                "Basic learning rate parameter `lr` is not `None`. For SAC "
-                "use the specific learning rate parameters `actor_lr`, `critic_lr` "
-                "and `alpha_lr`, for the actor, critic, and the hyperparameter "
-                "`alpha`, respectively."
+                "When using the old API stack the replay buffer must not be of type "
+                "`EpisodeReplayBuffer`! We suggest you use the following config to run "
+                "SAC on the old API stack: `config.training(replay_buffer_config={"
+                "'type': 'MultiAgentPrioritizedReplayBuffer', "
+                "'prioritized_replay_alpha': [alpha], "
+                "'prioritized_replay_beta': [beta], "
+                "'prioritized_replay_eps': [eps], "
+                "})`."
+            )
+
+        if self.enable_rl_module_and_learner:
+            if self.lr is not None:
+                raise ValueError(
+                    "Basic learning rate parameter `lr` is not `None`. For SAC "
+                    "use the specific learning rate parameters `actor_lr`, `critic_lr` "
+                    "and `alpha_lr`, for the actor, critic, and the hyperparameter "
+                    "`alpha`, respectively and set `config.lr` to None."
+                )
+            # Warn about new API stack on by default.
+            logger.warning(
+                "You are running SAC on the new API stack! This is the new default "
+                "behavior for this algorithm. If you don't want to use the new API "
+                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
     @override(AlgorithmConfig)
@@ -554,7 +587,7 @@ class SAC(DQN):
             return SACTFPolicy
 
     @override(DQN)
-    def training_step(self) -> ResultDict:
+    def training_step(self) -> None:
         """SAC training iteration function.
 
         Each training iteration, we:
@@ -569,10 +602,8 @@ class SAC(DQN):
         Returns:
             The results dict from executing the training iteration.
         """
-        # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        if self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_new_api_stack(with_noise_reset=False)
-        # Old and hybrid API stacks (Policy, RolloutWorker, Connector, maybe RLModule,
-        # maybe Learner).
-        else:
-            return self._training_step_old_and_hybrid_api_stack()
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_old_api_stack()
+
+        return self._training_step_new_api_stack(with_noise_reset=False)

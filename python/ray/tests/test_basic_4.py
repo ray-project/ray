@@ -81,7 +81,11 @@ def test_worker_startup_count(ray_start_cluster):
     time_waited = time.time() - start
     print(f"Waited {time_waited} for debug_state.txt to be updated")
 
-    # Check that no more workers started for a while.
+    # Check that no more workers started for a while. Note at initializtion there can
+    # be more workers prestarted and then idle-killed, so we tolerate at most one spike
+    # in the number of workers.
+    high_watermark = 16
+    prev = high_watermark
     for i in range(100):
         # Sometimes the debug state file can be empty. Retry if needed.
         for _ in range(3):
@@ -91,8 +95,17 @@ def test_worker_startup_count(ray_start_cluster):
                 time.sleep(0.05)
             else:
                 break
-        assert num == 16
+        if num >= high_watermark:
+            # spike climbing
+            high_watermark = num
+            prev = num
+        else:
+            # spike falling
+            assert num <= prev
+            prev = num
         time.sleep(0.1)
+    print(f"High watermark: {high_watermark}, prev: {prev}, num: {num}")
+    assert num == 16
 
 
 @pytest.mark.skipif(

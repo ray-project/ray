@@ -29,6 +29,7 @@ from ray._private.runtime_env.packaging import (
     download_and_unpack_package,
     get_local_dir_from_uri,
     get_top_level_dir_from_compressed_package,
+    get_uri_for_file,
     get_uri_for_directory,
     get_uri_for_package,
     is_whl_uri,
@@ -62,6 +63,14 @@ GS_PACKAGE_URI = "gs://public-runtime-env-test/test_module.zip"
 
 def random_string(size: int = 10):
     return "".join(random.choice(string.ascii_uppercase) for _ in range(size))
+
+
+@pytest.fixture
+def random_file(tmp_path) -> Path:
+    p = tmp_path / (random_string(10) + ".py")
+    with p.open("w") as f:
+        f.write(random_string(100))
+    yield p
 
 
 @pytest.fixture
@@ -133,6 +142,38 @@ def random_zip_file_with_top_level_dir(tmp_path):
         TOP_LEVEL_DIR_NAME,
     )
     yield str(path / ARCHIVE_NAME)
+
+
+class TestGetURIForFile:
+    def test_invalid_file(self):
+        with pytest.raises(ValueError):
+            get_uri_for_file("/does/not/exist.py")
+
+        with pytest.raises(ValueError):
+            get_uri_for_file("does/not/exist.py")
+
+    def test_determinism(self, random_file):
+        # Check that it's deterministic for same data.
+        uris = {get_uri_for_file(str(random_file)) for _ in range(10)}
+        assert len(uris) == 1
+
+        # Append one line, should be different now.
+        with open(random_file, "a") as f:
+            f.write(random_string())
+
+        assert {get_uri_for_file(str(random_file))} != uris
+
+    def test_relative_paths(self, random_file):
+        # Check that relative or absolute paths result in the same URI.
+        p = Path(random_file)
+        relative_uri = get_uri_for_file(os.path.relpath(p))
+        absolute_uri = get_uri_for_file(str(p.resolve()))
+        assert relative_uri == absolute_uri
+
+    def test_uri_hash_length(self, random_file):
+        uri = get_uri_for_file(str(random_file))
+        hex_hash = uri.split("_")[-1][: -len(".zip")]
+        assert len(hex_hash) == 16
 
 
 class TestGetURIForDirectory:

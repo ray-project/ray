@@ -12,6 +12,7 @@ from packaging.version import Version
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
+import ray.dashboard.timezone_utils as timezone_utils
 import ray.dashboard.utils as dashboard_utils
 from ray._private.usage.usage_lib import TagKey, record_extra_usage_tag
 from ray._private.utils import get_or_create_event_loop
@@ -138,6 +139,18 @@ class HttpServerDashboardHead:
                 os.path.dirname(os.path.abspath(__file__)), "client/build/favicon.ico"
             )
         )
+
+    @routes.get("/timezone")
+    async def get_timezone(self, req) -> aiohttp.web.Response:
+        try:
+            current_timezone = timezone_utils.get_current_timezone_info()
+            return aiohttp.web.json_response(current_timezone)
+
+        except Exception as e:
+            logger.error(f"Error getting timezone: {e}")
+            return aiohttp.web.Response(
+                status=500, text="Internal Server Error:" + str(e)
+            )
 
     def get_address(self):
         assert self.http_host and self.http_port

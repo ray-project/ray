@@ -58,6 +58,7 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
     sampled timestep indices).
 
     .. testcode::
+
         import gymnasium as gym
 
         from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
@@ -71,8 +72,8 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
         env = MultiAgentCartPole({"num_agents": 2})
 
         # Set up the loop variables
-        agent_ids = env.get_agent_ids()
-        agent_ids.add("__all__")
+        agent_ids = env.agents
+        agent_ids.append("__all__")
         terminateds = {aid: False for aid in agent_ids}
         truncateds = {aid: False for aid in agent_ids}
         num_timesteps = 10000
@@ -94,13 +95,11 @@ class MultiAgentPrioritizedEpisodeReplayBuffer(
                 obs, infos = env.reset()
                 eps.add_env_reset(observations=obs, infos=infos)
 
-            # Note, `action_space_sample` samples an action for all agents not only the
-            # ones still alive, but the `MultiAgentEpisode.add_env_step` does not accept
-            # results for dead agents.
+            # Sample a random action for all agents that should step in the episode
+            # next.
             actions = {
-                aid: act
-                for aid, act in env.action_space_sample().items()
-                if aid not in (env.terminateds or env.truncateds)
+                aid: env.get_action_space(aid).sample()
+                for aid in eps.get_agents_to_act()
             }
             obs, rewards, terminateds, truncateds, infos = env.step(actions)
             eps.add_env_step(

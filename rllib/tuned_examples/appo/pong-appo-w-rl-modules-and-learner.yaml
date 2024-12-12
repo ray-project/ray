@@ -2,7 +2,7 @@
 # This can reach 18.0 reward in ~10 minutes on 4x M60 GPUs
 # with 30 rollout workers, 4 learning workers, and 8 envs per rollout worker.
 appo-pongnoframeskip-v5:
-    env: ALE/Pong-v5
+    env: ale_py:ALE/Pong-v5
     run: APPO
     stop:
         env_runners/episode_return_mean: 18.0

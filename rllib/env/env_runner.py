@@ -87,6 +87,16 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
         """
         pass
 
+    # TODO: Make this an abstract method that must be implemented.
+    def make_module(self):
+        """Creates the RLModule for this EnvRunner and assigns it to `self.module`.
+
+        Note that users should be able to change the EnvRunner's config (e.g. change
+        `self.config.rl_module_spec`) and then call this method to create a new RLModule
+        with the updated configuration.
+        """
+        pass
+
     @abc.abstractmethod
     def sample(self, **kwargs) -> Any:
         """Returns experiences (of any form) sampled from this EnvRunner.
@@ -101,13 +111,18 @@ class EnvRunner(FaultAwareApply, metaclass=abc.ABCMeta):
             The collected experience in any form.
         """
 
+    # TODO (sven): Make this an abstract method that must be overridden.
+    def get_metrics(self) -> Any:
+        """Returns metrics (in any form) of the thus far collected, completed episodes.
+
+        Returns:
+            Metrics of any form.
+        """
+        pass
+
     @abc.abstractmethod
     def get_spaces(self) -> Dict[str, Tuple[gym.Space, gym.Space]]:
-        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space.
-
-        The returned dict might also contain an extra key `__env__`, which maps to
-        a 2-tuple of the bare Env's observation- and action spaces.
-        """
+        """Returns a dict mapping ModuleIDs to 2-tuples of obs- and action space."""
 
     def stop(self) -> None:
         """Releases all resources used by this EnvRunner.

@@ -31,7 +31,7 @@ public class DeploymentTest extends BaseServeTest2 {
             .setNumReplicas(1)
             .setUserConfig("_test")
             .bind("echo_");
-    DeploymentHandle handle = Serve.run(deployment).get();
+    DeploymentHandle handle = Serve.run(deployment);
     Assert.assertEquals(handle.method("call").remote("6").result(), "echo_6_test");
     Assert.assertTrue((boolean) handle.method("checkHealth").remote().result());
   }
@@ -100,7 +100,7 @@ public class DeploymentTest extends BaseServeTest2 {
             .setVersion("v1")
             .bind("echo_");
 
-    DeploymentHandle handle = Serve.run(deployment).get();
+    DeploymentHandle handle = Serve.run(deployment);
     Assert.assertEquals(handle.method("call").remote("6").result(), "echo_6_test");
   }
 

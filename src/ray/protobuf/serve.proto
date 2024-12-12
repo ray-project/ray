@@ -145,7 +145,7 @@ enum DeploymentLanguage {
 message RequestMetadata {
   string request_id = 1;
 
-  string endpoint = 2;
+  string internal_request_id = 2;
 
   string call_method = 3;
 
@@ -154,8 +154,6 @@ message RequestMetadata {
   string multiplexed_model_id = 5;
 
   string route = 6;
-
-  string internal_request_id = 7;
 }
 
 message RequestWrapper {
@@ -248,8 +246,9 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
-  DEPLOYMENT_STATUS_UPSCALING = 3;
-  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+  DEPLOYMENT_STATUS_DEPLOY_FAILED = 3;
+  DEPLOYMENT_STATUS_UPSCALING = 4;
+  DEPLOYMENT_STATUS_DOWNSCALING = 5;
 }
 
 enum DeploymentStatusTrigger {

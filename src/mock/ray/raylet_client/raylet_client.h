@@ -49,6 +49,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                const rpc::ClientCallback<rpc::GetTaskFailureCauseReply> &callback),
               (override));
   MOCK_METHOD(void,
+              PrestartWorkers,
+              (const rpc::PrestartWorkersRequest &request,
+               const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback),
+              (override));
+  MOCK_METHOD(void,
               ReleaseUnusedActorWorkers,
               (const std::vector<WorkerID> &workers_in_use,
                const rpc::ClientCallback<rpc::ReleaseUnusedActorWorkersReply> &callback),
@@ -127,6 +132,11 @@ class MockRayletClientInterface : public RayletClientInterface {
                const std::string &reason_message,
                int64_t draining_deadline_timestamp_ms,
                const rpc::ClientCallback<rpc::DrainRayletReply> &callback),
+              (override));
+  MOCK_METHOD(void,
+              IsLocalWorkerDead,
+              (const WorkerID &worker_id,
+               const rpc::ClientCallback<rpc::IsLocalWorkerDeadReply> &callback),
               (override));
 };
 

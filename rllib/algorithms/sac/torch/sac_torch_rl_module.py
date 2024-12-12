@@ -38,7 +38,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
     @override(RLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
-        if self.config.inference_only:
+        if self.inference_only:
             raise RuntimeError(
                 "Trying to train a module that is not a learner module. Set the "
                 "flag `inference_only=False` when building the module."
