@@ -38,8 +38,8 @@ config = (
     IMPALAConfig()
     .environment("huge-cart")
     .api_stack(
-        enable_env_runner_and_connector_v2=False,
-        enable_rl_module_and_learner=False,
+        enable_env_runner_and_connector_v2=True,
+        enable_rl_module_and_learner=True,
     )
     .env_runners(compress_observations=True)
     .training(
@@ -50,23 +50,28 @@ config = (
         #lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         #vf_loss_coeff=0.05,
         #entropy_coeff=0.0,
-        learner_config_dict={
-            "_training_step_sample_only": True,
-        },
+        #learner_config_dict={
+        #    "_training_step_sample_only": True,
+        #},
         model={
             "fcnet_hiddens": [2048, 2048, 2048],
+            "use_lstm": True,
+            "lstm_cell_size": 2048,
             "vf_share_layers": False,
         },
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[2048, 2048, 2048],
+            use_lstm=True,
+            lstm_cell_size=2048,
             vf_share_layers=False,
         ),
     )
     .evaluation(
         evaluation_interval=1,
         evaluation_num_env_runners=2,
+        evaluation_config=IMPALAConfig.overrides(num_envs_per_env_runner=1),
         evaluation_duration="auto",
         evaluation_parallel_to_training=True,
     )
