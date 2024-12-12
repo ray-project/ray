@@ -183,6 +183,11 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
             # and ends up selecting the loopback interface, breaking cross-node
             # commnication.
             "GLOO_SOCKET_IFNAME": "eth0",
+            # 'DISABLE_MLFLOW_INTEGRATION' is the environmental variable to disable
+            # huggingface transformers MLflow integration,
+            # it doesn't work well in Databricks runtime,
+            # So disable it by default.
+            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
         }
 
         if verify_databricks_auth_env():
@@ -195,10 +200,6 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
                 conf[DATABRICKS_CLIENT_ID] = os.environ[DATABRICKS_CLIENT_ID]
                 conf[DATABRICKS_CLIENT_SECRET] = os.environ[DATABRICKS_CLIENT_SECRET]
         else:
-            # 'DISABLE_MLFLOW_INTEGRATION' is the environmental variable to disable
-            # huggingface transformers MLflow integration.
-            conf["DISABLE_MLFLOW_INTEGRATION"] = "TRUE"
-
             warn_msg = (
                 "MLflow support is not correctly configured within Ray tasks."
                 "To enable MLflow integration, "
