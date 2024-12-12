@@ -186,6 +186,16 @@ GPU (for Training and Sampling)
    with performance improvements during evaluation.
 
 
+Hierarchical Training
++++++++++++++++++++++
+
+- `Hierarchical RL Training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
+   Showcases a hierarchical RL setup inspired by automatic subgoal discovery and subpolicy specialization. A high-level policy selects subgoals and assigns one of three
+   specialized low-level policies to achieve them within a time limit, encouraging specialization and efficient task-solving.
+   The agent has to navigate a complex grid-world environment. The example highlights the advantages of hierarchical
+   learning over flat approaches by demonstrating significantly improved learning performance in challenging, goal-oriented tasks.
+
+
 Inference (of Models/Policies)
 ++++++++++++++++++++++++++++++
 
