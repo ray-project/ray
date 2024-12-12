@@ -228,7 +228,7 @@ Commonly used distribution implementations can be found under ``ray.rllib.models
                     }
 
 
-Also the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constructor requires a dataclass config object called :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig` which contains the following fields:
+Also the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class's constructor requires a dataclass config object called :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig`, which contains the following fields:
 
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.observation_space`: The observation space of the environment (either processed or raw).
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModuleConfig.action_space`: The action space of the environment.
