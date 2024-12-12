@@ -63,9 +63,9 @@ void TaskReceiver::HandleTask(const rpc::PushTaskRequest &request,
 
   // Only assign resources for non-actor tasks. Actor tasks inherit the resources
   // assigned at initial actor creation time.
-  std::shared_ptr<ResourceMappingType> resource_ids;
+  std::optional<ResourceMappingType> resource_ids;
   if (!task_spec.IsActorTask()) {
-    resource_ids = std::make_shared<ResourceMappingType>();
+    resource_ids = ResourceMappingType{};
     for (const auto &mapping : request.resource_mapping()) {
       std::vector<std::pair<int64_t, double>> rids;
       rids.reserve(mapping.resource_ids().size());

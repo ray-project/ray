@@ -3102,7 +3102,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 
 Status CoreWorker::ExecuteTask(
     const TaskSpecification &task_spec,
-    std::shared_ptr<ResourceMappingType> resource_ids,
+    std::optional<ResourceMappingType> resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
@@ -3151,7 +3151,7 @@ Status CoreWorker::ExecuteTask(
   {
     absl::MutexLock lock(&mutex_);
     current_tasks_.emplace(task_spec.TaskId(), task_spec);
-    if (resource_ids != nullptr) {
+    if (resource_ids.has_value()) {
       resource_ids_ = std::move(*resource_ids);
     }
   }
@@ -3568,7 +3568,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
-                         /*resource_ids=*/std::make_shared<ResourceMappingType>(),
+                         /*resource_ids=*/ResourceMappingType{},
                          &return_objects,
                          &dynamic_return_objects,
                          &streaming_generator_returns,

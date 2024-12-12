@@ -1450,7 +1450,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 worker. If nullopt, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
   /// to the caller.
@@ -1470,7 +1470,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
-      std::shared_ptr<ResourceMappingType> resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,

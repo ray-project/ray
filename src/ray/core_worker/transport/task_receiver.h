@@ -52,7 +52,7 @@ class TaskReceiver {
  public:
   using TaskHandler = std::function<Status(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
