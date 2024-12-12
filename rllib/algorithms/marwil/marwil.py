@@ -45,6 +45,9 @@ class MARWILConfig(AlgorithmConfig):
 
     .. testcode::
 
+        import gymnasium as gym
+        import numpy as np
+
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
 
@@ -61,7 +64,15 @@ class MARWILConfig(AlgorithmConfig):
         )
         # Define the environment for which to learn a policy
         # from offline data.
-        config.environment("CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set the training parameters.
         config.training(
             beta=1.0,
@@ -84,6 +95,9 @@ class MARWILConfig(AlgorithmConfig):
         algo.train()
 
     .. testcode::
+
+        import gymnasium as gym
+        import numpy as np
 
         from pathlib import Path
         from ray.rllib.algorithms.marwil import MARWILConfig
@@ -118,7 +132,15 @@ class MARWILConfig(AlgorithmConfig):
             dataset_num_iters_per_learner=1,
         )
         # Set the config's environment for evalaution.
-        config.environment(env="CartPole-v1")
+        config.environment(
+            observation_space=gym.spaces.Box(
+                np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                np.array([4.8, np.inf, 0.41887903, np.inf]),
+                shape=(4,),
+                dtype=np.float32,
+            ),
+            action_space=gym.spaces.Discrete(2),
+        )
         # Set up a tuner to run the experiment.
         tuner = tune.Tuner(
             "MARWIL",
@@ -465,15 +487,16 @@ class MARWIL(Algorithm):
         # removed.
         modules_to_update = set(learner_results[0].keys()) - {ALL_MODULES}
 
-        # Update weights - after learning on the local worker -
-        # on all remote workers.
-        with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
-            self.env_runner_group.sync_weights(
-                # Sync weights from learner_group to all EnvRunners.
-                from_worker_or_learner_group=self.learner_group,
-                policies=modules_to_update,
-                inference_only=True,
-            )
+        if self.eval_env_runner_group:
+            # Update weights - after learning on the local worker -
+            # on all remote workers.
+            with self.metrics.log_time((TIMERS, SYNCH_WORKER_WEIGHTS_TIMER)):
+                self.eval_env_runner_group.sync_weights(
+                    # Sync weights from learner_group to all EnvRunners.
+                    from_worker_or_learner_group=self.learner_group,
+                    policies=modules_to_update,
+                    inference_only=True,
+                )
 
     @OldAPIStack
     def _training_step_old_api_stack(self) -> ResultDict:

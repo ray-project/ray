@@ -140,8 +140,6 @@ You can install the nightly Ray wheels via the following links. These daily rele
 
   :ref:`Usage stats <ref-usage-stats>` collection is enabled by default (can be :ref:`disabled <usage-disable>`) for nightly wheels including both local clusters started via ``ray.init()`` and remote clusters via cli.
 
-.. note::
-
   .. If you change the list of wheel links below, remember to update `get_wheel_filename()` in  `https://github.com/ray-project/ray/blob/master/python/ray/_private/utils.py`.
 
 .. _`Linux Python 3.9 (x86_64)`: https://s3-us-west-2.amazonaws.com/ray-wheels/latest/ray-3.0.0.dev0-cp39-cp39-manylinux2014_x86_64.whl
@@ -431,7 +429,7 @@ We publish the dependencies that are installed in our ``ray`` Docker images for 
     .. tab-item:: ray (Python 3.9)
         :sync: ray (Python 3.9)
 
-        Ray version: nightly (`e393a71 <https://github.com/ray-project/ray/commit/e393a716d8742a987a36df555defb2ca90bb94d4>`_)
+        Ray version: nightly (`37aa0c6 <https://github.com/ray-project/ray/commit/37aa0c66110fc235762c29612b90f1c73869e6cf>`_)
 
         .. literalinclude:: ./pip_freeze_ray-py39-cpu.txt
 

@@ -12,7 +12,6 @@ from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.annotations import (
-    ExperimentalAPI,
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
@@ -20,6 +19,7 @@ from ray.rllib.utils.compression import unpack_if_needed
 from ray.rllib.utils.replay_buffers.replay_buffer import ReplayBuffer
 from ray.rllib.utils.spaces.space_utils import from_jsonable_if_needed
 from ray.rllib.utils.typing import EpisodeType, ModuleID
+from ray.util.annotations import PublicAPI
 
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
@@ -51,7 +51,7 @@ SCHEMA = {
 logger = logging.getLogger(__name__)
 
 
-@ExperimentalAPI
+@PublicAPI(stability="alpha")
 class OfflinePreLearner:
     """Class that coordinates data transformation from dataset to learner.
 
@@ -90,6 +90,7 @@ class OfflinePreLearner:
         spaces: Optional[Tuple[gym.Space, gym.Space]] = None,
         module_spec: Optional[MultiRLModuleSpec] = None,
         module_state: Optional[Dict[ModuleID, Any]] = None,
+        **kwargs: Dict[str, Any],
     ):
 
         self.config = config
@@ -352,6 +353,7 @@ class OfflinePreLearner:
         input_compress_columns: Optional[List[str]] = None,
         observation_space: gym.Space = None,
         action_space: gym.Space = None,
+        **kwargs: Dict[str, Any],
     ) -> Dict[str, List[EpisodeType]]:
         """Maps a batch of data to episodes."""
 
@@ -468,6 +470,8 @@ class OfflinePreLearner:
         # Note, `map_batches` expects a `Dict` as return value.
         return {"episodes": episodes}
 
+    @OverrideToImplementCustomLogic
+    @staticmethod
     def _map_sample_batch_to_episode(
         is_multi_agent: bool,
         batch: Dict[str, Union[list, np.ndarray]],

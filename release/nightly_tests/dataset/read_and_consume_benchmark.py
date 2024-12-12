@@ -1,9 +1,13 @@
+import argparse
+from typing import Callable
+import uuid
+
 import ray
 
 from benchmark import Benchmark
 
-import argparse
-from typing import Callable
+# Add a random prefix to avoid conflicts between different runs.
+WRITE_PATH = f"s3://ray-data-write-benchmark/{uuid.uuid4().hex}"
 
 
 def parse_args() -> argparse.Namespace:
@@ -18,6 +22,7 @@ def parse_args() -> argparse.Namespace:
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
     consume_group.add_argument("--iterate", action="store_true")
+    consume_group.add_argument("--write", action="store_true")
 
     return parser.parse_args()
 
@@ -57,6 +62,11 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
         def consume_fn(ds):
             for _ in ds.iter_internal_ref_bundles():
                 pass
+
+    elif args.write:
+
+        def consume_fn(ds):
+            ds.write_parquet(WRITE_PATH)
 
     else:
         assert False, f"Invalid consume arguments: {args}"
