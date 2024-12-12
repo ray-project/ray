@@ -286,12 +286,7 @@ class TestPrioritizedEpisodeReplayBuffer(unittest.TestCase):
             sample = buffer.sample(batch_size_B=16, n_step=1)
 
             index_counts.append(
-                any(
-                    [
-                        idx in last_sampled_indices
-                        for idx in buffer._last_sampled_indices
-                    ]
-                )
+                any(idx in last_sampled_indices for idx in buffer._last_sampled_indices)
             )
 
         self.assertGreater(0.15, sum(index_counts) / len(index_counts))

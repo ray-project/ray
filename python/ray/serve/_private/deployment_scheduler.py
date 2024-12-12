@@ -52,7 +52,7 @@ class Resources(dict):
 
     def __eq__(self, other):
         keys = set(self.keys()) | set(other.keys())
-        return all([self.get(k) == other.get(k) for k in keys])
+        return all(self.get(k) == other.get(k) for k in keys)
 
     def __add__(self, other):
         keys = set(self.keys()) | set(other.keys())

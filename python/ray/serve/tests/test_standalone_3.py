@@ -460,7 +460,7 @@ def test_controller_shutdown_gracefully(
     # Ensure the all resources are shutdown.
     wait_for_condition(
         lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+            actor["State"] == "DEAD" for actor in ray._private.state.actors().values()
         )
     )
 
@@ -520,7 +520,7 @@ def test_client_shutdown_gracefully_when_timeout(
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
         lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+            actor["State"] == "DEAD" for actor in ray._private.state.actors().values()
         ),
     )
 
@@ -553,7 +553,7 @@ def test_serve_shut_down_without_duplicated_logs(
     # Ensure the all resources are shutdown gracefully.
     wait_for_condition(
         lambda: all(
-            [actor["State"] == "DEAD" for actor in ray._private.state.actors().values()]
+            actor["State"] == "DEAD" for actor in ray._private.state.actors().values()
         ),
     )
 
