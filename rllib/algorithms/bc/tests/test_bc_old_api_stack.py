@@ -11,7 +11,6 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.test_utils import (
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 
 
@@ -38,6 +37,10 @@ class TestBC(unittest.TestCase):
 
         config = (
             bc.BCConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_env_runners=1,
@@ -50,48 +53,42 @@ class TestBC(unittest.TestCase):
         num_iterations = 350
         min_return_to_reach = 75.0
 
-        # Test for the following frameworks.
-        frameworks_to_test = ("torch", "tf")
+        for recurrent in [True, False]:
+            # We only test recurrent networks with RLModules.
+            if recurrent:
+                # TODO (Artur): We read input data without a time-dimensions.
+                #  In order for a recurrent offline learning RL Module to
+                #  work, the input data needs to be transformed do add a
+                #  time-dimension.
+                continue
 
-        for _ in framework_iterator(config, frameworks=frameworks_to_test):
-            for recurrent in [True, False]:
-                # We only test recurrent networks with RLModules.
-                if recurrent:
-                    # TODO (Artur): We read input data without a time-dimensions.
-                    #  In order for a recurrent offline learning RL Module to
-                    #  work, the input data needs to be transformed do add a
-                    #  time-dimension.
-                    continue
+            config.training(model={"use_lstm": recurrent})
+            algo = config.build(env="CartPole-v1")
+            learnt = False
+            for i in range(num_iterations):
+                results = algo.train()
+                check_train_results(results)
+                print(results)
 
-                config.training(model={"use_lstm": recurrent})
-                algo = config.build(env="CartPole-v1")
-                learnt = False
-                for i in range(num_iterations):
-                    results = algo.train()
-                    check_train_results(results)
-                    print(results)
+                eval_results = results.get("evaluation")
+                if eval_results:
+                    mean_return = eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                    print("iter={} R={}".format(i, mean_return))
+                    # Learn until good reward is reached in the actual env.
+                    if mean_return > min_return_to_reach:
+                        print("learnt!")
+                        learnt = True
+                        break
 
-                    eval_results = results.get("evaluation")
-                    if eval_results:
-                        mean_return = eval_results[ENV_RUNNER_RESULTS][
-                            EPISODE_RETURN_MEAN
-                        ]
-                        print("iter={} R={}".format(i, mean_return))
-                        # Learn until good reward is reached in the actual env.
-                        if mean_return > min_return_to_reach:
-                            print("learnt!")
-                            learnt = True
-                            break
+            if not learnt:
+                raise ValueError(
+                    "`BC` did not reach {} reward from expert offline "
+                    "data!".format(min_return_to_reach)
+                )
 
-                if not learnt:
-                    raise ValueError(
-                        "`BC` did not reach {} reward from expert offline "
-                        "data!".format(min_return_to_reach)
-                    )
+            check_compute_single_action(algo, include_prev_action_reward=True)
 
-                check_compute_single_action(algo, include_prev_action_reward=True)
-
-                algo.stop()
+            algo.stop()
 
 
 if __name__ == "__main__":

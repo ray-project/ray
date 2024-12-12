@@ -19,6 +19,12 @@ except (ImportError, ModuleNotFoundError) as e:
         "pyarrow is a required dependency of Ray Train and Ray Tune. "
         "Please install with: `pip install pyarrow`"
     ) from e
+
+try:
+    # check if Arrow has S3 support
+    from pyarrow.fs import S3FileSystem
+except ImportError:
+    S3FileSystem = None
 # isort: on
 
 import fnmatch
@@ -98,7 +104,7 @@ class _ExcludingLocalFilesystem(LocalFileSystem):
 def _pyarrow_fs_copy_files(
     source, destination, source_filesystem=None, destination_filesystem=None, **kwargs
 ):
-    if isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
+    if S3FileSystem and isinstance(destination_filesystem, pyarrow.fs.S3FileSystem):
         # Workaround multi-threading issue with pyarrow. Note that use_threads=True
         # is safe for download, just not for uploads, see:
         # https://github.com/apache/arrow/issues/32372

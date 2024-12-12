@@ -1,0 +1,27 @@
+These files are generated with the following command:
+
+mkdir -p {str(tmp_path)}/tls
+openssl genrsa -out {str(tmp_path)}/tls/ca.key 4096
+openssl req \
+    -x509 -new -nodes -sha256 \
+    -key {str(tmp_path)}/tls/ca.key \
+    -days 3650 \
+    -subj '/O=Redis Test/CN=Certificate Authority' \
+    -out {str(tmp_path)}/tls/ca.crt
+openssl genrsa -out {str(tmp_path)}/tls/redis.key 2048
+openssl req \
+    -new -sha256 \
+    -key {str(tmp_path)}/tls/redis.key \
+    -subj '/O=Redis Test/CN=Server' | \
+    openssl x509 \
+        -req -sha256 \
+        -CA {str(tmp_path)}/tls/ca.crt \
+        -CAkey {str(tmp_path)}/tls/ca.key \
+        -CAserial {str(tmp_path)}/tls/ca.txt \
+        -CAcreateserial \
+        -days 3650 \
+        -out {str(tmp_path)}/tls/redis.crt
+openssl dhparam -out {str(tmp_path)}/tls/redis.dh 2048
+
+
+See https://github.com/ray-project/ray/pull/40378/ for more details

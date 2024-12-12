@@ -49,9 +49,7 @@ class MockWorkerPool : public WorkerPoolInterface {
  public:
   MockWorkerPool() : num_pops(0) {}
 
-  void PopWorker(const TaskSpecification &task_spec,
-                 const PopWorkerCallback &callback,
-                 const std::string &allocated_instances_serialized_json) {
+  void PopWorker(const TaskSpecification &task_spec, const PopWorkerCallback &callback) {
     num_pops++;
     const int runtime_env_hash = task_spec.GetRuntimeEnvHash();
     callbacks[runtime_env_hash].push_back(callback);
@@ -240,18 +238,17 @@ testing::Environment *const env =
 
 class ClusterTaskManagerTest : public ::testing::Test {
  public:
-  ClusterTaskManagerTest(double num_cpus_at_head = 8.0, double num_gpus_at_head = 0.0)
+  explicit ClusterTaskManagerTest(double num_cpus_at_head = 8.0,
+                                  double num_gpus_at_head = 0.0)
       : gcs_client_(std::make_unique<gcs::MockGcsClient>()),
         id_(NodeID::FromRandom()),
         scheduler_(CreateSingleNodeScheduler(
             id_.Binary(), num_cpus_at_head, num_gpus_at_head, *gcs_client_)),
         is_owner_alive_(true),
-        node_info_calls_(0),
-        announce_infeasible_task_calls_(0),
         dependency_manager_(missing_objects_),
-        local_task_manager_(std::make_shared<LocalTaskManager>(
+        local_task_manager_(std::make_unique<LocalTaskManager>(
             id_,
-            scheduler_,
+            *scheduler_,
             dependency_manager_, /* is_owner_alive= */
             [this](const WorkerID &worker_id, const NodeID &node_id) {
               return is_owner_alive_;
@@ -282,7 +279,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             /*get_time=*/[this]() { return current_time_ms_; })),
         task_manager_(
             id_,
-            scheduler_,
+            *scheduler_,
             /* get_node_info= */
             [this](const NodeID &node_id) -> const rpc::GcsNodeInfo * {
               node_info_calls_++;
@@ -293,7 +290,7 @@ class ClusterTaskManagerTest : public ::testing::Test {
             },
             /* announce_infeasible_task= */
             [this](const RayTask &task) { announce_infeasible_task_calls_++; },
-            local_task_manager_,
+            *local_task_manager_,
             /*get_time=*/[this]() { return current_time_ms_; }) {
     RayConfig::instance().initialize("{\"scheduler_top_k_absolute\": 1}");
   }
@@ -379,16 +376,16 @@ class ClusterTaskManagerTest : public ::testing::Test {
   absl::flat_hash_map<WorkerID, std::shared_ptr<WorkerInterface>> leased_workers_;
   std::unordered_set<ObjectID> missing_objects_;
 
-  bool is_owner_alive_;
+  bool is_owner_alive_ = false;
   int default_arg_size_ = 10;
 
-  int node_info_calls_;
-  int announce_infeasible_task_calls_;
+  int node_info_calls_ = 0;
+  int announce_infeasible_task_calls_ = 0;
   absl::flat_hash_map<NodeID, rpc::GcsNodeInfo> node_info_;
   int64_t current_time_ms_ = 0;
 
   MockTaskDependencyManager dependency_manager_;
-  std::shared_ptr<LocalTaskManager> local_task_manager_;
+  std::unique_ptr<LocalTaskManager> local_task_manager_;
   ClusterTaskManager task_manager_;
 };
 
@@ -544,10 +541,8 @@ TEST_F(ClusterTaskManagerTest, DispatchQueueNonBlockingTest) {
   pool_.TriggerCallbacks();
 
   // Push a worker that can only run task A.
-  const WorkerCacheKey env_A = {serialized_runtime_env_A, {}, false, false, false};
-  const int runtime_env_hash_A = env_A.IntHash();
-  std::shared_ptr<MockWorker> worker_A =
-      std::make_shared<MockWorker>(WorkerID::FromRandom(), 1234, runtime_env_hash_A);
+  std::shared_ptr<MockWorker> worker_A = std::make_shared<MockWorker>(
+      WorkerID::FromRandom(), 1234, CalculateRuntimeEnvHash(serialized_runtime_env_A));
   pool_.PushWorker(std::static_pointer_cast<WorkerInterface>(worker_A));
   pool_.TriggerCallbacks();
 

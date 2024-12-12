@@ -6,7 +6,11 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray._private.test_utils import wait_for_condition, check_local_files_gced
+from ray._private.test_utils import (
+    wait_for_condition,
+    check_local_files_gced,
+    run_string_as_driver_nonblocking,
+)
 from ray.exceptions import GetTimeoutError
 
 # This test requires you have AWS credentials set up (any AWS credentials will
@@ -202,6 +206,23 @@ def test_task_level_gc(runtime_env_disable_URI_cache, ray_start_cluster, option)
     else:
         # Local files should not be gced because of an enough soft limit.
         assert not check_local_files_gced(cluster)
+
+
+def test_two_concurrent_jobs_with_same_working_dir(call_ray_start, tmp_working_dir):
+    """Test that uploading the same working dir concurrently works
+    https://github.com/ray-project/ray/issues/47471
+    """
+
+    # Windows path has backslash so we need to escape it
+    tmp_working_dir = tmp_working_dir.encode("unicode_escape").decode()
+    script = f"""
+import ray
+ray.init(runtime_env={{"working_dir": "{tmp_working_dir}"}})
+"""
+    job1 = run_string_as_driver_nonblocking(script)
+    job2 = run_string_as_driver_nonblocking(script)
+    assert job1.wait() == 0, job1.stderr.readlines()
+    assert job2.wait() == 0, job2.stderr.readlines()
 
 
 if __name__ == "__main__":

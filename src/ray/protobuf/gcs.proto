@@ -39,11 +39,10 @@ enum TablePrefix {
   DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
-  INTERNAL_CONFIG = 16;
-  PLACEMENT_GROUP_SCHEDULE = 17;
-  PLACEMENT_GROUP = 18;
-  KV = 19;
-  ACTOR_TASK_SPEC = 20;
+  PLACEMENT_GROUP_SCHEDULE = 16;
+  PLACEMENT_GROUP = 17;
+  KV = 18;
+  ACTOR_TASK_SPEC = 19;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -153,6 +152,8 @@ message ActorTableData {
   string repr_name = 31;
   // Whether the actor was on a preempted node
   bool preempted = 32;
+  // Number of times this actor is restarted due to lineage reconstructions.
+  uint64 num_restarts_due_to_lineage_reconstruction = 33;
 }
 
 message ErrorTableData {
@@ -163,6 +164,8 @@ message ErrorTableData {
   // The error message.
   string error_message = 3;
   // The timestamp of the error message.
+  // Unit: millisecond.
+  // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
 }
 
@@ -465,10 +468,6 @@ message WorkerDeltaData {
   bytes worker_id = 2;
 }
 
-message StoredConfig {
-  string config = 1;
-}
-
 message PubSubMessage {
   bytes id = 1;
   bytes data = 2;
@@ -626,12 +625,14 @@ message PlacementGroupTableData {
   enum PlacementGroupState {
     // Placement Group is pending or scheduling
     PENDING = 0;
+    // Placement Group is scheduled, and all nodes have prepared the resources.
+    PREPARED = 1;
     // Placement Group is created.
-    CREATED = 1;
+    CREATED = 2;
     // Placement Group is already removed and won't be reschedule.
-    REMOVED = 2;
+    REMOVED = 3;
     // Placement Group is rescheduling because the node it placed is dead.
-    RESCHEDULING = 3;
+    RESCHEDULING = 4;
   }
 
   // ID of the PlacementGroup.

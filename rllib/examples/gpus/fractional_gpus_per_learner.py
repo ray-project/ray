@@ -77,18 +77,14 @@ from ray.tune.registry import get_trainable_cls
 parser = add_rllib_example_script_args(
     default_iters=50, default_reward=180, default_timesteps=100000
 )
-parser.set_defaults(num_env_runners=2)
-# TODO (sven): Retire the currently supported --num-gpus in favor of --num-learners.
-parser.add_argument("--num-learners", type=int, default=1)
-parser.add_argument("--num-gpus-per-learner", type=float, default=0.5)
+parser.set_defaults(
+    enable_new_api_stack=True,
+    num_env_runners=2,
+)
 
 
 if __name__ == "__main__":
     args = parser.parse_args()
-
-    assert (
-        args.enable_new_api_stack
-    ), "Must set --enable-new-api-stack when running this script!"
 
     base_config = (
         get_trainable_cls(args.algo)

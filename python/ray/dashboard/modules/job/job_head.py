@@ -3,9 +3,8 @@ import dataclasses
 import json
 import logging
 import traceback
-from concurrent.futures import ThreadPoolExecutor
 from random import sample
-from typing import AsyncIterator, Optional
+from typing import AsyncIterator, List, Optional
 
 import aiohttp.web
 from aiohttp.client import ClientResponse
@@ -15,6 +14,7 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
+from ray._private.ray_constants import env_bool
 from ray._private.runtime_env.packaging import (
     package_exists,
     pin_runtime_env_uri,
@@ -35,6 +35,7 @@ from ray.dashboard.modules.job.pydantic_models import JobDetails, JobType
 from ray.dashboard.modules.job.utils import (
     find_job_by_ids,
     get_driver_jobs,
+    get_head_node_id,
     parse_and_validate_request,
 )
 from ray.dashboard.modules.version import CURRENT_VERSION, VersionResponse
@@ -43,6 +44,12 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 routes = optional_utils.DashboardHeadRouteTable
+
+# Feature flag controlling whether critical Ray Job control operations are performed
+# exclusively by the Job Agent running on the Head node (or randomly sampled Worker one)
+#
+# NOTE: This flag serves as a temporary kill-switch and should be eventually cleaned up
+RAY_JOB_AGENT_USE_HEAD_NODE_ONLY = env_bool("RAY_JOB_AGENT_USE_HEAD_NODE_ONLY", True)
 
 
 class JobAgentSubmissionClient:
@@ -153,11 +160,8 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
-        self._dashboard_head = dashboard_head
+        self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._job_info_client = None
-        self._upload_package_thread_pool_executor = ThreadPoolExecutor(
-            thread_name_prefix="job_head.upload_package"
-        )
 
         # It contains all `JobAgentSubmissionClient` that
         # `JobHead` has ever used, and will not be deleted
@@ -165,7 +169,13 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         # longer available (the corresponding agent process is dead)
         self._agents = dict()
 
-    async def choose_agent(self) -> Optional[JobAgentSubmissionClient]:
+    async def get_target_agent(self) -> Optional[JobAgentSubmissionClient]:
+        if RAY_JOB_AGENT_USE_HEAD_NODE_ONLY:
+            return await self._get_head_node_agent()
+
+        return await self._pick_random_agent()
+
+    async def _pick_random_agent(self) -> Optional[JobAgentSubmissionClient]:
         """
         Try to disperse as much as possible to select one of
         the `CANDIDATE_AGENT_NUMBER` agents to solve requests.
@@ -180,17 +190,10 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                it is possible that the selected one already exists in
                `self._agents`.
         """
-        # the number of agents which has an available HTTP port.
-        while True:
-            raw_agent_infos = await DataOrganizer.get_all_agent_infos()
-            agent_infos = {
-                key: value
-                for key, value in raw_agent_infos.items()
-                if value.get("httpPort", -1) > 0
-            }
-            if len(agent_infos) > 0:
-                break
-            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
+        # NOTE: Following call will block until there's at least 1 agent info
+        #       being populated from GCS
+        agent_infos = await self._fetch_agent_infos()
+
         # delete dead agents.
         for dead_node in set(self._agents) - set(agent_infos):
             client = self._agents.pop(dead_node)
@@ -212,6 +215,53 @@ class JobHead(dashboard_utils.DashboardHeadModule):
                 self._agents[node_id] = JobAgentSubmissionClient(agent_http_address)
 
             return self._agents[node_id]
+
+    async def _get_head_node_agent(self) -> Optional[JobAgentSubmissionClient]:
+        """Retrieves HTTP client for `JobAgent` running on the Head node"""
+
+        head_node_id = await get_head_node_id(self._gcs_aio_client)
+
+        if not head_node_id:
+            logger.warning("Head node id has not yet been persisted in GCS")
+            return None
+
+        if head_node_id not in self._agents:
+            agent_infos = await self._fetch_agent_infos(target_node_ids=[head_node_id])
+            if head_node_id not in agent_infos:
+                logger.error("Head node agent's information was not found")
+                return None
+
+            agent_info = agent_infos[head_node_id]
+
+            node_ip = agent_info["ipAddress"]
+            http_port = agent_info["httpPort"]
+            agent_http_address = f"http://{node_ip}:{http_port}"
+
+            self._agents[head_node_id] = JobAgentSubmissionClient(agent_http_address)
+
+        return self._agents[head_node_id]
+
+    @staticmethod
+    async def _fetch_agent_infos(target_node_ids: Optional[List[str]] = None):
+        """Fetches agent infos for nodes identified by provided node-ids (for all
+        nodes if not provided)
+
+        NOTE: This call will block until there's at least 1 valid agent info populated
+        """
+
+        while True:
+            raw_agent_infos = await DataOrganizer.get_agent_infos(target_node_ids)
+            # Filter out invalid agent infos with unset HTTP port
+            agent_infos = {
+                key: value
+                for key, value in raw_agent_infos.items()
+                if value.get("httpPort", -1) > 0
+            }
+
+            if len(agent_infos) > 0:
+                return agent_infos
+
+            await asyncio.sleep(dashboard_consts.TRY_TO_GET_AGENT_INFO_INTERVAL_SECONDS)
 
     @routes.get("/api/version")
     async def get_version(self, req: Request) -> Response:
@@ -263,7 +313,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         try:
             data = await req.read()
             await get_or_create_event_loop().run_in_executor(
-                self._upload_package_thread_pool_executor,
+                None,
                 upload_package_to_gcs,
                 package_uri,
                 data,
@@ -287,7 +337,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_target_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.submit_job_internal(submit_request)
@@ -317,7 +367,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def stop_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -334,7 +384,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_target_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.stop_job_internal(job.submission_id)
@@ -352,7 +402,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def delete_job(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -369,7 +419,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
 
         try:
             job_agent_client = await asyncio.wait_for(
-                self.choose_agent(),
+                self.get_target_agent(),
                 timeout=dashboard_consts.WAIT_AVAILABLE_AGENT_TIMEOUT,
             )
             resp = await job_agent_client.delete_job_internal(job.submission_id)
@@ -387,7 +437,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_info(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -408,7 +458,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     @routes.get("/api/jobs/")
     async def list_jobs(self, req: Request) -> Response:
         driver_jobs, submission_job_drivers = await get_driver_jobs(
-            self._dashboard_head.gcs_aio_client
+            self._gcs_aio_client
         )
 
         submission_jobs = await self._job_info_client.get_all_jobs()
@@ -438,7 +488,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
     async def get_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -455,32 +505,27 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             )
 
         try:
-            driver_agent_http_address = job.driver_agent_http_address
-            driver_node_id = job.driver_node_id
-            if driver_agent_http_address is None:
-                resp = JobLogsResponse("")
-            else:
-                if driver_node_id not in self._agents:
-                    self._agents[driver_node_id] = JobAgentSubmissionClient(
-                        driver_agent_http_address
-                    )
-                job_agent_client = self._agents[driver_node_id]
-                resp = await job_agent_client.get_job_logs_internal(job.submission_id)
+            job_agent_client = self.get_job_driver_agent_client(job)
+            payload = (
+                await job_agent_client.get_job_logs_internal(job.submission_id)
+                if job_agent_client
+                else JobLogsResponse("")
+            )
+            return Response(
+                text=json.dumps(dataclasses.asdict(payload)),
+                content_type="application/json",
+            )
         except Exception:
             return Response(
                 text=traceback.format_exc(),
                 status=aiohttp.web.HTTPInternalServerError.status_code,
             )
 
-        return Response(
-            text=json.dumps(dataclasses.asdict(resp)), content_type="application/json"
-        )
-
     @routes.get("/api/jobs/{job_or_submission_id}/logs/tail")
     async def tail_job_logs(self, req: Request) -> Response:
         job_or_submission_id = req.match_info["job_or_submission_id"]
         job = await find_job_by_ids(
-            self._dashboard_head.gcs_aio_client,
+            self._gcs_aio_client,
             self._job_info_client,
             job_or_submission_id,
         )
@@ -502,7 +547,7 @@ class JobHead(dashboard_utils.DashboardHeadModule):
         driver_agent_http_address = None
         while driver_agent_http_address is None:
             job = await find_job_by_ids(
-                self._dashboard_head.gcs_aio_client,
+                self._gcs_aio_client,
                 self._job_info_client,
                 job_or_submission_id,
             )
@@ -510,26 +555,34 @@ class JobHead(dashboard_utils.DashboardHeadModule):
             status = job.status
             if status.is_terminal() and driver_agent_http_address is None:
                 # Job exited before supervisor actor started.
-                return
+                return ws
+
             await asyncio.sleep(self.WAIT_FOR_SUPERVISOR_ACTOR_INTERVAL_S)
 
-        driver_node_id = job.driver_node_id
-        if driver_node_id not in self._agents:
-            self._agents[driver_node_id] = JobAgentSubmissionClient(
-                driver_agent_http_address
-            )
-        job_agent_client = self._agents[driver_node_id]
+        job_agent_client = self.get_job_driver_agent_client(job)
 
         async for lines in job_agent_client.tail_job_logs(job.submission_id):
             await ws.send_str(lines)
 
         return ws
 
+    def get_job_driver_agent_client(
+        self, job: JobDetails
+    ) -> Optional[JobAgentSubmissionClient]:
+        if job.driver_agent_http_address is None:
+            return None
+
+        driver_node_id = job.driver_node_id
+        if driver_node_id not in self._agents:
+            self._agents[driver_node_id] = JobAgentSubmissionClient(
+                job.driver_agent_http_address
+            )
+
+        return self._agents[driver_node_id]
+
     async def run(self, server):
         if not self._job_info_client:
-            self._job_info_client = JobInfoStorageClient(
-                self._dashboard_head.gcs_aio_client
-            )
+            self._job_info_client = JobInfoStorageClient(self._gcs_aio_client)
 
     @staticmethod
     def is_minimal_module():

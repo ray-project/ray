@@ -42,7 +42,7 @@ This will be the last checkpoint passed to :func:`train.report() <ray.train.repo
 Restore a Ray Train Experiment
 ------------------------------
 
-At the experiment level, Trainer restoration 
+At the experiment level, Trainer restoration
 allows you to resume a previously interrupted experiment from where it left off.
 
 A Train experiment may be interrupted due to one of the following reasons:

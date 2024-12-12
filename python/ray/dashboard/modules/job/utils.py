@@ -3,10 +3,9 @@ import dataclasses
 import logging
 import os
 import re
-import time
 import traceback
 from dataclasses import dataclass
-from typing import Any, Dict, Iterator, List, Optional, Tuple, Union
+from typing import Any, AsyncIterator, Dict, List, Optional, Tuple, Union
 
 from ray._private import ray_constants
 from ray._private.gcs_utils import GcsAioClient
@@ -35,6 +34,17 @@ MAX_CHUNK_LINE_LENGTH = 10
 MAX_CHUNK_CHAR_LENGTH = 20000
 
 
+async def get_head_node_id(gcs_aio_client: GcsAioClient) -> Optional[str]:
+    """Fetches Head node id persisted in GCS"""
+    head_node_id_bytes = await gcs_aio_client.internal_kv_get(
+        ray_constants.KV_HEAD_NODE_ID_KEY,
+        namespace=ray_constants.KV_NAMESPACE_JOB,
+        timeout=30,
+    )
+
+    return head_node_id_bytes.decode() if head_node_id_bytes is not None else None
+
+
 def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
     """Strip keys with value None from a dictionary."""
     return {k: v for k, v in d.items() if v is not None}
@@ -42,14 +52,14 @@ def strip_keys_with_value_none(d: Dict[str, Any]) -> Dict[str, Any]:
 
 def redact_url_password(url: str) -> str:
     """Redact any passwords in a URL."""
-    secret = re.findall("https?:\/\/.*:(.*)@.*", url)
+    secret = re.findall(r"https?:\/\/.*:(.*)@.*", url)
     if len(secret) > 0:
         url = url.replace(f":{secret[0]}@", ":<redacted>@")
 
     return url
 
 
-def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
+async def file_tail_iterator(path: str) -> AsyncIterator[Optional[List[str]]]:
     """Yield lines from a file as it's written.
 
     Returns lines in batches of up to 10 lines or 20000 characters,
@@ -103,7 +113,7 @@ def file_tail_iterator(path: str) -> Iterator[Optional[List[str]]]:
                 chunk_char_count += len(curr_line)
             else:
                 # If EOF is reached sleep for 1s before continuing
-                time.sleep(1)
+                await asyncio.sleep(1)
 
 
 async def parse_and_validate_request(
@@ -137,7 +147,9 @@ async def parse_and_validate_request(
 
 
 async def get_driver_jobs(
-    gcs_aio_client: GcsAioClient, timeout: Optional[int] = None
+    gcs_aio_client: GcsAioClient,
+    job_or_submission_id: Optional[str] = None,
+    timeout: Optional[int] = None,
 ) -> Tuple[Dict[str, JobDetails], Dict[str, DriverInfo]]:
     """Returns a tuple of dictionaries related to drivers.
 
@@ -145,8 +157,16 @@ async def get_driver_jobs(
     The second dictionary contains drivers that belong to submission jobs.
     It's keyed by the submission job's submission id.
     Only the last driver of a submission job is returned.
+
+    An optional job_or_submission_id filter can be provided to only return
+    jobs with the job id or submission id.
     """
-    job_infos = await gcs_aio_client.get_all_job_info(timeout=timeout)
+    job_infos = await gcs_aio_client.get_all_job_info(
+        job_or_submission_id=job_or_submission_id,
+        skip_submission_job_info_field=True,
+        skip_is_running_tasks_field=True,
+        timeout=timeout,
+    )
     # Sort jobs from GCS to follow convention of returning only last driver
     # of submission job.
     sorted_job_infos = sorted(
@@ -206,7 +226,9 @@ async def find_job_by_ids(
     Attempts to find the job with a given submission_id or job id.
     """
     # First try to find by job_id
-    driver_jobs, submission_job_drivers = await get_driver_jobs(gcs_aio_client)
+    driver_jobs, submission_job_drivers = await get_driver_jobs(
+        gcs_aio_client, job_or_submission_id=job_or_submission_id
+    )
     job = driver_jobs.get(job_or_submission_id)
     if job:
         return job

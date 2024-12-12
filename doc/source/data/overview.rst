@@ -82,7 +82,7 @@ How does Ray Data compare to other solutions for offline inference?
 
     Ray Data doesn't have a SQL interface and isn't meant as a replacement for generic ETL pipelines like Spark.
 
-    For a more detailed performance comarison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
+    For a more detailed performance comparison between Ray Data and Apache Spark, see `Offline Batch Inference: Comparing Ray, Apache Spark, and SageMaker <https://www.anyscale.com/blog/offline-batch-inference-comparing-ray-apache-spark-and-sagemaker>`_.
 
 Batch inference case studies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

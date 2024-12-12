@@ -15,24 +15,12 @@
 namespace ray {
 namespace gcs {
 
-class Mockpair_hash : public pair_hash {
- public:
-};
-
-}  // namespace gcs
-}  // namespace ray
-
-namespace ray {
-namespace gcs {
-
 class MockGcsPlacementGroupSchedulerInterface
     : public GcsPlacementGroupSchedulerInterface {
  public:
   MOCK_METHOD(void,
               ScheduleUnplacedBundles,
-              (std::shared_ptr<GcsPlacementGroup> placement_group,
-               PGSchedulingFailureCallback failure_callback,
-               PGSchedulingSuccessfulCallback success_callback),
+              (const SchedulePgRequest &request),
               (override));
   MOCK_METHOD((absl::flat_hash_map<PlacementGroupID, std::vector<int64_t>>),
               GetAndRemoveBundlesOnNode,
@@ -58,8 +46,9 @@ class MockGcsPlacementGroupSchedulerInterface
   MOCK_METHOD(void,
               Initialize,
               ((const absl::flat_hash_map<
-                  PlacementGroupID,
-                  std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles)),
+                   PlacementGroupID,
+                   std::vector<std::shared_ptr<BundleSpecification>>> &group_to_bundles),
+               const std::vector<SchedulePgRequest> &prepared_pgs),
               (override));
 };
 
@@ -93,9 +82,7 @@ class MockGcsPlacementGroupScheduler : public GcsPlacementGroupScheduler {
  public:
   MOCK_METHOD(void,
               ScheduleUnplacedBundles,
-              (std::shared_ptr<GcsPlacementGroup> placement_group,
-               PGSchedulingFailureCallback failure_handler,
-               PGSchedulingSuccessfulCallback success_handler),
+              (const SchedulePgRequest &request),
               (override));
   MOCK_METHOD(void,
               DestroyPlacementGroupBundleResourcesIfExists,

@@ -74,6 +74,14 @@ DEFAULT_MIN_PARALLELISM = 200
 
 DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING = True
 
+# NOTE: V1 tensor type format only supports tensors of no more than 2Gb in
+#       total cumulative size (due to it internally utilizing int32 offsets)
+#
+#       V2 in turn relies on int64 offsets, therefore having a limit of ~9Eb (exabytes)
+DEFAULT_USE_ARROW_TENSOR_V2 = env_bool("RAY_DATA_USE_ARROW_TENSOR_V2", True)
+
+DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE = True
+
 DEFAULT_AUTO_LOG_STATS = False
 
 DEFAULT_VERBOSE_STATS_LOG = False
@@ -82,6 +90,10 @@ DEFAULT_TRACE_ALLOCATIONS = bool(int(os.environ.get("RAY_DATA_TRACE_ALLOCATIONS"
 
 DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT = env_bool(
     "RAY_DATA_LOG_INTERNAL_STACK_TRACE_TO_STDOUT", False
+)
+
+DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION = env_bool(
+    "RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION", False
 )
 
 DEFAULT_USE_RAY_TQDM = bool(int(os.environ.get("RAY_TQDM", "1")))
@@ -98,6 +110,8 @@ DEFAULT_ENABLE_PROGRESS_BAR_NAME_TRUNCATION = env_bool(
 DEFAULT_ENABLE_GET_OBJECT_LOCATIONS_FOR_METRICS = False
 
 
+# `write_file_retry_on_errors` is deprecated in favor of `retried_io_errors`. You
+# shouldn't need to modify `DEFAULT_WRITE_FILE_RETRY_ON_ERRORS`.
 DEFAULT_WRITE_FILE_RETRY_ON_ERRORS = (
     "AWS Error INTERNAL_FAILURE",
     "AWS Error NETWORK_CONNECTION",
@@ -110,6 +124,7 @@ DEFAULT_RETRIED_IO_ERRORS = (
     "AWS Error NETWORK_CONNECTION",
     "AWS Error SLOW_DOWN",
     "AWS Error UNKNOWN (HTTP status 503)",
+    "AWS Error SERVICE_UNAVAILABLE",
 )
 
 DEFAULT_WARN_ON_DRIVER_MEMORY_USAGE_BYTES = 2 * 1024 * 1024 * 1024
@@ -209,6 +224,12 @@ class DataContext:
         read_op_min_num_blocks: Minimum number of read output blocks for a dataset.
         enable_tensor_extension_casting: Whether to automatically cast NumPy ndarray
             columns in Pandas DataFrames to tensor extension columns.
+        use_arrow_tensor_v2: Config enabling V2 version of ArrowTensorArray supporting
+            tensors > 2Gb in size (off by default)
+        enable_fallback_to_arrow_object_ext_type: Enables fallback to serialize column
+            values not suppported by Arrow natively (like user-defined custom Python
+            classes for ex, etc) using `ArrowPythonObjectType` (simply serializing
+            these as bytes)
         enable_auto_log_stats: Whether to automatically log stats after execution. If
             disabled, you can still manually print stats with ``Dataset.stats()``.
         verbose_stats_logs: Whether stats logs should be verbose. This includes fields
@@ -247,6 +268,8 @@ class DataContext:
         log_internal_stack_trace_to_stdout: Whether to include internal Ray Data/Ray
             Core code stack frames when logging to stdout. The full stack trace is
             always written to the Ray Data log file.
+        raise_original_map_exception: Whether to raise the original exception
+            encountered in map UDF instead of wrapping it in a `UserCodeException`.
         print_on_execution_start: If ``True``, print execution information when
             execution starts.
         s3_try_create_dir: If ``True``, try to create directories on S3 when a write
@@ -277,6 +300,10 @@ class DataContext:
     min_parallelism: int = DEFAULT_MIN_PARALLELISM
     read_op_min_num_blocks: int = DEFAULT_READ_OP_MIN_NUM_BLOCKS
     enable_tensor_extension_casting: bool = DEFAULT_ENABLE_TENSOR_EXTENSION_CASTING
+    use_arrow_tensor_v2: bool = DEFAULT_USE_ARROW_TENSOR_V2
+    enable_fallback_to_arrow_object_ext_type = (
+        DEFAULT_ENABLE_FALLBACK_TO_ARROW_OBJECT_EXT_TYPE
+    )
     enable_auto_log_stats: bool = DEFAULT_AUTO_LOG_STATS
     verbose_stats_logs: bool = DEFAULT_VERBOSE_STATS_LOG
     trace_allocations: bool = DEFAULT_TRACE_ALLOCATIONS
@@ -306,6 +333,7 @@ class DataContext:
     log_internal_stack_trace_to_stdout: bool = (
         DEFAULT_LOG_INTERNAL_STACK_TRACE_TO_STDOUT
     )
+    raise_original_map_exception: bool = DEFAULT_RAY_DATA_RAISE_ORIGINAL_MAP_EXCEPTION
     print_on_execution_start: bool = True
     s3_try_create_dir: bool = DEFAULT_S3_TRY_CREATE_DIR
     wait_for_min_actors_s: int = DEFAULT_WAIT_FOR_MIN_ACTORS_S
@@ -365,10 +393,31 @@ class DataContext:
 
     @staticmethod
     def get_current() -> "DataContext":
-        """Get or create a singleton context.
+        """Get or create the current DataContext.
 
-        If the context has not yet been created in this process, it will be
-        initialized with default settings.
+        When a Dataset is created, the current DataContext will be sealed.
+        Changes to `DataContext.get_current()` will not impact existing Datasets.
+
+        Examples:
+
+            .. testcode::
+                import ray
+
+                context = ray.data.DataContext.get_current()
+
+                context.target_max_block_size = 100 * 1024 ** 2
+                ds1 = ray.data.range(1)
+                context.target_max_block_size = 1 * 1024 ** 2
+                ds2 = ray.data.range(1)
+
+                # ds1's target_max_block_size will be 100MB
+                ds1.take_all()
+                # ds2's target_max_block_size will be 1MB
+                ds2.take_all()
+
+        Developer notes: Avoid using `DataContext.get_current()` in data
+        internal components, use the DataContext object captured in the
+        Dataset and pass it around as arguments.
         """
 
         global _default_context

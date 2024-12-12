@@ -285,16 +285,16 @@ For more details, see the following sections for each framework:
 
     .. tab-item:: PyTorch DataLoader
 
-        **Option 1 (with Ray Data):** 
+        **Option 1 (with Ray Data):**
 
-        1. Convert your PyTorch Dataset to a Ray Dataset. 
+        1. Convert your PyTorch Dataset to a Ray Dataset.
         2. Pass the Ray Dataset into the TorchTrainer via  ``datasets`` argument.
         3. Inside your ``train_loop_per_worker``, you can access the dataset via :meth:`ray.train.get_dataset_shard`.
         4. Create a dataset iterable via :meth:`ray.data.DataIterator.iter_torch_batches`.
 
         For more details, see the :ref:`Migrating from PyTorch Datasets and DataLoaders <migrate_pytorch>`.
 
-        **Option 2 (without Ray Data):** 
+        **Option 2 (without Ray Data):**
 
         1. Instantiate the Torch Dataset and DataLoader directly in the ``train_loop_per_worker``.
         2. Use the :meth:`ray.train.torch.prepare_data_loader` utility to set up the DataLoader for distributed training.
@@ -305,16 +305,16 @@ For more details, see the following sections for each framework:
 
     .. tab-item:: Hugging Face Dataset
 
-        **Option 1 (with Ray Data):** 
+        **Option 1 (with Ray Data):**
 
         1. Convert your Hugging Face Dataset to a Ray Dataset. For instructions, see :ref:`Ray Data for Hugging Face <loading_datasets_from_ml_libraries>`.
         2. Pass the Ray Dataset into the TorchTrainer via the ``datasets`` argument.
         3. Inside your ``train_loop_per_worker``, access the sharded dataset via :meth:`ray.train.get_dataset_shard`.
-        4. Create a iterable dataset via :meth:`ray.data.DataIterator.iter_torch_batches`. 
+        4. Create a iterable dataset via :meth:`ray.data.DataIterator.iter_torch_batches`.
         5. Pass the iterable dataset while initializing ``transformers.Trainer``.
         6. Wrap your transformers trainer with the :meth:`ray.train.huggingface.transformers.prepare_trainer` utility.
 
-        **Option 2 (without Ray Data):** 
+        **Option 2 (without Ray Data):**
 
         1. Instantiate the Hugging Face Dataset directly in the ``train_loop_per_worker``.
         2. Pass the Hugging Face Dataset into ``transformers.Trainer`` during initialization.
@@ -499,7 +499,9 @@ You can use this with Ray Train Trainers by applying them on the dataset before 
 
     # Create preprocessors to scale some columns and concatenate the results.
     scaler = StandardScaler(columns=["mean radius", "mean texture"])
-    concatenator = Concatenator(exclude=["target"], dtype=np.float32)
+    columns_to_concatenate = dataset.columns()
+    columns_to_concatenate.remove("target")
+    concatenator = Concatenator(columns=columns_to_concatenate, dtype=np.float32)
 
     # Compute dataset statistics and get transformed datasets. Note that the
     # fit call is executed immediately, but the transformation is lazy.

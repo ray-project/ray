@@ -184,6 +184,7 @@ int main(int argc, char *argv[]) {
   ray::raylet::NodeManagerConfig node_manager_config;
   absl::flat_hash_map<std::string, double> static_resource_conf;
 
+  SetThreadName("raylet");
   // IO Service for node manager.
   instrumented_io_context main_service;
 
@@ -210,7 +211,7 @@ int main(int argc, char *argv[]) {
     if (ray::SetThisProcessAsSubreaper()) {
       ray::KnownChildrenTracker::instance().Enable();
       ray::SetupSigchldHandlerRemoveKnownChildren(main_service);
-      auto runner = std::make_shared<ray::PeriodicalRunner>(main_service);
+      auto runner = ray::PeriodicalRunner::Create(main_service);
       runner->RunFnPeriodically([runner]() { ray::KillUnknownChildren(); },
                                 /*period_ms=*/10000,
                                 "Raylet.KillUnknownChildren");
@@ -269,12 +270,13 @@ int main(int argc, char *argv[]) {
         "shutdown_raylet_gracefully_internal");
   };
 
-  RAY_CHECK_OK(gcs_client->Nodes().AsyncGetInternalConfig(
+  RAY_CHECK_OK(gcs_client->InternalKV().AsyncGetInternalConfig(
       [&](::ray::Status status, const std::optional<std::string> &stored_raylet_config) {
         RAY_CHECK_OK(status);
         RAY_CHECK(stored_raylet_config.has_value());
         RayConfig::instance().initialize(*stored_raylet_config);
         ray::asio::testing::init();
+        ray::rpc::testing::init();
 
         // Core worker tries to kill child processes when it exits. But they can't do
         // it perfectly: if the core worker is killed by SIGKILL, the child processes
@@ -413,8 +415,8 @@ int main(int argc, char *argv[]) {
             {ray::stats::SessionNameKey, session_name}};
         ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
-        RAY_LOG(INFO) << "Setting node ID to: " << node_id;
         ray::NodeID raylet_node_id = ray::NodeID::FromHex(node_id);
+        RAY_LOG(INFO).WithField(raylet_node_id) << "Setting node ID";
 
         node_manager_config.AddDefaultLabels(raylet_node_id.Hex());
         // Initialize the node manager.
@@ -432,7 +434,9 @@ int main(int argc, char *argv[]) {
 
         // Initialize event framework.
         if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-          ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_RAYLET,
+          const std::vector<ray::SourceTypeVariant> source_types = {
+              ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
+          ray::RayEventInit(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
                             log_dir,
                             RayConfig::instance().event_level(),
@@ -445,7 +449,7 @@ int main(int argc, char *argv[]) {
   auto signal_handler = [&raylet, shutdown_raylet_gracefully_internal](
                             const boost::system::error_code &error, int signal_number) {
     ray::rpc::NodeDeathInfo node_death_info;
-    optional<ray::rpc::DrainRayletRequest> drain_request =
+    std::optional<ray::rpc::DrainRayletRequest> drain_request =
         raylet->node_manager().GetLocalDrainRequest();
     RAY_LOG(INFO) << "received SIGTERM. Existing local drain request = "
                   << (drain_request.has_value() ? drain_request->DebugString() : "None");

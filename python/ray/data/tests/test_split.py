@@ -29,6 +29,7 @@ from ray.data._internal.split import (
 )
 from ray.data._internal.stats import DatasetStats
 from ray.data.block import Block, BlockAccessor, BlockMetadata
+from ray.data.context import DataContext
 from ray.data.dataset import Dataset
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.util import extract_values
@@ -89,6 +90,8 @@ def test_equal_split_balanced(ray_start_regular_shared, block_sizes, num_splits)
 
 
 def _test_equal_split_balanced(block_sizes, num_splits):
+    ctx = DataContext.get_current()
+
     blocks = []
     metadata = []
     ref_bundles = []
@@ -101,7 +104,7 @@ def _test_equal_split_balanced(block_sizes, num_splits):
         ref_bundles.append(RefBundle((blk,), owns_blocks=True))
         total_rows += block_size
 
-    logical_plan = LogicalPlan(InputData(input_data=ref_bundles))
+    logical_plan = LogicalPlan(InputData(input_data=ref_bundles), ctx)
     stats = DatasetStats(metadata={"TODO": []}, parent=None)
     ds = Dataset(
         ExecutionPlan(stats),
@@ -591,10 +594,10 @@ def test_drop_empty_block_split():
 
 def verify_splits(splits, blocks_by_split):
     assert len(splits) == len(blocks_by_split)
-    for blocks, (block_refs, meta) in zip(blocks_by_split, splits):
+    for blocks, (block_refs, metas) in zip(blocks_by_split, splits):
         assert len(blocks) == len(block_refs)
-        assert len(blocks) == len(meta)
-        for block, block_ref, meta in zip(blocks, block_refs, meta):
+        assert len(blocks) == len(metas)
+        for block, block_ref, meta in zip(blocks, block_refs, metas):
             assert list(ray.get(block_ref)["id"]) == block
             assert meta.num_rows == len(block)
 

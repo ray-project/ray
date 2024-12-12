@@ -1,14 +1,14 @@
 {
-    "_dashboard_memory_usage_mb": 1263.501312,
+    "_dashboard_memory_usage_mb": 785.780736,
     "_dashboard_test_success": true,
-    "_peak_memory": 5.45,
-    "_peak_process_memory": "PID\tMEM\tCOMMAND\n3382\t3.09GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n3499\t0.83GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n4186\t0.74GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n1117\t0.24GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n2858\t0.22GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n4397\t0.08GiB\tray::DashboardTester.run\n4472\t0.08GiB\tray::StateAPIGeneratorActor.start\n2725\t0.07GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n3674\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti\n3984\t0.07GiB\tray::JobSupervisor",
+    "_peak_memory": 3.46,
+    "_peak_process_memory": "PID\tMEM\tCOMMAND\n1250\t7.37GiB\t/app/product/go/infra/anyscaled/anyscaled_/anyscaled startv2 --control_plane_url=https://console.any\n3426\t1.12GiB\t/home/ray/anaconda3/lib/python3.9/site-packages/ray/core/src/ray/gcs/gcs_server --log_dir=/tmp/ray/s\n3542\t0.78GiB\t/home/ray/anaconda3/bin/python /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/dashboa\n4331\t0.73GiB\tpython distributed/test_many_tasks.py --num-tasks=10000\n2099\t0.19GiB\tvector --watch-config --log-format json --config-yaml /etc/vector/vector.yaml\n1035\t0.15GiB\t/app/go/infra/anyscaled/anyscaled_/anyscaled_shim --cloud_provider=aws\n2315\t0.09GiB\t/usr/bin/python3 /app/infra/dataplane/webterminal/webterminal_sidecar_image.binary.runfiles/product/\n3709\t0.09GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/dashboard/agen\n4604\t0.08GiB\tray::StateAPIGeneratorActor.start\n3711\t0.07GiB\t/home/ray/anaconda3/bin/python -u /home/ray/anaconda3/lib/python3.9/site-packages/ray/_private/runti",
     "num_tasks": 10000,
     "perf_metrics": [
         {
             "perf_metric_name": "tasks_per_second",
             "perf_metric_type": "THROUGHPUT",
-            "perf_metric_value": 557.3705625276606
+            "perf_metric_value": 563.3604483841477
         },
         {
             "perf_metric_name": "used_cpus_by_deadline",
@@ -18,21 +18,21 @@
         {
             "perf_metric_name": "dashboard_p50_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 167.38
+            "perf_metric_value": 112.338
         },
         {
             "perf_metric_name": "dashboard_p95_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 3170.14
+            "perf_metric_value": 506.419
         },
         {
             "perf_metric_name": "dashboard_p99_latency_ms",
             "perf_metric_type": "LATENCY",
-            "perf_metric_value": 5042.844
+            "perf_metric_value": 759.07
         }
     ],
     "success": "1",
-    "tasks_per_second": 557.3705625276606,
-    "time": 317.94138526916504,
+    "tasks_per_second": 563.3604483841477,
+    "time": 317.7506248950958,
     "used_cpus": 2500.0
 }

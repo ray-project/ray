@@ -59,6 +59,8 @@
 #include <string>
 #include <vector>
 
+#include "ray/util/macros.h"
+
 #if defined(_WIN32)
 #ifndef _WINDOWS_
 #ifndef WIN32_LEAN_AND_MEAN  // Sorry for the inconvenience. Please include any related
@@ -86,19 +88,19 @@ enum { ERROR = 0 };
 
 namespace ray {
 /// Sync with ray._private.ray_logging.constants.LogKey
-constexpr std::string_view kLogKeyAsctime = "asctime";
-constexpr std::string_view kLogKeyLevelname = "levelname";
-constexpr std::string_view kLogKeyMessage = "message";
-constexpr std::string_view kLogKeyFilename = "filename";
-constexpr std::string_view kLogKeyLineno = "lineno";
-constexpr std::string_view kLogKeyComponent = "component";
-constexpr std::string_view kLogKeyJobID = "job_id";
-constexpr std::string_view kLogKeyWorkerID = "worker_id";
-constexpr std::string_view kLogKeyNodeID = "node_id";
-constexpr std::string_view kLogKeyActorID = "actor_id";
-constexpr std::string_view kLogKeyTaskID = "task_id";
-constexpr std::string_view kLogKeyObjectID = "object_id";
-constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
+inline constexpr std::string_view kLogKeyAsctime = "asctime";
+inline constexpr std::string_view kLogKeyLevelname = "levelname";
+inline constexpr std::string_view kLogKeyMessage = "message";
+inline constexpr std::string_view kLogKeyFilename = "filename";
+inline constexpr std::string_view kLogKeyLineno = "lineno";
+inline constexpr std::string_view kLogKeyComponent = "component";
+inline constexpr std::string_view kLogKeyJobID = "job_id";
+inline constexpr std::string_view kLogKeyWorkerID = "worker_id";
+inline constexpr std::string_view kLogKeyNodeID = "node_id";
+inline constexpr std::string_view kLogKeyActorID = "actor_id";
+inline constexpr std::string_view kLogKeyTaskID = "task_id";
+inline constexpr std::string_view kLogKeyObjectID = "object_id";
+inline constexpr std::string_view kLogKeyPlacementGroupID = "placement_group_id";
 
 // Define your specialization DefaultLogKey<your_type>::key to get .WithField(t)
 // See src/ray/common/id.h
@@ -127,21 +129,26 @@ enum class RayLogLevel {
   if (ray::RayLog::IsLevelEnabled(ray::RayLogLevel::level)) \
   RAY_LOG_INTERNAL(ray::RayLogLevel::level)
 
+// `cond` is a `Status` class, could be `ray::Status`, or from third-party like
+// `grpc::Status`.
+#define RAY_LOG_IF_ERROR(level, cond) \
+  if (RAY_PREDICT_FALSE(!(cond).ok())) RAY_LOG(level)
+
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                          \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                               << " Check failed: " #condition " "
+#define RAY_CHECK(condition)                                                      \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
+                           << " Check failed: " #condition " "
 
 #ifdef NDEBUG
 
-#define RAY_DCHECK(condition)                                                         \
-  (condition)                                                                         \
-      ? RAY_IGNORE_EXPR(0)                                                            \
-      : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
-                               << " Debug check failed: " #condition " "
+#define RAY_DCHECK(condition)                                                     \
+  RAY_PREDICT_TRUE((condition))                                                   \
+  ? RAY_IGNORE_EXPR(0)                                                            \
+  : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::ERROR) \
+                           << " Debug check failed: " #condition " "
 #else
 
 #define RAY_DCHECK(condition) RAY_CHECK(condition)
@@ -151,7 +158,7 @@ enum class RayLogLevel {
 #define RAY_CHECK_OP(left, op, right)        \
   if (const auto &_left_ = (left); true)     \
     if (const auto &_right_ = (right); true) \
-  RAY_CHECK((_left_ op _right_)) << " " << _left_ << " vs " << _right_
+  RAY_CHECK(RAY_PREDICT_TRUE(_left_ op _right_)) << " " << _left_ << " vs " << _right_
 
 #define RAY_CHECK_EQ(left, right) RAY_CHECK_OP(left, ==, right)
 #define RAY_CHECK_NE(left, right) RAY_CHECK_OP(left, !=, right)

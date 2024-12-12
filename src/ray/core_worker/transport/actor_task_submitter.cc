@@ -14,30 +14,73 @@
 
 #include "ray/core_worker/transport/actor_task_submitter.h"
 
-#include <thread>
-
-#include "ray/common/task/task.h"
 #include "ray/gcs/pb_util.h"
-
-using ray::rpc::ActorTableData;
-using namespace ray::gcs;
 
 namespace ray {
 namespace core {
 
+void ActorTaskSubmitter::NotifyGCSWhenActorOutOfScope(
+    const ActorID &actor_id, uint64_t num_restarts_due_to_lineage_reconstruction) {
+  const auto actor_creation_return_id = ObjectID::ForActorHandle(actor_id);
+  auto actor_out_of_scope_callback = [this,
+                                      actor_id,
+                                      num_restarts_due_to_lineage_reconstruction](
+                                         const ObjectID &object_id) {
+    {
+      absl::MutexLock lock(&mu_);
+      if (auto iter = client_queues_.find(actor_id); iter != client_queues_.end()) {
+        if (iter->second.state != rpc::ActorTableData::DEAD) {
+          iter->second.pending_out_of_scope_death = true;
+        }
+      }
+    }
+    RAY_CHECK_OK(actor_creator_.AsyncReportActorOutOfScope(
+        actor_id, num_restarts_due_to_lineage_reconstruction, [actor_id](Status status) {
+          if (!status.ok()) {
+            RAY_LOG(ERROR).WithField(actor_id)
+                << "Failed to report actor out of scope: " << status
+                << ". The actor will not be killed";
+          }
+        }));
+  };
+
+  if (!reference_counter_->AddObjectOutOfScopeOrFreedCallback(
+          actor_creation_return_id,
+          [actor_out_of_scope_callback](const ObjectID &object_id) {
+            actor_out_of_scope_callback(object_id);
+          })) {
+    RAY_LOG(DEBUG).WithField(actor_id) << "Actor already out of scope";
+    actor_out_of_scope_callback(actor_creation_return_id);
+  }
+}
+
 void ActorTaskSubmitter::AddActorQueueIfNotExists(const ActorID &actor_id,
                                                   int32_t max_pending_calls,
                                                   bool execute_out_of_order,
-                                                  bool fail_if_actor_unreachable) {
-  absl::MutexLock lock(&mu_);
-  // No need to check whether the insert was successful, since it is possible
-  // for this worker to have multiple references to the same actor.
-  RAY_LOG(INFO).WithField(actor_id)
-      << "Set actor max pending calls to " << max_pending_calls;
-  client_queues_.emplace(
-      actor_id,
-      ClientQueue(
-          actor_id, execute_out_of_order, max_pending_calls, fail_if_actor_unreachable));
+                                                  bool fail_if_actor_unreachable,
+                                                  bool owned) {
+  bool inserted;
+  {
+    absl::MutexLock lock(&mu_);
+    // No need to check whether the insert was successful, since it is possible
+    // for this worker to have multiple references to the same actor.
+    RAY_LOG(INFO).WithField(actor_id)
+        << "Set actor max pending calls to " << max_pending_calls;
+    inserted = client_queues_
+                   .emplace(actor_id,
+                            ClientQueue(actor_id,
+                                        execute_out_of_order,
+                                        max_pending_calls,
+                                        fail_if_actor_unreachable,
+                                        owned))
+                   .second;
+  }
+  if (owned && inserted) {
+    // Actor owner is responsible for notifying GCS when the
+    // actor is out of scope so that GCS can kill the actor.
+    NotifyGCSWhenActorOutOfScope(actor_id,
+                                 /*num_restarts_due_to_lineage_reconstruction*/ 0);
+  }
 }
 
 Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) {
@@ -97,7 +140,10 @@ Status ActorTaskSubmitter::SubmitActorCreationTask(TaskSpecification task_spec) 
               RAY_LOG(INFO).WithField(actor_id)
                   << "Failed to create actor with status: " << status.ToString();
             }
-            RAY_UNUSED(task_finisher_.FailOrRetryPendingTask(
+            // Actor creation task retry happens in GCS
+            // and transient rpc errors are retried in gcs client
+            // so we don't need to retry here.
+            RAY_UNUSED(task_finisher_.FailPendingTask(
                 task_id,
                 rpc::ErrorType::ACTOR_CREATION_FAILED,
                 &status,
@@ -121,6 +167,10 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
     absl::MutexLock lock(&mu_);
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
+    if (queue->second.state == rpc::ActorTableData::DEAD &&
+        queue->second.is_restartable && queue->second.owned) {
+      RestartActor(actor_id);
+    }
     if (queue->second.state != rpc::ActorTableData::DEAD) {
       // We must fix the send order prior to resolving dependencies, which may
       // complete out of order. This ensures that we will not deadlock due to
@@ -179,7 +229,7 @@ Status ActorTaskSubmitter::SubmitTask(TaskSpecification task_spec) {
       absl::MutexLock lock(&mu_);
       const auto queue_it = client_queues_.find(task_spec.ActorId());
       const auto &death_cause = queue_it->second.death_cause;
-      error_info = GetErrorInfoFromActorDeathCause(death_cause);
+      error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
       error_type = error_info.error_type();
     }
     auto status = Status::IOError("cancelling task of dead actor");
@@ -278,12 +328,39 @@ void ActorTaskSubmitter::ConnectActor(const ActorID &actor_id,
   FailInflightTasks(inflight_task_callbacks);
 }
 
+void ActorTaskSubmitter::RestartActor(const ActorID &actor_id) {
+  RAY_LOG(INFO).WithField(actor_id) << "Reconstructing actor";
+  auto queue = client_queues_.find(actor_id);
+  RAY_CHECK(queue != client_queues_.end());
+  RAY_CHECK(queue->second.owned) << "Only owner can restart the dead actor";
+  RAY_CHECK(queue->second.is_restartable) << "This actor is no longer restartable";
+  queue->second.state = rpc::ActorTableData::RESTARTING;
+  queue->second.num_restarts_due_to_lineage_reconstructions += 1;
+  RAY_CHECK_OK(actor_creator_.AsyncRestartActor(
+      actor_id,
+      queue->second.num_restarts_due_to_lineage_reconstructions,
+      [this,
+       actor_id,
+       num_restarts_due_to_lineage_reconstructions =
+           queue->second.num_restarts_due_to_lineage_reconstructions](Status status) {
+        if (!status.ok()) {
+          RAY_LOG(ERROR).WithField(actor_id)
+              << "Failed to reconstruct actor. Error message: " << status.ToString();
+        } else {
+          // Notify GCS when the actor is out of scope again.
+          NotifyGCSWhenActorOutOfScope(actor_id,
+                                       num_restarts_due_to_lineage_reconstructions);
+        }
+      }));
+}
+
 void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
                                          int64_t num_restarts,
                                          bool dead,
-                                         const rpc::ActorDeathCause &death_cause) {
+                                         const rpc::ActorDeathCause &death_cause,
+                                         bool is_restartable) {
   RAY_LOG(DEBUG).WithField(actor_id) << "Disconnecting from actor, death context type="
-                                     << GetActorDeathCauseString(death_cause);
+                                     << gcs::GetActorDeathCauseString(death_cause);
 
   absl::flat_hash_map<TaskID, rpc::ClientCallback<rpc::PushTaskReply>>
       inflight_task_callbacks;
@@ -294,7 +371,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     auto queue = client_queues_.find(actor_id);
     RAY_CHECK(queue != client_queues_.end());
     if (!dead) {
-      RAY_CHECK(num_restarts > 0);
+      RAY_CHECK_GT(num_restarts, 0);
     }
     if (num_restarts <= queue->second.num_restarts && !dead) {
       // This message is about an old version of the actor that has already been
@@ -314,16 +391,29 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     if (dead) {
       queue->second.state = rpc::ActorTableData::DEAD;
       queue->second.death_cause = death_cause;
-      // If there are pending requests, treat the pending tasks as failed.
-      RAY_LOG(INFO).WithField(actor_id)
-          << "Failing pending tasks for actor because the actor is already dead.";
+      queue->second.pending_out_of_scope_death = false;
+      queue->second.is_restartable = is_restartable;
 
-      task_ids_to_fail = queue->second.actor_submit_queue->ClearAllTasks();
-      // We need to execute this outside of the lock to prevent deadlock.
-      wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
-      // Reset the queue
-      queue->second.wait_for_death_info_tasks =
-          std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
+      if (queue->second.is_restartable && queue->second.owned) {
+        // Actor is out of scope so there should be no inflight actor tasks.
+        RAY_CHECK(queue->second.wait_for_death_info_tasks.empty());
+        RAY_CHECK(inflight_task_callbacks.empty());
+        if (!queue->second.actor_submit_queue->Empty()) {
+          // There are pending lineage reconstruction tasks.
+          RestartActor(actor_id);
+        }
+      } else {
+        // If there are pending requests, treat the pending tasks as failed.
+        RAY_LOG(INFO).WithField(actor_id)
+            << "Failing pending tasks for actor because the actor is already dead.";
+
+        task_ids_to_fail = queue->second.actor_submit_queue->ClearAllTasks();
+        // We need to execute this outside of the lock to prevent deadlock.
+        wait_for_death_info_tasks = std::move(queue->second.wait_for_death_info_tasks);
+        // Reset the queue
+        queue->second.wait_for_death_info_tasks =
+            std::deque<std::shared_ptr<PendingTaskWaitingForDeathInfo>>();
+      }
     } else if (queue->second.state != rpc::ActorTableData::DEAD) {
       // Only update the actor's state if it is not permanently dead. The actor
       // will eventually get restarted or marked as permanently dead.
@@ -336,7 +426,7 @@ void ActorTaskSubmitter::DisconnectActor(const ActorID &actor_id,
     // Failing tasks has to be done without mu_ hold because the callback
     // might require holding mu_ which will lead to a deadlock.
     auto status = Status::IOError("cancelling all pending tasks of dead actor");
-    const auto error_info = GetErrorInfoFromActorDeathCause(death_cause);
+    const auto error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
     const auto error_type = error_info.error_type();
 
     for (auto &task_id : task_ids_to_fail) {
@@ -380,6 +470,7 @@ void ActorTaskSubmitter::FailTaskWithError(const PendingTaskWaitingForDeathInfo 
     // preempted and it's dead.
     auto actor_death_cause = error_info.mutable_actor_died_error();
     auto actor_died_error_context = actor_death_cause->mutable_actor_died_error_context();
+    actor_died_error_context->set_reason(rpc::ActorDiedErrorContext::NODE_DIED);
     actor_died_error_context->set_actor_id(task.task_spec.ActorId().Binary());
     auto node_death_info = actor_died_error_context->mutable_node_death_info();
     node_death_info->set_reason(rpc::NodeDeathInfo::AUTOSCALER_DRAIN_PREEMPTED);
@@ -424,6 +515,13 @@ void ActorTaskSubmitter::SendPendingTasks(const ActorID &actor_id) {
   RAY_CHECK(it != client_queues_.end());
   auto &client_queue = it->second;
   auto &actor_submit_queue = client_queue.actor_submit_queue;
+  if (client_queue.pending_out_of_scope_death) {
+    // Wait until the actor is dead and then decide
+    // whether we should fail pending tasks or restart the actor.
+    // If the actor is restarted, ConnectActor will be called
+    // and pending tasks will be sent at that time.
+    return;
+  }
   if (!client_queue.rpc_client) {
     if (client_queue.state == rpc::ActorTableData::RESTARTING &&
         client_queue.fail_if_actor_unreachable) {
@@ -535,7 +633,8 @@ void ActorTaskSubmitter::PushActorTask(ClientQueue &queue,
   task_finisher_.MarkTaskWaitingForExecution(task_id,
                                              NodeID::FromBinary(addr.raylet_id()),
                                              WorkerID::FromBinary(addr.worker_id()));
-  queue.rpc_client->PushActorTask(std::move(request), skip_queue, wrapped_callback);
+  queue.rpc_client->PushActorTask(
+      std::move(request), skip_queue, std::move(wrapped_callback));
 }
 
 void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
@@ -600,7 +699,7 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
       is_actor_dead = queue.state == rpc::ActorTableData::DEAD;
       if (is_actor_dead) {
         const auto &death_cause = queue.death_cause;
-        error_info = GetErrorInfoFromActorDeathCause(death_cause);
+        error_info = gcs::GetErrorInfoFromActorDeathCause(death_cause);
         fail_immediately = error_info.has_actor_died_error() &&
                            error_info.actor_died_error().has_oom_context() &&
                            error_info.actor_died_error().oom_context().fail_immediately();
@@ -679,11 +778,40 @@ void ActorTaskSubmitter::HandlePushTaskReply(const Status &status,
   }
 }
 
+std::optional<rpc::ActorTableData::ActorState> ActorTaskSubmitter::GetLocalActorState(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto iter = client_queues_.find(actor_id);
+  if (iter == client_queues_.end()) {
+    return std::nullopt;
+  } else {
+    return iter->second.state;
+  }
+}
+
 bool ActorTaskSubmitter::IsActorAlive(const ActorID &actor_id) const {
   absl::MutexLock lock(&mu_);
 
   auto iter = client_queues_.find(actor_id);
   return (iter != client_queues_.end() && iter->second.rpc_client);
+}
+
+std::optional<rpc::Address> ActorTaskSubmitter::GetActorAddress(
+    const ActorID &actor_id) const {
+  absl::MutexLock lock(&mu_);
+
+  auto iter = client_queues_.find(actor_id);
+  if (iter == client_queues_.end()) {
+    return std::nullopt;
+  }
+
+  const auto &rpc_client = iter->second.rpc_client;
+  if (rpc_client == nullptr) {
+    return std::nullopt;
+  }
+
+  return iter->second.rpc_client->Addr();
 }
 
 bool ActorTaskSubmitter::PendingTasksFull(const ActorID &actor_id) const {
@@ -748,7 +876,8 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
 
   // Shouldn't hold a lock while accessing task_finisher_.
   // Task is already canceled or finished.
-  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id)) {
+  if (!GetTaskFinisherWithoutMu().MarkTaskCanceled(task_id) ||
+      !GetTaskFinisherWithoutMu().IsTaskPending(task_id)) {
     RAY_LOG(DEBUG).WithField(task_id) << "Task is already finished or canceled";
     return Status::OK();
   }
@@ -820,7 +949,7 @@ Status ActorTaskSubmitter::CancelTask(TaskSpecification task_spec, bool recursiv
     request.set_recursive(recursive);
     request.set_caller_worker_id(task_spec.CallerWorkerId().Binary());
     client->CancelTask(request,
-                       [this, task_spec, recursive, task_id](
+                       [this, task_spec = std::move(task_spec), recursive, task_id](
                            const Status &status, const rpc::CancelTaskReply &reply) {
                          RAY_LOG(DEBUG).WithField(task_spec.TaskId())
                              << "CancelTask RPC response received with status "

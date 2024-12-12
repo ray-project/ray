@@ -4,11 +4,9 @@ import unittest
 from ray.rllib.models.catalog import ModelCatalog, MODEL_DEFAULTS
 from ray.rllib.models.tf.visionnet import VisionNetwork
 from ray.rllib.models.torch.visionnet import VisionNetwork as TorchVision
-from ray.rllib.utils.framework import try_import_torch, try_import_tf
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.framework import try_import_torch
 
 torch, nn = try_import_torch()
-tf1, tf, tfv = try_import_tf()
 
 
 class TestConv2DDefaultStacks(unittest.TestCase):
@@ -27,20 +25,14 @@ class TestConv2DDefaultStacks(unittest.TestCase):
         for shape in shapes:
             print(f"shape={shape}")
             obs_space = gym.spaces.Box(-1.0, 1.0, shape=shape)
-            for fw in framework_iterator():
-                model = ModelCatalog.get_model_v2(
-                    obs_space, action_space, 2, MODEL_DEFAULTS.copy(), framework=fw
-                )
-                self.assertTrue(isinstance(model, (VisionNetwork, TorchVision)))
-                if fw == "torch":
-                    output, _ = model(
-                        {"obs": torch.from_numpy(obs_space.sample()[None])}
-                    )
-                else:
-                    output, _ = model({"obs": obs_space.sample()[None]})
-                # B x [action logits]
-                self.assertTrue(output.shape == (1, 2))
-                print("ok")
+            model = ModelCatalog.get_model_v2(
+                obs_space, action_space, 2, MODEL_DEFAULTS.copy(), framework="torch"
+            )
+            self.assertTrue(isinstance(model, (VisionNetwork, TorchVision)))
+            output, _ = model({"obs": torch.from_numpy(obs_space.sample()[None])})
+            # B x [action logits]
+            self.assertTrue(output.shape == (1, 2))
+            print("ok")
 
 
 if __name__ == "__main__":

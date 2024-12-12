@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -221,6 +221,14 @@ py_test(
     name = "test_filename_provider",
     size = "small",
     srcs = ["tests/test_filename_provider.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -382,6 +390,14 @@ py_test(
     name = "test_huggingface",
     size = "medium",
     srcs = ["tests/test_huggingface.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_iceberg",
+    size = "medium",
+    srcs = ["tests/test_iceberg.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -580,9 +596,25 @@ py_test(
 )
 
 py_test(
+    name = "test_bundle_queue",
+    size = "small",
+    srcs = ["tests/test_bundle_queue.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_autoscaler",
     size = "small",
     srcs = ["tests/test_autoscaler.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_clickhouse",
+    size = "small",
+    srcs = ["tests/test_clickhouse.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -615,6 +647,14 @@ py_test(
     name = "test_context",
     size = "small",
     srcs = ["tests/test_context.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_expression_evaluator",
+    size = "small",
+    srcs = ["tests/test_expression_evaluator.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

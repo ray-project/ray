@@ -1,11 +1,11 @@
 from pathlib import Path
 
+from ray.air.constants import TRAINING_ITERATION
 from ray.rllib.algorithms.bc import BCConfig
 from ray.rllib.utils.metrics import (
     ENV_RUNNER_RESULTS,
     EPISODE_RETURN_MEAN,
     EVALUATION_RESULTS,
-    TRAINING_ITERATION_TIMER,
 )
 from ray.rllib.utils.test_utils import (
     add_rllib_example_script_args,
@@ -14,7 +14,7 @@ from ray.rllib.utils.test_utils import (
 
 parser = add_rllib_example_script_args()
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 assert (
@@ -49,19 +49,20 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path],
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus, 1)},
+        input_read_method_kwargs={"override_num_blocks": max(args.num_learners, 1)},
+        dataset_num_iters_per_learner=1 if not args.num_learners else None,
     )
     .training(
         # To increase learning speed with multiple learners,
         # increase the learning rate correspondingly.
-        lr=0.0008 * max(1, args.num_gpus**0.5),
+        lr=0.0008 * (args.num_learners or 1) ** 0.5,
         train_batch_size_per_learner=2000,
     )
 )
 
 stop = {
     f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -200.0,
-    TRAINING_ITERATION_TIMER: 350.0,
+    TRAINING_ITERATION: 350,
 }
 
 if __name__ == "__main__":

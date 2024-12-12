@@ -5,9 +5,7 @@ import tree  # pip install dm_tree
 
 import ray
 import ray.rllib.algorithms.appo as appo
-from ray.rllib.algorithms.appo.tf.appo_tf_learner import (
-    LEARNER_RESULTS_CURR_KL_COEFF_KEY,
-)
+from ray.rllib.algorithms.appo.appo import LEARNER_RESULTS_CURR_KL_COEFF_KEY
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.policy.sample_batch import SampleBatch
@@ -32,10 +30,11 @@ FAKE_BATCH = {
     Columns.ACTION_LOGP: np.log(
         np.random.uniform(low=0, high=1, size=(frag_length,))
     ).astype(np.float32),
+    Columns.LOSS_MASK: np.ones(shape=(frag_length,)),
 }
 
 
-class TestAPPOTfLearner(unittest.TestCase):
+class TestAPPOLearner(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         ray.init()
@@ -48,10 +47,6 @@ class TestAPPOTfLearner(unittest.TestCase):
         """Test that appo_policy_rlm loss matches the appo learner loss."""
         config = (
             appo.APPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -90,10 +85,6 @@ class TestAPPOTfLearner(unittest.TestCase):
         initial_kl_coeff = 0.01
         config = (
             appo.APPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
             .environment("CartPole-v1")
             # Asynchronous Algo, make sure we have some results after 1 iteration.
             .reporting(min_time_s_per_iteration=10)

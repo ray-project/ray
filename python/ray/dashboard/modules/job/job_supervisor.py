@@ -12,7 +12,10 @@ from typing import Any, Dict, List, Optional
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.gcs_utils import GcsAioClient
+from ray._private.ray_logging.filters import CoreContextFilter
+from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray._private.runtime_env.constants import RAY_JOB_CONFIG_JSON_ENV_VAR
+from ray._private.utils import remove_ray_internal_flags_from_env
 from ray.actor import ActorHandle
 from ray.dashboard.modules.job.common import (
     JOB_ID_METADATA_KEY,
@@ -68,10 +71,12 @@ class JobSupervisor:
         entrypoint: str,
         user_metadata: Dict[str, str],
         gcs_address: str,
+        cluster_id_hex: str,
+        logs_dir: Optional[str] = None,
     ):
         self._job_id = job_id
-        gcs_aio_client = GcsAioClient(address=gcs_address)
-        self._job_info_client = JobInfoStorageClient(gcs_aio_client)
+        gcs_aio_client = GcsAioClient(address=gcs_address, cluster_id=cluster_id_hex)
+        self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._log_client = JobLogStorageClient()
         self._entrypoint = entrypoint
 
@@ -100,8 +105,17 @@ class JobSupervisor:
             f"jobs/supervisor-{self._job_id}.log",
         )
         os.makedirs(os.path.dirname(supervisor_log_file_name), exist_ok=True)
-        self._logger.addHandler(logging.StreamHandler())
-        self._logger.addHandler(logging.FileHandler(supervisor_log_file_name))
+        self._logger.addFilter(CoreContextFilter())
+        stream_handler = logging.StreamHandler()
+        file_handler = logging.FileHandler(supervisor_log_file_name)
+        formatter = TextFormatter()
+        if ray_constants.env_bool(ray_constants.RAY_BACKEND_LOG_JSON_ENV_VAR, False):
+            formatter = JSONFormatter()
+        stream_handler.setFormatter(formatter)
+        file_handler.setFormatter(formatter)
+        self._logger.addHandler(stream_handler)
+        self._logger.addHandler(file_handler)
+        self._logger.propagate = False
 
     def _get_driver_runtime_env(
         self, resources_specified: bool = False
@@ -134,7 +148,7 @@ class JobSupervisor:
         """Used to check the health of the actor."""
         pass
 
-    def _exec_entrypoint(self, logs_path: str) -> subprocess.Popen:
+    def _exec_entrypoint(self, env: dict, logs_path: str) -> subprocess.Popen:
         """
         Runs the entrypoint command as a child process, streaming stderr &
         stdout to given log files.
@@ -163,14 +177,19 @@ class JobSupervisor:
                 start_new_session=True,
                 stdout=logs_file,
                 stderr=subprocess.STDOUT,
+                env=env,
                 # Ray intentionally blocks SIGINT in all processes, so if the user wants
                 # to stop job through SIGINT, we need to unblock it in the child process
                 preexec_fn=(
-                    lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, {signal.SIGINT})
-                )
-                if sys.platform != "win32"
-                and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
-                else None,
+                    (
+                        lambda: signal.pthread_sigmask(
+                            signal.SIG_UNBLOCK, {signal.SIGINT}
+                        )
+                    )
+                    if sys.platform != "win32"
+                    and os.environ.get("RAY_JOB_STOP_SIGNAL") == "SIGINT"
+                    else None
+                ),
             )
             parent_pid = os.getpid()
             child_pid = child_process.pid
@@ -320,7 +339,7 @@ class JobSupervisor:
             f"{ray.worker.global_worker.node.node_ip_address}:"
             f"{ray.worker.global_worker.node.dashboard_agent_listen_port}"
         )
-        driver_node_id = ray.worker.global_worker.current_node_id.hex()
+        driver_node_id = ray.get_runtime_context().get_node_id()
 
         await self._job_info_client.put_status(
             self._job_id,
@@ -332,16 +351,21 @@ class JobSupervisor:
         )
 
         try:
-            # Configure environment variables for the child process. These
-            # will *not* be set in the runtime_env, so they apply to the driver
+            # Configure environment variables for the child process.
+            env = os.environ.copy()
+            # Remove internal Ray flags. They present because JobSuperVisor itself is
+            # a Ray worker process but we don't want to pass them to the driver.
+            remove_ray_internal_flags_from_env(env)
+            # These will *not* be set in the runtime_env, so they apply to the driver
             # only, not its tasks & actors.
-            os.environ.update(self._get_driver_env_vars(resources_specified))
+            env.update(self._get_driver_env_vars(resources_specified))
+
             self._logger.info(
                 "Submitting job with RAY_ADDRESS = "
-                f"{os.environ[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
+                f"{env[ray_constants.RAY_ADDRESS_ENVIRONMENT_VARIABLE]}"
             )
             log_path = self._log_client.get_log_file_path(self._job_id)
-            child_process = self._exec_entrypoint(log_path)
+            child_process = self._exec_entrypoint(env, log_path)
             child_pid = child_process.pid
 
             polling_task = create_task(self._polling(child_process))
@@ -409,7 +433,7 @@ class JobSupervisor:
                         driver_exit_code=return_code,
                     )
                 else:
-                    log_tail = self._log_client.get_last_n_log_lines(self._job_id)
+                    log_tail = await self._log_client.get_last_n_log_lines(self._job_id)
                     if log_tail is not None and log_tail != "":
                         message = (
                             "Job entrypoint command "

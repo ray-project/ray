@@ -52,7 +52,8 @@ pip --no-cache-dir install \
 
 sudo apt-get clean
 
-sudo rm ./*requirements*.txt
+# requirements_compiled.txt will be kept.
+sudo rm ./*requirements.txt requirements_compiled_gpu.txt
 
 # MuJoCo Installation.
 export MUJOCO_GL=osmesa

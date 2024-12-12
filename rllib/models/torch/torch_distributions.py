@@ -307,7 +307,7 @@ class TorchSquashedGaussian(TorchDistribution):
     @staticmethod
     @override(Distribution)
     def required_input_dim(space: gym.Space, **kwargs) -> int:
-        assert isinstance(space, gym.spaces.Box)
+        assert isinstance(space, gym.spaces.Box), space
         return int(np.prod(space.shape, dtype=np.int32) * 2)
 
     @classmethod
@@ -497,8 +497,17 @@ class TorchMultiCategorical(Distribution):
 
         return TorchMultiCategorical(categoricals=categoricals)
 
-    def to_deterministic(self) -> "TorchMultiDistribution":
-        return TorchMultiDistribution([cat.to_deterministic() for cat in self._cats])
+    def to_deterministic(self) -> "TorchDeterministic":
+        if self._cats[0].probs is not None:
+            probs_or_logits = nn.utils.rnn.pad_sequence(
+                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
+            )
+        else:
+            probs_or_logits = nn.utils.rnn.pad_sequence(
+                [cat.logits.t() for cat in self._cats], padding_value=-torch.inf
+            )
+
+        return TorchDeterministic(loc=torch.argmax(probs_or_logits, dim=0))
 
 
 @DeveloperAPI

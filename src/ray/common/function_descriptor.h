@@ -16,6 +16,7 @@
 
 #include <string>
 
+#include "absl/strings/str_format.h"
 #include "ray/common/grpc_util.h"
 #include "src/ray/protobuf/common.pb.h"
 
@@ -34,7 +35,7 @@ class FunctionDescriptorInterface : public MessageWrapper<rpc::FunctionDescripto
   /// The input message will be **copied** into this object.
   ///
   /// \param message The protobuf message.
-  FunctionDescriptorInterface(rpc::FunctionDescriptor message)
+  explicit FunctionDescriptorInterface(rpc::FunctionDescriptor message)
       : MessageWrapper(std::move(message)) {}
 
   ray::FunctionDescriptorType Type() const {
@@ -129,9 +130,11 @@ class JavaFunctionDescriptor : public FunctionDescriptorInterface {
   }
 
   virtual std::string ToString() const {
-    return "{type=JavaFunctionDescriptor, class_name=" + typed_message_->class_name() +
-           ", function_name=" + typed_message_->function_name() +
-           ", signature=" + typed_message_->signature() + "}";
+    return absl::StrFormat(
+        "{type=JavaFunctionDescriptor, class_name=%s, function_name=%s, signature=%s}",
+        typed_message_->class_name(),
+        typed_message_->function_name(),
+        typed_message_->signature());
   }
 
   virtual std::string CallString() const {

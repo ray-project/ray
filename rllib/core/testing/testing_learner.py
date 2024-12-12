@@ -47,7 +47,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
         spec = RLModuleSpec(
             module_class=cls,
-            model_config_dict={"fcnet_hiddens": [32]},
+            model_config={"fcnet_hiddens": [32]},
         )
 
         if self.is_multi_agent():
@@ -55,7 +55,7 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
             #  "1" and "2".
             return MultiRLModuleSpec(
                 multi_rl_module_class=MultiRLModule,
-                module_specs={DEFAULT_MODULE_ID: spec},
+                rl_module_specs={DEFAULT_MODULE_ID: spec},
             )
         else:
             return spec
@@ -63,10 +63,13 @@ class BaseTestingAlgorithmConfig(AlgorithmConfig):
 
 class BaseTestingLearner(Learner):
     @override(Learner)
-    def compute_loss_for_module(self, *, module_id, config, batch, fwd_out):
+    def after_gradient_based_update(self, *, timesteps):
         # This is to check if in the multi-gpu case, the weights across workers are
         # the same. It is really only needed during testing.
-        if config.report_mean_weights:
-            parameters = convert_to_numpy(self.get_parameters(self.module[module_id]))
-            mean_ws = np.mean([w.mean() for w in parameters])
-            self.metrics.log_value((module_id, "mean_weight"), mean_ws, window=1)
+        if self.config.report_mean_weights:
+            for module_id in self.module.keys():
+                parameters = convert_to_numpy(
+                    self.get_parameters(self.module[module_id])
+                )
+                mean_ws = np.mean([w.mean() for w in parameters])
+                self.metrics.log_value((module_id, "mean_weight"), mean_ws, window=1)

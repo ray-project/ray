@@ -20,6 +20,7 @@ namespace core {
 ActorSchedulingQueue::ActorSchedulingQueue(
     instrumented_io_context &main_io_service,
     DependencyWaiter &waiter,
+    worker::TaskEventBuffer &task_event_buffer,
     std::shared_ptr<ConcurrencyGroupManager<BoundedExecutor>> pool_manager,
     std::shared_ptr<ConcurrencyGroupManager<FiberState>> fiber_state_manager,
     bool is_asyncio,
@@ -30,6 +31,7 @@ ActorSchedulingQueue::ActorSchedulingQueue(
       wait_timer_(main_io_service),
       main_thread_id_(boost::this_thread::get_id()),
       waiter_(waiter),
+      task_event_buffer_(task_event_buffer),
       pool_manager_(pool_manager),
       fiber_state_manager_(fiber_state_manager),
       is_asyncio_(is_asyncio) {
@@ -71,13 +73,11 @@ size_t ActorSchedulingQueue::Size() const {
 void ActorSchedulingQueue::Add(
     int64_t seq_no,
     int64_t client_processed_up_to,
-    std::function<void(rpc::SendReplyCallback)> accept_request,
-    std::function<void(const Status &, rpc::SendReplyCallback)> reject_request,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)> accept_request,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_request,
     rpc::SendReplyCallback send_reply_callback,
-    const std::string &concurrency_group_name,
-    const ray::FunctionDescriptor &function_descriptor,
-    TaskID task_id,
-    const std::vector<rpc::ObjectReference> &dependencies) {
+    TaskSpecification task_spec) {
   // A seq_no of -1 means no ordering constraint. Actor tasks must be executed in order.
   RAY_CHECK(seq_no != -1);
 
@@ -92,25 +92,47 @@ void ActorSchedulingQueue::Add(
   pending_actor_tasks_[seq_no] = InboundRequest(std::move(accept_request),
                                                 std::move(reject_request),
                                                 std::move(send_reply_callback),
-                                                task_id,
-                                                dependencies.size() > 0,
-                                                concurrency_group_name,
-                                                function_descriptor);
+                                                task_spec);
   {
     absl::MutexLock lock(&mu_);
-    pending_task_id_to_is_canceled.emplace(task_id, false);
+    pending_task_id_to_is_canceled.emplace(task_spec.TaskId(), false);
   }
 
+  const auto dependencies = task_spec.GetDependencies();
   if (dependencies.size() > 0) {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ARGS_FETCH,
+        /* include_task_info */ false));
     waiter_.Wait(dependencies, [seq_no, this]() {
       RAY_CHECK(boost::this_thread::get_id() == main_thread_id_);
       auto it = pending_actor_tasks_.find(seq_no);
       if (it != pending_actor_tasks_.end()) {
+        const TaskSpecification &task_spec = it->second.TaskSpec();
+        RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+            task_spec.TaskId(),
+            task_spec.JobId(),
+            task_spec.AttemptNumber(),
+            task_spec,
+            rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+            /* include_task_info */ false));
         it->second.MarkDependenciesSatisfied();
         ScheduleRequests();
       }
     });
+  } else {
+    RAY_UNUSED(task_event_buffer_.RecordTaskStatusEventIfNeeded(
+        task_spec.TaskId(),
+        task_spec.JobId(),
+        task_spec.AttemptNumber(),
+        task_spec,
+        rpc::TaskStatus::PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY,
+        /* include_task_info */ false));
   }
+
   ScheduleRequests();
 }
 

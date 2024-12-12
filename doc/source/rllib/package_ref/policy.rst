@@ -49,14 +49,6 @@ Base Policy classes
 Making models
 --------------------
 
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~policy.Policy.make_rl_module
-
 
 Torch Policy
 ~~~~~~~~~~~~~~~~~~~~
@@ -228,20 +220,6 @@ Base Policy
 
 .. --------------------------------------------
 
-Connectors
---------------------
-
-Base Policy
-~~~~~~~~~~~~~~~~~~~~
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~policy.Policy.reset_connectors
-    ~policy.Policy.restore_connectors
-    ~policy.Policy.get_connector_metrics
-
-.. --------------------------------------------
 
 Recurrent Policies
 --------------------
@@ -292,4 +270,3 @@ Tensorflow Policy
 
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.variables
     ~policy.eager_tf_policy_v2.EagerTFPolicyV2.get_batch_divisibility_req
-

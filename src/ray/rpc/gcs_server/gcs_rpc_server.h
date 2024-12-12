@@ -221,6 +221,10 @@ class ActorInfoGcsServiceHandler {
                                    RegisterActorReply *reply,
                                    SendReplyCallback send_reply_callback) = 0;
 
+  virtual void HandleRestartActor(RestartActorRequest request,
+                                  RestartActorReply *reply,
+                                  SendReplyCallback send_reply_callback) = 0;
+
   virtual void HandleCreateActor(CreateActorRequest request,
                                  CreateActorReply *reply,
                                  SendReplyCallback send_reply_callback) = 0;
@@ -244,6 +248,10 @@ class ActorInfoGcsServiceHandler {
   virtual void HandleKillActorViaGcs(KillActorViaGcsRequest request,
                                      KillActorViaGcsReply *reply,
                                      SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleReportActorOutOfScope(ReportActorOutOfScopeRequest request,
+                                           ReportActorOutOfScopeReply *reply,
+                                           SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `ActorInfoGcsService`.
@@ -266,6 +274,7 @@ class ActorInfoGrpcService : public GrpcService {
     /// Register/Create Actor RPC takes long time, we shouldn't limit them to avoid
     /// distributed deadlock.
     ACTOR_INFO_SERVICE_RPC_HANDLER(RegisterActor, -1);
+    ACTOR_INFO_SERVICE_RPC_HANDLER(RestartActor, -1);
     ACTOR_INFO_SERVICE_RPC_HANDLER(CreateActor, -1);
 
     /// Others need back pressure.
@@ -279,6 +288,8 @@ class ActorInfoGrpcService : public GrpcService {
         GetAllActorInfo, RayConfig::instance().gcs_max_active_rpcs_per_handler());
     ACTOR_INFO_SERVICE_RPC_HANDLER(
         KillActorViaGcs, RayConfig::instance().gcs_max_active_rpcs_per_handler());
+    ACTOR_INFO_SERVICE_RPC_HANDLER(
+        ReportActorOutOfScope, RayConfig::instance().gcs_max_active_rpcs_per_handler());
   }
 
  private:
@@ -315,10 +326,6 @@ class NodeInfoGcsServiceHandler {
   virtual void HandleGetAllNodeInfo(GetAllNodeInfoRequest request,
                                     GetAllNodeInfoReply *reply,
                                     SendReplyCallback send_reply_callback) = 0;
-
-  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
-                                       GetInternalConfigReply *reply,
-                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 /// The `GrpcService` for `NodeInfoGcsService`.
@@ -349,7 +356,6 @@ class NodeInfoGrpcService : public GrpcService {
     NODE_INFO_SERVICE_RPC_HANDLER(UnregisterNode);
     NODE_INFO_SERVICE_RPC_HANDLER(DrainNode);
     NODE_INFO_SERVICE_RPC_HANDLER(GetAllNodeInfo);
-    NODE_INFO_SERVICE_RPC_HANDLER(GetInternalConfig);
     NODE_INFO_SERVICE_RPC_HANDLER(CheckAlive);
   }
 
@@ -562,6 +568,10 @@ class InternalKVGcsServiceHandler {
   virtual void HandleInternalKVExists(InternalKVExistsRequest request,
                                       InternalKVExistsReply *reply,
                                       SendReplyCallback send_reply_callback) = 0;
+
+  virtual void HandleGetInternalConfig(GetInternalConfigRequest request,
+                                       GetInternalConfigReply *reply,
+                                       SendReplyCallback send_reply_callback) = 0;
 };
 
 class InternalKVGrpcService : public GrpcService {
@@ -582,6 +592,7 @@ class InternalKVGrpcService : public GrpcService {
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVDel);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVExists);
     INTERNAL_KV_SERVICE_RPC_HANDLER(InternalKVKeys);
+    INTERNAL_KV_SERVICE_RPC_HANDLER(GetInternalConfig);
   }
 
  private:

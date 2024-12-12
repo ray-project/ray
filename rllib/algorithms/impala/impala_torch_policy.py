@@ -4,7 +4,6 @@ import numpy as np
 from typing import Dict, List, Optional, Type, Union
 
 import ray
-from ray.rllib.evaluation.episode import Episode
 from ray.rllib.evaluation.postprocessing import compute_bootstrap_value
 from ray.rllib.models.modelv2 import ModelV2
 from ray.rllib.models.action_dist import ActionDistribution
@@ -172,7 +171,6 @@ class VTraceOptimizer:
     def __init__(self):
         pass
 
-    @override(TorchPolicyV2)
     def optimizer(
         self,
     ) -> Union[List["torch.optim.Optimizer"], "torch.optim.Optimizer"]:
@@ -237,28 +235,29 @@ class ImpalaTorchPolicy(
         config = dict(
             ray.rllib.algorithms.impala.impala.IMPALAConfig().to_dict(), **config
         )
+        config["enable_rl_module_and_learner"] = False
+        config["enable_env_runner_and_connector_v2"] = False
 
         # If Learner API is used, we don't need any loss-specific mixins.
         # However, we also would like to avoid creating special Policy-subclasses
         # for this as the entire Policy concept will soon not be used anymore with
         # the new Learner- and RLModule APIs.
-        if not config.get("enable_rl_module_and_learner"):
-            VTraceOptimizer.__init__(self)
-            # Need to initialize learning rate variable before calling
-            # TorchPolicyV2.__init__.
-            lr_schedule_additional_args = []
-            if config.get("_separate_vf_optimizer"):
-                lr_schedule_additional_args = (
-                    [config["_lr_vf"][0][1], config["_lr_vf"]]
-                    if isinstance(config["_lr_vf"], (list, tuple))
-                    else [config["_lr_vf"], None]
-                )
-            LearningRateSchedule.__init__(
-                self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+        VTraceOptimizer.__init__(self)
+        # Need to initialize learning rate variable before calling
+        # TorchPolicyV2.__init__.
+        lr_schedule_additional_args = []
+        if config.get("_separate_vf_optimizer"):
+            lr_schedule_additional_args = (
+                [config["_lr_vf"][0][1], config["_lr_vf"]]
+                if isinstance(config["_lr_vf"], (list, tuple))
+                else [config["_lr_vf"], None]
             )
-            EntropyCoeffSchedule.__init__(
-                self, config["entropy_coeff"], config["entropy_coeff_schedule"]
-            )
+        LearningRateSchedule.__init__(
+            self, config["lr"], config["lr_schedule"], *lr_schedule_additional_args
+        )
+        EntropyCoeffSchedule.__init__(
+            self, config["entropy_coeff"], config["entropy_coeff_schedule"]
+        )
 
         TorchPolicyV2.__init__(
             self,
@@ -400,7 +399,7 @@ class ImpalaTorchPolicy(
         self,
         sample_batch: SampleBatch,
         other_agent_batches: Optional[SampleBatch] = None,
-        episode: Optional["Episode"] = None,
+        episode=None,
     ):
         # Call super's postprocess_trajectory first.
         # sample_batch = super().postprocess_trajectory(

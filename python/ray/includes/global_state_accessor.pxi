@@ -15,7 +15,7 @@ from ray.includes.unique_ids cimport (
 
 from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
-    RedisDelKeySync,
+    RedisDelKeyPrefixSync,
 )
 
 from ray.includes.optional cimport (
@@ -48,10 +48,16 @@ cdef class GlobalStateAccessor:
         with nogil:
             self.inner.get().Disconnect()
 
-    def get_job_table(self):
+    def get_job_table(
+        self, *, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
+    ):
         cdef c_vector[c_string] result
+        cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
+
         with nogil:
-            result = self.inner.get().GetAllJobInfo()
+            result = self.inner.get().GetAllJobInfo(
+                c_skip_submission_job_info_field, c_skip_is_running_tasks_field)
         return result
 
     def get_next_job_id(self):

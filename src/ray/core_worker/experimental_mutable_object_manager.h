@@ -34,6 +34,17 @@
 namespace ray {
 namespace experimental {
 
+struct ReaderRefInfo {
+  ReaderRefInfo() = default;
+
+  // The ObjectID of the reader reference.
+  ObjectID reader_ref_id;
+  // The actor id of the owner of the reference.
+  ActorID owner_reader_actor_id;
+  // The number of reader actors reading this buffer.
+  int64_t num_reader_actors;
+};
+
 class MutableObjectManager : public std::enable_shared_from_this<MutableObjectManager> {
  public:
   /// Buffer for a mutable object. This buffer wraps a shared memory buffer of

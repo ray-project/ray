@@ -125,7 +125,20 @@ R = TypeVar("R")
 DAGNode = TypeVar("DAGNode")
 
 
-class RemoteFunctionNoArgs(Generic[R]):
+# Only used for type annotations as a placeholder
+Undefined: Any = object()
+
+
+# TypeVar for self-referential generics in `RemoteFunction[N]`.
+RF = TypeVar("RF", bound="HasOptions")
+
+
+class HasOptions(Protocol):
+    def options(self: RF, **task_options) -> RF:
+        ...
+
+
+class RemoteFunctionNoArgs(HasOptions, Generic[R]):
     def __init__(self, function: Callable[[], R]) -> None:
         pass
 
@@ -140,7 +153,7 @@ class RemoteFunctionNoArgs(Generic[R]):
         ...
 
 
-class RemoteFunction0(Generic[R, T0]):
+class RemoteFunction0(HasOptions, Generic[R, T0]):
     def __init__(self, function: Callable[[T0], R]) -> None:
         pass
 
@@ -157,7 +170,7 @@ class RemoteFunction0(Generic[R, T0]):
         ...
 
 
-class RemoteFunction1(Generic[R, T0, T1]):
+class RemoteFunction1(HasOptions, Generic[R, T0, T1]):
     def __init__(self, function: Callable[[T0, T1], R]) -> None:
         pass
 
@@ -176,7 +189,7 @@ class RemoteFunction1(Generic[R, T0, T1]):
         ...
 
 
-class RemoteFunction2(Generic[R, T0, T1, T2]):
+class RemoteFunction2(HasOptions, Generic[R, T0, T1, T2]):
     def __init__(self, function: Callable[[T0, T1, T2], R]) -> None:
         pass
 
@@ -197,7 +210,7 @@ class RemoteFunction2(Generic[R, T0, T1, T2]):
         ...
 
 
-class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
+class RemoteFunction3(HasOptions, Generic[R, T0, T1, T2, T3]):
     def __init__(self, function: Callable[[T0, T1, T2, T3], R]) -> None:
         pass
 
@@ -220,7 +233,7 @@ class RemoteFunction3(Generic[R, T0, T1, T2, T3]):
         ...
 
 
-class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
+class RemoteFunction4(HasOptions, Generic[R, T0, T1, T2, T3, T4]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4], R]) -> None:
         pass
 
@@ -245,7 +258,7 @@ class RemoteFunction4(Generic[R, T0, T1, T2, T3, T4]):
         ...
 
 
-class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
+class RemoteFunction5(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5], R]) -> None:
         pass
 
@@ -272,7 +285,7 @@ class RemoteFunction5(Generic[R, T0, T1, T2, T3, T4, T5]):
         ...
 
 
-class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
+class RemoteFunction6(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6], R]) -> None:
         pass
 
@@ -301,7 +314,7 @@ class RemoteFunction6(Generic[R, T0, T1, T2, T3, T4, T5, T6]):
         ...
 
 
-class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
+class RemoteFunction7(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
     def __init__(self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7], R]) -> None:
         pass
 
@@ -332,7 +345,7 @@ class RemoteFunction7(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7]):
         ...
 
 
-class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
+class RemoteFunction8(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8], R]
     ) -> None:
@@ -367,7 +380,7 @@ class RemoteFunction8(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8]):
         ...
 
 
-class RemoteFunction9(Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
+class RemoteFunction9(HasOptions, Generic[R, T0, T1, T2, T3, T4, T5, T6, T7, T8, T9]):
     def __init__(
         self, function: Callable[[T0, T1, T2, T3, T4, T5, T6, T7, T8, T9], R]
     ) -> None:
@@ -472,11 +485,17 @@ class Worker:
         # Cache the job id from initialize_job_config() to optimize lookups.
         # This is on the critical path of ray.get()/put() calls.
         self._cached_job_id = None
+        # Indicates whether the worker is connected to the Ray cluster.
+        # It should be set to True in `connect` and False in `disconnect`.
+        self._is_connected: bool = False
 
     @property
     def connected(self):
         """bool: True if Ray has been started and False otherwise."""
-        return self.node is not None
+        return self._is_connected
+
+    def set_is_connected(self, is_connected: bool):
+        self._is_connected = is_connected
 
     @property
     def node_ip_address(self):
@@ -511,6 +530,14 @@ class Worker:
     @property
     def current_task_id(self):
         return self.core_worker.get_current_task_id()
+
+    @property
+    def current_task_name(self):
+        return self.core_worker.get_current_task_name()
+
+    @property
+    def current_task_function_name(self):
+        return self.core_worker.get_current_task_function_name()
 
     @property
     def current_node_id(self):
@@ -553,6 +580,17 @@ class Worker:
         """Get the debugger port for this worker"""
         worker_id = self.core_worker.get_worker_id()
         return ray._private.state.get_worker_debugger_port(worker_id)
+
+    @property
+    def job_logging_config(self):
+        """Get the job's logging config for this worker"""
+        if not hasattr(self, "core_worker"):
+            return None
+        job_config = self.core_worker.get_job_config()
+        if not job_config.serialized_py_logging_config:
+            return None
+        logging_config = pickle.loads(job_config.serialized_py_logging_config)
+        return logging_config
 
     def set_debugger_port(self, port):
         worker_id = self.core_worker.get_worker_id()
@@ -844,12 +882,17 @@ class Worker:
                     "which is not an ray.ObjectRef."
                 )
 
-        timeout_ms = int(timeout * 1000) if timeout is not None else -1
-        data_metadata_pairs = self.core_worker.get_objects(
+        timeout_ms = (
+            int(timeout * 1000) if timeout is not None and timeout != -1 else -1
+        )
+        data_metadata_pairs: List[
+            Tuple[ray._raylet.Buffer, bytes]
+        ] = self.core_worker.get_objects(
             object_refs,
             self.current_task_id,
             timeout_ms,
         )
+
         debugger_breakpoint = b""
         for data, metadata in data_metadata_pairs:
             if metadata:
@@ -1242,7 +1285,7 @@ def init(
     logging_level: int = ray_constants.LOGGER_LEVEL,
     logging_format: Optional[str] = None,
     logging_config: Optional[LoggingConfig] = None,
-    log_to_driver: bool = True,
+    log_to_driver: Optional[bool] = None,
     namespace: Optional[str] = None,
     runtime_env: Optional[Union[Dict[str, Any], "RuntimeEnv"]] = None,  # noqa: F821
     storage: Optional[str] = None,
@@ -1370,6 +1413,8 @@ def init(
         _driver_object_store_memory: Deprecated.
         _memory: Amount of reservable memory resource in bytes rounded
             down to the nearest integer.
+        _redis_username: Prevents external clients without the username
+            from connecting to Redis if provided.
         _redis_password: Prevents external clients without the password
             from connecting to Redis if provided.
         _temp_dir: If provided, specifies the root temporary
@@ -1401,6 +1446,9 @@ def init(
         Exception: An exception is raised if an inappropriate combination of
             arguments is passed in.
     """
+    if log_to_driver is None:
+        log_to_driver = ray_constants.RAY_LOG_TO_DRIVER
+
     # Configure the "ray" logger for the driver process.
     if configure_logging:
         setup_logger(logging_level, logging_format or ray_constants.LOGGER_FORMAT)
@@ -1425,6 +1473,9 @@ def init(
         "_driver_object_store_memory", None
     )
     _memory: Optional[int] = kwargs.pop("_memory", None)
+    _redis_username: str = kwargs.pop(
+        "_redis_username", ray_constants.REDIS_DEFAULT_USERNAME
+    )
     _redis_password: str = kwargs.pop(
         "_redis_password", ray_constants.REDIS_DEFAULT_PASSWORD
     )
@@ -1651,6 +1702,7 @@ def init(
             labels=labels,
             num_redis_shards=None,
             redis_max_clients=None,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             plasma_directory=_plasma_directory,
             huge_pages=None,
@@ -1728,6 +1780,7 @@ def init(
             node_ip_address=_node_ip_address,
             gcs_address=gcs_address,
             redis_address=redis_address,
+            redis_username=_redis_username,
             redis_password=_redis_password,
             object_ref_seed=None,
             temp_dir=_temp_dir,
@@ -1841,6 +1894,11 @@ def shutdown(_exiting_interpreter: bool = False):
             and false otherwise. If we are exiting the interpreter, we will
             wait a little while to print any extra error messages.
     """
+    # Make sure to clean up compiled dag node if exists.
+    from ray.dag.compiled_dag_node import _shutdown_all_compiled_dags
+
+    _shutdown_all_compiled_dags()
+
     if _exiting_interpreter and global_worker.mode == SCRIPT_MODE:
         # This is a duration to sleep before shutting down everything in order
         # to make sure that log messages finish printing.
@@ -1905,7 +1963,7 @@ def custom_excepthook(type, value, tb):
 sys.excepthook = custom_excepthook
 
 
-def print_to_stdstream(data):
+def print_to_stdstream(data, ignore_prefix: bool):
     should_dedup = data.get("pid") not in ["autoscaler"]
 
     if data["is_err"]:
@@ -1922,7 +1980,7 @@ def print_to_stdstream(data):
         sink = sys.stdout
 
     for batch in batches:
-        print_worker_logs(batch, sink)
+        print_worker_logs(batch, sink, ignore_prefix)
 
 
 # Start time of this process, used for relative time logs.
@@ -2013,7 +2071,9 @@ def time_string() -> str:
 _worker_logs_enabled = True
 
 
-def print_worker_logs(data: Dict[str, str], print_file: Any):
+def print_worker_logs(
+    data: Dict[str, str], print_file: Any, ignore_prefix: bool = False
+):
     if not _worker_logs_enabled:
         return
 
@@ -2093,11 +2153,19 @@ def print_worker_logs(data: Dict[str, str], print_file: Any):
             else:
                 color_pre = color_for(data, line)
                 color_post = colorama.Style.RESET_ALL
-            print(
-                f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
-                f"{message_for(data, line)}",
-                file=print_file,
-            )
+
+            if ignore_prefix:
+                print(
+                    f"{message_for(data, line)}",
+                    file=print_file,
+                )
+            else:
+                print(
+                    f"{color_pre}({prefix_for(data)}{pid}{ip_prefix}){color_post} "
+                    f"{message_for(data, line)}",
+                    file=print_file,
+                )
+
     # Restore once at end of batch to avoid excess hiding/unhiding of tqdm.
     restore_tqdm()
 
@@ -2147,7 +2215,6 @@ def listen_error_messages(worker, threads_stopped):
             error_message = _internal_kv_get(ray_constants.DEBUG_AUTOSCALING_ERROR)
             if error_message is not None:
                 logger.warning(error_message.decode())
-
         while True:
             # Exit if received a signal that the thread should stop.
             if threads_stopped.is_set():
@@ -2168,7 +2235,8 @@ def listen_error_messages(worker, threads_stopped):
                     "lines": [error_message],
                     "pid": "raylet",
                     "is_err": False,
-                }
+                },
+                ignore_prefix=False,
             )
     except (OSError, ConnectionError) as e:
         logger.error(f"listen_error_messages: {e}")
@@ -2414,9 +2482,6 @@ def connect(
         worker_launched_time_ms,
     )
 
-    # Notify raylet that the core worker is ready.
-    worker.core_worker.notify_raylet()
-
     if mode == SCRIPT_MODE:
         worker_id = worker.worker_id
         worker.gcs_error_subscriber = ray._raylet.GcsErrorSubscriber(
@@ -2446,9 +2511,14 @@ def connect(
         )
         worker.listener_thread.daemon = True
         worker.listener_thread.start()
+        # If the job's logging config is set, don't add the prefix
+        # (task/actor's name and its PID) to the logs.
+        ignore_prefix = global_worker.job_logging_config is not None
+
         if log_to_driver:
             global_worker_stdstream_dispatcher.add_handler(
-                "ray_print_logs", print_to_stdstream
+                "ray_print_logs",
+                functools.partial(print_to_stdstream, ignore_prefix=ignore_prefix),
             )
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
@@ -2466,6 +2536,9 @@ def connect(
             _setup_tracing = _import_from_string(tracing_hook_val.decode("utf-8"))
             _setup_tracing()
             ray.__traced__ = True
+
+    # Mark the worker as connected.
+    worker.set_is_connected(True)
 
 
 def disconnect(exiting_interpreter=False):
@@ -2490,10 +2563,12 @@ def disconnect(exiting_interpreter=False):
             worker.logger_thread.join()
         worker.threads_stopped.clear()
 
+        # Ignore the prefix if the logging config is set.
+        ignore_prefix = worker.job_logging_config is not None
         for leftover in stdout_deduplicator.flush():
-            print_worker_logs(leftover, sys.stdout)
+            print_worker_logs(leftover, sys.stdout, ignore_prefix)
         for leftover in stderr_deduplicator.flush():
-            print_worker_logs(leftover, sys.stderr)
+            print_worker_logs(leftover, sys.stderr, ignore_prefix)
         global_worker_stdstream_dispatcher.remove_handler("ray_print_logs")
 
     worker.node = None  # Disconnect the worker from the node.
@@ -2504,6 +2579,9 @@ def disconnect(exiting_interpreter=False):
         ray_actor = None  # This can occur during program termination
     if ray_actor is not None:
         ray_actor._ActorClassMethodMetadata.reset_cache()
+
+    # Mark the worker as disconnected.
+    worker.set_is_connected(False)
 
 
 @contextmanager
@@ -2569,6 +2647,13 @@ def get(object_refs: "ObjectRef[R]", *, timeout: Optional[float] = None) -> R:
 
 
 @overload
+def get(
+    object_refs: Sequence[CompiledDAGRef], *, timeout: Optional[float] = None
+) -> List[Any]:
+    ...
+
+
+@overload
 def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
     ...
 
@@ -2576,7 +2661,12 @@ def get(object_refs: CompiledDAGRef, *, timeout: Optional[float] = None) -> Any:
 @PublicAPI
 @client_mode_hook
 def get(
-    object_refs: Union["ObjectRef[Any]", Sequence["ObjectRef[Any]"], CompiledDAGRef],
+    object_refs: Union[
+        "ObjectRef[Any]",
+        Sequence["ObjectRef[Any]"],
+        CompiledDAGRef,
+        Sequence[CompiledDAGRef],
+    ],
     *,
     timeout: Optional[float] = None,
 ) -> Union[Any, List[Any]]:
@@ -2621,8 +2711,9 @@ def get(
     Raises:
         GetTimeoutError: A GetTimeoutError is raised if a timeout is set and
             the get takes longer than timeout to return.
-        Exception: An exception is raised if the task that created the object
-            or that created one of the objects raised an exception.
+        Exception: An exception is raised immediately if any task that created
+            the object or that created one of the objects raised an exception,
+            without waiting for the remaining ones to finish.
     """
     worker = global_worker
     worker.check_connected()
@@ -2646,6 +2737,21 @@ def get(
 
         if isinstance(object_refs, CompiledDAGRef):
             return object_refs.get(timeout=timeout)
+
+        if isinstance(object_refs, list):
+            all_compiled_dag_refs = True
+            any_compiled_dag_refs = False
+            for object_ref in object_refs:
+                is_dag_ref = isinstance(object_ref, CompiledDAGRef)
+                all_compiled_dag_refs = all_compiled_dag_refs and is_dag_ref
+                any_compiled_dag_refs = any_compiled_dag_refs or is_dag_ref
+            if all_compiled_dag_refs:
+                return [object_ref.get(timeout=timeout) for object_ref in object_refs]
+            elif any_compiled_dag_refs:
+                raise ValueError(
+                    "Invalid type of object refs. 'object_refs' must be a list of "
+                    "CompiledDAGRefs if there is any CompiledDAGRef within it. "
+                )
 
         is_individual_id = isinstance(object_refs, ray.ObjectRef)
         if is_individual_id:
@@ -2678,9 +2784,9 @@ def get(
                 port=None,
                 patch_stdstreams=False,
                 quiet=None,
-                breakpoint_uuid=debugger_breakpoint.decode()
-                if debugger_breakpoint
-                else None,
+                breakpoint_uuid=(
+                    debugger_breakpoint.decode() if debugger_breakpoint else None
+                ),
                 debugger_external=worker.ray_debugger_external,
             )
             rdb.set_trace(frame=frame)
@@ -3143,10 +3249,6 @@ class RemoteDecorator(Protocol):
         ...
 
 
-# Only used for type annotations as a placeholder
-Undefined: Any = object()
-
-
 @overload
 def remote(__function: Callable[[], R]) -> RemoteFunctionNoArgs[R]:
     ...
@@ -3459,7 +3561,7 @@ def remote(
             for more details.
         _metadata: Extended options for Ray libraries. For example,
             _metadata={"workflows.io/options": <workflow options>} for Ray workflows.
-
+        _labels: The key-value labels of a task or actor.
     """
     # "callable" returns true for both function and class.
     if len(args) == 1 and len(kwargs) == 0 and callable(args[0]):
