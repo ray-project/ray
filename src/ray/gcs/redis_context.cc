@@ -482,7 +482,6 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
     argc.push_back(arg.size());
   }
 
-  // Assume that the cluster is down, use a larger backoff time.
   auto exp_back_off = ExponentialBackOff(RayConfig::instance().redis_retry_base_ms(),
                                          RayConfig::instance().redis_retry_multiplier(),
                                          RayConfig::instance().redis_retry_max_ms());
