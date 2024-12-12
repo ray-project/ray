@@ -492,6 +492,7 @@ class ExecutableTask:
             assert nccl_group is not None
             self._send_stream = nccl_group.send_stream
         if self.input_type_hints:
+            print("input_type_hints", self.input_type_hints)
             for type_hint in self.input_type_hints:
                 if type_hint.requires_nccl():
                     nccl_group_id = _get_nccl_group_id(type_hint)
@@ -1092,41 +1093,41 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
-                if isinstance(upstream_task.dag_node, InputAttributeNode) or isinstance(upstream_task.dag_node, InputNode):
-                    # Add the type hint of the upstream node to the task.
-                    task.arg_type_hints.append(upstream_task.dag_node.type_hint)
-                    if isinstance(upstream_task.dag_node, InputAttributeNode):
-                        # Record all of the keys used to index the InputNode.
-                        # During execution, we will check that the user provides
-                        # the same args and kwargs.
-                        if isinstance(upstream_task.dag_node.key, int):
-                            input_positional_args.add(upstream_task.dag_node.key)
-                        elif isinstance(upstream_task.dag_node.key, str):
-                            input_kwargs.add(upstream_task.dag_node.key)
-                        else:
-                            raise ValueError(
-                                "InputNode() can only be indexed using int "
-                                "for positional args or str for kwargs."
-                            )
+                # Add the type hint of the upstream node to the task.
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
-                        if direct_input is not None and direct_input:
-                            raise ValueError(
-                                "All tasks must either use InputNode() "
-                                "directly, or they must index to specific args or "
-                                "kwargs."
-                            )
-                        direct_input = False
-                        # If the upstream node is an InputAttributeNode, treat the
-                        # DAG's input node as the actual upstream node
-                        upstream_task = self.idx_to_task[self.input_task_idx]
-
+                if isinstance(upstream_task.dag_node, InputAttributeNode):
+                    # Record all of the keys used to index the InputNode.
+                    # During execution, we will check that the user provides
+                    # the same args and kwargs.
+                    if isinstance(upstream_task.dag_node.key, int):
+                        input_positional_args.add(upstream_task.dag_node.key)
+                    elif isinstance(upstream_task.dag_node.key, str):
+                        input_kwargs.add(upstream_task.dag_node.key)
                     else:
-                        if direct_input is not None and not direct_input:
-                            raise ValueError(
-                                "All tasks must either use InputNode() directly, "
-                                "or they must index to specific args or kwargs."
-                            )
-                        direct_input = True
+                        raise ValueError(
+                            "InputNode() can only be indexed using int "
+                            "for positional args or str for kwargs."
+                        )
+
+                    if direct_input is not None and direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() "
+                            "directly, or they must index to specific args or "
+                            "kwargs."
+                        )
+                    direct_input = False
+                    # If the upstream node is an InputAttributeNode, treat the
+                    # DAG's input node as the actual upstream node
+                    upstream_task = self.idx_to_task[self.input_task_idx]
+
+                elif isinstance(upstream_task.dag_node, InputNode):
+                    if direct_input is not None and not direct_input:
+                        raise ValueError(
+                            "All tasks must either use InputNode() directly, "
+                            "or they must index to specific args or kwargs."
+                        )
+                    direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
 
