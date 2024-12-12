@@ -221,7 +221,7 @@ Once the new RayCluster is ready, RayService updates the selector of the head se
 Finally, the old RayCluster is terminated.
 
 Certain exceptions don't trigger a zero downtime upgrade.
-Only the fields managed by Ray autoscaler, `replicas` and `scaleStrategy.workersToDelete`, don't trigger a zero downtime upgrade.
+Only the fields managed by Ray autoscaler—`replicas`, `minReplicas`, `maxReplicas`, and `scaleStrategy.workersToDelete`—don't trigger a zero downtime upgrade.
 When you update these fields, KubeRay doesn't propagate the update from RayService to RayCluster custom resources, so nothing happens.
 
 ```sh
