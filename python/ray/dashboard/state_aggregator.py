@@ -463,14 +463,24 @@ class StateAPIManager:
             Transforms from proto to dict, applies filters, sorts, and truncates.
             This function is executed in a separate thread.
             """
+            # In the error case
+            if reply.status.code != 0:
+                return ListApiResponse(
+                    result=[],
+                    total=0,
+                    num_after_truncation=0,
+                    num_filtered=0,
+                    warnings=[reply.status.message],
+                )
+
             result = [
                 protobuf_to_task_state_dict(message) for message in reply.events_by_task
             ]
 
             # Num pre-truncation is the number of tasks returned from
             # source + num filtered on source
-            num_after_truncation = len(result) + reply.num_filtered_on_gcs
-            num_total = reply.num_total_stored + reply.num_status_task_events_dropped
+            num_after_truncation = len(result)
+            num_total = len(result) + reply.num_status_task_events_dropped
 
             result = self._filter(result, option.filters, TaskState, option.detail)
             num_filtered = len(result)
