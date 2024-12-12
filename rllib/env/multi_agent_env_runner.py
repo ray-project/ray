@@ -13,7 +13,7 @@ from ray.rllib.core import (
     COMPONENT_RL_MODULE,
 )
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
 from ray.rllib.env.env_context import EnvContext
 from ray.rllib.env.env_runner import EnvRunner, ENV_STEP_FAILURE
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
@@ -22,6 +22,7 @@ from ray.rllib.env.utils import _gym_env_creator
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.deprecation import Deprecated
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     EPISODE_DURATION_SEC_MEAN,
     EPISODE_LEN_MAX,
@@ -43,9 +44,10 @@ from ray.rllib.utils.metrics import (
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.pre_checks.env import check_multiagent_environments
 from ray.rllib.utils.typing import EpisodeID, ModelWeights, ResultDict, StateDict
-from ray.util.annotations import PublicAPI
 from ray.tune.registry import ENV_CREATOR, _global_registry
+from ray.util.annotations import PublicAPI
 
+torch, _ = try_import_torch()
 logger = logging.getLogger("ray.rllib")
 
 
@@ -85,6 +87,12 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         # Create our callbacks object.
         self._callbacks: DefaultCallbacks = self.config.callbacks_class()
 
+        # Set device.
+        self._device = get_device(
+            self.config,
+            0 if not self.worker_index else self.config.num_gpus_per_env_runner,
+        )
+
         # Create the vectorized gymnasium env.
         self.env: Optional[gym.Wrapper] = None
         self.num_envs: int = 0
@@ -92,7 +100,7 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
 
         # Create the env-to-module connector pipeline.
         self._env_to_module = self.config.build_env_to_module_connector(
-            self.env.unwrapped
+            self.env.unwrapped, device=self._device
         )
         # Cached env-to-module results taken at the end of a `_sample_timesteps()`
         # call to make sure the final observation (before an episode cut) gets properly
@@ -105,9 +113,10 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
         self._cached_to_module = None
 
         # Construct the MultiRLModule.
+        self.module: Optional[MultiRLModule] = None
         self.make_module()
 
-        # Create the two connector pipelines: env-to-module and module-to-env.
+        # Create the module-to-env connector pipeline.
         self._module_to_env = self.config.build_module_to_env_connector(
             self.env.unwrapped
         )
@@ -875,6 +884,19 @@ class MultiAgentEnvRunner(EnvRunner, Checkpointable):
             )
             # Build the module from its spec.
             self.module = module_spec.build()
+            # Move the RLModule to our device.
+            # TODO (sven): In order to make this framework-agnostic, we should maybe
+            #  make the MultiRLModule.build() method accept a device OR create an
+            #  additional `(Multi)RLModule.to()` override.
+            if torch:
+                self.module.foreach_module(
+                    lambda mid, mod: (
+                        mod.to(self._device)
+                        if isinstance(mod, torch.nn.Module)
+                        else mod
+                    )
+                )
+
         # If `AlgorithmConfig.get_rl_module_spec()` is not implemented, this env runner
         # will not have an RLModule, but might still be usable with random actions.
         except NotImplementedError:

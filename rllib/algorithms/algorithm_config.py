@@ -952,7 +952,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env):
+    def build_env_to_module_connector(self, env, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1026,7 +1026,7 @@ class AlgorithmConfig(_Config):
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor())
+            pipeline.append(NumpyToTensor(device=device))
 
         return pipeline
 
