@@ -1,5 +1,6 @@
 import io
 import logging
+from dataclasses import dataclass
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -62,6 +63,75 @@ OPEN_FILE_MAX_ATTEMPTS = 10
 
 
 @DeveloperAPI
+@dataclass
+class FileShuffleConfig:
+    """Configuration for file shuffling.
+
+    This configuration object controls how files are shuffled during
+    reading file based datasets.
+
+    Args:
+        seed (Optional[int]): An optional integer seed for the random number
+            generator. If provided, the file shuffle will be initialized with
+            this seed, making the file shuffle order deterministic.
+
+    Example:
+        >>> from ray.data import read_parquet
+        >>> import ray
+        >>> import pyarrow as pa
+        >>> import pyarrow.parquet as pq
+        >>> from ray.data.read_api import read_parquet
+        >>> from ray.data.datasource import FileShuffleConfig
+        >>> from pathlib import Path
+        >>> import os
+        >>> ctx = ray.data.DataContext.get_current()
+        >>> ctx.execution_options.preserve_order = True
+
+        >>> def write_parquet_file(path, file_index):
+        >>>     # Create a dummy dataset with unique data for each file
+        >>>     data = {'col1': range(10 * file_index, 10 * (file_index + 1)),
+        >>>              'col2': ['foo', 'bar'] * 5}
+        >>>     table = pa.Table.from_pydict(data)
+        >>>     pq.write_table(table, path)
+        >>> current_dir = Path(os.getcwd())
+
+        >>> # Create temporary Parquet files for testing in the current directory
+        >>> paths = [current_dir / f"test_file_{i}.parquet" for i in range(5)]
+
+        >>> for i, path in enumerate(paths):
+        >>>     # Write dummy Parquet files
+        >>>     write_parquet_file(path, i)
+
+        >>> # Convert paths to strings for read_parquet
+        >>> string_paths = [str(path) for path in paths]
+
+        >>> # Read with deterministic shuffling
+        >>> shuffle_config = FileShuffleConfig(seed=42)
+        >>> ds1 = read_parquet(string_paths, shuffle=shuffle_config)
+        >>> ds2 = read_parquet(string_paths, shuffle=shuffle_config)
+
+        >>> # Verify deterministic behavior
+        >>> assert ds1.take_all() == ds2.take_all()
+
+
+    .. note::
+        Even when providing a seed, you may still observe a non-deterministic row
+        order. This is because tasks are executed in parallel and their completion
+        order may vary, which introduces some non-determinism in the final ordering.
+        Can set `ctx.execution_options.preserve_order = True` to preserve the
+        order if needed.
+
+    """
+
+    seed: Optional[int] = None
+
+    def __post_init__(self):
+        """Ensure that the seed is either None or an integer."""
+        if self.seed is not None and not isinstance(self.seed, int):
+            raise ValueError("Seed must be an integer or None.")
+
+
+@DeveloperAPI
 class FileBasedDatasource(Datasource):
     """File-based datasource for reading files.
 
@@ -88,7 +158,7 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Union[Literal["files"], None] = None,
+        shuffle: Union[FileShuffleConfig, Literal["files"], None] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
@@ -154,6 +224,9 @@ class FileBasedDatasource(Datasource):
         self._file_metadata_shuffler = None
         if shuffle == "files":
             self._file_metadata_shuffler = np.random.default_rng()
+        elif isinstance(shuffle, FileShuffleConfig):
+            # Create a NumPy random generator with a fixed seed if provided
+            self._file_metadata_shuffler = np.random.default_rng(shuffle.seed)
 
         # Read tasks serialize `FileBasedDatasource` instances, and the list of paths
         # can be large. To avoid slow serialization speeds, we store a reference to
@@ -526,8 +599,8 @@ def _open_file_with_retry(
 
 
 def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"]:
+    if shuffle not in [None, "files", FileShuffleConfig]:
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files'."
+            "Valid values are None, 'files', 'FileShuffleConfig'."
         )
