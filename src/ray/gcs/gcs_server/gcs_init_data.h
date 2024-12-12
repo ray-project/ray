@@ -34,10 +34,8 @@ class GcsInitData {
   explicit GcsInitData(gcs::GcsTableStorage &gcs_table_storage)
       : gcs_table_storage_(gcs_table_storage) {}
 
-  /// Load all required metadata from the store into memory at once asynchronously.
-  ///
-  /// \param on_done The callback when all metadatas are loaded successfully.
-  void AsyncLoad(const EmptyCallback &on_done);
+  /// Load all required metadata from the store into memory at once.
+  void Load();
 
   /// Get job metadata.
   const absl::flat_hash_map<JobID, rpc::JobTableData> &Jobs() const {
