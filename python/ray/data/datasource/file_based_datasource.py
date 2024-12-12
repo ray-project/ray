@@ -86,25 +86,17 @@ class FileShuffleConfig:
         >>> import os
         >>> ctx = ray.data.DataContext.get_current()
         >>> ctx.execution_options.preserve_order = True
-
-        >>> def write_parquet_file(path, file_index):
-        >>>     # Create a dummy dataset with unique data for each file
-        >>>     data = {'col1': range(10 * file_index, 10 * (file_index + 1)),
-        >>>              'col2': ['foo', 'bar'] * 5}
-        >>>     table = pa.Table.from_pydict(data)
-        >>>     pq.write_table(table, path)
         >>> current_dir = Path(os.getcwd())
-
         >>> # Create temporary Parquet files for testing in the current directory
         >>> paths = [current_dir / f"test_file_{i}.parquet" for i in range(5)]
-
         >>> for i, path in enumerate(paths):
         >>>     # Write dummy Parquet files
-        >>>     write_parquet_file(path, i)
-
+        >>>     data = {'col1': range(10 * i, 10 * (i + 1)),
+        >>>             'col2': ['foo', 'bar'] * 5}
+        >>>     table = pa.Table.from_pydict(data)
+        >>>     pq.write_table(table, path)
         >>> # Convert paths to strings for read_parquet
         >>> string_paths = [str(path) for path in paths]
-
         >>> # Read with deterministic shuffling
         >>> shuffle_config = FileShuffleConfig(seed=42)
         >>> ds1 = read_parquet(string_paths, shuffle=shuffle_config)
