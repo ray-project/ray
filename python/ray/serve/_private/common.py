@@ -446,6 +446,37 @@ class DeploymentStatusInfo:
                     message=message,
                 )
 
+        elif self.status == DeploymentStatus.DEPLOY_FAILED:
+            # The deployment recovered
+            if trigger == DeploymentStatusInternalTrigger.HEALTHY:
+                return self._updated_copy(
+                    status=DeploymentStatus.HEALTHY,
+                    status_trigger=DeploymentStatusTrigger.UNSPECIFIED,
+                    message=message,
+                )
+
+            # A new configuration is being deployed.
+            elif trigger == DeploymentStatusInternalTrigger.CONFIG_UPDATE:
+                return self._updated_copy(
+                    status=DeploymentStatus.UPDATING,
+                    status_trigger=DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
+                    message=message,
+                )
+
+            # Old failures keep getting triggered, or new failures occurred.
+            elif trigger == DeploymentStatusInternalTrigger.HEALTH_CHECK_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.HEALTH_CHECK_FAILED,
+                    message=message,
+                )
+            elif trigger == DeploymentStatusInternalTrigger.REPLICA_STARTUP_FAILED:
+                return self._updated_copy(
+                    status=DeploymentStatus.DEPLOY_FAILED,
+                    status_trigger=DeploymentStatusTrigger.REPLICA_STARTUP_FAILED,
+                    message=message,
+                )
+
         # If it's any other transition, ignore it.
         return self
 
