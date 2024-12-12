@@ -11,6 +11,7 @@ from ray.data._internal.execution.operators.map_transformer import (
 )
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor
+from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
 
@@ -33,9 +34,9 @@ def generate_write_fn(
     return fn
 
 
-def generate_collect_write_stats_fn() -> Callable[
-    [Iterator[Block], TaskContext], Iterator[Block]
-]:
+def generate_collect_write_stats_fn() -> (
+    Callable[[Iterator[Block], TaskContext], Iterator[Block]]
+):
     # If the write op succeeds, the resulting Dataset is a list of
     # one Block which contain stats/metrics about the write.
     # Otherwise, an error will be raised. The Datasource can handle
@@ -58,7 +59,9 @@ def generate_collect_write_stats_fn() -> Callable[
 
 
 def plan_write_op(
-    op: Write, physical_children: List[PhysicalOperator]
+    op: Write,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> PhysicalOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -74,6 +77,7 @@ def plan_write_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name="Write",
         target_max_block_size=None,
         ray_remote_args=op._ray_remote_args,
