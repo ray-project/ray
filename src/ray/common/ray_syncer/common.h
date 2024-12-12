@@ -16,11 +16,22 @@
 
 #pragma once
 
+#include <functional>
+
+#include "ray/common/id.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
+#include "src/ray/protobuf/ray_syncer.pb.h"
 
 namespace ray::syncer {
 
 inline constexpr size_t kComponentArraySize =
     static_cast<size_t>(ray::rpc::syncer::MessageType_ARRAYSIZE);
+
+// TODO(hjiang): As of now, only ray syncer uses it so we put it under `ray_syncer`
+// folder, better to place it into other common folders if uses elsewhere.
+//
+// A callback, which is called whenever a rpc succeeds between the current process and
+// raylet, which represents the node.
+using SuccessfulRpcCallback = std::function<void(const NodeID &)>;
 
 }  // namespace ray::syncer

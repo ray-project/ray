@@ -19,6 +19,7 @@
 #include <memory>
 #include <string>
 
+#include "src/ray/common/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
@@ -93,10 +94,22 @@ class RaySyncerBidiReactor {
     }
   };
 
+  /// Set rpc completion callback, which is called after rpc read finishes.
+  /// This function is expected to call only once, repeated invocations throws exception.
+  void SetSuccessfulRpcCallbackForOnce(SuccessfulRpcCallback on_rpc_success) {
+    RAY_CHECK(on_rpc_success);
+    RAY_CHECK(!on_rpc_success_);
+    on_rpc_success_ = std::move(on_rpc_success);
+  }
+
   /// Return true if it's disconnected.
   std::shared_ptr<bool> IsDisconnected() const { return disconnected_; }
 
   std::string remote_node_id_;
+
+ protected:
+  /// Sync message observer, which is a callback on received message response.
+  SuccessfulRpcCallback on_rpc_success_;
 
  private:
   virtual void DoDisconnect() = 0;
