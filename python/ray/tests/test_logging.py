@@ -323,7 +323,7 @@ def test_worker_id_names(shutdown_only):
     ray.get(f.remote())
 
     paths = list(log_dir_path.iterdir())
-
+    worker_log_files = list()
     ids = []
     for path in paths:
         if "python-core-worker" in str(path):
@@ -333,12 +333,13 @@ def test_worker_id_names(shutdown_only):
         else:
             continue
         worker_id = re.match(pattern, str(path)).group(1)
+        worker_log_files.append(str(paths))
         ids.append(worker_id)
     counts = Counter(ids).values()
     for count in counts:
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
-        assert count == 3, ids
+        assert count == 3, worker_log_files
 
 
 def test_log_pid_with_hex_job_id(ray_start_cluster):
