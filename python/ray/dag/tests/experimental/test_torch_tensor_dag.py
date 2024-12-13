@@ -1270,6 +1270,182 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     compiled_dag.teardown()
 
 
+@ray.remote
+class Worker:
+    def __init__(self):
+        self.device = None
+
+    def no_op(self, tensor):
+        assert isinstance(tensor, torch.Tensor)
+        self.device = tensor.device
+        return tensor
+
+    def get_device(self):
+        return self.device
+
+
+class TestTorchTensorTypeHintCustomSerializer:
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_input_node_without_type_hint(self, ray_start_regular):
+        """
+        Since no TorchTensorType hint is provided in this compiled graph,
+        everything should be on CPU even though this is a GPU worker.
+        """
+        worker = Worker.options(num_gpus=1).remote()
+
+        with InputNode() as inp:
+            dag = worker.no_op.bind(inp)
+
+        compiled_dag = dag.experimental_compile()
+        cpu_tensor = torch.tensor([1])
+        ref = compiled_dag.execute(cpu_tensor)
+        t = ray.get(ref)
+        assert torch.equal(t, cpu_tensor)
+
+        device = ray.get(worker.get_device.remote())
+        assert device.type == "cpu"
+
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_input_node_with_type_hint(self, ray_start_regular):
+        """
+        Since `inp` has a TorchTensorType hint, both the driver and `worker` will
+        use the custom serializer.
+
+        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor`.
+        Step 2: The `worker` calls `deserialize_tensor` to deserialize `cpu_tensor`
+               and moves it to GPU.
+        Step 3: The `worker` calls `serialize_tensor` to serialize the result of
+               `no_op` and moves it to CPU.
+        Step 4: The driver calls `deserialize_tensor` to deserialize the result of
+               `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
+               the tensor will not be moved to GPU.
+        """
+        worker = Worker.options(num_gpus=1).remote()
+
+        with InputNode() as inp:
+            dag = worker.no_op.bind(inp.with_type_hint(TorchTensorType()))
+        compiled_dag = dag.experimental_compile()
+        cpu_tensor = torch.tensor([1])
+        ref = compiled_dag.execute(cpu_tensor)
+        # Verify Step 4
+        t = ray.get(ref)
+        assert torch.equal(t, cpu_tensor)
+
+        # Verify Step 2
+        device = ray.get(worker.get_device.remote())
+        assert device.type == "cuda"
+
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_input_attr_nodes_with_all_tensor_type_hint(self, ray_start_regular):
+        """
+        Since both `inp[0]` and `inp[1]` have tensor type hint, both workers will
+        use the custom serializer.
+
+        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
+        and `cpu_tensor_2`.
+
+        Step 2:
+        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
+          and moves it to GPU.
+        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
+          and moves it to GPU.
+
+        Step 3:
+        * The `worker1` calls `serialize_tensor` to serialize the result of
+          `no_op` and moves it to CPU.
+        * The `worker2` calls `serialize_tensor` to serialize the result of
+          `no_op` and moves it to CPU.
+
+        Step 4: The driver calls `deserialize_tensor` to deserialize the result
+        of `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
+        the tensor will not be moved to GPU.
+        """
+        worker1 = Worker.options(num_gpus=1).remote()
+        worker2 = Worker.options(num_gpus=1).remote()
+        with InputNode() as inp:
+            dag = inp[0].with_type_hint(TorchTensorType())
+            branch1 = worker1.no_op.bind(dag)
+            dag = inp[1].with_type_hint(TorchTensorType())
+            branch2 = worker2.no_op.bind(dag)
+            dag = MultiOutputNode([branch1, branch2])
+
+        compiled_dag = dag.experimental_compile()
+        cpu_tensor_1 = torch.tensor([1])
+        cpu_tensor_2 = torch.tensor([2])
+        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
+
+        # Verify Step 4
+        t1, t2 = ray.get(ref)
+        assert torch.equal(t1, cpu_tensor_1)
+        assert torch.equal(t2, cpu_tensor_2)
+
+        # Verify Step 2
+        device1 = ray.get(worker1.get_device.remote())
+        device2 = ray.get(worker2.get_device.remote())
+        assert device1.type == "cuda"
+        assert device2.type == "cuda"
+
+    @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+    def test_partial_input_attr_nodes_with_tensor_type_hint(self, ray_start_regular):
+        """
+        Only `inp[0]` has a tensor type hint, so only `worker1` will use the custom
+        serializer. Note that although we don't register the custom serializer for
+        `worker2`, it still uses the custom deserializer. This is because when custom
+        serializers are registered with Ray, the registered deserializer is shipped
+        with the serialized value and used on the receiving end. See the comment in
+        `ChannelOutputType.register_custom_serializer` for more details.
+
+        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor_1`
+        and `cpu_tensor_2`.
+
+        Step 2:
+        * The `worker1` calls `deserialize_tensor` to deserialize `cpu_tensor_1`
+          and moves it to GPU.
+        * The `worker2` calls `deserialize_tensor` to deserialize `cpu_tensor_2`
+          and moves it to GPU.
+
+        Step 3:
+        * The `worker1` calls `serialize_tensor` to serialize the result of `no_op`
+          and moves it to CPU.
+        * The `worker2` calls the normal serialization function to serialize the
+          result of `no_op` because it doesn't have a custom serializer, so the
+          tensor is still on GPU.
+
+        Step 4: 
+        * The driver calls `deserialize_tensor` to deserialize the tensor from
+          `worker1`. Since the driver's `ChannelContext.torch_device` is CPU,
+          the tensor will not be moved to GPU.
+        * The driver calls normal deserialization function to deserialize the
+          tensor from `worker2`.
+        """
+        worker1 = Worker.options(num_gpus=1).remote()
+        worker2 = Worker.options(num_gpus=1).remote()
+
+        with InputNode() as inp:
+            dag = inp[0].with_type_hint(TorchTensorType())
+            branch1 = worker1.no_op.bind(dag)
+            dag = inp[1]
+            branch2 = worker2.no_op.bind(dag)
+            dag = MultiOutputNode([branch1, branch2])
+
+        compiled_dag = dag.experimental_compile()
+        cpu_tensor_1 = torch.tensor([1])
+        cpu_tensor_2 = torch.tensor([2])
+        ref = compiled_dag.execute(cpu_tensor_1, cpu_tensor_2)
+        t1, t2 = ray.get(ref)
+        # Verify Step 3-1
+        assert torch.equal(t1, cpu_tensor_1)
+        # Verify Step 3-2
+        gpu_tensor_2 = cpu_tensor_2.cuda()
+        assert torch.equal(t2, gpu_tensor_2)
+
+        # Verify Step 2
+        device1 = ray.get(worker1.get_device.remote())
+        device2 = ray.get(worker2.get_device.remote())
+        assert device1.type == "cuda"
+        assert device2.type == "cuda"
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))

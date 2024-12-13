@@ -2784,16 +2784,16 @@ class CompiledDAG:
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
         return dot.source
-    
+
     def _register_input_output_custom_serializer(self):
         """
         Register custom serializers for input, input attribute, and output nodes.
         """
         assert self.input_task_idx is not None
         assert self.output_task_idx is not None
-        
+
         # Register custom serializers for input node.
-        input_task = self.idx_to_task[self.input_task_idx]   
+        input_task = self.idx_to_task[self.input_task_idx]
         input_task.dag_node.type_hint.register_custom_serializer()
 
         # Register custom serializers for input attribute nodes.
