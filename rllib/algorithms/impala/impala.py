@@ -1024,7 +1024,7 @@ class IMPALA(Algorithm):
             bundles += [{
                 "GPU": 0.01,
                 "CPU": 1,
-            }]#cls._get_learner_bundles(cf)
+            } for _ in range(cf.num_aggregation_workers)]#cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
