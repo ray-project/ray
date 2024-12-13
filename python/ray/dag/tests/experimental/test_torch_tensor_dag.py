@@ -1285,6 +1285,15 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
 
 
 class TestTorchTensorTypeHintCustomSerializer:
+    # All tests inside this file are running in the same process, so we need to
+    # manually deregister the custom serializer for `torch.Tensor` before and
+    # after each test to avoid side effects.
+    def setup_method(self):
+        ray.util.serialization.deregister_serializer(torch.Tensor)
+
+    def teardown_method(self):
+        ray.util.serialization.deregister_serializer(torch.Tensor)
+
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
     @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
     def test_input_node_without_type_hint(self, ray_start_regular, tensor_device):
@@ -1302,7 +1311,7 @@ class TestTorchTensorTypeHintCustomSerializer:
             dag = worker.no_op.bind(inp)
 
         compiled_dag = dag.experimental_compile()
-        tensor = torch.tensor([1])
+        tensor = torch.tensor([5])
         if tensor_device == "cuda":
             tensor = tensor.cuda()
         ref = compiled_dag.execute(tensor)
