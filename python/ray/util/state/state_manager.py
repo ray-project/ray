@@ -18,6 +18,7 @@ from ray._raylet import ActorID, JobID, TaskID, NodeID
 from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import ActorTableData, GcsNodeInfo
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GetAllActorInfoReply,
     GetAllActorInfoRequest,
     GetAllNodeInfoReply,
@@ -293,20 +294,47 @@ class StateDataSourceClient:
         req_filters = GetTaskEventsRequest.Filters()
         for filter in filters:
             key, predicate, value = filter
-            if predicate != "=":
-                # We only support EQUAL predicate for source side filtering.
-                continue
+            filter_predicate = None
+            if predicate == "=":
+                filter_predicate = FilterPredicate.EQUAL
+            elif predicate == "!=":
+                filter_predicate = FilterPredicate.NOT_EQUAL
+            else:
+                # We only support EQUAL and NOT_EQUAL predicate for source side
+                # filtering. If invalid predicates were specified, it should already be
+                # raised when the filters arguments are parsed
+                assert False, "Invalid predicate: " + predicate
 
             if key == "actor_id":
-                req_filters.actor_id = ActorID(hex_to_binary(value)).binary()
+                actor_filter = GetTaskEventsRequest.Filters.ActorIdFilter()
+                actor_filter.actor_id = ActorID(hex_to_binary(value)).binary()
+                actor_filter.predicate = filter_predicate
+                req_filters.actor_filters.append(actor_filter)
+
             elif key == "job_id":
-                req_filters.job_id = JobID(hex_to_binary(value)).binary()
+                job_filter = GetTaskEventsRequest.Filters.JobIdFilter()
+                job_filter.job_id = JobID(hex_to_binary(value)).binary()
+                job_filter.predicate = filter_predicate
+                req_filters.job_filters.append(job_filter)
+
             elif key == "task_id":
-                req_filters.task_ids.append(TaskID(hex_to_binary(value)).binary())
+                task_filter = GetTaskEventsRequest.Filters.TaskIdFilter()
+                task_filter.task_id = TaskID(hex_to_binary(value)).binary()
+                task_filter.predicate = filter_predicate
+                req_filters.task_filters.append(task_filter)
+
             elif key == "name":
-                req_filters.name = value
+                task_name_filter = GetTaskEventsRequest.Filters.TaskNameFilter()
+                task_name_filter.task_name = value
+                task_name_filter.predicate = filter_predicate
+                req_filters.task_name_filters.append(task_name_filter)
+
             elif key == "state":
-                req_filters.state = value
+                state_filter = GetTaskEventsRequest.Filters.StateFilter()
+                state_filter.state = value
+                state_filter.predicate = filter_predicate
+                req_filters.state_filters.append(state_filter)
+
             else:
                 continue
 

@@ -2,6 +2,7 @@ import datetime
 import json
 import logging
 import sys
+import warnings
 from abc import ABC
 from dataclasses import asdict, field, fields
 from enum import Enum, unique
@@ -162,6 +163,33 @@ class ListApiOptions:
                     f"Unsupported filter predicate {filter_predicate} is given. "
                     "Available predicates: =, !=."
                 )
+
+    def has_conflicting_filters(self) -> bool:
+        # Check the filters in the ListApiOptions conflicts. Specifically for:
+        # - multiple '=' filters with the same key but different values.
+        # TODO(myan): More conflicts situation can be added for further optimization.
+        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # and ther other with '!=' predicate
+        equal_filters = {}
+        for filter in self.filters:
+            filter_key, filter_predicate, filter_value = filter
+            if filter_predicate == "=":
+                if (
+                    filter_key in equal_filters
+                    and equal_filters[filter_key] != filter_value
+                ):
+                    warnings.warn(
+                        "There are multiple '=' filters with the same "
+                        f"key '{filter_key}' but different values"
+                        f"'{equal_filters[filter_key]}' & '{filter_value}'. "
+                        "Empty result set will be returned",
+                        UserWarning,
+                    )
+                    return True
+                elif filter_key not in equal_filters:
+                    equal_filters[filter_key] = filter_value
+
+        return False
 
 
 @dataclass(init=not IS_PYDANTIC_2)
