@@ -15,6 +15,7 @@ WriteResultType = TypeVar("WriteResultType")
 
 
 @dataclass
+@DeveloperAPI
 class WriteResult(Generic[WriteResultType]):
     """Aggregated result of the Datasink write operations."""
 
