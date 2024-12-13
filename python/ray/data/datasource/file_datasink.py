@@ -186,13 +186,15 @@ class RowBasedFileDatasink(_FileDatasink):
             )
             write_path = posixpath.join(self.path, filename)
 
-            def write_row_to_path():
+            def write_row_to_path(row, write_path):
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
             logger.debug(f"Writing {write_path} file.")
             call_with_retry(
-                write_row_to_path,
+                lambda row=row, write_path=write_path: write_row_to_path(
+                    row, write_path
+                ),
                 description=f"write '{write_path}'",
                 match=DataContext.get_current().retried_io_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,
