@@ -33,9 +33,7 @@ class OfflineData:
         # Use `read_parquet` as default data read method.
         self.data_read_method = self.config.input_read_method
         # Override default arguments for the data read method.
-        self.data_read_method_kwargs = (
-            self.default_read_method_kwargs | self.config.input_read_method_kwargs
-        )
+        self.data_read_method_kwargs = self.config.input_read_method_kwargs
         # In case `EpisodeType` or `BatchType` batches are read the size
         # could differ from the final `train_batch_size_per_learner`.
         self.data_read_batch_size = self.config.input_read_batch_size
@@ -75,11 +73,12 @@ class OfflineData:
                 "'gcs' for GCS, 's3' for S3, or 'abs'"
             )
         # Add the filesystem object to the write method kwargs.
-        self.data_read_method_kwargs.update(
-            {
-                "filesystem": self.filesystem_object,
-            }
-        )
+        if self.filesystem_object:
+            self.data_read_method_kwargs.update(
+                {
+                    "filesystem": self.filesystem_object,
+                }
+            )
 
         try:
             # Load the dataset.
@@ -90,9 +89,11 @@ class OfflineData:
             if self.materialize_data:
                 self.data = self.data.materialize()
             stop_time = time.perf_counter()
-            logger.debug(f"Time for loading dataset: {stop_time - start_time}s.")
+            logger.debug(
+                "===> [OfflineData] - Time for loading dataset: "
+                f"{stop_time - start_time}s."
+            )
             logger.info("Reading data from {}".format(self.path))
-            logger.info(self.data.schema())
         except Exception as e:
             logger.error(e)
         # Avoids reinstantiating the batch iterator each time we sample.
@@ -147,8 +148,7 @@ class OfflineData:
                 # Add constructor `kwargs` when using remote learners.
                 fn_constructor_kwargs.update(
                     {
-                        "learner": self.learner_handles,
-                        "locality_hints": self.locality_hints,
+                        "learner": None,
                         "module_spec": self.module_spec,
                         "module_state": module_state,
                     }
@@ -223,12 +223,6 @@ class OfflineData:
                 )
 
     @property
-    def default_read_method_kwargs(self):
-        return {
-            "override_num_blocks": max(self.config.num_learners * 2, 2),
-        }
-
-    @property
     def default_map_batches_kwargs(self):
         return {
             "concurrency": max(2, self.config.num_learners),
@@ -239,6 +233,4 @@ class OfflineData:
     def default_iter_batches_kwargs(self):
         return {
             "prefetch_batches": 2,
-            "local_shuffle_buffer_size": self.config.train_batch_size_per_learner
-            or (self.config.train_batch_size // max(1, self.config.num_learners)) * 4,
         }
