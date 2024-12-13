@@ -1796,8 +1796,8 @@ class CompiledDAG:
                  ---> actor2.f2
 
         The control dependency between `actor2.f1` and `actor2.f2` is that `f1` should
-        run before `f2`. If `actor1.a` reads `actor2.f2` before `actor2.f1`, a deadlock
-        will occur.
+        run before `f2`. If `actor1.a` writes to `actor2.f2` before `actor2.f1`, a
+        deadlock will occur.
 
         Currently, the execution schedule is not granular enough to detect this
         deadlock.

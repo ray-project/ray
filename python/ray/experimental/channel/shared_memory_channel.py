@@ -9,6 +9,7 @@ import ray.exceptions
 from ray._raylet import SerializedObject
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
+from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -63,17 +64,6 @@ def _create_channel_ref(
         )
         raise
     return object_ref
-
-
-def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
-    """
-    Get the current actor handle in this worker.
-    If this is called in a driver process, it will return None.
-    """
-    try:
-        return ray.get_runtime_context().current_actor
-    except RuntimeError:
-        return None
 
 
 # aDAG maintains 1 reader object reference (also called buffer) per node.
@@ -235,7 +225,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = _get_self_actor()
+            self_actor = get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (

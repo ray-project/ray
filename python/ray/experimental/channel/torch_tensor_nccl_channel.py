@@ -12,11 +12,9 @@ from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.nccl_group import _NcclGroup
-from ray.experimental.channel.shared_memory_channel import (
-    SharedMemoryType,
-    _get_self_actor,
-)
+from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI
 
 if TYPE_CHECKING:
@@ -297,7 +295,7 @@ class TorchTensorNcclChannel(ChannelInterface):
         """
         # If the reader is the same actor as the writer, then we can use the
         # local channel to read the data.
-        reader = _get_self_actor()
+        reader = get_self_actor()
         if reader == self._writer:
             assert self._local_channel is not None
             return self._local_channel.read()
