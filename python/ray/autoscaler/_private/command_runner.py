@@ -7,16 +7,14 @@ import sys
 import time
 from getpass import getuser
 from shlex import quote
-from typing import Dict, List
+from typing import Dict
 
 import click
 
-from ray._private.ray_constants import DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES
 from ray.autoscaler._private.cli_logger import cf, cli_logger
 from ray.autoscaler._private.constants import (
     AUTOSCALER_NODE_SSH_INTERVAL_S,
     AUTOSCALER_NODE_START_WAIT_S,
-    DEFAULT_OBJECT_STORE_MEMORY_PROPORTION,
 )
 from ray.autoscaler._private.log_timer import LogTimer
 from ray.autoscaler._private.subprocess_output_util import (

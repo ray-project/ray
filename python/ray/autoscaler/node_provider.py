@@ -232,7 +232,8 @@ class NodeProvider:
         }
         if docker_config and docker_config["container_name"] != "":
             raise ValueError(
-                "The docker backend of the VM cluster launcher has been removed, we recommend KubeRay for container based Ray deployments going forward"
+                "The docker backend of the VM cluster launcher has been removed, we "
+                "recommend KubeRay for container based Ray deployments going forward"
             )
         else:
             return SSHCommandRunner(**common_args)
