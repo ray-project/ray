@@ -1375,6 +1375,9 @@ class TestTorchTensorTypeHintCustomSerializer:
         of `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
         the tensor will not be moved to GPU.
         """
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
+
         worker1 = Worker.options(num_gpus=1).remote()
         worker2 = Worker.options(num_gpus=1).remote()
         with InputNode() as inp:
@@ -1433,6 +1436,9 @@ class TestTorchTensorTypeHintCustomSerializer:
         * The driver calls normal deserialization function to deserialize the
           tensor from `worker2`.
         """
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
+
         worker1 = Worker.options(num_gpus=1).remote()
         worker2 = Worker.options(num_gpus=1).remote()
 
