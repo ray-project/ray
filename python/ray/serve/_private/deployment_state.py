@@ -1546,9 +1546,7 @@ class DeploymentState:
         if do_checkpoint:
             self._save_checkpoint_func()
 
-    def deploy(
-        self, deployment_info: DeploymentInfo, do_checkpoint: bool = True
-    ) -> bool:
+    def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version, config,
@@ -1603,7 +1601,7 @@ class DeploymentState:
         self._set_target_state(
             deployment_info,
             target_num_replicas=target_num_replicas,
-            do_checkpoint=do_checkpoint,
+            do_checkpoint=False,  # Checkpoint is handled further up the call stack
         )
         self._deployment_scheduler.on_deployment_deployed(
             self._id, deployment_info.replica_config
@@ -2634,7 +2632,6 @@ class DeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
-        do_checkpoint: bool = True,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2650,9 +2647,7 @@ class DeploymentStateManager:
             )
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(
-            deployment_info, do_checkpoint=do_checkpoint
-        )
+        return self._deployment_states[deployment_id].deploy(deployment_info)
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
@@ -2735,6 +2730,8 @@ class DeploymentStateManager:
             if deleted:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
+
+        self.save_checkpoint()  # Make sure to checkpoint before taking any actions
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(

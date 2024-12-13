@@ -432,7 +432,6 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
-        do_checkpoint: bool = True,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -443,9 +442,7 @@ class ApplicationState:
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
-        self._deployment_state_manager.deploy(
-            deployment_id, deployment_info, do_checkpoint=do_checkpoint
-        )
+        self._deployment_state_manager.deploy(deployment_id, deployment_info)
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -790,11 +787,7 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(
-                deployment_name, deploy_info, do_checkpoint=False
-            )
-
-        self._deployment_state_manager.save_checkpoint()
+            self.apply_deployment_info(deployment_name, deploy_info)
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -1113,6 +1106,9 @@ class ApplicationStateManager:
             for app_name in apps_to_be_deleted:
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
+
+        self.save_checkpoint()
+        self._deployment_state_manager.save_checkpoint()
 
     def shutdown(self) -> None:
         for app_state in self._application_states.values():
