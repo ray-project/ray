@@ -180,7 +180,7 @@ class HttpServerDashboardHead:
         if (
             # A best effort test for browser traffic. All common browsers
             # start with Mozilla at the time of writing.
-            request.headers["User-Agent"].startswith("Mozilla")
+            dashboard_optional_utils.is_browser_request(request)
             and request.method in [hdrs.METH_POST, hdrs.METH_PUT]
         ):
             return aiohttp.web.Response(
