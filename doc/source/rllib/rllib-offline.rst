@@ -1327,7 +1327,7 @@ If you need to perform data transformations at a deeper level - before your data
 :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` objects ready for training. For instance, if your data is stored in specialized formats requiring pre-parsing and restructuring (for example, XML, HTML, Protobuf, images, or videos), you may need to handle these custom formats directly. You can leverage tools such as `Ray Data's custom datasources <custom_datasource>` (for example, :py:meth:`~ray.data.read_binary_files`) to manage the ingestion process. To ensure
 this data is appropriately structured and sorted into :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects, you can override the :py:meth:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner._map_to_episodes` static method.
 
-For more extensive customization, you can rewrite the `__call__` method to define custom transformation steps, implement a unique :py:ref:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, and construct :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the :py:ref:`~ray.rllib.core.learner.learner.Learner`.
+For more extensive customization, you can rewrite the `__call__` method to define custom transformation steps, implement a unique :py:class:`~ray.rllib.connectors.learner.learner_connector_pipeline.LearnerConnectorPipeline`, and construct :py:class:`~ray.rllib.policy.sample_batch.MultiAgentBatch` instances for the :py:class:`~ray.rllib.core.learner.learner.Learner`.
 
 The following example demonstrates how to use a custom :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` to process text data and construct training batches:
 
