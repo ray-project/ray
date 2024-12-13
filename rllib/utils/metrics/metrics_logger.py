@@ -116,7 +116,7 @@ class MetricsLogger:
         #  MetricsLogger) is serialized and deserialized. We will have to fix this
         #  offline RL logic first, then can remove this hack here and return to always
         #  using the RLock.
-        self._threading_lock = _DummyRLock()  # threading.RLock()
+        self._threading_lock = _DummyRLock()
 
     def __contains__(self, key: Union[str, Tuple[str, ...]]) -> bool:
         """Returns True, if `key` can be found in self.stats.

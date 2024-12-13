@@ -15,6 +15,8 @@ from ray import ObjectRef
 from ray.rllib import SampleBatch
 from ray.rllib.algorithms.algorithm import Algorithm
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
+from ray.rllib.algorithms.utils import AggregatorActor
+from ray.rllib.connectors.learner import AddOneTsToEpisodesAndTruncate
 from ray.rllib.core import (
     COMPONENT_ENV_TO_MODULE_CONNECTOR,
     COMPONENT_MODULE_TO_ENV_CONNECTOR,
@@ -481,6 +483,25 @@ class IMPALAConfig(AlgorithmConfig):
                 "Use either 'torch' or 'tf2'."
             )
 
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        connector = super().build_learner_connector(input_observation_space, input_action_space, device)
+        # Extend all episodes by one artificial timestep to allow the value function net
+        # to compute the bootstrap values (and add a mask to the batch to know, which
+        # slots to mask out).
+        if self.add_default_connectors_to_learner_pipeline:
+            connector.prepend(AddOneTsToEpisodesAndTruncate())
+            ## Leave all batches on the CPU (they'll be moved to the GPU, if applicable,
+            ## by the n GPU loader threads).
+            #numpy_to_tensor_connector = self._learner_connector[NumpyToTensor][0]
+            #numpy_to_tensor_connector._device = "cpu"  # TODO (sven): Provide API?
+        return connector
+
 
 ImpalaConfig = IMPALAConfig
 
@@ -540,7 +561,8 @@ class IMPALA(Algorithm):
 
         # Create extra aggregation workers and assign each rollout worker to
         # one of them.
-        self.batch_being_built = []
+        self.batch_being_built = []#TODO: rename b/c of aggregator actors!!
+        self._ma_batch_being_built = []
         if self.config.num_aggregation_workers > 0:
             # This spawns `num_aggregation_workers` actors that aggregate
             # experiences coming from RolloutWorkers in parallel. We force
@@ -555,7 +577,7 @@ class IMPALA(Algorithm):
                 actor_specs=[
                     # (class, args, kwargs={}, count=1)
                     (
-                        AggregationWorker
+                        AggregatorActor
                         if self.config.enable_env_runner_and_connector_v2
                         else AggregatorWorker_OldAPIStack,
                         [
@@ -567,15 +589,20 @@ class IMPALA(Algorithm):
                 ],
                 node=localhost,
             )
-            aggregator_workers = [
+            aggregator_actors = [
                 actor for actor_groups in all_co_located for actor in actor_groups
             ]
+            #TEST: do not use manager yet
+            #self._test_aggregator_actors = aggregator_actors
             self._aggregator_actor_manager = FaultTolerantActorManager(
-                aggregator_workers,
+                aggregator_actors,
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_worker
                 ),
             )
+            #self._aggregator_actor_manager = None
+            #END TEST
+
         elif self.config.enable_rl_module_and_learner:
             self._aggregator_actor_manager = None
         else:
@@ -633,18 +660,35 @@ class IMPALA(Algorithm):
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
-        data_packages_for_learner_group = self._pre_queue_episode_refs(episode_refs)
+        data_packages_for_aggregators = self._pre_queue_episode_refs(episode_refs)
 
-        time.sleep(0.01)
+        #TEST: Move all collected episode refs into our aggregator actor.
+        ma_batches_refs_remote_results = self._aggregator_actor_manager.fetch_ready_async_reqs(
+            timeout_seconds=0.0,
+            return_obj_refs=True,
+        )
+        ma_batches_refs = []
+        for call_result in ma_batches_refs_remote_results:
+            ma_batches_refs.append(call_result.get())
+        for pack in data_packages_for_aggregators:
+            self._aggregator_actor_manager.foreach_actor_async(
+                func=lambda actor: actor.get_batch(pack)
+                # remote_actor_ids=, TODO: round robin for > 1 aggregator actor
+            )
+        #self._test_aggregator_actors[0].get_batches.remote(data_packages_for_learner_group)
+
+        data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
+
+        #time.sleep(0.01)
 
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
-        if self.config.num_aggregation_workers:
-            data_packages_for_learner_group = (
-                self._process_env_runner_data_via_aggregation(
-                    data_packages_for_learner_group
-                )
-            )
+        #if self.config.num_aggregation_workers:
+        #    data_packages_for_learner_group = (
+        #        self._process_env_runner_data_via_aggregation(
+        #            data_packages_for_learner_group
+        #        )
+        #    )
 
         if self.config.learner_config_dict.get("_training_step_sample_only"):
             return
@@ -829,12 +873,26 @@ class IMPALA(Algorithm):
                 len(self.batch_being_built)
                 * self.config.num_envs_per_env_runner
                 * self.config.get_rollout_fragment_length()
-                >= self.config.total_train_batch_size
+                >= self.config.train_batch_size_per_learner
             ):
                 episode_refs_for_learner_group.append(self.batch_being_built)
                 self.batch_being_built = []
 
         return episode_refs_for_learner_group
+
+    def _pre_queue_batch_refs(self, batch_refs: List[ObjectRef]) -> List[List[ObjectRef]]:
+        # Each element in this list is en ObjRef[MABatch].
+        # Each MaBatch was returned by one AggregatorActor from a single `get_batch()`
+        # call.
+        batch_refs_for_learner_group: List[List[ObjectRef]] = []
+
+        for ref in batch_refs:
+            self._ma_batch_being_built.append(ref)
+            if len(self._ma_batch_being_built) >= self.config.num_learners:
+                batch_refs_for_learner_group.append(self._ma_batch_being_built)
+                self._ma_batch_being_built = []
+
+        return batch_refs_for_learner_group
 
     def _process_env_runner_data_via_aggregation(
         self,
@@ -890,34 +948,6 @@ class IMPALA(Algorithm):
         )
 
         return list(waiting_processed_sample_batches.ignore_errors())
-
-    # def balance_backpressure(self):
-    #    # Sleep for n seconds to balance backpressure.
-    #    time.sleep(0.2)#self._sleep_time_controller.current)
-    #
-    #    # Adjust the sleep time once every iteration (on the first `training_step()`
-    #    # call in each iteration).
-    #    if self.metrics.peek(NUM_TRAINING_STEP_CALLS_PER_ITERATION, default=0) == 0:
-    #        train_throughput = self.metrics.peek(
-    #            (
-    #                LEARNER_RESULTS,
-    #                ALL_MODULES,
-    #                NUM_ENV_STEPS_TRAINED_LIFETIME,
-    #            ),
-    #            default=0.0,
-    #            throughput=True,
-    #        )
-    #        self.metrics.log_value(
-    #            "_measured_train_throughput",
-    #            train_throughput,
-    #            window=1,
-    #        )
-    #        self._sleep_time_controller.log_result(train_throughput)
-    #        self.metrics.log_value(
-    #            "_current_sleep_time",
-    #            self._sleep_time_controller.current,
-    #            window=1,
-    #        )
 
     @classmethod
     @override(Algorithm)
@@ -1438,32 +1468,6 @@ class IMPALA(Algorithm):
 
 
 Impala = IMPALA
-
-
-@DeveloperAPI
-@ray.remote(num_cpus=0, max_restarts=-1)
-class AggregationWorker(FaultAwareApply):
-    """A worker performing LearnerConnector pass throughs of collected episodes."""
-
-    def __init__(self, config: AlgorithmConfig):
-        self.config = config
-        self._learner_connector = self.config.build_learner_connector(
-            input_observation_space=None,
-            input_action_space=None,
-        )
-        self._rl_module = None
-
-    def process_episodes(self, episodes):
-        batch = self._learner_connector(
-            batch={},
-            episodes=episodes,
-            rl_module=self._rl_module,
-            shared_data={},
-        )
-        return batch
-
-    def get_host(self) -> str:
-        return platform.node()
 
 
 @OldAPIStack

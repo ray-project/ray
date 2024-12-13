@@ -37,12 +37,14 @@ args = parser.parse_args()
 config = (
     IMPALAConfig()
     .environment("huge-cart")
+    #.environment("CartPole-v1")
     .api_stack(
         enable_env_runner_and_connector_v2=True,
         enable_rl_module_and_learner=True,
     )
     .env_runners(compress_observations=True)
     .training(
+        num_aggregation_workers=1,
         train_batch_size_per_learner=500,
         train_batch_size=500,
         #grad_clip=40.0,
@@ -55,26 +57,26 @@ config = (
         #},
         model={
             "fcnet_hiddens": [2048, 2048, 2048],
-            "use_lstm": True,
-            "lstm_cell_size": 2048,
+            #"use_lstm": True,
+            #"lstm_cell_size": 2048,
             "vf_share_layers": False,
         },
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[2048, 2048, 2048],
-            use_lstm=True,
-            lstm_cell_size=2048,
+            #use_lstm=True,
+            #lstm_cell_size=2048,
             vf_share_layers=False,
         ),
     )
-    .evaluation(
-        evaluation_interval=1,
-        evaluation_num_env_runners=2,
-        evaluation_config=IMPALAConfig.overrides(num_envs_per_env_runner=1),
-        evaluation_duration="auto",
-        evaluation_parallel_to_training=True,
-    )
+    #.evaluation(
+    #    evaluation_interval=1,
+    #    evaluation_num_env_runners=2,
+    #    evaluation_config=IMPALAConfig.overrides(num_envs_per_env_runner=1),
+    #    evaluation_duration="auto",
+    #    evaluation_parallel_to_training=True,
+    #)
 )
 
 

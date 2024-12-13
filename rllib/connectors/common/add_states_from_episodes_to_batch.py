@@ -213,6 +213,9 @@ class AddStatesFromEpisodesToBatch(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
+        # TODO: What if RLModule is stateful and we need it here?
+        return batch
+
         # If not stateful OR STATE_IN already in data, early out.
         if not rl_module.is_stateful() or Columns.STATE_IN in batch:
             return batch
