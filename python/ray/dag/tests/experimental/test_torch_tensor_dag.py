@@ -118,6 +118,20 @@ class TrainWorker:
         return torch.randn(10, 10)
 
 
+@ray.remote
+class Worker:
+    def __init__(self):
+        self.device = None
+
+    def no_op(self, tensor):
+        assert isinstance(tensor, torch.Tensor)
+        self.device = tensor.device
+        return tensor
+
+    def get_device(self):
+        return self.device
+
+
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_p2p(ray_start_regular):
     if USE_GPU:
@@ -1268,20 +1282,6 @@ def test_tensor_writable_warning_suppressed(ray_start_regular):
     for log in logs:
         assert "The given NumPy array is not writable" not in log, log
     compiled_dag.teardown()
-
-
-@ray.remote
-class Worker:
-    def __init__(self):
-        self.device = None
-
-    def no_op(self, tensor):
-        assert isinstance(tensor, torch.Tensor)
-        self.device = tensor.device
-        return tensor
-
-    def get_device(self):
-        return self.device
 
 
 class TestTorchTensorTypeHintCustomSerializer:
