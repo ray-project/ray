@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -46,6 +49,7 @@
 #include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
+#include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -1007,7 +1011,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
+  ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
@@ -1339,8 +1343,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
-                                           const std::shared_ptr<nlohmann::json> parent);
+  static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
+                                           std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1446,7 +1450,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 worker. If nullopt, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
   /// to the caller.
@@ -1466,7 +1470,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -1657,8 +1661,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
-  /// Sends AnnounceWorkerPort to the GCS. Called in ctor.
+  /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
+
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success,
+                      std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id,
+                      void *py_future);
 
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
@@ -1801,7 +1811,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_ ABSL_GUARDED_BY(mutex_);
+  ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
@@ -1836,12 +1846,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success,
-                      std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id,
-                      void *py_future);
-
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
@@ -1868,6 +1872,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   uint32_t pid_;
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+
+  /// TODO(hjiang):
+  /// 1. Cached job runtime env info, it's not implemented at first place since
+  /// `OverrideRuntimeEnv` mutates parent job runtime env info.
+  /// 2. Cleanup cache on job change.
+  ///
+  /// Maps serialized runtime env info to **immutable** deserialized protobuf.
+  mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
+      runtime_env_json_serialization_cache_;
 };
 
 // Lease request rate-limiter based on cluster node size.
