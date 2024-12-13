@@ -3,6 +3,7 @@ import copy
 import logging
 import os
 import random
+import re
 import string
 import time
 import traceback
@@ -11,9 +12,11 @@ from typing import Any, AsyncIterator, Dict, Optional, Union
 import ray
 import ray._private.ray_constants as ray_constants
 from ray._private.event.event_logger import get_event_logger
-from ray._private.gcs_utils import GcsAioClient
-from ray._private.utils import run_background_task
+from ray._private.gcs_utils import GcsAioClient, GcsChannel
+from ray._private.utils import hex_to_binary, run_background_task
+from ray._raylet import JobID
 from ray.actor import ActorHandle
+from ray.core.generated import gcs_service_pb2, gcs_service_pb2_grpc
 from ray.core.generated.event_pb2 import Event
 from ray.dashboard.consts import (
     DEFAULT_JOB_START_TIMEOUT_SECONDS,
@@ -74,6 +77,11 @@ class JobManager:
         self._logs_dir = logs_dir
         self._job_info_client = JobInfoStorageClient(gcs_aio_client, logs_dir)
         self._gcs_address = gcs_aio_client.address
+        self._gcs_channel = GcsChannel(gcs_address=self._gcs_address, aio=True)
+        self._gcs_channel.connect()
+        self._gcs_job_info_stub = gcs_service_pb2_grpc.JobInfoGcsServiceStub(
+            self._gcs_channel.channel()
+        )
         self._cluster_id_hex = gcs_aio_client.cluster_id.hex()
         self._log_client = JobLogStorageClient()
         self._supervisor_actor_cls = ray.remote(JobSupervisor)
@@ -603,6 +611,30 @@ class JobManager:
 
         await self._job_info_client.delete_info(job_id)
         return True
+
+    async def delete_from_job_table(self, job_id: str):
+        match = re.match(r"^[\da-f]{8}$", job_id)
+        if not match:
+            return False
+
+        request = gcs_service_pb2.DeleteJobRequest()
+        request.job_id = JobID(hex_to_binary(job_id)).binary()
+        reply = await self._gcs_job_info_stub.DeleteJob(request)
+        if reply.status.code == 0:
+            if reply.result == gcs_service_pb2.DeleteResult.SUCCESS:
+                return True
+            elif reply.result == gcs_service_pb2.DeleteResult.IS_RUNNING:
+                raise RuntimeError(
+                    f"Attempted to delete job '{job_id}', "
+                    f"but it is in a non-terminal state RUNNING."
+                )
+            else:
+                return False
+        else:
+            raise Exception(
+                f"Delete Job Failed. Code={reply.status.code} "
+                f"Message={reply.status.message}"
+            )
 
     def job_info_client(self) -> JobInfoStorageClient:
         return self._job_info_client
