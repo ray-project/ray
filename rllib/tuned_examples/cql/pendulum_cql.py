@@ -15,7 +15,7 @@ from ray.rllib.utils.test_utils import (
 parser = add_rllib_example_script_args()
 parser.set_defaults(enable_new_api_stack=True)
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 assert (
@@ -39,10 +39,6 @@ config = (
     )
     .offline_data(
         input_=[data_path.as_posix()],
-        # The `kwargs` for the `input_read_method`. We override the
-        # the number of blocks to pull at once b/c our dataset is
-        # small.
-        input_read_method_kwargs={"override_num_blocks": max(args.num_gpus * 2, 2)},
         # The `kwargs` for the `map_batches` method in which our
         # `OfflinePreLearner` is run. 2 data workers should be run
         # concurrently.
@@ -54,7 +50,7 @@ config = (
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
         # iteration. For single-learner mode 1 is the only option.
-        dataset_num_iters_per_learner=1 if args.num_gpus == 0 else None,
+        dataset_num_iters_per_learner=1 if not args.num_learners else None,
         # TODO (sven): Has this any influence in the connectors?
         actions_in_input_normalized=True,
     )
@@ -64,9 +60,9 @@ config = (
         min_q_weight=5.0,
         train_batch_size_per_learner=1024,
         twin_q=True,
-        actor_lr=1.7e-3 * (args.num_gpus or 1) ** 0.5,
-        critic_lr=2.5e-3 * (args.num_gpus or 1) ** 0.5,
-        alpha_lr=1e-3 * (args.num_gpus or 1) ** 0.5,
+        actor_lr=1.7e-3 * (args.num_learners or 1) ** 0.5,
+        critic_lr=2.5e-3 * (args.num_learners or 1) ** 0.5,
+        alpha_lr=1e-3 * (args.num_learners or 1) ** 0.5,
         # Set this to `None` for all `SAC`-like algorithms. These
         # algorithms use learning rates for each optimizer.
         lr=None,

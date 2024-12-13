@@ -6,7 +6,6 @@ bitsandbytes
 boto3
 cmake
 crc32c
-dataset
 datasets
 decord
 deepspeed>=0.12.3

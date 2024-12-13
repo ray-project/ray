@@ -20,6 +20,10 @@ from ray.experimental.channel.gpu_communicator import (
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
+from ray._private.test_utils import (
+    get_log_message,
+    init_log_pubsub,
+)
 
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
 from ray.tests.conftest import *  # noqa
@@ -182,13 +186,19 @@ def test_torch_tensor_as_dag_input(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl(ray_start_regular):
+@pytest.mark.parametrize("enable_profiling", [False, True])
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_nccl(
+    ray_start_regular, monkeypatch, enable_profiling, overlap_gpu_communication
+):
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
 
     assert (
         sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
     ), "This test requires at least 2 GPUs"
+
+    monkeypatch.setattr(ray.dag.constants, "RAY_CG_ENABLE_PROFILING", enable_profiling)
 
     actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
 
@@ -204,7 +214,9 @@ def test_torch_tensor_nccl(ray_start_regular):
         dag = dag.with_type_hint(TorchTensorType(transport="nccl"))
         dag = receiver.recv.bind(dag)
 
-    compiled_dag = dag.experimental_compile()
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
 
     # Test that we can pass different shapes and data.
     for i in range(3):
@@ -1215,6 +1227,45 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert torch.equal(result[0], expected_tensor_val)
     assert torch.equal(result[1], expected_tensor_val)
     assert result[2] == (value, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
+def test_tensor_writable_warning_suppressed(ray_start_regular):
+    """When we move cpu tensor to gpu, aDAG does zero-copy with is_wriatble=False.
+    Torch doesn't like it, so it prints warning. We know that it is safe to do it,
+    so Ray suppress the warning message. This test verifies the warning is not
+    printed in this scenario.
+
+    """
+    if not USE_GPU:
+        pytest.skip("Test requires GPU")
+
+    p = init_log_pubsub()
+
+    @ray.remote(num_gpus=1)
+    class A:
+        def recv(self, tensor):
+            return 1
+
+    receiver = A.remote()
+
+    # Test torch.Tensor as input.
+    with InputNode() as inp:
+        # TODO(swang): Test that we are using the minimum number of
+        # channels/messages when _direct_return=True.
+        torch_inp = inp.with_type_hint(TorchTensorType())
+        dag = receiver.recv.bind(torch_inp)
+
+    compiled_dag = dag.experimental_compile()
+    ref = compiled_dag.execute(torch.tensor([1]))
+    assert ray.get(ref) == 1
+    # This should timeout because actor shouldn't print anything.
+    logs = get_log_message(p, 2, timeout=3)
+    # Verify nothing else is published other than autoscaler messages.
+    # If warning is not suppressed, warning should be printed here.
+    for log in logs:
+        assert "The given NumPy array is not writable" not in log, log
+    compiled_dag.teardown()
 
 
 if __name__ == "__main__":

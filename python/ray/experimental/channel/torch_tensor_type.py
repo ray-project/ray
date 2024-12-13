@@ -122,7 +122,7 @@ class TorchTensorType(ChannelOutputType):
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        read_by_adag_driver: bool,
+        driver_actor_id: Optional[str] = None,
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
@@ -142,9 +142,7 @@ class TorchTensorType(ChannelOutputType):
             if _cpu_data_channel is None and not self._direct_return:
                 # Create a CPU channel to send non-tensor data.
                 _cpu_data_channel = SharedMemoryType().create_channel(
-                    writer,
-                    reader_and_node_list,
-                    read_by_adag_driver,
+                    writer, reader_and_node_list, driver_actor_id
                 )
 
             return TorchTensorNcclChannel(
@@ -159,7 +157,7 @@ class TorchTensorType(ChannelOutputType):
         # shared-memory channel.
         # TODO(swang): Allow the initial max buffer size to be overridden.
         typ = SharedMemoryType()
-        return typ.create_channel(writer, reader_and_node_list, read_by_adag_driver)
+        return typ.create_channel(writer, reader_and_node_list, driver_actor_id)
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL

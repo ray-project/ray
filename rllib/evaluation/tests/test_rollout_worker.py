@@ -1,10 +1,8 @@
 import gymnasium as gym
 from gymnasium.spaces import Box, Discrete
-import json
 import numpy as np
 import os
 import random
-import tempfile
 import time
 import unittest
 
@@ -25,8 +23,6 @@ from ray.rllib.examples.envs.classes.mock_env import (
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
 from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
-from ray.rllib.offline.dataset_reader import DatasetReader, get_dataset_and_shards
-from ray.rllib.offline.json_reader import JsonReader
 from ray.rllib.policy.policy import Policy, PolicySpec
 from ray.rllib.policy.sample_batch import (
     DEFAULT_POLICY_ID,
@@ -359,87 +355,6 @@ class TestRolloutWorker(unittest.TestCase):
         self.assertGreater(np.max(sample["actions"]), action_space.high[0])
         self.assertLess(np.min(sample["actions"]), action_space.low[0])
         ev.stop()
-
-    def test_action_normalization_offline_dataset(self):
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            # create environment
-            env = gym.make("Pendulum-v1")
-
-            # create temp data with actions at min and max
-            data = {
-                "type": "SampleBatch",
-                "actions": [[2.0], [-2.0]],
-                "terminateds": [0.0, 0.0],
-                "truncateds": [0.0, 0.0],
-                "rewards": [0.0, 0.0],
-                "obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-                "new_obs": [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]],
-            }
-
-            data_file = os.path.join(tmp_dir, "data.json")
-
-            with open(data_file, "w") as f:
-                json.dump(data, f)
-
-            # create input reader functions
-            def dataset_reader_creator(ioctx):
-                config = AlgorithmConfig().offline_data(
-                    input_="dataset",
-                    input_config={"format": "json", "paths": data_file},
-                )
-                _, shards = get_dataset_and_shards(config, num_workers=0)
-                return DatasetReader(shards[0], ioctx)
-
-            def json_reader_creator(ioctx):
-                return JsonReader(data_file, ioctx)
-
-            input_creators = [dataset_reader_creator, json_reader_creator]
-
-            # actions_in_input_normalized, normalize_actions
-            parameters = [
-                (True, True),
-                (True, False),
-                (False, True),
-                (False, False),
-            ]
-
-            # check that samples from dataset will be normalized if and only if
-            # actions_in_input_normalized == False and
-            # normalize_actions == True
-            for input_creator in input_creators:
-                for actions_in_input_normalized, normalize_actions in parameters:
-                    ev = RolloutWorker(
-                        env_creator=lambda _: env,
-                        default_policy_class=MockPolicy,
-                        config=AlgorithmConfig()
-                        .env_runners(
-                            num_env_runners=0,
-                            rollout_fragment_length=1,
-                        )
-                        .environment(
-                            normalize_actions=normalize_actions,
-                            clip_actions=False,
-                        )
-                        .training(train_batch_size=1)
-                        .offline_data(
-                            offline_sampling=True,
-                            actions_in_input_normalized=actions_in_input_normalized,
-                            input_=input_creator,
-                        ),
-                    )
-
-                    sample = ev.sample()
-
-                    if normalize_actions and not actions_in_input_normalized:
-                        # check if the samples from dataset are normalized properly
-                        self.assertLessEqual(np.max(sample["actions"]), 1.0)
-                        self.assertGreaterEqual(np.min(sample["actions"]), -1.0)
-                    else:
-                        # check if the samples from dataset are not normalized
-                        self.assertGreater(np.max(sample["actions"]), 1.5)
-                        self.assertLess(np.min(sample["actions"]), -1.5)
-
-                    ev.stop()
 
     def test_action_immutability(self):
         action_space = gym.spaces.Box(0.0001, 0.0002, (5,))

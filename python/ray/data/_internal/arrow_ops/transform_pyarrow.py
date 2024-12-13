@@ -1,9 +1,14 @@
 from typing import TYPE_CHECKING, List, Union
 
+import numpy as np
 from packaging.version import parse as parse_version
 
 from ray._private.utils import _get_pyarrow_version
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import (
+    INT32_OVERFLOW_THRESHOLD,
+    MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY,
+    PYARROW_VERSION,
+)
 
 try:
     import pyarrow
@@ -90,11 +95,14 @@ def unify_schemas(
                 cols_with_null_list.add(col_name)
             all_columns.add(col_name)
 
-    arrow_tensor_types = (
-        ArrowVariableShapedTensorType,
-        ArrowTensorType,
-        ArrowTensorTypeV2,
+    from ray.air.util.tensor_extensions.arrow import (
+        get_arrow_extension_fixed_shape_tensor_types,
+        get_arrow_extension_tensor_types,
     )
+
+    arrow_tensor_types = get_arrow_extension_tensor_types()
+    arrow_fixed_shape_tensor_types = get_arrow_extension_fixed_shape_tensor_types()
+
     columns_with_objects = set()
     columns_with_tensor_array = set()
     for col_name in all_columns:
@@ -124,12 +132,11 @@ def unify_schemas(
             for s in schemas
             if isinstance(s.field(col_name).type, arrow_tensor_types)
         ]
+
         if ArrowTensorType._need_variable_shaped_tensor_array(tensor_array_types):
             if isinstance(tensor_array_types[0], ArrowVariableShapedTensorType):
                 new_type = tensor_array_types[0]
-            elif isinstance(
-                tensor_array_types[0], (ArrowTensorType, ArrowTensorTypeV2)
-            ):
+            elif isinstance(tensor_array_types[0], arrow_fixed_shape_tensor_types):
                 new_type = ArrowVariableShapedTensorType(
                     dtype=tensor_array_types[0].scalar_type,
                     ndim=len(tensor_array_types[0].shape),
@@ -235,6 +242,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
         schema = unify_schemas(schemas_to_unify)
     except Exception as e:
         raise ArrowConversionError(str(blocks)) from e
+
     if (
         any(isinstance(type_, pa.ExtensionType) for type_ in schema.types)
         or cols_with_null_list
@@ -245,6 +253,7 @@ def concat(blocks: List["pyarrow.Table"]) -> "pyarrow.Table":
             col_chunked_arrays = []
             for block in blocks:
                 col_chunked_arrays.append(block.column(col_name))
+
             if isinstance(schema.field(col_name).type, tensor_types):
                 # For our tensor extension types, manually construct a chunked array
                 # containing chunks from all blocks. This is to handle
@@ -325,24 +334,164 @@ def concat_and_sort(
     return take_table(ret, indices)
 
 
-def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
-    """This is pyarrow.Table.combine_chunks()
-    with support for extension types.
+def to_numpy(
+    array: Union["pyarrow.Array", "pyarrow.ChunkedArray"],
+    *,
+    zero_copy_only: bool = True,
+) -> np.ndarray:
+    """Wrapper for `Array`s and `ChunkedArray`s `to_numpy` API,
+    handling API divergence b/w Arrow versions"""
 
-    This will create a new table by combining the chunks the input table has.
+    import pyarrow as pa
+
+    if isinstance(array, pa.Array):
+        return array.to_numpy(zero_copy_only=zero_copy_only)
+    elif isinstance(array, pa.ChunkedArray):
+        if PYARROW_VERSION >= MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY:
+            return array.to_numpy(zero_copy_only=zero_copy_only)
+        else:
+            return array.to_numpy()
+    else:
+        raise ValueError(
+            f"Either of `Array` or `ChunkedArray` was expected, got {type(array)}"
+        )
+
+
+def combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+    """This is counterpart for Pyarrow's `Table.combine_chunks` that's using
+    extended `ChunkedArray` combination protocol.
+
+    For more details check out `combine_chunked_array` py-doc
     """
+
+    new_column_values_arrays = []
+
+    for col in table.columns:
+        new_column_values_arrays.append(combine_chunked_array(col))
+
+    return pyarrow.Table.from_arrays(new_column_values_arrays, schema=table.schema)
+
+
+def combine_chunked_array(
+    array: "pyarrow.ChunkedArray",
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
+    """This is counterpart for Pyarrow's `ChunkedArray.combine_chunks` that additionally
+
+        1. Handles `ExtensionType`s (like ArrowTensorType, ArrowTensorTypeV2,
+           ArrowPythonObjectType, etc)
+
+        2. Making sure `ChunkedArray`s comprising provided `Table` are combined
+           safely, ie avoiding overflows of Arrow's internal offsets (using int32 for
+           most of its native types, other than "large" kind).
+
+    For more details check py-doc of `_try_combine_chunks_safe` method.
+    """
+
+    import pyarrow as pa
+
     from ray.air.util.transform_pyarrow import (
         _concatenate_extension_column,
         _is_column_extension_type,
     )
 
-    cols = table.columns
-    new_cols = []
-    for col in cols:
-        if _is_column_extension_type(col):
-            # Extension arrays don't support concatenation.
-            arr = _concatenate_extension_column(col)
-        else:
-            arr = col.combine_chunks()
-        new_cols.append(arr)
-    return pyarrow.Table.from_arrays(new_cols, schema=table.schema)
+    assert isinstance(
+        array, pa.ChunkedArray
+    ), f"Expected `ChunkedArray`, got {type(array)}"
+
+    if _is_column_extension_type(array):
+        # Arrow `ExtensionArray`s can't be concatenated via `combine_chunks`,
+        # hence require manual concatenation
+        return _concatenate_extension_column(array)
+    elif len(array.chunks) == 0:
+        # NOTE: In case there's no chunks, we need to explicitly create
+        #       an empty array since calling into `combine_chunks` would fail
+        #       due to it expecting at least 1 chunk to be present
+        return pa.array([], type=array.type)
+    else:
+        return _try_combine_chunks_safe(array)
+
+
+def _try_combine_chunks_safe(
+    array: "pyarrow.ChunkedArray", max_chunk_size=INT32_OVERFLOW_THRESHOLD
+) -> Union["pyarrow.Array", "pyarrow.ChunkedArray"]:
+    """This method provides a safe way of combining `ChunkedArray`s exceeding 2 GiB
+    in size, which aren't using "large_*" types (and therefore relying on int32
+    offsets).
+
+    When handling provided `ChunkedArray` this method will be either
+
+        - Relying on PyArrow's default `combine_chunks` (therefore returning single
+        contiguous `Array`) in cases when
+            - Array's total size is < 2 GiB
+            - Array's underlying type is of "large" kind (ie using one of the
+            `large_*` type family)
+        - Safely combining subsets of tasks such that resulting `Array`s to not
+        exceed 2 GiB in size (therefore returning another `ChunkedArray` albeit
+        with potentially smaller number of chunks that have resulted from clumping
+        the original ones)
+
+    Returns:
+        - pa.Array if it's possible to combine provided pa.ChunkedArray into single
+        contiguous array
+        - pa.ChunkedArray (albeit with chunks re-combined) if it's not possible to
+        produce single pa.Array
+    """
+
+    import pyarrow as pa
+
+    from ray.air.util.transform_pyarrow import _is_column_extension_type
+
+    assert not _is_column_extension_type(
+        array
+    ), f"Arrow `ExtensionType`s are not accepted (got {array.type})"
+
+    int64_type_predicates = [
+        pa.types.is_large_list,
+        pa.types.is_large_string,
+        pa.types.is_large_binary,
+        pa.types.is_large_unicode,
+    ]
+
+    if array.nbytes < max_chunk_size or any(
+        p(array.type) for p in int64_type_predicates
+    ):
+        # It's safe to combine provided `ChunkedArray` in either of 2 cases:
+        #   - It's cumulative size is < 2 GiB
+        #   - It's of 'large' kind (ie one using int64 offsets internally)
+        return array.combine_chunks()
+
+    # In this case it's actually *NOT* safe to try to directly combine
+    # Arrow's `ChunkedArray` and is impossible to produce single, contiguous
+    # `Array` since
+    #     - It's estimated to hold > 2 GiB
+    #     - Its type is not of the "large" kind (and hence is using int32
+    #       offsets internally, which would overflow)
+    #
+    # In this case instead of combining into single contiguous array, we
+    # instead just "clump" existing chunks into bigger ones, but no bigger
+    # than 2 GiB each.
+    #
+    # NOTE: This branch actually returns `ChunkedArray` and not an `Array`
+
+    # To stay under 2 GiB limit we are slicing provided list of chunks into
+    # slices no larger than 2 GiB (as compared to just directly using `concat_arrays`)
+    slices = []
+
+    cur_slice_start = 0
+    cur_slice_size_bytes = 0
+
+    for i, chunk in enumerate(array.chunks):
+        chunk_size = chunk.nbytes
+
+        if cur_slice_size_bytes + chunk_size > max_chunk_size:
+            slices.append(array.chunks[cur_slice_start:i])
+
+            cur_slice_start = i
+            cur_slice_size_bytes = 0
+
+        cur_slice_size_bytes += chunk_size
+
+    # Add remaining chunks as last slice
+    slices.append(array.chunks[cur_slice_start:])
+
+    return pa.chunked_array([pa.concat_arrays(s) for s in slices])

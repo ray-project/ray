@@ -8,20 +8,22 @@ import logging
 import threading
 import time
 from typing import Union, Optional
-from enum import Enum
 
 import ray.cloudpickle as pickle
 from ray.rllib.env.external_env import ExternalEnv
 from ray.rllib.env.external_multi_agent_env import ExternalMultiAgentEnv
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.policy.sample_batch import MultiAgentBatch
-from ray.rllib.utils.annotations import PublicAPI
+from ray.rllib.utils.annotations import OldAPIStack
 from ray.rllib.utils.typing import (
     MultiAgentDict,
     EnvInfoDict,
     EnvObsType,
     EnvActionType,
 )
+
+# Backward compatibility.
+from ray.rllib.env.utils.external_env_protocol import MessageTypes as Commands
 
 logger = logging.getLogger(__name__)
 
@@ -35,30 +37,10 @@ except ImportError:
     )
 
 
-@PublicAPI
-class Commands(Enum):
-    # Generic commands (for both modes).
-    ACTION_SPACE = "ACTION_SPACE"
-    OBSERVATION_SPACE = "OBSERVATION_SPACE"
-
-    # Commands for local inference mode.
-    GET_WORKER_ARGS = "GET_WORKER_ARGS"
-    GET_WEIGHTS = "GET_WEIGHTS"
-    REPORT_SAMPLES = "REPORT_SAMPLES"
-
-    # Commands for remote inference mode.
-    START_EPISODE = "START_EPISODE"
-    GET_ACTION = "GET_ACTION"
-    LOG_ACTION = "LOG_ACTION"
-    LOG_RETURNS = "LOG_RETURNS"
-    END_EPISODE = "END_EPISODE"
-
-
-@PublicAPI
+@OldAPIStack
 class PolicyClient:
     """REST client to interact with an RLlib policy server."""
 
-    @PublicAPI
     def __init__(
         self,
         address: str,
@@ -91,7 +73,6 @@ class PolicyClient:
         else:
             raise ValueError("inference_mode must be either 'local' or 'remote'")
 
-    @PublicAPI
     def start_episode(
         self, episode_id: Optional[str] = None, training_enabled: bool = True
     ) -> str:
@@ -119,7 +100,6 @@ class PolicyClient:
             }
         )["episode_id"]
 
-    @PublicAPI
     def get_action(
         self, episode_id: str, observation: Union[EnvObsType, MultiAgentDict]
     ) -> Union[EnvActionType, MultiAgentDict]:
@@ -152,7 +132,6 @@ class PolicyClient:
                 }
             )["action"]
 
-    @PublicAPI
     def log_action(
         self,
         episode_id: str,
@@ -180,7 +159,6 @@ class PolicyClient:
             }
         )
 
-    @PublicAPI
     def log_returns(
         self,
         episode_id: str,
@@ -220,7 +198,6 @@ class PolicyClient:
             }
         )
 
-    @PublicAPI
     def end_episode(
         self, episode_id: str, observation: Union[EnvObsType, MultiAgentDict]
     ) -> None:
@@ -243,7 +220,6 @@ class PolicyClient:
             }
         )
 
-    @PublicAPI
     def update_policy_weights(self) -> None:
         """Query the server for new policy weights, if local inference is enabled."""
         self._update_local_policy(force=True)

@@ -57,7 +57,14 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
 
     def test_add_policy_connector_enabled(self):
         with tempfile.TemporaryDirectory() as tmpdir:
-            config = APPOConfig().environment("CartPole-v1")
+            config = (
+                APPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
+                .environment("CartPole-v1")
+            )
             algo = config.build()
             algo.train()
             result = algo.save(checkpoint_dir=tmpdir)
@@ -71,7 +78,15 @@ class TestPolicyFromCheckpoint(unittest.TestCase):
             self.assertIsNotNone(policy)
 
             # Add this policy to an Algorithm.
-            algo = APPOConfig().framework(framework="torch").build("CartPole-v0")
+            algo = (
+                APPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
+                .framework(framework="torch")
+                .environment("CartPole-v0")
+            ).build()
 
             # Add the entire policy.
             self.assertIsNotNone(algo.add_policy("test_policy", policy=policy))

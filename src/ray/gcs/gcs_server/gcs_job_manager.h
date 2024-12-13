@@ -50,14 +50,14 @@ using JobFinishListenerCallback = rpc::JobInfoHandler::JobFinishListenerCallback
 /// This implementation class of `JobInfoHandler`.
 class GcsJobManager : public rpc::JobInfoHandler {
  public:
-  explicit GcsJobManager(std::shared_ptr<GcsTableStorage> gcs_table_storage,
-                         std::shared_ptr<GcsPublisher> gcs_publisher,
+  explicit GcsJobManager(GcsTableStorage &gcs_table_storage,
+                         GcsPublisher &gcs_publisher,
                          RuntimeEnvManager &runtime_env_manager,
                          GcsFunctionManager &function_manager,
                          InternalKVInterface &internal_kv,
-                         rpc::ClientFactoryFn client_factory = nullptr)
-      : gcs_table_storage_(std::move(gcs_table_storage)),
-        gcs_publisher_(std::move(gcs_publisher)),
+                         rpc::CoreWorkerClientFactoryFn client_factory = nullptr)
+      : gcs_table_storage_(gcs_table_storage),
+        gcs_publisher_(gcs_publisher),
         runtime_env_manager_(runtime_env_manager),
         function_manager_(function_manager),
         internal_kv_(internal_kv),
@@ -118,8 +118,8 @@ class GcsJobManager : public rpc::JobInfoHandler {
   // Number of finished jobs since start of this GCS Server, used to report metrics.
   int64_t finished_jobs_count_ = 0;
 
-  std::shared_ptr<GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<GcsPublisher> gcs_publisher_;
+  GcsTableStorage &gcs_table_storage_;
+  GcsPublisher &gcs_publisher_;
 
   /// Listeners which monitors the finish of jobs.
   std::vector<JobFinishListenerCallback> job_finished_listeners_;

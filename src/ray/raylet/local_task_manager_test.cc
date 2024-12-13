@@ -188,7 +188,7 @@ class LocalTaskManagerTest : public ::testing::Test {
         dependency_manager_(object_manager_),
         local_task_manager_(std::make_shared<LocalTaskManager>(
             id_,
-            scheduler_,
+            *scheduler_,
             dependency_manager_, /* is_owner_alive= */
             [](const WorkerID &worker_id, const NodeID &node_id) { return true; },
             /* get_node_info= */

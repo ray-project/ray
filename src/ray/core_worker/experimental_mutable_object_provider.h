@@ -33,8 +33,7 @@ class MutableObjectProvider {
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       RayletFactory;
 
-  MutableObjectProvider(std::shared_ptr<plasma::PlasmaClientInterface> plasma,
-                        RayletFactory factory);
+  MutableObjectProvider(plasma::PlasmaClientInterface &plasma, RayletFactory factory);
 
   ~MutableObjectProvider();
 
@@ -165,7 +164,7 @@ class MutableObjectProvider {
   void RunIOContext(instrumented_io_context &io_context);
 
   // The plasma store.
-  std::shared_ptr<plasma::PlasmaClientInterface> plasma_;
+  plasma::PlasmaClientInterface &plasma_;
 
   // Object manager for the mutable objects.
   std::shared_ptr<ray::experimental::MutableObjectManager> object_manager_;

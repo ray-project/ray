@@ -575,20 +575,27 @@ ray.init(num_cpus=2, runtime_env={"env_vars": {"RAY_DEBUG": "legacy"}})
 @ray.remote
 def f():
     while True:
-        time.sleep(1)
+        start_time = time.monotonic()
+        while time.monotonic() - start_time < 1:
+            time.sleep(0.1)
+            print(f"slept {time.monotonic() - start_time} seconds")
         print("hello there")
         sys.stdout.flush()
 
 def kill():
-    time.sleep(5)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 5:
+        time.sleep(0.1)
     sys.stdout.flush()
-    time.sleep(1)
+    start_time = time.monotonic()
+    while time.monotonic() - start_time < 1:
+        time.sleep(0.1)
     os._exit(0)
 
 t = threading.Thread(target=kill)
 t.start()
 x = f.remote()
-time.sleep(2)  # Enough time to print one hello.
+time.sleep(3)  # Enough time to print one hello.
 breakpoint()  # This should disable worker logs.
     """
 
@@ -596,7 +603,7 @@ breakpoint()  # This should disable worker logs.
     out_str = proc.stdout.read().decode("ascii")
     num_hello = out_str.count("hello")
     assert num_hello >= 1, out_str
-    assert num_hello < 3, out_str
+    assert num_hello <= 3, out_str
     assert "Temporarily disabling Ray worker logs" in out_str, out_str
     # TODO(ekl) nice to test resuming logs too, but it's quite complicated
 

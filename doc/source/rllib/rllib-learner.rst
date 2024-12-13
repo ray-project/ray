@@ -87,7 +87,7 @@ arguments in the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConf
          - Supported Framework
        * - **PPO**
          - |pytorch| |tensorflow|
-       * - **Impala**
+       * - **IMPALA**
          - |pytorch| |tensorflow|
        * - **APPO**
          - |pytorch| |tensorflow|

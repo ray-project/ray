@@ -1,0 +1,449 @@
+- name: DEFAULTS
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      # 'type: gpu' means: use the 'ray-ml' image.
+      type: gpu
+    cluster_compute: autoscaling_cpu_compute.yaml
+
+###############
+# Reading tests
+###############
+
+- name: read_parquet
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB
+      --format parquet --iterate
+
+- name: read_images
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+
+# TODO: Rewrite this as a multi-node test
+- name: read_tfrecords_benchmark_single_node
+
+  cluster:
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2700
+    script: python read_tfrecords_benchmark.py
+
+- name: read_images_comparison_microbenchmark_single_node
+
+  cluster:
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: single_worker_node_0_head_node_benchmark_compute.yaml
+
+  run:
+    timeout: 1800
+    script: bash run_image_loader_microbenchmark.sh
+
+###############
+# Writing tests
+###############
+
+- name: write_parquet
+  run:
+    timeout: 3600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
+
+###################
+# Aggregation tests
+###################
+
+- name: count_parquet
+  run:
+    timeout: 600
+    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
+
+###############
+# Groupby tests
+###############
+
+# The groupby tests use the TPC-H lineitem table. Here are the columns used for the
+# groupbys and their corresponding TPC-H column names:
+#
+# | Our dataset     | TPC-H column name |
+# |-----------------|-------------------|
+# | column02        | l_suppkey         |
+# | column08        | l_returnflag      |
+# | column13        | l_shipinstruct    |
+# | column14        | l_shipmode        |
+#
+# Here are the number of groups for different groupby columns in SF 1000:
+#
+# | Groupby columns                  | Number of groups |
+# |----------------------------------|------------------|
+# | column08, column13, column14     | 84               |
+# | column02, column14               | 7,000,000        |
+#
+# The SF (scale factor) 1000 lineitem table contains ~6B rows.
+
+# TODO: Bump the scale from SF10 to SF1000 once we handle the scale.
+
+- name: aggregate_groups
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: few_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --aggregate
+          --group-by column02 column14
+
+- name: map_groups
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 3600
+
+  variations:
+    - __suffix__: few_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups
+          --group-by column08 column13 column14
+    - __suffix__: many_groups
+      run:
+        script: >
+          python groupby_benchmark.py --sf 10 --map-groups
+          --group-by column02 column14
+
+########################
+# Streaming ingest tests
+########################
+
+- name: streaming_data_ingest_benchmark_1tb
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: data_ingest_benchmark_compute.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=1000 --num-workers=20 --streaming
+    wait_for_nodes:
+      num_nodes: 20
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: data_ingest_benchmark_compute_gce.yaml
+
+- name: streaming_data_ingest_benchmark_100gb_gpu
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu
+    wait_for_nodes:
+      num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+
+# This test case will early stop the data ingestion iteration on the GPU actors.
+# This is a common usage in PyTorch Lightning
+# (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+# There was a bug in Ray Data that caused GPU memoy leak (see #3.919).
+# We add this test case to cover this scenario.
+- name: streaming_data_ingest_benchmark_100gb_gpu_early_stop
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: data_ingest_benchmark_compute_gpu.yaml
+
+  run:
+    timeout: 300
+    script: python data_ingest_benchmark.py --dataset-size-gb=100 --num-workers=4 --streaming --use-gpu --early-stop
+    wait_for_nodes:
+      num_nodes: 3
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: data_ingest_benchmark_compute_gpu_gce.yaml
+
+################
+# Training tests
+################
+
+- name: distributed_training
+  working_dir: nightly_tests
+
+  cluster:
+    byod:
+      post_build_script: byod_install_mosaicml.sh
+    cluster_compute: dataset/multi_node_train_16_workers.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
+      --target-worker-gb 50 --use-gpu
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: >
+          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
+          "_RayTrainWorker__execute.get_next"
+
+#########################
+# Map and iteration tests
+#########################
+
+- name: map_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python map_batches_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: iter_tensor_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 30 minutes.
+    timeout: 2400
+    script: python iter_tensor_batches_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
+- name: iter_tensor_batches_benchmark_multi_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: multi_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish within 90 minutes.
+    timeout: 5400
+    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: multi_node_benchmark_compute_gce.yaml
+
+- name: iter_batches_benchmark_single_node
+  group: data-tests
+  working_dir: nightly_tests/dataset
+
+  frequency: nightly
+  team: data
+
+  cluster:
+    byod:
+      type: gpu
+    cluster_compute: single_node_benchmark_compute.yaml
+
+  run:
+    # Expect the benchmark to finish around 12 minutes.
+    timeout: 1080
+    script: python iter_batches_benchmark.py
+
+  variations:
+    - __suffix__: aws
+    - __suffix__: gce
+      env: gce
+      frequency: manual
+      cluster:
+        cluster_compute: single_node_benchmark_compute_gce.yaml
+
+########################
+# Sort and shuffle tests
+########################
+
+- name: random_shuffle
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: >
+      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+
+- name: sort
+  stable: False
+
+  cluster:
+    byod:
+      runtime_env:
+        - RAY_worker_killing_policy=retriable_lifo
+      pip:
+        - ray[default]
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 7200
+    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+#######################
+# Batch inference tests
+#######################
+
+# 300 GB image classification parquet data up to 10 GPUs
+# 10 g4dn.12xlarge.
+- name: batch_inference
+
+  cluster:
+    cluster_compute: autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+
+- name: batch_inference_chaos
+  stable: False
+  # Don't use 'nightly_tests/dataset' as the working directory because we need to run
+  # the 'setup_chaos.py' script.
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
+# 10 TB image classification parquet data with autoscaling heterogenous cluster
+# 10 g4dn.12xlarge, 10 m5.16xlarge
+- name: batch_inference_hetero
+  frequency: weekly
+
+  cluster:
+    cluster_compute: autoscaling_hetero_compute.yaml
+
+  run:
+    timeout: 3600
+    script: >
+      python gpu_batch_inference.py
+      --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+##############
+# TPCH Queries
+##############
+
+- name: tpch_q1
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 5400
+    script: python tpch_q1.py --sf 100

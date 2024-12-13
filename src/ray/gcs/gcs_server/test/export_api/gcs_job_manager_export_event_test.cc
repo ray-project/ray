@@ -85,7 +85,7 @@ class GcsJobManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
   std::unique_ptr<gcs::FakeInternalKVInterface> fake_kv_;
-  rpc::ClientFactoryFn client_factory_;
+  rpc::CoreWorkerClientFactoryFn client_factory_;
   RuntimeEnvManager runtime_env_manager_;
   const std::chrono::milliseconds timeout_ms_{5000};
   std::string log_dir_;
@@ -107,14 +107,14 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);

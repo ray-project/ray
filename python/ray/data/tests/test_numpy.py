@@ -7,7 +7,8 @@ import pytest
 from pytest_lazyfixture import lazy_fixture
 
 import ray
-from ray.data import Schema
+from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.data import DataContext, Schema
 from ray.data.datasource import (
     BaseFileMetadataProvider,
     FastFileMetadataProvider,
@@ -21,6 +22,14 @@ from ray.data.tests.mock_http_server import *  # noqa
 from ray.data.tests.test_partitioning import PathPartitionEncoder
 from ray.data.tests.util import extract_values
 from ray.tests.conftest import *  # noqa
+
+
+def _get_tensor_type():
+    return (
+        ArrowTensorTypeV2
+        if DataContext.get_current().use_arrow_tensor_v2
+        else ArrowTensorType
+    )
 
 
 def test_numpy_read_partitioning(ray_start_regular_shared, tmp_path):
@@ -113,27 +122,27 @@ def test_to_numpy_refs(ray_start_regular_shared):
     ],
 )
 def test_numpy_roundtrip(ray_start_regular_shared, fs, data_path):
+    tensor_type = _get_tensor_type()
+
     ds = ray.data.range_tensor(10, override_num_blocks=2)
     ds.write_numpy(data_path, filesystem=fs, column="data")
     ds = ray.data.read_numpy(data_path, filesystem=fs)
     assert ds.count() == 10
-    assert ds.schema() == Schema(
-        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     assert sorted(ds.take_all(), key=lambda row: row["data"]) == [
         {"data": np.array([i])} for i in range(10)
     ]
 
 
-def test_numpy_read(ray_start_regular_shared, tmp_path):
+def test_numpy_read_x(ray_start_regular_shared, tmp_path):
+    tensor_type = _get_tensor_type()
+
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     np.save(os.path.join(path, "test.npy"), np.expand_dims(np.arange(0, 10), 1))
     ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds.count() == 10
-    assert ds.schema() == Schema(
-        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
     )
@@ -145,9 +154,7 @@ def test_numpy_read(ray_start_regular_shared, tmp_path):
     ds = ray.data.read_numpy(path, override_num_blocks=1)
     assert ds._plan.initial_num_blocks() == 1
     assert ds.count() == 10
-    assert ds.schema() == Schema(
-        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     assert [v["data"].item() for v in ds.take(2)] == [0, 1]
 
 
@@ -174,6 +181,8 @@ def test_numpy_read_ignore_missing_paths(
 
 
 def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
+    tensor_type = _get_tensor_type()
+
     path = os.path.join(tmp_path, "test_np_dir")
     os.mkdir(path)
     path = os.path.join(path, "test.npy")
@@ -182,9 +191,7 @@ def test_numpy_read_meta_provider(ray_start_regular_shared, tmp_path):
         path, meta_provider=FastFileMetadataProvider(), override_num_blocks=1
     )
     assert ds.count() == 10
-    assert ds.schema() == Schema(
-        pa.schema([("data", ArrowTensorType((1,), pa.int64()))])
-    )
+    assert ds.schema() == Schema(pa.schema([("data", tensor_type((1,), pa.int64()))]))
     np.testing.assert_equal(
         extract_values("data", ds.take(2)), [np.array([0]), np.array([1])]
     )
@@ -204,6 +211,8 @@ def test_numpy_read_partitioned_with_filter(
     write_partitioned_df,
     assert_base_partitioned_ds,
 ):
+    tensor_type = _get_tensor_type()
+
     def df_to_np(dataframe, path, **kwargs):
         np.save(path, dataframe.to_numpy(dtype=np.dtype(np.int8)), **kwargs)
 
@@ -245,7 +254,7 @@ def test_numpy_read_partitioned_with_filter(
     val_str = "".join(f"array({v}, dtype=int8), " for v in vals)[:-2]
     assert_base_partitioned_ds(
         ds,
-        schema=Schema(pa.schema([("data", ArrowTensorType((2,), pa.int8()))])),
+        schema=Schema(pa.schema([("data", tensor_type((2,), pa.int8()))])),
         sorted_values=f"[[{val_str}]]",
         ds_take_transform_fn=lambda taken: [extract_values("data", taken)],
         sorted_values_transform_fn=sorted_values_transform_fn,

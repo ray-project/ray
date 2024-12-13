@@ -18,14 +18,12 @@
 #include <boost/bind/bind.hpp>
 #include <functional>
 #include <memory>
-#include <mutex>
-#include <unordered_map>
 
 #include "ray/common/asio/instrumented_io_context.h"
-#include "ray/common/id.h"
 #include "ray/common/status.h"
 #include "ray/gcs/redis_async_context.h"
 #include "ray/util/logging.h"
+#include "ray/util/util.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
 extern "C" {
@@ -136,12 +134,13 @@ struct RedisRequestContext {
 
 class RedisContext {
  public:
-  RedisContext(instrumented_io_context &io_service);
+  explicit RedisContext(instrumented_io_context &io_service);
 
   ~RedisContext();
 
   Status Connect(const std::string &address,
                  int port,
+                 const std::string &username,
                  const std::string &password,
                  bool enable_ssl = false);
 
@@ -168,7 +167,7 @@ class RedisContext {
 
   RedisAsyncContext &async_context() {
     RAY_CHECK(redis_async_context_);
-    return *redis_async_context_.get();
+    return *redis_async_context_;
   }
 
   instrumented_io_context &io_service() { return io_service_; }

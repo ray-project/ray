@@ -1,4 +1,5 @@
 import builtins
+import functools
 from copy import copy
 from typing import Iterable, List, Optional, Tuple
 
@@ -24,7 +25,6 @@ class RangeDatasource(Datasource):
         self._block_format = block_format
         self._tensor_shape = tensor_shape
         self._column_name = column_name
-        self._schema_cache = None
 
     def estimate_inmemory_data_size(self) -> Optional[int]:
         if self._block_format == "tensor":
@@ -96,7 +96,7 @@ class RangeDatasource(Datasource):
             meta = BlockMetadata(
                 num_rows=count,
                 size_bytes=8 * count * element_size,
-                schema=copy(self._get_schema()),
+                schema=copy(self._schema),
                 input_files=None,
                 exec_stats=None,
             )
@@ -112,14 +112,8 @@ class RangeDatasource(Datasource):
 
         return read_tasks
 
-    def _get_schema(self):
-        """Get the schema, using cached value if available."""
-        if self._schema_cache is None:
-            self._schema_cache = self._compute_schema()
-        return self._schema_cache
-
-    def _compute_schema(self):
-        """Compute the schema without caching."""
+    @functools.cached_property
+    def _schema(self):
         if self._n == 0:
             return None
 

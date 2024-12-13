@@ -54,7 +54,7 @@ def main(pargs):
             kl_coeff=0.5,
             vf_clip_param=10.0,
             entropy_coeff=0.01,
-            train_batch_size=32 if pargs.smoke_test else 16000,
+            train_batch_size_per_learner=32 if pargs.smoke_test else 16000,
             minibatch_size=1 if pargs.smoke_test else 2000,
             num_epochs=1 if pargs.smoke_test else 10,
             vf_loss_coeff=0.01,

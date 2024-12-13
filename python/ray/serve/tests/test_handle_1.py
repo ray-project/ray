@@ -7,12 +7,19 @@ import pytest
 
 import ray
 from ray import serve
-from ray.serve._private.common import DeploymentHandleSource, RequestProtocol
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME
+from ray.serve._private.common import DeploymentHandleSource
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import DeploymentHandle
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't set handle source",
+)
 def test_replica_handle_source(serve_instance):
     @serve.deployment
     def f():
@@ -31,6 +38,10 @@ def test_replica_handle_source(serve_instance):
     assert h.check.remote().result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode work with tasks & actors",
+)
 def test_handle_serializable(serve_instance):
     @serve.deployment
     def f():
@@ -55,6 +66,10 @@ def test_handle_serializable(serve_instance):
     assert app_handle.remote().result() == "hello"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support get_app_handle/get_deployment_handle",
+)
 def test_get_and_call_handle_in_thread(serve_instance):
     @serve.deployment
     def f():
@@ -110,6 +125,10 @@ def test_handle_option_chaining(serve_instance):
     assert handle2.request_counter.info == counter_info
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support get_app_handle/get_deployment_handle",
+)
 def test_repeated_get_handle_cached(serve_instance):
     @serve.deployment
     def f(_):
@@ -164,6 +183,10 @@ def _get_asyncio_loop_running_in_thread() -> asyncio.AbstractEventLoop:
     return loop
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support get_app_handle/get_deployment_handle",
+)
 @pytest.mark.asyncio
 async def test_call_handle_across_asyncio_loops(serve_instance):
     @serve.deployment
@@ -240,37 +263,6 @@ def test_handle_options_with_same_router(serve_instance):
     handle = serve.run(echo.bind())
     handle2 = handle.options(multiplexed_model_id="model2")
     assert handle2._router is handle._router
-
-
-def test_set_request_protocol(serve_instance):
-    """Test setting request protocol for a handle.
-
-    When a handle is created, it's _request_protocol is undefined. When calling
-    `_set_request_protocol()`, _request_protocol is set to the specified protocol.
-    When chaining options, the _request_protocol on the new handle is copied over.
-    When calling `_set_request_protocol()` on the new handle, _request_protocol
-    on the new handle is changed accordingly, while _request_protocol on the
-    original handle remains unchanged.
-    """
-
-    @serve.deployment
-    def echo(name: str):
-        return f"Hi {name}"
-
-    handle = serve.run(echo.bind())
-    assert handle.handle_options._request_protocol == RequestProtocol.UNDEFINED
-
-    handle._set_request_protocol(RequestProtocol.HTTP)
-    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
-
-    multiplexed_model_id = "fake-multiplexed_model_id"
-    new_handle = handle.options(multiplexed_model_id=multiplexed_model_id)
-    assert new_handle.handle_options.multiplexed_model_id == multiplexed_model_id
-    assert new_handle.handle_options._request_protocol == RequestProtocol.HTTP
-
-    new_handle._set_request_protocol(RequestProtocol.GRPC)
-    assert new_handle.handle_options._request_protocol == RequestProtocol.GRPC
-    assert handle.handle_options._request_protocol == RequestProtocol.HTTP
 
 
 def test_init(serve_instance):

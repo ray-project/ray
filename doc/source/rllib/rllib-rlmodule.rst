@@ -38,7 +38,7 @@ RL Modules (Alpha)
          - |pytorch| |tensorflow|
          -
          - |pytorch|
-       * - **Impala**
+       * - **IMPALA**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|

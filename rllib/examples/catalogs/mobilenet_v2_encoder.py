@@ -49,7 +49,7 @@ ppo_config = (
     # The following training settings make it so that a training iteration is very
     # quick. This is just for the sake of this example. PPO will not learn properly
     # with these settings!
-    .training(train_batch_size=32, minibatch_size=16, num_epochs=1)
+    .training(train_batch_size_per_learner=32, minibatch_size=16, num_epochs=1)
 )
 
 # CartPole's observation space is not compatible with our MobileNetV2 Encoder, so

@@ -75,6 +75,10 @@ class TestExplorations(unittest.TestCase):
     def test_impala(self):
         config = (
             impala.IMPALAConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(num_env_runners=0)
             .resources(num_gpus=0)
