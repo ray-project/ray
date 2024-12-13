@@ -79,6 +79,10 @@ class TorchTensorNcclChannel(ChannelInterface):
             _gpu_data_channel: A channel for sending torch.Tensors via NCCL.
             _local_channel: A channel for sending data between the writer and
                 local readers.
+
+        NOTE: `tensor_metadata_channel` will be set only for testing purposes.
+        `_cpu_data_channel` is set for testing purposes and for deserialization.
+        `_gpu_data_channel` and `_local_channel` are set only during deserialization.
         """
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
@@ -88,11 +92,13 @@ class TorchTensorNcclChannel(ChannelInterface):
             remote_reader_and_node_list,
             local_reader_and_node_list,
         ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
-        # There are some local readers which are the same worker process as the writer.
-        # Create a local channel for the writer and the local readers.
+
         num_local_readers = len(local_reader_and_node_list)
         self._local_channel = _local_channel
         if self._local_channel is None and num_local_readers > 0:
+            # There are some local readers which are the same worker process as
+            # the writer. Create a local channel for the writer and the local readers.
+            #
             # Use num_readers = 1 when creating the local channel,
             # because we have channel cache to support reading
             # from the same channel multiple times.
@@ -197,7 +203,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         Send a value that may contain torch.Tensors that should be sent via
         external transport.
 
-        This method:
+        Case 1: Use `_local_channel` to send the data to local readers.
+
+        Case 2: Otherwise, use the following method to send the data to remote readers.
+
         1) Serializes `value`. During serialization, all torch.Tensors that are
         on the default device are extracted and replaced with a unique
         placeholder. Thus, the serialized value will contain all non-tensor
@@ -281,7 +290,11 @@ class TorchTensorNcclChannel(ChannelInterface):
         Read a value that may contain torch.Tensors sent via external
         transport.
 
-        This method:
+        Case 1: If the reader is a local reader and is the same actor as the writer,
+        then use the `_local_channel` to read the data.
+
+        Case 2: Otherwise, use the following method to read data from remote readers.
+
         1) Receives torch.Tensors via the tensor data channel (e.g., NCCL).
         2) Reads the serialized non-tensor data.
         3) Deserializes the non-tensor data. During deserialization, replaces
