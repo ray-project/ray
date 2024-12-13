@@ -163,7 +163,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     std::promise<bool> promise;
 
     if (!task_ids.empty()) {
-      for (int i = 0; i < task_ids.size(); i++) {
+      for (size_t i = 0; i < task_ids.size(); i++) {
         auto task_filter = request.mutable_filters()->add_task_filters();
         task_filter->set_task_id(task_ids.at(i).Binary());
         task_filter->set_predicate(task_id_predicates.at(i));
@@ -171,7 +171,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     if (!task_names.empty()) {
-      for (int i = 0; i < task_names.size(); i++) {
+      for (size_t i = 0; i < task_names.size(); i++) {
         auto task_name_filter = request.mutable_filters()->add_task_name_filters();
         task_name_filter->set_task_name(task_names.at(i));
         task_name_filter->set_predicate(task_name_predicates.at(i));
@@ -179,7 +179,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     if (!states.empty()) {
-      for (int i = 0; i < states.size(); i++) {
+      for (size_t i = 0; i < states.size(); i++) {
         auto state_filter = request.mutable_filters()->add_state_filters();
         state_filter->set_state(states.at(i));
         state_filter->set_predicate(state_predicates.at(i));
@@ -187,7 +187,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     if (!actor_ids.empty()) {
-      for (int i = 0; i < actor_ids.size(); i++) {
+      for (size_t i = 0; i < actor_ids.size(); i++) {
         auto actor_id_filter = request.mutable_filters()->add_actor_filters();
         actor_id_filter->set_actor_id(actor_ids.at(i).Binary());
         actor_id_filter->set_predicate(actor_id_predicates.at(i));
@@ -195,7 +195,7 @@ class GcsTaskManagerTest : public ::testing::Test {
     }
 
     if (!job_ids.empty()) {
-      for (int i = 0; i < job_ids.size(); i++) {
+      for (size_t i = 0; i < job_ids.size(); i++) {
         auto job_id_filter = request.mutable_filters()->add_job_filters();
         job_id_filter->set_job_id(job_ids.at(i).Binary());
         job_id_filter->set_predicate(job_id_predicates.at(i));

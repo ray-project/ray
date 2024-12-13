@@ -368,6 +368,30 @@ def create_api_options(
     )
 
 
+def test_list_api_options_has_conflicting_filters():
+    # single filter
+    options = ListApiOptions(filters=[("name", "=", "task_name")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, different keys
+    options = ListApiOptions(filters=[("name", "=", "task_name"), ("job_id", "=", "1")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, not equal predicate
+    options = ListApiOptions(
+        filters=[("name", "!=", "task_name_1"), ("name", "!=", "task_name_2")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, same value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_1")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_2")]
+    )
+    assert options.has_conflicting_filters()
+
+
 def test_ray_address_to_api_server_url(shutdown_only):
     ctx = ray.init()
     api_server_url = f'http://{ctx.address_info["webui_url"]}'
@@ -1053,46 +1077,6 @@ async def test_api_manager_list_tasks(state_api_manager):
     assert result.num_filtered == 0
     assert result.num_after_truncation == 0
     assert result.warnings is None
-
-
-@pytest.mark.asyncio
-@patch.object(
-    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
-)
-async def test_state_data_source_client_get_all_task_info_with_early_return():
-    #  Setup
-    mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
-
-    client = StateDataSourceClient(None, None)
-    client._gcs_task_info_stub = mock_gcs_task_info_stub
-
-    mock_reply = MagicMock(GetTaskEventsReply)
-    mock_gcs_task_info_stub.GetTaskEvents = AsyncMock()
-    mock_gcs_task_info_stub.GetTaskEvents.side_effect = [mock_reply]
-
-    test_job_id = JobID.from_int(1)
-    test_task_id_1 = TaskID.for_fake_task(test_job_id)
-    test_task_id_2 = TaskID.for_fake_task(test_job_id)
-    input_filters = []
-    input_filters.append(("task_id", "=", test_task_id_1.hex()))
-    input_filters.append(("task_id", "=", test_task_id_2.hex()))
-    input_timeout = 100
-    input_limit = 200
-    input_exclude_driver = True
-
-    # Execute the function
-    result = await client.get_all_task_info(
-        input_timeout, input_limit, input_filters, input_exclude_driver
-    )
-
-    # Verify
-    assert result.num_profile_task_events_dropped == 0
-    assert result.num_status_task_events_dropped == 0
-    assert result.num_total_stored == 0
-    assert result.num_filtered_on_gcs == 0
-    assert result.num_truncated == 0
-    assert len(result.events_by_task) == 0
-    mock_gcs_task_info_stub.GetTaskEvents.assert_not_awaited()
 
 
 @pytest.mark.asyncio

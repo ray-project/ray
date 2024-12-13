@@ -397,6 +397,8 @@ void GcsTaskManager::HandleGetTaskEvents(rpc::GetTaskEventsRequest request,
                                          rpc::SendReplyCallback send_reply_callback) {
   RAY_LOG(DEBUG) << "Getting task status:" << request.ShortDebugString();
 
+  // TODO(meyan): In the future, we could improve the query performance by leveraging
+  // the index on all the equal filters.
   // Select candidate events by indexing if possible.
   std::optional<std::vector<rpc::TaskEvents>> task_events;
   const auto &filters = request.filters();

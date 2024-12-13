@@ -3,7 +3,7 @@ import inspect
 import logging
 from collections import defaultdict
 from functools import wraps
-from typing import List, Optional, Tuple, Union
+from typing import List, Optional, Tuple
 
 import aiohttp
 import grpc
@@ -279,28 +279,6 @@ class StateDataSourceClient:
         )
         return reply
 
-    def add_task_filter(
-        self,
-        existing_val: Union[JobID, ActorID, TaskID, str],
-        new_val: Union[JobID, ActorID, TaskID, str],
-        filter_predicate: int,
-        filter_obj,
-        filter_field,
-        val_field_name: str,
-    ) -> Tuple[bool, bool]:
-
-        if existing_val is not None and filter_predicate == FilterPredicate.EQUAL:
-            if new_val != existing_val:
-                # early termination
-                return True, None
-            else:
-                return False, None
-
-        setattr(filter_obj, val_field_name, new_val)
-        setattr(filter_obj, "predicate", filter_predicate)
-        filter_field.append(filter_obj)
-        return False, new_val
-
     @handle_grpc_network_errors
     async def get_all_task_info(
         self,
@@ -314,12 +292,6 @@ class StateDataSourceClient:
             filters = []
 
         req_filters = GetTaskEventsRequest.Filters()
-        is_empty_reply = False
-        actor_id = None
-        job_id = None
-        task_id = None
-        task_name = None
-        state = None
         for filter in filters:
             key, predicate, value = filter
             filter_predicate = None
@@ -329,88 +301,42 @@ class StateDataSourceClient:
                 filter_predicate = FilterPredicate.NOT_EQUAL
             else:
                 # We only support EQUAL and NOT_EQUAL predicate for source side
-                # filtering.
-                continue
+                # filtering. If invalid predicates were specified, it should already be
+                # raised when the filters arguments are parsed
+                assert False, "Invalid predicate: " + predicate
 
             if key == "actor_id":
-                is_empty_reply, new_actor_id = self.add_task_filter(
-                    actor_id,
-                    ActorID(hex_to_binary(value)).binary(),
-                    filter_predicate,
-                    GetTaskEventsRequest.Filters.ActorIdFilter(),
-                    req_filters.actor_filters,
-                    "actor_id",
-                )
-
-                if new_actor_id:
-                    actor_id = new_actor_id
+                actor_filter = GetTaskEventsRequest.Filters.ActorIdFilter()
+                actor_filter.actor_id = ActorID(hex_to_binary(value)).binary()
+                actor_filter.predicate = filter_predicate
+                req_filters.actor_filters.append(actor_filter)
 
             elif key == "job_id":
-                is_empty_reply, new_job_id = self.add_task_filter(
-                    job_id,
-                    JobID(hex_to_binary(value)).binary(),
-                    filter_predicate,
-                    GetTaskEventsRequest.Filters.JobIdFilter(),
-                    req_filters.job_filters,
-                    "job_id",
-                )
-
-                if new_job_id:
-                    job_id = new_job_id
+                job_filter = GetTaskEventsRequest.Filters.JobIdFilter()
+                job_filter.job_id = JobID(hex_to_binary(value)).binary()
+                job_filter.predicate = filter_predicate
+                req_filters.job_filters.append(job_filter)
 
             elif key == "task_id":
-                is_empty_reply, new_task_id = self.add_task_filter(
-                    task_id,
-                    TaskID(hex_to_binary(value)).binary(),
-                    filter_predicate,
-                    GetTaskEventsRequest.Filters.TaskIdFilter(),
-                    req_filters.task_filters,
-                    "task_id",
-                )
-
-                if new_task_id:
-                    task_id = new_task_id
+                task_filter = GetTaskEventsRequest.Filters.TaskIdFilter()
+                task_filter.task_id = TaskID(hex_to_binary(value)).binary()
+                task_filter.predicate = filter_predicate
+                req_filters.task_filters.append(task_filter)
 
             elif key == "name":
-                is_empty_reply, new_task_name = self.add_task_filter(
-                    task_name,
-                    value,
-                    filter_predicate,
-                    GetTaskEventsRequest.Filters.TaskNameFilter(),
-                    req_filters.task_name_filters,
-                    "task_name",
-                )
-
-                if new_task_name:
-                    task_name = new_task_name
+                task_name_filter = GetTaskEventsRequest.Filters.TaskNameFilter()
+                task_name_filter.task_name = value
+                task_name_filter.predicate = filter_predicate
+                req_filters.task_name_filters.append(task_name_filter)
 
             elif key == "state":
-                is_empty_reply, new_state = self.add_task_filter(
-                    state,
-                    value,
-                    filter_predicate,
-                    GetTaskEventsRequest.Filters.StateFilter(),
-                    req_filters.state_filters,
-                    "state",
-                )
-
-                if new_state:
-                    state = new_state
+                state_filter = GetTaskEventsRequest.Filters.StateFilter()
+                state_filter.state = value
+                state_filter.predicate = filter_predicate
+                req_filters.state_filters.append(state_filter)
 
             else:
                 continue
-
-            if is_empty_reply:
-                # return empty reply when more than 2 equal filters with the same filter
-                # key and different filter values are specified. No need to call GCS to
-                # get the result
-                return GetTaskEventsReply(
-                    num_profile_task_events_dropped=0,
-                    num_status_task_events_dropped=0,
-                    num_total_stored=0,
-                    num_filtered_on_gcs=0,
-                    num_truncated=0,
-                )
 
         req_filters.exclude_driver = exclude_driver
 
