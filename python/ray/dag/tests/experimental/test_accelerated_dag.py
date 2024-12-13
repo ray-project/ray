@@ -2591,9 +2591,9 @@ def test_signature_mismatch(shutdown_only):
     with pytest.raises(
         TypeError,
         match=(
-            r"missing a required argument: 'y'\. The function `f` has a signature "
-            r"`\(x, \*, y\)`, but the given arguments to `bind` doesn't match\. "
-            r"args:.*kwargs:.*"
+            r"missing a required (keyword-only )?argument: 'y'\. The function `f` "
+            r"has a signature `\(x, \*, y\)`, but the given arguments to "
+            r"`bind` doesn't match\. args:.*kwargs:.*"
         ),
     ):
         with InputNode() as inp:
@@ -2602,9 +2602,9 @@ def test_signature_mismatch(shutdown_only):
     with pytest.raises(
         TypeError,
         match=(
-            r"missing a required argument: 'y'\. The function `g` has a signature "
-            r"`\(x, y, z=1\)`, but the given arguments to `bind` doesn't match\. "
-            r"args:.*kwargs:.*"
+            r"missing a required (keyword-only )?argument: 'y'\. The function `g` "
+            r"has a signature `\(x, y, z=1\)`, but the given arguments to "
+            r"`bind` doesn't match\. args:.*kwargs:.*"
         ),
     ):
         with InputNode() as inp:
