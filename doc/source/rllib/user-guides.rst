@@ -19,7 +19,6 @@ User Guides
     rllib-replay-buffers
     rllib-offline
     rllib-catalogs
-    rllib-connector
     rllib-rlmodule
     rllib-learner
     rllib-torch2x

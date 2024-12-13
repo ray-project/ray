@@ -79,6 +79,37 @@ def test_get_container() -> None:
         assert isinstance(container, WindowsTesterContainer)
 
 
+def test_get_empty_test_targets() -> None:
+    with mock.patch(
+        "subprocess.check_output",
+        return_value="\n".encode("utf-8"),
+    ), mock.patch(
+        "ci.ray_ci.linux_tester_container.LinuxTesterContainer.install_ray",
+        return_value=None,
+    ), mock.patch(
+        "ray_release.test.Test.gen_from_s3",
+        return_value=set(),
+    ), mock.patch(
+        "ci.ray_ci.tester._get_new_tests",
+        return_value=set(),
+    ), mock.patch(
+        "ray_release.test.Test.gen_microcheck_tests",
+        return_value=set(),
+    ):
+        # Test that the set of test target is empty, rather than a set of empty string
+        assert (
+            set(
+                _get_test_targets(
+                    LinuxTesterContainer("core"),
+                    "targets",
+                    "core",
+                    operating_system="linux",
+                )
+            )
+            == set()
+        )
+
+
 def test_get_test_targets() -> None:
     _TEST_YAML = "flaky_tests: [//python/ray/tests:flaky_test_01]"
 

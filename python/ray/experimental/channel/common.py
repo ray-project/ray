@@ -1,13 +1,24 @@
 import asyncio
 import concurrent
-import copy
+import sys
 import threading
 import time
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
+from typing import (
+    TYPE_CHECKING,
+    Any,
+    Callable,
+    Dict,
+    List,
+    NamedTuple,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import ray
-from ray.experimental.channel.nccl_group import _NcclGroup
+import ray.exceptions
+from ray.experimental.channel.gpu_communicator import GPUCommunicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -19,11 +30,39 @@ if TYPE_CHECKING:
     import torch
 
 
+def retry_and_check_interpreter_exit(f: Callable[[], None]) -> bool:
+    """This function is only useful when f contains channel read/write.
+
+    Keep retrying channel read/write inside `f` and check if interpreter exits.
+    It is important in case the read/write happens in a separate thread pool.
+    See https://github.com/ray-project/ray/pull/47702
+
+    f should a function that doesn't receive any input and return nothing.
+    """
+    exiting = False
+    while True:
+        try:
+            f()
+            break
+        except ray.exceptions.RayChannelTimeoutError:
+            if sys.is_finalizing():
+                # Interpreter exits. We should ignore the error and
+                # stop reading so that the thread can join.
+                exiting = True
+                break
+
+    return exiting
+
+
+# Holds the input arguments for an accelerated DAG node.
+@PublicAPI(stability="alpha")
+class RayDAGArgs(NamedTuple):
+    args: Tuple[Any, ...]
+    kwargs: Dict[str, Any]
+
+
 @PublicAPI(stability="alpha")
 class ChannelOutputType:
-    def __init__(self):
-        self._contains_type: Optional["ChannelOutputType"] = None
-
     def register_custom_serializer(self) -> None:
         """
         Register any custom serializers needed to pass data of this type. This
@@ -37,46 +76,13 @@ class ChannelOutputType:
         default device. Instead, these should be extracted from the
         worker-local _SerializationContext.
         """
-        if self._contains_type is not None:
-            self._contains_type.register_custom_serializer()
-
-    @property
-    def is_direct_return(self) -> bool:
-        """
-        Some channels may contain other values that should be sent via a
-        different channel. This returns whether the value is a direct return or
-        if it is "nested" inside a different channel.
-        """
-        return True
-
-    @property
-    def contains_type(self) -> "ChannelOutputType":
-        """
-        Some channel values may contain an object that should be sent through a
-        different channel. For example, a Python object containing a GPU tensor
-        may be sent over two channels, one to serialize the Python data on CPU
-        memory and another to transfer the GPU data over NCCL. This function
-        returns the type of this nested value, if any.
-        """
-        return self._contains_type
-
-    def set_contains_type(self, typ: "ChannelOutputType") -> None:
-        """
-        Mark that values sent on this channel may contain objects that should
-        be sent through a different channel.
-        """
-        from ray.experimental.channel.torch_tensor_type import TorchTensorType
-
-        if typ is not None:
-            assert isinstance(
-                typ, TorchTensorType
-            ), "Contained type must be of type TorchTensorType"
-        self._contains_type = copy.deepcopy(typ)
+        pass
 
     def create_channel(
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
+        driver_actor_id: Optional[str] = None,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -86,6 +92,9 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
+            driver_actor_id: If this is a CompositeChannel that is read by a driver and
+                that driver is an actual actor, this will be the actor ID of that
+                driver actor.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -93,12 +102,16 @@ class ChannelOutputType:
         raise NotImplementedError
 
     def requires_nccl(self) -> bool:
-        if self._contains_type is not None:
-            if self._contains_type.requires_nccl():
-                return True
-
         # By default, channels do not require NCCL.
         return False
+
+    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+        """
+        Return the custom NCCL group if one is specified.
+        """
+        if self._contains_type is not None:
+            return self._contains_type.get_custom_nccl_group()
+        return None
 
     def set_nccl_group_id(self, group_id: str) -> None:
         raise NotImplementedError
@@ -108,11 +121,13 @@ class ChannelOutputType:
 @dataclass
 class ChannelContext:
     serialization_context = _SerializationContext()
+    _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
+    _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "_NcclGroup"] = {}
+        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -129,6 +144,22 @@ class ChannelContext:
                 _default_context = ChannelContext()
 
             return _default_context
+
+    @property
+    def torch_available(self) -> bool:
+        """
+        Check if torch package is available.
+        """
+        if self._torch_available is not None:
+            return self._torch_available
+
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self._torch_available = False
+            return False
+        self._torch_available = True
+        return True
 
     @property
     def torch_device(self) -> "torch.device":
@@ -222,6 +253,7 @@ class ChannelInterface:
             Any: The deserialized value. If the deserialized value is an
             Exception, it will be returned directly instead of being raised.
         """
+        raise NotImplementedError
 
     def close(self) -> None:
         """
@@ -235,7 +267,10 @@ class ChannelInterface:
 # Interfaces for channel I/O.
 @DeveloperAPI
 class ReaderInterface:
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
         assert isinstance(input_channels, list)
         for chan in input_channels:
             assert isinstance(chan, ChannelInterface)
@@ -288,7 +323,10 @@ class ReaderInterface:
 
 @DeveloperAPI
 class SynchronousReader(ReaderInterface):
-    def __init__(self, input_channels: List[ChannelInterface]):
+    def __init__(
+        self,
+        input_channels: List[ChannelInterface],
+    ):
         super().__init__(input_channels)
 
     def start(self):
@@ -304,6 +342,14 @@ class SynchronousReader(ReaderInterface):
                 timeout = max(timeout, 0)
         return results
 
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
 
 @DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
@@ -316,7 +362,9 @@ class AwaitableBackgroundReader(ReaderInterface):
     """
 
     def __init__(
-        self, input_channels: List[ChannelInterface], fut_queue: asyncio.Queue
+        self,
+        input_channels: List[ChannelInterface],
+        fut_queue: asyncio.Queue,
     ):
         super().__init__(input_channels)
         self._fut_queue = fut_queue
@@ -329,7 +377,15 @@ class AwaitableBackgroundReader(ReaderInterface):
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self):
-        return [c.read() for c in self._input_channels]
+        results = []
+        for c in self._input_channels:
+            exiting = retry_and_check_interpreter_exit(
+                lambda: results.append(c.read(timeout=1))
+            )
+            if exiting:
+                break
+
+        return results
 
     async def run(self):
         loop = asyncio.get_running_loop()
@@ -351,14 +407,37 @@ class AwaitableBackgroundReader(ReaderInterface):
     def close(self):
         super().close()
         self._background_task_executor.shutdown(cancel_futures=True)
+        self._background_task.cancel()
 
 
 @DeveloperAPI
 class WriterInterface:
-    def __init__(self, output_channel: ChannelInterface):
-        self._output_channel = output_channel
+    def __init__(
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[Union[int, str]]],
+        is_input=False,
+    ):
+        """
+        Initialize the writer.
+
+        Args:
+            output_channels: The output channels to write to.
+            output_idxs: The indices of the values to write to each channel.
+                This has the same length as `output_channels`. If `is_input` is True,
+                the index can be an integer or a string to retrieve the corresponding
+                value from `args` or `kwargs` in the DAG's input. If `is_input`
+                is False, the entire value is written if the index is None. Otherwise,
+                the value at the specified index in the tuple is written.
+            is_input: Whether the writer is DAG input writer or not.
+        """
+
+        assert len(output_channels) == len(output_idxs)
+        self._output_channels = output_channels
+        self._output_idxs = output_idxs
         self._closed = False
         self._num_writes = 0
+        self._is_input = is_input
 
     def get_num_writes(self) -> int:
         return self._num_writes
@@ -380,26 +459,84 @@ class WriterInterface:
 
     def close(self) -> None:
         self._closed = True
-        self._output_channel.close()
+        for channel in self._output_channels:
+            channel.close()
+
+
+def _adapt(raw_args: Any, key: Optional[Union[int, str]], is_input: bool):
+    """
+    Adapt the raw arguments to the key. If `is_input` is True, this method will
+    retrieve the value from the input data for an InputAttributeNode. Otherwise, it
+    will retrieve either a partial value or the entire value from the output of
+    a ClassMethodNode.
+
+    Args:
+        raw_args: The raw arguments to adapt.
+        key: The key to adapt.
+        is_input: Whether the writer is DAG input writer or not.
+    """
+    if is_input:
+        if not isinstance(raw_args, RayDAGArgs):
+            # Fast path for a single input.
+            return raw_args
+        else:
+            args = raw_args.args
+            kwargs = raw_args.kwargs
+
+        if isinstance(key, int):
+            return args[key]
+        else:
+            return kwargs[key]
+    else:
+        if key is not None:
+            return raw_args[key]
+        else:
+            return raw_args
 
 
 @DeveloperAPI
 class SynchronousWriter(WriterInterface):
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
-        pass
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
 
     def write(self, val: Any, timeout: Optional[float] = None) -> None:
-        self._output_channel.write(val, timeout)
+        # If it is an exception, there's only 1 return value.
+        # We have to send the same data to all channels.
+        if isinstance(val, Exception):
+            if len(self._output_channels) > 1:
+                val = tuple(val for _ in range(len(self._output_channels)))
+
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(val, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(val)}"
+                    )
+                if len(val) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(val)} outputs"
+                    )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            val_i = _adapt(val, idx, self._is_input)
+            channel.write(val_i, timeout)
         self._num_writes += 1
 
 
 @DeveloperAPI
 class AwaitableBackgroundWriter(WriterInterface):
     def __init__(
-        self, output_channel: ChannelInterface, max_queue_size: Optional[int] = None
+        self,
+        output_channels: List[ChannelInterface],
+        output_idxs: List[Optional[Union[int, str]]],
+        max_queue_size: Optional[int] = None,
+        is_input=False,
     ):
-        super().__init__(output_channel)
+        super().__init__(output_channels, output_idxs, is_input=is_input)
         if max_queue_size is None:
             from ray.dag import DAGContext
 
@@ -412,11 +549,32 @@ class AwaitableBackgroundWriter(WriterInterface):
         )
 
     def start(self):
-        self._output_channel.ensure_registered_as_writer()
+        for channel in self._output_channels:
+            channel.ensure_registered_as_writer()
         self._background_task = asyncio.ensure_future(self.run())
 
     def _run(self, res):
-        self._output_channel.write(res)
+        if not self._is_input:
+            if len(self._output_channels) > 1:
+                if not isinstance(res, tuple):
+                    raise ValueError(
+                        f"Expected a tuple of {len(self._output_channels)} outputs, "
+                        f"but got {type(res)}"
+                    )
+                if len(res) != len(self._output_channels):
+                    raise ValueError(
+                        f"Expected {len(self._output_channels)} outputs, but got "
+                        f"{len(res)} outputs"
+                    )
+
+        for i, channel in enumerate(self._output_channels):
+            idx = self._output_idxs[i]
+            res_i = _adapt(res, idx, self._is_input)
+            exiting = retry_and_check_interpreter_exit(
+                lambda: channel.write(res_i, timeout=1)
+            )
+            if exiting:
+                break
 
     async def run(self):
         loop = asyncio.get_event_loop()

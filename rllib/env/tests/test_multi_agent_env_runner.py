@@ -94,12 +94,7 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
     def _build_config(self):
         # Build the configuration and use `PPO`.
         config = (
-            PPOConfig()
-            .api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
-            )
-            .environment(
+            PPOConfig().environment(
                 MultiAgentCartPole,
                 env_config={"num_agents": 2},
             )
@@ -109,8 +104,6 @@ class TestMultiAgentEnvRunner(unittest.TestCase):
                 policies={"p0", "p1"},
                 policy_mapping_fn=lambda aid, *args, **kwargs: f"p{aid}",
             )
-            # TODO (sven): Make this hack no longer required.
-            .training(model={"uses_new_env_runners": True})
         )
 
         return config

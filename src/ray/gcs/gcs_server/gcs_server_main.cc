@@ -30,9 +30,10 @@ DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
-DEFINE_string(redis_password, "", "The password of redis.");
-DEFINE_bool(retry_redis, false, "Whether we retry to connect to the redis.");
-DEFINE_string(node_ip_address, "", "The ip address of the node.");
+DEFINE_string(redis_username, "", "The username of Redis.");
+DEFINE_string(redis_password, "", "The password of Redis.");
+DEFINE_bool(retry_redis, false, "Whether to retry to connect to Redis.");
+DEFINE_string(node_ip_address, "", "The IP address of the node.");
 DEFINE_string(session_name,
               "",
               "session_name: The session name (ClusterID) of the cluster.");
@@ -63,6 +64,7 @@ int main(int argc, char *argv[]) {
   RAY_CHECK(absl::Base64Unescape(FLAGS_config_list, &config_list))
       << "config_list is not a valid base64-encoded string.";
   const std::string redis_password = FLAGS_redis_password;
+  const std::string redis_username = FLAGS_redis_username;
   const bool retry_redis = FLAGS_retry_redis;
   const std::string node_ip_address = FLAGS_node_ip_address;
   const std::string session_name = FLAGS_session_name;
@@ -70,9 +72,11 @@ int main(int argc, char *argv[]) {
 
   RayConfig::instance().initialize(config_list);
   ray::asio::testing::init();
+  ray::rpc::testing::init();
 
   // IO Service for main loop.
-  instrumented_io_context main_service;
+  SetThreadName("gcs_server");
+  instrumented_io_context main_service(/*enable_lag_probe=*/true);
   // Ensure that the IO service keeps running. Without this, the main_service will exit
   // as soon as there is no more work to be processed.
   boost::asio::io_service::work work(main_service);
@@ -88,7 +92,16 @@ int main(int argc, char *argv[]) {
 
   // Initialize event framework.
   if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
-    ray::RayEventInit(ray::rpc::Event_SourceType::Event_SourceType_GCS,
+    // This GCS server process emits GCS standard events, and
+    // Node, Actor, and Driver Job export events
+    // so the various source types are passed to RayEventInit. The type of an
+    // event is determined by the schema of its event data.
+    const std::vector<ray::SourceTypeVariant> source_types = {
+        ray::rpc::Event_SourceType::Event_SourceType_GCS,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_NODE,
+        ray::rpc::ExportEvent_SourceType_EXPORT_ACTOR,
+        ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
+    ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
                       log_dir,
                       RayConfig::instance().event_level(),
@@ -104,6 +117,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_port = redis_port;
   gcs_server_config.enable_redis_ssl = FLAGS_redis_enable_ssl;
   gcs_server_config.redis_password = redis_password;
+  gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
   gcs_server_config.log_dir = log_dir;

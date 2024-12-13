@@ -17,7 +17,7 @@ if sys.platform != "linux" and sys.platform != "darwin":
 INVALID_GRAPH = "This DAG cannot be compiled because it will "
 "deadlock on NCCL calls. If you believe this is a false positive, "
 "please disable the graph verification by setting the environment "
-"variable RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+"variable RAY_CG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
 "https://github.com/ray-project/ray/issues/new/."
 
 
@@ -64,8 +64,7 @@ def test_invalid_graph_1_actor(ray_start_regular, tensor_transport):
         dag = a.no_op.bind(dag)
 
     if tensor_transport == TorchTensorType.AUTO:
-        compiled_graph = dag.experimental_compile()
-        compiled_graph.teardown()
+        dag.experimental_compile()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -122,17 +121,7 @@ def test_invalid_graph_1_actor_log(ray_start_regular):
 @pytest.mark.parametrize(
     "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
 )
-def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
-    """
-    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
-    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
-    NCCL channel will be used, and the graph is invalid.
-
-    [Case: TorchTensorType.NCCL]
-    The first a.no_op writes to the second b.no_op via the NCCL channel, and the
-    first b.no_op writes to the second a.no_op via the NCCL channel. However, the
-    NCCL channel only supports synchronous communication, so the graph is deadlocked.
-    """
+def test_valid_graph_2_actors_1(ray_start_regular, tensor_transport):
     a = MockedWorker.remote()
     b = MockedWorker.remote()
 
@@ -150,19 +139,42 @@ def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
             ]
         )
 
-    if tensor_transport == TorchTensorType.AUTO:
-        compiled_graph = dag.experimental_compile()
-        compiled_graph.teardown()
-    elif tensor_transport == TorchTensorType.NCCL:
-        with pytest.raises(ValueError, match=INVALID_GRAPH):
-            dag.experimental_compile()
+    dag.experimental_compile()
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
+def test_valid_graph_2_actors_2(ray_start_regular):
+    """
+    Driver -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> Driver
+
+    All communication between `a` and `b` is done via the NCCL channel.
+    """
+    a = MockedWorker.remote()
+    b = MockedWorker.remote()
+
+    ray.get([a.start_mock.remote(), b.start_mock.remote()])
+
+    with InputNode() as inp:
+        dag = a.no_op.bind(inp)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = b.no_op.bind(dag)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = a.no_op.bind(dag)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = b.no_op.bind(dag)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = a.no_op.bind(dag)
+        dag.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = b.no_op.bind(dag)
+
+    dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
 @pytest.mark.parametrize(
     "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
 )
-def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
+def test_invalid_graph_2_actors_1(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
     used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
@@ -192,8 +204,7 @@ def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
         )
 
     if tensor_transport == TorchTensorType.AUTO:
-        compiled_graph = dag.experimental_compile()
-        compiled_graph.teardown()
+        dag.experimental_compile()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -203,7 +214,7 @@ def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
 @pytest.mark.parametrize(
     "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
 )
-def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
+def test_invalid_graph_2_actors_2(ray_start_regular, tensor_transport):
     """
     If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
     used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
@@ -230,8 +241,7 @@ def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
         )
 
     if tensor_transport == TorchTensorType.AUTO:
-        compiled_graph = dag.experimental_compile()
-        compiled_graph.teardown()
+        dag.experimental_compile()
     elif tensor_transport == TorchTensorType.NCCL:
         with pytest.raises(ValueError, match=INVALID_GRAPH):
             dag.experimental_compile()
@@ -241,18 +251,7 @@ def test_invalid_graph_2_actors_3(ray_start_regular, tensor_transport):
 @pytest.mark.parametrize(
     "tensor_transport", [TorchTensorType.AUTO, TorchTensorType.NCCL]
 )
-def test_invalid_graph_3_actors(ray_start_regular, tensor_transport):
-    """
-    If tensor_transport is TorchTensorType.AUTO, the shared memory channel will be
-    used, and the graph is valid. If tensor_transport is TorchTensorType.NCCL, the
-    NCCL channel will be used, and the graph is invalid.
-
-    [Case: TorchTensorType.NCCL]
-    The first a.no_op writes to the second b.no_op via the NCCL channel, the
-    first b.no_op writes to the second c.no_op via the NCCL channel, and the
-    first c.no_op writes to the second a.no_op via the NCCL channel.
-    """
-
+def test_valid_graph_3_actors_1(ray_start_regular, tensor_transport):
     a = MockedWorker.remote()
     b = MockedWorker.remote()
     c = MockedWorker.remote()
@@ -274,45 +273,11 @@ def test_invalid_graph_3_actors(ray_start_regular, tensor_transport):
             ]
         )
 
-    if tensor_transport == TorchTensorType.AUTO:
-        compiled_graph = dag.experimental_compile()
-        compiled_graph.teardown()
-    elif tensor_transport == TorchTensorType.NCCL:
-        with pytest.raises(ValueError, match=INVALID_GRAPH):
-            dag.experimental_compile()
-
-
-@pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 2}], indirect=True)
-def test_valid_graph_2_actors(ray_start_regular):
-    """
-    Driver -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> a.no_op -> b.no_op -> Driver
-
-    All communication between `a` and `b` is done via the NCCL channel.
-    """
-    a = MockedWorker.remote()
-    b = MockedWorker.remote()
-
-    ray.get([a.start_mock.remote(), b.start_mock.remote()])
-
-    with InputNode() as inp:
-        dag = a.no_op.bind(inp)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = a.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = a.no_op.bind(dag)
-        dag.with_type_hint(TorchTensorType(transport="nccl"))
-        dag = b.no_op.bind(dag)
-
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.teardown()
+    dag.experimental_compile()
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_gpus": 3}], indirect=True)
-def test_valid_graph_3_actors(ray_start_regular):
+def test_valid_graph_3_actors_2(ray_start_regular):
     """
     Driver -> a.no_op -> b.no_op -> a.no_op_two -> Driver
                       |          |
@@ -333,8 +298,7 @@ def test_valid_graph_3_actors(ray_start_regular):
         branch2.with_type_hint(TorchTensorType(transport="nccl"))
         dag = a.no_op_two.bind(branch1, branch2)
 
-    compiled_dag = dag.experimental_compile()
-    compiled_dag.teardown()
+    dag.experimental_compile()
 
 
 if __name__ == "__main__":

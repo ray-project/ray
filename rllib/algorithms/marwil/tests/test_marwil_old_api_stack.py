@@ -5,7 +5,6 @@ import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.algorithms.marwil.marwil_tf_policy import MARWILTF2Policy
 from ray.rllib.algorithms.marwil.marwil_torch_policy import MARWILTorchPolicy
 from ray.rllib.evaluation.postprocessing import compute_advantages
 from ray.rllib.offline import JsonReader
@@ -19,7 +18,6 @@ from ray.rllib.utils.test_utils import (
     check,
     check_compute_single_action,
     check_train_results,
-    framework_iterator,
 )
 
 tf1, tf, tfv = try_import_tf()
@@ -51,6 +49,10 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=2)
             .environment(env="CartPole-v1")
             .evaluation(
@@ -67,40 +69,35 @@ class TestMARWILOld(unittest.TestCase):
         num_iterations = 350
         min_reward = 100.0
 
-        # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build()
-            learnt = False
-            for i in range(num_iterations):
-                results = algo.train()
-                check_train_results(results)
-                print(results)
+        algo = config.build()
+        learnt = False
+        for i in range(num_iterations):
+            results = algo.train()
+            check_train_results(results)
+            print(results)
 
-                eval_results = results.get(EVALUATION_RESULTS)
-                if eval_results:
-                    print(
-                        "iter={} R={} ".format(
-                            i, eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-                        )
+            eval_results = results.get(EVALUATION_RESULTS)
+            if eval_results:
+                print(
+                    "iter={} R={} ".format(
+                        i, eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
                     )
-                    # Learn until some reward is reached on an actual live env.
-                    if (
-                        eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
-                        > min_reward
-                    ):
-                        print("learnt!")
-                        learnt = True
-                        break
-
-            if not learnt:
-                raise ValueError(
-                    "MARWILAlgorithm did not reach {} reward from expert "
-                    "offline data!".format(min_reward)
                 )
+                # Learn until some reward is reached on an actual live env.
+                if eval_results[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN] > min_reward:
+                    print("learnt!")
+                    learnt = True
+                    break
 
-            check_compute_single_action(algo, include_prev_action_reward=True)
+        if not learnt:
+            raise ValueError(
+                "MARWILAlgorithm did not reach {} reward from expert "
+                "offline data!".format(min_reward)
+            )
 
-            algo.stop()
+        check_compute_single_action(algo, include_prev_action_reward=True)
+
+        algo.stop()
 
     def test_marwil_cont_actions_from_offline_file(self):
         """Test whether MARWIL runs with cont. actions.
@@ -118,6 +115,10 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=1)
             .evaluation(
                 evaluation_num_env_runners=1,
@@ -136,12 +137,10 @@ class TestMARWILOld(unittest.TestCase):
 
         num_iterations = 3
 
-        # Test for all frameworks.
-        for _ in framework_iterator(config, frameworks=("torch", "tf")):
-            algo = config.build(env="Pendulum-v1")
-            for i in range(num_iterations):
-                print(algo.train())
-            algo.stop()
+        algo = config.build(env="Pendulum-v1")
+        for i in range(num_iterations):
+            print(algo.train())
+        algo.stop()
 
     def test_marwil_loss_function(self):
         """
@@ -157,88 +156,56 @@ class TestMARWILOld(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .env_runners(num_env_runners=0)
             .offline_data(input_=[data_file])
         )  # Learn from offline data.
 
-        for fw, sess in framework_iterator(config, session=True):
-            reader = JsonReader(inputs=[data_file])
-            batch = reader.next()
+        reader = JsonReader(inputs=[data_file])
+        batch = reader.next()
 
-            algo = config.build(env="CartPole-v1")
-            policy = algo.get_policy()
-            model = policy.model
+        algo = config.build(env="CartPole-v1")
+        policy = algo.get_policy()
+        model = policy.model
 
-            # Calculate our own expected values (to then compare against the
-            # agent's loss output).
-            cummulative_rewards = compute_advantages(
-                batch, 0.0, config.gamma, 1.0, False, False
-            )["advantages"]
-            if fw == "torch":
-                cummulative_rewards = torch.tensor(cummulative_rewards)
-            if fw != "tf":
-                batch = policy._lazy_tensor_dict(batch)
-            model_out, _ = model(batch)
-            vf_estimates = model.value_function()
-            if fw == "tf":
-                model_out, vf_estimates = policy.get_session().run(
-                    [model_out, vf_estimates]
-                )
-            adv = cummulative_rewards - vf_estimates
-            if fw == "torch":
-                adv = adv.detach().cpu().numpy()
-            adv_squared = np.mean(np.square(adv))
-            c_2 = 100.0 + 1e-8 * (adv_squared - 100.0)
-            c = np.sqrt(c_2)
-            exp_advs = np.exp(config.beta * (adv / c))
-            dist = policy.dist_class(model_out, model)
-            logp = dist.logp(batch["actions"])
-            if fw == "torch":
-                logp = logp.detach().cpu().numpy()
-            elif fw == "tf":
-                logp = sess.run(logp)
-            # Calculate all expected loss components.
-            expected_vf_loss = 0.5 * adv_squared
-            expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
-            expected_loss = expected_pol_loss + config.vf_coeff * expected_vf_loss
+        # Calculate our own expected values (to then compare against the
+        # agent's loss output).
+        cummulative_rewards = compute_advantages(
+            batch, 0.0, config.gamma, 1.0, False, False
+        )["advantages"]
+        cummulative_rewards = torch.tensor(cummulative_rewards)
+        batch = policy._lazy_tensor_dict(batch)
+        model_out, _ = model(batch)
+        vf_estimates = model.value_function()
+        adv = cummulative_rewards - vf_estimates
+        adv = adv.detach().cpu().numpy()
+        adv_squared = np.mean(np.square(adv))
+        c_2 = 100.0 + 1e-8 * (adv_squared - 100.0)
+        c = np.sqrt(c_2)
+        exp_advs = np.exp(config.beta * (adv / c))
+        dist = policy.dist_class(model_out, model)
+        logp = dist.logp(batch["actions"])
+        logp = logp.detach().cpu().numpy()
+        # Calculate all expected loss components.
+        expected_vf_loss = 0.5 * adv_squared
+        expected_pol_loss = -1.0 * np.mean(exp_advs * logp)
+        expected_loss = expected_pol_loss + config.vf_coeff * expected_vf_loss
 
-            # Calculate the algorithm's loss (to check against our own
-            # calculation above).
-            batch.set_get_interceptor(None)
-            postprocessed_batch = policy.postprocess_trajectory(batch)
-            loss_func = (
-                MARWILTF2Policy.loss if fw != "torch" else MARWILTorchPolicy.loss
-            )
-            if fw != "tf":
-                policy._lazy_tensor_dict(postprocessed_batch)
-                loss_out = loss_func(
-                    policy, model, policy.dist_class, postprocessed_batch
-                )
-            else:
-                loss_out, v_loss, p_loss = policy.get_session().run(
-                    # policy._loss is create by TFPolicy, and is basically the
-                    # loss tensor of the static graph.
-                    [
-                        policy._loss,
-                        policy._marwil_loss.v_loss,
-                        policy._marwil_loss.p_loss,
-                    ],
-                    feed_dict=policy._get_loss_inputs_dict(
-                        postprocessed_batch, shuffle=False
-                    ),
-                )
+        # Calculate the algorithm's loss (to check against our own
+        # calculation above).
+        batch.set_get_interceptor(None)
+        postprocessed_batch = policy.postprocess_trajectory(batch)
+        loss_func = MARWILTorchPolicy.loss
+        policy._lazy_tensor_dict(postprocessed_batch)
+        loss_out = loss_func(policy, model, policy.dist_class, postprocessed_batch)
 
-            # Check all components.
-            if fw == "torch":
-                check(policy.v_loss, expected_vf_loss, decimals=4)
-                check(policy.p_loss, expected_pol_loss, decimals=4)
-            elif fw == "tf":
-                check(v_loss, expected_vf_loss, decimals=4)
-                check(p_loss, expected_pol_loss, decimals=4)
-            else:
-                check(policy._marwil_loss.v_loss, expected_vf_loss, decimals=4)
-                check(policy._marwil_loss.p_loss, expected_pol_loss, decimals=4)
-            check(loss_out, expected_loss, decimals=3)
+        # Check all components.
+        check(policy.v_loss, expected_vf_loss, decimals=4)
+        check(policy.p_loss, expected_pol_loss, decimals=4)
+        check(loss_out, expected_loss, decimals=3)
 
 
 if __name__ == "__main__":

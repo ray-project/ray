@@ -1,6 +1,7 @@
 flaky_tests:
   - windows://:metric_exporter_grpc_test
-  - windows://python/ray/tests:test_actor_retry
+  - windows://python/ray/tests:test_actor_retry1
+  - windows://python/ray/tests:test_actor_retry2
   - windows://python/ray/tests:test_object_spilling
   - windows://python/ray/tests:test_object_spilling_asan
   - windows://python/ray/tests:test_object_spilling_debug_mode

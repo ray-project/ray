@@ -88,7 +88,7 @@ class ActorPoolStrategy(ComputeStrategy):
                 computation and avoiding actor startup delays, but will also increase
                 queueing delay.
         """
-        if size:
+        if size is not None:
             if size < 1:
                 raise ValueError("size must be >= 1", size)
             if max_size is not None or min_size is not None:

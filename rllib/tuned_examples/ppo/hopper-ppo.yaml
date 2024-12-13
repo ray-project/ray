@@ -7,9 +7,9 @@ hopper-ppo:
         framework: torch
         gamma: 0.995
         kl_coeff: 1.0
-        num_sgd_iter: 20
+        num_epochs: 20
         lr: .0001
-        sgd_minibatch_size: 32768
+        minibatch_size: 32768
         train_batch_size: 160000
         num_env_runners: 64
         num_gpus: 4

@@ -105,11 +105,7 @@ ObjectID NativeTaskSubmitter::Submit(InvocationSpec &invocation,
                                          scheduling_strategy,
                                          "");
   }
-  std::vector<ObjectID> return_ids;
-  for (const auto &ref : return_refs) {
-    return_ids.push_back(ObjectID::FromBinary(ref.object_id()));
-  }
-  return return_ids[0];
+  return ObjectID::FromBinary(return_refs[0].object_id());
 }
 
 ObjectID NativeTaskSubmitter::SubmitTask(InvocationSpec &invocation,

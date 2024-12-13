@@ -110,8 +110,10 @@ def test_serve_start_dictionary_grpc_options(ray_cluster):
 
     channel = grpc.insecure_channel("localhost:9000")
 
+    serve.run(g)
+
     # Ensures ListApplications method succeeding.
-    ping_grpc_list_applications(channel, [])
+    ping_grpc_list_applications(channel, ["default"])
 
     # Ensures Healthz method succeeding.
     ping_grpc_healthz(channel)
@@ -493,8 +495,8 @@ async def test_grpc_proxy_cancellation(ray_instance, ray_shutdown, streaming: bo
     @serve.deployment
     class Downstream:
         async def wait_for_singal(self):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
         async def __call__(self, *args):
             await self.wait_for_singal()

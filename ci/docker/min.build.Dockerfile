@@ -36,7 +36,7 @@ elif [[ "${EXTRA_DEPENDENCY}" == "ml" ]]; then
 elif [[ "${EXTRA_DEPENDENCY}" == "default" ]]; then
   pip-compile -o min_requirements.txt python/setup.py --extra default
 elif [[ "${EXTRA_DEPENDENCY}" == "serve" ]]; then
-  pip-compile -o min_requirements.txt python/setup.py --extra serve
+  pip-compile -o min_requirements.txt python/setup.py --extra serve-grpc
 fi
 
 if [[ -f min_requirements.txt ]]; then
@@ -44,6 +44,3 @@ if [[ -f min_requirements.txt ]]; then
 fi
 
 EOF
-
-
-

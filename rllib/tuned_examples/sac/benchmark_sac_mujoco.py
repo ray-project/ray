@@ -76,11 +76,6 @@ class BenchmarkStopper(Stopper):
 config = (
     SACConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         rollout_fragment_length=1,
         num_env_runners=0,
@@ -94,7 +89,10 @@ config = (
     # TODO (simon): Adjust to new model_config_dict.
     .training(
         initial_alpha=1.001,
-        lr=3e-4,
+        # Choose a smaller learning rate for the actor (policy).
+        actor_lr=3e-5,
+        critic_lr=3e-4,
+        alpha_lr=1e-4,
         target_entropy="auto",
         n_step=1,
         tau=0.005,

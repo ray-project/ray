@@ -112,12 +112,12 @@ def custom_eval_function(
     # `set_corridor_length` method on these.
     eval_workers.foreach_worker(
         func=lambda worker: (
-            env.set_corridor_length(
+            env.unwrapped.set_corridor_length(
                 args.corridor_length_eval_worker_1
                 if worker.worker_index == 1
                 else args.corridor_length_eval_worker_2
             )
-            for env in worker.env.envs
+            for env in worker.env.unwrapped.envs
         )
     )
 

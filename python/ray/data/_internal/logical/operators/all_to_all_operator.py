@@ -120,6 +120,7 @@ class Sort(AbstractAllToAll):
         self,
         input_op: LogicalOperator,
         sort_key: SortKey,
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Sort",
@@ -131,6 +132,7 @@ class Sort(AbstractAllToAll):
             ],
         )
         self._sort_key = sort_key
+        self._batch_format = batch_format
 
     def aggregate_output_metadata(self) -> BlockMetadata:
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
@@ -145,14 +147,17 @@ class Aggregate(AbstractAllToAll):
         input_op: LogicalOperator,
         key: Optional[str],
         aggs: List[AggregateFn],
+        batch_format: Optional[str] = "default",
     ):
         super().__init__(
             "Aggregate",
             input_op,
             sub_progress_bar_names=[
+                SortTaskSpec.SORT_SAMPLE_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.MAP_SUB_PROGRESS_BAR_NAME,
                 ExchangeTaskSpec.REDUCE_SUB_PROGRESS_BAR_NAME,
             ],
         )
         self._key = key
         self._aggs = aggs
+        self._batch_format = batch_format

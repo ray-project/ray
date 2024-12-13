@@ -300,6 +300,87 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(node_info_list[0].death_info().reason_message() == reason_message);
 }
 
+TEST_F(GcsServerTest, TestNodeInfoFilters) {
+  // Create gcs node info
+  auto node1 = Mocker::GenNodeInfo(1, "127.0.0.1", "node1");
+  auto node2 = Mocker::GenNodeInfo(2, "127.0.0.2", "node2");
+  auto node3 = Mocker::GenNodeInfo(3, "127.0.0.3", "node3");
+
+  // Register node infos
+  for (auto &node : {node1, node2, node3}) {
+    rpc::RegisterNodeRequest register_node_info_request;
+    register_node_info_request.mutable_node_info()->CopyFrom(*node);
+    ASSERT_TRUE(RegisterNode(register_node_info_request));
+  }
+
+  // Kill node3
+  rpc::UnregisterNodeRequest unregister_node_request;
+  unregister_node_request.set_node_id(node3->node_id());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  std::string reason_message = "Terminate node for testing.";
+  node_death_info.set_reason_message(reason_message);
+  unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
+  ASSERT_TRUE(UnregisterNode(unregister_node_request));
+
+  {
+    // Get all
+    rpc::GetAllNodeInfoRequest request;
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 3);
+    ASSERT_EQ(reply.num_filtered(), 0);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by node id
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_id(node1->node_id());
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by state == ALIVE
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::ALIVE);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by state == DEAD
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::DEAD);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by node_name
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_name("node1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+}
+
 TEST_F(GcsServerTest, TestWorkerInfo) {
   // Report worker failure
   auto worker_failure_data = Mocker::GenWorkerTableData();

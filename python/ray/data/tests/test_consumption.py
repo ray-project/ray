@@ -12,6 +12,7 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.data import Schema
 from ray.data._internal.block_builder import BlockBuilder
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
 from ray.data._internal.datasource.csv_datasource import CSVDatasource
@@ -46,7 +47,6 @@ def test_schema(ray_start_regular):
             task_count={
                 "ReadRange": 10,
                 "reduce": 5,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot,
@@ -89,7 +89,7 @@ def test_schema_no_execution(ray_start_regular):
     last_snapshot = get_initial_core_execution_metrics_snapshot()
     ds = ray.data.range(100, override_num_blocks=10)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1}),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot,
     )
     # We do not kick off the read task by default.
@@ -146,9 +146,7 @@ def test_count(ray_start_regular):
     # for ray.data.range(), as the number of rows is known beforehand.
     assert not ds._plan.has_started_execution
 
-    assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(task_count={"_get_datasource_or_legacy_reader": 1})
-    )
+    assert_core_execution_metrics_equals(CoreExecutionMetrics(task_count={}))
 
 
 def test_count_edge_case(ray_start_regular):
@@ -189,11 +187,7 @@ def test_limit_execution(ray_start_regular):
 
     ds = ds.map(delay)
     last_snapshot = assert_core_execution_metrics_equals(
-        CoreExecutionMetrics(
-            task_count={
-                "_get_datasource_or_legacy_reader": 1,
-            }
-        ),
+        CoreExecutionMetrics(task_count={}),
         last_snapshot=last_snapshot,
     )
 
@@ -218,7 +212,6 @@ def test_limit_execution(ray_start_regular):
         CoreExecutionMetrics(
             task_count={
                 "ReadRange": 20,
-                "_get_datasource_or_legacy_reader": 1,
             }
         ),
         last_snapshot=last_snapshot,
@@ -796,11 +789,6 @@ def test_iter_rows(ray_start_regular_shared):
         assert isinstance(row, dict)
         assert row == df_row.to_dict()
 
-    # Prefetch.
-    for row, t_row in zip(ds.iter_rows(prefetch_batches=1), to_pylist(t)):
-        assert isinstance(row, dict)
-        assert row == t_row
-
 
 def test_iter_batches_basic(ray_start_regular_shared):
     df1 = pd.DataFrame({"one": [1, 2, 3], "two": [2, 3, 4]})
@@ -1269,6 +1257,14 @@ def test_union(ray_start_regular_shared):
 @pytest.mark.skipif(
     sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
 )
+def test_iter_tf_batches_emits_deprecation_warning(ray_start_regular_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).iter_tf_batches()
+
+
+@pytest.mark.skipif(
+    sys.version_info >= (3, 12), reason="No tensorflow for Python 3.12+"
+)
 def test_iter_tf_batches(ray_start_regular_shared):
     df1 = pd.DataFrame(
         {"one": [1, 2, 3], "two": [1.0, 2.0, 3.0], "label": [1.0, 2.0, 3.0]}
@@ -1517,11 +1513,9 @@ def test_global_tabular_std(ray_start_regular_shared, ds_format, num_parts):
 def test_column_name_type_check(ray_start_regular_shared):
     df = pd.DataFrame({"1": np.random.rand(10), "a": np.random.rand(10)})
     ds = ray.data.from_pandas(df)
-    expected_str = (
-        "MaterializedDataset(num_blocks=1, num_rows=10, "
-        "schema={1: float64, a: float64})"
-    )
-    assert str(ds) == expected_str, str(ds)
+    assert ds.schema() == Schema(pa.schema([("1", pa.float64()), ("a", pa.float64())]))
+    assert ds.count() == 10
+
     df = pd.DataFrame({1: np.random.rand(10), "a": np.random.rand(10)})
     with pytest.raises(ValueError):
         ray.data.from_pandas(df)

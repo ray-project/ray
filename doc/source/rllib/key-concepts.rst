@@ -31,7 +31,7 @@ An environment in RL is the agent's world, it is a simulation of the problem to 
 
 .. image:: images/env_key_concept1.png
 
-An RLlib environment consists of: 
+An RLlib environment consists of:
 
 1. all possible actions (**action space**)
 2. a complete description of the environment, nothing hidden (**state space**)
@@ -73,7 +73,15 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Build.
             algo = config.build()
@@ -91,7 +99,15 @@ which implements the proximal policy optimization algorithm in RLlib.
 
             # Configure.
             from ray.rllib.algorithms.ppo import PPOConfig
-            config = PPOConfig().environment(env="CartPole-v1").training(train_batch_size=4000)
+            config = (
+                PPOConfig()
+                .api_stack(
+                    enable_rl_module_and_learner=True,
+                    enable_env_runner_and_connector_v2=True,
+                )
+                .environment("CartPole-v1")
+                .training(train_batch_size_per_learner=4000)
+            )
 
             # Train via Ray Tune.
             tune.run("PPO", config=config)
@@ -374,5 +390,3 @@ training update.
 :ref:`Replay Buffers <replay-buffer-reference-docs>`:
 RLlib provides `a collection <https://github.com/ray-project/ray/tree/master/rllib/utils/replay_buffers>`__ of replay
 buffers that can be used for storing and sampling experiences.
-
-

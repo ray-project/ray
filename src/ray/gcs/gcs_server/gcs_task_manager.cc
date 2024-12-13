@@ -21,13 +21,6 @@
 namespace ray {
 namespace gcs {
 
-void GcsTaskManager::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
-}
-
 std::vector<rpc::TaskEvents> GcsTaskManager::GcsTaskManagerStorage::GetTaskEvents()
     const {
   std::vector<rpc::TaskEvents> ret;

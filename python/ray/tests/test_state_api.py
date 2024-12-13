@@ -4,6 +4,7 @@ import json
 import sys
 import signal
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
 from unittest.mock import MagicMock, AsyncMock
 
@@ -12,7 +13,7 @@ import pytest_asyncio
 from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify
+from ray.util.state.common import Humanify, PredicateType
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -130,7 +131,9 @@ Unit tests
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -170,6 +173,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
 
     for k in result_dict:
         assert k in state_fields_columns
+
+    # Make the field values can be converted without error as well
+    state(**result_dict)
 
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
@@ -322,7 +328,7 @@ def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
 def create_api_options(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     limit: int = DEFAULT_LIMIT,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: List[Tuple[str, PredicateType, SupportedFilterType]] = None,
     detail: bool = False,
     exclude_driver: bool = True,
 ):
@@ -744,12 +750,14 @@ async def test_api_manager_list_cluster_events(state_api_manager):
                 "severity": "DEBUG",
                 "message": "a",
                 "event_id": event_id_1,
+                "source_type": "GCS",
             },
             event_id_2: {
                 "timestamp": 10,
                 "severity": "INFO",
                 "message": "b",
                 "event_id": event_id_2,
+                "source_type": "GCS",
             },
         }
     }
@@ -794,7 +802,9 @@ async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
+        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
+        total=2,
+        num_filtered=0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -814,6 +824,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
@@ -827,6 +842,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
     )
@@ -1682,11 +1702,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors + 2 prestarted task-only workers
-    # TODO(clarng): prestart worker on worker lease request doesn't
-    # work, otherwise it should have created the 2 prestarted task-only
-    # workers prior to https://github.com/ray-project/ray/pull/33623
-    assert result.total == 6
+    assert result.total == 4
 
 
 def test_humanify():
@@ -2216,11 +2232,13 @@ def test_list_get_jobs(shutdown_only):
     )
 
     def verify():
-        job_data = list_jobs()[0]
+        job_data = list_jobs(detail=True)[0]
         print(job_data)
         job_id_from_api = job_data["submission_id"]
         assert job_data["status"] == "SUCCEEDED"
         assert job_id == job_id_from_api
+        assert job_data["start_time"] > 0
+        assert job_data["end_time"] > 0
         return True
 
     wait_for_condition(verify)
@@ -2241,10 +2259,11 @@ ray.get(f.remote())
     run_string_as_driver(script)
 
     def verify():
-        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")], detail=True)
         assert len(jobs) == 2, "1 test driver + 1 script run above"
         for driver_job in jobs:
             assert driver_job["driver_info"] is not None
+            assert driver_job["start_time"] > 0
 
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1
@@ -2613,7 +2632,7 @@ def test_list_actor_tasks(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
 
-    @ray.remote
+    @ray.remote(max_concurrency=2)
     class Actor:
         def call(self):
             import time
@@ -2631,18 +2650,19 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
-        # Actor.call: 1 running, 9 waiting for execution (queued).
+        # Actor.call: 2 running, 8 waiting for execution (queued).
         assert len(tasks) == 11
         assert (
             len(
                 list(
                     filter(
-                        lambda task: task["state"] == "SUBMITTED_TO_WORKER",
+                        lambda task: task["state"]
+                        == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
                         tasks,
                     )
                 )
             )
-            == 9
+            == 8
         )
         assert (
             len(
@@ -2675,7 +2695,7 @@ def test_list_actor_tasks(shutdown_only):
                     )
                 )
             )
-            == 1
+            == 2
         )
 
         # Filters with actor id.

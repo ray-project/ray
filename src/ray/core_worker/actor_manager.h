@@ -20,6 +20,7 @@
 #include "ray/core_worker/actor_creator.h"
 #include "ray/core_worker/actor_handle.h"
 #include "ray/core_worker/reference_count.h"
+#include "ray/core_worker/transport/actor_task_submitter.h"
 #include "ray/core_worker/transport/task_receiver.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 namespace ray {
@@ -31,9 +32,9 @@ namespace core {
 /// by raylet.
 class ActorManager {
  public:
-  explicit ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
-                        std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter,
-                        std::shared_ptr<ReferenceCounterInterface> reference_counter)
+  ActorManager(std::shared_ptr<gcs::GcsClient> gcs_client,
+               ActorTaskSubmitterInterface &actor_task_submitter,
+               ReferenceCounterInterface &reference_counter)
       : gcs_client_(gcs_client),
         actor_task_submitter_(actor_task_submitter),
         reference_counter_(reference_counter) {}
@@ -114,14 +115,14 @@ class ActorManager {
                          const rpc::Address &caller_address,
                          bool owned);
 
-  /// Wait for actor out of scope.
+  /// Wait for actor reference deletion.
   ///
   /// \param actor_id The actor id that owns the callback.
-  /// \param actor_out_of_scope_callback The callback function that will be called when
-  /// an actor_id goes out of scope.
-  void WaitForActorOutOfScope(
+  /// \param actor_ref_deleted_callback The callback function that will be called when
+  /// an actor_id has no references.
+  void WaitForActorRefDeleted(
       const ActorID &actor_id,
-      std::function<void(const ActorID &)> actor_out_of_scope_callback);
+      std::function<void(const ActorID &)> actor_ref_deleted_callback);
 
   /// Get a list of actor_ids from existing actor handles.
   /// This is used for debugging purpose.
@@ -150,10 +151,10 @@ class ActorManager {
   /// \param[in] call_site The caller's site.
   /// \param[in] actor_id The id of an actor
   /// \param[in] actor_creation_return_id object id of this actor creation
-  /// \param[in] Whether to add a local reference for this actor.
+  /// \param[in] add_local_ref Whether to add a local reference for this actor.
   /// \param[in] is_self Whether this handle is current actor's handle. If true, actor
-  /// to the same actor.
   /// manager won't subscribe actor info from GCS.
+  /// \param[in] owned Whether the actor is owned by the current process.
   /// \return True if the handle was added and False if we already had a handle
   /// to the same actor.
   bool AddActorHandle(std::unique_ptr<ActorHandle> actor_handle,
@@ -162,7 +163,8 @@ class ActorManager {
                       const ActorID &actor_id,
                       const ObjectID &actor_creation_return_id,
                       bool add_local_ref,
-                      bool is_self = false);
+                      bool is_self,
+                      bool owned);
 
   /// Check if named actor is cached locally.
   /// If it has been cached, core worker will not get actor id by name from GCS.
@@ -189,11 +191,11 @@ class ActorManager {
   std::shared_ptr<gcs::GcsClient> gcs_client_;
 
   /// Interface to submit tasks directly to other actors.
-  std::shared_ptr<ActorTaskSubmitterInterface> actor_task_submitter_;
+  ActorTaskSubmitterInterface &actor_task_submitter_;
 
   /// Used to keep track of actor handle reference counts.
   /// All actor handle related ref counting logic should be included here.
-  std::shared_ptr<ReferenceCounterInterface> reference_counter_;
+  ReferenceCounterInterface &reference_counter_;
 
   mutable absl::Mutex mutex_;
 

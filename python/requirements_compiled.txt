@@ -4,24 +4,18 @@
 absl-py==1.4.0
     # via
     #   array-record
-    #   chex
     #   dm-control
     #   dm-env
-    #   dopamine-rl
     #   etils
     #   labmaze
     #   ml-collections
     #   mujoco
     #   open-spiel
-    #   optax
-    #   orbax-checkpoint
-    #   recsim
     #   tensorboard
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-metadata
     #   tensorflow-probability
-    #   tf-slim
 accelerate==0.28.0
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
 adagio==0.2.4
@@ -30,13 +24,13 @@ adagio==0.2.4
     #   qpd
 adal==1.2.7
     # via msrestazure
-aim==3.17.5 ; python_version < "3.12"
+aim==3.23.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
-aim-ui==3.17.5
+aim-ui==3.23.0
     # via aim
 aimrecords==0.0.7
     # via aim
-aimrocks==0.4.0
+aimrocks==0.5.2
     # via aim
 aioboto3==11.2.0
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
@@ -75,10 +69,8 @@ aiosqlite==0.19.0
     # via ypy-websocket
 alabaster==0.7.13
     # via sphinx
-ale-py==0.8.1 ; python_version < "3.12"
-    # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-    #   gym
+ale-py==0.10.1
+    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 alembic==1.12.1
     # via
     #   aim
@@ -147,10 +139,6 @@ attrs==21.4.0
     #   open-spiel
     #   sarif-om
     #   semgrep
-autorom==0.6.1 ; platform_machine != "arm64"
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-autorom-accept-rom-license==0.6.1
-    # via autorom
 aws-sam-translator==1.81.0
     # via cfn-lint
 aws-xray-sdk==2.12.1
@@ -224,6 +212,7 @@ boto==2.49.0
 boto3==1.26.76
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   aim
     #   aiobotocore
     #   aws-sam-translator
     #   moto
@@ -241,14 +230,13 @@ braceexpand==0.1.7
     # via webdataset
 bracex==2.4
     # via wcmatch
-cached-property==1.5.2
-    # via orbax-checkpoint
 cachetools==5.3.2
     # via
     #   aim
     #   google-auth
 certifi==2023.11.17
     # via
+    #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   httpcore
     #   httpx
     #   kubernetes
@@ -270,18 +258,12 @@ charset-normalizer==3.3.2
     # via
     #   requests
     #   snowflake-connector-python
-chess==1.7.0
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-chex==0.1.7
-    # via optax
 clang-format==12.0.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 click==8.1.7
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   aim
-    #   autorom
-    #   autorom-accept-rom-license
     #   black
     #   click-option-group
     #   dask
@@ -290,6 +272,7 @@ click==8.1.7
     #   flask
     #   jupyter-cache
     #   mlflow
+    #   pyiceberg
     #   ray
     #   semgrep
     #   tensorflow-datasets
@@ -303,7 +286,6 @@ cloudpickle==2.2.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   dask
     #   distributed
-    #   gym
     #   gymnasium
     #   hyperopt
     #   mlagents-envs
@@ -313,8 +295,6 @@ cloudpickle==2.2.0
     #   tensorflow-probability
 cma==3.2.2
     # via nevergrad
-cmaes==0.10.0
-    # via optuna
 cmdstanpy==1.2.0
     # via prophet
 colorama==0.4.6
@@ -352,7 +332,7 @@ crc32c==2.3
     # via -r /ray/ci/../python/requirements/ml/data-requirements.txt
 crcmod==1.7
     # via gsutil
-cryptography==38.0.1
+cryptography==42.0.5
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   adal
@@ -369,14 +349,16 @@ cryptography==38.0.1
     #   sshpubkeys
     #   trustme
 cupy-cuda12x==13.1.0 ; sys_platform != "darwin"
-    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
+    # via
+    #   -r /ray/ci/../python/requirements.txt
+    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 cycler==0.12.1
     # via matplotlib
 cython==0.29.37
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gpy
-dask==2022.10.1 ; python_version < "3.12"
+dask==2022.10.2 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   distributed
@@ -414,7 +396,7 @@ dill==0.3.7
     #   multiprocess
 distlib==0.3.7
     # via virtualenv
-distributed==2022.10.1 ; python_version < "3.12"
+distributed==2022.10.2 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/data-requirements.txt
     #   dask
@@ -427,7 +409,6 @@ dm-env==1.6
 dm-tree==0.1.8
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   chex
     #   dm-control
     #   dm-env
     #   tensorflow-datasets
@@ -448,10 +429,6 @@ docutils==0.19
     #   -r /ray/ci/../python/requirements/lint-requirements.txt
     #   myst-parser
     #   sphinx
-dopamine-rl==4.0.5 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version < "3.12"
-    # via
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
-    #   recsim
 dulwich==0.21.6
     # via comet-ml
 ecdsa==0.18.0
@@ -470,7 +447,7 @@ etils==1.5.2 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
     #   array-record
-    #   orbax-checkpoint
+    #   mujoco
     #   tensorflow-datasets
 evaluate==0.4.0
     # via -r /ray/ci/../python/requirements/ml/train-test-requirements.txt
@@ -543,8 +520,6 @@ flatbuffers==23.5.26
     #   onnxruntime
     #   tensorflow
     #   tf2onnx
-flax==0.7.2
-    # via dopamine-rl
 fonttools==4.45.1
     # via matplotlib
 fqdn==1.5.1
@@ -570,6 +545,7 @@ fsspec==2023.5.0
     #   gradio-client
     #   huggingface-hub
     #   modin
+    #   pyiceberg
     #   pytorch-lightning
     #   s3fs
     #   torch
@@ -587,10 +563,6 @@ gast==0.4.0
     #   tensorflow-probability
 gcs-oauth2-boto-plugin==3.0
     # via gsutil
-gin-config==0.5.0
-    # via
-    #   dopamine-rl
-    #   recsim
 gitdb==4.0.11
     # via gitpython
 gitpython==3.1.40
@@ -674,16 +646,18 @@ gradio-client==0.6.1
     # via gradio
 graphql-core==3.2.3
     # via moto
+graphviz==0.20.3
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 greenlet==3.0.1
     # via sqlalchemy
-grpcio==1.60.0 ; sys_platform != "darwin"
+grpcio==1.66.2 ; sys_platform != "darwin"
     # via
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
-    #   aim
     #   google-api-core
     #   google-cloud-bigquery
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   opencensus-proto
     #   opentelemetry-exporter-opencensus
@@ -692,20 +666,15 @@ grpcio==1.60.0 ; sys_platform != "darwin"
     #   tensorflow
 grpcio-status==1.48.2
     # via google-api-core
+grpcio-tools==1.48.2
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 gsutil==5.27
     # via -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
 gunicorn==20.1.0
     # via mlflow
-gym==0.26.2
-    # via
-    #   dopamine-rl
-    #   recsim
-gym-notices==0.0.8
-    # via gym
-gymnasium==0.28.1 ; python_version < "3.12"
+gymnasium==1.0.0
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   minigrid
     #   pettingzoo
     #   shimmy
@@ -746,6 +715,8 @@ httpx==0.24.1
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   gradio
     #   gradio-client
+hudi==0.2.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 huggingface-hub==0.19.4
     # via
     #   accelerate
@@ -772,7 +743,7 @@ idna==3.7
     #   snowflake-connector-python
     #   trustme
     #   yarl
-imageio==2.34.2 ; python_version < "3.12"
+imageio==2.34.2
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   moviepy
@@ -789,10 +760,8 @@ importlib-metadata==6.11.0
     #   myst-nb
 importlib-resources==5.13.0
     # via
-    #   ale-py
     #   etils
     #   gradio
-    #   orbax-checkpoint
     #   prophet
 iniconfig==2.0.0
     # via pytest
@@ -830,21 +799,6 @@ isort==5.10.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 itsdangerous==2.1.2
     # via flask
-jax==0.4.13
-    # via
-    #   chex
-    #   dopamine-rl
-    #   flax
-    #   optax
-    #   orbax-checkpoint
-jax-jumpy==1.0.0
-    # via gymnasium
-jaxlib==0.4.13
-    # via
-    #   chex
-    #   dopamine-rl
-    #   optax
-    #   orbax-checkpoint
 jedi==0.19.1
     # via ipython
 jinja2==3.1.2
@@ -909,7 +863,6 @@ jsonschema==4.17.3
     #   jsonschema-spec
     #   jupyter-events
     #   jupyterlab-server
-    #   kaggle-environments
     #   nbformat
     #   openapi-schema-validator
     #   openapi-spec-validator
@@ -967,8 +920,6 @@ jupyterlab-widgets==3.0.11
     # via ipywidgets
 jupytext==1.16.3
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-kaggle-environments==1.7.11
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 keras==2.15.0
     # via tensorflow
 kiwisolver==1.4.5
@@ -1061,15 +1012,13 @@ mistune==0.8.4
 ml-collections==0.1.1
     # via open-spiel
 ml-dtypes==0.3.2
-    # via
-    #   jax
-    #   jaxlib
-    #   tensorflow
-    #   tensorstore
+    # via tensorflow
 mlagents-envs==0.28.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 mlflow==2.9.2
     # via -r /ray/ci/../python/requirements/ml/core-requirements.txt
+mmh3==4.1.0
+    # via pyiceberg
 mock==5.1.0
     # via pytest-shutil
 modin==0.22.2 ; python_version < "3.12"
@@ -1104,9 +1053,7 @@ msgpack==1.0.7
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   distributed
-    #   flax
     #   msgpack-numpy
-    #   orbax-checkpoint
     #   ray
 msgpack-numpy==0.4.8
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
@@ -1116,7 +1063,7 @@ msrestazure==0.6.4
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
-mujoco==2.3.6 ; python_version < "3.12"
+mujoco==3.2.4
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   dm-control
@@ -1136,6 +1083,7 @@ mypy==1.7.0
     #   -r /ray/ci/../python/requirements/test-requirements.txt
 mypy-extensions==1.0.0
     # via
+    #   -r /ray/ci/../python/requirements/lint-requirements.txt
     #   black
     #   mypy
 myst-nb==1.1.0
@@ -1175,7 +1123,6 @@ nest-asyncio==1.5.8
     #   nbclassic
     #   nbclient
     #   notebook
-    #   orbax-checkpoint
 netifaces==0.11.0
     # via
     #   hpbandster
@@ -1216,9 +1163,7 @@ numpy==1.26.4
     #   altair
     #   bayesian-optimization
     #   bokeh
-    #   chex
     #   cma
-    #   cmaes
     #   cmdstanpy
     #   configspace
     #   contourpy
@@ -1229,21 +1174,15 @@ numpy==1.26.4
     #   deepspeed
     #   dm-control
     #   dm-env
-    #   dopamine-rl
     #   etils
     #   evaluate
-    #   flax
     #   gpy
     #   gradio
-    #   gym
     #   gymnasium
     #   h5py
     #   hpbandster
     #   hyperopt
     #   imageio
-    #   jax
-    #   jax-jumpy
-    #   jaxlib
     #   labmaze
     #   lightgbm
     #   matplotlib
@@ -1263,11 +1202,9 @@ numpy==1.26.4
     #   onnx
     #   onnxruntime
     #   open-spiel
-    #   opencv-python
+    #   opencv-python-headless
     #   opt-einsum
-    #   optax
     #   optuna
-    #   orbax-checkpoint
     #   pandas
     #   paramz
     #   patsy
@@ -1279,7 +1216,6 @@ numpy==1.26.4
     #   pyro-ppl
     #   pytorch-lightning
     #   raydp
-    #   recsim
     #   scikit-image
     #   scikit-learn
     #   scipy
@@ -1293,7 +1229,6 @@ numpy==1.26.4
     #   tensorflow
     #   tensorflow-datasets
     #   tensorflow-probability
-    #   tensorstore
     #   tf2onnx
     #   tifffile
     #   tinyscaler
@@ -1335,8 +1270,8 @@ opencensus-context==0.1.3
     # via opencensus
 opencensus-proto==0.1.0
     # via opentelemetry-exporter-opencensus
-opencv-python==4.8.1.78
-    # via dopamine-rl
+opencv-python-headless==4.8.1.78
+    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 openpyxl==3.0.10
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 opentelemetry-api==1.1.0
@@ -1369,15 +1304,10 @@ opentelemetry-semantic-conventions==0.20b0
     # via opentelemetry-sdk
 opt-einsum==3.3.0
     # via
-    #   jax
     #   pyro-ppl
     #   tensorflow
-optax==0.1.7
-    # via flax
-optuna==3.2.0
+optuna==4.1.0
     # via -r /ray/ci/../python/requirements/ml/tune-requirements.txt
-orbax-checkpoint==0.2.3
-    # via flax
 orjson==3.9.10
     # via gradio
 packaging==23.0
@@ -1439,7 +1369,6 @@ pandas==1.5.3 ; python_version < "3.12"
     #   dask
     #   datasets
     #   delta-sharing
-    #   dopamine-rl
     #   evaluate
     #   gradio
     #   mlflow
@@ -1478,7 +1407,7 @@ pbr==6.0.0
     #   sarif-om
 peewee==3.17.0
     # via semgrep
-pettingzoo==1.23.1
+pettingzoo==1.24.3
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 pexpect==4.8.0
     # via
@@ -1491,7 +1420,6 @@ pillow==10.3.0 ; platform_system != "Windows"
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   aim
     #   bokeh
-    #   dopamine-rl
     #   gradio
     #   imageio
     #   matplotlib
@@ -1536,13 +1464,13 @@ proto-plus==1.22.3
 protobuf==3.20.3
     # via
     #   -r /ray/ci/../python/requirements.txt
-    #   aim
     #   dm-control
     #   google-api-core
     #   google-cloud-bigquery
     #   google-cloud-bigquery-storage
     #   googleapis-common-protos
     #   grpcio-status
+    #   grpcio-tools
     #   mlagents-envs
     #   mlflow
     #   onnx
@@ -1588,10 +1516,8 @@ py-cpuinfo==9.0.0
     # via deepspeed
 py-partiql-parser==0.5.0
     # via moto
-py-spy==0.3.14
+py-spy==0.4.0 ; python_version < "3.12"
     # via -r /ray/ci/../python/requirements.txt
-py3nvml==0.2.7
-    # via aim
 py4j==0.10.9.7
     # via pyspark
 pyarrow==14.0.2
@@ -1600,10 +1526,13 @@ pyarrow==14.0.2
     #   datasets
     #   delta-sharing
     #   feather-format
+    #   hudi
     #   mlflow
     #   pylance
     #   raydp
     #   triad
+pyarrow-hotfix==0.6
+    # via hudi
 pyasn1==0.5.1
     # via
     #   oauth2client
@@ -1618,6 +1547,8 @@ pycodestyle==2.7.0
     # via flake8
 pycparser==2.21
     # via cffi
+pycurl==7.45.3
+    # via -r /ray/ci/../python/requirements/anyscale-requirements.txt
 pydantic==2.5.0
     # via
     #   -r /ray/ci/../python/requirements.txt
@@ -1626,6 +1557,7 @@ pydantic==2.5.0
     #   deepspeed
     #   fastapi
     #   gradio
+    #   pyiceberg
 pydantic-core==2.14.1
     # via pydantic
 pydot==1.4.2
@@ -1637,7 +1569,6 @@ pyflakes==2.3.1
 pygame==2.5.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   dopamine-rl
     #   minigrid
 pyglet==1.5.15
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
@@ -1649,6 +1580,8 @@ pygments==2.18.0
     #   nbconvert
     #   rich
     #   sphinx
+pyiceberg==0.7.0
+    # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
 pyjwt==2.8.0
     # via
     #   adal
@@ -1672,8 +1605,9 @@ pyopengl==3.1.7
     # via
     #   dm-control
     #   mujoco
-pyopenssl==23.0.0
+pyopenssl==24.2.1
     # via
+    #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/anyscale-requirements.txt
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   azure-cli-core
@@ -1689,6 +1623,7 @@ pyparsing==3.1.1
     #   matplotlib
     #   moto
     #   pydot
+    #   pyiceberg
     #   torch-geometric
 pyro-api==0.1.2
     # via pyro-ppl
@@ -1768,6 +1703,7 @@ python-dateutil==2.8.2
     #   moto
     #   pandas
     #   segment-analytics-python
+    #   strictyaml
 python-jose==3.3.0
     # via moto
 python-json-logger==2.0.7
@@ -1803,7 +1739,6 @@ pyyaml==6.0.1
     #   dask
     #   datasets
     #   distributed
-    #   flax
     #   gradio
     #   huggingface-hub
     #   jsonschema-spec
@@ -1820,7 +1755,6 @@ pyyaml==6.0.1
     #   myst-nb
     #   myst-parser
     #   optuna
-    #   orbax-checkpoint
     #   pymars
     #   pytorch-lightning
     #   ray
@@ -1845,8 +1779,6 @@ querystring-parser==1.2.4
     # via raydp
 raydp==1.7.0b20231020.dev0
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
-recsim==0.2.4 ; (sys_platform != "darwin" or platform_machine != "arm64") and python_version < "3.12"
-    # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 redis==4.4.2
     # via -r /ray/ci/../python/requirements/test-requirements.txt
 regex==2024.5.15
@@ -1858,8 +1790,6 @@ requests==2.31.0
     #   -r /ray/ci/../python/requirements.txt
     #   adal
     #   aim
-    #   autorom
-    #   autorom-accept-rom-license
     #   azure-cli-core
     #   azure-core
     #   comet-ml
@@ -1884,6 +1814,7 @@ requests==2.31.0
     #   moto
     #   msal
     #   msrest
+    #   pyiceberg
     #   ray
     #   requests-oauthlib
     #   requests-toolbelt
@@ -1932,8 +1863,8 @@ rich==13.3.2
     #   -r /ray/ci/../python/requirements.txt
     #   -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
     #   comet-ml
-    #   flax
     #   memray
+    #   pyiceberg
     #   semgrep
     #   typer
 rsa==4.7.2
@@ -1983,8 +1914,6 @@ scipy==1.11.4
     #   gpy
     #   hpbandster
     #   hyperopt
-    #   jax
-    #   jaxlib
     #   lightgbm
     #   linear-operator
     #   medpy
@@ -1992,7 +1921,6 @@ scipy==1.11.4
     #   open-spiel
     #   paramz
     #   pymars
-    #   recsim
     #   scikit-image
     #   scikit-learn
     #   statsforecast
@@ -2002,9 +1930,7 @@ scipy==1.11.4
     #   torch-sparse
     #   xgboost
 segment-analytics-python==2.2.0
-    # via
-    #   -r /ray/ci/../python/requirements/test-requirements.txt
-    #   aim
+    # via -r /ray/ci/../python/requirements/test-requirements.txt
 semantic-version==2.10.0
     # via
     #   comet-ml
@@ -2032,7 +1958,7 @@ shellcheck-py==0.7.1.1
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
 shellingham==1.5.4
     # via typer
-shimmy==1.3.0
+shimmy==2.0.0
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 shortuuid==1.0.1
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
@@ -2098,6 +2024,7 @@ snowflake-connector-python==3.11.0
 sortedcontainers==2.4.0
     # via
     #   distributed
+    #   pyiceberg
     #   snowflake-connector-python
 soundfile==0.12.1
     # via -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
@@ -2120,13 +2047,14 @@ sphinxcontrib-qthelp==1.0.8
     # via sphinx
 sphinxcontrib-serializinghtml==1.1.10
     # via sphinx
-sqlalchemy==1.4.53
+sqlalchemy==2.0.32
     # via
     #   aim
     #   alembic
     #   jupyter-cache
     #   mlflow
     #   optuna
+    #   pyiceberg
     #   pymars
 sqlglot==25.6.1
     # via fugue
@@ -2148,7 +2076,9 @@ statsmodels==0.14.0
     # via
     #   hpbandster
     #   statsforecast
-supersuit==3.8.0 ; python_version < "3.12"
+strictyaml==1.7.3
+    # via pyiceberg
+supersuit==3.9.3
     # via -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
 sympy==1.13.1
     # via
@@ -2165,7 +2095,9 @@ tblib==3.0.0
     #   -r /ray/ci/../python/requirements/docker/ray-docker-requirements.txt
     #   distributed
 tenacity==8.5.0
-    # via plotly
+    # via
+    #   plotly
+    #   pyiceberg
 tensorboard==2.15.2
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2180,10 +2112,7 @@ tensorboardx==2.6.2.2
     #   -r /ray/ci/../python/requirements/test-requirements.txt
     #   pytorch-lightning
 tensorflow==2.15.1 ; python_version < "3.12" and (sys_platform != "darwin" or platform_machine != "arm64")
-    # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-    #   dopamine-rl
-    #   recsim
+    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 tensorflow-datasets==4.9.3 ; python_version < "3.12"
     # via
     #   -r /ray/ci/../python/requirements/ml/data-test-requirements.txt
@@ -2199,13 +2128,7 @@ tensorflow-io-gcs-filesystem==0.31.0 ; python_version < "3.12"
 tensorflow-metadata==1.14.0
     # via tensorflow-datasets
 tensorflow-probability==0.23.0 ; python_version < "3.12"
-    # via
-    #   -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
-    #   dopamine-rl
-tensorstore==0.1.63
-    # via
-    #   flax
-    #   orbax-checkpoint
+    # via -r /ray/ci/../python/requirements/ml/dl-cpu-requirements.txt
 termcolor==2.4.0
     # via
     #   pytest-shutil
@@ -2219,8 +2142,6 @@ terminado==0.18.1
     #   notebook
 testfixtures==7.0.0
     # via -r /ray/ci/../python/requirements/test-requirements.txt
-tf-slim==1.1.0
-    # via dopamine-rl
 tf2onnx==1.15.1 ; sys_platform != "darwin" or platform_machine != "arm64"
     # via -r /ray/ci/../python/requirements/ml/rllib-requirements.txt
 threadpoolctl==3.1.0
@@ -2233,7 +2154,7 @@ timm==0.9.2
     # via -r /ray/ci/../python/requirements/ml/tune-test-requirements.txt
 tinycss2==1.3.0
     # via nbconvert
-tinyscaler==1.2.6 ; python_version < "3.12"
+tinyscaler==1.2.8
     # via
     #   -r /ray/ci/../python/requirements/ml/rllib-test-requirements.txt
     #   supersuit
@@ -2250,7 +2171,6 @@ tomlkit==0.13.0
 toolz==0.12.1
     # via
     #   altair
-    #   chex
     #   dask
     #   distributed
     #   partd
@@ -2365,10 +2285,16 @@ typeguard==2.13.3
     # via ax-platform
 typer==0.12.3
     # via -r /ray/ci/../python/requirements.txt
+types-pycurl==7.45.3.20240421
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
 types-python-dateutil==2.9.0.20240316
     # via arrow
 types-pyyaml==6.0.12.2
     # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-requests==2.31.0.6
+    # via -r /ray/ci/../python/requirements/lint-requirements.txt
+types-urllib3==1.26.25.14
+    # via types-requests
 typing-extensions==4.8.0
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
@@ -2380,7 +2306,6 @@ typing-extensions==4.8.0
     #   configspace
     #   etils
     #   fastapi
-    #   flax
     #   gradio
     #   gradio-client
     #   gymnasium
@@ -2389,12 +2314,12 @@ typing-extensions==4.8.0
     #   mypy
     #   myst-nb
     #   nevergrad
-    #   orbax-checkpoint
     #   pydantic
     #   pydantic-core
     #   pytorch-lightning
     #   semgrep
     #   snowflake-connector-python
+    #   sqlalchemy
     #   tensorflow
     #   torch
     #   typer
@@ -2481,6 +2406,7 @@ websocket-client==1.8.0
 websockets==11.0.3
     # via
     #   -r /ray/ci/../python/requirements/test-requirements.txt
+    #   aim
     #   gradio
     #   gradio-client
 werkzeug==2.3.8
@@ -2512,7 +2438,6 @@ xlrd==2.0.1
 xmltodict==0.13.0
     # via
     #   moto
-    #   py3nvml
     #   yq
 xxhash==3.4.1
     # via

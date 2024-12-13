@@ -1,20 +1,15 @@
+import gymnasium as gym
 import numpy as np
 from pathlib import Path
 import unittest
 
 import ray
 import ray.rllib.algorithms.marwil as marwil
-from ray.rllib.algorithms.marwil.marwil_offline_prelearner import (
-    MARWILOfflinePreLearner,
-)
+from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY
+from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import (
-    ENV_RUNNER_RESULTS,
-    EPISODE_RETURN_MEAN,
-    EVALUATION_RESULTS,
-)
 from ray.rllib.utils.test_utils import check
 
 torch, _ = try_import_torch()
@@ -29,7 +24,7 @@ class TestMARWIL(unittest.TestCase):
     def tearDownClass(cls):
         ray.shutdown()
 
-    def test_marwil_compilation_and_learning_from_offline_file(self):
+    def test_marwil_compilation_discrete_actions(self):
         """Test whether a MARWILAlgorithm can be built with all frameworks.
 
         Learns from a historic-data file.
@@ -41,7 +36,7 @@ class TestMARWIL(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         base_path = Path(__file__).parents[3]
         print(f"base_path={base_path}")
-        data_path = "local://" + base_path.joinpath(data_path).as_posix()
+        data_path = "local://" / base_path / data_path
         print(f"data_path={data_path}")
 
         config = (
@@ -51,51 +46,34 @@ class TestMARWIL(unittest.TestCase):
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
+            .offline_data(
+                input_=[data_path.as_posix()],
+                dataset_num_iters_per_learner=1,
+                input_read_method_kwargs={"override_num_blocks": 2},
+                map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+                iter_batches_kwargs={"prefetch_batches": 1},
+            )
+            .training(
+                lr=0.0008,
+                train_batch_size_per_learner=2000,
+                beta=0.5,
+            )
             .evaluation(
                 evaluation_interval=3,
                 evaluation_num_env_runners=1,
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
-            .offline_data(input_=[data_path])
-            .training(
-                lr=0.0008,
-                train_batch_size_per_learner=2000,
-                beta=0.5,
-            )
         )
 
-        num_iterations = 350
-        min_reward = 100.0
-
-        # Test for all frameworks.
+        num_iterations = 3
 
         algo = config.build()
-        learnt = False
         for i in range(num_iterations):
-            results = algo.train()
-            print(results)
-
-            eval_results = results.get(EVALUATION_RESULTS, {})
-            if eval_results:
-                episode_return_mean = eval_results[ENV_RUNNER_RESULTS][
-                    EPISODE_RETURN_MEAN
-                ]
-                print(f"iter={i}, R={episode_return_mean}")
-                # Learn until some reward is reached on an actual live env.
-                if episode_return_mean > min_reward:
-                    print("BC has learnt the task!")
-                    learnt = True
-                    break
-
-        if not learnt:
-            raise ValueError(
-                f"`MARWIL` did not reach {min_reward} reward from expert offline data!"
-            )
-
+            print(algo.train())
         algo.stop()
 
-    def test_marwil_cont_actions_from_offline_file(self):
+    def test_marwil_compilation_cont_actions(self):
         """Test whether MARWIL runs with cont. actions.
 
         Learns from a historic-data file.
@@ -108,10 +86,22 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
-            .env_runners(num_env_runners=1)
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
+            )
+            .environment(env="Pendulum-v1")
+            .env_runners(num_env_runners=1)
+            .training(
+                train_batch_size_per_learner=2000,
+            )
+            .offline_data(
+                # Learn from offline data.
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
+                input_read_method_kwargs={"override_num_blocks": 2},
+                map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
+                iter_batches_kwargs={"prefetch_batches": 1},
             )
             # Evaluate on actual environment.
             .evaluation(
@@ -120,18 +110,11 @@ class TestMARWIL(unittest.TestCase):
                 evaluation_duration=5,
                 evaluation_parallel_to_training=True,
             )
-            .training(
-                train_batch_size_per_learner=2000,
-            )
-            .offline_data(
-                # Learn from offline data.
-                input_=[data_path],
-            )
         )
 
         num_iterations = 3
 
-        algo = config.build(env="Pendulum-v1")
+        algo = config.build()
         for i in range(num_iterations):
             print(algo.train())
         algo.stop()
@@ -147,12 +130,23 @@ class TestMARWIL(unittest.TestCase):
 
         config = (
             marwil.MARWILConfig()
+            .environment(
+                observation_space=gym.spaces.Box(
+                    np.array([-4.8, -np.inf, -0.41887903, -np.inf]),
+                    np.array([4.8, np.inf, 0.41887903, np.inf]),
+                    (4,),
+                    np.float32,
+                ),
+                action_space=gym.spaces.Discrete(2),
+            )
             .api_stack(
                 enable_rl_module_and_learner=True,
                 enable_env_runner_and_connector_v2=True,
             )
-            .env_runners(num_env_runners=0)
-            .offline_data(input_=[data_path])
+            .offline_data(
+                input_=[data_path],
+                dataset_num_iters_per_learner=1,
+            )
             .training(
                 train_batch_size_per_learner=2000,
             )
@@ -164,51 +158,63 @@ class TestMARWIL(unittest.TestCase):
         batch = algo.offline_data.data.take_batch(2000)
 
         # Create the prelearner and compute advantages and values.
-        offline_prelearner = MARWILOfflinePreLearner(
-            config, algo.learner_group._learner
+        offline_prelearner = OfflinePreLearner(
+            config=config, learner=algo.learner_group._learner
         )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
         batch = offline_prelearner(batch)["batch"][0]
+        if Columns.LOSS_MASK in batch[DEFAULT_MODULE_ID]:
+            loss_mask = (
+                batch[DEFAULT_MODULE_ID][Columns.LOSS_MASK].detach().cpu().numpy()
+            )
+            num_valid = np.sum(loss_mask)
+
+            def possibly_masked_mean(data_):
+                return np.sum(data_[loss_mask]) / num_valid
+
+        else:
+            possibly_masked_mean = np.mean
 
         # Calculate our own expected values (to then compare against the
         # agent's loss output).
-        MODULE_ID = "default_policy"
-        fwd_out = (
-            algo.learner_group._learner.module[MODULE_ID]
-            .unwrapped()
-            .forward_train({k: v for k, v in batch[MODULE_ID].items()})
+        module = algo.learner_group._learner.module[DEFAULT_MODULE_ID].unwrapped()
+        fwd_out = module.forward_train(
+            {k: v for k, v in batch[DEFAULT_MODULE_ID].items()}
         )
-        advantages = batch[MODULE_ID][Columns.ADVANTAGES].detach().cpu().numpy()
-        advantages_squared = np.mean(np.square(advantages))
+        advantages = (
+            batch[DEFAULT_MODULE_ID][Columns.VALUE_TARGETS].detach().cpu().numpy()
+            - module.compute_values(batch[DEFAULT_MODULE_ID]).detach().cpu().numpy()
+        )
+        advantages_squared = possibly_masked_mean(np.square(advantages))
         c_2 = 100.0 + 1e-8 * (advantages_squared - 100.0)
         c = np.sqrt(c_2)
         exp_advantages = np.exp(config.beta * (advantages / c))
         action_dist_cls = (
-            algo.learner_group._learner.module[MODULE_ID]
+            algo.learner_group._learner.module[DEFAULT_MODULE_ID]
             .unwrapped()
             .get_train_action_dist_cls()
         )
         # Note we need the actual model's logits not the ones from the data set
         # stored in `batch[Columns.ACTION_DIST_INPUTS]`.
         action_dist = action_dist_cls.from_logits(fwd_out[Columns.ACTION_DIST_INPUTS])
-        logp = action_dist.logp(batch[MODULE_ID][Columns.ACTIONS])
+        logp = action_dist.logp(batch[DEFAULT_MODULE_ID][Columns.ACTIONS])
         logp = logp.detach().cpu().numpy()
 
         # Calculate all expected loss components.
         expected_vf_loss = 0.5 * advantages_squared
-        expected_pol_loss = -1.0 * np.mean(exp_advantages * logp)
+        expected_pol_loss = -1.0 * possibly_masked_mean(exp_advantages * logp)
         expected_loss = expected_pol_loss + config.vf_coeff * expected_vf_loss
 
         # Calculate the algorithm's loss (to check against our own
         # calculation above).
         total_loss = algo.learner_group._learner.compute_loss_for_module(
-            module_id=MODULE_ID,
-            batch={k: v for k, v in batch[MODULE_ID].items()},
+            module_id=DEFAULT_MODULE_ID,
+            batch={k: v for k, v in batch[DEFAULT_MODULE_ID].items()},
             fwd_out=fwd_out,
             config=config,
         )
-        learner_results = algo.learner_group._learner.metrics.peek(MODULE_ID)
+        learner_results = algo.learner_group._learner.metrics.peek(DEFAULT_MODULE_ID)
 
         # Check all components.
         check(

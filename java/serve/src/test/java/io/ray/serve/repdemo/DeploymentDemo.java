@@ -18,7 +18,7 @@ public class DeploymentDemo {
   public static void main(String[] args) {
     Application deployment =
         Serve.deployment().setDeploymentDef(DeploymentDemo.class.getName()).bind();
-    DeploymentHandle handle = Serve.run(deployment).get();
+    DeploymentHandle handle = Serve.run(deployment);
     System.out.println(handle.remote().result());
   }
 }

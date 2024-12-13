@@ -260,7 +260,7 @@ const std::string &WorkerContext::GetCurrentSerializedRuntimeEnv() const {
   return runtime_env_info_->serialized_runtime_env();
 }
 
-std::shared_ptr<json> WorkerContext::GetCurrentRuntimeEnv() const {
+std::shared_ptr<nlohmann::json> WorkerContext::GetCurrentRuntimeEnv() const {
   absl::ReaderMutexLock lock(&mutex_);
   return runtime_env_;
 }
@@ -316,14 +316,15 @@ void WorkerContext::SetCurrentTask(const TaskSpecification &task_spec) {
     runtime_env_info_.reset(new rpc::RuntimeEnvInfo());
     *runtime_env_info_ = task_spec.RuntimeEnvInfo();
     if (!IsRuntimeEnvEmpty(runtime_env_info_->serialized_runtime_env())) {
-      runtime_env_.reset(new json());
-      *runtime_env_ = json::parse(runtime_env_info_->serialized_runtime_env());
+      runtime_env_.reset(new nlohmann::json());
+      *runtime_env_ = nlohmann::json::parse(runtime_env_info_->serialized_runtime_env());
     }
   }
 }
 
 void WorkerContext::ResetCurrentTask() { GetThreadContext().ResetCurrentTask(); }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 std::shared_ptr<const TaskSpecification> WorkerContext::GetCurrentTask() const {
   return GetThreadContext().GetCurrentTask();
 }
@@ -416,6 +417,7 @@ const ObjectID WorkerContext::GetGeneratorReturnId(
   return ObjectID::FromIndex(current_task_id, current_put_index);
 }
 
+/// NOTE: This method can't be used in fiber/async actor context.
 WorkerThreadContext &WorkerContext::GetThreadContext() const {
   if (thread_context_ == nullptr) {
     absl::ReaderMutexLock lock(&mutex_);

@@ -3,6 +3,7 @@ import sys
 from copy import deepcopy
 from collections import defaultdict
 import concurrent.futures
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import logging
 import numpy as np
@@ -324,7 +325,12 @@ def get_state_api_manager(gcs_address: str) -> StateAPIManager:
     state_api_data_source_client = StateDataSourceClient(
         gcs_channel.channel(), gcs_aio_client
     )
-    return StateAPIManager(state_api_data_source_client)
+    return StateAPIManager(
+        state_api_data_source_client,
+        thread_pool_executor=ThreadPoolExecutor(
+            thread_name_prefix="state_api_test_utils"
+        ),
+    )
 
 
 def summarize_worker_startup_time():

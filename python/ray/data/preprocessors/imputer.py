@@ -13,7 +13,8 @@ from ray.util.annotations import PublicAPI
 
 @PublicAPI(stability="alpha")
 class SimpleImputer(Preprocessor):
-    """Replace missing values with imputed values.
+    """Replace missing values with imputed values. If the column is missing from a
+    batch, it will be filled with the imputed value.
 
     Examples:
         >>> import pandas as pd
@@ -131,7 +132,14 @@ class SimpleImputer(Preprocessor):
                 if is_categorical_dtype(df.dtypes[column]):
                     df[column] = df[column].cat.add_categories(value)
 
-        df = df.fillna(new_values)
+        for column_name in new_values:
+            if column_name not in df.columns:
+                # Create the column with the fill_value if it doesn't exist
+                df[column_name] = new_values[column_name]
+            else:
+                # Fill NaN (empty) values in the existing column with the fill_value
+                df[column_name].fillna(new_values[column_name], inplace=True)
+
         return df
 
     def __repr__(self):

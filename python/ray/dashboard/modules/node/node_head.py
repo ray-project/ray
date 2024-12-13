@@ -1,10 +1,11 @@
 import asyncio
 import json
 import logging
-import os
 import time
+from collections import deque
+from concurrent.futures import ThreadPoolExecutor
 from itertools import chain
-from typing import Dict
+from typing import AsyncGenerator, Iterable, List
 
 import aiohttp.web
 import grpc
@@ -13,27 +14,26 @@ import ray._private.utils
 import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray import NodeID
 from ray._private import ray_constants
-from ray._private.ray_constants import DEBUG_AUTOSCALING_ERROR, DEBUG_AUTOSCALING_STATUS
+from ray._private.collections_utils import split
+from ray._private.gcs_pubsub import GcsAioNodeInfoSubscriber
+from ray._private.ray_constants import (
+    DEBUG_AUTOSCALING_ERROR,
+    DEBUG_AUTOSCALING_STATUS,
+    env_integer,
+)
+from ray._private.utils import get_or_create_event_loop
 from ray.autoscaler._private.util import (
     LoadMetricsSummary,
     get_per_node_breakdown_as_dict,
     parse_usage,
 )
-from ray.core.generated import (
-    gcs_pb2,
-    gcs_service_pb2,
-    gcs_service_pb2_grpc,
-    node_manager_pb2,
-    node_manager_pb2_grpc,
-)
+from ray.core.generated import gcs_pb2, node_manager_pb2, node_manager_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.node import node_consts
 from ray.dashboard.modules.node.node_consts import (
-    FREQUENT_UPDATE_TIMEOUT_SECONDS,
-    FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS,
+    RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT,
 )
 from ray.dashboard.utils import async_loop_forever
 
@@ -41,25 +41,18 @@ logger = logging.getLogger(__name__)
 routes = dashboard_optional_utils.DashboardHeadRouteTable
 
 
-def gcs_node_info_to_dict(message):
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS", 1
+)
+
+
+def _gcs_node_info_to_dict(message: gcs_pb2.GcsNodeInfo) -> dict:
     return dashboard_utils.message_to_dict(
         message, {"nodeId"}, always_print_fields_with_no_presence=True
     )
-
-
-def gcs_stats_to_dict(message):
-    decode_keys = {
-        "actorId",
-        "jobId",
-        "taskId",
-        "parentTaskId",
-        "sourceActorId",
-        "callerId",
-        "rayletId",
-        "workerId",
-        "placementGroupId",
-    }
-    return dashboard_utils.message_to_dict(message, decode_keys)
 
 
 def node_stats_to_dict(message):
@@ -89,68 +82,33 @@ def node_stats_to_dict(message):
         message.core_workers_stats.extend(core_workers_stats)
 
 
-class GetAllNodeInfo:
-    """
-    Gets all node info from GCS via gRPC NodeInfoGcsService.GetAllNodeInfo.
-    It makes the call via GcsAioClient or a direct gRPC stub, depending on the env var
-    RAY_USE_OLD_GCS_CLIENT.
-    """
-
-    def __new__(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
-        if use_old_client:
-            return GetAllNodeInfoFromGrpc(*args, **kwargs)
-        else:
-            return GetAllNodeInfoFromNewGcsClient(*args, **kwargs)
-
-
-class GetAllNodeInfoFromNewGcsClient:
-    def __init__(self, dashboard_head):
-        self.gcs_aio_client = dashboard_head.gcs_aio_client
-
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        return await self.gcs_aio_client.get_all_node_info(timeout=timeout)
-
-
-class GetAllNodeInfoFromGrpc:
-    def __init__(self, dashboard_head):
-        gcs_channel = dashboard_head.aiogrpc_gcs_channel
-        self._gcs_node_info_stub = gcs_service_pb2_grpc.NodeInfoGcsServiceStub(
-            gcs_channel
-        )
-
-    async def __call__(self, timeout) -> Dict[NodeID, gcs_pb2.GcsNodeInfo]:
-        request = gcs_service_pb2.GetAllNodeInfoRequest()
-        reply = await self._gcs_node_info_stub.GetAllNodeInfo(request, timeout=timeout)
-        if reply.status.code != 0:
-            raise Exception(f"Failed to GetAllNodeInfo: {reply.status.message}")
-        nodes = {}
-        for message in reply.node_info_list:
-            nodes[NodeID(message.node_id)] = message
-        return nodes
-
-
 class NodeHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
+
         self._stubs = {}
-        self.get_all_node_info = None
         self._collect_memory_info = False
+
         DataSource.nodes.signal.append(self._update_stubs)
-        # Total number of node updates happened.
-        self._node_update_cnt = 0
         # The time where the module is started.
         self._module_start_time = time.time()
         # The time it takes until the head node is registered. None means
         # head node hasn't been registered.
         self._head_node_registration_time_s = None
+        # Queue of dead nodes to be removed, up to MAX_DEAD_NODES_TO_CACHE
+        self._dead_node_queue = deque()
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._gcs_address = dashboard_head.gcs_address
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_NODE_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="node_head_executor",
+        )
 
     async def _update_stubs(self, change):
         if change.old:
             node_id, node_info = change.old
-            self._stubs.pop(node_id)
+            self._stubs.pop(node_id, None)
         if change.new:
             # TODO(fyrestone): Handle exceptions.
             node_id, node_info = change.new
@@ -169,115 +127,141 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
             "head_node_registration_time_s": self._head_node_registration_time_s,
             "registered_nodes": len(DataSource.nodes),
             "registered_agents": len(DataSource.agents),
-            "node_update_count": self._node_update_cnt,
             "module_lifetime_s": time.time() - self._module_start_time,
         }
 
-    async def _get_nodes(self):
-        """Read the client table.
-
-        Returns:
-            A dict of information about the nodes in the cluster.
+    async def _subscribe_for_node_updates(self) -> AsyncGenerator[dict, None]:
         """
-        try:
-            nodes = await self.get_all_node_info(timeout=5)
-            return {
-                node_id.hex(): gcs_node_info_to_dict(node_info)
-                for node_id, node_info in nodes.items()
-            }
-        except Exception:
-            logger.exception("Failed to GetAllNodeInfo.")
-            raise
+        Yields the initial state of all nodes, then yields the updated state of nodes.
 
-    async def _update_nodes(self):
-        # TODO(fyrestone): Refactor code for updating actor / node / job.
-        # Subscribe actor channel.
+        It makes GetAllNodeInfo call only once after the subscription is done, to get
+        the initial state of the nodes.
+        """
+        gcs_addr = self._gcs_address
+        subscriber = GcsAioNodeInfoSubscriber(address=gcs_addr)
+        await subscriber.subscribe()
+
+        # Get all node info from GCS. To prevent Time-of-check to time-of-use issue [1],
+        # it happens after the subscription. That is, an update between
+        # get-all-node-info and the subscription is not missed.
+        # [1] https://en.wikipedia.org/wiki/Time-of-check_to_time-of-use
+        all_node_info = await self._gcs_aio_client.get_all_node_info(timeout=None)
+
+        def _convert_to_dict(messages: Iterable[gcs_pb2.GcsNodeInfo]) -> List[dict]:
+            return [_gcs_node_info_to_dict(m) for m in messages]
+
+        all_node_infos = await get_or_create_event_loop().run_in_executor(
+            self._executor,
+            _convert_to_dict,
+            all_node_info.values(),
+        )
+
+        for node in all_node_infos:
+            yield node
+
         while True:
             try:
-                nodes = await self._get_nodes()
+                node_id_updated_info_tuples = await subscriber.poll(
+                    batch_size=node_consts.RAY_DASHBOARD_NODE_SUBSCRIBER_POLL_SIZE
+                )
 
-                alive_node_ids = []
-                alive_node_infos = []
-                node_id_to_ip = {}
-                node_id_to_hostname = {}
-                for node in nodes.values():
-                    node_id = node["nodeId"]
-                    ip = node["nodeManagerAddress"]
-                    hostname = node["nodeManagerHostname"]
-                    if (
-                        ip == self._dashboard_head.ip
-                        and not self._head_node_registration_time_s
-                    ):
-                        self._head_node_registration_time_s = (
-                            time.time() - self._module_start_time
-                        )
-                        # Put head node ID in the internal KV to be read by JobAgent.
-                        # TODO(architkulkarni): Remove once State API exposes which
-                        # node is the head node.
-                        await self._gcs_aio_client.internal_kv_put(
-                            "head_node_id".encode(),
-                            node_id.encode(),
-                            overwrite=True,
-                            namespace=ray_constants.KV_NAMESPACE_JOB,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
-                        )
-                    node_id_to_ip[node_id] = ip
-                    node_id_to_hostname[node_id] = hostname
-                    assert node["state"] in ["ALIVE", "DEAD"]
-                    if node["state"] == "ALIVE":
-                        alive_node_ids.append(node_id)
-                        alive_node_infos.append(node)
-
-                agents = dict(DataSource.agents)
-                for node_id in alive_node_ids:
-                    # Since the agent fate shares with a raylet,
-                    # the agent port will never change once it is discovered.
-                    if node_id not in agents:
-                        key = (
-                            f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}"
-                            f"{node_id}"
-                        )
-                        agent_port = await self._gcs_aio_client.internal_kv_get(
-                            key.encode(),
-                            namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
-                            timeout=node_consts.GCS_RPC_TIMEOUT_SECONDS,
-                        )
-                        if agent_port:
-                            agents[node_id] = json.loads(agent_port)
-                for node_id in agents.keys() - set(alive_node_ids):
-                    agents.pop(node_id, None)
-
-                DataSource.node_id_to_ip.reset(node_id_to_ip)
-                DataSource.node_id_to_hostname.reset(node_id_to_hostname)
-                DataSource.agents.reset(agents)
-                DataSource.nodes.reset(nodes)
-            except Exception:
-                logger.exception("Error updating nodes.")
-            finally:
-                self._node_update_cnt += 1
-                # _head_node_registration_time_s == None if head node is not
-                # registered.
-                head_node_not_registered = not self._head_node_registration_time_s
-                # Until the head node is registered, we update the
-                # node status more frequently.
-                # If the head node is not updated after 10 seconds, it just stops
-                # doing frequent update to avoid unexpected edge case.
-                if (
-                    head_node_not_registered
-                    and self._node_update_cnt * FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS
-                    < FREQUENT_UPDATE_TIMEOUT_SECONDS
-                ):
-                    await asyncio.sleep(FREQUENTY_UPDATE_NODES_INTERVAL_SECONDS)
+                if node_id_updated_info_tuples:
+                    _, updated_infos_proto = zip(*node_id_updated_info_tuples)
                 else:
-                    if head_node_not_registered:
-                        logger.warning(
-                            "Head node is not registered even after "
-                            f"{FREQUENT_UPDATE_TIMEOUT_SECONDS} seconds. "
-                            "The API server might not work correctly. Please "
-                            "report a Github issue. Internal states :"
-                            f"{self.get_internal_states()}"
-                        )
-                    await asyncio.sleep(node_consts.UPDATE_NODES_INTERVAL_SECONDS)
+                    updated_infos_proto = []
+
+                updated_infos = await get_or_create_event_loop().run_in_executor(
+                    self._executor,
+                    _convert_to_dict,
+                    updated_infos_proto,
+                )
+
+                for node in updated_infos:
+                    yield node
+            except Exception:
+                logger.exception("Failed handling updated nodes.")
+
+    async def _update_node(self, node: dict):
+        node_id = node["nodeId"]  # hex
+        if node["isHeadNode"] and not self._head_node_registration_time_s:
+            self._head_node_registration_time_s = time.time() - self._module_start_time
+            # Put head node ID in the internal KV to be read by JobAgent.
+            # TODO(architkulkarni): Remove once State API exposes which
+            # node is the head node.
+            await self._gcs_aio_client.internal_kv_put(
+                ray_constants.KV_HEAD_NODE_ID_KEY,
+                node_id.encode(),
+                overwrite=True,
+                namespace=ray_constants.KV_NAMESPACE_JOB,
+                timeout=GCS_RPC_TIMEOUT_SECONDS,
+            )
+        assert node["state"] in ["ALIVE", "DEAD"]
+        is_alive = node["state"] == "ALIVE"
+        # Prepare agents for alive node, and pop agents for dead node.
+        if is_alive:
+            if node_id not in DataSource.agents:
+                # Agent port is read from internal KV, which is only populated
+                # upon Agent startup. In case this update received before agent
+                # fully started up, we schedule a task to asynchronously update
+                # DataSource with appropriate agent port.
+                asyncio.create_task(self._update_agent(node_id))
+        else:
+            DataSource.agents.pop(node_id, None)
+            self._dead_node_queue.append(node_id)
+            if len(self._dead_node_queue) > node_consts.MAX_DEAD_NODES_TO_CACHE:
+                DataSource.nodes.pop(self._dead_node_queue.popleft(), None)
+        DataSource.nodes[node_id] = node
+
+    async def _update_agent(self, node_id):
+        """
+        Given a node, update the agent_port in DataSource.agents. Problem is it's not
+        present until agent.py starts, so we need to loop waiting for agent.py writes
+        its port to internal kv.
+        """
+        key = f"{dashboard_consts.DASHBOARD_AGENT_PORT_PREFIX}{node_id}".encode()
+        while True:
+            try:
+                agent_port = await self._gcs_aio_client.internal_kv_get(
+                    key,
+                    namespace=ray_constants.KV_NAMESPACE_DASHBOARD,
+                    timeout=None,
+                )
+                # The node may be dead already. Only update DataSource.agents if the
+                # node is still alive.
+                if DataSource.nodes.get(node_id, {}).get("state") != "ALIVE":
+                    return
+                if agent_port:
+                    DataSource.agents[node_id] = json.loads(agent_port)
+                    return
+            except Exception:
+                logger.exception(f"Error getting agent port for node {node_id}.")
+
+            await asyncio.sleep(node_consts.RAY_DASHBOARD_AGENT_POLL_INTERVAL_S)
+
+    async def _update_nodes(self):
+        """
+        Subscribe to node updates and update the internal states. If the head node is
+        not registered after RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT, it logs a
+        warning only once.
+        """
+        warning_shown = False
+        async for node in self._subscribe_for_node_updates():
+            await self._update_node(node)
+            if not self._head_node_registration_time_s:
+                # head node is not registered yet
+                if (
+                    not warning_shown
+                    and (time.time() - self._module_start_time)
+                    > RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT
+                ):
+                    logger.warning(
+                        "Head node is not registered even after "
+                        f"{RAY_DASHBOARD_HEAD_NODE_REGISTRATION_TIMEOUT} seconds. "
+                        "The API server might not work correctly. Please "
+                        "report a Github issue. Internal states :"
+                        f"{self.get_internal_states()}"
+                    )
+                    warning_shown = True
 
     @routes.get("/internal/node_module")
     async def get_node_module_internal_state(self, req) -> aiohttp.web.Response:
@@ -383,57 +367,94 @@ class NodeHead(dashboard_utils.DashboardHeadModule):
 
     @async_loop_forever(node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS)
     async def _update_node_stats(self):
-        # Copy self._stubs to avoid `dictionary changed size during iteration`.
-        get_node_stats_tasks = []
-        nodes = list(self._stubs.items())
-        TIMEOUT = node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS - 1
+        timeout = max(2, node_consts.NODE_STATS_UPDATE_INTERVAL_SECONDS - 1)
 
-        for node_id, stub in nodes:
+        # NOTE: We copy stubs to make sure
+        #       it doesn't change during the iteration (since its being updated
+        #       from another async task)
+        current_stub_node_id_tuples = list(self._stubs.items())
+
+        node_ids = []
+        get_node_stats_tasks = []
+
+        for _, (node_id, stub) in enumerate(current_stub_node_id_tuples):
             node_info = DataSource.nodes.get(node_id)
             if node_info["state"] != "ALIVE":
                 continue
+
+            node_ids.append(node_id)
             get_node_stats_tasks.append(
                 stub.GetNodeStats(
                     node_manager_pb2.GetNodeStatsRequest(
                         include_memory_info=self._collect_memory_info
                     ),
-                    timeout=min(2, TIMEOUT),
+                    timeout=timeout,
                 )
             )
 
-        replies = await asyncio.gather(
-            *get_node_stats_tasks,
-            return_exceptions=True,
-        )
+        responses = []
 
-        for node_info, reply in zip(nodes, replies):
-            node_id, _ = node_info
-            if isinstance(reply, asyncio.CancelledError):
-                pass
-            elif isinstance(reply, grpc.RpcError):
-                if reply.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
-                    logger.exception(
-                        f"Cannot reach the node, {node_id}, after timeout {TIMEOUT}. "
-                        "This node may have been overloaded, terminated, or "
-                        "the network is slow."
-                    )
-                elif reply.code() == grpc.StatusCode.UNAVAILABLE:
-                    logger.exception(
-                        f"Cannot reach the node, {node_id}. "
-                        "The node may have been terminated."
+        # NOTE: We're chunking up fetching of the stats to run in batches of no more
+        #       than 100 nodes at a time to avoid flooding the event-loop's queue
+        #       with potentially a large, uninterrupted sequence of tasks updating
+        #       the node stats for very large clusters.
+        for get_node_stats_tasks_chunk in split(get_node_stats_tasks, 100):
+            current_chunk_responses = await asyncio.gather(
+                *get_node_stats_tasks_chunk,
+                return_exceptions=True,
+            )
+
+            responses.extend(current_chunk_responses)
+
+            # We're doing short (25ms) yield after every chunk to make sure
+            #   - We're not overloading the event-loop with excessive # of tasks
+            #   - Allowing 10k nodes stats fetches be sent out performed in 2.5s
+            await asyncio.sleep(0.025)
+
+        def postprocess(node_id_response_tuples):
+            """Pure function reorganizing the data into {node_id: stats}."""
+            new_node_stats = {}
+
+            for node_id, response in node_id_response_tuples:
+                if isinstance(response, asyncio.CancelledError):
+                    pass
+                elif isinstance(response, grpc.RpcError):
+                    if response.code() == grpc.StatusCode.DEADLINE_EXCEEDED:
+                        message = (
+                            f"Cannot reach the node, {node_id}, after timeout "
+                            f" {timeout}. This node may have been overloaded, "
+                            "terminated, or the network is slow."
+                        )
+                    elif response.code() == grpc.StatusCode.UNAVAILABLE:
+                        message = (
+                            f"Cannot reach the node, {node_id}. "
+                            "The node may have been terminated."
+                        )
+                    else:
+                        message = f"Error updating node stats of {node_id}."
+
+                    logger.error(message, exc_info=response)
+                elif isinstance(response, Exception):
+                    logger.error(
+                        f"Error updating node stats of {node_id}.", exc_info=response
                     )
                 else:
-                    logger.exception(f"Error updating node stats of {node_id}.")
-                    logger.exception(reply)
-            elif isinstance(reply, Exception):
-                logger.exception(f"Error updating node stats of {node_id}.")
-                logger.exception(reply)
-            else:
-                reply_dict = node_stats_to_dict(reply)
-                DataSource.node_stats[node_id] = reply_dict
+                    new_node_stats[node_id] = node_stats_to_dict(response)
+
+            return new_node_stats
+
+        # NOTE: Zip will silently truncate to shorter argument that potentially
+        #       could lead to subtle hard to catch issues, hence the assertion
+        assert len(node_ids) == len(responses)
+
+        new_node_stats = await get_or_create_event_loop().run_in_executor(
+            self._executor, postprocess, zip(node_ids, responses)
+        )
+
+        for node_id, new_stat in new_node_stats.items():
+            DataSource.node_stats[node_id] = new_stat
 
     async def run(self, server):
-        self.get_all_node_info = GetAllNodeInfo(self._dashboard_head)
         await asyncio.gather(
             self._update_nodes(),
             self._update_node_stats(),

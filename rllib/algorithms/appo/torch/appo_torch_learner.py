@@ -14,7 +14,7 @@ from ray.rllib.algorithms.impala.torch.vtrace_torch_v2 import (
 )
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import POLICY_LOSS_KEY, VF_LOSS_KEY, ENTROPY_KEY
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import TargetNetworkAPI, ValueFunctionAPI
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.numpy import convert_to_numpy
@@ -35,11 +35,29 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         batch: Dict,
         fwd_out: Dict[str, TensorType],
     ) -> TensorType:
-
         module = self.module[module_id].unwrapped()
         assert isinstance(module, TargetNetworkAPI)
+        assert isinstance(module, ValueFunctionAPI)
 
-        values = fwd_out[Columns.VF_PREDS]
+        # TODO (sven): Now that we do the +1ts trick to be less vulnerable about
+        #  bootstrap values at the end of rollouts in the new stack, we might make
+        #  this a more flexible, configurable parameter for users, e.g.
+        #  `v_trace_seq_len` (independent of `rollout_fragment_length`). Separation
+        #  of concerns (sampling vs learning).
+        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
+        recurrent_seq_len = batch.get("seq_lens")
+
+        loss_mask = batch[Columns.LOSS_MASK].float()
+        loss_mask_time_major = make_time_major(
+            loss_mask,
+            trajectory_len=rollout_frag_or_episode_len,
+            recurrent_seq_len=recurrent_seq_len,
+        )
+        size_loss_mask = torch.sum(loss_mask)
+
+        values = module.compute_values(
+            batch, embeddings=fwd_out.get(Columns.EMBEDDINGS)
+        )
 
         action_dist_cls_train = module.get_train_action_dist_cls()
         target_policy_dist = action_dist_cls_train.from_logits(
@@ -54,8 +72,6 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
         behaviour_actions_logp = batch[Columns.ACTION_LOGP]
         target_actions_logp = target_policy_dist.logp(batch[Columns.ACTIONS])
-        rollout_frag_or_episode_len = config.get_rollout_fragment_length()
-        recurrent_seq_len = None
 
         behaviour_actions_logp_time_major = make_time_major(
             behaviour_actions_logp,
@@ -118,6 +134,7 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
             clip_pg_rho_threshold=config.vtrace_clip_pg_rho_threshold,
             clip_rho_threshold=config.vtrace_clip_rho_threshold,
         )
+        pg_advantages = pg_advantages * loss_mask_time_major
 
         # The policy gradients loss.
         is_ratio = torch.clip(
@@ -136,18 +153,21 @@ class APPOTorchLearner(APPOLearner, IMPALATorchLearner):
         )
 
         if config.use_kl_loss:
-            action_kl = old_target_policy_dist.kl(target_policy_dist)
-            mean_kl_loss = torch.mean(action_kl)
+            action_kl = old_target_policy_dist.kl(target_policy_dist) * loss_mask
+            mean_kl_loss = torch.sum(action_kl) / size_loss_mask
         else:
             mean_kl_loss = 0.0
-        mean_pi_loss = -torch.mean(surrogate_loss)
+        mean_pi_loss = -(torch.sum(surrogate_loss) / size_loss_mask)
 
         # The baseline loss.
         delta = values_time_major - vtrace_adjusted_target_values
-        mean_vf_loss = 0.5 * torch.mean(delta**2)
+        vf_loss = 0.5 * torch.sum(torch.pow(delta, 2.0) * loss_mask_time_major)
+        mean_vf_loss = vf_loss / size_loss_mask
 
         # The entropy loss.
-        mean_entropy_loss = -torch.mean(target_policy_dist.entropy())
+        mean_entropy_loss = (
+            -torch.sum(target_policy_dist.entropy() * loss_mask) / size_loss_mask
+        )
 
         # The summed weighted loss.
         total_loss = (

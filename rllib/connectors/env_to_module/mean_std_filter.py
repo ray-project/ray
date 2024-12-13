@@ -29,9 +29,13 @@ class MeanStdFilter(ConnectorV2):
     """
 
     @override(ConnectorV2)
-    def recompute_observation_space_from_input_spaces(self):
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         _input_observation_space_struct = get_base_struct_from_space(
-            self.input_observation_space
+            input_observation_space
         )
 
         # Adjust our observation space's Boxes (only if clipping is active).
@@ -48,10 +52,8 @@ class MeanStdFilter(ConnectorV2):
             ),
             _input_observation_space_struct,
         )
-        if isinstance(
-            self.input_observation_space, (gym.spaces.Dict, gym.spaces.Tuple)
-        ):
-            return type(self.input_observation_space)(_observation_space_struct)
+        if isinstance(input_observation_space, (gym.spaces.Dict, gym.spaces.Tuple)):
+            return type(input_observation_space)(_observation_space_struct)
         else:
             return _observation_space_struct
 
@@ -101,7 +103,7 @@ class MeanStdFilter(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         persistent_data: Optional[dict] = None,
@@ -116,19 +118,26 @@ class MeanStdFilter(ConnectorV2):
         # anymore to the original observations).
         for sa_episode in self.single_agent_episode_iterator(episodes):
             sa_obs = sa_episode.get_observations(indices=-1)
-            normalized_sa_obs = self._filters[sa_episode.agent_id](
-                sa_obs, update=self._update_stats
-            )
+            try:
+                normalized_sa_obs = self._filters[sa_episode.agent_id](
+                    sa_obs, update=self._update_stats
+                )
+            except KeyError:
+                raise KeyError(
+                    "KeyError trying to access a filter by agent ID "
+                    f"`{sa_episode.agent_id}`! You probably did NOT pass the "
+                    f"`multi_agent=True` flag into the `MeanStdFilter()` constructor. "
+                )
             sa_episode.set_observations(at_indices=-1, new_data=normalized_sa_obs)
             #  We set the Episode's observation space to ours so that we can safely
             #  set the last obs to the new value (without causing a space mismatch
             #  error).
             sa_episode.observation_space = self.observation_space
 
-        # Leave `data` as is. RLlib's default connector will automatically
+        # Leave `batch` as is. RLlib's default connector will automatically
         # populate the OBS column therein from the episodes' now transformed
         # observations.
-        return data
+        return batch
 
     @override(ConnectorV2)
     def get_state(

@@ -160,6 +160,12 @@ class _MLPConfig(ModelConfig):
             "_" are allowed.
         output_layer_bias_initializer_config: Configuration to pass into the
             initializer defined in `output_layer_bias_initializer`.
+        clip_log_std: If log std should be clipped by `log_std_clip_param`. This applies
+            only to the action distribution parameters that encode the log standard
+            deviation of a `DiagGaussian` distribution.
+        log_std_clip_param: The clipping parameter for the log std, if clipping should
+            be applied - i.e. `clip_log_std=True`. The default value is 20, i.e. log
+            stds are clipped in between -20 and 20.
     """
 
     hidden_layer_dims: Union[List[int], Tuple[int]] = (256, 256)
@@ -181,6 +187,11 @@ class _MLPConfig(ModelConfig):
     output_layer_bias_initializer: Optional[Union[str, Callable]] = None
     output_layer_bias_initializer_config: Optional[Dict] = None
 
+    # Optional clipping of log standard deviation.
+    clip_log_std: bool = False
+    # Optional clip parameter for the log standard deviation.
+    log_std_clip_param: float = 20.0
+
     @property
     def output_dims(self):
         if self.output_layer_dim is None and not self.hidden_layer_dims:
@@ -190,7 +201,7 @@ class _MLPConfig(ModelConfig):
             )
 
         # Infer `output_dims` automatically.
-        return (self.output_layer_dim or self.hidden_layer_dims[-1],)
+        return (int(self.output_layer_dim or self.hidden_layer_dims[-1]),)
 
     def _validate(self, framework: str = "torch"):
         """Makes sure that settings are valid."""
@@ -204,6 +215,11 @@ class _MLPConfig(ModelConfig):
                 f"`output_dims` ({self.output_dims}) of _MLPConfig must be "
                 "1D, e.g. `[32]`! This is an inferred value, hence other settings might"
                 " be wrong."
+            )
+        if self.log_std_clip_param is None:
+            raise ValueError(
+                "`log_std_clip_param` of _MLPConfig must be a float value, but is "
+                "`None`."
             )
 
         # Call these already here to catch errors early on.
@@ -887,7 +903,6 @@ class RecurrentEncoderConfig(ModelConfig):
     - Zero or one tokenizers
     - N LSTM/GRU layers stacked on top of each other and feeding
     their outputs as inputs to the respective next layer.
-    - One linear output layer
 
     This makes for the following flow of tensors:
 
@@ -900,8 +915,6 @@ class RecurrentEncoderConfig(ModelConfig):
     (...)
     |
     LSTM layer n
-    |
-    Linear output layer
     |
     Outputs
 
@@ -979,12 +992,8 @@ class RecurrentEncoderConfig(ModelConfig):
             underscore "_" are allowed.
         hidden_bias_initializer_config: Configuration to pass into the initializer
             defined in `hidden_bias_initializer`.
-        view_requirements_dict: The view requirements to use if anything else than
-            observation_space or action_space is to be encoded. This signifies an
-            advanced use case.
         tokenizer_config: A ModelConfig to build tokenizers for observations,
-            actions and other spaces that might be present in the
-            view_requirements_dict.
+            actions and other spaces.
     """
 
     recurrent_layer_type: str = "lstm"

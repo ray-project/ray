@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <filesystem>
+#include <fstream>
 #include <memory>
 #include <utility>
 
@@ -425,6 +427,16 @@ struct Mocker {
                                                                     resource.end());
     }
     return constraint;
+  }
+  // Read all lines of a file into vector vc
+  static void ReadContentFromFile(std::vector<std::string> &vc, std::string log_file) {
+    std::string line;
+    std::ifstream read_file;
+    read_file.open(log_file, std::ios::binary);
+    while (std::getline(read_file, line)) {
+      vc.push_back(line);
+    }
+    read_file.close();
   }
 };
 

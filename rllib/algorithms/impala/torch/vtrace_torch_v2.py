@@ -31,14 +31,16 @@ def make_time_major(
             for _tensor in tensor
         ]
 
-    assert (trajectory_len != recurrent_seq_len) and (
-        trajectory_len is None or recurrent_seq_len is None
+    assert (
+        trajectory_len is not None or recurrent_seq_len is not None
     ), "Either trajectory_len or recurrent_seq_len must be set."
 
     # Figure out the sizes of the final B and T axes.
-    if recurrent_seq_len:
-        B = recurrent_seq_len.shape[0]
-        T = tensor.shape[0] // B
+    if recurrent_seq_len is not None:
+        assert len(tensor.shape) == 2
+        # Swap B and T axes.
+        tensor = torch.transpose(tensor, 1, 0)
+        return tensor
     else:
         T = trajectory_len
         # Zero-pad, if necessary.

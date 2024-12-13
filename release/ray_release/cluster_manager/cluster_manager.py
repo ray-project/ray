@@ -6,7 +6,7 @@ from ray_release.aws import (
     add_tags_to_aws_config,
     RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING,
 )
-from ray_release.anyscale_util import get_project_name
+from ray_release.anyscale_util import get_project_name, LAST_LOGS_LENGTH
 from ray_release.config import DEFAULT_AUTOSUSPEND_MINS, DEFAULT_MAXIMUM_UPTIME_MINS
 from ray_release.test import Test
 from ray_release.exception import CloudInfoError
@@ -24,6 +24,7 @@ class ClusterManager(abc.ABC):
         project_id: str,
         sdk: Optional["AnyscaleSDK"] = None,
         smoke_test: bool = False,
+        log_streaming_limit: int = LAST_LOGS_LENGTH,
     ):
         self.sdk = sdk or get_anyscale_sdk()
 
@@ -31,6 +32,7 @@ class ClusterManager(abc.ABC):
         self.smoke_test = smoke_test
         self.project_id = project_id
         self.project_name = get_project_name(self.project_id, self.sdk)
+        self.log_streaming_limit = log_streaming_limit
 
         self.cluster_name = (
             f"{test.get_name()}{'-smoke-test' if smoke_test else ''}_{int(time.time())}"
@@ -106,8 +108,13 @@ class ClusterManager(abc.ABC):
             return cluster_compute
 
         cluster_compute = cluster_compute.copy()
-        aws = cluster_compute.get("aws", {})
-        cluster_compute["aws"] = add_tags_to_aws_config(
+        if "aws" in cluster_compute:
+            raise ValueError(
+                "aws field is invalid in compute config, "
+                "use advanced_configurations_json instead"
+            )
+        aws = cluster_compute.get("advanced_configurations_json", {})
+        cluster_compute["advanced_configurations_json"] = add_tags_to_aws_config(
             aws, extra_tags, RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         )
         return cluster_compute

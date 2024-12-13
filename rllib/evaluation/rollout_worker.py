@@ -20,9 +20,7 @@ from typing import (
     Union,
 )
 
-import numpy as np
-import tree  # pip install dm_tree
-from gymnasium.spaces import Discrete, MultiDiscrete, Space
+from gymnasium.spaces import Space
 
 import ray
 from ray import ObjectRef
@@ -70,7 +68,7 @@ from ray.rllib.utils import force_list
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.debug import summarize, update_global_seed_if_necessary
 from ray.rllib.utils.error import ERR_MSG_NO_GPUS, HOWTO_CHANGE_CONFIG
-from ray.rllib.utils.filter import Filter, NoFilter, get_filter
+from ray.rllib.utils.filter import Filter, NoFilter
 from ray.rllib.utils.framework import try_import_tf, try_import_torch
 from ray.rllib.utils.from_config import from_config
 from ray.rllib.utils.policy import create_policy_for_framework
@@ -99,7 +97,6 @@ from ray.util.iter import ParallelIteratorWorker
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
     from ray.rllib.algorithms.callbacks import DefaultCallbacks  # noqa
-    from ray.rllib.evaluation.episode import Episode
 
 tf1, tf, tfv = try_import_tf()
 torch, _ = try_import_torch()
@@ -247,7 +244,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 through EnvContext so that envs can be configured per worker.
             recreated_worker: Whether this worker is a recreated one. Workers are
                 recreated by an Algorithm (via EnvRunnerGroup) in case
-                `recreate_failed_env_runners=True` and one of the original workers (or
+                `restart_failed_env_runners=True` and one of the original workers (or
                 an already recreated one) has failed. They don't differ from original
                 workers other than the value of this flag (`self.recreated_worker`).
             log_dir: Directory where logs can be placed.
@@ -481,39 +478,36 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             else self.config.num_gpus_per_env_runner
         )
 
-        # This is only for the old API where local_worker was responsible for learning
-        if not self.config.enable_rl_module_and_learner:
-            # Error if we don't find enough GPUs.
-            if (
-                ray.is_initialized()
-                and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
-                and not config._fake_gpus
-            ):
-                devices = []
-                if self.config.framework_str in ["tf2", "tf"]:
-                    devices = get_tf_gpu_devices()
-                elif self.config.framework_str == "torch":
-                    devices = list(range(torch.cuda.device_count()))
+        # Error if we don't find enough GPUs.
+        if (
+            ray.is_initialized()
+            and ray._private.worker._mode() != ray._private.worker.LOCAL_MODE
+            and not config._fake_gpus
+        ):
+            devices = []
+            if self.config.framework_str in ["tf2", "tf"]:
+                devices = get_tf_gpu_devices()
+            elif self.config.framework_str == "torch":
+                devices = list(range(torch.cuda.device_count()))
 
-                if len(devices) < num_gpus:
-                    raise RuntimeError(
-                        ERR_MSG_NO_GPUS.format(len(devices), devices)
-                        + HOWTO_CHANGE_CONFIG
-                    )
-            # Warn, if running in local-mode and actual GPUs (not faked) are
-            # requested.
-            elif (
-                ray.is_initialized()
-                and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
-                and num_gpus > 0
-                and not self.config._fake_gpus
-            ):
-                logger.warning(
-                    "You are running ray with `local_mode=True`, but have "
-                    f"configured {num_gpus} GPUs to be used! In local mode, "
-                    f"Policies are placed on the CPU and the `num_gpus` setting "
-                    f"is ignored."
+            if len(devices) < num_gpus:
+                raise RuntimeError(
+                    ERR_MSG_NO_GPUS.format(len(devices), devices) + HOWTO_CHANGE_CONFIG
                 )
+        # Warn, if running in local-mode and actual GPUs (not faked) are
+        # requested.
+        elif (
+            ray.is_initialized()
+            and ray._private.worker._mode() == ray._private.worker.LOCAL_MODE
+            and num_gpus > 0
+            and not self.config._fake_gpus
+        ):
+            logger.warning(
+                "You are running ray with `local_mode=True`, but have "
+                f"configured {num_gpus} GPUs to be used! In local mode, "
+                f"Policies are placed on the CPU and the `num_gpus` setting "
+                f"is ignored."
+            )
 
         self.filters: Dict[PolicyID, Filter] = defaultdict(NoFilter)
 
@@ -527,9 +521,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # must have it's Model (if any) defined and ready to output an initial
         # state.
         for pol in self.policy_map.values():
-            if not pol._model_init_state_automatically_added and not pol.config.get(
-                "enable_rl_module_and_learner", False
-            ):
+            if not pol._model_init_state_automatically_added:
                 pol._update_model_view_requirements_from_init_state()
 
         if (
@@ -624,6 +616,13 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # The current weights sequence number (version). May remain None for when
         # not tracking weights versions.
         self.weights_seq_no: Optional[int] = None
+
+    @override(EnvRunner)
+    def make_env(self):
+        # Override this method, b/c it's abstract and must be overridden.
+        # However, we see no point in implementing it for the old API stack any longer
+        # (the RolloutWorker class will be deprecated soon).
+        raise NotImplementedError
 
     @override(EnvRunner)
     def assert_healthy(self):
@@ -999,6 +998,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         ):
             self.policy_map[DEFAULT_POLICY_ID].apply_gradients(grads)
 
+    @override(EnvRunner)
     def get_metrics(self) -> List[RolloutMetrics]:
         """Returns the thus-far collected metrics from this worker's rollouts.
 
@@ -1087,7 +1087,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         action_space: Optional[Space] = None,
         config: Optional[PartialAlgorithmConfigDict] = None,
         policy_state: Optional[PolicyState] = None,
-        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
+        policy_mapping_fn=None,
         policies_to_train: Optional[
             Union[Collection[PolicyID], Callable[[PolicyID, SampleBatchType], bool]]
         ] = None,
@@ -1130,7 +1130,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         """
         validate_module_id(policy_id, error=False)
 
-        if module_spec is not None and not self.config.enable_rl_module_and_learner:
+        if module_spec is not None:
             raise ValueError(
                 "If you pass in module_spec to the policy, the RLModule API needs "
                 "to be enabled."
@@ -1219,7 +1219,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
     def set_policy_mapping_fn(
         self,
-        policy_mapping_fn: Optional[Callable[[AgentID, "Episode"], PolicyID]] = None,
+        policy_mapping_fn: Optional[Callable[[AgentID, Any], PolicyID]] = None,
     ) -> None:
         """Sets `self.policy_mapping_fn` to a new callable (if provided).
 
@@ -1423,8 +1423,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         #  key in `state` entirely (will be part of the policies then).
         self.sync_filters(state["filters"])
 
-        connector_enabled = self.config.enable_connectors
-
         # Support older checkpoint versions (< 1.0), in which the policy_map
         # was stored under the "state" key, not "policy_states".
         policy_states = (
@@ -1446,9 +1444,7 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                     )
                 else:
                     policy_spec = (
-                        PolicySpec.deserialize(spec)
-                        if connector_enabled or isinstance(spec, dict)
-                        else spec
+                        PolicySpec.deserialize(spec) if isinstance(spec, dict) else spec
                     )
                     self.add_policy(
                         policy_id=pid,
@@ -1549,7 +1545,14 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 }
 
             for pid, w in weights.items():
-                self.policy_map[pid].set_weights(w)
+                if pid in self.policy_map:
+                    self.policy_map[pid].set_weights(w)
+                elif log_once("set_weights_on_non_existent_policy"):
+                    logger.warning(
+                        "`RolloutWorker.set_weights()` used with weights from "
+                        f"policyID={pid}, but this policy cannot be found on this "
+                        f"worker! Skipping ..."
+                    )
 
         self.weights_seq_no = weights_seq_no
 
@@ -1720,26 +1723,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
         # merge configs. Also updates the preprocessor dict.
         updated_policy_dict = self._get_complete_policy_specs_dict(policy_dict)
 
-        # Use the updated policy dict to create the multi_rl_module_spec if necessary
-        if self.config.enable_rl_module_and_learner:
-            spec = self.config.get_multi_rl_module_spec(
-                policy_dict=updated_policy_dict,
-                single_agent_rl_module_spec=single_agent_rl_module_spec,
-            )
-            if self.multi_rl_module_spec is None:
-                # this is the first time, so we should create the multi_rl_module_spec
-                self.multi_rl_module_spec = spec
-            else:
-                # This is adding a new policy, so we need call add_modules on the
-                # module_specs of returned spec.
-                self.multi_rl_module_spec.add_modules(spec.module_specs)
-
-            # Add `__multi_rl_module_spec` key into the config so that the policy can
-            # access it.
-            updated_policy_dict = self._update_policy_dict_with_multi_rl_module(
-                updated_policy_dict
-            )
-
         # Builds the self.policy_map dict
         self._build_policy_map(
             policy_dict=updated_policy_dict,
@@ -1799,19 +1782,12 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
                 preprocessor = ModelCatalog.get_preprocessor_for_space(
                     obs_space,
                     merged_conf.model,
-                    include_multi_binary=self.config.get(
-                        "enable_rl_module_and_learner", False
-                    ),
+                    include_multi_binary=False,
                 )
                 # Original observation space should be accessible at
                 # obs_space.original_space after this step.
                 if preprocessor is not None:
                     obs_space = preprocessor.observation_space
-
-                if not merged_conf.enable_connectors:
-                    # If connectors are not enabled, rollout worker will handle
-                    # the running of these preprocessors.
-                    self.preprocessors[name] = preprocessor
 
             policy_spec.config = merged_conf
             policy_spec.observation_space = obs_space
@@ -1866,17 +1842,6 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
             else:
                 new_policy = policy
 
-            # Maybe torch compile an RLModule.
-            if self.config.get(
-                "enable_rl_module_and_learner", False
-            ) and self.config.get("torch_compile_worker"):
-                if self.config.framework_str != "torch":
-                    raise ValueError("Attempting to compile a non-torch RLModule.")
-                rl_module = getattr(new_policy, "model", None)
-                if rl_module is not None:
-                    compile_config = self.config.get_torch_compile_worker_config()
-                    rl_module.compile(compile_config)
-
             self.policy_map[name] = new_policy
 
             restore_states = (policy_states or {}).get(name, None)
@@ -1889,37 +1854,22 @@ class RolloutWorker(ParallelIteratorWorker, EnvRunner):
 
         for name, policy_spec in sorted(policy_dict.items()):
             new_policy = self.policy_map[name]
-            if policy_spec.config.enable_connectors:
-                # Note(jungong) : We should only create new connectors for the
-                # policy iff we are creating a new policy from scratch. i.e,
-                # we should NOT create new connectors when we already have the
-                # policy object created before this function call or have the
-                # restoring states from the caller.
-                # Also note that we cannot just check the existence of connectors
-                # to decide whether we should create connectors because we may be
-                # restoring a policy that has 0 connectors configured.
-                if (
-                    new_policy.agent_connectors is None
-                    or new_policy.action_connectors is None
-                ):
-                    # TODO(jungong) : revisit this. It will be nicer to create
-                    # connectors as the last step of Policy.__init__().
-                    create_connectors_for_policy(new_policy, policy_spec.config)
-                maybe_get_filters_for_syncing(self, name)
-            else:
-                filter_shape = tree.map_structure(
-                    lambda s: (
-                        None
-                        if isinstance(s, (Discrete, MultiDiscrete))  # noqa
-                        else np.array(s.shape)
-                    ),
-                    new_policy.observation_space_struct,
-                )
-
-                self.filters[name] = get_filter(
-                    policy_spec.config.observation_filter,
-                    filter_shape,
-                )
+            # Note(jungong) : We should only create new connectors for the
+            # policy iff we are creating a new policy from scratch. i.e,
+            # we should NOT create new connectors when we already have the
+            # policy object created before this function call or have the
+            # restoring states from the caller.
+            # Also note that we cannot just check the existence of connectors
+            # to decide whether we should create connectors because we may be
+            # restoring a policy that has 0 connectors configured.
+            if (
+                new_policy.agent_connectors is None
+                or new_policy.action_connectors is None
+            ):
+                # TODO(jungong) : revisit this. It will be nicer to create
+                # connectors as the last step of Policy.__init__().
+                create_connectors_for_policy(new_policy, policy_spec.config)
+            maybe_get_filters_for_syncing(self, name)
 
     def _call_callbacks_on_create_policy(self):
         """Calls the on_create_policy callback for each policy in the policy map."""

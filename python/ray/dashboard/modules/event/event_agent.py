@@ -17,6 +17,14 @@ from ray.dashboard.utils import async_loop_forever, create_task
 logger = logging.getLogger(__name__)
 
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS = ray_constants.env_integer(
+    "RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS", 1
+)
+
+
 class EventAgent(dashboard_utils.DashboardAgentModule):
     def __init__(self, dashboard_agent):
         super().__init__(dashboard_agent)
@@ -26,14 +34,16 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._stub: Union[event_pb2_grpc.ReportEventServiceStub, None] = None
         self._cached_events = asyncio.Queue(event_consts.EVENT_AGENT_CACHE_SIZE)
         self._gcs_aio_client = dashboard_agent.gcs_aio_client
-        self.monitor_thread_pool_executor = ThreadPoolExecutor(
-            max_workers=1, thread_name_prefix="event_monitor"
-        )
         # Total number of event created from this agent.
         self.total_event_reported = 0
         # Total number of event report request sent.
         self.total_request_sent = 0
         self.module_started = time.monotonic()
+
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_EVENT_AGENT_TPE_MAX_WORKERS,
+            thread_name_prefix="event_agent_executor",
+        )
 
         logger.info("Event agent cache buffer size: %s", self._cached_events.maxsize)
 
@@ -111,7 +121,7 @@ class EventAgent(dashboard_utils.DashboardAgentModule):
         self._monitor = monitor_events(
             self._event_dir,
             lambda data: create_task(self._cached_events.put(data)),
-            self.monitor_thread_pool_executor,
+            self._executor,
         )
 
         await asyncio.gather(

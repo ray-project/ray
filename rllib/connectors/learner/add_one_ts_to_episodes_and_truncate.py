@@ -1,8 +1,9 @@
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.postprocessing.episodes import add_one_ts_to_episodes_and_truncate
 from ray.rllib.utils.typing import EpisodeType
@@ -65,7 +66,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         shared_data = {}
         _ = connector(
             rl_module=None,  # Connector used here does not require RLModule.
-            data={},
+            batch={},
             episodes=[episode1, episode2],
             shared_data=shared_data,
         )
@@ -82,7 +83,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -101,10 +102,37 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
         # batch: - - - - - - - T B0- - - - - R Bx- - - - R Bx
         # mask : t t t t t t t t f t t t t t t f t t t t t f
 
-        shared_data["_sa_episodes_lengths"] = {}
-        for sa_episode in self.single_agent_episode_iterator(
-            episodes, agents_that_stepped_only=False
+        # TODO (sven): Same situation as in TODO below, but for multi-agent episode.
+        #  Maybe add a dedicated connector piece for this task?
+        # We extend the MultiAgentEpisode's ID by a running number here to make sure
+        # we treat each MAEpisode chunk as separate (for potentially upcoming v-trace
+        # and LSTM zero-padding) and don't mix data from different chunks.
+        if isinstance(episodes[0], MultiAgentEpisode):
+            for i, ma_episode in enumerate(episodes):
+                ma_episode.id_ += "_" + str(i)
+                # Also change the underlying single-agent episode's
+                # `multi_agent_episode_id` properties.
+                for sa_episode in ma_episode.agent_episodes.values():
+                    sa_episode.multi_agent_episode_id = ma_episode.id_
+
+        for i, sa_episode in enumerate(
+            self.single_agent_episode_iterator(episodes, agents_that_stepped_only=False)
         ):
+            # TODO (sven): This is a little bit of a hack: By extending the Episode's
+            #  ID, we make sure that each episode chunk in `episodes` is treated as a
+            #  separate episode in the `self.add_n_batch_items` below. Some algos (e.g.
+            #  APPO) may have >1 episode chunks from the same episode (same ID) in the
+            #  training data, thus leading to a malformatted batch in case of
+            #  RNN-triggered zero-padding of the train batch.
+            #  For example, if e1 (id=a len=4) and e2 (id=a len=5) are two chunks of the
+            #  same episode in `episodes`, the resulting batch would have an additional
+            #  timestep in the middle of the episode's "row":
+            #  {  "obs": {
+            #    ("a", <- eps ID): [0, 1, 2, 3 <- len=4, [additional 1 ts (bad)],
+            #                       0, 1, 2, 3, 4 <- len=5, [additional 1 ts]]
+            #  }}
+            sa_episode.id_ += "_" + str(i)
+
             len_ = len(sa_episode)
 
             # Extend all episodes by one ts.
@@ -112,7 +140,7 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
 
             loss_mask = [True for _ in range(len_)] + [False]
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.LOSS_MASK,
                 loss_mask,
                 len_ + 1,
@@ -120,14 +148,21 @@ class AddOneTsToEpisodesAndTruncate(ConnectorV2):
             )
 
             terminateds = (
-                [False for _ in range(len_ - 1)] + [sa_episode.is_terminated] + [True]
+                [False for _ in range(len_ - 1)]
+                + [bool(sa_episode.is_terminated)]
+                + [True]  # extra timestep
             )
             self.add_n_batch_items(
-                data,
+                batch,
                 Columns.TERMINATEDS,
                 terminateds,
                 len_ + 1,
                 sa_episode,
             )
 
-        return data
+        # Signal to following connector pieces that the loss-mask which masks out
+        # invalid episode ts (for the extra added ts at the end) has already been
+        # added to `data`.
+        shared_data["_added_loss_mask_for_valid_episode_ts"] = True
+
+        return batch

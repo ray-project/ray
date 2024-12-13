@@ -65,7 +65,7 @@ NODE_QUERY_FAILURE_WARNING = (
 def _convert_filters_type(
     filter: List[Tuple[str, PredicateType, SupportedFilterType]],
     schema: StateSchema,
-) -> List[Tuple[str, SupportedFilterType]]:
+) -> List[Tuple[str, PredicateType, SupportedFilterType]]:
     """Convert the given filter's type to SupportedFilterType.
 
     This method is necessary because click can only accept a single type
@@ -140,10 +140,13 @@ class StateAPIManager:
     the entries.
     """
 
-    def __init__(self, state_data_source_client: StateDataSourceClient):
+    def __init__(
+        self,
+        state_data_source_client: StateDataSourceClient,
+        thread_pool_executor: ThreadPoolExecutor,
+    ):
         self._client = state_data_source_client
-
-        self._thread_pool_executor = ThreadPoolExecutor(thread_name_prefix="state_head")
+        self._thread_pool_executor = thread_pool_executor
 
     @property
     def data_source_client(self):
@@ -152,7 +155,7 @@ class StateAPIManager:
     def _filter(
         self,
         data: List[dict],
-        filters: List[Tuple[str, SupportedFilterType]],
+        filters: List[Tuple[str, PredicateType, SupportedFilterType]],
         state_dataclass: StateSchema,
         detail: bool,
     ) -> List[dict]:
@@ -178,6 +181,8 @@ class StateAPIManager:
                 if filter_column not in filterable_columns:
                     raise ValueError(
                         f"The given filter column {filter_column} is not supported. "
+                        "Enter filters with –-filter key=value "
+                        "or –-filter key!=value "
                         f"Supported filter columns: {filterable_columns}"
                     )
 
@@ -238,32 +243,37 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = []
-        for message in reply.actor_table_data:
-            data = protobuf_message_to_dict(
-                message=message,
-                fields_to_decode=[
-                    "actor_id",
-                    "owner_id",
-                    "job_id",
-                    "node_id",
-                    "placement_group_id",
-                ],
+        def transform(reply) -> ListApiResponse:
+            result = []
+            for message in reply.actor_table_data:
+                data = protobuf_message_to_dict(
+                    message=message,
+                    fields_to_decode=[
+                        "actor_id",
+                        "owner_id",
+                        "job_id",
+                        "node_id",
+                        "placement_group_id",
+                    ],
+                )
+                result.append(data)
+
+            num_after_truncation = len(result) + reply.num_filtered
+            result = self._filter(result, option.filters, ActorState, option.detail)
+            num_filtered = len(result)
+
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["actor_id"])
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                total=reply.total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
             )
-            result.append(data)
 
-        num_after_truncation = len(result) + reply.num_filtered
-        result = self._filter(result, option.filters, ActorState, option.detail)
-        num_filtered = len(result)
-
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["actor_id"])
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            total=reply.total,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_placement_groups(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -280,26 +290,35 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = []
-        for message in reply.placement_group_table_data:
-            data = protobuf_message_to_dict(
-                message=message,
-                fields_to_decode=["placement_group_id", "creator_job_id", "node_id"],
-            )
-            result.append(data)
-        num_after_truncation = len(result)
+        def transform(reply) -> ListApiResponse:
+            result = []
+            for message in reply.placement_group_table_data:
+                data = protobuf_message_to_dict(
+                    message=message,
+                    fields_to_decode=[
+                        "placement_group_id",
+                        "creator_job_id",
+                        "node_id",
+                    ],
+                )
+                result.append(data)
+            num_after_truncation = len(result)
 
-        result = self._filter(
-            result, option.filters, PlacementGroupState, option.detail
-        )
-        num_filtered = len(result)
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["placement_group_id"])
-        return ListApiResponse(
-            result=list(islice(result, option.limit)),
-            total=reply.total,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+            result = self._filter(
+                result, option.filters, PlacementGroupState, option.detail
+            )
+            num_filtered = len(result)
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["placement_group_id"])
+            return ListApiResponse(
+                result=list(islice(result, option.limit)),
+                total=reply.total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_nodes(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -310,40 +329,45 @@ class StateAPIManager:
             node_data_in_dict's schema is in NodeState
         """
         try:
-            reply = await self._client.get_all_node_info(timeout=option.timeout)
+            reply = await self._client.get_all_node_info(
+                timeout=option.timeout, filters=option.filters
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = []
-        for message in reply.node_info_list:
-            data = protobuf_message_to_dict(
-                message=message, fields_to_decode=["node_id"]
+        def transform(reply) -> ListApiResponse:
+            result = []
+            for message in reply.node_info_list:
+                data = protobuf_message_to_dict(
+                    message=message, fields_to_decode=["node_id"]
+                )
+                data["node_ip"] = data["node_manager_address"]
+                data["start_time_ms"] = int(data["start_time_ms"])
+                data["end_time_ms"] = int(data["end_time_ms"])
+                death_info = data.get("death_info", {})
+                data["state_message"] = compose_state_message(
+                    death_info.get("reason", None),
+                    death_info.get("reason_message", None),
+                )
+
+                result.append(data)
+
+            num_after_truncation = len(result) + reply.num_filtered
+            result = self._filter(result, option.filters, NodeState, option.detail)
+            num_filtered = len(result)
+
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["node_id"])
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                total=reply.total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
             )
-            data["node_ip"] = data["node_manager_address"]
-            data["start_time_ms"] = int(data["start_time_ms"])
-            data["end_time_ms"] = int(data["end_time_ms"])
-            death_info = data.get("death_info", {})
-            data["state_message"] = compose_state_message(
-                death_info.get("reason", None), death_info.get("reason_message", None)
-            )
 
-            result.append(data)
-
-        total_nodes = len(result)
-        # No reason to truncate node because they are usually small.
-        num_after_truncation = len(result)
-
-        result = self._filter(result, option.filters, NodeState, option.detail)
-        num_filtered = len(result)
-
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["node_id"])
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            total=total_nodes,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_workers(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -354,53 +378,68 @@ class StateAPIManager:
             worker_data_in_dict's schema is in WorkerState
         """
         try:
-            reply = await self._client.get_all_worker_info(timeout=option.timeout)
+            reply = await self._client.get_all_worker_info(
+                timeout=option.timeout,
+                filters=option.filters,
+            )
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        result = []
-        for message in reply.worker_table_data:
-            data = protobuf_message_to_dict(
-                message=message, fields_to_decode=["worker_id", "raylet_id"]
-            )
-            data["worker_id"] = data["worker_address"]["worker_id"]
-            data["node_id"] = data["worker_address"]["raylet_id"]
-            data["ip"] = data["worker_address"]["ip_address"]
-            data["start_time_ms"] = int(data["start_time_ms"])
-            data["end_time_ms"] = int(data["end_time_ms"])
-            data["worker_launch_time_ms"] = int(data["worker_launch_time_ms"])
-            data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
-            result.append(data)
+        def transform(reply) -> ListApiResponse:
 
-        num_after_truncation = len(result)
-        result = self._filter(result, option.filters, WorkerState, option.detail)
-        num_filtered = len(result)
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["worker_id"])
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            total=reply.total,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+            result = []
+            for message in reply.worker_table_data:
+                data = protobuf_message_to_dict(
+                    message=message, fields_to_decode=["worker_id", "raylet_id"]
+                )
+                data["worker_id"] = data["worker_address"]["worker_id"]
+                data["node_id"] = data["worker_address"]["raylet_id"]
+                data["ip"] = data["worker_address"]["ip_address"]
+                data["start_time_ms"] = int(data["start_time_ms"])
+                data["end_time_ms"] = int(data["end_time_ms"])
+                data["worker_launch_time_ms"] = int(data["worker_launch_time_ms"])
+                data["worker_launched_time_ms"] = int(data["worker_launched_time_ms"])
+                result.append(data)
+
+            num_after_truncation = len(result) + reply.num_filtered
+            result = self._filter(result, option.filters, WorkerState, option.detail)
+            num_filtered = len(result)
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["worker_id"])
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                total=reply.total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_jobs(self, *, option: ListApiOptions) -> ListApiResponse:
         try:
-            result = await self._client.get_job_info(timeout=option.timeout)
-            result = [job.dict() for job in result]
+            reply = await self._client.get_job_info(timeout=option.timeout)
+        except DataSourceUnavailable:
+            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
+
+        def transform(reply) -> ListApiResponse:
+            result = [job.dict() for job in reply]
             total = len(result)
             result = self._filter(result, option.filters, JobState, option.detail)
             num_filtered = len(result)
             result.sort(key=lambda entry: entry["job_id"] or "")
             result = list(islice(result, option.limit))
-        except DataSourceUnavailable:
-            raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
-        return ListApiResponse(
-            result=result,
-            total=total,
-            num_after_truncation=total,
-            num_filtered=num_filtered,
+            return ListApiResponse(
+                result=result,
+                total=total,
+                num_after_truncation=total,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def list_tasks(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -419,12 +458,10 @@ class StateAPIManager:
         except DataSourceUnavailable:
             raise DataSourceUnavailable(GCS_QUERY_FAILURE_WARNING)
 
-        def transform(reply):
+        def transform(reply) -> ListApiResponse:
             """
             Transforms from proto to dict, applies filters, sorts, and truncates.
             This function is executed in a separate thread.
-
-            Returns the ListApiResponse.
             """
             result = [
                 protobuf_to_task_state_dict(message) for message in reply.events_by_task
@@ -469,85 +506,90 @@ class StateAPIManager:
             return_exceptions=True,
         )
 
-        unresponsive_nodes = 0
-        worker_stats = []
-        total_objects = 0
-        for reply, _ in zip(replies, raylet_ids):
-            if isinstance(reply, DataSourceUnavailable):
-                unresponsive_nodes += 1
-                continue
-            elif isinstance(reply, Exception):
-                raise reply
+        def transform(replies) -> ListApiResponse:
+            unresponsive_nodes = 0
+            worker_stats = []
+            total_objects = 0
+            for reply, _ in zip(replies, raylet_ids):
+                if isinstance(reply, DataSourceUnavailable):
+                    unresponsive_nodes += 1
+                    continue
+                elif isinstance(reply, Exception):
+                    raise reply
 
-            total_objects += reply.total
-            for core_worker_stat in reply.core_workers_stats:
-                # NOTE: Set preserving_proto_field_name=False here because
-                # `construct_memory_table` requires a dictionary that has
-                # modified protobuf name
-                # (e.g., workerId instead of worker_id) as a key.
-                worker_stats.append(
-                    protobuf_message_to_dict(
-                        message=core_worker_stat,
-                        fields_to_decode=["object_id"],
-                        preserving_proto_field_name=False,
+                total_objects += reply.total
+                for core_worker_stat in reply.core_workers_stats:
+                    # NOTE: Set preserving_proto_field_name=False here because
+                    # `construct_memory_table` requires a dictionary that has
+                    # modified protobuf name
+                    # (e.g., workerId instead of worker_id) as a key.
+                    worker_stats.append(
+                        protobuf_message_to_dict(
+                            message=core_worker_stat,
+                            fields_to_decode=["object_id"],
+                            preserving_proto_field_name=False,
+                        )
                     )
+
+            partial_failure_warning = None
+            if len(raylet_ids) > 0 and unresponsive_nodes > 0:
+                warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                    type="raylet",
+                    total=len(raylet_ids),
+                    network_failures=unresponsive_nodes,
+                    log_command="raylet.out",
+                )
+                if unresponsive_nodes == len(raylet_ids):
+                    raise DataSourceUnavailable(warning_msg)
+                partial_failure_warning = (
+                    f"The returned data may contain incomplete result. {warning_msg}"
                 )
 
-        partial_failure_warning = None
-        if len(raylet_ids) > 0 and unresponsive_nodes > 0:
-            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-                type="raylet",
-                total=len(raylet_ids),
-                network_failures=unresponsive_nodes,
-                log_command="raylet.out",
-            )
-            if unresponsive_nodes == len(raylet_ids):
-                raise DataSourceUnavailable(warning_msg)
-            partial_failure_warning = (
-                f"The returned data may contain incomplete result. {warning_msg}"
+            result = []
+            memory_table = memory_utils.construct_memory_table(worker_stats)
+            for entry in memory_table.table:
+                data = entry.as_dict()
+                # `construct_memory_table` returns object_ref field which is indeed
+                # object_id. We do transformation here.
+                # TODO(sang): Refactor `construct_memory_table`.
+                data["object_id"] = data["object_ref"]
+                del data["object_ref"]
+                data["ip"] = data["node_ip_address"]
+                del data["node_ip_address"]
+                data["type"] = data["type"].upper()
+                data["task_status"] = (
+                    "NIL" if data["task_status"] == "-" else data["task_status"]
+                )
+                result.append(data)
+
+            # Add callsite warnings if it is not configured.
+            callsite_warning = []
+            callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
+            if not callsite_enabled:
+                callsite_warning.append(
+                    "Callsite is not being recorded. "
+                    "To record callsite information for each ObjectRef created, set "
+                    "env variable RAY_record_ref_creation_sites=1 during `ray start` "
+                    "and `ray.init`."
+                )
+
+            num_after_truncation = len(result)
+            result = self._filter(result, option.filters, ObjectState, option.detail)
+            num_filtered = len(result)
+            # Sort to make the output deterministic.
+            result.sort(key=lambda entry: entry["object_id"])
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                partial_failure_warning=partial_failure_warning,
+                total=total_objects,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+                warnings=callsite_warning,
             )
 
-        result = []
-        memory_table = memory_utils.construct_memory_table(worker_stats)
-        for entry in memory_table.table:
-            data = entry.as_dict()
-            # `construct_memory_table` returns object_ref field which is indeed
-            # object_id. We do transformation here.
-            # TODO(sang): Refactor `construct_memory_table`.
-            data["object_id"] = data["object_ref"]
-            del data["object_ref"]
-            data["ip"] = data["node_ip_address"]
-            del data["node_ip_address"]
-            data["type"] = data["type"].upper()
-            data["task_status"] = (
-                "NIL" if data["task_status"] == "-" else data["task_status"]
-            )
-            result.append(data)
-
-        # Add callsite warnings if it is not configured.
-        callsite_warning = []
-        callsite_enabled = env_integer("RAY_record_ref_creation_sites", 0)
-        if not callsite_enabled:
-            callsite_warning.append(
-                "Callsite is not being recorded. "
-                "To record callsite information for each ObjectRef created, set "
-                "env variable RAY_record_ref_creation_sites=1 during `ray start` "
-                "and `ray.init`."
-            )
-
-        num_after_truncation = len(result)
-        result = self._filter(result, option.filters, ObjectState, option.detail)
-        num_filtered = len(result)
-        # Sort to make the output deterministic.
-        result.sort(key=lambda entry: entry["object_id"])
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            partial_failure_warning=partial_failure_warning,
-            total=total_objects,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
-            warnings=callsite_warning,
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, replies
         )
 
     async def list_runtime_envs(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -569,66 +611,73 @@ class StateAPIManager:
             return_exceptions=True,
         )
 
-        result = []
-        unresponsive_nodes = 0
-        total_runtime_envs = 0
-        for node_id, reply in zip(
-            self._client.get_all_registered_runtime_env_agent_ids(), replies
-        ):
-            if isinstance(reply, DataSourceUnavailable):
-                unresponsive_nodes += 1
-                continue
-            elif isinstance(reply, Exception):
-                raise reply
+        def transform(replies) -> ListApiResponse:
+            result = []
+            unresponsive_nodes = 0
+            total_runtime_envs = 0
+            for node_id, reply in zip(
+                self._client.get_all_registered_runtime_env_agent_ids(), replies
+            ):
+                if isinstance(reply, DataSourceUnavailable):
+                    unresponsive_nodes += 1
+                    continue
+                elif isinstance(reply, Exception):
+                    raise reply
 
-            total_runtime_envs += reply.total
-            states = reply.runtime_env_states
-            for state in states:
-                data = protobuf_message_to_dict(message=state, fields_to_decode=[])
-                # Need to deserialize this field.
-                data["runtime_env"] = RuntimeEnv.deserialize(
-                    data["runtime_env"]
-                ).to_dict()
-                data["node_id"] = node_id
-                result.append(data)
+                total_runtime_envs += reply.total
+                states = reply.runtime_env_states
+                for state in states:
+                    data = protobuf_message_to_dict(message=state, fields_to_decode=[])
+                    # Need to deserialize this field.
+                    data["runtime_env"] = RuntimeEnv.deserialize(
+                        data["runtime_env"]
+                    ).to_dict()
+                    data["node_id"] = node_id
+                    result.append(data)
 
-        partial_failure_warning = None
-        if len(agent_ids) > 0 and unresponsive_nodes > 0:
-            warning_msg = NODE_QUERY_FAILURE_WARNING.format(
-                type="agent",
-                total=len(agent_ids),
-                network_failures=unresponsive_nodes,
-                log_command="dashboard_agent.log",
+            partial_failure_warning = None
+            if len(agent_ids) > 0 and unresponsive_nodes > 0:
+                warning_msg = NODE_QUERY_FAILURE_WARNING.format(
+                    type="agent",
+                    total=len(agent_ids),
+                    network_failures=unresponsive_nodes,
+                    log_command="dashboard_agent.log",
+                )
+                if unresponsive_nodes == len(agent_ids):
+                    raise DataSourceUnavailable(warning_msg)
+                partial_failure_warning = (
+                    f"The returned data may contain incomplete result. {warning_msg}"
+                )
+            num_after_truncation = len(result)
+            result = self._filter(
+                result, option.filters, RuntimeEnvState, option.detail
             )
-            if unresponsive_nodes == len(agent_ids):
-                raise DataSourceUnavailable(warning_msg)
-            partial_failure_warning = (
-                f"The returned data may contain incomplete result. {warning_msg}"
+            num_filtered = len(result)
+
+            # Sort to make the output deterministic.
+            def sort_func(entry):
+                # If creation time is not there yet (runtime env is failed
+                # to be created or not created yet, they are the highest priority.
+                # Otherwise, "bigger" creation time is coming first.
+                if "creation_time_ms" not in entry:
+                    return float("inf")
+                elif entry["creation_time_ms"] is None:
+                    return float("inf")
+                else:
+                    return float(entry["creation_time_ms"])
+
+            result.sort(key=sort_func, reverse=True)
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                partial_failure_warning=partial_failure_warning,
+                total=total_runtime_envs,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
             )
-        num_after_truncation = len(result)
-        result = self._filter(result, option.filters, RuntimeEnvState, option.detail)
-        num_filtered = len(result)
 
-        # Sort to make the output deterministic.
-        def sort_func(entry):
-            # If creation time is not there yet (runtime env is failed
-            # to be created or not created yet, they are the highest priority.
-            # Otherwise, "bigger" creation time is coming first.
-            if "creation_time_ms" not in entry:
-                return float("inf")
-            elif entry["creation_time_ms"] is None:
-                return float("inf")
-            else:
-                return float(entry["creation_time_ms"])
-
-        result.sort(key=sort_func, reverse=True)
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            partial_failure_warning=partial_failure_warning,
-            total=total_runtime_envs,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, replies
         )
 
     async def list_cluster_events(self, *, option: ListApiOptions) -> ListApiResponse:
@@ -639,25 +688,33 @@ class StateAPIManager:
             The schema of returned "dict" is equivalent to the
             `ClusterEventState` protobuf message.
         """
-        result = []
-        all_events = await self._client.get_all_cluster_events()
-        for _, events in all_events.items():
-            for _, event in events.items():
-                event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
-                result.append(event)
+        reply = await self._client.get_all_cluster_events()
 
-        num_after_truncation = len(result)
-        result.sort(key=lambda entry: entry["timestamp"])
-        total = len(result)
-        result = self._filter(result, option.filters, ClusterEventState, option.detail)
-        num_filtered = len(result)
-        # Sort to make the output deterministic.
-        result = list(islice(result, option.limit))
-        return ListApiResponse(
-            result=result,
-            total=total,
-            num_after_truncation=num_after_truncation,
-            num_filtered=num_filtered,
+        def transform(reply) -> ListApiResponse:
+            result = []
+            for _, events in reply.items():
+                for _, event in events.items():
+                    event["time"] = str(datetime.fromtimestamp(int(event["timestamp"])))
+                    result.append(event)
+
+            num_after_truncation = len(result)
+            result.sort(key=lambda entry: entry["timestamp"])
+            total = len(result)
+            result = self._filter(
+                result, option.filters, ClusterEventState, option.detail
+            )
+            num_filtered = len(result)
+            # Sort to make the output deterministic.
+            result = list(islice(result, option.limit))
+            return ListApiResponse(
+                result=result,
+                total=total,
+                num_after_truncation=num_after_truncation,
+                num_filtered=num_filtered,
+            )
+
+        return await get_or_create_event_loop().run_in_executor(
+            self._thread_pool_executor, transform, reply
         )
 
     async def summarize_tasks(self, option: SummaryApiOptions) -> SummaryApiResponse:

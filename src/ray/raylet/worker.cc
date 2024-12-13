@@ -15,6 +15,7 @@
 #include "ray/raylet/worker.h"
 
 #include <boost/bind/bind.hpp>
+#include <utility>
 
 #include "ray/raylet/format/node_manager_generated.h"
 #include "ray/raylet/raylet.h"
@@ -27,7 +28,7 @@ namespace raylet {
 
 /// A constructor responsible for initializing the state of a worker.
 Worker::Worker(const JobID &job_id,
-               const int runtime_env_hash,
+               int runtime_env_hash,
                const WorkerID &worker_id,
                const Language &language,
                rpc::WorkerType worker_type,
@@ -42,7 +43,7 @@ Worker::Worker(const JobID &job_id,
       ip_address_(ip_address),
       assigned_port_(-1),
       port_(-1),
-      connection_(connection),
+      connection_(std::move(connection)),
       assigned_job_id_(job_id),
       runtime_env_hash_(runtime_env_hash),
       bundle_id_(std::make_pair(PlacementGroupID::Nil(), -1)),
@@ -116,7 +117,9 @@ void Worker::Connect(int port) {
   rpc::Address addr;
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
-  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
+  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+    RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+  });
   Connect(rpc_client_);
 }
 
@@ -129,11 +132,20 @@ void Worker::Connect(std::shared_ptr<rpc::CoreWorkerClientInterface> rpc_client)
   }
 }
 
-void Worker::AssignTaskId(const TaskID &task_id) { assigned_task_id_ = task_id; }
+void Worker::AssignTaskId(const TaskID &task_id) {
+  assigned_task_id_ = task_id;
+  if (!task_id.IsNil()) {
+    task_assign_time_ = absl::Now();
+  }
+}
 
 const TaskID &Worker::GetAssignedTaskId() const { return assigned_task_id_; }
 
 const JobID &Worker::GetAssignedJobId() const { return assigned_job_id_; }
+
+std::optional<bool> Worker::GetIsGpu() const { return is_gpu_; }
+
+std::optional<bool> Worker::GetIsActorWorker() const { return is_actor_worker_; }
 
 int Worker::GetRuntimeEnvHash() const { return runtime_env_hash_; }
 
@@ -190,6 +202,23 @@ void Worker::SetJobId(const JobID &job_id) {
   RAY_CHECK(assigned_job_id_ == job_id)
       << "Job_id mismatch, assigned: " << assigned_job_id_.Hex()
       << ", actual: " << job_id.Hex();
+}
+
+void Worker::SetIsGpu(bool is_gpu) {
+  if (!is_gpu_.has_value()) {
+    is_gpu_ = is_gpu;
+  }
+  RAY_CHECK_EQ(is_gpu_.value(), is_gpu)
+      << "is_gpu mismatch, assigned: " << is_gpu_.value() << ", actual: " << is_gpu;
+}
+
+void Worker::SetIsActorWorker(bool is_actor_worker) {
+  if (!is_actor_worker_.has_value()) {
+    is_actor_worker_ = is_actor_worker;
+  }
+  RAY_CHECK_EQ(is_actor_worker_.value(), is_actor_worker)
+      << "is_actor_worker mismatch, assigned: " << is_actor_worker_.value()
+      << ", actual: " << is_actor_worker;
 }
 
 }  // namespace raylet

@@ -20,35 +20,39 @@ namespace core {
 InboundRequest::InboundRequest() {}
 
 InboundRequest::InboundRequest(
-    std::function<void(rpc::SendReplyCallback)> accept_callback,
-    std::function<void(const Status &, rpc::SendReplyCallback)> reject_callback,
+    std::function<void(const TaskSpecification &, rpc::SendReplyCallback)>
+        accept_callback,
+    std::function<void(const TaskSpecification &, const Status &, rpc::SendReplyCallback)>
+        reject_callback,
     rpc::SendReplyCallback send_reply_callback,
-    class TaskID task_id,
-    bool has_dependencies,
-    const std::string &concurrency_group_name,
-    const ray::FunctionDescriptor &function_descriptor)
+    TaskSpecification task_spec)
     : accept_callback_(std::move(accept_callback)),
       reject_callback_(std::move(reject_callback)),
       send_reply_callback_(std::move(send_reply_callback)),
-      task_id_(task_id),
-      concurrency_group_name_(concurrency_group_name),
-      function_descriptor_(function_descriptor),
-      has_pending_dependencies_(has_dependencies) {}
+      task_spec_(std::move(task_spec)),
+      pending_dependencies_(task_spec_.GetDependencies()) {}
 
-void InboundRequest::Accept() { accept_callback_(std::move(send_reply_callback_)); }
+void InboundRequest::Accept() {
+  accept_callback_(task_spec_, std::move(send_reply_callback_));
+}
 void InboundRequest::Cancel(const Status &status) {
-  reject_callback_(status, std::move(send_reply_callback_));
+  reject_callback_(task_spec_, status, std::move(send_reply_callback_));
 }
 
-bool InboundRequest::CanExecute() const { return !has_pending_dependencies_; }
-ray::TaskID InboundRequest::TaskID() const { return task_id_; }
+bool InboundRequest::CanExecute() const { return pending_dependencies_.empty(); }
+ray::TaskID InboundRequest::TaskID() const { return task_spec_.TaskId(); }
+uint64_t InboundRequest::AttemptNumber() const { return task_spec_.AttemptNumber(); }
 const std::string &InboundRequest::ConcurrencyGroupName() const {
-  return concurrency_group_name_;
+  return task_spec_.ConcurrencyGroupName();
 }
-const ray::FunctionDescriptor &InboundRequest::FunctionDescriptor() const {
-  return function_descriptor_;
+ray::FunctionDescriptor InboundRequest::FunctionDescriptor() const {
+  return task_spec_.FunctionDescriptor();
 }
-void InboundRequest::MarkDependenciesSatisfied() { has_pending_dependencies_ = false; }
+const std::vector<rpc::ObjectReference> &InboundRequest::PendingDependencies() const {
+  return pending_dependencies_;
+};
+void InboundRequest::MarkDependenciesSatisfied() { pending_dependencies_.clear(); }
+const TaskSpecification &InboundRequest::TaskSpec() const { return task_spec_; }
 
 DependencyWaiterImpl::DependencyWaiterImpl(DependencyWaiterInterface &dependency_client)
     : dependency_client_(dependency_client) {}

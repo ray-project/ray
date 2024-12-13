@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Optional, Tuple
 
 import aiohttp.web
@@ -15,6 +16,7 @@ from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_STATUS_LEGACY,
     GLOBAL_GRPC_OPTIONS,
     KV_NAMESPACE_CLUSTER,
+    env_integer,
 )
 from ray._private.usage.usage_constants import CLUSTER_METADATA_KEY
 from ray._private.utils import get_or_create_event_loop, init_grpc_channel
@@ -43,6 +45,13 @@ SVG_STYLE = """<style>
     }
 </style>\n"""
 
+# NOTE: Executor in this head is intentionally constrained to just 1 thread by
+#       default to limit its concurrency, therefore reducing potential for
+#       GIL contention
+RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS = env_integer(
+    "RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS", 1
+)
+
 
 class ReportHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
@@ -63,14 +72,19 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         self._gcs_aio_client = dashboard_head.gcs_aio_client
         self._state_api = None
 
+        self._executor = ThreadPoolExecutor(
+            max_workers=RAY_DASHBOARD_REPORTER_HEAD_TPE_MAX_WORKERS,
+            thread_name_prefix="reporter_head_executor",
+        )
+
     async def _update_stubs(self, change):
         if change.old:
             node_id, port = change.old
-            ip = DataSource.node_id_to_ip[node_id]
-            self._stubs.pop(ip)
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
+            self._stubs.pop(ip, None)
         if change.new:
             node_id, ports = change.new
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             options = GLOBAL_GRPC_OPTIONS
             channel = init_grpc_channel(
                 f"{ip}:{ports[1]}", options=options, asynchronous=True
@@ -248,7 +262,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         reporter_stub = self._stubs[ip]
 
@@ -340,7 +354,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
         attempt_number = req.query.get("attempt_number")
         node_id = req.query.get("node_id")
 
-        ip = DataSource.node_id_to_ip[node_id]
+        ip = DataSource.nodes[node_id]["nodeManagerAddress"]
 
         duration_s = int(req.query.get("duration", 5))
         if duration_s > 60:
@@ -514,7 +528,7 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             task_id = req.query.get("task_id")
             attempt_number = req.query.get("attempt_number")
             node_id = req.query.get("node_id")
-            ip = DataSource.node_id_to_ip[node_id]
+            ip = DataSource.nodes[node_id]["nodeManagerAddress"]
             try:
                 (pid, _) = await self.get_worker_details_for_running_task(
                     task_id, attempt_number
@@ -609,7 +623,11 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
             gcs_channel, self._dashboard_head.gcs_aio_client
         )
         # Set up the state API in order to fetch task information.
-        self._state_api = StateAPIManager(self._state_api_data_source_client)
+        # TODO(ryw): unify the StateAPIManager in reporter_head and state_head.
+        self._state_api = StateAPIManager(
+            self._state_api_data_source_client,
+            self._executor,
+        )
 
         # Need daemon True to avoid dashboard hangs at exit.
         self.service_discovery.daemon = True
@@ -635,7 +653,9 @@ class ReportHead(dashboard_utils.DashboardHeadModule):
 
                 # NOTE: Every iteration is executed inside the thread-pool executor
                 #       (TPE) to avoid blocking the Dashboard's event-loop
-                parsed_data = await loop.run_in_executor(None, json.loads, data)
+                parsed_data = await loop.run_in_executor(
+                    self._executor, json.loads, data
+                )
 
                 node_id = key.split(":")[-1]
                 DataSource.node_physical_stats[node_id] = parsed_data

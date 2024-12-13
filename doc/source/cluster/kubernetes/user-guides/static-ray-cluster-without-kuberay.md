@@ -58,10 +58,10 @@ namespace, specify the namespace in your kubectl commands:
 
 ! kubectl apply -f https://raw.githubusercontent.com/ray-project/ray/master/doc/source/cluster/kubernetes/configs/static-ray-cluster.with-fault-tolerance.yaml
 
-# Note that the Ray cluster has fault tolerance enabled by default using the external Redis. 
+# Note that the Ray cluster has fault tolerance enabled by default using the external Redis.
 # Please set the Redis IP address in the config.
 
-# The password is currently set as '' for the external Redis. 
+# The password is currently set as '' for the external Redis.
 # Please download the config file and substitute the real password for the empty string if the external Redis has a password.
 ```
 
