@@ -97,6 +97,7 @@ from ray.data.block import (
 )
 from ray.data.context import DataContext
 from ray.data.datasource import Connection, Datasink, FilenameProvider
+from ray.data.datasource.datasink import handle_data_sink_write_results
 from ray.data.iterator import DataIterator
 from ray.data.random_access_dataset import RandomAccessDataset
 from ray.types import ObjectRef
@@ -3875,7 +3876,6 @@ class Dataset:
         logical_plan = LogicalPlan(write_op, self.context)
 
         try:
-            import pandas as pd
 
             datasink.on_write_start()
 
@@ -3883,11 +3883,7 @@ class Dataset:
             # TODO: Get and handle the blocks with an iterator instead of getting
             # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            assert all(
-                isinstance(block, pd.DataFrame) and len(block) == 1
-                for block in raw_write_results
-            )
-            datasink.on_write_complete(raw_write_results)
+            handle_data_sink_write_results(datasink, raw_write_results)
 
         except Exception as e:
             datasink.on_write_failed(e)

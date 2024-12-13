@@ -1,9 +1,12 @@
 import logging
-from dataclasses import dataclass, fields
-from typing import Iterable, List, Optional
+from dataclasses import dataclass
+from typing import Any, Iterable, List, Optional
+
+from pandas import DataFrame
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
+from ray.data._internal.execution.util import memory_string
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
@@ -23,6 +26,7 @@ class WriteResult:
 
     num_rows: int = 0
     size_bytes: int = 0
+    custom_result: Any = None
 
     @staticmethod
     def aggregate_write_results(write_results: List["WriteResult"]) -> "WriteResult":
@@ -67,7 +71,7 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> Any:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -76,35 +80,8 @@ class Datasink:
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
-        """Callback for when a write job completes.
-
-        This can be used to "commit" a write output. This method must
-        succeed prior to ``write_datasink()`` returning to the user. If this
-        method fails, then ``on_write_failed()`` is called.
-
-        Args:
-            write_result_blocks: The blocks resulting from executing
-            the Write operator, containing write results and stats.
-        Returns:
-            A ``WriteResult`` object containing the aggregated stats of all
-            the input write results.
-        """
-        write_results = [
-            result["write_result"].iloc[0] for result in write_result_blocks
-        ]
-        aggregated_write_results = WriteResult.aggregate_write_results(write_results)
-
-        aggregated_results_str = ""
-        for k in fields(aggregated_write_results.__class__):
-            v = getattr(aggregated_write_results, k.name)
-            aggregated_results_str += f"\t- {k.name}: {v}\n"
-
-        logger.info(
-            f"Write operation succeeded. Aggregated write results:\n"
-            f"{aggregated_results_str}"
-        )
-        return aggregated_write_results
+    def on_write_complete(self, custom_results: List[Any]):
+        pass
 
     def on_write_failed(self, error: Exception) -> None:
         """Callback for when a write job fails.
@@ -141,6 +118,30 @@ class Datasink:
         If ``None``, Ray Data passes a system-chosen number of rows.
         """
         return None
+
+
+def handle_data_sink_write_results(
+    data_sink: Datasink,
+    write_result_blocks: List[Block],
+):
+    assert all(
+        isinstance(block, DataFrame) and len(block) == 1
+        for block in write_result_blocks
+    )
+    # Print out stats about the write operation.
+    write_results = [result["write_result"].iloc[0] for result in write_result_blocks]
+    total_num_rows = sum(result.num_rows for result in write_results)
+    total_size_bytes = sum(result.size_bytes for result in write_results)
+    logger.info(
+        "Data sink %s finished. %d rows and %s data written.",
+        data_sink.get_name(),
+        total_num_rows,
+        memory_string(total_size_bytes),
+    )
+
+    # Invoke the on_write_complete callback.
+    custom_results = [result.custom_result for result in write_results]
+    data_sink.on_write_complete(custom_results)
 
 
 @DeveloperAPI

@@ -19,16 +19,19 @@ from ray.data.datasource.datasource import Datasource
 def generate_write_fn(
     datasink_or_legacy_datasource: Union[Datasink, Datasource], **write_args
 ) -> Callable[[Iterator[Block], TaskContext], Iterator[Block]]:
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+    def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Writes the blocks to the given datasink or legacy datasource.
 
         Outputs the original blocks to be written."""
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            datasink_or_legacy_datasource.write(it1, ctx)
+            ctx.kwargs[
+                "_data_sink_custom_result"
+            ] = datasink_or_legacy_datasource.write(it1, ctx)
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
+
         return it2
 
     return fn
@@ -41,7 +44,7 @@ def generate_collect_write_stats_fn() -> (
     # one Block which contain stats/metrics about the write.
     # Otherwise, an error will be raised. The Datasource can handle
     # execution outcomes with `on_write_complete()`` and `on_write_failed()``.
-    def fn(blocks: Iterator[Block], ctx) -> Iterator[Block]:
+    def fn(blocks: Iterator[Block], ctx: TaskContext) -> Iterator[Block]:
         """Handles stats collection for block writes."""
         block_accessors = [BlockAccessor.for_block(block) for block in blocks]
         total_num_rows = sum(ba.num_rows() for ba in block_accessors)
@@ -51,7 +54,11 @@ def generate_collect_write_stats_fn() -> (
         # type.
         import pandas as pd
 
-        write_result = WriteResult(num_rows=total_num_rows, size_bytes=total_size_bytes)
+        write_result = WriteResult(
+            num_rows=total_num_rows,
+            size_bytes=total_size_bytes,
+            custom_result=ctx.kwargs.get("_data_sink_custom_result", None),
+        )
         block = pd.DataFrame({"write_result": [write_result]})
         return iter([block])
 
