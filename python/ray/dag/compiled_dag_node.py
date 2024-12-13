@@ -2056,6 +2056,21 @@ class CompiledDAG:
                 del self._result_buffer[execution_index]
         return result
 
+    def release_output_channel_buffers(self, execution_index: int):
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        timeout = ctx.retrieval_timeout
+
+        while self._max_finished_execution_index < execution_index:
+            self.increment_max_finished_execution_index()
+            start_time = time.monotonic()
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
     def _execute_until(
         self,
         execution_index: int,
