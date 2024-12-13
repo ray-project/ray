@@ -1,7 +1,6 @@
-from dataclasses import dataclass
 import logging
+from dataclasses import dataclass
 from typing import Generic, Iterable, List, Optional, TypeVar
-
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
