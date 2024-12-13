@@ -463,6 +463,7 @@ void ValidateRedisDB(RedisContext &context) {
 
 bool RedisContext::IsRedisSentinel() {
   auto reply = RunArgvSync(std::vector<std::string>{"INFO", "SENTINEL"});
+  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get Redis sentinel info";
   return !reply->IsNil() && !reply->IsError() && !reply->ReadAsString().empty();
 }
 
@@ -620,20 +621,24 @@ bool RedisContext::ConnectToIPAddress(const std::string &ip_address,
   if (enable_ssl) {
     RAY_CHECK(ssl_context_ != nullptr);
     if (redisInitiateSSLWithContext(context_.get(), ssl_context_) != REDIS_OK) {
-      RAY_LOG(INFO) << "Failed to setup encrypted redis for sync context: "
-                    << context_->errstr;
+      RAY_LOG(ERROR) << "Failed to setup encrypted redis for sync context: "
+                     << context_->errstr;
       return false;
     }
     if (redisInitiateSSLWithContext(&async_context->c, ssl_context_) != REDIS_OK) {
-      RAY_LOG(INFO) << "Failed to setup encrypted redis for async context: "
-                    << async_context->errstr;
+      RAY_LOG(ERROR) << "Failed to setup encrypted redis for async context: "
+                     << async_context->errstr;
       return false;
     }
   }
   if (!AuthenticateRedis(context_.get(), username, password).ok()) {
+    RAY_LOG(ERROR) << "Failed to authenticate redis for sync context: "
+                   << context_->errstr;
     return false;
   }
   if (!AuthenticateRedis(async_context.get(), username, password).ok()) {
+    RAY_LOG(ERROR) << "Failed to authenticate redis for async context: "
+                   << async_context->errstr;
     return false;
   }
 
