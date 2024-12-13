@@ -989,7 +989,7 @@ def placement_groups_to_resource_demands(
     for placement_group in pending_placement_groups:
         # Skip **placed** bundle (which has node id associated with it).
         for bundle in placement_group.bundles:
-            if bundle.node_id:
+            if bundle.node_id != b"":
                 continue
             shapes.append(dict(bundle.unit_resources))
 
