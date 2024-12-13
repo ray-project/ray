@@ -338,7 +338,7 @@ def test_worker_id_names(shutdown_only):
     for count in counts:
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
-        assert count == 3
+        assert count == 3, ids
 
 
 def test_log_pid_with_hex_job_id(ray_start_cluster):
