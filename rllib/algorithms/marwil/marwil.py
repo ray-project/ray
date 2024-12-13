@@ -476,6 +476,7 @@ class MARWIL(Algorithm):
                 batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                **self.offline_data.iter_batches_kwargs,
             )
 
             # Log training results.

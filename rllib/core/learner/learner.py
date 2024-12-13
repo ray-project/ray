@@ -21,6 +21,7 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
+from ray.data.iterator import DataIterator
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -269,6 +270,10 @@ class Learner(Checkpointable):
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
         self.metrics = MetricsLogger()
+
+        # In case of offline learning and multiple learners, each learner receives a
+        # repeatable iterator that iterates over a split of the streamed data.
+        self.iterator: DataIterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Seems to make
@@ -956,6 +961,7 @@ class Learner(Checkpointable):
         shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
+        **kwargs,
     ) -> ResultDict:
         """Run `num_epochs` epochs over the given train batch.
 
@@ -1088,6 +1094,9 @@ class Learner(Checkpointable):
                 "`num_iters` instead."
             )
 
+        if not self.iterator:
+            self.iterator = iterator
+
         self._check_is_built()
 
         # Call `before_gradient_based_update` to allow for non-gradient based
@@ -1101,8 +1110,8 @@ class Learner(Checkpointable):
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
-        logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
-        for batch in iterator.iter_batches(
+        logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
+        for batch in self.iterator.iter_batches(
             # Note, this needs to be one b/c data is already mapped to
             # `MultiAgentBatch`es of `minibatch_size`.
             batch_size=1,
@@ -1145,7 +1154,7 @@ class Learner(Checkpointable):
             if num_iters and i == num_iters:
                 break
 
-        logger.info(
+        logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
 
