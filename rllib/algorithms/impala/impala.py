@@ -1,4 +1,5 @@
 import copy
+import functools
 from functools import partial
 import logging
 import platform
@@ -141,7 +142,7 @@ class IMPALAConfig(AlgorithmConfig):
         self.vtrace_clip_pg_rho_threshold = 1.0
         self.learner_queue_size = 3
         self.max_requests_in_flight_per_env_runner = 1
-        self.max_requests_in_flight_per_aggregator_worker = 2
+        self.max_requests_in_flight_per_aggregator_worker = 100
         self.timeout_s_sampler_manager = 0.0
         self.timeout_s_aggregator_manager = 0.0
         self.broadcast_interval = 1
@@ -673,12 +674,14 @@ class IMPALA(Algorithm):
         ma_batches_refs = []
         for call_result in ma_batches_refs_remote_results:
             ma_batches_refs.append(call_result.get())
-        for pack in data_packages_for_aggregators:
+        while data_packages_for_aggregators:
+            def _func(actor, p):
+                return actor.get_batch(p)
+
+            packs = data_packages_for_aggregators[:self.config.num_aggregation_workers]
             self._aggregator_actor_manager.foreach_actor_async(
-                func=lambda actor: actor.get_batch(pack)
-                # remote_actor_ids=, TODO: round robin for > 1 aggregator actor
+                func=[functools.partial(_func, p=p) for p in packs],
             )
-        #self._test_aggregator_actors[0].get_batches.remote(data_packages_for_learner_group)
 
         data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
 
