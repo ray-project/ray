@@ -432,6 +432,7 @@ class ApplicationState:
         self,
         deployment_name: str,
         deployment_info: DeploymentInfo,
+        do_checkpoint: bool = True,
     ) -> None:
         """Deploys a deployment in the application."""
         route_prefix = deployment_info.route_prefix
@@ -442,7 +443,9 @@ class ApplicationState:
 
         deployment_id = DeploymentID(name=deployment_name, app_name=self._name)
 
-        self._deployment_state_manager.deploy(deployment_id, deployment_info)
+        self._deployment_state_manager.deploy(
+            deployment_id, deployment_info, do_checkpoint=do_checkpoint
+        )
 
         if deployment_info.route_prefix is not None:
             config = deployment_info.deployment_config
@@ -787,7 +790,11 @@ class ApplicationState:
                 deploy_info.deployment_config.logging_config = (
                     self._target_state.config.logging_config
                 )
-            self.apply_deployment_info(deployment_name, deploy_info)
+            self.apply_deployment_info(
+                deployment_name, deploy_info, do_checkpoint=False
+            )
+
+        self._deployment_state_manager.save_checkpoint()
 
         # Delete outdated deployments
         for deployment_name in self._get_live_deployments():
@@ -912,7 +919,7 @@ class ApplicationStateManager:
                     app_name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self._save_checkpoint_func,
+                    self.save_checkpoint,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -959,7 +966,7 @@ class ApplicationStateManager:
                     name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self._save_checkpoint_func,
+                    self.save_checkpoint,
                     self._logging_config,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
@@ -974,7 +981,7 @@ class ApplicationStateManager:
                 deployment_infos, do_checkpoint=False
             )
 
-        self._save_checkpoint_func()
+        self.save_checkpoint()
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
@@ -1014,7 +1021,7 @@ class ApplicationStateManager:
                     app_config.name,
                     self._deployment_state_manager,
                     endpoint_state=self._endpoint_state,
-                    save_checkpoint_func=self._save_checkpoint_func,
+                    save_checkpoint_func=self.save_checkpoint,
                     logging_config=self._logging_config,
                 )
 
@@ -1123,7 +1130,7 @@ class ApplicationStateManager:
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
-    def _save_checkpoint_func(self) -> None:
+    def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
 
         application_state_info = {

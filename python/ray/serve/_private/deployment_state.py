@@ -1511,6 +1511,7 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
+        do_checkpoint: bool = True,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1519,14 +1520,16 @@ class DeploymentState:
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
-        """
 
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
+        If do_checkpoint is True, the entire DeploymentStateManager
+        (not just this DeploymentState!) will checkpoint at the end of this call.
+        *If do_checkpoint is False, the caller is responsible for
+        checkpointing the DeploymentStateManager and must do so before any actual
+        changes are made to the cluster (e.g., starting actors)*.
+        """
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: new_target_state})
 
         if self._target_state.version == new_target_state.version:
             # Record either num replica or autoscaling config lightweight update
@@ -1543,7 +1546,12 @@ class DeploymentState:
 
         self._target_state = new_target_state
 
-    def deploy(self, deployment_info: DeploymentInfo) -> bool:
+        if do_checkpoint:
+            self._save_checkpoint_func()
+
+    def deploy(
+        self, deployment_info: DeploymentInfo, do_checkpoint: bool = True
+    ) -> bool:
         """Deploy the deployment.
 
         If the deployment already exists with the same version, config,
@@ -1595,7 +1603,11 @@ class DeploymentState:
             )
 
         old_target_state = self._target_state
-        self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
+        self._set_target_state(
+            deployment_info,
+            target_num_replicas=target_num_replicas,
+            do_checkpoint=do_checkpoint,
+        )
         self._deployment_scheduler.on_deployment_deployed(
             self._id, deployment_info.replica_config
         )
@@ -2391,7 +2403,7 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
-            self._save_checkpoint_func,
+            self.save_checkpoint,
         )
 
     def _map_actor_names_to_deployment(
@@ -2534,23 +2546,13 @@ class DeploymentStateManager:
             and self._kv_store.get(CHECKPOINT_KEY) is None
         )
 
-    def _save_checkpoint_func(
-        self, *, writeahead_checkpoints: Optional[Dict[str, Tuple]]
-    ) -> None:
-        """Write a checkpoint of all deployment states.
-        By default, this checkpoints the current in-memory state of each
-        deployment. However, these can be overwritten by passing
-        `writeahead_checkpoints` in order to checkpoint an update before
-        applying it to the in-memory state.
-        """
+    def save_checkpoint(self) -> None:
+        """Write a checkpoint of all deployment states."""
 
         deployment_state_info = {
             deployment_id: deployment_state.get_checkpoint_data()
             for deployment_id, deployment_state in self._deployment_states.items()
         }
-
-        if writeahead_checkpoints is not None:
-            deployment_state_info.update(writeahead_checkpoints)
 
         self._kv_store.put(
             CHECKPOINT_KEY,
@@ -2635,6 +2637,7 @@ class DeploymentStateManager:
         self,
         deployment_id: DeploymentID,
         deployment_info: DeploymentInfo,
+        do_checkpoint: bool = True,
     ) -> bool:
         """Deploy the deployment.
 
@@ -2650,7 +2653,9 @@ class DeploymentStateManager:
             )
             self._record_deployment_usage()
 
-        return self._deployment_states[deployment_id].deploy(deployment_info)
+        return self._deployment_states[deployment_id].deploy(
+            deployment_info, do_checkpoint=do_checkpoint
+        )
 
     def get_deployments_in_application(self, app_name: str) -> List[str]:
         """Return list of deployment names in application."""
