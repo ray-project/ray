@@ -666,6 +666,8 @@ Status RedisContext::Connect(const std::string &address,
   RAY_CHECK(!context_);
   RAY_CHECK(!redis_async_context_);
 
+  bool should_reconnect = true;
+
   // Remember function arguments for reconnection
   if (is_first_connect_) {
     is_first_connect_ = false;
@@ -674,6 +676,8 @@ Status RedisContext::Connect(const std::string &address,
     username_ = username;
     password_ = password;
     enable_ssl_ = enable_ssl;
+    // Don't try to reconnect for the first time.
+    should_reconnect = false;
   }
 
   // Fetch the ip address from the address. It might return multiple
@@ -687,6 +691,9 @@ Status RedisContext::Connect(const std::string &address,
   const auto &ip_address = ip_addresses[0];
 
   if (!ConnectToIPAddress(ip_address, port, username, password, enable_ssl)) {
+    if (!should_reconnect) {
+      RAY_LOG(FATAL) << "Failed to connect to Redis.";
+    }
     return Reconnect();
   }
 
