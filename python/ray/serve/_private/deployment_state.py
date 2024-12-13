@@ -1488,20 +1488,17 @@ class DeploymentState:
 
     def _set_target_state_deleting(self) -> None:
         """Set the target state for the deployment to be deleted."""
-
-        # We must write ahead the target state in case of GCS failure (we don't
-        # want to set the target state, then fail because we can't checkpoint it).
         target_state = DeploymentTargetState.create(
             info=self._target_state.info,
             target_num_replicas=0,
             deleting=True,
         )
-        self._save_checkpoint_func(writeahead_checkpoints={self._id: target_state})
 
         self._target_state = target_state
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
+        self._save_checkpoint_func()
         logger.info(
             f"Deleting {self._id}",
             extra={"log_to_stderr": False},
