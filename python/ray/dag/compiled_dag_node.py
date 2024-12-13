@@ -824,7 +824,7 @@ class CompiledDAG:
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
         # List of task indices that are input attribute nodes.
-        self.input_attr_task_idx_list: List[int] = []
+        self.input_attr_task_idxs: List[int] = []
         # Denotes whether execute/execute_async returns a list of refs/futures.
         self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
@@ -957,7 +957,7 @@ class CompiledDAG:
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
             elif isinstance(task.dag_node, InputAttributeNode):
-                self.input_attr_task_idx_list.append(idx)
+                self.input_attr_task_idxs.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -2797,7 +2797,7 @@ class CompiledDAG:
         input_task.dag_node.type_hint.register_custom_serializer()
 
         # Register custom serializers for input attribute nodes.
-        for input_attr_task_idx in self.input_attr_task_idx_list:
+        for input_attr_task_idx in self.input_attr_task_idxs:
             input_attr_task = self.idx_to_task[input_attr_task_idx]
             input_attr_task.dag_node.type_hint.register_custom_serializer()
 

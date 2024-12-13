@@ -123,7 +123,7 @@ class Worker:
     def __init__(self):
         self.device = None
 
-    def no_op(self, tensor):
+    def echo(self, tensor):
         assert isinstance(tensor, torch.Tensor)
         self.device = tensor.device
         return tensor
@@ -1308,7 +1308,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
-            dag = worker.no_op.bind(inp)
+            dag = worker.echo.bind(inp)
 
         compiled_dag = dag.experimental_compile()
         tensor = torch.tensor([5])
@@ -1333,9 +1333,9 @@ class TestTorchTensorTypeHintCustomSerializer:
         Step 2: The `worker` calls `deserialize_tensor` to deserialize `input_tensor`
                and moves it to GPU.
         Step 3: The `worker` calls `serialize_tensor` to serialize the result of
-               `no_op` and moves it to CPU.
+               `echo` and moves it to CPU.
         Step 4: The driver calls `deserialize_tensor` to deserialize the result of
-               `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
+               `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
                the tensor will not be moved to GPU.
         """
         if not USE_GPU:
@@ -1344,7 +1344,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
-            dag = worker.no_op.bind(inp.with_type_hint(TorchTensorType()))
+            dag = worker.echo.bind(inp.with_type_hint(TorchTensorType()))
         compiled_dag = dag.experimental_compile()
         cpu_tensor = torch.tensor([1])
         input_tensor = cpu_tensor
@@ -1376,12 +1376,12 @@ class TestTorchTensorTypeHintCustomSerializer:
 
         Step 3:
         * The `worker1` calls `serialize_tensor` to serialize the result of
-          `no_op` and moves it to CPU.
+          `echo` and moves it to CPU.
         * The `worker2` calls `serialize_tensor` to serialize the result of
-          `no_op` and moves it to CPU.
+          `echo` and moves it to CPU.
 
         Step 4: The driver calls `deserialize_tensor` to deserialize the result
-        of `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
+        of `echo`. Since the driver's `ChannelContext.torch_device` is CPU,
         the tensor will not be moved to GPU.
         """
         if not USE_GPU:
@@ -1391,9 +1391,9 @@ class TestTorchTensorTypeHintCustomSerializer:
         worker2 = Worker.options(num_gpus=1).remote()
         with InputNode() as inp:
             dag = inp[0].with_type_hint(TorchTensorType())
-            branch1 = worker1.no_op.bind(dag)
+            branch1 = worker1.echo.bind(dag)
             dag = inp[1].with_type_hint(TorchTensorType())
-            branch2 = worker2.no_op.bind(dag)
+            branch2 = worker2.echo.bind(dag)
             dag = MultiOutputNode([branch1, branch2])
 
         compiled_dag = dag.experimental_compile()
@@ -1413,7 +1413,7 @@ class TestTorchTensorTypeHintCustomSerializer:
         assert device2.type == "cuda"
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_partial_input_attr_nodes_with_tensor_type_hint(self, ray_start_regular):
+    def test_input_attr_nodes_with_and_without_type_hint(self, ray_start_regular):
         """
         Only `inp[0]` has a tensor type hint, so only `worker1` will use the custom
         serializer. Note that although we don't register the custom serializer for
@@ -1432,10 +1432,10 @@ class TestTorchTensorTypeHintCustomSerializer:
           and moves it to GPU.
 
         Step 3:
-        * The `worker1` calls `serialize_tensor` to serialize the result of `no_op`
+        * The `worker1` calls `serialize_tensor` to serialize the result of `echo`
           and moves it to CPU.
         * The `worker2` calls the normal serialization function to serialize the
-          result of `no_op` because it doesn't have a custom serializer, so the
+          result of `echo` because it doesn't have a custom serializer, so the
           tensor is still on GPU.
 
         Step 4:
@@ -1453,9 +1453,9 @@ class TestTorchTensorTypeHintCustomSerializer:
 
         with InputNode() as inp:
             dag = inp[0].with_type_hint(TorchTensorType())
-            branch1 = worker1.no_op.bind(dag)
+            branch1 = worker1.echo.bind(dag)
             dag = inp[1]
-            branch2 = worker2.no_op.bind(dag)
+            branch2 = worker2.echo.bind(dag)
             dag = MultiOutputNode([branch1, branch2])
 
         compiled_dag = dag.experimental_compile()
