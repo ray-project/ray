@@ -657,6 +657,9 @@ class IMPALA(Algorithm):
 
         time.sleep(0.01)
 
+        if self.config.learner_config_dict.get("_training_step_sample_only"):
+            return
+
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
@@ -679,7 +682,7 @@ class IMPALA(Algorithm):
 
         data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
 
-        #time.sleep(0.01)
+        time.sleep(0.01)
 
         # If we do tree aggregation, we perform the LearnerConnector pass on the
         # aggregation workers.
@@ -689,9 +692,6 @@ class IMPALA(Algorithm):
         #            data_packages_for_learner_group
         #        )
         #    )
-
-        if self.config.learner_config_dict.get("_training_step_sample_only"):
-            return
 
         # TODO (sven): When and how long to sleep best is an ongoing investigation.
         #  We observe
@@ -977,7 +977,7 @@ class IMPALA(Algorithm):
                             cf.num_cpus_for_main_process,
                             cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
                         )
-                        + cf.num_aggregation_workers
+                        #+ cf.num_aggregation_workers
                     ),
                     # Use n GPUs if we have a local Learner (num_learners=0).
                     "GPU": (
@@ -1016,11 +1016,15 @@ class IMPALA(Algorithm):
         #  factories.
         # Only if we have actual (remote) learner workers. In case of a local learner,
         # the resource has already been taken care of above.
-        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
-            bundles += cls._get_learner_bundles(cf)
+        if cf.enable_rl_module_and_learner:# and cf.num_learners > 0:
+            bundles += [{
+                "GPU": 0.01,
+                "CPU": 1,
+            }]#cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
+        print(bundles)
         return PlacementGroupFactory(
             bundles=bundles,
             strategy=cf.placement_strategy,

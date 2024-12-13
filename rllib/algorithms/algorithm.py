@@ -214,7 +214,11 @@ except ImportError:
                         "CPU": max(
                             cf.num_cpus_per_learner, cf.num_cpus_for_main_process
                         ),
-                        "GPU": cf.num_gpus_per_learner,
+                        "GPU": (cf.num_gpus_per_learner), #TODO: account properly for aggregation workers
+                    },
+                    {
+                        "GPU": 0.01,
+                        "CPU": 1,
                     }
                 ]
             return learner_bundles
