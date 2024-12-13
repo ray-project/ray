@@ -70,13 +70,13 @@ config = (
             vf_share_layers=False,
         ),
     )
-    #.evaluation(
-    #    evaluation_interval=1,
-    #    evaluation_num_env_runners=2,
-    #    evaluation_config=IMPALAConfig.overrides(num_envs_per_env_runner=1),
-    #    evaluation_duration="auto",
-    #    evaluation_parallel_to_training=True,
-    #)
+    .evaluation(
+        evaluation_interval=1,
+        evaluation_num_env_runners=2,
+        #evaluation_config=IMPALAConfig.overrides(num_envs_per_env_runner=1),
+        evaluation_duration="auto",
+        evaluation_parallel_to_training=True,
+    )
 )
 
 

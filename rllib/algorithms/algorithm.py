@@ -1304,8 +1304,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     ),
                 )
 
-                #print(f"Eval round {_round} ... sampling {_num} ts ...")
-
                 results = self.eval_env_runner_group.fetch_ready_async_reqs(
                     return_obj_refs=False, timeout_seconds=0.0
                 )
@@ -1322,7 +1320,6 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
                     env_steps += env_s
                     agent_steps += ag_s
                     all_metrics.append(metrics)
-                print(f"Eval round {_round} ... sampling {_num} ts ...")
                 time.sleep(0.01)
 
             # Old API stack -> RolloutWorkers return batches.

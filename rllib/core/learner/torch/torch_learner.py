@@ -517,20 +517,22 @@ class TorchLearner(Learner):
             if isinstance(rlm, TorchRLModule)
         }
 
-        self.metrics.log_dict(
-            {
-                **{
-                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
-                        num_trainable_params.values()
-                    ),
-                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
-                        num_non_trainable_params.values()
-                    ),
-                },
-                **num_trainable_params,
-                **num_non_trainable_params,
-            }
-        )
+        # In case metrics is already used in a thread, use the lock here.
+        with self.metrics._threading_lock:
+            self.metrics.log_dict(
+                {
+                    **{
+                        (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
+                            num_trainable_params.values()
+                        ),
+                        (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                            num_non_trainable_params.values()
+                        ),
+                    },
+                    **num_trainable_params,
+                    **num_non_trainable_params,
+                }
+            )
 
         self._make_modules_ddp_if_necessary()
 
