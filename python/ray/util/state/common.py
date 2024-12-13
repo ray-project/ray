@@ -167,6 +167,9 @@ class ListApiOptions:
     def has_conflicting_filters(self) -> bool:
         # Check the filters in the ListApiOptions conflicts. Specifically for:
         # - multiple '=' filters with the same key but different values.
+        # TODO(myan): More conflicts situation can be added for further optimization.
+        # For exmaple, 2 filters with same key and same value but one with '=' predicate
+        # and ther other with '!=' predicate
         equal_filters = {}
         for filter in self.filters:
             filter_key, filter_predicate, filter_value = filter
