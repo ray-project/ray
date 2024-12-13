@@ -85,15 +85,15 @@ class GcsWorkerManager : public rpc::WorkerInfoHandler {
   std::vector<std::function<void(std::shared_ptr<WorkerTableData>)>>
       worker_dead_listeners_;
 
-  /// A list where workers are store as pairs of (WorkerID, Timestamp).
-  /// The workers are sorted according to the timestamp, and the oldest is at the head of the list.
+  /// A deque where workers are store as pairs of (WorkerID, Timestamp).
+  /// The workers are sorted according to the timestamp, and the oldest is at the head of the deque.
   /// @note The pair consists of:
   ///   - first: WorkerID (identifier for the worker)
   ///   - second: Timestamp (time when the worker was last updated or added)
-  std::list<std::pair<WorkerID, int64_t>> sorted_dead_worker_list_;
+  std::deque<std::pair<WorkerID, int64_t>> sorted_dead_worker_deque_;
 
   /// Max number of dead workers allowed in the storage.
-  const size_t max_num_dead_workers_ = 1000;
+  size_t max_num_dead_workers_;
 
   /// Tracks the number of occurences of worker crash due to system error
   int32_t worker_crash_system_error_count_ = 0;

@@ -133,17 +133,17 @@ void GcsWorkerManager::HandleReportWorkerFailure(
         }
 
         // worker IDs and clean up expired workers
-        sorted_dead_worker_list_.emplace_back(worker_id, worker_failure_data->timestamp());
+        sorted_dead_worker_deque_.emplace_back(worker_id, worker_failure_data->timestamp());
 
         // If limit enforced, replace one.
-        if (max_num_dead_workers_ > 0 && sorted_dead_worker_list_.size() > max_num_dead_workers_) {
+        if (max_num_dead_workers_ > 0 && sorted_dead_worker_deque_.size() > max_num_dead_workers_) {
           RAY_LOG_EVERY_MS(WARNING, 10000)
               << "Max number of dead workers event (" << max_num_worker_events_
               << ") allowed is reached. Old worker events will be overwritten. Set "
                  "`RAY_maximum_gcs_dead_worker_cached_count` to a higher value to store more.";
-          const auto &clean_worker_id = sorted_dead_worker_list_.front().first;
+          const auto &clean_worker_id = sorted_dead_worker_deque_.front().first;
           RAY_CHECK_OK(gcs_table_storage_->WorkerTable().Delete(clean_worker_id, nullptr));
-          sorted_dead_worker_list_.pop_front();
+          sorted_dead_worker_deque_.pop_front();
         }
       });
 }
@@ -347,14 +347,16 @@ void GcsWorkerManager::Initialize(const GcsInitData &gcs_init_data) {
   RAY_LOG(INFO) << "Initializing gcs_worker_manager for load dead workers table.";
   for (const auto &[worker_id, worker_table_data] : gcs_init_data.Workers()) {
     if (!worker_table_data.is_alive()) {
-      sorted_dead_worker_list_.emplace_back(worker_id, worker_table_data.timestamp());
+      sorted_dead_worker_deque_.emplace_back(worker_id, worker_table_data.timestamp());
     }
   }
   // Sort by expiration time, prioritize clearing the history first
-  sorted_dead_worker_list_.sort([](const auto& left, const auto& right) {
-    return left.second < right.second;
-  });
-  RAY_LOG(INFO) << "Finished initialize gcs_worker_manager for dead workers size : " << sorted_dead_worker_list_.size();
+  std::sort(sorted_dead_worker_deque_.begin(), sorted_dead_worker_deque_.end(),
+            [](const auto& left, const auto& right) {
+      return left.second < right.second;
+    });
+
+  RAY_LOG(INFO) << "Finished initialize gcs_worker_manager for dead workers size : " << sorted_dead_worker_deque_.size();
 }
 
 void GcsWorkerManager::AddWorkerDeadListener(

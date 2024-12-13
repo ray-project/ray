@@ -381,6 +381,8 @@ RAY_CONFIG(uint64_t, gcs_create_placement_group_retry_max_interval_ms, 1000)
 RAY_CONFIG(double, gcs_create_placement_group_retry_multiplier, 1.5)
 /// Maximum number of destroyed actors in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_destroyed_actor_cached_count, 100000)
+/// Maximum number of dead workers in GCS server memory cache.
+RAY_CONFIG(int64_t, maximum_gcs_dead_worker_cached_count, 100000)
 /// Maximum number of dead nodes in GCS server memory cache.
 RAY_CONFIG(uint32_t, maximum_gcs_dead_node_cached_count, 1000)
 // The interval at which the gcs server will pull a new resource.
@@ -480,8 +482,6 @@ RAY_CONFIG(int64_t, task_events_report_interval_ms, 1000)
 /// from new tasks will evict events of tasks reported earlier.
 /// Setting the value to -1 allows for unlimited task events stored in GCS.
 RAY_CONFIG(int64_t, task_events_max_num_task_in_gcs, 100000)
-
-RAY_CONFIG(int64_t, maximum_gcs_dead_worker_cached_count, 1000)
 
 /// The number of task attempts being dropped per job tracked at GCS. When GCS is forced
 /// to stop tracking some task attempts that are lost, this will incur potential partial
