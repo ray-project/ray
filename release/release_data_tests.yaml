@@ -238,7 +238,7 @@
   run:
     timeout: 3600
     script: >
-      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet 
+      python dataset/multi_node_train_benchmark.py --num-workers 16 --file-type parquet
       --target-worker-gb 50 --use-gpu
 
   variations:
@@ -246,7 +246,7 @@
     - __suffix__: chaos
       run:
         prepare: >
-          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names 
+          python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
           "_RayTrainWorker__execute.get_next"
 
 #########################
@@ -416,10 +416,10 @@
 
   run:
     timeout: 1800
-    prepare: python setup_chaos.py --max-to-kill 2 --kill-delay 30
+    prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
     script: >
       python dataset/gpu_batch_inference.py
-      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
 # 10 TB image classification parquet data with autoscaling heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
@@ -434,3 +434,16 @@
     script: >
       python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
+
+##############
+# TPCH Queries
+##############
+
+- name: tpch_q1
+
+  cluster:
+    cluster_compute: all_to_all_compute.yaml
+
+  run:
+    timeout: 5400
+    script: python tpch_q1.py --sf 100

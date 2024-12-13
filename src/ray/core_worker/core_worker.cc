@@ -262,7 +262,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       periodical_runner_(PeriodicalRunner::Create(io_service_)),
       task_queue_length_(0),
       num_executed_tasks_(0),
-      resource_ids_(new ResourceMappingType()),
+      resource_ids_(),
       grpc_service_(io_service_, *this),
       task_execution_service_work_(task_execution_service_),
       exiting_detail_(std::nullopt),
@@ -522,7 +522,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   plasma_store_provider_.reset(new CoreWorkerPlasmaStoreProvider(
       options_.store_socket,
       local_raylet_client_,
-      reference_counter_,
+      *reference_counter_,
       options_.check_signals,
       /*warmup=*/
       (options_.worker_type != WorkerType::SPILL_WORKER &&
@@ -530,7 +530,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       /*get_current_call_site=*/boost::bind(&CoreWorker::CurrentCallSite, this)));
   memory_store_ = std::make_shared<CoreWorkerMemoryStore>(
       io_service_,
-      reference_counter_,
+      reference_counter_.get(),
       local_raylet_client_,
       options_.check_signals,
       [this](const RayObject &obj) {
@@ -3014,9 +3014,9 @@ const std::string CoreWorker::GetActorName() const {
   return actor_manager_->GetActorHandle(actor_id_)->GetName();
 }
 
-const ResourceMappingType CoreWorker::GetResourceIDs() const {
+ResourceMappingType CoreWorker::GetResourceIDs() const {
   absl::MutexLock lock(&mutex_);
-  return *resource_ids_;
+  return resource_ids_;
 }
 
 std::unique_ptr<worker::ProfileEvent> CoreWorker::CreateProfileEvent(
@@ -3102,7 +3102,7 @@ Status CoreWorker::AllocateReturnObject(const ObjectID &object_id,
 
 Status CoreWorker::ExecuteTask(
     const TaskSpecification &task_spec,
-    const std::shared_ptr<ResourceMappingType> &resource_ids,
+    std::optional<ResourceMappingType> resource_ids,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
     std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *dynamic_return_objects,
     std::vector<std::pair<ObjectID, bool>> *streaming_generator_returns,
@@ -3151,8 +3151,8 @@ Status CoreWorker::ExecuteTask(
   {
     absl::MutexLock lock(&mutex_);
     current_tasks_.emplace(task_spec.TaskId(), task_spec);
-    if (resource_ids) {
-      resource_ids_ = resource_ids;
+    if (resource_ids.has_value()) {
+      resource_ids_ = std::move(*resource_ids);
     }
   }
 
@@ -3285,7 +3285,7 @@ Status CoreWorker::ExecuteTask(
     RAY_CHECK(it != current_tasks_.end());
     current_tasks_.erase(it);
     if (task_spec.IsNormalTask()) {
-      resource_ids_.reset(new ResourceMappingType());
+      resource_ids_.clear();
     }
   }
 
@@ -3540,7 +3540,6 @@ void CoreWorker::HandleReportGeneratorItemReturns(
 
 std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
     const TaskSpecification &task_spec, const ActorID &actor_id) {
-  auto resource_ids = std::make_shared<ResourceMappingType>();
   auto return_objects = std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>();
   auto borrowed_refs = ReferenceCounter::ReferenceTableProto();
 
@@ -3569,7 +3568,7 @@ std::vector<rpc::ObjectReference> CoreWorker::ExecuteTaskLocalMode(
   std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> dynamic_return_objects;
   std::vector<std::pair<ObjectID, bool>> streaming_generator_returns;
   RAY_UNUSED(ExecuteTask(task_spec,
-                         resource_ids,
+                         /*resource_ids=*/ResourceMappingType{},
                          &return_objects,
                          &dynamic_return_objects,
                          &streaming_generator_returns,
@@ -4424,15 +4423,15 @@ void CoreWorker::HandleGetCoreWorkerStats(rpc::GetCoreWorkerStatsRequest request
   stats->set_actor_id(actor_id_.Binary());
   stats->set_worker_type(worker_context_.GetWorkerType());
   stats->set_num_running_tasks(current_tasks_.size());
-  auto used_resources_map = stats->mutable_used_resources();
-  for (auto const &it : *resource_ids_) {
+  auto *used_resources_map = stats->mutable_used_resources();
+  for (auto const &[resource_name, resource_allocations] : resource_ids_) {
     rpc::ResourceAllocations allocations;
-    for (auto const &pair : it.second) {
+    for (auto const &[cur_resource_slot, cur_resource_alloc] : resource_allocations) {
       auto resource_slot = allocations.add_resource_slots();
-      resource_slot->set_slot(pair.first);
-      resource_slot->set_allocation(pair.second);
+      resource_slot->set_slot(cur_resource_slot);
+      resource_slot->set_allocation(cur_resource_alloc);
     }
-    (*used_resources_map)[it.first] = allocations;
+    (*used_resources_map)[resource_name] = allocations;
   }
   stats->set_actor_title(actor_title_);
   google::protobuf::Map<std::string, std::string> webui_map(webui_display_.begin(),

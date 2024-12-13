@@ -17,7 +17,7 @@ if sys.platform != "linux" and sys.platform != "darwin":
 INVALID_GRAPH = "This DAG cannot be compiled because it will "
 "deadlock on NCCL calls. If you believe this is a false positive, "
 "please disable the graph verification by setting the environment "
-"variable RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+"variable RAY_CG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
 "https://github.com/ray-project/ray/issues/new/."
 
 
