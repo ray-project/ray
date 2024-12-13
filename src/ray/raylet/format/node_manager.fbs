@@ -74,10 +74,8 @@ enum MessageType:int {
   //
   // Send an initial connection message to the raylet with port assigned. This is sent
   // from a worker or driver to a raylet.
+  // The corresponding response type is [AnnounceWorkerPortReply].
   RegisterClientWithPortRequest,
-  // Send a reply confirming the successful registration of a worker or driver.
-  // This is sent from the raylet to a worker or driver.
-  RegisterClientWithPortReply,
 }
 
 table Task {

@@ -432,9 +432,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
-  void ProcessRegisterClientRequestMessageImpl(
+  Status ProcessRegisterClientRequestMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
-      const ray::protocol::RegisterClientRequest *message);
+      const ray::protocol::RegisterClientRequest *message,
+      std::optional<int> port);
+
+  // Register a new worker into worker pool.
+  Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const StartupToken &worker_startup_token,
+                              std::function<void(Status, int)> send_reply_callback = {});
+  // Register a new driver into worker pool.
+  Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const JobID &job_id,
+                              const ray::protocol::RegisterClientRequest *message,
+                              std::function<void(Status, int)> send_reply_callback = {});
 
   /// Process client message of AnnounceWorkerPort
   ///
@@ -446,6 +459,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void ProcessAnnounceWorkerPortMessageImpl(
       const std::shared_ptr<ClientConnection> &client,
       const ray::protocol::AnnounceWorkerPort *message);
+
+  // Send status of port announcement to client side.
+  void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
+                                    Status status);
 
   /// Process client registration and port announcement.
   void ProcessRegisterClientAndAnnouncePortMessage(
