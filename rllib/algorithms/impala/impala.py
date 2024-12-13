@@ -682,6 +682,7 @@ class IMPALA(Algorithm):
             self._aggregator_actor_manager.foreach_actor_async(
                 func=[functools.partial(_func, p=p) for p in packs],
             )
+            data_packages_for_aggregators = data_packages_for_aggregators[self.config.num_aggregation_workers:]
 
         data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
 
