@@ -1286,33 +1286,42 @@ class Worker:
 
 class TestTorchTensorTypeHintCustomSerializer:
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_node_without_type_hint(self, ray_start_regular):
+    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
+    def test_input_node_without_type_hint(self, ray_start_regular, tensor_device):
         """
         Since no TorchTensorType hint is provided in this compiled graph,
-        everything should be on CPU even though this is a GPU worker.
+        normal serialization and deserialization functions are used, which will
+        not move the tensor to GPU/CPU.
         """
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
+
         worker = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
             dag = worker.no_op.bind(inp)
 
         compiled_dag = dag.experimental_compile()
-        cpu_tensor = torch.tensor([1])
-        ref = compiled_dag.execute(cpu_tensor)
+        tensor = torch.tensor([1])
+        if tensor_device == "cuda":
+            tensor = tensor.cuda()
+        ref = compiled_dag.execute(tensor)
         t = ray.get(ref)
-        assert torch.equal(t, cpu_tensor)
+        assert torch.equal(t, tensor)
 
         device = ray.get(worker.get_device.remote())
-        assert device.type == "cpu"
+        assert device.type == tensor_device
 
     @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-    def test_input_node_with_type_hint(self, ray_start_regular):
+    @pytest.mark.parametrize("tensor_device", ["cpu", "cuda"])
+    def test_input_node_with_type_hint(self, ray_start_regular, tensor_device):
         """
         Since `inp` has a TorchTensorType hint, both the driver and `worker` will
         use the custom serializer.
 
-        Step 1: The driver calls `serialize_tensor` to serialize `cpu_tensor`.
-        Step 2: The `worker` calls `deserialize_tensor` to deserialize `cpu_tensor`
+        Step 1: The driver calls `serialize_tensor` to serialize `input_tensor` and
+                move the tensor to CPU if it is on GPU.
+        Step 2: The `worker` calls `deserialize_tensor` to deserialize `input_tensor`
                and moves it to GPU.
         Step 3: The `worker` calls `serialize_tensor` to serialize the result of
                `no_op` and moves it to CPU.
@@ -1320,13 +1329,19 @@ class TestTorchTensorTypeHintCustomSerializer:
                `no_op`. Since the driver's `ChannelContext.torch_device` is CPU,
                the tensor will not be moved to GPU.
         """
+        if not USE_GPU:
+            pytest.skip("Test requires GPU")
+
         worker = Worker.options(num_gpus=1).remote()
 
         with InputNode() as inp:
             dag = worker.no_op.bind(inp.with_type_hint(TorchTensorType()))
         compiled_dag = dag.experimental_compile()
         cpu_tensor = torch.tensor([1])
-        ref = compiled_dag.execute(cpu_tensor)
+        input_tensor = cpu_tensor
+        if tensor_device == "cuda":
+            input_tensor = input_tensor.cuda()
+        ref = compiled_dag.execute(input_tensor)
         # Verify Step 4
         t = ray.get(ref)
         assert torch.equal(t, cpu_tensor)
@@ -1411,7 +1426,7 @@ class TestTorchTensorTypeHintCustomSerializer:
           result of `no_op` because it doesn't have a custom serializer, so the
           tensor is still on GPU.
 
-        Step 4: 
+        Step 4:
         * The driver calls `deserialize_tensor` to deserialize the tensor from
           `worker1`. Since the driver's `ChannelContext.torch_device` is CPU,
           the tensor will not be moved to GPU.
