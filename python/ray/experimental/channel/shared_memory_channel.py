@@ -7,11 +7,11 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
+from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
-from ray.experimental.channel import utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -652,9 +652,10 @@ class CompositeChannel(ChannelInterface):
             # We don't need to create channels again.
             return
 
-        remote_reader_and_node_list, local_reader_and_node_list = utils.split_readers_by_locality(
-            self._writer, self._reader_and_node_list
-        )
+        (
+            remote_reader_and_node_list,
+            local_reader_and_node_list,
+        ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
         num_local_readers = len(local_reader_and_node_list)
