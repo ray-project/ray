@@ -503,6 +503,18 @@ class Channel(ChannelInterface):
 
         return ret
 
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        self.ensure_registered_as_reader()
+        self._worker.get_objects(
+            [self._local_reader_ref],
+            timeout=timeout,
+            return_exceptions=True,
+            skip_deserialization=True,
+        )
+
     def close(self) -> None:
         """
         Close this channel by setting the error bit on both the writer_ref and the
@@ -603,6 +615,21 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index += 1
         self._next_read_index %= self._num_shm_buffers
         return output
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        """Release the native buffer of the channel to allow the buffer to be reused for
+        future data.
+
+        If the next buffer is available, it returns immediately. If the next
+        buffer is not written by an upstream producer, it blocks until a buffer is
+        available to be released. If a buffer is not available within timeout, it raises
+        RayChannelTimeoutError.
+        """
+        # A single channel is not supposed to read and write at the same time.
+        assert self._next_write_index == 0
+        self._buffers[self._next_read_index].release_buffer(timeout)
+        self._next_read_index += 1
+        self._next_read_index %= self._num_shm_buffers
 
     def close(self) -> None:
         for buffer in self._buffers:
@@ -732,16 +759,23 @@ class CompositeChannel(ChannelInterface):
 
     def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
+        return self._channel_dict[self._resolve_actor_id()].read(timeout)
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        self.ensure_registered_as_reader()
+        self._channel_dict[self._resolve_actor_id()].release_buffer(timeout)
+
+    def _resolve_actor_id(self) -> str:
         actor_id = ray.get_runtime_context().get_actor_id()
-        # if actor_id is None, read was called by the driver
-        # if the driver is an actor, driver_actor_id will be set to that actor id
+        # If actor_id is None, read was called by the driver
+        # If the driver is an actor, driver_actor_id will be set to that actor id
         if actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
             assert len(self._reader_and_node_list) >= 1
             driver_proxy_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_proxy_actor)
-        return self._channel_dict[actor_id].read(timeout)
+        return actor_id
 
     def close(self) -> None:
         for channel in self._channels:
