@@ -11,6 +11,7 @@ from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.experimental.channel import utils
 
 # Logger for this module. It should be configured at the entry point
 # into the program using Ray. Ray provides a default configuration at
@@ -651,15 +652,12 @@ class CompositeChannel(ChannelInterface):
             # We don't need to create channels again.
             return
 
-        remote_reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-        for reader, node in self._reader_and_node_list:
-            if reader != self._writer:
-                remote_reader_and_node_list.append((reader, node))
+        remote_reader_and_node_list, local_reader_and_node_list = utils.split_readers_by_locality(
+            self._writer, self._reader_and_node_list
+        )
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        num_local_readers = len(self._reader_and_node_list) - len(
-            remote_reader_and_node_list
-        )
+        num_local_readers = len(local_reader_and_node_list)
         if num_local_readers > 0:
             # Use num_readers = 1 when creating the local channel,
             # because we have channel cache to support reading
