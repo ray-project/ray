@@ -19,7 +19,6 @@ from ray.data.datasource.datasource import Datasource
 
 
 def gen_data_sink_write_result(
-    data_sink: Datasink,
     write_result_blocks: List[Block],
 ) -> WriteResult:
     assert all(
@@ -32,7 +31,7 @@ def gen_data_sink_write_result(
     write_task_results = [
         result["write_task_result"][0] for result in write_result_blocks
     ]
-    return WriteResult(total_num_rows, total_num_rows, write_task_results)
+    return WriteResult(total_num_rows, total_size_bytes, write_task_results)
 
 
 def generate_write_fn(

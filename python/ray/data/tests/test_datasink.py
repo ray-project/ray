@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from typing import Iterable, List
 
+import numpy
 import pytest
 
 import ray
@@ -122,8 +123,8 @@ def test_num_rows_per_write(tmp_path, ray_start_regular_shared, num_rows_per_wri
     )
 
 
-def test_custom_write_results(ray_start_regular_shared):
-    """Test passing a custom write result type from `write` to `on_write_complete`."""
+def test_write_result(ray_start_regular_shared):
+    """Test the write_result argument in `on_write_complete`."""
 
     @dataclass
     class CustomWriteResult:
@@ -133,6 +134,8 @@ def test_custom_write_results(ray_start_regular_shared):
     class CustomDatasink(Datasink[CustomWriteResult]):
         def __init__(self) -> None:
             self.ids = []
+            self.num_rows = 0
+            self.size_bytes = 0
 
         def write(self, blocks: Iterable[Block], ctx: TaskContext):
             ids = []
@@ -145,13 +148,26 @@ def test_custom_write_results(ray_start_regular_shared):
             for result in write_result.write_task_results:
                 ids.extend(result.ids)
             self.ids = sorted(ids)
+            self.num_rows = write_result.num_rows
+            self.size_bytes = write_result.size_bytes
 
     num_items = 100
-    ds = ray.data.range(num_items)
+    size_bytes_per_row = 1000
+
+    def map_fn(row):
+        row["data"] = numpy.zeros(size_bytes_per_row, dtype=numpy.int8)
+        return row
+
+    ds = ray.data.range(num_items).map(map_fn)
+
     data_sink = CustomDatasink()
     ds.write_datasink(data_sink)
 
     assert data_sink.ids == list(range(num_items))
+    assert data_sink.num_rows == num_items
+    assert data_sink.size_bytes == pytest.approx(
+        num_items * size_bytes_per_row, rel=0.1
+    )
 
 
 if __name__ == "__main__":

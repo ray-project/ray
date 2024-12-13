@@ -3884,7 +3884,7 @@ class Dataset:
             # TODO: Get and handle the blocks with an iterator instead of getting
             # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            write_result = gen_data_sink_write_result(datasink, raw_write_results)
+            write_result = gen_data_sink_write_result(raw_write_results)
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
                 datasink.get_name(),
