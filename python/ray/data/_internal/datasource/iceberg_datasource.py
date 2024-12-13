@@ -17,7 +17,7 @@ if TYPE_CHECKING:
     from pyiceberg.catalog import Catalog
     from pyiceberg.expressions import BooleanExpression
     from pyiceberg.io import FileIO
-    from pyiceberg.manifest import DataFile, DataFileContent
+    from pyiceberg.manifest import DataFile
     from pyiceberg.schema import Schema
     from pyiceberg.table import DataScan, FileScanTask, Table
     from pyiceberg.table.metadata import TableMetadata
