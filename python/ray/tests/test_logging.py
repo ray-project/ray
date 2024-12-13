@@ -335,7 +335,14 @@ def test_worker_id_names(shutdown_only):
         worker_id = re.match(pattern, str(path)).group(1)
         worker_log_files.append(str(paths))
         ids.append(worker_id)
+
+    logger = logging.getLogger(__name__)
+    logger.warning(
+        f"worker log files = {worker_log_files}, ids = {ids}, deduped ids = {set(ids)}"
+    )
+
     counts = Counter(ids).values()
+    logger.warning(f"ids = {counts}")
     for count in counts:
         # There should be a "python-core-.*.log", "worker-.*.out",
         # and "worker-.*.err"
