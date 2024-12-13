@@ -30,6 +30,8 @@
 namespace ray {
 namespace core {
 
+class ActorManager;
+
 class TaskFinisherInterface {
  public:
   virtual void CompletePendingTask(const TaskID &task_id,
@@ -66,14 +68,16 @@ class TaskFinisherInterface {
 
   virtual absl::optional<TaskSpecification> GetTaskSpec(const TaskID &task_id) const = 0;
 
-  virtual ~TaskFinisherInterface() {}
+  virtual bool IsTaskPending(const TaskID &task_id) const = 0;
+
+  virtual ~TaskFinisherInterface() = default;
 };
 
 class TaskResubmissionInterface {
  public:
   virtual bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) = 0;
 
-  virtual ~TaskResubmissionInterface() {}
+  virtual ~TaskResubmissionInterface() = default;
 };
 
 using TaskStatusCounter = CounterMap<std::tuple<std::string, rpc::TaskStatus, bool>>;
@@ -222,7 +226,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         max_lineage_bytes_(max_lineage_bytes),
         task_event_buffer_(task_event_buffer) {
     task_counter_.SetOnChangeCallback(
-        [this](const std::tuple<std::string, rpc::TaskStatus, bool> key)
+        [this](const std::tuple<std::string, rpc::TaskStatus, bool> &key)
             ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) {
               ray::stats::STATS_tasks.Record(
                   task_counter_.Get(key),
@@ -551,7 +555,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   ///
   /// \param[in] task_id ID of the task to query.
   /// \return Whether the task is pending.
-  bool IsTaskPending(const TaskID &task_id) const;
+  bool IsTaskPending(const TaskID &task_id) const override;
 
   /// Return whether the task is scheduled adn waiting for execution.
   ///
@@ -601,7 +605,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// Key is the lineage reconstruction task info.
   /// Value is the number of ongoing lineage reconstruction tasks of this type.
   std::unordered_map<rpc::LineageReconstructionTask, uint64_t>
-  GetOngoingLineageReconstructionTasks() const;
+  GetOngoingLineageReconstructionTasks(const ActorManager &actor_manager) const;
 
   /// Returns the generator ID that contains the dynamically allocated
   /// ObjectRefs, if the task is dynamic. Else, returns Nil.
@@ -621,13 +625,13 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
           num_retries_left(num_retries_left_arg),
           counter(counter),
           num_oom_retries_left(num_oom_retries_left) {
+      reconstructable_return_ids.reserve(num_returns);
       for (size_t i = 0; i < num_returns; i++) {
         reconstructable_return_ids.insert(spec.ReturnId(i));
       }
-      auto new_status =
+      status =
           std::make_tuple(spec.GetName(), rpc::TaskStatus::PENDING_ARGS_AVAIL, false);
-      counter.Increment(new_status);
-      status = new_status;
+      counter.Increment(status);
     }
 
     void SetStatus(rpc::TaskStatus new_status) {
@@ -640,7 +644,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
         // for FINISHED and FAILED tasks.
         counter.Increment(new_tuple);
       }
-      status = new_tuple;
+      status = std::move(new_tuple);
     }
 
     void MarkRetry() { is_retry_ = true; }

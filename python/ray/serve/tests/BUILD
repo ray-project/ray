@@ -458,6 +458,7 @@ py_test_module_list(
     name_suffix = "_with_local_testing_mode",
     tags = [
         "exclusive",
+        "no_windows",
         "team:serve",
     ],
     deps = [
@@ -467,3 +468,24 @@ py_test_module_list(
     ],
 )
 
+
+# Test currently off-by-default behavior to run replica sync methods in a threadpool.
+# TODO(edoakes): remove this once the FF is flipped on by default.
+py_test_module_list(
+    size = "small",
+    env = {"RAY_SERVE_RUN_SYNC_IN_THREADPOOL": "1"},
+    files = [
+        "test_replica_sync_methods.py",
+    ],
+    name_suffix = "_with_run_sync_in_threadpool",
+    tags = [
+        "exclusive",
+        "no_windows",
+        "team:serve",
+    ],
+    deps = [
+        ":common",
+        ":conftest",
+        "//python/ray/serve:serve_lib",
+    ],
+)

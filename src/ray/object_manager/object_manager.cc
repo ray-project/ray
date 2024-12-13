@@ -17,6 +17,7 @@
 #include <chrono>
 
 #include "ray/common/common_protocol.h"
+#include "ray/object_manager/plasma/store.h"
 #include "ray/stats/metric_defs.h"
 #include "ray/util/util.h"
 
@@ -154,10 +155,15 @@ ObjectManager::ObjectManager(
   StartRpcService();
 }
 
-ObjectManager::~ObjectManager() { StopRpcService(); }
+ObjectManager::~ObjectManager() { Stop(); }
 
 void ObjectManager::Stop() {
-  plasma::plasma_store_runner->Stop();
+  // Stop the GRPC server before stopping the object store. This is to make sure when
+  // we stop the object server, there will be no ongoing or future GRPC requests.
+  StopRpcService();
+  if (plasma::plasma_store_runner) {
+    plasma::plasma_store_runner->Stop();
+  }
   object_store_internal_.reset();
 }
 
@@ -182,7 +188,9 @@ void ObjectManager::StartRpcService() {
 void ObjectManager::StopRpcService() {
   rpc_service_.stop();
   for (int i = 0; i < config_.rpc_service_threads_number; i++) {
-    rpc_threads_[i].join();
+    if (rpc_threads_[i].joinable()) {
+      rpc_threads_[i].join();
+    }
   }
   object_manager_server_.Shutdown();
 }

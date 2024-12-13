@@ -137,9 +137,9 @@ click the dropdowns below:
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **High-throughput Architectures**                                                                                                                                          |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| | |cont_act| | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
-    | :ref:`APPO (Asynchronous Proximal Policy Optimization) <appo>`          | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
+    | :ref:`IMPALA (Importance Weighted Actor-Learner Architecture) <impala>` | |single_agent| | |multi_agent| | |discr_act| |            | |multi_gpu| | |multi_node_multi_gpu| |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
     | **Model-based RL**                                                                                                                                                         |
     +-------------------------------------------------------------------------+----------------+---------------+-------------+------------+-------------+------------------------+
@@ -193,8 +193,14 @@ click the dropdowns below:
     |                                                                                           |
     | .. code-block:: python                                                                    |
     |                                                                                           |
-    |     config.environment("CartPole-v1")  # Classic Control                                  |
-    |     config.environment("ale_py:ALE/Pong-v5")  # Atari                                     |
+    |     from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole            |
+    |     from ray import tune                                                                  |
+    |     tune.register_env("env", lambda cfg: MultiAgentCartPole(cfg))                         |
+    |     config.environment("env", env_config={"num_agents": 2})                               |
+    |     config.multi_agent(                                                                   |
+    |         policies={"p0", "p1"},                                                            |
+    |         policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",                                |
+    |     )                                                                                     |
     +-------------------------------------------------------------------------------------------+
 
 
@@ -219,7 +225,7 @@ Why chose RLlib?
       ``config.learners(num_gpus_per_learner=1)``) or - if you do not have GPUs - you can
       use this setting for **DDP-style learning on CPUs** instead.
 
-.. dropdown:: **Multi-Agent (MARL)**
+.. dropdown:: **Multi-Agent Reinforcement Learning (MARL)**
     :animate: fade-in-slide-down
 
     RLlib natively supports multi-agent reinforcement learning (MARL), thereby allowing you to run
@@ -238,7 +244,7 @@ Why chose RLlib?
       other teams where the agents in each team might have individual sub-objectives and there are groups
       of neutral agents not participating in any competition.
 
-.. dropdown:: **Offline RL**
+.. dropdown:: **Offline RL and Behavior Cloning**
     :animate: fade-in-slide-down
 
     **Ray.Data** has been integrated into RLlib, enabling **large-scale data ingestion** for offline RL and behavior
@@ -246,6 +252,15 @@ Why chose RLlib?
 
     See here for a basic `tuned example for the behavior cloning algo <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples/bc/cartpole_bc.py>`__
     and here for how to `pre-train a policy with BC, then finetuning it with online PPO <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/train_w_bc_finetune_w_ppo.py>`__.
+
+.. dropdown:: **Support for External Env Clients**
+    :animate: fade-in-slide-down
+
+    **Support for externally connecting RL environments** is achieved through customizing the :py:class:`~ray.rllib.env.env_runner.EnvRunner` logic
+    from RLlib-owned, internal gymnasium envs to external, TCP-connected Envs that act independently and may even perform their own
+    action inference, e.g. through ONNX.
+
+    See here for an example of `RLlib acting as a server with connecting external env TCP-clients <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__.
 
 
 Learn More

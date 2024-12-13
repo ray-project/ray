@@ -182,3 +182,27 @@ cc_test(
         "//src/ray/protobuf:gcs_cc_proto",
     ],
 )
+
+cc_test(
+    name = "size_literals_test",
+    srcs = ["size_literals_test.cc"],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+    deps = [
+        "//src/ray/util:size_literals",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
+cc_test(
+    name = "shared_lru_test",
+    srcs = ["shared_lru_test.cc"],
+    deps = [
+        "//src/ray/util:shared_lru",
+        "@com_google_googletest//:gtest_main",
+    ],
+    size = "small",
+    copts = COPTS,
+    tags = ["team:core"],
+)

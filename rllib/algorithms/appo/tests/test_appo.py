@@ -4,9 +4,7 @@ import ray
 import ray.rllib.algorithms.appo as appo
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
-from ray.rllib.utils.metrics import (
-    LEARNER_RESULTS,
-)
+from ray.rllib.utils.metrics import LEARNER_RESULTS
 from ray.rllib.utils.test_utils import (
     check_train_results,
     check_train_results_new_api_stack,
@@ -85,13 +83,11 @@ class TestAPPO(unittest.TestCase):
         algo.stop()
 
     def test_appo_entropy_coeff_schedule(self):
-        # Initial lr, doesn't really matter because of the schedule below.
         config = (
             appo.APPOConfig()
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=1,
-                batch_mode="truncate_episodes",
                 rollout_fragment_length=10,
             )
             .training(

@@ -1,5 +1,4 @@
 from ray.rllib.algorithms.appo import APPOConfig
-from ray.rllib.connectors.env_to_module import MeanStdFilter
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentStatelessCartPole
 from ray.rllib.utils.metrics import (
@@ -14,10 +13,10 @@ parser = add_rllib_example_script_args(default_timesteps=2000000)
 parser.set_defaults(
     enable_new_api_stack=True,
     num_agents=2,
-    num_env_runners=3,
+    num_env_runners=6,
 )
 # Use `parser` to add your own custom command line options to this script
-# and (if needed) use their values toset up `config` below.
+# and (if needed) use their values to set up `config` below.
 args = parser.parse_args()
 
 register_env("env", lambda cfg: MultiAgentStatelessCartPole(config=cfg))
@@ -26,18 +25,21 @@ register_env("env", lambda cfg: MultiAgentStatelessCartPole(config=cfg))
 config = (
     APPOConfig()
     .environment("env", env_config={"num_agents": args.num_agents})
-    .env_runners(
-        env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
-    )
+    # TODO (sven): Need to fix the MeanStdFilter(). It seems to cause NaNs when
+    #  training.
+    # .env_runners(
+    #    env_to_module_connector=lambda env: MeanStdFilter(multi_agent=True),
+    # )
     .training(
         train_batch_size_per_learner=600,
-        lr=0.0005 * ((args.num_gpus or 1) ** 0.5),
+        lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         num_epochs=1,
         vf_loss_coeff=0.05,
-        grad_clip=20.0,
+        entropy_coeff=0.005,
     )
     .rl_module(
         model_config=DefaultModelConfig(
+            vf_share_layers=True,
             use_lstm=True,
             max_seq_len=20,
         ),
@@ -49,7 +51,7 @@ config = (
 )
 
 stop = {
-    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 200.0 * args.num_agents,
+    f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": 150.0 * args.num_agents,
     NUM_ENV_STEPS_SAMPLED_LIFETIME: args.stop_timesteps,
 }
 

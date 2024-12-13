@@ -14,6 +14,7 @@ from ray.rllib.algorithms.algorithm_config import (
     AlgorithmConfig,
     TorchCompileWhatToCompile,
 )
+from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.learner import Learner, LR_KEY
 from ray.rllib.core.rl_module.multi_rl_module import (
     MultiRLModule,
@@ -146,17 +147,14 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
-        # Log off-policy'ness of this update.
-        self.metrics.log_dict(
-            {
-                (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): torch.mean(
-                    (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
-                )
-                for mid, module_batch in batch.items()
-                if WEIGHTS_SEQ_NO in module_batch
-            },
-            window=1,
-        )
+        # TODO (sven): Causes weird cuda error when WandB is used.
+        #  Diagnosis thus far:
+        #  - All peek values during metrics.reduce are non-tensors.
+        #  - However, in impala.py::training_step(), a tensor does arrive after learner
+        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    possible (learner, which performs the reduce() and learner thread, which
+        #    performs the logging of tensors into metrics logger).
+        self._compute_off_policyness(batch)
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
@@ -167,9 +165,7 @@ class TorchLearner(Learner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
-
-        return fwd_out, loss_per_module, collected_tensor_metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(
@@ -622,6 +618,25 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
 
     @override(Learner)
     def _get_tensor_variable(

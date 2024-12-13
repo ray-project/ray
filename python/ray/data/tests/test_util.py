@@ -14,8 +14,8 @@ from ray.data._internal.memory_tracing import (
 )
 from ray.data._internal.remote_fn import _make_hashable, cached_remote_fn
 from ray.data._internal.util import (
+    NULL_SENTINEL,
     _check_pyarrow_version,
-    _split_list,
     iterate_with_retry,
 )
 from ray.data.tests.conftest import *  # noqa: F401, F403
@@ -33,6 +33,21 @@ def test_cached_remote_fn():
     gpu_only_foo = cached_remote_fn(foo, num_gpus=1)
 
     assert cpu_only_foo != gpu_only_foo
+
+
+def test_null_sentinel():
+    """Check that NULL_SENTINEL sorts greater than any other value."""
+    assert NULL_SENTINEL > 1000
+    assert NULL_SENTINEL > "abc"
+    assert NULL_SENTINEL == NULL_SENTINEL
+    assert NULL_SENTINEL != 1000
+    assert NULL_SENTINEL != "abc"
+    assert not NULL_SENTINEL < 1000
+    assert not NULL_SENTINEL < "abc"
+    assert not NULL_SENTINEL <= 1000
+    assert not NULL_SENTINEL <= "abc"
+    assert NULL_SENTINEL >= 1000
+    assert NULL_SENTINEL >= "abc"
 
 
 def test_make_hashable():
@@ -133,21 +148,6 @@ def test_memory_tracing(enabled):
         assert "test3" not in report, report
         assert "test4" not in report, report
         assert "test5" not in report, report
-
-
-def test_list_splits():
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), 0)
-
-    with pytest.raises(AssertionError):
-        _split_list(list(range(5)), -1)
-
-    assert _split_list(list(range(5)), 7) == [[0], [1], [2], [3], [4], [], []]
-    assert _split_list(list(range(5)), 2) == [[0, 1, 2], [3, 4]]
-    assert _split_list(list(range(6)), 2) == [[0, 1, 2], [3, 4, 5]]
-    assert _split_list(list(range(5)), 1) == [[0, 1, 2, 3, 4]]
-    assert _split_list(["foo", 1, [0], None], 2) == [["foo", 1], [[0], None]]
-    assert _split_list(["foo", 1, [0], None], 3) == [["foo", 1], [[0]], [None]]
 
 
 def get_parquet_read_logical_op(

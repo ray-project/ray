@@ -282,7 +282,10 @@ def test_multi_node_multi_reader_large_payload(
 
     for _ in range(3):
         ref = compiled_dag.execute(val)
-        result = ray.get(ref)
+        # In the CI environment, the object store may use /tmp instead of /dev/shm
+        # due to limited size of /tmp/shm and therefore has degraded performance.
+        # Therefore, we use a longer timeout to avoid flakiness.
+        result = ray.get(ref, timeout=50)
         assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
 
 

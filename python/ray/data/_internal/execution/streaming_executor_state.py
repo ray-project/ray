@@ -7,7 +7,7 @@ import logging
 import math
 import threading
 import time
-from collections import defaultdict, deque
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
@@ -53,14 +53,20 @@ class OpBufferQueue:
         self._num_per_split = defaultdict(int)
         self._lock = threading.Lock()
         # Used to buffer output RefBundles indexed by output splits.
-        self._outputs_by_split = defaultdict(deque)
+        self._outputs_by_split = defaultdict(create_bundle_queue)
         super().__init__()
 
     @property
     def memory_usage(self) -> int:
         """The total memory usage of the queue in bytes."""
         with self._lock:
-            return self._queue.estimate_size_bytes()
+            # The split queues contain bundles popped from the main queue. So, a bundle
+            # will either be in the main queue or in one of the split queues, and we
+            # don't need to worry about double counting.
+            return self._queue.estimate_size_bytes() + sum(
+                split_queue.estimate_size_bytes()
+                for split_queue in self._outputs_by_split.values()
+            )
 
     @property
     def num_blocks(self) -> int:
@@ -122,9 +128,9 @@ class OpBufferQueue:
                 with self._lock:
                     while len(self._queue) > 0:
                         ref = self._queue.pop()
-                        self._outputs_by_split[ref.output_split_idx].append(ref)
+                        self._outputs_by_split[ref.output_split_idx].add(ref)
             try:
-                ret = split_queue.popleft()
+                ret = split_queue.pop()
             except IndexError:
                 pass
         if ret is None:

@@ -29,30 +29,86 @@ def test_directory():
 
 
 class TestVaidationUv:
-    def test_parse_and_validate_uv(self):
+    def test_parse_and_validate_uv(self, test_directory):
         # Valid case w/o duplication.
         result = validation.parse_and_validate_uv({"packages": ["tensorflow"]})
-        assert result == {"packages": ["tensorflow"]}
+        assert result == {
+            "packages": ["tensorflow"],
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+        }
 
         # Valid case w/ duplication.
         result = validation.parse_and_validate_uv(
             {"packages": ["tensorflow", "tensorflow"]}
         )
-        assert result == {"packages": ["tensorflow"]}
+        assert result == {
+            "packages": ["tensorflow"],
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+        }
 
         # Valid case, use `list` to represent necessary packages.
         result = validation.parse_and_validate_uv(
             ["requests==1.0.0", "aiohttp", "ray[serve]"]
         )
-        assert result == {"packages": ["requests==1.0.0", "aiohttp", "ray[serve]"]}
-
-        # Invalid case, `str` is not supported for now.
-        with pytest.raises(TypeError):
-            result = validation.parse_and_validate_uv("./requirements.txt")
+        assert result == {
+            "packages": ["requests==1.0.0", "aiohttp", "ray[serve]"],
+            "uv_check": False,
+        }
 
         # Invalid case, unsupport keys.
         with pytest.raises(ValueError):
             result = validation.parse_and_validate_uv({"random_key": "random_value"})
+
+        # Valid case w/ uv version.
+        result = validation.parse_and_validate_uv(
+            {"packages": ["tensorflow"], "uv_version": "==0.4.30"}
+        )
+        assert result == {
+            "packages": ["tensorflow"],
+            "uv_version": "==0.4.30",
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+        }
+
+        # Valid requirement files.
+        _, requirements_file = test_directory
+        requirements_file = requirements_file.resolve()
+        result = validation.parse_and_validate_uv(str(requirements_file))
+        assert result == {
+            "packages": ["requests==1.0.0", "pip-install-test"],
+            "uv_check": False,
+        }
+
+        # Invalid requiremnt files.
+        with pytest.raises(ValueError):
+            result = validation.parse_and_validate_uv("some random non-existent file")
+
+        # Invalid uv install options.
+        with pytest.raises(TypeError):
+            result = validation.parse_and_validate_uv(
+                {
+                    "packages": ["tensorflow"],
+                    "uv_version": "==0.4.30",
+                    "uv_pip_install_options": [1],
+                }
+            )
+
+        # Valid uv install options.
+        result = validation.parse_and_validate_uv(
+            {
+                "packages": ["tensorflow"],
+                "uv_version": "==0.4.30",
+                "uv_pip_install_options": ["--no-cache"],
+            }
+        )
+        assert result == {
+            "packages": ["tensorflow"],
+            "uv_check": False,
+            "uv_pip_install_options": ["--no-cache"],
+            "uv_version": "==0.4.30",
+        }
 
 
 class TestValidatePip:

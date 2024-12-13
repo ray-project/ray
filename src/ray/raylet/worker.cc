@@ -117,7 +117,9 @@ void Worker::Connect(int port) {
   rpc::Address addr;
   addr.set_ip_address(ip_address_);
   addr.set_port(port_);
-  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_);
+  rpc_client_ = std::make_unique<rpc::CoreWorkerClient>(addr, client_call_manager_, []() {
+    RAY_LOG(FATAL) << "Raylet doesn't call any retryable core worker grpc methods.";
+  });
   Connect(rpc_client_);
 }
 

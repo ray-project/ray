@@ -31,6 +31,11 @@ def parse_args():
         action="store_true",
         default=False,
     )
+    parser.add_argument(
+        "--chaos-test",
+        action="store_true",
+        default=False,
+    )
     return parser.parse_args()
 
 
@@ -38,6 +43,7 @@ def main(args):
     data_directory: str = args.data_directory
     data_format: str = args.data_format
     smoke_test: bool = args.smoke_test
+    chaos_test: bool = args.chaos_test
     data_url = f"s3://anonymous@air-example-data-2/{data_directory}"
 
     print(f"Running GPU batch prediction with data from {data_url}")
@@ -88,16 +94,17 @@ def main(args):
     start_time_without_metadata_fetching = time.time()
 
     if smoke_test:
-        actor_pool_size = 4
+        compute = ActorPoolStrategy(size=4)
         num_gpus = 0
     else:
-        actor_pool_size = int(ray.cluster_resources().get("GPU"))
+        # Autoscale to use as many GPUs as possible.
+        compute = ActorPoolStrategy(min_size=1, max_size=None)
         num_gpus = 1
     ds = ds.map_batches(preprocess)
     ds = ds.map_batches(
         Predictor,
         batch_size=BATCH_SIZE,
-        compute=ActorPoolStrategy(size=actor_pool_size),
+        compute=compute,
         num_gpus=num_gpus,
         fn_constructor_kwargs={"model": model_ref},
         max_concurrency=2,
@@ -123,6 +130,14 @@ def main(args):
         "Throughput w/o metadata fetching (img/sec): ",
         throughput_without_metadata_fetch,
     )
+    if chaos_test:
+        resource_killer = ray.get_actor(
+            "ResourceKiller", namespace="release_test_namespace"
+        )
+        resource_killer.stop_run.remote()
+        killed = ray.get(resource_killer.get_total_killed.remote())
+        assert killed
+        print(f"Total chaos killed: {killed}")
 
     # For structured output integration with internal tooling
     results = {

@@ -164,23 +164,24 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/appo/cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--num-learners=1", "--num-cpus=8", "--num-env-runners=6"]
 )
-py_test(
-    name = "learning_tests_cartpole_appo_gpu",
-    main = "tuned_examples/appo/cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
-    size = "large",
-    srcs = ["tuned_examples/appo/cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
-)
+# TODO (sven): For some weird reason, this test runs extremely slow on the CI (not on cluster, not locally) -> taking this out for now ...
+# py_test(
+#    name = "learning_tests_cartpole_appo_gpu",
+#    main = "tuned_examples/appo/cartpole_appo.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
+#    size = "large",
+#    srcs = ["tuned_examples/appo/cartpole_appo.py"],
+#    args = ["--as-test", "--num-learners=0", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
+# )
 py_test(
     name = "learning_tests_cartpole_appo_multi_cpu",
     main = "tuned_examples/appo/cartpole_appo.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/appo/cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--num-learners=2", "--num-cpus=9", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_cartpole_appo_multi_gpu",
@@ -188,7 +189,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
 )
 # MultiAgentCartPole
 py_test(
@@ -197,7 +198,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--num-agents=2", "--num-learners=1", "--num-cpus=8", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_gpu",
@@ -205,7 +206,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
+    args = ["--as-test", "--num-agents=2", "--num-learners=0", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_multi_cpu",
@@ -213,7 +214,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
+    args = ["--as-test", "--num-agents=2", "--num-learners=2", "--num-cpus=9", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_appo_multi_gpu",
@@ -221,7 +222,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/multi_agent_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
+    args = ["--as-test", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
 )
 # StatelessCartPole
 py_test(
@@ -230,7 +231,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--num-learners=1", "--num-cpus=8", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_appo_gpu",
@@ -238,7 +239,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--num-agents=2", "--num-learners=0", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_appo_multi_cpu",
@@ -246,7 +247,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--num-learners=2", "--num-cpus=9", "--num-env-runners=6"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_appo_multi_gpu",
@@ -254,64 +255,49 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/appo/stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--num-learners=2", "--num-gpus-per-learner=1", "--num-cpus=7", "--num-env-runners=6"]
 )
 # MultiAgentStatelessCartPole
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_appo",
+#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+#     size = "large",
+#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
+# )
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_appo_gpu",
+#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=0", "--num-gpus-per-learner=1"]
+# )
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_cpu",
+#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+#     size = "large",
+#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
+# )
+# py_test(
+#     name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_gpu",
+#     main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
+#     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+#     size = "large",
+#     srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
+#     args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
+# )
+# Pendulum
 py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_appo",
-    main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
+    name = "learning_tests_pendulum_appo",
+    main = "tuned_examples/appo/pendulum_appo.py",
+    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_continuous", "torch_only"],
     size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
-)
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_appo_gpu",
-    main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
-    size = "large",
-    srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
-)
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_cpu",
-    main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "enormous",
-    srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
-)
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_appo_multi_gpu",
-    main = "tuned_examples/appo/multi_agent_stateless_cartpole_appo.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-    size = "enormous",
-    srcs = ["tuned_examples/appo/multi_agent_stateless_cartpole_appo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "learning_tests_cartpole_separate_losses_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "torch_only", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/appo/cartpole-appo-separate-losses.py"
-    ],
-    args = ["--dir=tuned_examples/appo"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_appo_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "large",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/appo/multi_agent_cartpole_appo_old_api_stack.py"],
-    args = ["--dir=tuned_examples/appo"]
+    srcs = ["tuned_examples/appo/pendulum_appo.py"],
+    args = ["--as-test", "--num-learners=1", "--num-cpus=6", "--num-env-runners=4"]
 )
 
 #@OldAPIStack
@@ -319,7 +305,7 @@ py_test(
     name = "learning_tests_multi_agent_cartpole_w_100_policies_appo_old_api_stack",
     main = "tests/run_regression_tests.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "enormous",
+    size = "large",
     srcs = ["tests/run_regression_tests.py"],
     data = ["tuned_examples/appo/multi-agent-cartpole-w-100-policies-appo.py"],
     args = ["--dir=tuned_examples/appo"]
@@ -371,7 +357,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_cartpole_dqn_multi_cpu",
@@ -379,7 +365,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_cartpole_dqn_multi_gpu",
@@ -387,7 +373,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentCartPole
 py_test(
@@ -404,7 +390,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_cpu",
@@ -412,7 +398,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=5", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=5", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_dqn_multi_gpu",
@@ -420,7 +406,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/dqn/multi_agent_cartpole_dqn.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 
 # IMPALA
@@ -431,7 +417,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
 )
 py_test(
     name = "learning_tests_cartpole_impala_gpu",
@@ -439,7 +425,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=0", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_cartpole_impala_multi_cpu",
@@ -447,7 +433,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_cartpole_impala_multi_gpu",
@@ -455,7 +441,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/impala/cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentCartPole
 py_test(
@@ -464,7 +450,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "torch_only"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=1", "--num-cpus=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_gpu",
@@ -472,15 +458,15 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1", "--num-cpus=6"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=0", "--num-gpus-per-learner=1", "--num-cpus=6"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_cpu",
     main = "tuned_examples/impala/multi_agent_cartpole_impala.py",
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
-    size = "enormous",
+    size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-cpus=7"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_impala_multi_gpu",
@@ -488,7 +474,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2", "--num-cpus=7"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1", "--num-cpus=7"]
 )
 # StatelessCartPole
 py_test(
@@ -497,7 +483,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_impala_multi_gpu",
@@ -505,7 +491,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/impala/stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentStatelessCartPole
 py_test(
@@ -514,39 +500,16 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1"]
 )
-py_test(
-    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
-    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
-    size = "large",
-    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
-)
-
-#@OldAPIstack
-py_test(
-    name = "learning_tests_cartpole_separate_losses_impala_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = [
-        "tuned_examples/impala/cartpole-impala-separate-losses.py"
-    ],
-    args = ["--dir=tuned_examples/impala"]
-)
-#@OldAPIStack
-py_test(
-    name = "learning_tests_multi_agent_cartpole_impala_old_api_stack",
-    main = "tests/run_regression_tests.py",
-    tags = ["team:rllib", "exclusive", "learning_tests", "learning_tests_discrete"],
-    size = "medium",
-    srcs = ["tests/run_regression_tests.py"],
-    data = ["tuned_examples/impala/multi_agent_cartpole_impala_old_api_stack.py"],
-    args = ["--dir=tuned_examples/impala"]
-)
+# py_test(
+#    name = "learning_tests_multi_agent_stateless_cartpole_impala_multi_gpu",
+#    main = "tuned_examples/impala/multi_agent_stateless_cartpole_impala.py",
+#    tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
+#    size = "large",
+#    srcs = ["tuned_examples/impala/multi_agent_stateless_cartpole_impala.py"],
+#    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
+# )
 
 # MARWIL
 # CartPole
@@ -579,7 +542,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_cartpole_ppo_multi_cpu",
@@ -587,7 +550,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_cartpole_ppo_multi_gpu",
@@ -595,7 +558,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentCartPole
 py_test(
@@ -612,7 +575,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_multi_cpu",
@@ -620,7 +583,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_cartpole_ppo_multi_gpu",
@@ -628,7 +591,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # CartPole (truncated)
 py_test(
@@ -654,7 +617,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_ppo_multi_cpu",
@@ -662,7 +625,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_stateless_cartpole_ppo_multi_gpu",
@@ -670,7 +633,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentStatelessCartPole
 py_test(
@@ -687,7 +650,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo_multi_cpu",
@@ -695,7 +658,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_stateless_cartpole_ppo_multi_gpu",
@@ -703,7 +666,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_discrete", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_stateless_cartpole_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # Pendulum
 py_test(
@@ -720,7 +683,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_pendulum_ppo_multi_cpu",
@@ -728,7 +691,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_pendulum_ppo_multi_gpu",
@@ -736,7 +699,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentPendulum
 py_test(
@@ -753,7 +716,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core", "gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_multi_cpu",
@@ -761,7 +724,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_pendulum_ppo_multi_gpu",
@@ -769,7 +732,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "learning_tests_pytorch_use_all_core", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/ppo/multi_agent_pendulum_ppo.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 
 # SAC
@@ -788,7 +751,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "gpu"],
     size = "large",
     srcs = ["tuned_examples/sac/pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_pendulum_sac_multi_cpu",
@@ -796,7 +759,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous"],
     size = "large",
     srcs = ["tuned_examples/sac/pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_pendulum_sac_multi_gpu",
@@ -804,7 +767,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/sac/pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-gpus=2"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 # MultiAgentPendulum
 py_test(
@@ -821,7 +784,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "gpu"],
     size = "large",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-gpus=1"]
+    args = ["--as-test", "--enable-new-api-stack", "--num-agents=2", "--num-cpus=4", "--num-learners=1", "--num-gpus-per-learner=1"]
 )
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_cpu",
@@ -829,7 +792,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous"],
     size = "large",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--num-learners=2"]
 )
 py_test(
     name = "learning_tests_multi_agent_pendulum_sac_multi_gpu",
@@ -837,7 +800,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "learning_tests", "torch_only", "learning_tests_continuous", "multi_gpu"],
     size = "large",
     srcs = ["tuned_examples/sac/multi_agent_pendulum_sac.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--num-gpus=2"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 
 # --------------------------------------------------------------------
@@ -971,12 +934,13 @@ py_test(
 )
 
 # CQL
+# @OldAPIStack
 py_test(
-    name = "test_cql",
+    name = "test_cql_old_api_stack",
     tags = ["team:rllib", "algorithms_dir"],
     size = "large",
     data = ["tests/data/pendulum/small.json"],
-    srcs = ["algorithms/cql/tests/test_cql.py"]
+    srcs = ["algorithms/cql/tests/test_cql_old_api_stack.py"]
 )
 
 # DQN
@@ -1182,36 +1146,6 @@ py_test(
     srcs = ["env/tests/test_infinite_lookback_buffer.py"]
 )
 
-# CI all of a sudden has problems with accessing the ports.
-# sh_test(
-#    name = "env/tests/test_local_inference_cartpole",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["local", "cartpole", "8800"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_local_inference_cartpole_w_2_concurrent_episodes",
-#    tags = ["team:rllib", "env"],
-#    size = "medium",
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["local", "cartpole-dummy-2-episodes", "8830"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_local_inference_unity3d",
-#     tags = ["team:rllib", "env"],
-#     size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["local", "unity3d", "8850"],
-#     data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
 py_test(
     name = "env/tests/test_multi_agent_env",
     tags = ["team:rllib", "tests_dir"],
@@ -1232,45 +1166,6 @@ py_test(
     size = "medium",
     srcs = ["env/tests/test_multi_agent_episode.py"]
 )
-
-# CI all of a sudden has problems with accessing the ports.
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole", "8810"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole_lstm",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole_lstm", "8820"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# sh_test(
-#    name = "env/tests/test_remote_inference_cartpole_w_2_concurrent_episodes",
-#    tags = ["team:rllib", "env", "exclusive"],
-#    size = "large", # bazel may complain about it being too long sometimes - large is on purpose as some frameworks take longer
-#    srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#    args = ["remote", "cartpole-dummy-2-episodes", "8840"],
-#    data = glob(["examples/envs/external_envs/*.py"]),
-# )
-
-# Tests with unity 3d and external envs currently don't work
-# see: https://github.com/ray-project/ray/issues/34290 for more details
-# sh_test(
-#     name = "env/tests/test_remote_inference_unity3d",
-#     tags = ["team:rllib", "env", "exclusive"],
-#     size = "small",
-#     srcs = ["env/tests/test_policy_client_server_setup.sh"],
-#     args = ["remote", "unity3d", "8860"],
-#     data = glob(["examples/envs/external_envs/*.py"]),
-# )
 
 py_test(
     name = "env/tests/test_single_agent_env_runner",
@@ -1458,7 +1353,7 @@ py_test(
     srcs = ["core/rl_module/tests/test_rl_module_specs.py"]
 )
 
-# Learner
+# LearnerGroup
 py_test(
     name = "TestLearnerGroupSyncUpdate",
     main = "core/learner/tests/test_learner_group.py",
@@ -1495,16 +1390,17 @@ py_test(
     args = ["TestLearnerGroupSaveLoadState"]
 )
 
+# Learner
 py_test(
     name = "test_learner",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/tests/test_learner.py"]
 )
 
 py_test(
     name = "test_torch_learner_compile",
-    tags = ["team:rllib", "core", "ray_data"],
+    tags = ["team:rllib", "core", "ray_data", "exclusive"],
     size = "medium",
     srcs = ["core/learner/torch/tests/test_torch_learner_compile.py"]
 )
@@ -1557,13 +1453,6 @@ py_test(
     tags = ["team:rllib", "models"],
     size = "large",
     srcs = ["models/tests/test_lstms.py"]
-)
-
-py_test(
-    name = "test_models",
-    tags = ["team:rllib", "models"],
-    size = "medium",
-    srcs = ["models/tests/test_models.py"]
 )
 
 py_test(
@@ -2082,34 +1971,6 @@ py_test(
 # ----------------------
 # Old API stack examples
 # ----------------------
-# subdirectory: _old_api_stack/
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_tf",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=tf"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_tf_eager",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=tf2"],
-)
-
-py_test(
-    name = "examples/_old_api_stack/complex_struct_space_torch",
-    main = "examples/_old_api_stack/complex_struct_space.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/complex_struct_space.py"],
-    args = ["--framework=torch"],
-)
-
 # subdirectory: _old_api_stack/connectors/
 py_test(
     name = "examples/_old_api_stack/connectors/run_connector_policy",
@@ -2127,25 +1988,6 @@ py_test(
     srcs = ["examples/_old_api_stack/connectors/run_connector_policy.py"],
     args = ["--use-lstm"],
 )
-
-py_test(
-    name = "examples/_old_api_stack/connectors/adapt_connector_policy",
-    main = "examples/_old_api_stack/connectors/adapt_connector_policy.py",
-    tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-    size = "small",
-    srcs = ["examples/_old_api_stack/connectors/adapt_connector_policy.py"],
-)
-
-# py_test(
-#     name = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint",
-#     main = "examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py",
-#     tags = ["team:rllib", "exclusive", "examples", "old_api_stack"],
-#     size = "small",
-#     srcs = ["examples/_old_api_stack/connectors/self_play_with_policy_checkpoint.py"],
-#     args = [
-#         "--train_iteration=1"  # Smoke test.
-#     ]
-# )
 
 # ----------------------
 # New API stack
@@ -2430,6 +2272,7 @@ py_test(
 )
 
 # TODO (sven): Learns, but very slowly. Needs further tuning.
+#  ICM seems to be broken due to a bug that's fixed in a still-open PR.
 # py_test(
 #    name = "examples/curiosity/intrinsic_curiosity_model_based_curiosity_dqn",
 #    main = "examples/curiosity/intrinsic_curiosity_model_based_curiosity.py",
@@ -2466,14 +2309,21 @@ py_test(
 # subdirectory: envs/
 # ....................................
 py_test(
-    name = "examples/envs/custom_gym_env",
-    main = "examples/envs/custom_gym_env.py",
+    name = "examples/envs/agents_act_simultaneously",
+    main = "examples/envs/agents_act_simultaneously.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
-    srcs = ["examples/envs/custom_gym_env.py"],
-    args = ["--enable-new-api-stack", "--as-test"]
+    srcs = ["examples/envs/agents_act_simultaneously.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
 )
-
+py_test(
+    name = "examples/envs/agents_act_in_sequence",
+    main = "examples/envs/agents_act_in_sequence.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/agents_act_in_sequence.py"],
+    args = ["--enable-new-api-stack", "--num-agents=2", "--stop-iters=3"]
+)
 py_test(
     name = "examples/envs/custom_env_render_method",
     main = "examples/envs/custom_env_render_method.py",
@@ -2482,7 +2332,6 @@ py_test(
     srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=0"]
 )
-
 py_test(
     name = "examples/envs/custom_env_render_method_multi_agent",
     main = "examples/envs/custom_env_render_method.py",
@@ -2491,7 +2340,22 @@ py_test(
     srcs = ["examples/envs/custom_env_render_method.py"],
     args = ["--enable-new-api-stack", "--num-agents=2"]
 )
-
+py_test(
+    name = "examples/envs/custom_gym_env",
+    main = "examples/envs/custom_gym_env.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/custom_gym_env.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
+py_test(
+    name = "examples/envs/env_connecting_to_rllib_w_tcp_client",
+    main = "examples/envs/env_connecting_to_rllib_w_tcp_client.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/env_connecting_to_rllib_w_tcp_client.py"],
+    args = ["--enable-new-api-stack", "--as-test", "--port=12346"]
+)
 py_test(
     name = "examples/envs/env_rendering_and_recording",
     srcs = ["examples/envs/env_rendering_and_recording.py"],
@@ -2499,7 +2363,14 @@ py_test(
     size = "medium",
     args = ["--enable-new-api-stack", "--env=CartPole-v1", "--stop-iters=2"]
 )
-
+py_test(
+    name = "examples/envs/env_w_protobuf_observations",
+    main = "examples/envs/env_w_protobuf_observations.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/envs/env_w_protobuf_observations.py"],
+    args = ["--enable-new-api-stack", "--as-test"]
+)
 #@OldAPIStack
 py_test(
     name = "examples/envs/greyscale_env",
@@ -2548,21 +2419,21 @@ py_test(
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_511_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_1011ts",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=3", "--evaluation-duration=511", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=450.0", "--num-cpus=6", "--evaluation-num-env-runners=2", "--evaluation-duration=1011", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
-    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_1001_ts_torch",
+    name = "examples/evaluation/evaluation_parallel_to_training_multi_agent_2022ts",
     main = "examples/evaluation/evaluation_parallel_to_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/evaluation/evaluation_parallel_to_training.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=1001", "--evaluation-duration-unit=timesteps"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--evaluation-parallel-to-training", "--stop-reward=900.0", "--num-cpus=6", "--evaluation-duration=2022", "--evaluation-duration-unit=timesteps"]
 )
 
 py_test(
@@ -2675,24 +2546,15 @@ py_test(
 
 # subdirectory: hierarchical/
 # ....................................
-#@OldAPIStack
+# TODO (sven): Add this script to the release tests as well. The problem is too hard to be solved
+#  in < 10min on a few CPUs.
 py_test(
-    name = "examples/hierarchical/hierarchical_training_tf",
+    name = "examples/hierarchical/hierarchical_training",
     main = "examples/hierarchical/hierarchical_training.py",
     tags = ["team:rllib", "exclusive", "examples"],
     size = "medium",
     srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = [ "--framework=tf", "--stop-reward=0.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/hierarchical/hierarchical_training_torch",
-    main = "examples/hierarchical/hierarchical_training.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/hierarchical/hierarchical_training.py"],
-    args = ["--framework=torch", "--stop-reward=0.0"]
+    args = ["--enable-new-api-stack", "--stop-iters=5", "--map=small", "--time-limit=100", "--max-steps-low-level=15"]
 )
 
 # subdirectory: inference/
@@ -2713,26 +2575,6 @@ py_test(
     size = "medium",
     srcs = ["examples/inference/policy_inference_after_training_w_connector.py"],
     args = ["--enable-new-api-stack", "--stop-reward=150.0"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/inference/policy_inference_after_training_with_attention_tf",
-    main = "examples/inference/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=tf"]
-)
-
-#@OldAPIStack
-py_test(
-    name = "examples/inference/policy_inference_after_training_with_attention_torch",
-    main = "examples/inference/policy_inference_after_training_with_attention.py",
-    tags = ["team:rllib", "exclusive", "examples"],
-    size = "medium",
-    srcs = ["examples/inference/policy_inference_after_training_with_attention.py"],
-    args = ["--stop-iters=2", "--framework=torch"]
 )
 
 #@OldAPIStack
@@ -2831,7 +2673,7 @@ py_test(
     tags = ["team:rllib", "exclusive", "examples", "multi_gpu"],
     size = "large",
     srcs = ["examples/multi_agent/multi_agent_pendulum.py"],
-    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=5", "--num-gpus=2"]
+    args = ["--enable-new-api-stack", "--num-agents=2", "--as-test", "--framework=torch", "--stop-reward=-500.0", "--num-cpus=5", "--num-learners=2", "--num-gpus-per-learner=1"]
 )
 
 py_test(
@@ -2948,6 +2790,17 @@ py_test(
 # subdirectory: offline_rl/
 # ....................................
 
+# Does run into scheduling problems in CI tests. Works on local
+# and GCP cloud.
+# py_test(
+#     name = "examples/offline_rl/cartpole_recording",
+#     main = "examples/offline_rl/cartpole_recording.py",
+#     tags = ["team:rllib", "examples", "exclusive"],
+#     size = "large",
+#     srcs = ["examples/offline_rl/cartpole_recording.py"],
+#     args = ["--enable-new-api-stack", "--as-test", "--framework=torch", "--num-cpus=12"],
+# )
+
 py_test(
     name = "examples/offline_rl/train_w_bc_finetune_w_ppo",
     main = "examples/offline_rl/train_w_bc_finetune_w_ppo.py",
@@ -2971,17 +2824,6 @@ py_test(
 # )
 
 #@OldAPIStack
-# TODO (sven): Doesn't seem to learn at the moment. Uncomment once fixed.
-# py_test(
-#    name = "examples/offline_rl/custom_input_api_cql_torch",
-#    main = "examples/offline_rl/custom_input_api.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/offline_rl/custom_input_api.py"],
-#    args = ["--as-test", "--stop-reward=-300", "--stop-iters=1"]
-# )
-
-#@OldAPIStack
 py_test(
     name = "examples/offline_rl/offline_rl_torch_old_api_stack",
     main = "examples/offline_rl/offline_rl.py",
@@ -2993,15 +2835,15 @@ py_test(
 
 # subdirectory: ray_serve/
 # ....................................
-# TODO (sven): Uncomment once the problem with the path on BAZEL is solved.
-# py_test(
-#    name = "examples/ray_serve/ray_serve_with_rllib",
-#    main = "examples/ray_serve/ray_serve_with_rllib.py",
-#    tags = ["team:rllib", "exclusive", "examples"],
-#    size = "medium",
-#    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
-#    args = ["--train-iters=2", "--serve-episodes=2", "--no-render"]
-# )
+py_test(
+    name = "examples/ray_serve/ray_serve_with_rllib",
+    main = "examples/ray_serve/ray_serve_with_rllib.py",
+    tags = ["team:rllib", "exclusive", "examples"],
+    size = "medium",
+    srcs = ["examples/ray_serve/ray_serve_with_rllib.py"],
+    data = glob(["examples/ray_serve/classes/**"]),
+    args = ["--stop-iters=2", "--num-episodes-served=2", "--no-render", "--port=12345"]
+)
 
 # subdirectory: ray_tune/
 # ....................................

@@ -1,20 +1,16 @@
-import abc
 import asyncio
 import logging
-import os
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
-from typing import Any, Dict, Optional
+from typing import Any, Dict
 
 import aiohttp.web
 
 import ray
 import ray.dashboard.optional_utils as dashboard_optional_utils
 import ray.dashboard.utils as dashboard_utils
-from ray import ActorID
 from ray._private.gcs_pubsub import GcsAioActorSubscriber
 from ray._private.utils import get_or_create_event_loop
-from ray.core.generated import gcs_pb2, gcs_service_pb2, gcs_service_pb2_grpc
 from ray.dashboard.consts import GCS_RPC_TIMEOUT_SECONDS
 from ray.dashboard.datacenter import DataOrganizer, DataSource
 from ray.dashboard.modules.actor import actor_consts
@@ -101,72 +97,12 @@ def actor_table_data_to_dict(message):
     return light_message
 
 
-class GetAllActorInfoClient(abc.ABC):
-    """
-    Gets all actor info from GCS via gRPC ActorInfoGcsService.GetAllActorInfo.
-    It makes the call via GcsAioClient or a direct gRPC stub, depends on the env var
-    RAY_USE_OLD_GCS_CLIENT.
-    """
-
-    @classmethod
-    def create(cls, *args, **kwargs):
-        use_old_client = os.getenv("RAY_USE_OLD_GCS_CLIENT") == "1"
-        if use_old_client:
-            return GetAllActorInfoFromGrpc(*args, **kwargs)
-        else:
-            return GetAllActorInfoFromNewGcsClient(*args, **kwargs)
-
-    @abc.abstractmethod
-    def __call__(self, *, timeout_s: int, state: Optional[str] = None):
-        pass
-
-
-class GetAllActorInfoFromNewGcsClient(GetAllActorInfoClient):
-    def __init__(self, dashboard_head):
-        self.gcs_aio_client = dashboard_head.gcs_aio_client
-
-    async def __call__(
-        self, *, timeout, state: Optional[str] = None
-    ) -> Dict[ActorID, gcs_pb2.ActorTableData]:
-        return await self.gcs_aio_client.get_all_actor_info(
-            timeout=timeout, actor_state_name=state
-        )
-
-
-class GetAllActorInfoFromGrpc(GetAllActorInfoClient):
-    def __init__(self, dashboard_head):
-        gcs_channel = dashboard_head.aiogrpc_gcs_channel
-        self._gcs_actor_info_stub = gcs_service_pb2_grpc.ActorInfoGcsServiceStub(
-            gcs_channel
-        )
-
-    async def __call__(
-        self, *, timeout, state: Optional[str] = None
-    ) -> Dict[ActorID, gcs_pb2.ActorTableData]:
-        request = gcs_service_pb2.GetAllActorInfoRequest()
-
-        reply = await self._gcs_actor_info_stub.GetAllActorInfo(
-            request,
-            timeout=timeout,
-            filters=gcs_service_pb2.GetAllActorInfoRequest.Filters(state=state)
-            if state
-            else None,
-        )
-
-        if reply.status.code != 0:
-            raise Exception(f"Failed to GetAllActorInfo: {reply.status.message}")
-
-        return {
-            ActorID(message.actor_id): message for message in reply.actor_table_data
-        }
-
-
 class ActorHead(dashboard_utils.DashboardHeadModule):
     def __init__(self, dashboard_head):
         super().__init__(dashboard_head)
 
         self._gcs_actor_channel_subscriber = None
-        self.get_all_actor_info_client = None
+        self.gcs_aio_client = dashboard_head.gcs_aio_client
         # A queue of dead actors in order of when they died
         self.destroyed_actors_queue = deque()
 
@@ -267,8 +203,8 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
     def _process_updated_actor_table(
         self, actor_id: str, actor_table_data: Dict[str, Any]
     ):
-        """NOTE: This method has to be executed on the event-loop, provided that it accesses
-        DataSource data structures (to follow its thread-safety model)"""
+        """NOTE: This method has to be executed on the event-loop, provided that it
+        accesses DataSource data structures (to follow its thread-safety model)"""
 
         # If actor is not new registered but updated, we only update
         # states related fields.
@@ -295,7 +231,9 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
             DataSource.node_actors[node_id] = node_actors
 
     async def _get_all_actors(self) -> Dict[str, dict]:
-        actors = await self.get_all_actor_info_client(timeout=GCS_RPC_TIMEOUT_SECONDS)
+        actors = await self.gcs_aio_client.get_all_actor_info(
+            timeout=GCS_RPC_TIMEOUT_SECONDS
+        )
 
         # NOTE: We're offloading conversion to a TPE to make sure we're not
         #       blocking the event-loop for prolonged period of time for large clusters
@@ -345,10 +283,6 @@ class ActorHead(dashboard_utils.DashboardHeadModule):
         )
 
     async def run(self, server):
-        self.get_all_actor_info_client = GetAllActorInfoClient.create(
-            self._dashboard_head
-        )
-
         await asyncio.gather(self._update_actors(), self._cleanup_actors())
 
     @staticmethod

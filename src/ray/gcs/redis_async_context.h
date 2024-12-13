@@ -16,8 +16,12 @@
 
 #include <stdarg.h>
 
+#include <boost/asio.hpp>
+#include <boost/asio/error.hpp>
+#include <boost/bind/bind.hpp>
 #include <mutex>
 
+#include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/status.h"
 
 // These are forward declarations from hiredis.
@@ -32,6 +36,12 @@ typedef void redisCallbackFn(struct redisAsyncContext *, void *, void *);
 
 namespace ray {
 namespace gcs {
+// Adaptor callback functions for hiredis redis_async_context->ev
+void CallbackAddRead(void *);
+void CallbackDelRead(void *);
+void CallbackAddWrite(void *);
+void CallbackDelWrite(void *);
+void CallbackCleanup(void *);
 
 struct RedisContextDeleter {
   RedisContextDeleter(){};
@@ -45,7 +55,15 @@ struct RedisContextDeleter {
 /// C++ style and thread-safe API.
 class RedisAsyncContext {
  public:
+  /// Constructor of RedisAsyncContext.
+  /// Use single-threaded io_service as event loop (because the redis commands
+  /// that will run in the event loop are non-thread safe).
+  ///
+  /// \param io_service The single-threaded event loop for this client.
+  /// \param redis_async_context The raw redis async context used to execute redis
+  /// commands.
   explicit RedisAsyncContext(
+      instrumented_io_context &io_service,
       std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context);
 
   /// Get the raw 'redisAsyncContext' pointer.
@@ -55,12 +73,6 @@ class RedisAsyncContext {
 
   /// Reset the raw 'redisAsyncContext' pointer to nullptr.
   void ResetRawRedisAsyncContext();
-
-  /// Perform command 'redisAsyncHandleRead'. Thread-safe.
-  void RedisAsyncHandleRead();
-
-  /// Perform command 'redisAsyncHandleWrite'. Thread-safe.
-  void RedisAsyncHandleWrite();
 
   /// Perform command 'redisvAsyncCommand'. Thread-safe.
   ///
@@ -92,8 +104,40 @@ class RedisAsyncContext {
   /// should be minimum.
   std::mutex mutex_;
   std::unique_ptr<redisAsyncContext, RedisContextDeleter> redis_async_context_;
+
+  instrumented_io_context &io_service_;
+  boost::asio::ip::tcp::socket socket_;
+  // Hiredis wanted to add a read operation to the event loop
+  // but the read might not have happened yet
+  bool read_requested_{false};
+  // Hiredis wanted to add a write operation to the event loop
+  // but the read might not have happened yet
+  bool write_requested_{false};
+  // A read is currently in progress
+  bool read_in_progress_{false};
+  // A write is currently in progress
+  bool write_in_progress_{false};
+
+  /// Issue async socket operations depending on the state of the redis async context.
+  void Operate();
+  /// The callback function for socket operations
+  ///
+  /// \param error_code The error code of the socket operation.
+  /// \param write true if it is a write operation, false otherwise.
+  void HandleIo(boost::system::error_code error_code, bool write);
+
+  // Real callback functions bound to RedisAsyncContext
+  void AddRead();
+  void DelRead();
+  void AddWrite();
+  void DelWrite();
+  void Cleanup();
+
+  friend void CallbackAddRead(void *);
+  friend void CallbackDelRead(void *);
+  friend void CallbackAddWrite(void *);
+  friend void CallbackDelWrite(void *);
+  friend void CallbackCleanup(void *);
 };
-
 }  // namespace gcs
-
 }  // namespace ray

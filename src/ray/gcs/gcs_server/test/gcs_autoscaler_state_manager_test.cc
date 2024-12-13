@@ -61,7 +61,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
 
   void SetUp() override {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
     cluster_resource_manager_ = std::make_unique<ClusterResourceManager>(io_service_);
     gcs_node_manager_ = std::make_shared<MockGcsNodeManager>();
@@ -86,7 +86,7 @@ class GcsAutoscalerStateManagerTest : public ::testing::Test {
                                       *gcs_node_manager_,
                                       *gcs_actor_manager_,
                                       *gcs_placement_group_manager_,
-                                      client_pool_));
+                                      *client_pool_));
   }
 
  public:
@@ -847,8 +847,3 @@ TEST_F(GcsAutoscalerStateManagerTest, TestGcsKvManagerInternalConfig) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}
