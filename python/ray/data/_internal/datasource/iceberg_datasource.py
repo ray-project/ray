@@ -181,6 +181,7 @@ class IcebergDatasource(Datasource):
 
     def get_read_tasks(self, parallelism: int) -> List[ReadTask]:
         from pyiceberg.io import pyarrow as pyi_pa_io
+        from pyiceberg.manifest import DataFileContent
 
         # Get the PyIceberg scan
         data_scan = self._get_data_scan()
