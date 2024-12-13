@@ -177,10 +177,10 @@ void RedisRequestContext::RedisResponseFn(redisAsyncContext *async_context,
   // Error happened.
   if (redis_reply == nullptr || redis_reply->type == REDIS_REPLY_ERROR) {
     auto error_msg = redis_reply ? redis_reply->str : async_context->errstr;
-    RAY_LOG(INFO) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
-                  << "]"
-                  << " failed due to error " << error_msg << ". "
-                  << request_cxt->pending_retries_ << " retries left.";
+    RAY_LOG(ERROR) << "Redis request [" << absl::StrJoin(request_cxt->redis_cmds_, " ")
+                   << "]"
+                   << " failed due to error " << error_msg << ". "
+                   << request_cxt->pending_retries_ << " retries left.";
     // Reconnect if connection is lost or the error is a MOVED error.
     if (redis_reply == nullptr ||
         std::string(redis_reply->str).find("MOVED") != std::string::npos) {
@@ -511,8 +511,8 @@ Status RedisContext::ConnectRedisCluster(const std::string &username,
       }
     }
 
-    RAY_LOG(INFO) << "Failed to find the redis master node: " << error_msg << ". "
-                  << pending_retries << " retries left.";
+    RAY_LOG(ERROR) << "Failed to find the redis master node: " << error_msg << ". "
+                   << pending_retries << " retries left.";
     const auto delay = exp_back_off.Current();
     exp_back_off.Next();
     std::this_thread::sleep_for(std::chrono::milliseconds(delay));
