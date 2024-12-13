@@ -15,7 +15,7 @@ from ray.util.annotations import DeveloperAPI
 @DeveloperAPI(stability="alpha")
 @ray.remote(
     num_cpus=1,
-    num_gpus=0,#0.01,
+    num_gpus=0.01,
     max_restarts=-1,
 )
 class AggregatorActor(FaultAwareApply):
