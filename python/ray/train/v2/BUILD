@@ -129,6 +129,15 @@ py_test(
 )
 
 py_test(
+    name = "test_tensorflow_trainer",
+    size = "small",
+    srcs = ["tests/test_tensorflow_trainer.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
     name = "test_thread_runner",
     size = "small",
     srcs = ["tests/test_thread_runner.py"],
@@ -141,6 +150,15 @@ py_test(
     name = "test_torch_trainer",
     size = "small",
     srcs = ["tests/test_torch_trainer.py"],
+    tags = ["exclusive", "team:ml", "train_v2"],
+    deps = ["//:ray_lib", ":conftest"],
+    env = {"RAY_TRAIN_V2_ENABLED": "1"},
+)
+
+py_test(
+    name = "test_torch_transformers_train",
+    size = "small",
+    srcs = ["tests/test_torch_transformers_train.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
@@ -186,15 +204,6 @@ py_test(
     name = "test_xgboost_trainer",
     size = "small",
     srcs = ["tests/test_xgboost_trainer.py"],
-    tags = ["exclusive", "team:ml", "train_v2"],
-    deps = ["//:ray_lib", ":conftest"],
-    env = {"RAY_TRAIN_V2_ENABLED": "1"},
-)
-
-py_test(
-    name = "test_tensorflow_trainer",
-    size = "small",
-    srcs = ["tests/test_tensorflow_trainer.py"],
     tags = ["exclusive", "team:ml", "train_v2"],
     deps = ["//:ray_lib", ":conftest"],
     env = {"RAY_TRAIN_V2_ENABLED": "1"},
