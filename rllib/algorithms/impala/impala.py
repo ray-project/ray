@@ -581,7 +581,7 @@ class IMPALA(Algorithm):
                         if self.config.enable_env_runner_and_connector_v2
                         else AggregatorWorker_OldAPIStack,
                         [
-                            self.config,
+                            self.config, "cuda:0"#TODO, how do we get the device?
                         ],
                         {},
                         self.config.num_aggregation_workers,

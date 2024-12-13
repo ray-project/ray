@@ -76,7 +76,7 @@ class AggregatorActor(FaultAwareApply):
         # If we have enough episodes collected to create a single train batch, pass
         # them at once through the connector to recieve a single train batch.
         #if env_steps >= self.config.train_batch_size_per_learner:
-        batch_on_cpu = self._learner_connector(
+        batch_on_gpu = self._learner_connector(
             episodes=episodes,
             rl_module=self._rl_module,
         )
@@ -84,14 +84,14 @@ class AggregatorActor(FaultAwareApply):
         #print(list(batch_on_cpu.keys()))
 
         # Load the batch onto the GPU device.
-        batch_on_gpu = tree.map_structure_with_path(
-            lambda path, t: (
-                t
-                if isinstance(path, tuple) and Columns.INFOS in path
-                else t.to(self._device, non_blocking=True)
-            ),
-            batch_on_cpu,
-        )
+        #batch_on_gpu = tree.map_structure_with_path(
+        #    lambda path, t: (
+        #        t
+        #        if isinstance(path, tuple) and Columns.INFOS in path
+        #        else t.to(self._device, non_blocking=True)
+        #    ),
+        #    batch_on_cpu,
+        #)
         ma_batch_on_gpu = MultiAgentBatch(
             policy_batches={"default_policy": SampleBatch(batch_on_gpu)},
             env_steps=env_steps,
