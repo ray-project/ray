@@ -1,6 +1,6 @@
 import logging
 import posixpath
-from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from typing import TYPE_CHECKING, Any, Dict, Iterable, Optional
 from urllib.parse import urlparse
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
@@ -27,7 +27,7 @@ WRITE_FILE_MAX_ATTEMPTS = 10
 WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS = 32
 
 
-class _FileDatasink(Datasink):
+class _FileDatasink(Datasink[None]):
     def __init__(
         self,
         path: str,
@@ -130,13 +130,10 @@ class _FileDatasink(Datasink):
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
-        aggregated_results = super().on_write_complete(write_result_blocks)
-
+    def on_write_complete(self, write_result: WriteResult[None]):
         # If no rows were written, we can delete the directory.
-        if self.has_created_dir and aggregated_results.num_rows == 0:
+        if self.has_created_dir and write_result.num_rows == 0:
             self.filesystem.delete_dir(self.path)
-        return aggregated_results
 
     @property
     def supports_distributed_writes(self) -> bool:

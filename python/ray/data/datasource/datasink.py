@@ -1,58 +1,29 @@
-import logging
 from dataclasses import dataclass
-from typing import Any, Iterable, List, Optional
+import logging
+from typing import Generic, Iterable, List, Optional, TypeVar
 
-from pandas import DataFrame
 
 import ray
 from ray.data._internal.execution.interfaces import TaskContext
-from ray.data._internal.execution.util import memory_string
 from ray.data.block import Block, BlockAccessor
 from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 
 
+WriteResultType = TypeVar("WriteResultType")
+
+
 @dataclass
-@DeveloperAPI
-class WriteResult:
-    """Result of a write operation, containing stats/metrics
-    on the written data.
+class WriteResult(Generic[WriteResultType]):
 
-    Attributes:
-        total_num_rows: The total number of rows written.
-        total_size_bytes: The total size of the written data in bytes.
-    """
-
-    num_rows: int = 0
-    size_bytes: int = 0
-    custom_result: Any = None
-
-    @staticmethod
-    def aggregate_write_results(write_results: List["WriteResult"]) -> "WriteResult":
-        """Aggregate a list of write results.
-
-        Args:
-            write_results: A list of write results.
-
-        Returns:
-            A single write result that aggregates the input results.
-        """
-        total_num_rows = 0
-        total_size_bytes = 0
-
-        for write_result in write_results:
-            total_num_rows += write_result.num_rows
-            total_size_bytes += write_result.size_bytes
-
-        return WriteResult(
-            num_rows=total_num_rows,
-            size_bytes=total_size_bytes,
-        )
+    num_rows: int
+    size_bytes: int
+    write_task_results: List[WriteResultType]
 
 
 @DeveloperAPI
-class Datasink:
+class Datasink(Generic[WriteResultType]):
     """Interface for defining write-related logic.
 
     If you want to write data to something that isn't built-in, subclass this class
@@ -71,16 +42,20 @@ class Datasink:
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> WriteResultType:
         """Write blocks. This is used by a single write task.
 
         Args:
             blocks: Generator of data blocks.
             ctx: ``TaskContext`` for the write task.
+
+        Returns:
+            Result of this write task. When the entire write operator succeeds,
+            results of all write tasks will be passed to `on_write_complete`.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, custom_results: List[Any]):
+    def on_write_complete(self, write_result: WriteResult[WriteResultType]):
         pass
 
     def on_write_failed(self, error: Exception) -> None:
@@ -120,32 +95,8 @@ class Datasink:
         return None
 
 
-def handle_data_sink_write_results(
-    data_sink: Datasink,
-    write_result_blocks: List[Block],
-):
-    assert all(
-        isinstance(block, DataFrame) and len(block) == 1
-        for block in write_result_blocks
-    )
-    # Print out stats about the write operation.
-    write_results = [result["write_result"].iloc[0] for result in write_result_blocks]
-    total_num_rows = sum(result.num_rows for result in write_results)
-    total_size_bytes = sum(result.size_bytes for result in write_results)
-    logger.info(
-        "Data sink %s finished. %d rows and %s data written.",
-        data_sink.get_name(),
-        total_num_rows,
-        memory_string(total_size_bytes),
-    )
-
-    # Invoke the on_write_complete callback.
-    custom_results = [result.custom_result for result in write_results]
-    data_sink.on_write_complete(custom_results)
-
-
 @DeveloperAPI
-class DummyOutputDatasink(Datasink):
+class DummyOutputDatasink(Datasink[int]):
     """An example implementation of a writable datasource for testing.
     Examples:
         >>> import ray
@@ -174,7 +125,7 @@ class DummyOutputDatasink(Datasink):
                 return self.rows_written
 
         self.data_sink = DataSink.remote()
-        self.num_ok = 0
+        self.num_blocks_writen = 0
         self.num_failed = 0
         self.enabled = True
 
@@ -182,18 +133,25 @@ class DummyOutputDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> None:
+    ) -> int:
         tasks = []
         if not self.enabled:
             raise ValueError("disabled")
         for b in blocks:
+            self.num_blocks_writen += 1
             tasks.append(self.data_sink.write.remote(b))
         ray.get(tasks)
+        return self.num_blocks_writen
 
-    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
-        self.num_ok += 1
-        aggregated_results = super().on_write_complete(write_result_blocks)
-        return aggregated_results
+    def on_write_start(self) -> None:
+        logger.info(f"Data sink {self.get_name()} started.")
+
+    def on_write_complete(self, write_result: WriteResult[int]):
+        total_num_blocks_written = sum(write_result.write_task_results)
+        logger.info(
+            f"Data sink {self.get_name()} finished. "
+            f"{total_num_blocks_written} blocks written."
+        )
 
     def on_write_failed(self, error: Exception) -> None:
-        self.num_failed += 1
+        logger.error(f"Data sink {self.get_name()} failed: {error}")

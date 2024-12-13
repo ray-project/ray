@@ -1,6 +1,9 @@
 import itertools
 from typing import Callable, Iterator, List, Union
 
+import logging
+from pandas import DataFrame
+
 from ray.data._internal.compute import TaskPoolStrategy
 from ray.data._internal.execution.interfaces import PhysicalOperator
 from ray.data._internal.execution.interfaces.task_context import TaskContext
@@ -9,11 +12,41 @@ from ray.data._internal.execution.operators.map_transformer import (
     BlockMapTransformFn,
     MapTransformer,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.logical.operators.write_operator import Write
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
 from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
+
+logger = logging.getLogger(__name__)
+
+
+def handle_data_sink_write_results(
+    data_sink: Datasink,
+    write_result_blocks: List[Block],
+):
+    assert all(
+        isinstance(block, DataFrame) and len(block) == 1
+        for block in write_result_blocks
+    )
+    # Print out stats about the write operation.
+    total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
+    total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
+    logger.info(
+        "Data sink %s finished. %d rows and %s data written.",
+        data_sink.get_name(),
+        total_num_rows,
+        memory_string(total_size_bytes),
+    )
+
+    # Invoke the on_write_complete callback.
+    write_task_results = [
+        result["write_task_result"][0] for result in write_result_blocks
+    ]
+    data_sink.on_write_complete(
+        WriteResult(total_num_rows, total_num_rows, write_task_results)
+    )
 
 
 def generate_write_fn(
@@ -54,12 +87,13 @@ def generate_collect_write_stats_fn() -> (
         # type.
         import pandas as pd
 
-        write_result = WriteResult(
-            num_rows=total_num_rows,
-            size_bytes=total_size_bytes,
-            custom_result=ctx.kwargs.get("_data_sink_custom_result", None),
+        block = pd.DataFrame(
+            {
+                "num_rows": [total_num_rows],
+                "size_bytes": [total_size_bytes],
+                "write_task_result": [ctx.kwargs.get("_data_sink_custom_result", None)],
+            }
         )
-        block = pd.DataFrame({"write_result": [write_result]})
         return iter([block])
 
     return fn
