@@ -55,7 +55,9 @@ class Datasink(Generic[WriteResultType]):
             ctx: ``TaskContext`` for the write task.
 
         Returns:
-            Result of this write task.
+            Result of this write task. When the entire write operator finishes,
+            All write tasks results will be passed as `WriteResult.write_task_results`
+            to `Datasink.on_write_complete`.
         """
         raise NotImplementedError
 

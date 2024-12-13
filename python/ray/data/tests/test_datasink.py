@@ -1,4 +1,5 @@
-from typing import Iterable
+from dataclasses import dataclass
+from typing import Iterable, List
 
 import pytest
 
@@ -67,7 +68,7 @@ class NodeLoggerOutputDatasink(Datasink[None]):
             tasks.append(write(b))
         ray.get(tasks)
 
-    def on_write_complete(self, _: WriteResult[None]):
+    def on_write_complete(self, write_result: WriteResult[None]):
         self.num_ok += 1
 
     def on_write_failed(self, error: Exception) -> None:
@@ -119,6 +120,38 @@ def test_num_rows_per_write(tmp_path, ray_start_regular_shared, num_rows_per_wri
     ray.data.range(100, override_num_blocks=20).write_datasink(
         MockDatasink(num_rows_per_write)
     )
+
+
+def test_custom_write_results(ray_start_regular_shared):
+    """Test passing a custom write result type from `write` to `on_write_complete`."""
+
+    @dataclass
+    class CustomWriteResult:
+
+        ids: List[int]
+
+    class CustomDatasink(Datasink[CustomWriteResult]):
+        def __init__(self) -> None:
+            self.ids = []
+
+        def write(self, blocks: Iterable[Block], ctx: TaskContext):
+            ids = []
+            for b in blocks:
+                ids.extend(b["id"].to_pylist())
+            return CustomWriteResult(ids=ids)
+
+        def on_write_complete(self, write_result: WriteResult[CustomWriteResult]):
+            ids = []
+            for result in write_result.write_task_results:
+                ids.extend(result.ids)
+            self.ids = sorted(ids)
+
+    num_items = 100
+    ds = ray.data.range(num_items)
+    data_sink = CustomDatasink()
+    ds.write_datasink(data_sink)
+
+    assert data_sink.ids == list(range(num_items))
 
 
 if __name__ == "__main__":
