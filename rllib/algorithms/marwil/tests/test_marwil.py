@@ -159,7 +159,7 @@ class TestMARWIL(unittest.TestCase):
 
         # Create the prelearner and compute advantages and values.
         offline_prelearner = OfflinePreLearner(
-            config, learner=algo.learner_group._learner
+            config=config, learner=algo.learner_group._learner
         )
         # Note, for `ray.data`'s pipeline everything has to be a dictionary
         # therefore the batch is embedded into another dictionary.
