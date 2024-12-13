@@ -399,17 +399,13 @@ def test_add_column(ray_start_regular_shared):
     assert ds.take(2) == [{"id": 1}, {"id": 2}]
 
     # Adding a column in the wrong format may result in an error
-    with pytest.raises(
-        ray.exceptions.UserCodeException
-    ):
+    with pytest.raises(ray.exceptions.UserCodeException):
         ds = ray.data.range(5).add_column(
             "id", lambda x: range(7), batch_format="pandas"
         )
         assert ds.take(2) == [{"id": 1}, {"id": 2}]
-    
-    ds = ray.data.range(5).add_column(
-        "const", lambda _: 3, batch_format="pandas"
-    )
+
+    ds = ray.data.range(5).add_column("const", lambda _: 3, batch_format="pandas")
     assert ds.take(2) == [{"id": 0, "const": 3}, {"id": 1, "const": 3}]
 
     with pytest.raises(ValueError):
