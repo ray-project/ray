@@ -51,6 +51,7 @@ from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.execution.interfaces.ref_bundle import (
     _ref_bundles_iterator_to_block_refs_list,
 )
+from ray.data._internal.execution.util import memory_string
 from ray.data._internal.iterator.iterator_impl import DataIteratorImpl
 from ray.data._internal.iterator.stream_split_iterator import StreamSplitDataIterator
 from ray.data._internal.logical.operators.all_to_all_operator import (
@@ -78,7 +79,7 @@ from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.plan_write_op import handle_data_sink_write_results
+from ray.data._internal.planner.plan_write_op import gen_data_sink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -3883,7 +3884,14 @@ class Dataset:
             # TODO: Get and handle the blocks with an iterator instead of getting
             # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            handle_data_sink_write_results(datasink, raw_write_results)
+            write_result = gen_data_sink_write_result(datasink, raw_write_results)
+            logger.info(
+                "Data sink %s finished. %d rows and %s data written.",
+                datasink.get_name(),
+                write_result.num_rows,
+                memory_string(write_result.size_bytes),
+            )
+            datasink.on_write_complete(write_result)
 
         except Exception as e:
             datasink.on_write_failed(e)
