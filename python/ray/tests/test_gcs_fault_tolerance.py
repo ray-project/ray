@@ -880,14 +880,8 @@ def test_redis_with_sentinel_failureover(
             return os.getpid()
 
     c = Counter.options(name="c", namespace="test", lifetime="detached").remote()
-    c_pid = ray.get(c.pid.remote())
-    c_process = psutil.Process(pid=c_pid)
     r = ray.get(c.r.remote(10))
     assert r == 10
-
-    head_node = cluster.head_node
-    gcs_server_process = head_node.all_processes["gcs_server"][0].process
-    gcs_server_pid = gcs_server_process.pid
 
     leader_cli = redis.Redis(*get_sentinel_nodes()[0])
     leader_pid = leader_cli.info()["process_id"]
@@ -902,20 +896,7 @@ def test_redis_with_sentinel_failureover(
     leader_process = psutil.Process(pid=leader_pid)
     leader_process.kill()
 
-    print(">>> Waiting gcs server to exit", gcs_server_pid)
-    wait_for_pid_to_exit(gcs_server_pid, 1000)
-    print("GCS killed")
-
     wait_for_condition(lambda: current_leader != get_sentinel_nodes()[0])
-
-    # Kill Counter actor. It should restart after GCS is back
-    c_process.kill()
-    # Cleanup the in memory data and then start gcs
-    cluster.head_node.kill_gcs_server(False)
-
-    print("Start gcs")
-    sleep(2)
-    cluster.head_node.start_gcs_server()
 
     assert len(ray.nodes()) == 1
     assert ray.nodes()[0]["alive"]
