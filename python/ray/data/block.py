@@ -479,7 +479,8 @@ class BlockAccessor:
 
 def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
     """Compute boundaries of the groups within a block, which is represented
-    by a list of sorted 1D numpy arrays for each column.
+    by a list of sorted 1D numpy arrays for each column. In each column array,
+    NaNs/None are considered to be the same group.
 
     Args:
         arrays: a list of sorted 1D numpy arrays. This is generally given by the
@@ -489,20 +490,49 @@ def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
         A list of starting indices of each group and an end index of the last
         group, i.e., there are ``num_groups + 1`` entries and the first and last
         entries are 0 and ``len(array)`` respectively.
-
-    Note:
-        This function is implemented as finding the row indices where any of the
-        columns is not equal to the previous row.
     """
-    return np.hstack(
+
+    # There are 3 categories: general, numerics with NaN, and categorical with None.
+    # We only needed to check the last element for NaNs/None, as they are assumed to
+    # be sorted.
+    general_arrays = []
+    num_arrays_with_nan = []
+    cat_arrays_with_none = []
+    for arr in arrays:
+        if np.issubdtype(arr.dtype, np.number) and np.isnan(arr[-1]):
+            num_arrays_with_nan.append(arr)
+        elif not np.issubdtype(arr.dtype, np.number) and arr[-1] is None:
+            cat_arrays_with_none.append(arr)
+        else:
+            general_arrays.append(arr)
+
+    # Compute the difference between each pair of elements. Handle the cases
+    # where neighboring elements are both NaN or None. Output as a list of
+    # boolean arrays.
+    diffs = []
+    if len(general_arrays) > 0:
+        diffs.append(np.vstack([ arr[1:] != arr[:-1] for arr in general_arrays]).any(axis=0))
+    if len(num_arrays_with_nan) > 0:
+        diffs.append(np.vstack([ (arr[1:] != arr[:-1]) & (np.isfinite(arr[1:]) | np.isfinite(arr[:-1]))  for arr in num_arrays_with_nan]).any(axis=0))
+    if len(cat_arrays_with_none) > 0:
+        diffs.append(np.vstack([ (arr[1:] != arr[:-1]) & ~( (arr[:-1] == None) & (arr[1:] == None)) for arr in cat_arrays_with_none]).any(axis=0))
+
+    # A series of vectorized operations to compute the boundaries:
+    # - column_stack: stack the bool arrays into a single 2D bool array
+    # - any() and nonzero(): find the indices where any of the column diffs are True
+    # - add 1 to get the index of the first element of the next group
+    # - hstack(): include the 0 and last indices to the boundaries
+    boundaries = np.hstack(
         [
             [0],
             (
-                np.vstack([array[1:] != array[:-1] for array in arrays])
-                .any(axis=0)
+                np.column_stack(diffs)
+                .any(axis=1)
                 .nonzero()[0]
                 + 1
             ),
             [len(arrays[0])],
         ]
-    )
+    ).astype(int)
+
+    return boundaries
