@@ -1786,75 +1786,26 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Check whether the DAG will deadlock on NCCL calls.
-        There are no false positives in this deadlock detection,
-        but there may be false negatives for now. For example,
+        TODO (kevin85421): Avoid false negatives.
 
-        actor1.f1 ---> actor2.f1
-                   |
-        actor1.f2 --
+        Currently, a compiled graph may deadlock if there are NCCL channels, and the
+        readers have control dependencies on the same actor. For example:
 
-        In this case, actor1.f1 and actor1.f2 have control dependencies
-        between them. If actor2.f1 reads actor1.f2 first and then actor1.f1,
-        there will be a deadlock. However, this deadlock is not detectable
-        until we have a more granular execution schedule.
+        actor1.a ---> actor2.f1
+                 |
+                 ---> actor2.f2
 
-        TODO (kevin85421): Avoid false negatives
+        The control dependency between `actor2.f1` and `actor2.f2` is that `f1` should
+        run before `f2`. If `actor1.a` writes to `actor2.f2` before `actor2.f1`, a
+        deadlock will occur.
+
+        Currently, the execution schedule is not granular enough to detect this
+        deadlock.
 
         Returns:
-            True if deadlock is detected, otherwise False.
+            True if a deadlock is detected; otherwise, False.
         """
-        assert self.idx_to_task
-        assert self.actor_to_tasks
-
-        from ray.dag import ClassMethodNode
-
-        def _is_same_actor(idx1: int, idx2: int) -> bool:
-            """
-            Args:
-                idx1: A key in the idx_to_task dictionary.
-                idx2: A key in the idx_to_task dictionary.
-
-            Returns:
-                True if both DAG nodes are on the same actor;
-                otherwise, False.
-            """
-            task1 = self.idx_to_task[idx1]
-            task2 = self.idx_to_task[idx2]
-            if (
-                not isinstance(task1.dag_node, ClassMethodNode)
-                or task1.dag_node.is_class_method_output
-            ):
-                return False
-            if (
-                not isinstance(task2.dag_node, ClassMethodNode)
-                or task2.dag_node.is_class_method_output
-            ):
-                return False
-            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
-            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
-            return actor_id_1 == actor_id_2
-
-        for idx, task in self.idx_to_task.items():
-            for downstream_idx in task.downstream_task_idxs:
-                if task.dag_node.type_hint.requires_nccl():
-                    if _is_same_actor(idx, downstream_idx):
-                        actor_handle = self.idx_to_task[
-                            idx
-                        ].dag_node._get_actor_handle()
-                        method = self.idx_to_task[idx].dag_node.get_method_name()
-                        downstream_method = self.idx_to_task[
-                            downstream_idx
-                        ].dag_node.get_method_name()
-                        logger.error(
-                            "Detected a deadlock caused by using NCCL channels to "
-                            f"transfer data between the task `{method}` and "
-                            f"its downstream method `{downstream_method}` on the same "
-                            f"actor {actor_handle}. Please remove "
-                            '`TorchTensorType(transport="nccl")` between '
-                            "DAG nodes on the same actor."
-                        )
-                        return True
+        logger.warning("Deadlock detection has not been implemented yet.")
         return False
 
     def _monitor_failures(self):
