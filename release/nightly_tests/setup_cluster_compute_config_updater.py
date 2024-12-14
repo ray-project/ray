@@ -122,8 +122,10 @@ if __name__ == "__main__":
         type=str,
         default="",
         help=(
-            "A comma separated list of updates, each update has format:"
-            "field_path:field_value:update_time_seconds_since_run"
+            "A comma separated list of updates, each update has format: "
+            "field_path:field_value:update_time_seconds_since_run."
+            "field_path is a dot separated list of fields from root "
+            "to the target field to be updated, e.g. worker_nodes.0.max_nodes."
         ),
     )
 

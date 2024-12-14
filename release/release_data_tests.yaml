@@ -430,7 +430,7 @@
 
   run:
     timeout: 1800
-    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:180
+    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
     script: >
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet
