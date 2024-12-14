@@ -27,8 +27,10 @@ export const DurationText = ({ startTime, endTime }: DurationTextProps) => {
 
   let durationText: string;
   let refreshInterval = 1000;
-  if (duration.asMinutes() < 1) {
-    durationText = duration.format("s[s]");
+  if (duration.asSeconds() < 1) {
+    durationText = duration.format("SSS[ms]");
+  } else if (duration.asMinutes() < 1) {
+    durationText = duration.format("s[s] SSS[ms]");
   } else if (duration.asHours() < 1) {
     durationText = duration.format("m[m] s[s]");
   } else if (duration.asDays() < 1) {

@@ -147,6 +147,13 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
+        # TODO (sven): Causes weird cuda error when WandB is used.
+        #  Diagnosis thus far:
+        #  - All peek values during metrics.reduce are non-tensors.
+        #  - However, in impala.py::training_step(), a tensor does arrive after learner
+        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    possible (learner, which performs the reduce() and learner thread, which
+        #    performs the logging of tensors into metrics logger).
         self._compute_off_policyness(batch)
 
         fwd_out = self.module.forward_train(batch)
@@ -158,9 +165,7 @@ class TorchLearner(Learner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
-
-        return fwd_out, loss_per_module, collected_tensor_metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(

@@ -56,3 +56,4 @@ Environment API Reference
    env/vector_env.rst
    env/external_env.rst
    env/single_agent_episode.rst
+   env/utils.rst
