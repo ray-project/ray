@@ -54,10 +54,10 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   class MutableObjectBuffer : public SharedMemoryBuffer {
    public:
     MutableObjectBuffer(std::shared_ptr<MutableObjectManager> mutable_object_manager,
-                        std::shared_ptr<Buffer> buffer,
+                        const std::shared_ptr<Buffer> &buffer,
                         const ObjectID &object_id)
         : SharedMemoryBuffer(buffer, 0, buffer->Size()),
-          mutable_object_manager_(mutable_object_manager),
+          mutable_object_manager_(std::move(mutable_object_manager)),
           object_id_(object_id) {}
 
     ~MutableObjectBuffer() {
@@ -72,7 +72,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   };
 
   struct Channel {
-    Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
+    explicit Channel(std::unique_ptr<plasma::MutableObject> mutable_object_ptr)
         : lock(std::make_unique<std::mutex>()),
           mutable_object(std::move(mutable_object_ptr)) {}
 
@@ -116,7 +116,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[in] object_id The ID of the object.
   /// \return The return status. True if the channel is registered for object_id, false
   ///         otherwise.
-  bool ChannelRegistered(const ObjectID &object_id) { return GetChannel(object_id); }
+  bool ChannelRegistered(const ObjectID &object_id) {
+    return GetChannel(object_id) != nullptr;
+  }
 
   /// Gets the backing store for an object. WriteAcquire() must have already been called
   /// before this method is called, and WriteRelease() must not yet have been called.
@@ -265,7 +267,7 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   // `channels_` requires pointer stability as one thread may hold a Channel pointer while
   // another thread mutates `channels_`. Thus, we use absl::node_hash_map instead of
   // absl::flat_hash_map.
-  absl::node_hash_map<ObjectID, Channel> channels_;
+  absl::node_hash_map<ObjectID, Channel> channels_ ABSL_GUARDED_BY(channel_lock_);
 
   // This maps holds the semaphores for each mutable object. The semaphores are used to
   // (1) synchronize accesses to the object header and (2) synchronize readers and writers
