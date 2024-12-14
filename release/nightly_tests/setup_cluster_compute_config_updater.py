@@ -1,6 +1,7 @@
 import os
 import ray
 import asyncio
+import logging
 from typing import List, Union
 from dataclasses import dataclass
 import requests
@@ -8,6 +9,8 @@ import anyscale
 import time
 import argparse
 from ray.util.scheduling_strategies import NodeAffinitySchedulingStrategy
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -45,7 +48,7 @@ class ClusterComputeConfig:
         self.compute_config_dict = anyscale.compute_config.get(
             name="", _id=self.cluster.result.cluster_compute_id
         ).config.to_dict()
-        print(
+        logging.info(
             f"Fetched compute config {self.compute_config_dict} "
             f"for cluster {self.cluster}"
         )
@@ -76,7 +79,7 @@ class ClusterComputeConfig:
             headers={"Authorization": f"Bearer {os.environ['ANYSCALE_CLI_TOKEN']}"},
         )
 
-        print(
+        logging.info(
             f"Update compute config to {self.compute_config_dict}, "
             f"got response {response}"
         )
@@ -88,23 +91,30 @@ class ClusterComputeConfigUpdater:
     def __init__(self, updates: List[ClusterComputeConfigUpdate]):
         self.cluster_compute_config = ClusterComputeConfig()
         self.updates = updates
+        self.start_time = None
 
     async def run(self):
+        logging.info("Start to run")
         self.start_time = time.monotonic()
         while self.updates:
             delay = (
                 self.start_time + self.updates[0].update_time_seconds_since_run
             ) - time.monotonic()
             if delay > 0:
+                logging.info(f"Sleep for {delay} seconds")
                 await asyncio.sleep(delay)
             self.cluster_compute_config.update(
                 self.updates[0].field_path, self.updates[0].field_value
             )
             self.updates.pop(0)
 
+    async def wait_until_run(self):
+        while not self.start_time:
+            await asyncio.sleep(0.1)
+
 
 if __name__ == "__main__":
-    ray.init()
+    ray.init(logging_config=ray.LoggingConfig(encoding="TEXT"))
     arg_parser = argparse.ArgumentParser()
 
     arg_parser.add_argument(
@@ -120,7 +130,7 @@ if __name__ == "__main__":
     args = arg_parser.parse_args()
 
     updates = [ClusterComputeConfigUpdate(update) for update in args.updates.split(",")]
-    print(f"Compute config updates are {updates}")
+    logging.info(f"Compute config updates are {updates}")
 
     head_node_id = ray.get_runtime_context().get_node_id()
     updater = ClusterComputeConfigUpdater.options(
@@ -132,3 +142,4 @@ if __name__ == "__main__":
         lifetime="detached",
     ).remote(updates)
     updater.run.remote()
+    ray.get(updater.wait_until_run.remote())
