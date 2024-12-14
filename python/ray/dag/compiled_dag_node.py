@@ -523,6 +523,11 @@ class ExecutableTask:
             future = ResolvedFuture(val)
         self._intermediate_future = future
 
+    def reset_and_move_intermediate_future(self) -> Any:
+        future = self._intermediate_future
+        self._intermediate_future = None
+        return future
+
     def reset_and_wait_intermediate_future(self) -> Any:
         """
         Reset the intermediate future and wait for the result.
@@ -808,11 +813,9 @@ class ExecutableTask:
         if not self.requires_nccl_write:
             with self._send_stream:
                 if self.requires_nccl_read and overlap_gpu_communication:
-                    output_val = self._intermediate_future
-                    self._intermediate_future = None
+                    output_val = self.reset_and_move_intermediate_future()
                 else:
                     output_val = self.reset_and_wait_intermediate_future()
-
                 try:
                     self.output_writer.write(output_val)
                 except RayChannelError:
