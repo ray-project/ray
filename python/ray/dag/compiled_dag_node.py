@@ -24,7 +24,7 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
-from ray.dag.constants import RAY_ADAG_VISUALIZE_SCHEDULE
+from ray.dag.constants import RAY_CG_VISUALIZE_SCHEDULE
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -187,8 +187,8 @@ def do_profile_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
-        if not hasattr(self, "__ray_adag_events"):
-            self.__ray_adag_events = []
+        if not hasattr(self, "__ray_cg_events"):
+            self.__ray_cg_events = []
 
         done = False
         while True:
@@ -202,7 +202,7 @@ def do_profile_tasks(
                 )
                 end_t = time.perf_counter()
 
-                self.__ray_adag_events.append(
+                self.__ray_cg_events.append(
                     _ExecutableTaskRecord(
                         actor_classname=self.__class__.__name__,
                         actor_name=ray.get_runtime_context().get_actor_name(),
@@ -1490,14 +1490,14 @@ class CompiledDAG:
                         "Please bind the task to proper DAG nodes."
                     )
 
-        from ray.dag.constants import RAY_ADAG_ENABLE_DETECT_DEADLOCK
+        from ray.dag.constants import RAY_CG_ENABLE_DETECT_DEADLOCK
 
-        if RAY_ADAG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
+        if RAY_CG_ENABLE_DETECT_DEADLOCK and self._detect_deadlock():
             raise ValueError(
                 "This DAG cannot be compiled because it will deadlock on NCCL "
                 "calls. If you believe this is a false positive, please disable "
                 "the graph verification by setting the environment variable "
-                "RAY_ADAG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
+                "RAY_CG_ENABLE_DETECT_DEADLOCK to 0 and file an issue at "
                 "https://github.com/ray-project/ray/issues/new/."
             )
 
@@ -1577,9 +1577,9 @@ class CompiledDAG:
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
         # Build an execution schedule for each actor
-        from ray.dag.constants import RAY_ADAG_ENABLE_PROFILING
+        from ray.dag.constants import RAY_CG_ENABLE_PROFILING
 
-        if RAY_ADAG_ENABLE_PROFILING:
+        if RAY_CG_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:
             exec_task_func = do_exec_tasks
@@ -1779,7 +1779,7 @@ class CompiledDAG:
                 actor_to_execution_schedule
             )
 
-        if RAY_ADAG_VISUALIZE_SCHEDULE:
+        if RAY_CG_VISUALIZE_SCHEDULE:
             _visualize_execution_schedule(
                 actor_to_execution_schedule, actor_to_overlapped_schedule, graph
             )
@@ -1791,75 +1791,26 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Check whether the DAG will deadlock on NCCL calls.
-        There are no false positives in this deadlock detection,
-        but there may be false negatives for now. For example,
+        TODO (kevin85421): Avoid false negatives.
 
-        actor1.f1 ---> actor2.f1
-                   |
-        actor1.f2 --
+        Currently, a compiled graph may deadlock if there are NCCL channels, and the
+        readers have control dependencies on the same actor. For example:
 
-        In this case, actor1.f1 and actor1.f2 have control dependencies
-        between them. If actor2.f1 reads actor1.f2 first and then actor1.f1,
-        there will be a deadlock. However, this deadlock is not detectable
-        until we have a more granular execution schedule.
+        actor1.a ---> actor2.f1
+                 |
+                 ---> actor2.f2
 
-        TODO (kevin85421): Avoid false negatives
+        The control dependency between `actor2.f1` and `actor2.f2` is that `f1` should
+        run before `f2`. If `actor1.a` writes to `actor2.f2` before `actor2.f1`, a
+        deadlock will occur.
+
+        Currently, the execution schedule is not granular enough to detect this
+        deadlock.
 
         Returns:
-            True if deadlock is detected, otherwise False.
+            True if a deadlock is detected; otherwise, False.
         """
-        assert self.idx_to_task
-        assert self.actor_to_tasks
-
-        from ray.dag import ClassMethodNode
-
-        def _is_same_actor(idx1: int, idx2: int) -> bool:
-            """
-            Args:
-                idx1: A key in the idx_to_task dictionary.
-                idx2: A key in the idx_to_task dictionary.
-
-            Returns:
-                True if both DAG nodes are on the same actor;
-                otherwise, False.
-            """
-            task1 = self.idx_to_task[idx1]
-            task2 = self.idx_to_task[idx2]
-            if (
-                not isinstance(task1.dag_node, ClassMethodNode)
-                or task1.dag_node.is_class_method_output
-            ):
-                return False
-            if (
-                not isinstance(task2.dag_node, ClassMethodNode)
-                or task2.dag_node.is_class_method_output
-            ):
-                return False
-            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
-            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
-            return actor_id_1 == actor_id_2
-
-        for idx, task in self.idx_to_task.items():
-            for downstream_idx in task.downstream_task_idxs:
-                if task.dag_node.type_hint.requires_nccl():
-                    if _is_same_actor(idx, downstream_idx):
-                        actor_handle = self.idx_to_task[
-                            idx
-                        ].dag_node._get_actor_handle()
-                        method = self.idx_to_task[idx].dag_node.get_method_name()
-                        downstream_method = self.idx_to_task[
-                            downstream_idx
-                        ].dag_node.get_method_name()
-                        logger.error(
-                            "Detected a deadlock caused by using NCCL channels to "
-                            f"transfer data between the task `{method}` and "
-                            f"its downstream method `{downstream_method}` on the same "
-                            f"actor {actor_handle}. Please remove "
-                            '`TorchTensorType(transport="nccl")` between '
-                            "DAG nodes on the same actor."
-                        )
-                        return True
+        logger.warning("Deadlock detection has not been implemented yet.")
         return False
 
     def _monitor_failures(self):
@@ -2060,6 +2011,21 @@ class CompiledDAG:
             if len(self._result_buffer[execution_index]) == 0:
                 del self._result_buffer[execution_index]
         return result
+
+    def release_output_channel_buffers(self, execution_index: int):
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        timeout = ctx.retrieval_timeout
+
+        while self._max_finished_execution_index < execution_index:
+            self.increment_max_finished_execution_index()
+            start_time = time.monotonic()
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
     def _execute_until(
         self,
