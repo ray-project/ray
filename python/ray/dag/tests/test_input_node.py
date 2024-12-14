@@ -395,15 +395,15 @@ def test_missing_input_node():
 
     with ray.dag.InputNode() as dag_input:
         input1, input2, input3 = dag_input[0], dag_input[1], dag_input[2]
-        intermediate_node = actor.f.bind(input2)
+        _ = actor.f.bind(input2)
         dag = actor.combine.bind(input1, input3)
 
     with pytest.raises(
         ValueError,
-        match="DAG expects input: 0, 1, 2, but 1 is unused."
+        match="DAG expects input: 0, 1, 2, but 1 is unused. "
         "Ensure all accessed inputs from InputNode are connected to the output.",
     ):
-        adag = dag.experimental_compile()
+        _ = dag.experimental_compile()
 
 
 if __name__ == "__main__":
