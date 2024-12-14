@@ -926,6 +926,40 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
+    # helper function to handle_unused_attributes:
+    def find_unused_input_attributes(self, output_node, input_attributes) -> Set[str]:
+        """
+        Traverse the DAG backwards from the output node to find unused attributes.
+        Args:
+            output_node: The starting node for the traversal.
+            input_attributes: A set of attributes accessed by the InputNode.
+        Returns:
+            A set:
+                - unused_attributes: A set of attributes that are unused.
+        """
+        from ray.dag import InputAttributeNode
+
+        used_attributes = set()
+        # Keep track of visited nodes during backtracking.
+        visited_nodes = set()
+
+        # Traverse backwards from the output node to find all used inputs.
+        def traverse(node):
+            if node in visited_nodes:
+                return
+            visited_nodes.add(node)
+
+            if isinstance(node, InputAttributeNode):
+                used_attributes.add(node.key)
+
+            for upstream_node in node._upstream_nodes:
+                traverse(upstream_node)
+
+        traverse(output_node)
+
+        unused_attributes = input_attributes - used_attributes
+        return unused_attributes
+
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
         upstream and downstream tasks, and to set the input and output node(s)
@@ -949,11 +983,17 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
 
+        input_attributes = set()
         # Find the input node to the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+
+                # handle_unused_attributes:
+                # Save input attributes in a set
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1128,6 +1168,22 @@ class CompiledDAG:
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
+
+        # handle_unused_attributes:
+        unused_attributes = self.find_unused_input_attributes(
+            output_node, input_attributes
+        )
+
+        if unused_attributes:
+            unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+            input_attributes_str = ", ".join(str(key) for key in input_attributes)
+            unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+
+            raise ValueError(
+                f"DAG expects input: {input_attributes_str}, "
+                f"but {unused_attributes_str} {unused_phrase}. "
+                "Ensure all accessed inputs from InputNode are connected to the output."
+            )
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
