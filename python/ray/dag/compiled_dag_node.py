@@ -1864,10 +1864,9 @@ class CompiledDAG:
             def __init__(self):
                 super().__init__(daemon=True)
                 self.in_teardown = False
-                # Lock to make sure that we only perform teardown for this DAG
+                # CV to make sure that we only perform teardown for this DAG
                 # once.
-                self.in_teardown_lock = threading.Lock()
-                self.in_teardown_cond = threading.Condition(self.in_teardown_lock)
+                self.in_teardown_cond = threading.Condition(threading.Lock())
                 self.name = "CompiledGraphMonitorThread"
                 self._teardown_done = False
 
