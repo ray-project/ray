@@ -771,31 +771,33 @@ class ExecutableTask:
                 method = self.nccl_op.execute
             else:
                 method = getattr(class_handle, self.method_name)
+
             if self.requires_nccl_read:
-                with self._recv_stream:
-                    try:
-                        output_val = method(*resolved_inputs, **self.resolved_kwargs)
-                    except RayChannelError:
-                        return True
+                stream = self._recv_stream
+            elif self.requires_nccl_write:
+                stream = self._send_stream
+            else:
+                stream = nullcontext()
+
+            with stream:
+                try:
+                    output_val = method(*resolved_inputs, **self.resolved_kwargs)
+                except RayChannelError:
+                    return True
+                except Exception as exc:
+                    if self.requires_nccl_read or self.requires_nccl_write:
+                        raise exc
+                    else:
+                        output_val = _wrap_exception(exc)
+
+                if self.requires_nccl_read:
                     assert len(output_val) == 1
                     output_val = output_val[0]
+
+                if not self.requires_nccl_write:
                     self.wrap_and_set_intermediate_future(
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
-            elif self.requires_nccl_write:
-                with self._send_stream:
-                    try:
-                        output_val = method(*resolved_inputs, **self.resolved_kwargs)
-                    except RayChannelError:
-                        return True
-            else:
-                try:
-                    output_val = method(*resolved_inputs, **self.resolved_kwargs)
-                except Exception as exc:
-                    output_val = _wrap_exception(exc)
-                self.wrap_and_set_intermediate_future(
-                    output_val, wrap_in_gpu_future=overlap_gpu_communication
-                )
 
             """
             logger.info(
