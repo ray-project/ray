@@ -49,20 +49,6 @@ class _P2POperation(_NcclOperation):
         elif op == P2POp.RECV:
             return self.input_reader.read()
 
-    # def execute_old(self, data) -> Any:
-    #     """
-    #     Execute the NCCL P2P operation.
-
-    #     [CL]
-    #     This method is an identity function.
-
-    #     Args:
-    #         data: The data involved in the P2P operation. If the operation is a
-    #             NCCL send, this is the data to send. If the operation is a NCCL
-    #             recv, this is the data received.
-    #     """
-    #     return data
-
 
 class _P2PNode(ClassMethodNode):
     """Represents a NCCL P2P operation in a Ray DAG."""
@@ -88,10 +74,6 @@ class _P2PNode(ClassMethodNode):
         if self._p2p_op is None:
             raise ValueError("Expected a P2P operation")
 
-    @property
-    def nccl_op(self) -> _P2POperation:
-        return self._p2p_op
-
     def _copy_impl(
         self,
         new_args: List[Any],
@@ -105,6 +87,10 @@ class _P2PNode(ClassMethodNode):
         raise NotImplementedError(
             "_P2PNode is only supported with dag.experimental_compile()"
         )
+
+    @property
+    def nccl_op(self) -> _P2POperation:
+        return self._p2p_op
 
 
 @DeveloperAPI
