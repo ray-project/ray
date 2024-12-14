@@ -926,7 +926,7 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    # helper function to handle_unused_attributes:
+    # Helper function to handle_unused_attributes.
     def find_unused_input_attributes(self, output_node, input_attributes) -> Set[str]:
         """
         Traverse the DAG backwards from the output node to find unused attributes.
@@ -991,7 +991,7 @@ class CompiledDAG:
                 self.input_task_idx = idx
 
                 # handle_unused_attributes:
-                # Save input attributes in a set
+                # Save input attributes in a set.
                 input_node = task.dag_node
                 input_attributes.update(input_node.input_attribute_nodes.keys())
 
