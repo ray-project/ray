@@ -523,14 +523,9 @@ class ExecutableTask:
             future = ResolvedFuture(val)
         self._intermediate_future = future
 
-    def reset_and_move_intermediate_future(self) -> Any:
-        # [CL]
-        future = self._intermediate_future
-        self._intermediate_future = None
-        return future
-
-    def reset_and_wait_intermediate_future(self) -> Any:
+    def fetch_intermediate_future(self, wait_gpu_future: bool) -> Any:
         """
+        [CL]
         Reset the intermediate future and wait for the result.
 
         The wait does not block the CPU because:
@@ -543,7 +538,10 @@ class ExecutableTask:
         """
         future = self._intermediate_future
         self._intermediate_future = None
-        return future.wait()
+        if wait_gpu_future:
+            return future.wait()
+        else:
+            return future
 
     # [TODO:andyub] Replace by the all-in-one exec_operation function.
     # def _read(self, overlap_gpu_communication: bool) -> bool:
@@ -756,7 +754,7 @@ class ExecutableTask:
                     tensor = input_values[0]
                     input_values = [P2POp.SEND, tensor]
                 else:
-                    exc = self.reset_and_wait_intermediate_future()
+                    exc = self.fetch_intermediate_future(wait_gpu_future=True)
                     input_values = [P2POp.SEND, exc]
 
             """
@@ -806,9 +804,9 @@ class ExecutableTask:
 
         if not self.requires_nccl_write:
             if self.requires_nccl_read and overlap_gpu_communication:
-                output_val = self.reset_and_move_intermediate_future()
+                output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             else:
-                output_val = self.reset_and_wait_intermediate_future()
+                output_val = self.fetch_intermediate_future(wait_gpu_future=True)
             try:
                 self.output_writer.write(output_val)
             except RayChannelError:
