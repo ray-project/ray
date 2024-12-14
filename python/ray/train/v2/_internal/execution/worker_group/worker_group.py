@@ -556,7 +556,7 @@ class WorkerGroup:
             elapsed_time_s = time_monotonic() - ongoing_poll.start_time
             if elapsed_time_s > self._worker_health_check_timeout_s:
                 error_msg = (
-                    f"A worker health check has been hanging for {elapsed_time_s} "
+                    f"A worker health check has been hanging for {elapsed_time_s:.2f} "
                     "seconds. Marking the worker as dead.\n"
                     f"Worker info: {self._workers[hanging_rank]}"
                 )
@@ -574,19 +574,18 @@ class WorkerGroup:
 
             try:
                 poll_result: WorkerStatus = ray.get(done_poll)
-                poll_task_to_result[done_poll] = poll_result
             except Exception as e:
                 error_msg = (
                     "A worker health check failed.\n"
-                    f"Worker info: {self._workers[done_rank]}\n"
-                    f"{traceback.format_exc()}"
+                    f"Worker info: {self._workers[done_rank]}"
                 )
-
-                poll_task_to_result[done_poll] = WorkerStatus(
+                poll_result = WorkerStatus(
                     running=False,
                     error=WorkerHealthCheckFailedError(error_msg, failure=e),
                     training_result=None,
                 )
+
+            poll_task_to_result[done_poll] = poll_result
 
         # Collect the results and errors in the order of the workers.
         results = [

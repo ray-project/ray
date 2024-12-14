@@ -2,6 +2,7 @@ import time
 
 import pytest
 
+from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 from ray.train.v2._internal.execution.worker_group.thread_runner import ThreadRunner
 
 
@@ -28,14 +29,23 @@ def test_error(thread_runner):
     """Checks that an exception can be captured from the target function."""
 
     def target():
-        raise ValueError
+        def nested():
+            raise ValueError
+
+        nested()
 
     thread_runner.run(target)
     assert not thread_runner.join()
 
     assert thread_runner.get_return_value() is None
     assert not thread_runner.is_running()
-    assert isinstance(thread_runner.get_error(), ValueError)
+
+    error = thread_runner.get_error()
+
+    assert isinstance(error, UserExceptionWithTraceback)
+    assert isinstance(error._base_exc, ValueError)
+    print(error._traceback_str)
+    assert "_run_target" not in error._traceback_str
 
 
 def test_running(thread_runner, tmp_path):

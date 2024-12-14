@@ -25,7 +25,7 @@ class WorkerHealthCheckTimeoutError(RayTrainError):
         message += (
             f"\nSet the {WORKER_HEALTH_CHECK_TIMEOUT_S_ENV_VAR} "
             "environment variable to increase the timeout "
-            f"(current value = {timeout} seconds)."
+            f"(current value: {timeout} seconds)."
         )
         super().__init__(message)
 
@@ -150,3 +150,22 @@ class BroadcastCollectiveTimeoutError(CollectiveTimeoutError):
             self.__class__,
             (self._time_elapsed, self._timeout_s),
         )
+
+
+class UserExceptionWithTraceback(RayTrainError):
+    """This class wraps a user code exception raised on the worker
+    with its original traceback string, for logging and debugging purposes.
+
+    This is needed because the original exception traceback is not serialized
+    with the exception when it is *returned* back to the main process.
+    """
+
+    def __init__(self, exc: BaseException, traceback_str: str):
+        self._base_exc = exc
+        self._traceback_str = traceback_str
+
+    def __reduce__(self):
+        return (self.__class__, (self._base_exc, self._traceback_str))
+
+    def __str__(self):
+        return self._traceback_str

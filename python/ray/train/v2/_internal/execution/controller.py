@@ -171,7 +171,7 @@ class TrainController:
 
         errors_str = "\n".join(
             [
-                f"[Rank {worker_rank}] {error}"
+                f"[Rank {worker_rank}]\n{error}"
                 for worker_rank, error in worker_group_status.errors.items()
             ]
         )

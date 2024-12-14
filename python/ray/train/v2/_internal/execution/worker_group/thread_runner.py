@@ -1,5 +1,8 @@
 import threading
+import traceback
 from typing import Callable, Optional, TypeVar
+
+from ray.train.v2._internal.exceptions import UserExceptionWithTraceback
 
 T = TypeVar("T")
 
@@ -11,7 +14,7 @@ class ThreadRunner:
 
     def __init__(self):
         self._ret: Optional[T] = None
-        self._exc: Optional[BaseException] = None
+        self._exc: Optional[UserExceptionWithTraceback] = None
 
         self._thread: Optional[threading.Thread] = None
         self._lock = threading.Lock()
@@ -32,7 +35,16 @@ class ThreadRunner:
                     self._ret = result
             except BaseException as e:
                 with self._lock:
-                    self._exc = e
+                    # Exclude the the first 2 frames from the traceback, which are
+                    # the `ThreadRunner._run_target` and `construct_train_func` calls.
+                    # TODO(justinvyu): This is brittle and may break if the call stack
+                    # changes. Figure out a more robust way to exclude these frames.
+                    exc_traceback_str = traceback.format_exc(
+                        limit=-(len(traceback.extract_tb(e.__traceback__)) - 2)
+                    )
+                    self._exc = UserExceptionWithTraceback(
+                        e, traceback_str=exc_traceback_str
+                    )
 
             with self._lock:
                 self._is_running = False

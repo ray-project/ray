@@ -177,7 +177,7 @@ def test_poll_status_healthcheck_timeout(monkeypatch):
 
     wg = _default_test_worker_group()
 
-    # Try 2x to ensure that shutdown clears the health-check miss count.
+    # Try 2x to ensure that shutdown clears the health-check hanging timer.
     for _ in range(2):
         wg.start(train_fn=lambda: None, num_workers=4, resources_per_worker={"CPU": 1})
 
