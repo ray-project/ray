@@ -1355,6 +1355,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
 
+  /// Register core worker to worker pool.
+  Status RegisterWorkerToWorkerPool(raylet::RayletConnection &conn,
+                                    const WorkerID &worker_id,
+                                    rpc::WorkerType worker_type,
+                                    const JobID &job_id,
+                                    int runtime_env_hash,
+                                    const Language &language,
+                                    const std::string &ip_address,
+                                    const std::string &serialized_job_config,
+                                    const StartupToken &startup_token,
+                                    NodeID *raylet_id,
+                                    int *port);
+
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
 
