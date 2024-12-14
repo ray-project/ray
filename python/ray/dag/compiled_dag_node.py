@@ -727,19 +727,14 @@ class ExecutableTask:
         if self.requires_nccl_read:
             resolved_inputs = [P2POp.RECV]
         else:
-            input_data = None
             with self._recv_stream:
                 assert self._intermediate_future is None
                 try:
                     input_data = self.input_reader.read()
-                    self.wrap_and_set_intermediate_future(
-                        input_data, wrap_in_gpu_future=overlap_gpu_communication
-                    )
                 except RayChannelError:
                     return True
 
             try:
-                input_data = self.reset_and_wait_intermediate_future()
                 _process_return_vals(input_data, return_single_output=False)
                 input_data_ready = []
                 for val in input_data:
@@ -790,7 +785,7 @@ class ExecutableTask:
                 except RayChannelError:
                     return True
                 except Exception as exc:
-                    if self.requires_nccl_read or self.requires_nccl_write:
+                    if self.nccl_op is not None:
                         raise exc
                     else:
                         output_val = _wrap_exception(exc)
