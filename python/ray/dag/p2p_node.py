@@ -1,4 +1,7 @@
-from typing import Any, Dict, List, Tuple
+from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import torch
 
 from ray.dag import (
     DAGNode,
@@ -7,8 +10,13 @@ from ray.dag import (
 from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.constants import P2P_OPERATION_KEY
 from ray.util.annotations import DeveloperAPI
+from ray.experimental.channel import (
+    ReaderInterface,
+    WriterInterface,
+)
+from ray.experimental.util.types import P2POp
 
-# [CL] Class comments.
+# [CL] Format. Class comments.
 
 
 class _P2POperation(_NcclOperation):
@@ -18,8 +26,11 @@ class _P2POperation(_NcclOperation):
 
     def __init__(self):
         super().__init__()
+        # [CL] The input reader and output writer for the P2P operation.
+        self.input_reader: Optional[ReaderInterface] = None
+        self.output_writer: Optional[WriterInterface] = None
 
-    def execute(self, data):
+    def execute(self, op: P2POp, data: Optional["torch.Tensor"] = None) -> Any:
         """
         Execute the NCCL P2P operation.
 
@@ -31,7 +42,26 @@ class _P2POperation(_NcclOperation):
                 NCCL send, this is the data to send. If the operation is a NCCL
                 recv, this is the data received.
         """
-        return data
+        # [CL]
+        if op == P2POp.SEND:
+            assert data is not None
+            self.output_writer.write(data)
+        elif op == P2POp.RECV:
+            return self.input_reader.read()
+
+    # def execute_old(self, data) -> Any:
+    #     """
+    #     Execute the NCCL P2P operation.
+
+    #     [CL]
+    #     This method is an identity function.
+
+    #     Args:
+    #         data: The data involved in the P2P operation. If the operation is a
+    #             NCCL send, this is the data to send. If the operation is a NCCL
+    #             recv, this is the data received.
+    #     """
+    #     return data
 
 
 class _P2PNode(ClassMethodNode):
@@ -69,7 +99,7 @@ class _P2PNode(ClassMethodNode):
         new_options: Dict[str, Any],
         new_other_args_to_resolve: Dict[str, Any],
     ):
-        raise NotImplementedError("Cannot copy an abstract _P2PNode")
+        raise NotImplementedError("Abstract _P2PNode cannot be copied")
 
     def _execute_impl(self, *args, **kwargs):
         raise NotImplementedError(

@@ -50,6 +50,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
 )
+from ray.experimental.util.types import P2POp
 from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
@@ -368,6 +369,7 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
+        from ray.dag.p2p_node import _P2POperation
 
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
@@ -434,11 +436,19 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
+        if self.requires_nccl_read:
+            assert isinstance(self.nccl_op, _P2POperation)
+            self.nccl_op.input_reader = self.input_reader
+        if self.requires_nccl_write:
+            assert isinstance(self.nccl_op, _P2POperation)
+            self.nccl_op.output_writer = self.output_writer
         # The intermediate future for a read or compute operation,
         # and `wait()` must be called to get the actual result of the operation.
         # The result of a read operation will be used by a compute operation,
         # and the result of a compute operation will be used by a write operation.
         self._intermediate_future: Optional[DAGOperationFuture] = None
+
+        self.actor_id = task.dag_node._get_actor_handle()._ray_actor_id
 
     def cancel(self):
         """
@@ -683,6 +693,230 @@ class ExecutableTask:
     #     return False
 
     def exec_operation(
+        self,
+        class_handle,
+        overlap_gpu_communication: bool = False,
+    ) -> bool:
+        """
+        An ExecutableTask corresponds to a DAGNode. It consists of three
+        operations: read, compute, and write, which should be executed in
+        order to ensure that each operation can read the correct intermediate
+        result.
+        Args:
+            class_handle: The handle of the class to which the actor belongs.
+            overlap_gpu_communication: Whether to overlap GPU communication with
+                computation during DAG execution to improve performance.
+        Returns:
+            True if the next operation should not be executed; otherwise, False.
+        """
+        import logging
+
+        logger = logging.getLogger(__name__)
+        logger.info(
+            f"actor_id: {self.actor_id}, method_name: '{self.method_name}', 'start', self: {self}"
+        )
+
+        resolved_inputs = None
+        if self.requires_nccl_read:
+            resolved_inputs = [P2POp.RECV]
+        else:
+            input_data = None
+            with self._recv_stream:
+                assert self._intermediate_future is None
+                try:
+                    input_data = self.input_reader.read()
+                    # When overlap_gpu_communication is enabled, wrap the result in
+                    # a GPUFuture so that this read operation (communication) can
+                    # be overlapped with computation.
+                    self.wrap_and_set_intermediate_future(
+                        input_data, wrap_in_gpu_future=overlap_gpu_communication
+                    )
+                except RayChannelError:
+                    # Channel closed. Exit the loop.
+                    return True
+
+            try:
+                input_data = self.reset_and_wait_intermediate_future()
+                _process_return_vals(input_data, return_single_output=False)
+
+                input_data_ready = []
+                for val in input_data:
+                    if isinstance(val, DAGOperationFuture):
+                        val = val.wait()
+                        if isinstance(val, RayTaskError):
+                            raise val.as_instanceof_cause()
+                    input_data_ready.append(val)
+
+                resolved_inputs = []
+                for task_input in self.task_inputs:
+                    resolved_inputs.append(task_input.resolve(input_data_ready))
+            except Exception as exc:
+                # Previous task raised an application-level exception.
+                # Propagate it and skip the actual task. We don't need to wrap the
+                # exception in a RayTaskError here because it has already been wrapped
+                # by the previous task.
+                self.wrap_and_set_intermediate_future(
+                    exc, wrap_in_gpu_future=overlap_gpu_communication
+                )
+
+            if self.requires_nccl_write:
+                if resolved_inputs is not None:
+                    assert len(resolved_inputs) == 1
+                    tensor = resolved_inputs[0]
+                    resolved_inputs = [P2POp.SEND, tensor]
+                else:
+                    exc = self.reset_and_wait_intermediate_future()
+                    resolved_inputs = [P2POp.SEND, exc]
+
+            logger.info(
+                f"actor_id: {self.actor_id}, method_name: '{self.method_name}', 'after read', input_data: {input_data}"
+            )
+
+        if resolved_inputs is not None:
+            if self.nccl_op is not None:
+                method = self.nccl_op.execute
+            else:
+                method = getattr(class_handle, self.method_name)
+            if self.requires_nccl_read:
+                with self._recv_stream:
+                    try:
+                        output_val = method(*resolved_inputs, **self.resolved_kwargs)
+                    except RayChannelError:
+                        # Channel closed. Exit the loop.
+                        return True
+                    assert len(output_val) == 1
+                    output_val = output_val[0]
+                    self.wrap_and_set_intermediate_future(
+                        output_val, wrap_in_gpu_future=overlap_gpu_communication
+                    )
+            elif self.requires_nccl_write:
+                with self._send_stream:
+                    try:
+                        output_val = method(*resolved_inputs, **self.resolved_kwargs)
+                    except RayChannelError:
+                        # Channel closed. Exit the loop.
+                        return True
+            else:
+                try:
+                    output_val = method(*resolved_inputs, **self.resolved_kwargs)
+                except Exception as exc:
+                    output_val = _wrap_exception(exc)
+                self.wrap_and_set_intermediate_future(
+                    output_val, wrap_in_gpu_future=overlap_gpu_communication
+                )
+
+            logger.info(
+                f"actor_id: {self.actor_id}, method_name: '{self.method_name}', 'after compute', resolved_inputs: {resolved_inputs}, output_val: {output_val}"
+            )
+
+        if not self.requires_nccl_write:
+            with self._send_stream:
+                if self.requires_nccl_read and overlap_gpu_communication:
+                    # [CL]
+                    # If overlapping, the input future of `P2PRecvNode` is directly
+                    # returned. The downstream task waits for the future in its `execute`.
+                    output_val = self._intermediate_future
+                    self._intermediate_future = None
+                else:
+                    # [CL]
+                    # If not overlapping, the `execute` future is waited here.
+                    output_val = self.reset_and_wait_intermediate_future()
+                try:
+                    self.output_writer.write(output_val)
+                except RayChannelError:
+                    # Channel closed. Exit the loop.
+                    return True
+
+                logger.info(
+                    f"actor_id: {self.actor_id}, method_name: '{self.method_name}', 'after write', output_val: {output_val}"
+                )
+
+        return False
+
+    # def exec_operation_exp(
+    #     self,
+    #     class_handle,
+    #     overlap_gpu_communication: bool = False,
+    # ) -> bool:
+    #     """
+    #     An ExecutableTask corresponds to a DAGNode. It consists of three
+    #     operations: read, compute, and write, which should be executed in
+    #     order to ensure that each operation can read the correct intermediate
+    #     result.
+    #     Args:
+    #         class_handle: The handle of the class to which the actor belongs.
+    #         overlap_gpu_communication: Whether to overlap GPU communication with
+    #             computation during DAG execution to improve performance.
+    #     Returns:
+    #         True if the next operation should not be executed; otherwise, False.
+    #     """
+
+    #     # [CL]
+    #     # import logging
+    #     # logger = logging.getLogger(__name__)
+    #     # logger.info(f"method_name: '{self.method_name}', 'start', self: {self}, actor_id: {self.actor_id}")
+
+    #     input_data = None
+    #     if not self.requires_nccl_read:
+    #         with self._recv_stream:
+    #             try:
+    #                 input_data = self.input_reader.read()
+    #             except RayChannelError:
+    #                 # Exit the loop if the channel is closed.
+    #                 return True
+    #         _process_return_vals(input_data, return_single_output=False)
+
+    #         # logger.info(f"method_name: '{self.method_name}', 'after read', requires_nccl_read: {self.requires_nccl_read}")
+
+    #     if input_data:
+    #         resolved_inputs = [
+    #             task_input.resolve(input_data) for task_input in self.task_inputs
+    #         ]
+    #     if self.requires_nccl_read:
+    #         resolved_inputs = [P2POp.RECV]
+    #     elif self.requires_nccl_write:
+    #         assert len(resolved_inputs) == 1
+    #         tensor = resolved_inputs[0]
+    #         resolved_inputs = [P2POp.SEND, tensor]
+
+    #     if self.nccl_op is not None:
+    #         # Run a NCCL operation.
+    #         method = self.nccl_op.execute
+    #     else:
+    #         # Run an actor method.
+    #         method = getattr(class_handle, self.method_name)
+
+    #     try:
+    #         output_val = method(*resolved_inputs, **self.resolved_kwargs)
+    #         # [TODO] When is output_val a future?
+    #         if self.requires_nccl_read:
+    #             assert len(output_val) == 1
+    #             output_val = output_val[0]
+    #             # if not overlap_gpu_communication:
+    #             #     future = output_val.wait()
+    #             #     assert isinstance(future, list) and len(future) == 1
+    #             #     output_val = future[0]
+    #     except Exception as exc:
+    #         output_val = _wrap_exception(exc)
+
+    #     if isinstance(output_val, RayTaskError):
+    #         raise output_val
+
+    #     # logger.info(f"method_name: '{self.method_name}', 'after compute', output_val: {output_val}")
+
+    #     if not self.requires_nccl_write:
+    #         with self._send_stream:
+    #             try:
+    #                 self.output_writer.write(output_val)
+    #             except RayChannelError:
+    #                 # Exit the loop if the channel is closed.
+    #                 return True
+
+    #         # logger.info(f"method_name: '{self.method_name}', 'after write', output_val: {output_val}")
+
+    #     return False
+
+    def exec_operation_old(
         self,
         class_handle,
         overlap_gpu_communication: bool = False,

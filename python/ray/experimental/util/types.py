@@ -3,12 +3,18 @@ from enum import Enum
 from ray.util.annotations import PublicAPI
 
 
-class _CollectiveOpType(Enum):
+@PublicAPI
+class P2POp(Enum):
+    SEND = 0
+    RECV = 1
+
+
+class _CollectiveOp(Enum):
     pass
 
 
 @PublicAPI
-class ReduceOp(_CollectiveOpType):
+class ReduceOp(_CollectiveOp):
     SUM = 0
     PRODUCT = 1
     MAX = 2

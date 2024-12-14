@@ -13,7 +13,7 @@ from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelContext
 from ray.experimental.channel.torch_tensor_nccl_channel import _init_nccl_group
 from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
-from ray.experimental.util.types import _CollectiveOpType, ReduceOp
+from ray.experimental.util.types import _CollectiveOp, ReduceOp
 from ray.util.annotations import DeveloperAPI
 
 
@@ -35,7 +35,7 @@ class _CollectiveOperation(_NcclOperation):
     def __init__(
         self,
         input_nodes: List[DAGNode],
-        op: _CollectiveOpType,
+        op: _CollectiveOp,
         transport: Optional[Union[str, GPUCommunicator]] = None,
     ):
         super().__init__()
