@@ -2,7 +2,7 @@
 
 # Configure Ray clusters with authentication and access control using KubeRay
 
-This guide demonstrates how to secure Ray clusters deployed with KubeRay by enabling authentication and access control using Kubernetes Role-Based Access Control (RBAC). 
+This guide demonstrates how to secure Ray clusters deployed with KubeRay by enabling authentication and access control using Kubernetes Role-Based Access Control (RBAC).
 
 > **Note:** This guide is only supported for the RayCluster custom resource.
 
