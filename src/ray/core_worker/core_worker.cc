@@ -766,9 +766,9 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       raylet_client_factory,
       local_raylet_client_,
       object_lookup_fn,
-      task_manager_,
-      reference_counter_,
-      memory_store_,
+      *task_manager_,
+      *reference_counter_,
+      *memory_store_,
       [this](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
         RAY_LOG(DEBUG).WithField(object_id)
             << "Failed to recover object due to " << rpc::ErrorType_Name(reason);
