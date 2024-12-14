@@ -729,9 +729,7 @@ async def download_and_unpack_package(
         protocol, pkg_name = parse_uri(pkg_uri)
         if protocol == Protocol.GCS:
             if gcs_aio_client is None:
-                raise ValueError(
-                    "GCS client must be provided to download from GCS."
-                )
+                raise ValueError("GCS client must be provided to download from GCS.")
 
             # Download package from the GCS.
             code = await gcs_aio_client.internal_kv_get(
@@ -809,8 +807,7 @@ async def download_and_unpack_package(
                 except ImportError:
                     raise ImportError(
                         "You must `pip install smart_open` "
-                        f"to fetch {protocol.value.upper()} URIs. "
-                        + install_warning
+                        f"to fetch {protocol.value.upper()} URIs. " + install_warning
                     )
 
             with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
