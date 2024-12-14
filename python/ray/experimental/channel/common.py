@@ -342,6 +342,14 @@ class SynchronousReader(ReaderInterface):
                 timeout = max(timeout, 0)
         return results
 
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
+
 
 @DeveloperAPI
 class AwaitableBackgroundReader(ReaderInterface):
