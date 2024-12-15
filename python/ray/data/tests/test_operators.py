@@ -737,11 +737,6 @@ def test_offset_operator(ray_start_regular_shared):
         )
         output = []
         offset_op.start(ExecutionOptions())
-        if offset == 0:
-            assert not offset_op.has_next()
-            assert offset_op.completed()
-            continue
-
         while input_op.has_next():
             assert not offset_op.completed(), offset
             offset_op.add_input(input_op.get_next(), 0)
