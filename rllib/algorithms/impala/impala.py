@@ -573,7 +573,7 @@ class IMPALA(Algorithm):
             i: [] for i in range(self.num_learners or 1)
         }
         if self.config.enable_rl_module_and_learner:
-            assert self.config.num_aggregation_workers > 0
+            assert self.config.num_aggregator_actors_per_learner > 0
             # Get the devices of each learner.
             learner_locations = self.learner_group.foreach_learner(
                 func=lambda _learner: (_learner.node, _learner.device),
@@ -672,11 +672,12 @@ class IMPALA(Algorithm):
             def _func(actor, p):
                 return actor.get_batch(p)
 
-            packs = data_packages_for_aggregators[:self.config.num_aggregation_workers]
+            num_agg = self.config.num_aggregator_actors_per_learner * (self.config.num_learners or 1)
+            packs = data_packages_for_aggregators[:num_agg]
             self._aggregator_actor_manager.foreach_actor_async(
                 func=[functools.partial(_func, p=p) for p in packs],
             )
-            data_packages_for_aggregators = data_packages_for_aggregators[self.config.num_aggregation_workers:]
+            data_packages_for_aggregators = data_packages_for_aggregators[num_agg:]
 
         # Get n lists of m ObjRef[MABatch] (m=num_learners) to perform n calls to all
         # learner workers with the already GPU-located batches.
@@ -710,26 +711,15 @@ class IMPALA(Algorithm):
                         default=0,
                     ),
                 }
-                if self.config.num_aggregation_workers:
-                    learner_results = self.learner_group.update_from_batch(
-                        batch=batch_ref_or_episode_list_ref,
-                        async_update=do_async_updates,
-                        return_state=return_state,
-                        timesteps=timesteps,
-                        num_epochs=self.config.num_epochs,
-                        minibatch_size=self.config.minibatch_size,
-                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
-                    )
-                else:
-                    learner_results = self.learner_group.update_from_episodes(
-                        episodes=batch_ref_or_episode_list_ref,
-                        async_update=do_async_updates,
-                        return_state=return_state,
-                        timesteps=timesteps,
-                        num_epochs=self.config.num_epochs,
-                        minibatch_size=self.config.minibatch_size,
-                        shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
-                    )
+                learner_results = self.learner_group.update_from_batch(
+                    batch=batch_ref_or_episode_list_ref,
+                    async_update=do_async_updates,
+                    return_state=return_state,
+                    timesteps=timesteps,
+                    num_epochs=self.config.num_epochs,
+                    minibatch_size=self.config.minibatch_size,
+                    shuffle_batch_per_epoch=self.config.shuffle_batch_per_epoch,
+                )
                 # TODO (sven): Rename this metric into a more fitting name: ex.
                 #  `NUM_LEARNER_UPDATED_SINCE_LAST_WEIGHTS_SYNC`
                 self.metrics.log_value(
@@ -904,19 +894,12 @@ class IMPALA(Algorithm):
         bundles = (
             [
                 {
-                    # Driver + Aggregation Workers:
-                    # Force to be on same node to maximize data bandwidth
-                    # between aggregation workers and the learner (driver).
-                    # Aggregation workers tree-aggregate experiences collected
-                    # from RolloutWorkers (n rollout workers map to m
-                    # aggregation workers, where m < n) and always use 1 CPU
-                    # each.
+                    # Main algo process:
                     "CPU": (
                         max(
                             cf.num_cpus_for_main_process,
                             cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
                         )
-                        #+ cf.num_aggregation_workers
                     ),
                     # Use n GPUs if we have a local Learner (num_learners=0).
                     "GPU": (
@@ -959,7 +942,7 @@ class IMPALA(Algorithm):
             bundles += [{
                 "GPU": 0.01,
                 "CPU": 1,
-            } for _ in range(cf.num_aggregation_workers)]#cls._get_learner_bundles(cf)
+            } for _ in range(cf.num_aggregator_actors_per_learner)]#cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).

@@ -44,7 +44,7 @@ config = (
     )
     .env_runners(compress_observations=True)
     .training(
-        num_aggregation_workers=2,
+        num_aggregator_actors_per_learner=2,
         train_batch_size_per_learner=500,
         train_batch_size=500,
         #grad_clip=40.0,
