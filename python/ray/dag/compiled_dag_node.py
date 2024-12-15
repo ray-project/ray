@@ -823,6 +823,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
+        # List of task indices that are input attribute nodes.
+        self.input_attr_task_idxs: List[int] = []
         # Denotes whether execute/execute_async returns a list of refs/futures.
         self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
@@ -949,11 +951,13 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
 
-        # Find the input node to the DAG.
+        # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+            elif isinstance(task.dag_node, InputAttributeNode):
+                self.input_attr_task_idxs.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1088,6 +1092,9 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
+                # Add the type hint of the upstream node to the task.
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
@@ -1123,7 +1130,6 @@ class CompiledDAG:
                     direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
@@ -1496,8 +1502,6 @@ class CompiledDAG:
             )
 
         input_task = self.idx_to_task[self.input_task_idx]
-        # Register custom serializers for inputs provided to dag.execute().
-        input_task.dag_node.type_hint.register_custom_serializer()
         self.dag_input_channels = input_task.output_channels
         assert self.dag_input_channels is not None
 
@@ -1599,8 +1603,9 @@ class CompiledDAG:
             task = self.idx_to_task[output_idx]
             assert len(task.output_channels) == 1
             self.dag_output_channels.append(task.output_channels[0])
-            # Register custom serializers for DAG outputs.
-            output.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input, input attribute, and output nodes.
+        self._register_input_output_custom_serializer()
 
         assert self.dag_input_channels
         assert self.dag_output_channels
@@ -2745,6 +2750,26 @@ class CompiledDAG:
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
         return dot.source
+
+    def _register_input_output_custom_serializer(self):
+        """
+        Register custom serializers for input, input attribute, and output nodes.
+        """
+        assert self.input_task_idx is not None
+        assert self.output_task_idx is not None
+
+        # Register custom serializers for input node.
+        input_task = self.idx_to_task[self.input_task_idx]
+        input_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input attribute nodes.
+        for input_attr_task_idx in self.input_attr_task_idxs:
+            input_attr_task = self.idx_to_task[input_attr_task_idx]
+            input_attr_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for output nodes.
+        for output in self.idx_to_task[self.output_task_idx].args:
+            output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
