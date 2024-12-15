@@ -570,7 +570,7 @@ class IMPALA(Algorithm):
         # one of them.
         self._aggregator_episode_packs_being_built = []
         self._ma_batches_being_built: Dict[int, list] = {
-            i: [] for i in range(self.num_learners or 1)
+            i: [] for i in range(self.config.num_learners or 1)
         }
         if self.config.enable_rl_module_and_learner:
             assert self.config.num_aggregator_actors_per_learner > 0
