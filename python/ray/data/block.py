@@ -511,11 +511,29 @@ def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
     # boolean arrays.
     diffs = []
     if len(general_arrays) > 0:
-        diffs.append(np.vstack([ arr[1:] != arr[:-1] for arr in general_arrays]).any(axis=0))
+        diffs.append(
+            np.vstack([arr[1:] != arr[:-1] for arr in general_arrays]).any(axis=0)
+        )
     if len(num_arrays_with_nan) > 0:
-        diffs.append(np.vstack([ (arr[1:] != arr[:-1]) & (np.isfinite(arr[1:]) | np.isfinite(arr[:-1]))  for arr in num_arrays_with_nan]).any(axis=0))
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & (np.isfinite(arr[1:]) | np.isfinite(arr[:-1]))
+                    for arr in num_arrays_with_nan
+                ]
+            ).any(axis=0)
+        )
     if len(cat_arrays_with_none) > 0:
-        diffs.append(np.vstack([ (arr[1:] != arr[:-1]) & ~( np.equal(arr[1:], None) & np.equal(arr[:-1], None)) for arr in cat_arrays_with_none]).any(axis=0))
+        diffs.append(
+            np.vstack(
+                [
+                    (arr[1:] != arr[:-1])
+                    & ~(np.equal(arr[1:], None) & np.equal(arr[:-1], None))
+                    for arr in cat_arrays_with_none
+                ]
+            ).any(axis=0)
+        )
 
     # A series of vectorized operations to compute the boundaries:
     # - column_stack: stack the bool arrays into a single 2D bool array
@@ -525,12 +543,7 @@ def _get_block_boundaries(arrays: list[np.ndarray]) -> np.ndarray:
     boundaries = np.hstack(
         [
             [0],
-            (
-                np.column_stack(diffs)
-                .any(axis=1)
-                .nonzero()[0]
-                + 1
-            ),
+            (np.column_stack(diffs).any(axis=1).nonzero()[0] + 1),
             [len(arrays[0])],
         ]
     ).astype(int)
