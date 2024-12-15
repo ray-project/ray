@@ -33,6 +33,7 @@ from ray.data._internal.execution.operators.map_operator import (
 from ray.data._internal.execution.operators.map_transformer import (
     create_map_transformer_from_block_fn,
 )
+from ray.data._internal.execution.operators.offset_operator import OffsetOperator
 from ray.data._internal.execution.operators.output_splitter import OutputSplitter
 from ray.data._internal.execution.operators.task_pool_map_operator import (
     TaskPoolMapOperator,
@@ -718,6 +719,64 @@ def test_limit_operator(ray_start_regular_shared):
         # should be the same as the number of `add_input`s.
         assert limit_op.num_outputs_total() == loop_count, limit
         assert limit_op.completed(), limit
+
+
+def test_offset_operator(ray_start_regular_shared):
+    """Test basic functionalities of OffsetOperator."""
+    num_refs = 3
+    num_rows_per_block = 3
+    total_rows = num_refs * num_rows_per_block
+    # Test offsets with different values, from 0 to more than input size.
+    offsets = list(range(0, total_rows + 2))
+    for offset in offsets:
+        refs = make_ref_bundles([[i] * num_rows_per_block for i in range(num_refs)])
+        input_op = InputDataBuffer(DataContext.get_current(), refs)
+        offset_op = OffsetOperator(offset, input_op, DataContext.get_current())
+        offset_op.mark_execution_completed = MagicMock(
+            wraps=offset_op.mark_execution_completed
+        )
+        output = []
+        offset_op.start(ExecutionOptions())
+        if offset == 0:
+            assert not offset_op.has_next()
+            assert offset_op.completed()
+            continue
+
+        while input_op.has_next():
+            assert not offset_op.completed(), offset
+            offset_op.add_input(input_op.get_next(), 0)
+            while offset_op.has_next():
+                bundle = offset_op.get_next()
+                output.extend(_get_bundles(bundle))
+        offset_op.all_inputs_done()
+        while offset_op.has_next():
+            bundle = offset_op.get_next()
+            output.extend(_get_bundles(bundle))
+        # Generate expected output
+        expected_output = []
+        for i in range(num_refs):
+            expected_output.extend([i] * num_rows_per_block)
+        expected_output = expected_output[offset:]
+        assert (
+            output == expected_output
+        ), f"Offset {offset}, expected {expected_output}, got {output}"
+
+
+def test_offset_operator_zero_rows(ray_start_regular_shared):
+    """Test OffsetOperator with zero rows input."""
+    refs = make_ref_bundles([])  # No data
+    input_op = InputDataBuffer(DataContext.get_current(), refs)
+    offset0_op = OffsetOperator(0, input_op, DataContext.get_current())
+    offset0_op.start(ExecutionOptions())
+    offset0_op.all_inputs_done()
+    assert not offset0_op.has_next()
+    assert offset0_op.completed()
+
+    offset1_op = OffsetOperator(1, input_op, DataContext.get_current())
+    offset1_op.start(ExecutionOptions())
+    offset1_op.all_inputs_done()
+    assert not offset1_op.has_next()
+    assert offset1_op.completed()
 
 
 def _get_bundles(bundle: RefBundle):

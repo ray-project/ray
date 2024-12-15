@@ -78,3 +78,47 @@ class Limit(AbstractOneToOne):
     def _input_files(self):
         assert len(self._input_dependencies) == 1, len(self._input_dependencies)
         return self._input_dependencies[0].aggregate_output_metadata().input_files
+
+
+class Offset(AbstractOneToOne):
+    """Logical operator for offset."""
+
+    def __init__(
+        self,
+        input_op: LogicalOperator,
+        offset: int,
+    ):
+        super().__init__(
+            f"offset={offset}",
+            input_op,
+        )
+        self._offset = offset
+
+    @property
+    def can_modify_num_rows(self) -> bool:
+        return True
+
+    def aggregate_output_metadata(self) -> BlockMetadata:
+        return BlockMetadata(
+            num_rows=self._num_rows(),
+            size_bytes=None,
+            schema=self._schema(),
+            input_files=self._input_files(),
+            exec_stats=None,
+        )
+
+    def _schema(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata().schema
+
+    def _num_rows(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        input_rows = self._input_dependencies[0].aggregate_output_metadata().num_rows
+        if input_rows is not None:
+            return max(0, input_rows - self._offset)
+        else:
+            return None
+
+    def _input_files(self):
+        assert len(self._input_dependencies) == 1, len(self._input_dependencies)
+        return self._input_dependencies[0].aggregate_output_metadata().input_files
