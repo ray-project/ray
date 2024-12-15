@@ -369,8 +369,6 @@ class ExecutableTask:
                 do not support binding kwargs to other DAG nodes, so the values
                 of the dictionary cannot be Channels.
         """
-        from ray.dag.p2p_node import _P2POperation
-
         self.method_name = task.dag_node.get_method_name()
         self.bind_index = task.dag_node._get_bind_index()
         self.output_channels = task.output_channels
@@ -436,12 +434,18 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
+        # An executable task cannot both read and write via NCCL.
+        assert self.requires_nccl_read + self.requires_nccl_write <= 1
+        # The NCCL channel for P2P communication if the task is NCCL read or write.
+        # None if the task is not NCCL read or write.
+        self.nccl_ch: Optional[ChannelInterface] = None
         if self.requires_nccl_read:
-            assert isinstance(self.nccl_op, _P2POperation)
-            self.nccl_op.input_reader = self.input_reader
-        if self.requires_nccl_write:
-            assert isinstance(self.nccl_op, _P2POperation)
-            self.nccl_op.output_writer = self.output_writer
+            assert len(self.input_channels) == 1
+            self.nccl_ch = self.input_channels[0]
+        elif self.requires_nccl_write:
+            assert len(self.output_channels) == 1
+            self.nccl_ch = self.output_channels[0]
+
         # The intermediate future for a read or compute operation,
         # and `wait()` must be called to get the actual result of the operation.
         # The result of a read operation will be used by a compute operation,
@@ -727,7 +731,7 @@ class ExecutableTask:
         """
 
         if self.requires_nccl_read:
-            input_values = [P2POp.RECV]
+            input_values = [P2POp.RECV, self.nccl_ch]
         else:
             try:
                 input_data = self.input_reader.read()
@@ -756,10 +760,10 @@ class ExecutableTask:
                 if input_values is not None:
                     assert len(input_values) == 1
                     tensor = input_values[0]
-                    input_values = [P2POp.SEND, tensor]
+                    input_values = [P2POp.SEND, self.nccl_ch, tensor]
                 else:
                     exc = self.fetch_intermediate_future(wait_gpu_future=True)
-                    input_values = [P2POp.SEND, exc]
+                    input_values = [P2POp.SEND, self.nccl_ch, exc]
 
             """
             logger.info(
@@ -790,10 +794,6 @@ class ExecutableTask:
                         raise exc
                     else:
                         output_val = _wrap_exception(exc)
-
-                if self.requires_nccl_read:
-                    assert len(output_val) == 1
-                    output_val = output_val[0]
 
                 if not self.requires_nccl_write:
                     self.wrap_and_set_intermediate_future(

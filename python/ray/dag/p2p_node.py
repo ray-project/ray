@@ -10,10 +10,7 @@ from ray.dag import (
 from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.constants import P2P_OPERATION_KEY
 from ray.util.annotations import DeveloperAPI
-from ray.experimental.channel import (
-    ReaderInterface,
-    WriterInterface,
-)
+from ray.experimental.channel import ChannelInterface
 from ray.experimental.util.types import P2POp
 
 # [CL] Format. Class comments.
@@ -26,11 +23,10 @@ class _P2POperation(_NcclOperation):
 
     def __init__(self):
         super().__init__()
-        # [CL] The input reader and output writer for the P2P operation.
-        self.input_reader: Optional[ReaderInterface] = None
-        self.output_writer: Optional[WriterInterface] = None
 
-    def execute(self, op: P2POp, data: Optional["torch.Tensor"] = None) -> Any:
+    def execute(
+        self, op: P2POp, ch: ChannelInterface, data: Optional["torch.Tensor"] = None
+    ) -> Any:
         """
         Execute the NCCL P2P operation.
 
@@ -39,6 +35,8 @@ class _P2POperation(_NcclOperation):
         If the operation is a NCCL recv, read the data from the input reader.
 
         Args:
+            op: The type of the P2P operation, either SEND or RECV.
+            ch: The channel to use for the P2P operation.
             data: The data involved in the P2P operation. If the operation is a
                 NCCL send, this is the data to send. If the operation is a NCCL
                 recv, this should be None.
@@ -50,9 +48,9 @@ class _P2POperation(_NcclOperation):
         # [CL]
         if op == P2POp.SEND:
             assert data is not None
-            self.output_writer.write(data)
+            ch.write(data)
         elif op == P2POp.RECV:
-            return self.input_reader.read()
+            return ch.read()
 
 
 class _P2PNode(ClassMethodNode):
