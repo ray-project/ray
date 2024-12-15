@@ -5,9 +5,9 @@ import tree  # pip install dm_tree
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.core import Columns
 from ray.rllib.policy.sample_batch import MultiAgentBatch, SampleBatch
 from ray.rllib.utils.actor_manager import FaultAwareApply
+from ray.rllib.utils.framework import get_device
 from ray.rllib.utils.typing import EpisodeType
 from ray.util.annotations import DeveloperAPI
 
@@ -45,9 +45,11 @@ class AggregatorActor(FaultAwareApply):
     to the LearnerGroup for calling each Learner with one train batch.
     """
 
-    def __init__(self, config: AlgorithmConfig, device=None):
+    def __init__(self, config: AlgorithmConfig):
         self.config = config
-        self._device = device or "cpu"
+
+        # Set device.
+        self._device = get_device(self.config, 1)
 
         # Create the RLModule.
         # TODO (sven): For now, this RLModule (its weights) never gets updated.
@@ -81,6 +83,3 @@ class AggregatorActor(FaultAwareApply):
             env_steps=env_steps,
         )
         return ma_batch_on_gpu
-
-    def get_host(self) -> str:
-        return platform.node()

@@ -551,6 +551,7 @@ class AlgorithmConfig(_Config):
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
         self._dont_auto_sync_env_runner_states = False
+        self._dont_build_learner_connector_on_learner = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
