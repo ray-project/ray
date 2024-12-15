@@ -1188,6 +1188,35 @@ def test_groupby_map_groups_multicolumn(
         {"count": 16},
     ]
 
+@pytest.mark.parametrize("num_parts", [1, 30])
+@pytest.mark.parametrize("ds_format", ["pyarrow", "pandas", "numpy"])
+def test_groupby_map_groups_multicolumn_with_nan(
+    ray_start_regular_shared, ds_format, num_parts, use_push_based_shuffle
+):
+    # Test with some NaN values
+    rng = np.random.default_rng(RANDOM_SEED)
+    xs = np.arange(100, dtype=np.float64)
+    xs[-5:] = np.nan
+    rng.shuffle(xs)
+
+    ds = ray.data.from_items([{"A": (x % 2) if np.isfinite(x) else x, "B": (x % 3) if np.isfinite(x) else x} for x in xs]).repartition(
+        num_parts
+    )
+
+    agg_ds = ds.groupby(["A", "B"]).map_groups(
+        lambda df: {"count": [len(df["A"])]}, batch_format=ds_format
+    )
+    assert agg_ds.count() == 7
+    assert agg_ds.take_all() == [
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 16},
+        {"count": 15},
+        {"count": 5},
+    ]
+
 
 def test_groupby_map_groups_with_partial():
     """
