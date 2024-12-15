@@ -39,7 +39,8 @@ class OffsetOperator(OneToOneOperator):
         assert not self.completed()
         assert input_index == 0, input_index
         if self._offset_reached():
-            # The offset has been reached, so we can pass through all incoming input blocks.
+            # The offset has been reached,
+            # so we can pass through all incoming input blocks.
             out_blocks: List[ObjectRef[Block]] = []
             out_metadata: List[BlockMetadata] = []
             for block, metadata in refs.blocks:
