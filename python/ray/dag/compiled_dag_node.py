@@ -2156,11 +2156,20 @@ class CompiledDAG:
 
         if self._returns_list:
             ref = [
-                CompiledDAGRef(self, self._execution_index, channel_index)
+                CompiledDAGRef(
+                    self,
+                    self._execution_index,
+                    list(self.worker_task_refs.values()),
+                    channel_index,
+                )
                 for channel_index in range(len(self.dag_output_channels))
             ]
         else:
-            ref = CompiledDAGRef(self, self._execution_index)
+            ref = CompiledDAGRef(
+                self,
+                self._execution_index,
+                list(self.worker_task_refs.values()),
+            )
 
         self._execution_index += 1
         return ref

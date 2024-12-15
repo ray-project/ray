@@ -2,7 +2,7 @@ import asyncio
 from typing import Any, List, Optional
 
 import ray
-from ray.exceptions import RayTaskError
+from ray.exceptions import RayChannelError, RayTaskError
 from ray.util.annotations import PublicAPI
 
 
@@ -46,6 +46,7 @@ class CompiledDAGRef:
         self,
         dag: "ray.experimental.CompiledDAG",
         execution_index: int,
+        actor_task_refs: List[ray.ObjectRef],
         channel_index: Optional[int] = None,
     ):
         """
@@ -54,14 +55,19 @@ class CompiledDAGRef:
             execution_index: The index of the execution for the DAG.
                 A DAG can be executed multiple times, and execution index
                 indicates which execution this CompiledDAGRef corresponds to.
+            actor_task_refs: The actor task refs that are used to execute
+                the DAG. This can be used internally to check the task
+                execution errors in case of exceptions.
             channel_index: The index of the DAG's output channel to fetch
                 the result from. A DAG can have multiple output channels, and
                 channel index indicates which channel this CompiledDAGRef
                 corresponds to. If channel index is not provided, this CompiledDAGRef
                 wraps the results from all output channels.
+
         """
         self._dag = dag
         self._execution_index = execution_index
+        self._actor_task_refs = actor_task_refs
         self._channel_index = channel_index
         # Whether ray.get() was called on this CompiledDAGRef.
         self._ray_get_called = False
@@ -100,10 +106,32 @@ class CompiledDAGRef:
             )
 
         self._ray_get_called = True
-        return_vals = self._dag._execute_until(
-            self._execution_index, self._channel_index, timeout
-        )
-        return _process_return_vals(return_vals, True)
+        try:
+            return_vals = self._dag._execute_until(
+                self._execution_index, self._channel_index, timeout
+            )
+            return _process_return_vals(return_vals, True)
+        except RayChannelError as channel_error:
+            # If we get a channel error, we'd like to call ray.get()
+            # on the actor task refs to check if this is a result of
+            # task execution error which could not be passed down
+            # (e.g., when a pure NCCL channel is used, it is only
+            # able to send tensors, but not the wrapped exceptions).
+            # In this case, we'd like to raise the task execution error
+            # (which is the actual cause of the channel error) instead
+            # of the channel error itself.
+            # TODO(rui): determine which error to raise if multiple
+            # actor task refs have errors.
+            try:
+                ray.get(self._actor_task_refs)
+            except Exception as task_error:
+                # Use 'from None' to suppress the context of the original
+                # channel error, which is not useful to the user.
+                raise task_error from None
+            else:
+                raise channel_error
+        except Exception:
+            raise
 
 
 @PublicAPI(stability="alpha")

@@ -64,6 +64,9 @@ class TorchTensorWorker:
             raise RuntimeError()
         return torch.ones(shape, dtype=dtype, device=self.device) * value
 
+    def send_int(self, value: int):
+        return value
+
     def recv(self, tensor):
         # Check that tensor got loaded to the correct device.
         assert tensor.device == self.device
@@ -828,7 +831,7 @@ def test_torch_tensor_exceptions(
     ray_start_regular, static_shape, direct_return, overlap_gpu_communication
 ):
     """
-    Test exceptions being thrown by a NCCL sending task.
+    Test exceptions being thrown by a NCCL sending task's execution.
     """
     if not USE_GPU:
         pytest.skip("NCCL tests require GPUs")
@@ -881,10 +884,9 @@ def test_torch_tensor_exceptions(
         value=i,
         raise_exception=True,
     )
+
     if static_shape or direct_return:
-        with pytest.raises(RayChannelError):
-            # TODO(swang): Ideally return the RuntimeError thrown by the
-            # application instead of a generic RayChannelError.
+        with pytest.raises(RuntimeError):
             ray.get(ref)
 
         with pytest.raises(RayChannelError):
@@ -909,6 +911,49 @@ def test_torch_tensor_exceptions(
         )
         result = ray.get(ref)
         assert result == (i, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_exceptions2(
+    ray_start_regular,
+):
+    """
+    Test exceptions being thrown by a NCCL sending task's write operation.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_gpus=1)
+    sender = actor_cls.remote()
+    receiver = actor_cls.remote()
+
+    with InputNode() as inp:
+        dag = sender.send_int.bind(inp)
+        dag = dag.with_type_hint(
+            TorchTensorType(
+                transport="nccl",
+                _direct_return=True,
+                _static_shape=True,
+            )
+        )
+        dag = receiver.recv.bind(dag)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute(1)
+    with pytest.raises(
+        ValueError,
+        match="Task annotated with _direct_return=True must return a CUDA torch.Tensor, instead found value `1`. DAG will shut down.",
+    ):
+        ray.get(ref)
+
+    with pytest.raises(RayChannelError):
+        # The DAG is not usable after the exception.
+        ref = compiled_dag.execute(2)
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)

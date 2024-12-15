@@ -166,8 +166,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         if isinstance(value, ray.exceptions.RayTaskError):
             if self._typ.static_shape or self._typ.direct_return:
                 # Raise a fatal error to teardown the DAG.
-                # TODO(swang): Write exceptions to the tensor metadata or
-                # non-tensor data channel if it is available.
+                # This error will also be caught from `CompiledDAGRef.get()`
+                # and raised to the user
                 raise value
 
         if self._cpu_data_channel is None:
@@ -176,12 +176,12 @@ class TorchTensorNcclChannel(ChannelInterface):
             # directly without trying to serialize it first.
             import torch
 
+            # These ValueErrors will also be caught from `CompiledDAGRef.get()`
+            # and raised to the user
             if not isinstance(value, torch.Tensor):
-                # TODO(swang): These errors are currently fatal for the DAG
-                # because there is no way for the receiver to receive the
-                # exception. This could be improved by sending the exception
-                # through the gpu_data_channel's CPU-based metadata channel,
-                # if one exists.
+                # TODO(swang): These errors are currently fatal for the DAG.
+                # This could be improved by sending the exception through the
+                # gpu_data_channel's CPU-based metadata channel, if one exists.
                 raise ValueError(
                     "Task annotated with _direct_return=True must "
                     "return a CUDA torch.Tensor, instead found value "
