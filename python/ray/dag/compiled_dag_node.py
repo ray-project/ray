@@ -526,15 +526,19 @@ class ExecutableTask:
     def fetch_intermediate_future(self, wait_gpu_future: bool) -> Any:
         """
         [CL]
-        Reset the intermediate future and wait for the result.
+        Reset the intermediate future. Return the future or wait for the result.
 
-        The wait does not block the CPU because:
+        If the result is waited, the wait does not block the CPU because:
         - If the future is a ResolvedFuture, the result is immediately returned.
         - If the future is a GPUFuture, the result is only waited by the current
             CUDA stream, and the CPU is not blocked.
 
+        Args:
+            wait_gpu_future: Whether to wait for the GPU future.
+
         Returns:
-            The result of a read or compute operation from the intermediate future.
+            The intermediate future if `wait_gpu_future` is False; the result from
+            the intermediate future if `wait_gpu_future` is True.
         """
         future = self._intermediate_future
         self._intermediate_future = None

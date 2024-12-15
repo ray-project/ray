@@ -35,12 +35,17 @@ class _P2POperation(_NcclOperation):
         Execute the NCCL P2P operation.
 
         [CL]
-        This method is an identity function.
+        If the operation is a NCCL send, write the data to the output writer.
+        If the operation is a NCCL recv, read the data from the input reader.
 
         Args:
             data: The data involved in the P2P operation. If the operation is a
                 NCCL send, this is the data to send. If the operation is a NCCL
-                recv, this is the data received.
+                recv, this should be None.
+
+        Returns:
+            If the operation is a NCCL send, return None. If the operation is a
+            NCCL recv, return the received data.
         """
         # [CL]
         if op == P2POp.SEND:

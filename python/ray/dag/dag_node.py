@@ -96,9 +96,8 @@ class DAGNode(DAGNodeBase):
         in any NCCL op, return None.
 
         [CL]
-        Some operations (e.g., synchronous NCCL operations) in the DAG are synchronous.
-        During DAG compilation, when scheduling NCCL ops, all nodes in
-        the same NCCL op must be ready.
+        NCCL ops in the DAG are synchronous. During DAG compilation, when
+        scheduling NCCL ops, all nodes in the same NCCL op must be ready.
         """
         return None
 
