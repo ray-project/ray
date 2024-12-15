@@ -593,17 +593,12 @@ class IMPALA(Algorithm):
             aggregator_actors = [
                 actor for actor_groups in all_co_located for actor in actor_groups
             ]
-            #TEST: do not use manager yet
-            #self._test_aggregator_actors = aggregator_actors
             self._aggregator_actor_manager = FaultTolerantActorManager(
                 aggregator_actors,
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_worker
                 ),
             )
-            #self._aggregator_actor_manager = None
-            #END TEST
-
         elif self.config.enable_rl_module_and_learner:
             self._aggregator_actor_manager = None
         else:
@@ -687,15 +682,6 @@ class IMPALA(Algorithm):
         data_packages_for_learner_group = self._pre_queue_batch_refs(ma_batches_refs)
 
         time.sleep(0.01)
-
-        # If we do tree aggregation, we perform the LearnerConnector pass on the
-        # aggregation workers.
-        #if self.config.num_aggregation_workers:
-        #    data_packages_for_learner_group = (
-        #        self._process_env_runner_data_via_aggregation(
-        #            data_packages_for_learner_group
-        #        )
-        #    )
 
         # TODO (sven): When and how long to sleep best is an ongoing investigation.
         #  We observe
@@ -897,61 +883,6 @@ class IMPALA(Algorithm):
                 self._ma_batch_being_built = []
 
         return batch_refs_for_learner_group
-
-    def _process_env_runner_data_via_aggregation(
-        self,
-        learner_group_data_packages: List[List[ObjectRef]],
-    ) -> List[ObjectRef]:
-        """Process sample batches using tree aggregation workers.
-
-        Args:
-            learner_group_data_packages: List of (env_runner_id, ObjectRef of EnvRunner-
-                returned data)
-
-        NOTE: This will provide speedup when sample batches have been compressed,
-        and the decompression can happen on the aggregation workers in parallel to
-        the training.
-
-        Returns:
-            Batches that have been processed by the mixin buffers on the aggregation
-            workers.
-        """
-
-        def _process_data(_actor, _episodes):
-            return _actor.process_episodes(ray.get(_episodes))
-
-        for data in learner_group_data_packages:
-            assert isinstance(data, ObjectRef), (
-                "For efficiency, process_experiences_tree_aggregation should "
-                f"be given ObjectRefs instead of {type(data)}."
-            )
-            # Randomly pick an aggregation worker to process this batch.
-            aggregator_id = random.choice(
-                self._aggregator_actor_manager.healthy_actor_ids()
-            )
-            calls_placed = self._aggregator_actor_manager.foreach_actor_async(
-                partial(_process_data, _episodes=data),
-                remote_actor_ids=[aggregator_id],
-            )
-            if calls_placed <= 0:
-                self.metrics.log_value(
-                    "num_times_no_aggregation_worker_available", 1, reduce="sum"
-                )
-
-        waiting_processed_sample_batches: RemoteCallResults = (
-            self._aggregator_actor_manager.fetch_ready_async_reqs(
-                timeout_seconds=self.config.timeout_s_aggregator_manager,
-            )
-        )
-        FaultTolerantActorManager.handle_remote_call_result_errors(
-            waiting_processed_sample_batches,
-            ignore_ray_errors=(
-                self.config.ignore_env_runner_failures
-                or self.config.restart_failed_env_runners
-            ),
-        )
-
-        return list(waiting_processed_sample_batches.ignore_errors())
 
     @classmethod
     @override(Algorithm)

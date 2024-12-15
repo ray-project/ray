@@ -49,56 +49,37 @@ class AggregatorActor(FaultAwareApply):
         self.config = config
         self._device = device or "cpu"
 
-        # The number of env steps that are inside each `episode_ref` coming from a
-        # single `EnvRunner.sample()` call.
-        #self._ts_per_episodes_ref = (
-        #    self.config.get_rollout_fragment_length()
-        #    * self.config.num_envs_per_env_runner
-        #)
+        # Create the RLModule.
+        # TODO (sven): For now, this RLModule (its weights) never gets updated.
+        #  The reason the module is needed is for the connector to know, which
+        #  sub-modules are stateful (and what their initial state tensors are), and
+        #  which IDs the submodules have (to figure out, whether its multi-agent or
+        #  not).
+        self._module = self.config.get_multi_agent_module_spec().build()
+        self._module = self._module.as_multi_rl_module()
+
+        # Create the Learner connector pipeline.
         self._learner_connector = self.config.build_learner_connector(
             input_observation_space=None,
             input_action_space=None,
             device=self._device,
         )
-        self._rl_module = None
-        #self._episodes = []
 
     def get_batch(self, episode_refs: List[ray.ObjectRef]):
         episodes: List[EpisodeType] = tree.flatten(ray.get(episode_refs))
-
-        #batches = []
-
-        #for episode in episodes:
-        #    self._episodes.append(episode)
 
         env_steps = sum(len(e) for e in episodes)
 
         # If we have enough episodes collected to create a single train batch, pass
         # them at once through the connector to recieve a single train batch.
-        #if env_steps >= self.config.train_batch_size_per_learner:
         batch_on_gpu = self._learner_connector(
             episodes=episodes,
-            rl_module=self._rl_module,
+            rl_module=self._module,
         )
-
-        #print(list(batch_on_cpu.keys()))
-
-        # Load the batch onto the GPU device.
-        #batch_on_gpu = tree.map_structure_with_path(
-        #    lambda path, t: (
-        #        t
-        #        if isinstance(path, tuple) and Columns.INFOS in path
-        #        else t.to(self._device, non_blocking=True)
-        #    ),
-        #    batch_on_cpu,
-        #)
         ma_batch_on_gpu = MultiAgentBatch(
             policy_batches={"default_policy": SampleBatch(batch_on_gpu)},
             env_steps=env_steps,
         )
-        #batches.append(batch_on_gpu)
-        #self._episodes.clear()
-
         return ma_batch_on_gpu
 
     def get_host(self) -> str:

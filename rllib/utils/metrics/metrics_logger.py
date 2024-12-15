@@ -463,7 +463,8 @@ class MetricsLogger:
                 clear_on_reduce=clear_on_reduce,
             )
 
-        tree.map_structure_with_path(_map, stats_dict)
+        with self._threading_lock:
+            tree.map_structure_with_path(_map, stats_dict)
 
     def merge_and_log_n_dicts(
         self,

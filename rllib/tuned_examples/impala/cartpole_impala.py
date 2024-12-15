@@ -57,16 +57,16 @@ config = (
         #},
         model={
             "fcnet_hiddens": [2048, 2048, 2048],
-            #"use_lstm": True,
-            #"lstm_cell_size": 2048,
+            "use_lstm": True,
+            "lstm_cell_size": 2048,
             "vf_share_layers": False,
         },
     )
     .rl_module(
         model_config=DefaultModelConfig(
             fcnet_hiddens=[2048, 2048, 2048],
-            #use_lstm=True,
-            #lstm_cell_size=2048,
+            use_lstm=True,
+            lstm_cell_size=2048,
             vf_share_layers=False,
         ),
     )

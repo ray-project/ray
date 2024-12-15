@@ -95,19 +95,16 @@ class NumpyToTensor(ConnectorV2):
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        # TODO: Need RLModule?
         is_single_agent = False
-        #is_multi_rl_module = isinstance(rl_module, MultiRLModule)
+        is_multi_rl_module = isinstance(rl_module, MultiRLModule)
         # `data` already a ModuleID to batch mapping format.
-        #if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in batch)):
-        if not all(c in {DEFAULT_MODULE_ID} for c in batch):
+        if not (is_multi_rl_module and all(c in rl_module._rl_modules for c in batch)):
             is_single_agent = True
             batch = {DEFAULT_MODULE_ID: batch}
 
         for module_id, module_data in batch.copy().items():
             infos = module_data.pop(Columns.INFOS, None)
-            # TODO: Need RLModule?
-            if True:#rl_module.framework == "torch":
+            if rl_module.framework == "torch":
                 module_data = convert_to_torch_tensor(
                     module_data, pin_memory=self._pin_memory, device=self._device
                 )
