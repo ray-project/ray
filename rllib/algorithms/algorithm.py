@@ -197,20 +197,17 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            num_learners = cf.num_learners or 1
-            num_cpus = max(
-                cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
-                cf.num_cpus_for_main_process if cf.num_learners == 0 else 0,
-            )
-            num_gpus = num_learners * (
-                cf.num_gpus_per_learner - 0.01 * cf.num_aggregator_actors_per_learner
+            assert cf.num_learners > 0
+            num_gpus = cf.num_learners * max(
+                0,
+                cf.num_gpus_per_learner - 0.01 * cf.num_aggregator_actors_per_learner,
             )
             return [{
-                "CPU": num_cpus,
+                "CPU": cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
                 "GPU": num_gpus,
-            }] * num_learners + [
+            }] * cf.num_learners + [
                 {"CPU": 1, "GPU": 0.01 if cf.num_gpus_per_learner > 0 else 0}
-            ] * (num_learners * cf.num_aggregator_actors_per_learner)
+            ] * (cf.num_learners * cf.num_aggregator_actors_per_learner)
 
             #if cf.num_learners > 0:
             #    if cf.num_gpus_per_learner:

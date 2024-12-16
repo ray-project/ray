@@ -892,7 +892,9 @@ class IMPALA(Algorithm):
                     ),
                     # Use n GPUs if we have a local Learner (num_learners=0).
                     "GPU": (
-                        (cf.num_gpus_per_learner if cf.num_learners == 0 else 0)
+                        (
+                            cf.num_gpus_per_learner if cf.num_learners == 0 else 0
+                        )
                         if cf.enable_rl_module_and_learner
                         else (0 if cf._fake_gpus else cf.num_gpus)
                     ),
@@ -927,7 +929,7 @@ class IMPALA(Algorithm):
         #  factories.
         # Only if we have actual (remote) learner workers. In case of a local learner,
         # the resource has already been taken care of above.
-        if cf.enable_rl_module_and_learner:
+        if cf.enable_rl_module_and_learner and cf.num_learners > 0:
             bundles += cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
