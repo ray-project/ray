@@ -114,7 +114,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 class GcsActorManagerTest : public ::testing::Test {
  public:
   GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()),
+      : mock_actor_scheduler_(std::make_unique_ptr<MockActorScheduler>()),
         periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
@@ -277,7 +277,7 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
+  std::unique_ptr<MockActorScheduler> mock_actor_scheduler_;
   std::shared_ptr<MockWorkerClient> worker_client_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
