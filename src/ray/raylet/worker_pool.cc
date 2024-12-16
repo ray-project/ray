@@ -670,7 +670,7 @@ Status WorkerPool::GetNextFreePort(int *port) {
   for (int i = 0; i < current_size; i++) {
     *port = free_ports_->front();
     free_ports_->pop();
-    if (CheckFree(*port)) {
+    if (CheckPortFree(*port)) {
       return Status::OK();
     }
     // Return to pool to check later.
