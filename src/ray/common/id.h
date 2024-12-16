@@ -593,10 +593,6 @@ namespace std {
   template <>                                                            \
   struct hash<::ray::type> {                                             \
     size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };                                                                     \
-  template <>                                                            \
-  struct hash<const ::ray::type> {                                       \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
   };
 
 DEFINE_UNIQUE_ID(UniqueID);
