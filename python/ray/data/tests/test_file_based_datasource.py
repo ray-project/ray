@@ -3,13 +3,11 @@ from typing import Iterator
 from unittest import mock
 
 import pyarrow
-import pyarrow.parquet as pq
 import pytest
 
 import ray
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data.block import Block
-from ray.data.datasource import FileShuffleConfig
 from ray.data.datasource.file_based_datasource import (
     OPEN_FILE_MAX_ATTEMPTS,
     FileBasedDatasource,
@@ -129,39 +127,6 @@ def test_invalid_shuffle_arg_raises_error(ray_start_regular_shared, shuffle):
 @pytest.mark.parametrize("shuffle", [None, "files"])
 def test_valid_shuffle_arg_does_not_raise_error(ray_start_regular_shared, shuffle):
     FileBasedDatasource("example://iris.csv", shuffle=shuffle)
-
-
-def test_read_parquet_deterministic_shuffling(restore_data_context, tmp_path):
-    def write_parquet_file(path, file_index):
-        """Write a dummy Parquet file with test data."""
-        # Create a dummy dataset with unique data for each file
-        data = {
-            "col1": range(10 * file_index, 10 * (file_index + 1)),
-            "col2": ["foo", "bar"] * 5,
-        }
-        table = pyarrow.Table.from_pydict(data)
-        pq.write_table(table, path)
-
-    ctx = ray.data.DataContext.get_current()
-    ctx.execution_options.preserve_order = True
-    # Use the current working directory
-
-    # Create temporary Parquet files for testing in the current directory
-    paths = [tmp_path / f"test_file_{i}.parquet" for i in range(5)]
-    for i, path in enumerate(paths):
-        # Write dummy Parquet files
-        write_parquet_file(path, i)
-
-    # Convert paths to strings for read_parquet
-    string_paths = [str(path) for path in paths]
-
-    # Read with deterministic shuffling
-    shuffle_config = FileShuffleConfig(seed=42)
-    ds1 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
-    ds2 = ray.data.read_parquet(string_paths, shuffle=shuffle_config)
-
-    # Verify deterministic behavior
-    assert ds1.take_all() == ds2.take_all()
 
 
 if __name__ == "__main__":

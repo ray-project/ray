@@ -67,54 +67,25 @@ OPEN_FILE_MAX_ATTEMPTS = 10
 class FileShuffleConfig:
     """Configuration for file shuffling.
 
-    This configuration object controls how files are shuffled during
-    reading file based datasets.
-
-    Args:
-        seed (Optional[int]): An optional integer seed for the random number
-            generator. If provided, the file shuffle will be initialized with
-            this seed, making the file shuffle order deterministic.
-
-    Example:
-        >>> from ray.data import read_parquet
-        >>> import ray
-        >>> import pyarrow as pa
-        >>> import pyarrow.parquet as pq
-        >>> from ray.data.read_api import read_parquet
-        >>> from ray.data.datasource import FileShuffleConfig
-        >>> from pathlib import Path
-        >>> import os
-        >>> ctx = ray.data.DataContext.get_current()
-        >>> ctx.execution_options.preserve_order = True
-        >>> current_dir = Path(os.getcwd())
-        >>> # Create temporary Parquet files for testing in the current directory
-        >>> paths = [current_dir / f"test_file_{i}.parquet" for i in range(3)]
-        >>> #Write dummy Parquet files
-        >>> table1 = pa.Table.from_pydict({'col1': range(10)})
-        >>> table2 = pa.Table.from_pydict({'col1': range(10,20)})
-        >>> table3 = pa.Table.from_pydict({'col1': range(20,30)})
-        >>> pq.write_table(table1, paths[0])
-        >>> pq.write_table(table2, paths[1])
-        >>> pq.write_table(table3, paths[2])
-        >>> # Convert paths to strings for read_parquet
-        >>> string_paths = [str(path) for path in paths]
-        >>> # Read with deterministic shuffling
-        >>> shuffle_config = FileShuffleConfig(seed=42)
-        >>> ds1 = read_parquet(string_paths, shuffle=shuffle_config)
-        >>> ds2 = read_parquet(string_paths, shuffle=shuffle_config)
-
-        >>> # Verify deterministic behavior
-        >>> assert ds1.take_all() == ds2.take_all()
-
+    This configuration object controls how files are shuffled while reading file-based
+    datasets.
 
     .. note::
-        Even when providing a seed, you may still observe a non-deterministic row
+        Even if you provided a seed, you might still observe a non-deterministic row
         order. This is because tasks are executed in parallel and their completion
-        order may vary, which introduces some non-determinism in the final ordering.
-        Can set `ctx.execution_options.preserve_order = True` to preserve the
-        order if needed.
+        order might vary. If you need to preserve the order of rows, set
+        `DataContext.get_current().execution_options.preserve_order`.
 
-    """
+    Args:
+        seed: An optional integer seed for the file shuffler. If provided, Ray Data
+            shuffles files deterministically based on this seed.
+
+    Example:
+        >>> import ray
+        >>> from ray.data import FileShuffleConfig
+        >>> shuffle = FileShuffleConfig(seed=42)
+        >>> ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+    """  # noqa: E501
 
     seed: Optional[int] = None
 
@@ -151,7 +122,7 @@ class FileBasedDatasource(Datasource):
         partition_filter: PathPartitionFilter = None,
         partitioning: Partitioning = None,
         ignore_missing_paths: bool = False,
-        shuffle: Union[FileShuffleConfig, Literal["files"], None] = None,
+        shuffle: Optional[Union[Literal["files"], FileShuffleConfig]] = None,
         include_paths: bool = False,
         file_extensions: Optional[List[str]] = None,
     ):
