@@ -581,7 +581,7 @@ class IMPALA(Algorithm):
             self._aggregator_actor_to_learner = {}
             for agg_idx, aggregator_location in enumerate(aggregator_locations):
                 for learner_idx, learner_location in enumerate(learner_locations):
-                    if learner_location == aggregator_location:
+                    if learner_location.get() == aggregator_location.get():
                         self._aggregator_actor_to_learner[agg_idx] = learner_idx
                         break
                 if agg_idx not in self._aggregator_actor_to_learner:
