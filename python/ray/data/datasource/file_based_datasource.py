@@ -88,7 +88,7 @@ class FileShuffleConfig:
         >>> ctx.execution_options.preserve_order = True
         >>> current_dir = Path(os.getcwd())
         >>> # Create temporary Parquet files for testing in the current directory
-        >>> paths = [current_dir / f"test_file_{i}.parquet" for i in range(5)]
+        >>> paths = [current_dir / f"test_file_{i}.parquet" for i in range(3)]
         >>> #Write dummy Parquet files
         >>> table1 = pa.Table.from_pydict({'col1': range(10)})
         >>> table2 = pa.Table.from_pydict({'col1': range(10,20)})
