@@ -1,13 +1,14 @@
-from typing import Any, Optional, List
+import logging
+import pickle
+from typing import Any, List, Optional
 
-from ray.experimental.channel import ChannelContext
-from ray.experimental.channel.common import ChannelInterface
-from ray.util.annotations import PublicAPI
+import numpy as np
 
 import ray
-import numpy as np
-import pickle
-import logging
+from ray.experimental.channel import ChannelContext
+from ray.experimental.channel.common import ChannelInterface
+from ray.experimental.channel.torch_tensor_type import TorchTensorType
+from ray.util.annotations import PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +58,7 @@ class GlooChannel(ChannelInterface):
     def write(self, value: Any, timeout: Optional[float] = None):
         serialized_value = pickle.dumps(value)
         num_bytes = len(serialized_value)
-        size_bytes = num_bytes.to_bytes(self._metadata_bytes, byteorder='big')
+        size_bytes = num_bytes.to_bytes(self._metadata_bytes, byteorder="big")
         combined_data = size_bytes + serialized_value
         np_data = np.frombuffer(combined_data, dtype=np.uint8)
 
@@ -69,8 +70,8 @@ class GlooChannel(ChannelInterface):
         self.ensure_registered_as_reader()
         writer_rank = self._gloo_group.get_rank(self._writer)
         np_data = self._gloo_group.recv(self._recv_buffer, writer_rank)
-        num_bytes = int.from_bytes(np_data[:self._metadata_bytes], byteorder='big')
-        data = np_data[self._metadata_bytes:self._metadata_bytes+num_bytes]
+        num_bytes = int.from_bytes(np_data[: self._metadata_bytes], byteorder="big")
+        data = np_data[self._metadata_bytes : self._metadata_bytes + num_bytes]
         return pickle.loads(data)
 
     def close(self) -> None:
@@ -116,66 +117,98 @@ def _destroy_gloo_group(group_id: str) -> None:
 
     del ctx.gloo_groups[group_id]
 
-# @PublicAPI(stability="alpha")
-# class GlooTensorChannel(ChannelInterface):
-#     def __init__(
-#         self,
-#         writer: Optional["ray.actor.ActorHandle"],
-#         readers: List[Optional[ray.actor.ActorHandle]],
-#         group_name: str,
-#         typ: "TorchTensorType",
-#     ):
-#         """
-#         Create a Gloo channel to transfer data between actors.
 
-#         Args:
-#             writer: The actor that may write to the channel. None signifies the driver.
-#             readers: The actors that may read from the channel. None signifies
-#                 the driver.
-#             group_name: The name of the Gloo group to use for the channel.
-#             typ: The type of the data to be sent through the channel.
-#         """
-#         self._writer = writer
-#         self._readers = readers
-#         self._group_name = group_name
-#         self._typ = typ
+@PublicAPI(stability="alpha")
+class GlooNumpyChannel(ChannelInterface):
+    def __init__(
+        self,
+        writer: Optional["ray.actor.ActorHandle"],
+        readers: List[Optional[ray.actor.ActorHandle]],
+        group_name: str,
+        typ: "TorchTensorType",
+    ):
+        """
+        Create a Gloo channel to transfer data between actors.
 
-#         ctx = ChannelContext.get_current()
-#         self._gloo_group = ctx.gloo_groups[self._group_name]
-#         self._shape = None
+        Args:
+            writer: The actor that may write to the channel. None signifies the driver.
+            readers: The actors that may read from the channel. None signifies
+                the driver.
+            group_name: The name of the Gloo group to use for the channel.
+            typ: The type of the data to be sent through the channel.
+        """
+        self._writer = writer
+        self._readers = readers
+        self._group_name = group_name
+        self._typ = typ
 
-#     def ensure_registered_as_writer(self) -> None:
-#         pass
+        ctx = ChannelContext.get_current()
+        self._gloo_group = ctx.gloo_groups[self._group_name]
+        self._shape = None
+        self._meta_channel = GlooChannel(self._writer, self._readers, self._group_name)
+        self._recv_buf = None
 
-#     def ensure_registered_as_reader(self) -> None:
-#         pass
+    def ensure_registered_as_writer(self) -> None:
+        pass
 
-#     def __reduce__(self):
-#         return GlooTensorChannel, (
-#             self._writer,
-#             self._readers,
-#             self._group_name,
-#             self._typ,
-#         )
+    def ensure_registered_as_reader(self) -> None:
+        pass
 
-#     def write(self, value: Any, timeout: Optional[float] = None):
-#         assert isinstance(value, np.ndarray)
-#         if self._typ.static_shape:
-#             if self._shape is None:
-#                 self._shape = value.shape
-#             assert self._shape == value.shape
-#         # TODO: Use Gloo group send the metadata to the reader. Then,
-#         # send the actual data.
+    def __reduce__(self):
+        return GlooNumpyChannel, (
+            self._writer,
+            self._readers,
+            self._group_name,
+            self._typ,
+        )
 
-#         for reader in self._readers:
-#             reader_rank = self._gloo_group.get_rank(reader)
-#             self._gloo_group.send(value, reader_rank)
+    def write(self, value: Any, timeout: Optional[float] = None):
+        assert isinstance(value, np.ndarray)
+        need_to_send_metadata = self._shape is None
+        if self._typ.static_shape:
+            if self._shape is None:
+                self._shape = value.shape
+            assert self._shape == value.shape
 
-#     def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
-#         writer_rank = self._gloo_group.get_rank(self._writer)
-#         buf = np.empty(self._shape, dtype=np.float32)
-#         data = self._gloo_group.recv(buf, writer_rank)
-#         return data
+        # Send the metadata if needed.
+        if need_to_send_metadata:
+            self._meta_channel.write(self._shape, timeout=timeout)
+            print("write metadata")
 
-#     def close(self) -> None:
-#         self._gloo_group.destroy()
+        for reader in self._readers:
+            reader_rank = self._gloo_group.get_rank(reader)
+            self._gloo_group.send(value, reader_rank)
+
+    def read(self, timeout: Optional[float] = None, deserialize: bool = True) -> Any:
+        # If self._shape is None, then we need to read the shape from the
+        # metadata channel. If the shape is static, we only need to read it
+        # once.
+        shape = self._shape
+        if shape is None:
+            shape = self._meta_channel.read(timeout=timeout)
+            print("read metadata")
+        if self._typ.static_shape:
+            self._shape = shape
+
+        # Allocate the recv buffer if needed.
+        recv_buf = self._recv_buf
+        if recv_buf is None:
+            if self._typ.static_shape:
+                self._recv_buf = np.empty(self._shape, dtype=np.float32)
+                recv_buf = self._recv_buf
+            else:
+                recv_buf = np.empty(shape, dtype=np.float32)
+
+        # Read the data from the writer.
+        writer_rank = self._gloo_group.get_rank(self._writer)
+        data = self._gloo_group.recv(recv_buf, writer_rank)
+        # TODO (kevin85421): Currently, this PoC assumes that the data is a
+        # float32 numpy array.
+        assert data.dtype == np.float32
+        return data
+
+    def close(self) -> None:
+        # TODO (kevin85421): can't teardown successfully
+        self._gloo_group.destroy()
+        ctx = ChannelContext.get_current()
+        del ctx.gloo_groups[self._group_name]

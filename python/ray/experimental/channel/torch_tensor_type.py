@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 class TorchTensorType(ChannelOutputType):
     AUTO = "auto"
     NCCL = "nccl"
+    GLOO = "gloo"
 
     def __init__(
         self,
@@ -69,9 +70,10 @@ class TorchTensorType(ChannelOutputType):
             self._custom_nccl_group = transport
             transport = self.NCCL
 
-        if transport not in [self.AUTO, self.NCCL]:
+        if transport not in [self.AUTO, self.NCCL, self.GLOO]:
             raise ValueError(
-                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL"
+                "`transport` must be TorchTensorType.AUTO or TorchTensorType.NCCL "
+                "or TorchTensorType.GLOO"
             )
         self.transport = transport
 
@@ -126,6 +128,16 @@ class TorchTensorType(ChannelOutputType):
         _cpu_data_channel: Optional["Channel"] = None,
         _tensor_metadata_channel: Optional["Channel"] = None,
     ) -> type:
+        if self.requires_gloo():
+            from ray.experimental.channel.gloo_channel import GlooNumpyChannel
+
+            return GlooNumpyChannel(
+                writer,
+                [reader for reader, _ in reader_and_node_list],
+                "gloo_group",
+                self,
+            )
+
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
@@ -161,6 +173,9 @@ class TorchTensorType(ChannelOutputType):
 
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
+
+    def requires_gloo(self) -> bool:
+        return self.transport == self.GLOO
 
     def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
         """
