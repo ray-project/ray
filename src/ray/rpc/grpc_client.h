@@ -24,6 +24,7 @@
 #include "ray/rpc/client_call.h"
 #include "ray/rpc/common.h"
 #include "ray/rpc/rpc_chaos.h"
+#include "ray/util/logging.h"
 
 namespace ray {
 namespace rpc {
@@ -115,6 +116,8 @@ class GrpcClient {
              int num_threads,
              bool use_tls = false)
       : client_call_manager_(call_manager), use_tls_(use_tls) {
+    RAY_LOG(FATAL) << "SHOULD FAIL\n" << StackTrace{};
+
     grpc::ChannelArguments argument = CreateDefaultChannelArguments();
     grpc::ResourceQuota quota;
     quota.SetMaxThreads(num_threads);
