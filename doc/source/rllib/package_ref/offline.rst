@@ -20,6 +20,14 @@ Configuring Offline RL
 
     AlgorithmConfig.offline_data
     AlgorithmConfig.learners
+
+Configuring Offline Recording EnvRunners
+----------------------------------------
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+    
     AlgorithmConfig.env_runners
 
 Constructing a Recording EnvRunner
@@ -68,13 +76,14 @@ Constructing an OfflinePreLearner
     OfflinePreLearner
     OfflinePreLearner.__init__
 
-Transforming Data
------------------
+Transforming Data with an OfflinePreLearner
+-------------------------------------------
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
+    SCHEMA
     OfflinePreLearner.__call__
     OfflinePreLearner._map_to_episodes
     OfflinePreLearner._map_sample_batch_to_episode
