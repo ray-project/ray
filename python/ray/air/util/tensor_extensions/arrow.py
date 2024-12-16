@@ -592,11 +592,16 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
         try:
             return cls._from_numpy(arr)
         except Exception as e:
-            data_str = ""
-            if column_name:
-                data_str += f"column: '{column_name}', "
-            data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
-            raise ArrowConversionError(data_str) from e
+            try:
+                from ray.data.extensions.object_extension import ArrowPythonObjectArray
+
+                return ArrowPythonObjectArray.from_objects(arr)
+            except Exception:
+                data_str = ""
+                if column_name:
+                    data_str += f"column: '{column_name}', "
+                data_str += f"shape: {arr.shape}, dtype: {arr.dtype}, data: {arr}"
+                raise ArrowConversionError(data_str) from e
 
     @classmethod
     def _from_numpy(
@@ -1027,11 +1032,6 @@ class ArrowVariableShapedTensorArray(
         else:
             np_data_buffer = np.concatenate(raveled)
         dtype = np_data_buffer.dtype
-        if arr.dtype == object:
-            from ray.data.extensions.object_extension import ArrowPythonObjectArray
-
-            return ArrowPythonObjectArray.from_objects(arr)
-
         pa_dtype = pa.from_numpy_dtype(dtype)
         if pa.types.is_string(pa_dtype):
             if dtype.byteorder == ">" or (
