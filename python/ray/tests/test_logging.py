@@ -203,9 +203,9 @@ def test_log_rotation(shutdown_only, monkeypatch):
         ray_constants.PROCESS_TYPE_MONITOR,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER_DRIVER,
         ray_constants.PROCESS_TYPE_PYTHON_CORE_WORKER,
+        ray_constants.PROCESS_TYPE_RAYLET,
+        ray_constants.PROCESS_TYPE_GCS_SERVER,
         # Below components are not log rotating now.
-        # ray_constants.PROCESS_TYPE_RAYLET,
-        # ray_constants.PROCESS_TYPE_GCS_SERVER,
         # ray_constants.PROCESS_TYPE_WORKER,
     ]
 
@@ -222,10 +222,15 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # These paths are handled by the logger; the others (.out, .err) are not.
     paths = []
     for path in log_dir_path.iterdir():
+        # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
         if re.search(r".*\.log(\.\d+)?", str(path)):
+            paths.append(path)
+        elif re.search(r".*(\.\d+)?\.out", str(path)):
             paths.append(path)
 
     def component_exist(component, paths):
+        """Return whether there's at least one log file path is for the given
+        [component]."""
         for path in paths:
             filename = path.stem
             if component in filename:
