@@ -19,7 +19,7 @@
 #include <memory>
 #include <string>
 
-#include "src/ray/common/ray_syncer/common.h"
+#include "ray/common/ray_syncer/common.h"
 #include "src/ray/protobuf/ray_syncer.grpc.pb.h"
 
 namespace ray::syncer {
