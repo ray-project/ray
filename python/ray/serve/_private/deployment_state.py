@@ -1585,11 +1585,7 @@ class DeploymentState:
             )
 
         old_target_state = self._target_state
-        self._set_target_state(
-            deployment_info,
-            target_num_replicas=target_num_replicas,
-            do_checkpoint=False,  # Checkpoint is handled further up the call stack
-        )
+        self._set_target_state(deployment_info, target_num_replicas=target_num_replicas)
         self._deployment_scheduler.on_deployment_deployed(
             self._id, deployment_info.replica_config
         )
