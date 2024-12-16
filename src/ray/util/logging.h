@@ -262,11 +262,11 @@ class RayLog {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_dir Logging output directory name.
-  /// \param stdout_log_file Logging output filepath for stdout.
+  /// \param log_filepath Logging output filepath for stdout.
   ///
-  /// Both [log_dir] and [stdout_log_file] are used to determine log output filename; if
+  /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
   /// both empty, the log won't output to file, but to stdout. It's illegal to set
-  /// [stdout_log_file] and [log_dir] at the same time.
+  /// [log_filepath] and [log_dir] at the same time.
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_dir = "",

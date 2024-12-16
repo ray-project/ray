@@ -1460,7 +1460,7 @@ def start_gcs_server(
 
     Args:
         redis_address: The address that the Redis server is listening on.
-        log_dir: The path of the dir where gcs event log files are created.
+        log_dir: The path of the dir where gcs log files are created.
         ray_log_filepath: The file path to dump gcs server log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
         stderr_file: A file handle opened for writing to redirect stderr to. If

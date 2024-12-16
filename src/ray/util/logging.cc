@@ -339,7 +339,7 @@ void RayLog::StartRayLog(const std::string &app_name,
   const bool log_dir_empty = log_dir.empty();
   const bool log_filepath_empty = log_filepath.empty();
   RAY_CHECK(log_dir_empty || log_filepath_empty)
-      << "Log directory and stdout log filename cannot be set at the same time.";
+      << "Log directory and log filename cannot be set at the same time.";
 
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
@@ -364,9 +364,9 @@ void RayLog::StartRayLog(const std::string &app_name,
 
   // Reset log pattern and level and we assume a log file can be rotated with
   // 10 files in max size 512M by default.
-  const auto stdout_log_fname =
+  const auto log_fname =
       GetLogOutputFilename(log_dir, log_filepath, app_name_without_path);
-  if (!stdout_log_fname.empty()) {
+  if (!log_fname.empty()) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
       long max_size = 0;
@@ -387,7 +387,7 @@ void RayLog::StartRayLog(const std::string &app_name,
   }
 
   // Set sink for stdout.
-  if (!stdout_log_fname.empty()) {
+  if (!log_fname.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -398,7 +398,7 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
 
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        stdout_log_fname, log_rotation_max_size_, log_rotation_file_num_);
+        log_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
