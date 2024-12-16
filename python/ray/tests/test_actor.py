@@ -1266,7 +1266,11 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
         core_worker = ray._private.worker.global_worker.core_worker
         refs = [child_actor.child.remote(), child.remote()]
         expected = {ref.task_id().hex() for ref in refs}
-        task_id = ray.get_runtime_context().get_task_id()
+        # TODO(kevin85421): `task_id` is a deprecated API, and the replacement
+        # is `get_task_id()`. However, `get_task_id()` returns a string, but
+        # `task_id` returns a TaskID object which is more convenient in this
+        # test.
+        task_id = ray.get_runtime_context().task_id
         children_task_ids = core_worker.get_pending_children_task_ids(task_id)
         actual = {task_id.hex() for task_id in children_task_ids}
         ray.get(refs)
@@ -1342,7 +1346,11 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
             refs = [child.remote(sig) for _ in range(2)]
             core_worker = ray._private.worker.global_worker.core_worker
             expected = {ref.task_id().hex() for ref in refs}
-            task_id = ray.get_runtime_context().get_task_id()
+            # TODO(kevin85421): `task_id` is a deprecated API, and the replacement
+            # is `get_task_id()`. However, `get_task_id()` returns a string, but
+            # `task_id` returns a TaskID object which is more convenient in this
+            # test.
+            task_id = ray.get_runtime_context().task_id
             children_task_ids = core_worker.get_pending_children_task_ids(task_id)
             actual = {task_id.hex() for task_id in children_task_ids}
             await sig.wait.remote()
