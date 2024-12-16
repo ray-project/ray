@@ -25,18 +25,15 @@
 namespace ray {
 namespace core {
 
-typedef std::function<std::shared_ptr<PinObjectsInterface>(const std::string &ip_address,
-                                                           int port)>
-    ObjectPinningClientFactoryFn;
+using ObjectPinningClientFactoryFn = std::function<std::shared_ptr<PinObjectsInterface>(
+    const std::string &ip_address, int port)>;
 
-typedef std::function<void(const ObjectID &object_id,
-                           const std::vector<rpc::Address> &raylet_locations)>
-    ObjectLookupCallback;
+using ObjectLookupCallback = std::function<void(
+    const ObjectID &object_id, const std::vector<rpc::Address> &raylet_locations)>;
 
 // A callback for if we fail to recover an object.
-typedef std::function<void(
-    const ObjectID &object_id, rpc::ErrorType reason, bool pin_object)>
-    ObjectRecoveryFailureCallback;
+using ObjectRecoveryFailureCallback = std::function<void(
+    const ObjectID &object_id, rpc::ErrorType reason, bool pin_object)>;
 
 class ObjectRecoveryManager {
  public:
@@ -46,26 +43,25 @@ class ObjectRecoveryManager {
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
                            const ObjectLookupCallback &callback)> object_lookup,
-      std::shared_ptr<TaskResubmissionInterface> task_resubmitter,
-      std::shared_ptr<ReferenceCounter> reference_counter,
-      std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-      const ObjectRecoveryFailureCallback &recovery_failure_callback)
+      TaskResubmissionInterface &task_resubmitter,
+      ReferenceCounter &reference_counter,
+      CoreWorkerMemoryStore &in_memory_store,
+      ObjectRecoveryFailureCallback recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
         rpc_address_(rpc_address),
-        client_factory_(client_factory),
+        client_factory_(std::move(client_factory)),
         local_object_pinning_client_(local_object_pinning_client),
-        object_lookup_(object_lookup),
+        object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
-        recovery_failure_callback_(recovery_failure_callback) {}
+        recovery_failure_callback_(std::move(recovery_failure_callback)) {}
 
   /// Recover an object that was stored in plasma. This will only succeed for
-  /// objects that are lost from memory and that this process owns (returns
-  /// Status::Invalid if false).  This method is idempotent for overlapping
-  /// recovery operations on the same object. This class will guarantee that
-  /// each recovery operation ends in either success (by storing a new value
-  /// for the object in the direct memory/plasma store) or failure (by calling
-  /// the given reconstruction failure callback).
+  /// objects that are lost from memory and are owned by this process.
+  /// This method is idempotent for overlapping recovery operations on the same object.
+  /// This class will guarantee that each recovery operation ends in either success (by
+  /// storing a new value for the object in the direct memory/plasma store) or failure (by
+  /// calling the given reconstruction failure callback).
   ///
   /// Algorithm:
   /// 1. Check that the object is missing from the direct memory store and that
@@ -106,10 +102,10 @@ class ObjectRecoveryManager {
   void ReconstructObject(const ObjectID &object_id);
 
   /// Used to resubmit tasks.
-  std::shared_ptr<TaskResubmissionInterface> task_resubmitter_;
+  TaskResubmissionInterface &task_resubmitter_;
 
   /// Used to check whether we own an object.
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  ReferenceCounter &reference_counter_;
 
   /// Address of our RPC server.
   rpc::Address rpc_address_;
@@ -126,7 +122,7 @@ class ObjectRecoveryManager {
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+  CoreWorkerMemoryStore &in_memory_store_;
 
   /// Callback to call if recovery fails.
   const ObjectRecoveryFailureCallback recovery_failure_callback_;
