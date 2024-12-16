@@ -91,7 +91,7 @@ class GlobalState:
                 If this is not None, `job_id` and `actor_state_name`
                 will not take effect.
             job_id: To filter actors by job_id, which is of type `ray.JobID`.
-                You can use the `ray.get_runtime_context().job_id` function
+                You can use the `ray.get_runtime_context().get_job_id()` function
                 to get the current job ID
             actor_state_name: To filter actors based on actor state,
                 which can be one of the following: "DEPENDENCIES_UNREADY",
@@ -930,7 +930,7 @@ def actors(
             If this is not None, `job_id` and `actor_state_name`
             will not take effect.
         job_id: To filter actors by job_id, which is of type `ray.JobID`.
-            You can use the `ray.get_runtime_context().job_id` function
+            You can use the `ray.get_runtime_context().get_job_id()` function
             to get the current job ID
         actor_state_name: To filter actors based on actor state,
             which can be one of the following: "DEPENDENCIES_UNREADY",

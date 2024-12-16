@@ -295,7 +295,7 @@ def test_get_all_actors_info(shutdown_only):
     assert len(actors_info) == 2
 
     # To filter actors by job id
-    job_id = ray.get_runtime_context().job_id
+    job_id = ray.get_runtime_context().get_job_id()
     actors_info = ray.state.actors(job_id=job_id)
     assert len(actors_info) == 2
     actors_info = ray.state.actors(job_id=ray.JobID.from_int(100))

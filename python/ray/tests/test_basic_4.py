@@ -222,7 +222,7 @@ def test_job_id_consistency(ray_start_regular):
             if len(exc) > 0:
                 raise exc[0]
 
-    job_id = ray.runtime_context.get_runtime_context().job_id
+    job_id = ray.runtime_context.get_runtime_context().get_job_id()
     ray.get(verify_job_id.remote(job_id, False))
     ray.get(verify_job_id.remote(job_id, True))
 
