@@ -1612,8 +1612,8 @@ def start_raylet(
             of valgrind. If this is True, use_profiler must be False.
         use_profiler: True if the raylet should be started inside
             a profiler. If this is True, use_valgrind must be False.
-        ray_log_filepath: The file path to dump gcs server stdout log, which is
-            written via `RAY_LOG`. If None, stdout will not be redirected.
+        ray_log_filepath: The file path to dump raylet log, which is
+            written via `RAY_LOG`. If None, logs will be sent to stdout.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         tracing_startup_hook: Tracing startup hook.
