@@ -1202,7 +1202,7 @@ class Node:
         )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
-            event_log_dir=self._logs_dir,
+            log_dir=self._logs_dir,
             ray_log_filepath=stdout_log_fname,
             stderr_file=stderr_file,
             session_name=self.session_name,

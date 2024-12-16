@@ -1444,7 +1444,7 @@ def get_address(redis_address):
 
 def start_gcs_server(
     redis_address: str,
-    event_log_dir: str,
+    log_dir: str,
     ray_log_filepath: Optional[str],
     stderr_file: Optional[IO[AnyStr]],
     session_name: str,
@@ -1460,7 +1460,7 @@ def start_gcs_server(
 
     Args:
         redis_address: The address that the Redis server is listening on.
-        event_log_dir: The path of the dir where gcs event log files are created.
+        log_dir: The path of the dir where gcs event log files are created.
         ray_log_filepath: The file path to dump gcs server log, which is
             written via `RAY_LOG`. If None, logs will be sent to stdout.
         stderr_file: A file handle opened for writing to redirect stderr to. If
@@ -1481,7 +1481,7 @@ def start_gcs_server(
 
     command = [
         GCS_SERVER_EXECUTABLE,
-        f"--event_log_dir={event_log_dir}",
+        f"--log_dir={log_dir}",
         f"--config_list={serialize_config(config)}",
         f"--gcs_server_port={gcs_server_port}",
         f"--metrics-agent-port={metrics_agent_port}",
@@ -1819,7 +1819,7 @@ def start_raylet(
         f"--native_library_path={DEFAULT_NATIVE_LIBRARY_PATH}",
         f"--temp_dir={temp_dir}",
         f"--session_dir={session_dir}",
-        f"--event_log_dir={log_dir}",
+        f"--log_dir={log_dir}",
         f"--resource_dir={resource_dir}",
         f"--metrics-agent-port={metrics_agent_port}",
         f"--metrics_export_port={metrics_export_port}",

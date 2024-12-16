@@ -28,9 +28,7 @@
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_string(event_log_dir,
-              "",
-              "The path of the dir where event log files are created.");
+DEFINE_string(log_dir, "", "The path of the dir where event log files are created.");
 DEFINE_string(ray_log_filepath,
               "",
               "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
@@ -84,7 +82,7 @@ int main(int argc, char *argv[]) {
 
   const std::string redis_address = FLAGS_redis_address;
   const int redis_port = static_cast<int>(FLAGS_redis_port);
-  const std::string event_log_dir = FLAGS_event_log_dir;
+  const std::string log_dir = FLAGS_log_dir;
   const int gcs_server_port = static_cast<int>(FLAGS_gcs_server_port);
   const int metrics_agent_port = static_cast<int>(FLAGS_metrics_agent_port);
   std::string config_list;
@@ -118,7 +116,7 @@ int main(int argc, char *argv[]) {
   ray::stats::Init(global_tags, metrics_agent_port, WorkerID::Nil());
 
   // Initialize event framework.
-  if (RayConfig::instance().event_log_reporter_enabled() && !event_log_dir.empty()) {
+  if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
     // This GCS server process emits GCS standard events, and
     // Node, Actor, and Driver Job export events
     // so the various source types are passed to RayEventInit. The type of an
@@ -130,7 +128,7 @@ int main(int argc, char *argv[]) {
         ray::rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_DRIVER_JOB};
     ray::RayEventInit(source_types,
                       absl::flat_hash_map<std::string, std::string>(),
-                      event_log_dir,
+                      log_dir,
                       RayConfig::instance().event_level(),
                       RayConfig::instance().emit_event_to_log_file());
   }
@@ -147,7 +145,7 @@ int main(int argc, char *argv[]) {
   gcs_server_config.redis_username = redis_username;
   gcs_server_config.retry_redis = retry_redis;
   gcs_server_config.node_ip_address = node_ip_address;
-  gcs_server_config.log_dir = event_log_dir;
+  gcs_server_config.log_dir = log_dir;
   gcs_server_config.raylet_config_list = config_list;
   gcs_server_config.session_name = session_name;
   ray::gcs::GcsServer gcs_server(gcs_server_config, main_service);

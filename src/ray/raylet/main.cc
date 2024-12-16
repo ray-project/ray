@@ -72,9 +72,7 @@ DEFINE_string(native_library_path,
               "The native library path which includes the core libraries.");
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
-DEFINE_string(event_log_dir,
-              "",
-              "The path of the dir where event log files are created.");
+DEFINE_string(log_dir, "", "The path of the dir where event log files are created.");
 DEFINE_string(
     ray_log_filepath,
     "",
@@ -172,7 +170,7 @@ int main(int argc, char *argv[]) {
   const std::string native_library_path = FLAGS_native_library_path;
   const std::string temp_dir = FLAGS_temp_dir;
   const std::string session_dir = FLAGS_session_dir;
-  const std::string event_log_dir = FLAGS_event_log_dir;
+  const std::string log_dir = FLAGS_log_dir;
   const std::string resource_dir = FLAGS_resource_dir;
   const int ray_debugger_external = FLAGS_ray_debugger_external;
   const int64_t object_store_memory = FLAGS_object_store_memory;
@@ -371,7 +369,7 @@ int main(int argc, char *argv[]) {
             RayConfig::instance().metrics_report_interval_ms() / 2;
         node_manager_config.store_socket_name = store_socket_name;
         node_manager_config.temp_dir = temp_dir;
-        node_manager_config.log_dir = event_log_dir;
+        node_manager_config.log_dir = log_dir;
         node_manager_config.session_dir = session_dir;
         node_manager_config.resource_dir = resource_dir;
         node_manager_config.ray_debugger_external = ray_debugger_external;
@@ -441,13 +439,12 @@ int main(int argc, char *argv[]) {
                                                        shutdown_raylet_gracefully);
 
         // Initialize event framework.
-        if (RayConfig::instance().event_log_reporter_enabled() &&
-            !event_log_dir.empty()) {
+        if (RayConfig::instance().event_log_reporter_enabled() && !log_dir.empty()) {
           const std::vector<ray::SourceTypeVariant> source_types = {
               ray::rpc::Event_SourceType::Event_SourceType_RAYLET};
           ray::RayEventInit(source_types,
                             {{"node_id", raylet->GetNodeId().Hex()}},
-                            event_log_dir,
+                            log_dir,
                             RayConfig::instance().event_level(),
                             RayConfig::instance().emit_event_to_log_file());
         };
