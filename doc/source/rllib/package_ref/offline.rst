@@ -3,7 +3,7 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _offline-reference-docs:
+.. _new-api-offline-reference-docs:
 
 
 Offline RL API
