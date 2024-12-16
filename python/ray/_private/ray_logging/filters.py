@@ -1,12 +1,12 @@
 import logging
 import ray
-import time
 from ray._private.ray_logging.constants import LogKey
 
 
 class CoreContextFilter(logging.Filter):
     def filter(self, record):
-        setattr(record, LogKey.TIMESTAMP_NS.value, time.time_ns())
+        timestamp_ns = int(record.created * 1e9)
+        setattr(record, LogKey.TIMESTAMP_NS.value, timestamp_ns)
 
         if not ray.is_initialized():
             # There is no additional context if ray is not initialized
