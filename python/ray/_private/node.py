@@ -827,8 +827,10 @@ class Node:
             if index == 0:
                 filename = os.path.join(directory_name, prefix + suffix)
             else:
+                # Format new log filename as "prefix-{index}.suffix" to avoid conflict
+                # with C++ spdlog log rotation format "prefix.{index}.suffix".
                 filename = os.path.join(
-                    directory_name, prefix + "." + str(index) + suffix
+                    directory_name, prefix + "-" + str(index) + suffix
                 )
             index += 1
             if not os.path.exists(filename):
