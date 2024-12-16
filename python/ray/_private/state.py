@@ -1,7 +1,7 @@
 import json
 import logging
 from collections import defaultdict
-from typing import Dict
+from typing import Dict, Optional
 
 from ray._private.protobuf_compat import message_to_dict
 
@@ -81,7 +81,10 @@ class GlobalState:
         self.global_state_accessor.connect()
 
     def actor_table(
-        self, actor_id: str, job_id: ray.JobID = None, actor_state_name: str = None
+        self,
+        actor_id: str,
+        job_id: Optional[str] = None,
+        actor_state_name: Optional[str] = None,
     ):
         """Fetch and parse the actor table information for a single actor ID.
 
@@ -90,9 +93,9 @@ class GlobalState:
                 If this is None, then the actor table is fetched.
                 If this is not None, `job_id` and `actor_state_name`
                 will not take effect.
-            job_id: To filter actors by job_id, which is of type `ray.JobID`.
-                You can use the `ray.get_runtime_context().job_id` function
-                to get the current job ID
+            job_id: To filter actors by job_id, which is the hex string of `ray.JobID`.
+                You can use the `ray.get_runtime_context().get_job_id()` function
+                to get the hex string of the current job ID.
             actor_state_name: To filter actors based on actor state,
                 which can be one of the following: "DEPENDENCIES_UNREADY",
                 "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
@@ -100,6 +103,10 @@ class GlobalState:
             Information from the actor table.
         """
         self._check_connected()
+
+        if job_id is not None:
+            # Reconstruct the JobID object from the hex string.
+            job_id = ray.JobID(hex_to_binary(job_id))
 
         if actor_id is not None:
             actor_id = ray.ActorID(hex_to_binary(actor_id))
@@ -920,7 +927,9 @@ def node_ids():
 
 
 def actors(
-    actor_id: str = None, job_id: ray.JobID = None, actor_state_name: str = None
+    actor_id: Optional[str] = None,
+    job_id: Optional[str] = None,
+    actor_state_name: Optional[str] = None,
 ):
     """Fetch actor info for one or more actor IDs (for debugging only).
 
@@ -929,9 +938,9 @@ def actors(
             this is None, then all actor information is fetched.
             If this is not None, `job_id` and `actor_state_name`
             will not take effect.
-        job_id: To filter actors by job_id, which is of type `ray.JobID`.
-            You can use the `ray.get_runtime_context().job_id` function
-            to get the current job ID
+        job_id: To filter actors by job_id, which is the hex string of `ray.JobID`.
+            You can use the `ray.get_runtime_context().get_job_id()` function
+            to get the hex string of the current job ID.
         actor_state_name: To filter actors based on actor state,
             which can be one of the following: "DEPENDENCIES_UNREADY",
             "PENDING_CREATION", "ALIVE", "RESTARTING", or "DEAD".
