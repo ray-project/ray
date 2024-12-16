@@ -62,7 +62,7 @@ Constructing an OfflinePreLearner
 .. currentmodule:: ray.rllib.offline.offline_prelearner
 
 .. autosummary::
-    :nosignature:
+    :nosignatures:
     :toctree: doc/
 
     OfflinePreLearner
@@ -72,7 +72,7 @@ Transforming Data
 -----------------
 
 .. autosummary::
-    :nosignature:
+    :nosignatures:
     :toctree: doc/
 
     OfflinePreLearner.__call__
