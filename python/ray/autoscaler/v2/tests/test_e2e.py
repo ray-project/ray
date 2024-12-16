@@ -1,11 +1,10 @@
 import os
+import subprocess
 import sys
 import time
 from typing import Dict
 
-import grpc
 import pytest
-from grpc._channel import _InactiveRpcError
 
 import ray
 from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
@@ -14,7 +13,6 @@ from ray._private.usage.usage_lib import get_extra_usage_tags_to_report
 from ray._raylet import GcsClient
 from ray.autoscaler.v2.sdk import get_cluster_status
 from ray.cluster_utils import AutoscalingCluster
-from ray.core.generated import node_manager_pb2, node_manager_pb2_grpc
 from ray.core.generated.usage_pb2 import TagKey
 from ray.util.placement_group import placement_group, remove_placement_group
 from ray.util.state.api import list_placement_groups, list_tasks
@@ -365,9 +363,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
 
         ray.get(pg.ready())
 
-        from ray.autoscaler.v2.sdk import get_cluster_status
-
-        def verify_nodes(active=3, idle=1):
+        def verify_nodes(active, idle):
             cluster_state = get_cluster_status(gcs_address)
             assert len(cluster_state.active_nodes) == active
             assert len(cluster_state.idle_nodes) == idle
@@ -376,23 +372,7 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
         # 3 worker nodes, 1 head node (idle)
         wait_for_condition(lambda: verify_nodes(3, 1))
 
-        # Kill a node
-        def kill_raylet(ip, port, graceful=True):
-            raylet_address = f"{ip}:{port}"
-            channel = grpc.insecure_channel(raylet_address)
-            stub = node_manager_pb2_grpc.NodeManagerServiceStub(channel)
-            print(f"Sending a shutdown request to {ip}:{port}")
-            try:
-                stub.ShutdownRaylet(
-                    node_manager_pb2.ShutdownRayletRequest(graceful=graceful)
-                )
-            except _InactiveRpcError:
-                assert not graceful
-
         def kill_node(node_id):
-            # kill -9
-            import subprocess
-
             cmd = f"ps aux | grep {node_id} | grep -v grep | awk '{{print $2}}'"
             pid = subprocess.check_output(cmd, shell=True).decode("utf-8").strip()
             print(f"Killing pid {pid}")
@@ -407,13 +387,10 @@ def test_placement_group_reschedule_node_dead(autoscaler_v2):
                 break
 
         # TODO(mimi): kill_raylet won't trigger reschedule in autoscaler v1
-        # kill_raylet(node["NodeManagerAddress"], node["NodeManagerPort"])
         kill_node(node["NodeID"])
 
         # Wait for the node to be removed
         wait_for_condition(lambda: verify_nodes(2, 1), 20)
-
-        # Check that the placement group is rescheduled
 
         # Only provision nodes for unplaced bundles;
         # avoid rescheduling the whole placement group.
