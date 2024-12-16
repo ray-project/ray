@@ -71,7 +71,7 @@ int main(int argc, char *argv[]) {
                                          argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*stdout_log_filepath=*/FLAGS_ray_log_filepath);
+                                         /*log_filepath=*/FLAGS_ray_log_filepath);
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 

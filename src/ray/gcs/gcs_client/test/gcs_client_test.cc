@@ -1088,7 +1088,7 @@ int main(int argc, char **argv) {
                                          argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*stdout_log_filepath=*/"");
+                                         /*log_filepath=*/"");
   ::testing::InitGoogleTest(&argc, argv);
   RAY_CHECK(argc == 3);
   ray::TEST_REDIS_SERVER_EXEC_PATH = argv[1];
