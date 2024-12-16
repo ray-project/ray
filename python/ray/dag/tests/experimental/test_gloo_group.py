@@ -84,6 +84,34 @@ def test_gloo_group_3_workers():
     _destroy_gloo_group(gloo_group_name)
 
 
+def test_gloo_group_send_diff_shape():
+    gloo_group_name = "test_group"
+    actor_handles = [Worker.remote(rank, gloo_group_name) for rank in range(2)]
+    _init_gloo_group(gloo_group_name, actor_handles)
+
+    send_buf = np.ones((10,), dtype=np.float32)
+    recv_buf = np.empty_like(send_buf)
+    res = ray.get(
+        [
+            actor_handles[0].send.remote(send_buf, 1),
+            actor_handles[1].recv.remote(recv_buf, 0),
+        ]
+    )
+    assert np.all(send_buf == res[1])
+
+    send_buf = np.ones((20,), dtype=np.float32)
+    recv_buf = np.empty_like(send_buf)
+    res = ray.get(
+        [
+            actor_handles[0].send.remote(send_buf, 1),
+            actor_handles[1].recv.remote(recv_buf, 0),
+        ]
+    )
+    assert np.all(send_buf == res[1])
+
+    _destroy_gloo_group(gloo_group_name)
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
