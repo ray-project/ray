@@ -88,7 +88,8 @@ void ObjectRecoveryManager::PinOrReconstructObject(
     const ObjectID &object_id, const std::vector<rpc::Address> &locations) {
   RAY_LOG(DEBUG).WithField(object_id)
       << "Lost object has " << locations.size() << " locations";
-  // The object to recovery is stored elsewhere, attempt to pin the object.
+  // The object to recovery has secondary copies, pin one copy to promote it to primary
+  // one.
   if (!locations.empty()) {
     auto locations_copy = locations;
     const auto location = std::move(locations_copy.back());
@@ -141,8 +142,8 @@ void ObjectRecoveryManager::PinExistingObjectCopy(
                                                                          node_id);
                          } else {
                            RAY_LOG(INFO).WithField(object_id)
-                               << "Error pinning new copy of lost object since " << status
-                               << ", trying again with other locations";
+                               << "Error pinning secondary copy of lost object due to "
+                               << status << ", trying again with other locations";
                            PinOrReconstructObject(object_id, other_locations);
                          }
                        });
