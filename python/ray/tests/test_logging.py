@@ -190,8 +190,7 @@ def test_log_file_exists(shutdown_only):
 def test_log_rotation(shutdown_only, monkeypatch):
     max_bytes = 1
     backup_count = 3
-    os.environ["RAY_ROTATION_MAX_BYTES"] = str(max_bytes)
-    os.environ["RAY_ROTATION_BACKUP_COUNT"] = str(backup_count)
+    set_logging_config(monkeypatch, max_bytes, backup_count)
     ray.init(num_cpus=1)
     session_dir = ray._private.worker.global_worker.node.address_info["session_dir"]
     session_path = Path(session_dir)
