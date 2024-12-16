@@ -154,11 +154,6 @@ void RaySyncer::Disconnect(const std::string &node_id) {
   boost::asio::dispatch(io_context_.get_executor(), std::move(task)).get();
 }
 
-void RaySyncer::SetRayletCompletedRpcCallbackForOnce(
-    RayletCompletedRpcCallback on_raylet_rpc_completion) {
-  node_state_->SetRayletCompletedRpcCallbackForOnce(std::move(on_raylet_rpc_completion));
-}
-
 void RaySyncer::Register(MessageType message_type,
                          const ReporterInterface *reporter,
                          ReceiverInterface *receiver,

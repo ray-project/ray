@@ -522,17 +522,15 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
-      io_context_provider_.GetIOContext<syncer::RaySyncer>(), kGCSNodeID.Binary());
+      io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      kGCSNodeID.Binary(),
+      [this](const NodeID &node_id) {
+        gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
+      });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
       syncer::MessageType::COMMANDS, nullptr, gcs_resource_manager_.get());
-
-  // Register completion callback on health check.
-  ray_syncer_->SetRayletCompletedRpcCallbackForOnce([this](const NodeID &node_id) {
-    gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
-  });
-
   ray_syncer_service_ = std::make_unique<syncer::RaySyncerService>(*ray_syncer_);
   rpc_server_.RegisterService(*ray_syncer_service_);
 }
