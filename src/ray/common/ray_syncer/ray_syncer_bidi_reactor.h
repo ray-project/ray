@@ -95,7 +95,7 @@ class RaySyncerBidiReactor {
   };
 
   /// Set rpc completion callback, which is called after rpc read finishes.
-  /// This function is expected to call only once, repeated invocations throws exception.
+  /// This function is expected to call only once, repeated invocations will check fail.
   void SetRpcCompletionCallbackForOnce(RpcCompletionCallback on_rpc_completion) {
     RAY_CHECK(on_rpc_completion);
     RAY_CHECK(!on_rpc_completion_);
