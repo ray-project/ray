@@ -6,7 +6,7 @@ import traceback
 from copy import deepcopy
 from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import ray
 from ray import cloudpickle
@@ -222,7 +222,6 @@ class ApplicationState:
         name: str,
         deployment_state_manager: DeploymentStateManager,
         endpoint_state: EndpointState,
-        save_checkpoint_func: Callable,
         logging_config: LoggingConfig,
     ):
         """
@@ -231,11 +230,6 @@ class ApplicationState:
             deployment_state_manager: State manager for all deployments
                 in the cluster.
             endpoint_state: State manager for endpoints in the system.
-            save_checkpoint_func: Function that can be called to write
-                a checkpoint of the application state. This should be
-                called in self._set_target_state() before actually
-                setting the target state so that the controller can
-                properly recover application states if it crashes.
         """
 
         self._name = name
@@ -261,7 +255,6 @@ class ApplicationState:
             deleting=False,
             api_type=APIType.UNKNOWN,
         )
-        self._save_checkpoint_func = save_checkpoint_func
         self._logging_config = logging_config
 
     @property
@@ -912,7 +905,6 @@ class ApplicationStateManager:
                     app_name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self.save_checkpoint,
                     self._logging_config,
                 )
                 app_state.recover_target_state_from_checkpoint(checkpoint_data)
@@ -959,7 +951,6 @@ class ApplicationStateManager:
                     name,
                     self._deployment_state_manager,
                     self._endpoint_state,
-                    self.save_checkpoint,
                     self._logging_config,
                 )
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
@@ -1014,7 +1005,6 @@ class ApplicationStateManager:
                     app_config.name,
                     self._deployment_state_manager,
                     endpoint_state=self._endpoint_state,
-                    save_checkpoint_func=self.save_checkpoint,
                     logging_config=self._logging_config,
                 )
 
