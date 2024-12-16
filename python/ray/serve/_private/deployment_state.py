@@ -972,6 +972,11 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def actor_pid(self) -> Optional[int]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.pid
+
+    @property
     def initialization_latency_s(self) -> Optional[float]:
         """Returns how long the replica took to initialize."""
 
@@ -1990,7 +1995,7 @@ class DeploymentState:
                 replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s."
+                    f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
                 )
                 if replica.initialization_latency_s is not None:
                     # This condition should always be True. The initialization
