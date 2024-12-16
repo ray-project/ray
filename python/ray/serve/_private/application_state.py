@@ -325,7 +325,6 @@ class ApplicationState:
         target_capacity: Optional[float] = None,
         target_capacity_direction: Optional[TargetCapacityDirection] = None,
         deleting: bool = False,
-        do_checkpoint: bool = True,
     ):
         """Set application target state.
 
@@ -335,12 +334,6 @@ class ApplicationState:
             (target_deployments, False)
         When a request to delete the application has been received, this should be
             ({}, True)
-
-        If do_checkpoint is True, the entire ApplicationStateManager
-        (not just this ApplicationState!) will checkpoint at the end of this call.
-        *If do_checkpoint is False, the caller is responsible for
-        checkpointing the ApplicationStateManager and must do so before any actual
-        changes are made to the cluster (e.g., starting actors)*.
         """
         if deleting:
             self._update_status(ApplicationStatus.DELETING)
@@ -365,9 +358,6 @@ class ApplicationState:
         )
 
         self._target_state = target_state
-
-        if do_checkpoint:
-            self._save_checkpoint_func()
 
     def _set_target_state_deleting(self):
         """Set target state to deleting.
@@ -456,11 +446,7 @@ class ApplicationState:
         else:
             self._endpoint_state.delete_endpoint(deployment_id)
 
-    def deploy_app(
-        self,
-        deployment_infos: Dict[str, DeploymentInfo],
-        do_checkpoint: bool = True,
-    ):
+    def deploy_app(self, deployment_infos: Dict[str, DeploymentInfo]):
         """(Re-)deploy the application from list of deployment infos.
 
         This function should only be called to deploy an app from an
@@ -480,7 +466,6 @@ class ApplicationState:
             target_config=None,
             target_capacity=None,
             target_capacity_direction=None,
-            do_checkpoint=do_checkpoint,
         )
 
     def apply_app_config(
@@ -961,11 +946,7 @@ class ApplicationStateManager:
                 )
                 for params in deployment_args
             }
-            self._application_states[name].deploy_app(
-                deployment_infos, do_checkpoint=False
-            )
-
-        self.save_checkpoint()
+            self._application_states[name].deploy_app(deployment_infos)
 
     def deploy_app(self, name: str, deployment_args: List[Dict]) -> None:
         """Deploy the specified app to the list of deployment arguments.
