@@ -576,9 +576,11 @@ class Node:
                 self._ray_params.num_cpus if num_cpus is None else num_cpus,
                 self._ray_params.num_gpus if num_gpus is None else num_gpus,
                 self._ray_params.memory if memory is None else memory,
-                self._ray_params.object_store_memory
-                if object_store_memory is None
-                else object_store_memory,
+                (
+                    self._ray_params.object_store_memory
+                    if object_store_memory is None
+                    else object_store_memory
+                ),
                 resources,
                 self._ray_params.redis_max_memory,
             ).resolve(is_head=self.head, node_ip_address=self.node_ip_address)
@@ -1806,15 +1808,15 @@ class Node:
         # We need to set both ray param's system config and self._config
         # because they could've been diverged at this point.
         deserialized_config = json.loads(object_spilling_config)
-        self._ray_params._system_config[
-            "object_spilling_config"
-        ] = object_spilling_config
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config
+        )
         self._config["object_spilling_config"] = object_spilling_config
 
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
-        self._ray_params._system_config[
-            "is_external_storage_type_fs"
-        ] = is_external_storage_type_fs
+        self._ray_params._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs
+        )
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
         # Validate external storage usage.

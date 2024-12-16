@@ -270,7 +270,7 @@ class RayLog {
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_dir = "",
-                          const std::string &stdout_log_filepath = "");
+                          const std::string &log_filepath = "");
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
