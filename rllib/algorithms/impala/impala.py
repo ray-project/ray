@@ -25,11 +25,7 @@ from ray.rllib.execution.learner_thread import LearnerThread
 from ray.rllib.execution.multi_gpu_learner_thread import MultiGPULearnerThread
 from ray.rllib.policy.policy import Policy
 from ray.rllib.policy.sample_batch import concat_samples
-from ray.rllib.utils.actor_manager import (
-    FaultAwareApply,
-    FaultTolerantActorManager,
-    RemoteCallResults,
-)
+from ray.rllib.utils.actor_manager import FaultTolerantActorManager
 from ray.rllib.utils.annotations import OldAPIStack, override
 from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.metrics import (
@@ -66,7 +62,6 @@ from ray.rllib.utils.typing import (
     SampleBatchType,
 )
 from ray.tune.execution.placement_groups import PlacementGroupFactory
-from ray.util.annotations import DeveloperAPI
 
 
 logger = logging.getLogger(__name__)
@@ -154,6 +149,7 @@ class IMPALAConfig(AlgorithmConfig):
 
         # Override some of AlgorithmConfig's default values with IMPALA-specific values.
         self.num_learners = 1
+        self.num_aggregator_actors_per_learner = 1
         self.rollout_fragment_length = 50
         self.train_batch_size = 500  # @OldAPIstack
         self.num_env_runners = 2
@@ -885,10 +881,11 @@ class IMPALA(Algorithm):
                 {
                     # Main algo process:
                     "CPU": (
-                        max(
-                            cf.num_cpus_for_main_process,
-                            cf.num_cpus_per_learner if cf.num_learners == 0 else 0,
-                        )
+                        cf.num_cpus_for_main_process
+                        + (
+                            (cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0)
+                            + cf.num_aggregator_actors_per_learner
+                        ) if cf.num_learners == 0 else 0
                     ),
                     # Use n GPUs if we have a local Learner (num_learners=0).
                     "GPU": (

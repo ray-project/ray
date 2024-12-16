@@ -398,7 +398,7 @@ class AlgorithmConfig(_Config):
         self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
         # New API stack's aggregator actors.
-        self.num_aggregator_actors_per_learner = 1
+        self.num_aggregator_actors_per_learner = 0
         self.max_requests_in_flight_per_aggregator_actor = 100
 
         # `self.callbacks()`
