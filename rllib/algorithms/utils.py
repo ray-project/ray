@@ -74,8 +74,13 @@ class AggregatorActor(FaultAwareApply):
             episodes=episodes,
             rl_module=self._module,
         )
+        # Convert to a dict into a `MultiAgentBatch`.
+        # TODO (sven): Try to get rid of dependency on MultiAgentBatch (once our mini-
+        #  batch iterators support splitting over a dict).
         ma_batch_on_gpu = MultiAgentBatch(
-            policy_batches={"default_policy": SampleBatch(batch_on_gpu)},
+            policy_batches={
+                pid: SampleBatch(batch) for pid, batch in batch_on_gpu.items()
+            },
             env_steps=env_steps,
         )
         return ma_batch_on_gpu
