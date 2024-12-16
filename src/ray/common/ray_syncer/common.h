@@ -31,7 +31,7 @@ inline constexpr size_t kComponentArraySize =
 // folder, better to place it into other common folders if uses elsewhere.
 //
 // A callback, which is called whenever a rpc succeeds (at rpc communication level)
-// between the current process and raylet.
+// between the current node and the remote node.
 using RpcCompletionCallback = std::function<void(const NodeID &)>;
 
 }  // namespace ray::syncer
