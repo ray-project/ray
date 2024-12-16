@@ -831,7 +831,7 @@ class TaskReceiverTest : public ::testing::Test {
   TaskReceiverTest()
       : worker_context_(WorkerType::WORKER, JobID::FromInt(0)),
         worker_client_(std::shared_ptr<MockWorkerClient>(new MockWorkerClient())),
-        dependency_waiter_(std::make_shared<MockDependencyWaiter>()) {
+        dependency_waiter_(std::make_unique<MockDependencyWaiter>()) {
     auto execute_task = std::bind(&TaskReceiverTest::MockExecuteTask,
                                   this,
                                   std::placeholders::_1,
@@ -847,7 +847,7 @@ class TaskReceiverTest : public ::testing::Test {
     receiver_->Init(std::make_shared<rpc::CoreWorkerClientPool>(
                         [&](const rpc::Address &addr) { return worker_client_; }),
                     rpc_address_,
-                    dependency_waiter_);
+                    dependency_waiter_.get());
   }
 
   Status MockExecuteTask(
@@ -878,7 +878,7 @@ class TaskReceiverTest : public ::testing::Test {
   instrumented_io_context main_io_service_;
   MockTaskEventBuffer task_event_buffer_;
   std::shared_ptr<MockWorkerClient> worker_client_;
-  std::shared_ptr<DependencyWaiter> dependency_waiter_;
+  std::unique_ptr<DependencyWaiter> dependency_waiter_;
 };
 
 TEST_F(TaskReceiverTest, TestNewTaskFromDifferentWorker) {
