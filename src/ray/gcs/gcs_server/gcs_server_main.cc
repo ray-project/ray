@@ -34,7 +34,7 @@ DEFINE_string(event_log_dir,
 DEFINE_string(
     ray_log_filepath,
     "",
-    "The filename to dump gcs server log on stdout, which is written via `RAY_LOG`.");
+    "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
