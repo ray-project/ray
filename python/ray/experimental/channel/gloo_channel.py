@@ -164,16 +164,15 @@ class GlooNumpyChannel(ChannelInterface):
 
     def write(self, value: Any, timeout: Optional[float] = None):
         assert isinstance(value, np.ndarray)
+        shape = value.shape
         need_to_send_metadata = self._shape is None
-        if self._typ.static_shape:
-            if self._shape is None:
-                self._shape = value.shape
-            assert self._shape == value.shape
+        if self._typ.static_shape and self._shape is None:
+            self._shape = value.shape
+        assert shape is not None
 
         # Send the metadata if needed.
         if need_to_send_metadata:
-            self._meta_channel.write(self._shape, timeout=timeout)
-            print("write metadata")
+            self._meta_channel.write(shape, timeout=timeout)
 
         for reader in self._readers:
             reader_rank = self._gloo_group.get_rank(reader)
@@ -186,7 +185,6 @@ class GlooNumpyChannel(ChannelInterface):
         shape = self._shape
         if shape is None:
             shape = self._meta_channel.read(timeout=timeout)
-            print("read metadata")
         if self._typ.static_shape:
             self._shape = shape
 
@@ -198,7 +196,6 @@ class GlooNumpyChannel(ChannelInterface):
                 recv_buf = self._recv_buf
             else:
                 recv_buf = np.empty(shape, dtype=np.float32)
-
         # Read the data from the writer.
         writer_rank = self._gloo_group.get_rank(self._writer)
         data = self._gloo_group.recv(recv_buf, writer_rank)
