@@ -313,4 +313,4 @@ class RayInternalKvStore:
     def __concat_key_with_prefixes(self, original_key):
         """Concat the necessary prefixes and key for isolation purpose for
         different jobs and different groups."""
-        return f"{self._job_id.hex()}-{self._group_name}-{original_key}"
+        return f"{self._job_id}-{self._group_name}-{original_key}"
