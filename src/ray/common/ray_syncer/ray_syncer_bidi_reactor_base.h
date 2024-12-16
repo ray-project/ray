@@ -177,15 +177,21 @@ class RaySyncerBidiReactorBase : public RaySyncerBidiReactor, public T {
           if (*disconnected) {
             return;
           }
-          if (ok) {
-            RAY_CHECK(!msg->node_id().empty());
-            ReceiveUpdate(std::move(msg));
-            StartPull();
-          } else {
+
+          if (!ok) {
             RAY_LOG_EVERY_MS(INFO, 1000) << "Failed to read the message from: "
                                          << NodeID::FromBinary(GetRemoteNodeID());
             Disconnect();
+            return;
           }
+
+          // Successful rpc completion callback.
+          RAY_CHECK(!msg->node_id().empty());
+          if (on_rpc_completion_) {
+            on_rpc_completion_(NodeID::FromBinary(remote_node_id_));
+          }
+          ReceiveUpdate(std::move(msg));
+          StartPull();
         },
         "");
   }
