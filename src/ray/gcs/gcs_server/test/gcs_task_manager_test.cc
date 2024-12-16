@@ -22,10 +22,10 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/common/asio/asio_util.h"
+#include "ray/common/id.h"
+#include "ray/common/status.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/gcs/test/gcs_test_util.h"
-#include "src/ray/common/id.h"
-#include "src/ray/common/status.h"
 
 namespace ray {
 namespace gcs {
