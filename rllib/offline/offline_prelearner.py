@@ -149,7 +149,7 @@ class OfflinePreLearner:
 
     @OverrideToImplementCustomLogic
     def __call__(self, batch: Dict[str, np.ndarray]) -> Dict[str, List[EpisodeType]]:
-        """Prepares plain data batches for training with `Learner`s.
+        """Prepares plain data batches for training with `Learner`'s.
 
         Args:
             batch: A dictionary of numpy arrays containing either column data
