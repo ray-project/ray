@@ -237,7 +237,7 @@ def test_sort_with_multiple_keys(ray_start_regular, descending, batch_format):
         ["a", "b", "c"], descending=[descending, not descending, descending]
     )
 
-    # Number of blocks is preservedg
+    # Number of blocks is preserved
     assert len(sorted_ds._block_num_rows()) == num_blocks
     # Rows are sorted over the dimensions
     assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
