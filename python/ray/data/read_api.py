@@ -78,6 +78,7 @@ from ray.data.datasource.datasource import Reader
 from ray.data.datasource.file_based_datasource import (
     FileShuffleConfig,
     _unwrap_arrow_serialization_workaround,
+    _validate_shuffle_arg,
 )
 from ray.data.datasource.file_meta_provider import (
     DefaultFileMetadataProvider,
@@ -3423,14 +3424,6 @@ def _get_num_output_blocks(
     elif override_num_blocks is not None:
         parallelism = override_num_blocks
     return parallelism
-
-
-def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files"] and not isinstance(shuffle, FileShuffleConfig):
-        raise ValueError(
-            f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', `FileShuffleConfig`."
-        )
 
 
 def _emit_meta_provider_deprecation_warning(

@@ -84,7 +84,7 @@ class FileShuffleConfig:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
         >>> shuffle = FileShuffleConfig(seed=42)
-        >>> ray.data.read_parquet("s3://ray-example-data/batoidea", shuffle=shuffle)
+        >>> ray.data.read_images("s3://ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
@@ -563,8 +563,10 @@ def _open_file_with_retry(
 
 
 def _validate_shuffle_arg(shuffle: Optional[str]) -> None:
-    if shuffle not in [None, "files", FileShuffleConfig]:
+    if not (
+        shuffle is None or shuffle == "files" or isinstance(shuffle, FileShuffleConfig)
+    ):
         raise ValueError(
             f"Invalid value for 'shuffle': {shuffle}. "
-            "Valid values are None, 'files', 'FileShuffleConfig'."
+            "Valid values are None, 'files', `FileShuffleConfig`."
         )
