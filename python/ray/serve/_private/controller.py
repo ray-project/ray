@@ -400,7 +400,9 @@ class ServeController:
             try:
                 dsm_update_start_time = time.time()
                 any_recovering = self.deployment_state_manager.update()
+
                 self.deployment_state_manager.save_checkpoint()
+
                 self.dsm_update_duration_gauge_s.set(
                     time.time() - dsm_update_start_time
                 )
@@ -419,7 +421,12 @@ class ServeController:
             try:
                 asm_update_start_time = time.time()
                 self.application_state_manager.update()
+
                 self.application_state_manager.save_checkpoint()
+                # ApplicationStateManager.update() can also mutate the
+                # DeploymentStateManager so we need to checkpoint that as well
+                self.deployment_state_manager.save_checkpoint()
+
                 self.asm_update_duration_gauge_s.set(
                     time.time() - asm_update_start_time
                 )
@@ -753,7 +760,10 @@ class ServeController:
                     }
                 )
             name_to_deployment_args[name] = deployment_args_deserialized
+
         self.application_state_manager.deploy_apps(name_to_deployment_args)
+
+        self.application_state_manager.save_checkpoint()
 
     def apply_config(
         self,
@@ -817,6 +827,8 @@ class ServeController:
             target_capacity=self._target_capacity,
             target_capacity_direction=self._target_capacity_direction,
         )
+
+        self.application_state_manager.save_checkpoint()
 
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
@@ -1006,6 +1018,8 @@ class ServeController:
         """
         for name in names:
             self.application_state_manager.delete_app(name)
+
+        self.application_state_manager.save_checkpoint()
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment

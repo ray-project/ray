@@ -1254,14 +1254,12 @@ class DeploymentState:
         deployment_scheduler: DeploymentScheduler,
         cluster_node_info_cache: ClusterNodeInfoCache,
         autoscaling_state_manager: AutoscalingStateManager,
-        _save_checkpoint_func: Callable,
     ):
         self._id = id
         self._long_poll_host: LongPollHost = long_poll_host
         self._deployment_scheduler = deployment_scheduler
         self._cluster_node_info_cache = cluster_node_info_cache
         self._autoscaling_state_manager = autoscaling_state_manager
-        self._save_checkpoint_func = _save_checkpoint_func
 
         # Each time we set a new deployment goal, we're trying to save new
         # DeploymentInfo and bring current deployment to meet new status.
@@ -1498,7 +1496,6 @@ class DeploymentState:
         self._curr_status_info = self._curr_status_info.handle_transition(
             trigger=DeploymentStatusInternalTrigger.DELETE
         )
-        self._save_checkpoint_func()
         logger.info(
             f"Deleting {self._id}",
             extra={"log_to_stderr": False},
@@ -1508,7 +1505,6 @@ class DeploymentState:
         self,
         target_info: DeploymentInfo,
         target_num_replicas: int,
-        do_checkpoint: bool = True,
     ) -> None:
         """Set the target state for the deployment to the provided info.
 
@@ -1517,12 +1513,6 @@ class DeploymentState:
             target_num_replicas: The number of replicas that this deployment
                 should attempt to run.
             status_trigger: The driver that triggered this change of state.
-
-        If do_checkpoint is True, the entire DeploymentStateManager
-        (not just this DeploymentState!) will checkpoint at the end of this call.
-        *If do_checkpoint is False, the caller is responsible for
-        checkpointing the DeploymentStateManager and must do so before any actual
-        changes are made to the cluster (e.g., starting actors)*.
         """
         new_target_state = DeploymentTargetState.create(
             target_info, target_num_replicas, deleting=False
@@ -1542,9 +1532,6 @@ class DeploymentState:
                 ServeUsageTag.NUM_REPLICAS_LIGHTWEIGHT_UPDATED.record("True")
 
         self._target_state = new_target_state
-
-        if do_checkpoint:
-            self._save_checkpoint_func()
 
     def deploy(self, deployment_info: DeploymentInfo) -> bool:
         """Deploy the deployment.
@@ -2398,7 +2385,6 @@ class DeploymentStateManager:
             self._deployment_scheduler,
             self._cluster_node_info_cache,
             self._autoscaling_state_manager,
-            self.save_checkpoint,
         )
 
     def _map_actor_names_to_deployment(
@@ -2731,7 +2717,9 @@ class DeploymentStateManager:
                 deleted_ids.append(deployment_id)
             any_recovering |= any_replicas_recovering
 
-        self.save_checkpoint()  # Make sure to checkpoint before taking any actions
+        # Take a checkpoint before actually affecting the state of the cluster
+        # by starting/stopping replicas.
+        self.save_checkpoint()
 
         # STEP 6: Schedule all STARTING replicas and stop all STOPPING replicas
         deployment_to_replicas_to_stop = self._deployment_scheduler.schedule(

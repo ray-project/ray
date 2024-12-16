@@ -1107,9 +1107,6 @@ class ApplicationStateManager:
                 del self._application_states[app_name]
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
-        self.save_checkpoint()
-        self._deployment_state_manager.save_checkpoint()
-
     def shutdown(self) -> None:
         for app_state in self._application_states.values():
             app_state.delete()
