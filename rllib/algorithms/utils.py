@@ -13,11 +13,6 @@ from ray.util.annotations import DeveloperAPI
 
 
 @DeveloperAPI(stability="alpha")
-@ray.remote(
-    num_cpus=1,
-    num_gpus=0.01,
-    max_restarts=-1,
-)
 class AggregatorActor(FaultAwareApply):
     """Runs episode lists through ConnectorV2 pipeline and creates train batches.
 
@@ -45,10 +40,11 @@ class AggregatorActor(FaultAwareApply):
     to the LearnerGroup for calling each Learner with one train batch.
     """
 
-    def __init__(self, config: AlgorithmConfig):
+    def __init__(self, config: AlgorithmConfig, rl_module_spec):
         self.config = config
 
-        # Set device.
+        # Set device and node.
+        self._node = platform.node()
         self._device = get_device(self.config, 1)
 
         # Create the RLModule.
@@ -57,7 +53,7 @@ class AggregatorActor(FaultAwareApply):
         #  sub-modules are stateful (and what their initial state tensors are), and
         #  which IDs the submodules have (to figure out, whether its multi-agent or
         #  not).
-        self._module = self.config.get_multi_agent_module_spec().build()
+        self._module = rl_module_spec.build()
         self._module = self._module.as_multi_rl_module()
 
         # Create the Learner connector pipeline.

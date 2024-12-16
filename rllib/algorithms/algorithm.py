@@ -186,7 +186,9 @@ except ImportError:
 
     class AlgorithmBase:
         @staticmethod
-        def _get_learner_bundles(cf: AlgorithmConfig) -> List[Dict[str, int]]:
+        def _get_learner_bundles(
+            cf: AlgorithmConfig
+        ) -> List[Dict[str, Union[float, int]]]:
             """Selects the right resource bundles for learner workers based off of cf.
 
             Args:
@@ -195,33 +197,44 @@ except ImportError:
             Returns:
                 A list of resource bundles for the learner workers.
             """
-            if cf.num_learners > 0:
-                if cf.num_gpus_per_learner:
-                    learner_bundles = [
-                        {"GPU": cf.num_learners * cf.num_gpus_per_learner}
-                    ]
-                elif cf.num_cpus_per_learner:
-                    learner_bundles = [
-                        {
-                            "CPU": cf.num_learners * cf.num_cpus_per_learner,
-                        }
-                    ]
-            else:
-                learner_bundles = [
-                    {
-                        # sampling and training is not done concurrently when local is
-                        # used, so pick the max.
-                        "CPU": max(
-                            cf.num_cpus_per_learner, cf.num_cpus_for_main_process
-                        ),
-                        "GPU": (cf.num_gpus_per_learner), #TODO: account properly for aggregation workers
-                    },
-                    {
-                        "GPU": 0.01,
-                        "CPU": 1,
-                    }
-                ]
-            return learner_bundles
+            num_learners = cf.num_learners or 1
+            num_cpus = max(
+                cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
+                cf.num_cpus_for_main_process if cf.num_learners == 0 else 0,
+            )
+            num_gpus = num_learners * (
+                cf.num_gpus_per_learner - 0.01 * cf.num_aggregator_actors_per_learner
+            )
+            return [{
+                "CPU": num_cpus,
+                "GPU": num_gpus,
+            }] * num_learners + [
+                {"CPU": 1, "GPU": 0.01 if cf.num_gpus_per_learner > 0 else 0}
+            ] * (num_learners * cf.num_aggregator_actors_per_learner)
+
+            #if cf.num_learners > 0:
+            #    if cf.num_gpus_per_learner:
+            #        learner_bundles = [
+            #            {"GPU": cf.num_learners * cf.num_gpus_per_learner}
+            #        ]
+            #    elif cf.num_cpus_per_learner:
+            #        learner_bundles = [
+            #            {
+            #                "CPU": cf.num_learners * cf.num_cpus_per_learner,
+            #            }
+            #        ]
+            #else:
+            #    learner_bundles = [
+            #        {
+            #            # sampling and training is not done concurrently when local is
+            #            # used, so pick the max.
+            #            "CPU": max(
+            #                cf.num_cpus_per_learner, cf.num_cpus_for_main_process
+            #            ),
+            #            "GPU": (cf.num_gpus_per_learner),
+            #        },
+            #    ]
+            #return learner_bundles
 
 
 tf1, tf, tfv = try_import_tf()

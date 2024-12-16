@@ -143,10 +143,6 @@ class IMPALAConfig(AlgorithmConfig):
         self.broadcast_interval = 1
         self.num_gpu_loader_threads = 8
 
-        # New API stack's aggregator actors.
-        self.num_aggregator_actors_per_learner = 1
-        self.max_requests_in_flight_per_aggregator_actor = 100
-
         self.grad_clip = 40.0
         # Note: Only when using enable_rl_module_and_learner=True can the clipping mode
         # be configured by the user. On the old API stack, RLlib will always clip by
@@ -198,8 +194,6 @@ class IMPALAConfig(AlgorithmConfig):
         vtrace: Optional[bool] = NotProvided,
         vtrace_clip_rho_threshold: Optional[float] = NotProvided,
         vtrace_clip_pg_rho_threshold: Optional[float] = NotProvided,
-        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
-        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         num_gpu_loader_threads: Optional[int] = NotProvided,
         num_multi_gpu_tower_stacks: Optional[int] = NotProvided,
         minibatch_buffer_size: Optional[int] = NotProvided,
@@ -232,14 +226,6 @@ class IMPALAConfig(AlgorithmConfig):
             vtrace: V-trace params (see vtrace_tf/torch.py).
             vtrace_clip_rho_threshold:
             vtrace_clip_pg_rho_threshold:
-            num_aggregator_actors_per_learner: The number of aggregator actors per
-                Learner (if num_learners=0, one local learner is created). Must be at
-                least 1. Aggregator actors perform the task of a) converting episodes
-                into a train batch and b) move that train batch to the same GPU that
-                the corresponding learner is located on. Good values are 1 or 2, but
-                this strongly depends on your setup and `EnvRunner` throughput.
-            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
-                are allowed per aggregator actor before new requests are dropped?
             num_gpu_loader_threads: The number of GPU-loader threads (per Learner
                 worker), used to load incoming (CPU) batches to the GPU, if applicable.
                 The incoming batches are produced by each Learner's LearnerConnector
@@ -333,12 +319,6 @@ class IMPALAConfig(AlgorithmConfig):
             self.vtrace_clip_rho_threshold = vtrace_clip_rho_threshold
         if vtrace_clip_pg_rho_threshold is not NotProvided:
             self.vtrace_clip_pg_rho_threshold = vtrace_clip_pg_rho_threshold
-        if num_aggregator_actors_per_learner is not NotProvided:
-            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
-        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
-            self.max_requests_in_flight_per_aggregator_actor = (
-                max_requests_in_flight_per_aggregator_actor
-            )
         if num_gpu_loader_threads is not NotProvided:
             self.num_gpu_loader_threads = num_gpu_loader_threads
         if num_multi_gpu_tower_stacks is not NotProvided:
@@ -578,9 +558,18 @@ class IMPALA(Algorithm):
             learner_locations = self.learner_group.foreach_learner(
                 func=lambda _learner: (_learner.node, _learner.device),
             )
+            rl_module_spec = self.config.get_multi_rl_module_spec(
+                spaces=self.env_runner_group.get_spaces(),
+                inference_only=False,
+            )
+            agg_cls = ray.remote(
+                num_cpus=1,
+                num_gpus=0.01 if self.config.num_gpus_per_learner > 0 else 0,
+                max_restarts=-1,
+            )(AggregatorActor)
             self._aggregator_actor_manager = FaultTolerantActorManager(
                 [
-                    AggregatorActor.remote(self.config)
+                    agg_cls.remote(self.config, rl_module_spec)
                     for _ in range(
                     (self.config.num_learners or 1)
                     * self.config.num_aggregator_actors_per_learner
@@ -938,11 +927,8 @@ class IMPALA(Algorithm):
         #  factories.
         # Only if we have actual (remote) learner workers. In case of a local learner,
         # the resource has already been taken care of above.
-        if cf.enable_rl_module_and_learner:# and cf.num_learners > 0:
-            bundles += [{
-                "GPU": 0.01,
-                "CPU": 1,
-            } for _ in range(cf.num_aggregator_actors_per_learner)]#cls._get_learner_bundles(cf)
+        if cf.enable_rl_module_and_learner:
+            bundles += cls._get_learner_bundles(cf)
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).

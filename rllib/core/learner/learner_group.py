@@ -143,7 +143,11 @@ class LearnerGroup(Checkpointable):
                 if not self.config.num_gpus_per_learner
                 else 0
             )
-            num_gpus_per_learner = self.config.num_gpus_per_learner
+            num_gpus_per_learner = max(
+                0,
+                self.config.num_gpus_per_learner
+                - (0.01 * self.config.num_aggregator_actors_per_learner),
+            )
             resources_per_learner = {
                 "CPU": num_cpus_per_learner,
                 "GPU": num_gpus_per_learner,
