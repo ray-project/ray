@@ -209,10 +209,6 @@ class SortTaskSpec(ExchangeTaskSpec):
 
         # To allow multi-directional sort, we utilize Python's stable sort:
         # we sort several times with different directions.
-        # TODO: This is O(K*N*log(N)) where N is # of rows and K is # of columns.
-        # We can optimize this by sorting multiple columns at a time, where each
-        # sort operation has a single sort direction (rather than sorting each
-        # column individually).
         for i, desc in list(enumerate(sort_key.get_descending()))[::-1]:
             # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
             samples_list.sort(
