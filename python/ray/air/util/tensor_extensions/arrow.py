@@ -1029,6 +1029,7 @@ class ArrowVariableShapedTensorArray(
         dtype = np_data_buffer.dtype
         if arr.dtype == object:
             from ray.data.extensions.object_extension import ArrowPythonObjectArray
+
             return ArrowPythonObjectArray.from_objects(arr)
 
         pa_dtype = pa.from_numpy_dtype(dtype)
