@@ -192,7 +192,7 @@ def test_job_id_consistency(ray_start_regular):
     @ray.remote
     def verify_job_id(job_id, new_thread):
         def verify():
-            current_task_id = ray.runtime_context.get_runtime_context().task_id
+            current_task_id = ray.runtime_context.get_runtime_context().get_task_id()
             assert job_id == current_task_id.job_id()
             obj1 = foo.remote()
             assert job_id == obj1.job_id()
