@@ -84,7 +84,7 @@ class FileShuffleConfig:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
         >>> shuffle = FileShuffleConfig(seed=42)
-        >>> ray.data.read_images("s3://ray-example-data/batoidea", shuffle=shuffle)
+        >>> ray.data.read_images("s3://anonymous@ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
