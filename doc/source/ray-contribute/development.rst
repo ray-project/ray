@@ -134,7 +134,7 @@ To build Ray on Ubuntu, run the following commands:
   ci/env/install-bazel.sh
 
   # Install node version manager and node 14
-  $(curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.39.0/install.sh)
+  curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
   nvm install 14
   nvm use 14
 
