@@ -4641,9 +4641,13 @@ cdef class CoreWorker:
 
         return self.current_runtime_env
 
-    def get_pending_children_task_ids(self, parent_task_id: TaskID):
+    def get_pending_children_task_ids(self, parent_task_id: str):
+        """
+        Args:
+            parent_task_id: The task ID of the parent task in hex string format.
+        """
         cdef:
-            CTaskID c_parent_task_id = parent_task_id.native()
+            CTaskID c_parent_task_id = CTaskID.FromHex(parent_task_id)
             c_vector[CTaskID] ret
             c_vector[CTaskID].iterator it
 
