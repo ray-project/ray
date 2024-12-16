@@ -45,6 +45,7 @@
 
 #include "absl/container/flat_hash_map.h"
 #include "absl/random/random.h"
+#include "nlohmann/json.hpp"
 #include "ray/util/logging.h"
 #include "ray/util/macros.h"
 #include "ray/util/process.h"

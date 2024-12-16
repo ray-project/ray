@@ -41,7 +41,7 @@ GcsNodeManager::GcsNodeManager(GcsPublisher *gcs_publisher,
 void GcsNodeManager::WriteNodeExportEvent(rpc::GcsNodeInfo node_info) const {
   /// Write node_info as a export node event if
   /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  if (!GcsNodeManager::IsExportAPIEnabledNode()) {
     return;
   }
   std::shared_ptr<rpc::ExportNodeData> export_node_data_ptr =

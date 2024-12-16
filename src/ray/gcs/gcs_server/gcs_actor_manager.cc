@@ -242,9 +242,9 @@ const rpc::ActorTableData &GcsActor::GetActorTableData() const {
 rpc::ActorTableData *GcsActor::GetMutableActorTableData() { return &actor_table_data_; }
 
 void GcsActor::WriteActorExportEvent() const {
-  /// Write actor_table_data_ as a export actor event if
-  /// enable_export_api_write() is enabled.
-  if (!RayConfig::instance().enable_export_api_write()) {
+  /// Verify actor export events should be written to file
+  /// and then write actor_table_data_ as an export event.
+  if (!GcsActor::IsExportAPIEnabledActor()) {
     return;
   }
   std::shared_ptr<rpc::ExportActorData> export_actor_data_ptr =

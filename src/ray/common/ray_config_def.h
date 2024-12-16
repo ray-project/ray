@@ -923,5 +923,15 @@ RAY_CONFIG(int, object_manager_client_connection_num, 4)
 // Update this to overwrite it.
 RAY_CONFIG(int, object_manager_rpc_threads_num, 0)
 
-// Write export API events to file if enabled
+// Write export API event of all resource types to file if enabled.
+// RAY_enable_export_api_write_config will not be considered if
+// this is enabled.
 RAY_CONFIG(bool, enable_export_api_write, false)
+
+// JSON configuration that lists individual resource types to write
+// export API events for. This configuration is only used if
+// RAY_enable_export_api_write is not enabled. Full list of valid
+// resource types in ExportEvent.SourceType enum in
+// src/ray/protobuf/export_api/export_event.proto
+// Example config: `export RAY_enable_export_api_write_config='["EXPORT_ACTOR"]'`
+RAY_CONFIG(std::string, enable_export_api_write_config, "[]")

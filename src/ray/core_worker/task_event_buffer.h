@@ -27,6 +27,7 @@
 #include "ray/common/task/task_spec.h"
 #include "ray/gcs/gcs_client/gcs_client.h"
 #include "ray/util/counter_map.h"
+#include "ray/util/event.h"
 #include "src/ray/protobuf/export_api/export_task_event.pb.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
@@ -372,6 +373,14 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   void WriteExportData(
       std::vector<std::shared_ptr<TaskEvent>> &&status_events_to_write_for_export,
       std::vector<std::shared_ptr<TaskEvent>> &&profile_events_to_send);
+
+  // Verify if export events should be written for EXPORT_TASK source types
+  bool IsExportAPIEnabledTask() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_TASK",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   /// Reset the counters during flushing data to GCS.
   void ResetCountersForFlush();

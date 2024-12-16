@@ -192,6 +192,13 @@ class GcsActor {
   /// Write an event containing this actor's ActorTableData
   /// to file for the Export API.
   void WriteActorExportEvent() const;
+  // Verify if export events should be written for EXPORT_ACTOR source types
+  bool IsExportAPIEnabledActor() const {
+    return IsExportAPIEnabledSourceType(
+        "EXPORT_ACTOR",
+        RayConfig::instance().enable_export_api_write(),
+        RayConfig::instance().enable_export_api_write_config());
+  }
 
   const ResourceRequest &GetAcquiredResources() const;
   void SetAcquiredResources(ResourceRequest &&resource_request);

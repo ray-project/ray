@@ -531,6 +531,16 @@ TEST_F(EventTest, TestExportEvent) {
   EXPECT_EQ(raylet_event_as_json["message"].get<std::string>(), "test warning");
 }
 
+TEST_F(EventTest, TestIsExportAPIEnabledSourceType) {
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"), true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_TASK\", \"EXPORT_ACTOR\"]"), true);
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "[\"EXPORT_ACTOR\"]"), false);
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", true, "[\"EXPORT_ACTOR\"]"), true);
+
+  // Invalid JSON
+  EXPECT_EQ(IsExportAPIEnabledSourceType("EXPORT_TASK", false, "EXPORT_TASK"), false);
+}
+
 TEST_F(EventTest, TestRayCheckAbort) {
   auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");

@@ -15,7 +15,6 @@
 #include "ray/core_worker/task_event_buffer.h"
 
 #include "ray/gcs/pb_util.h"
-#include "ray/util/event.h"
 
 namespace ray {
 namespace core {
@@ -240,7 +239,7 @@ TaskEventBufferImpl::~TaskEventBufferImpl() { Stop(); }
 
 Status TaskEventBufferImpl::Start(bool auto_flush) {
   absl::MutexLock lock(&mutex_);
-  export_event_write_enabled_ = RayConfig::instance().enable_export_api_write();
+  export_event_write_enabled_ = TaskEventBufferImpl::IsExportAPIEnabledTask();
   auto report_interval_ms = RayConfig::instance().task_events_report_interval_ms();
   RAY_CHECK(report_interval_ms > 0)
       << "RAY_task_events_report_interval_ms should be > 0 to use TaskEventBuffer.";
