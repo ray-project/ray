@@ -1282,7 +1282,7 @@ class DeploymentState:
             DeploymentStatusTrigger.CONFIG_UPDATE_STARTED,
         )
 
-        self.replica_average_ongoing_requests: Dict[str, float] = dict()
+        self.replica_average_ongoing_requests: Dict[str, float] = {}
 
         self.health_check_gauge = metrics.Gauge(
             "serve_deployment_replica_healthy",
@@ -2230,8 +2230,8 @@ class DeploymentState:
             deadlines: The current draining node deadlines.
             min_replicas_to_stop: The minimum number of replicas to stop.
         """
-        to_stop = list()
-        remaining = list()
+        to_stop = []
+        remaining = []
 
         # Stop replicas whose deadline is up
         for replica in replicas:
@@ -2369,7 +2369,7 @@ class DeploymentStateManager:
         )
         self._autoscaling_state_manager = autoscaling_state_manager
 
-        self._deployment_states: Dict[DeploymentID, DeploymentState] = dict()
+        self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
 
         self._recover_from_checkpoint(
             all_current_actor_names, all_current_placement_group_names

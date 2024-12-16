@@ -365,7 +365,7 @@ class ApplicationState:
         Wipes the target deployment infos, code version, and config.
         """
         self._set_target_state(
-            deployment_infos=dict(),
+            deployment_infos={},
             api_type=self._target_state.api_type,
             code_version=None,
             target_config=None,
@@ -877,7 +877,7 @@ class ApplicationStateManager:
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
-        self._application_states: Dict[str, ApplicationState] = dict()
+        self._application_states: Dict[str, ApplicationState] = {}
         self._recover_from_checkpoint()
 
     def _recover_from_checkpoint(self):
@@ -1240,7 +1240,7 @@ def override_deployment_info(
             ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # What to pass to info.update
-        override_options = dict()
+        override_options = {}
 
         # Merge app-level and deployment-level runtime_envs.
         replica_config = info.replica_config
