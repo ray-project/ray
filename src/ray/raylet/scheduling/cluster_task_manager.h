@@ -51,7 +51,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// \param get_time_ms: A callback which returns the current time in milliseconds.
   ClusterTaskManager(
       const NodeID &self_node_id,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       internal::NodeInfoGetter get_node_info,
       std::function<void(const RayTask &)> announce_infeasible_task,
       ILocalTaskManager &local_task_manager,
@@ -132,7 +132,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
   /// The helper to dump the debug state of the cluster task manater.
   std::string DebugStr() const override;
 
-  std::shared_ptr<ClusterResourceScheduler> GetClusterResourceScheduler() const;
+  ClusterResourceScheduler &GetClusterResourceScheduler() const;
 
   /// Get the count of tasks in `infeasible_tasks_`.
   size_t GetInfeasibleQueueSize() const;
@@ -161,8 +161,7 @@ class ClusterTaskManager : public ClusterTaskManagerInterface {
 
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
-  /// TODO(hjiang): Use reference instead of shared pointer.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
 
   /// Function to get the node information of a given node id.
   internal::NodeInfoGetter get_node_info_;

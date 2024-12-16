@@ -7,9 +7,10 @@ from typing import TYPE_CHECKING, Any, List, Optional, Tuple, Union
 
 import ray
 import ray.util.serialization
-from ray.experimental.channel import ChannelContext
+from ray.experimental.channel import ChannelContext, utils
 from ray.experimental.channel.common import ChannelInterface
 from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.intra_process_channel import IntraProcessChannel
 from ray.experimental.channel.nccl_group import _NcclGroup
 from ray.experimental.channel.shared_memory_channel import SharedMemoryType
 from ray.experimental.channel.torch_tensor_type import TorchTensorType
@@ -45,8 +46,11 @@ class TorchTensorNcclChannel(ChannelInterface):
         writer: ray.actor.ActorHandle,
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
         typ: "TorchTensorType",
-        gpu_data_channel: "_TorchTensorNcclChannel",
-        cpu_data_channel: "Channel",
+        driver_actor_id: str,
+        tensor_metadata_channel: Optional["Channel"] = None,
+        _cpu_data_channel: Optional["Channel"] = None,
+        _gpu_data_channel: Optional["_TorchTensorNcclChannel"] = None,
+        _local_channel: Optional["IntraProcessChannel"] = None,
     ):
         """
         Can be used to send GPU tensors nested inside other data. The data is
@@ -63,24 +67,68 @@ class TorchTensorNcclChannel(ChannelInterface):
                 driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
-            gpu_data_channel: A GPU-GPU channel for sending tensor data. Its
-                writer and readers should match the given writer and readers.
-            cpu_data_channel: A shared-memory channel for sending
+            typ: Type information about the values passed through the channel.
+            driver_actor_id: The actor ID of the DAGDriverProxyActor.
+            tensor_metadata_channel: A shared-memory channel for sending tensor
+                metadata.
+            _cpu_data_channel: A shared-memory channel for sending
                 non-tensor data. Its writer and readers should match the given
                 writer and readers. If None is provided, then we assume that
                 there is no CPU-specific data, i.e. the task directly returned
                 a CUDA torch.Tensor.
+            _gpu_data_channel: A channel for sending torch.Tensors via NCCL.
+            _local_channel: A channel for sending data between the writer and
+                local readers.
+
+        NOTE: `tensor_metadata_channel` will be set only for testing purposes.
+        `_cpu_data_channel` is set for testing purposes and for deserialization.
+        `_gpu_data_channel` and `_local_channel` are set only during deserialization.
         """
         self._writer = writer
         self._reader_and_node_list = reader_and_node_list
         self._typ = typ
 
-        self._gpu_data_channel: _TorchTensorNcclChannel = gpu_data_channel
-        if self._typ.direct_return:
-            self._cpu_data_channel = None
-        else:
-            assert cpu_data_channel is not None
-            self._cpu_data_channel: Optional["Channel"] = cpu_data_channel
+        (
+            remote_reader_and_node_list,
+            local_reader_and_node_list,
+        ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
+
+        num_local_readers = len(local_reader_and_node_list)
+        self._local_channel = _local_channel
+        if self._local_channel is None and num_local_readers > 0:
+            # There are some local readers which are the same worker process as
+            # the writer. Create a local channel for the writer and the local readers.
+            #
+            # Use num_readers = 1 when creating the local channel,
+            # because we have channel cache to support reading
+            # from the same channel multiple times.
+            self._local_channel = IntraProcessChannel(num_readers=1)
+
+        assert len(remote_reader_and_node_list) > 0, (
+            "All readers are from the same actor. "
+            "The TorchTensorType type hint is not needed. "
+            "No NCCL channel will be created."
+        )
+        self._gpu_data_channel = _gpu_data_channel
+        if self._gpu_data_channel is None:
+            self._gpu_data_channel: _TorchTensorNcclChannel = _TorchTensorNcclChannel(
+                writer,
+                remote_reader_and_node_list,
+                typ,
+                _meta_channel=tensor_metadata_channel,
+            )
+
+        self._cpu_data_channel: Optional["Channel"] = _cpu_data_channel
+        if self._cpu_data_channel is not None:
+            assert (
+                not self._typ.direct_return
+            ), "CPU channel should be None if direct return is enabled"
+
+        if self._cpu_data_channel is None and not self._typ.direct_return:
+            # Create a CPU channel to send non-tensor data.
+            self._cpu_data_channel = SharedMemoryType().create_channel(
+                writer, remote_reader_and_node_list, driver_actor_id
+            )
 
         # Used for serialization.
         self._worker = ray._private.worker.global_worker
@@ -94,11 +142,17 @@ class TorchTensorNcclChannel(ChannelInterface):
         return (
             TorchTensorNcclChannel,
             (
-                None,
-                None,
+                self._writer,
+                self._reader_and_node_list,
                 self._typ,
-                self._gpu_data_channel,
+                # driver_actor_id and tensor_metadata_channel are used to initialize
+                # the _cpu_data_channel and _gpu_data_channel, so we don't need to
+                # pass them in here.
+                None,
+                None,
                 self._cpu_data_channel,
+                self._gpu_data_channel,
+                self._local_channel,
             ),
         )
 
@@ -149,7 +203,10 @@ class TorchTensorNcclChannel(ChannelInterface):
         Send a value that may contain torch.Tensors that should be sent via
         external transport.
 
-        This method:
+        Case 1: Use `_local_channel` to send the data to local readers.
+
+        Case 2: Otherwise, use the following method to send the data to remote readers.
+
         1) Serializes `value`. During serialization, all torch.Tensors that are
         on the default device are extracted and replaced with a unique
         placeholder. Thus, the serialized value will contain all non-tensor
@@ -163,6 +220,9 @@ class TorchTensorNcclChannel(ChannelInterface):
         (3) on the first `write` call. The reader is expected to reuse the sent
         data for subsequent messages.
         """
+        if self._local_channel is not None:
+            self._local_channel.write(value)
+
         if isinstance(value, ray.exceptions.RayTaskError):
             if self._typ.static_shape or self._typ.direct_return:
                 # Raise a fatal error to teardown the DAG.
@@ -230,7 +290,11 @@ class TorchTensorNcclChannel(ChannelInterface):
         Read a value that may contain torch.Tensors sent via external
         transport.
 
-        This method:
+        Case 1: If the reader is a local reader and is the same actor as the writer,
+        then use the `_local_channel` to read the data.
+
+        Case 2: Otherwise, use the following method to read data from remote readers.
+
         1) Receives torch.Tensors via the tensor data channel (e.g., NCCL).
         2) Reads the serialized non-tensor data.
         3) Deserializes the non-tensor data. During deserialization, replaces
@@ -239,6 +303,13 @@ class TorchTensorNcclChannel(ChannelInterface):
         If _direct_return=True was specified, then we skip step (2) and (3) and
         directly return the data received in (1).
         """
+        # If the reader is the same actor as the writer, then we can use the
+        # local channel to read the data.
+        reader = utils.get_self_actor()
+        if reader == self._writer:
+            assert self._local_channel is not None
+            return self._local_channel.read()
+
         # First, read the tensor data.
         tensors = self._gpu_data_channel.read(timeout)
 
@@ -256,6 +327,8 @@ class TorchTensorNcclChannel(ChannelInterface):
         self._gpu_data_channel.close()
         if self._cpu_data_channel is not None:
             self._cpu_data_channel.close()
+        if self._local_channel is not None:
+            self._local_channel.close()
 
 
 def _torch_zeros_allocator(
@@ -354,7 +427,7 @@ class _TorchTensorNcclChannel(ChannelInterface):
             self._meta_channel = metadata_type.create_channel(
                 self._writer,
                 self._reader_and_node_list,
-                False,
+                None,
             )
 
     def ensure_registered_as_writer(self):

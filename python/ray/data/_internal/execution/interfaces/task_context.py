@@ -1,4 +1,4 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.data._internal.progress_bar import ProgressBar
@@ -39,3 +39,6 @@ class TaskContext:
 
     # The target maximum number of bytes to include in the task's output block.
     target_max_block_size: Optional[int] = None
+
+    # Additional keyword arguments passed to the task.
+    kwargs: Dict[str, Any] = field(default_factory=dict)

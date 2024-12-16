@@ -213,6 +213,15 @@ Lance
 
    read_lance
 
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
+
 Dask
 ----
 
