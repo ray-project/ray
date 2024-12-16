@@ -823,6 +823,8 @@ class CompiledDAG:
         # Preprocessing identifies the input node and output node.
         self.input_task_idx: Optional[int] = None
         self.output_task_idx: Optional[int] = None
+        # List of task indices that are input attribute nodes.
+        self.input_attr_task_idxs: List[int] = []
         # Denotes whether execute/execute_async returns a list of refs/futures.
         self._returns_list: bool = False
         # Number of expected positional args and kwargs that may be passed to
@@ -949,11 +951,13 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         nccl_collective_ops: Set[_CollectiveOperation] = set()
 
-        # Find the input node to the DAG.
+        # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
+            elif isinstance(task.dag_node, InputAttributeNode):
+                self.input_attr_task_idxs.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
@@ -1088,6 +1092,9 @@ class CompiledDAG:
                 ):
                     downstream_actor_handle = dag_node._get_actor_handle()
 
+                # Add the type hint of the upstream node to the task.
+                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
+
                 if isinstance(upstream_task.dag_node, InputAttributeNode):
                     # Record all of the keys used to index the InputNode.
                     # During execution, we will check that the user provides
@@ -1123,7 +1130,6 @@ class CompiledDAG:
                     direct_input = True
 
                 upstream_task.downstream_task_idxs[task_idx] = downstream_actor_handle
-                task.arg_type_hints.append(upstream_task.dag_node.type_hint)
 
                 if upstream_task.dag_node.type_hint.requires_nccl():
                     # Add all readers to the NCCL actors of P2P.
@@ -1496,8 +1502,6 @@ class CompiledDAG:
             )
 
         input_task = self.idx_to_task[self.input_task_idx]
-        # Register custom serializers for inputs provided to dag.execute().
-        input_task.dag_node.type_hint.register_custom_serializer()
         self.dag_input_channels = input_task.output_channels
         assert self.dag_input_channels is not None
 
@@ -1599,8 +1603,9 @@ class CompiledDAG:
             task = self.idx_to_task[output_idx]
             assert len(task.output_channels) == 1
             self.dag_output_channels.append(task.output_channels[0])
-            # Register custom serializers for DAG outputs.
-            output.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input, input attribute, and output nodes.
+        self._register_input_output_custom_serializer()
 
         assert self.dag_input_channels
         assert self.dag_output_channels
@@ -1786,75 +1791,26 @@ class CompiledDAG:
 
     def _detect_deadlock(self) -> bool:
         """
-        Check whether the DAG will deadlock on NCCL calls.
-        There are no false positives in this deadlock detection,
-        but there may be false negatives for now. For example,
+        TODO (kevin85421): Avoid false negatives.
 
-        actor1.f1 ---> actor2.f1
-                   |
-        actor1.f2 --
+        Currently, a compiled graph may deadlock if there are NCCL channels, and the
+        readers have control dependencies on the same actor. For example:
 
-        In this case, actor1.f1 and actor1.f2 have control dependencies
-        between them. If actor2.f1 reads actor1.f2 first and then actor1.f1,
-        there will be a deadlock. However, this deadlock is not detectable
-        until we have a more granular execution schedule.
+        actor1.a ---> actor2.f1
+                 |
+                 ---> actor2.f2
 
-        TODO (kevin85421): Avoid false negatives
+        The control dependency between `actor2.f1` and `actor2.f2` is that `f1` should
+        run before `f2`. If `actor1.a` writes to `actor2.f2` before `actor2.f1`, a
+        deadlock will occur.
+
+        Currently, the execution schedule is not granular enough to detect this
+        deadlock.
 
         Returns:
-            True if deadlock is detected, otherwise False.
+            True if a deadlock is detected; otherwise, False.
         """
-        assert self.idx_to_task
-        assert self.actor_to_tasks
-
-        from ray.dag import ClassMethodNode
-
-        def _is_same_actor(idx1: int, idx2: int) -> bool:
-            """
-            Args:
-                idx1: A key in the idx_to_task dictionary.
-                idx2: A key in the idx_to_task dictionary.
-
-            Returns:
-                True if both DAG nodes are on the same actor;
-                otherwise, False.
-            """
-            task1 = self.idx_to_task[idx1]
-            task2 = self.idx_to_task[idx2]
-            if (
-                not isinstance(task1.dag_node, ClassMethodNode)
-                or task1.dag_node.is_class_method_output
-            ):
-                return False
-            if (
-                not isinstance(task2.dag_node, ClassMethodNode)
-                or task2.dag_node.is_class_method_output
-            ):
-                return False
-            actor_id_1 = task1.dag_node._get_actor_handle()._actor_id
-            actor_id_2 = task2.dag_node._get_actor_handle()._actor_id
-            return actor_id_1 == actor_id_2
-
-        for idx, task in self.idx_to_task.items():
-            for downstream_idx in task.downstream_task_idxs:
-                if task.dag_node.type_hint.requires_nccl():
-                    if _is_same_actor(idx, downstream_idx):
-                        actor_handle = self.idx_to_task[
-                            idx
-                        ].dag_node._get_actor_handle()
-                        method = self.idx_to_task[idx].dag_node.get_method_name()
-                        downstream_method = self.idx_to_task[
-                            downstream_idx
-                        ].dag_node.get_method_name()
-                        logger.error(
-                            "Detected a deadlock caused by using NCCL channels to "
-                            f"transfer data between the task `{method}` and "
-                            f"its downstream method `{downstream_method}` on the same "
-                            f"actor {actor_handle}. Please remove "
-                            '`TorchTensorType(transport="nccl")` between '
-                            "DAG nodes on the same actor."
-                        )
-                        return True
+        logger.warning("Deadlock detection has not been implemented yet.")
         return False
 
     def _monitor_failures(self):
@@ -2055,6 +2011,21 @@ class CompiledDAG:
             if len(self._result_buffer[execution_index]) == 0:
                 del self._result_buffer[execution_index]
         return result
+
+    def release_output_channel_buffers(self, execution_index: int):
+        from ray.dag import DAGContext
+
+        ctx = DAGContext.get_current()
+        timeout = ctx.retrieval_timeout
+
+        while self._max_finished_execution_index < execution_index:
+            self.increment_max_finished_execution_index()
+            start_time = time.monotonic()
+            self._dag_output_fetcher.release_channel_buffers(timeout)
+
+            if timeout != -1:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
     def _execute_until(
         self,
@@ -2779,6 +2750,26 @@ class CompiledDAG:
                 dot.edge(str(self.input_task_idx), str(idx))
         dot.render(filename, view=view)
         return dot.source
+
+    def _register_input_output_custom_serializer(self):
+        """
+        Register custom serializers for input, input attribute, and output nodes.
+        """
+        assert self.input_task_idx is not None
+        assert self.output_task_idx is not None
+
+        # Register custom serializers for input node.
+        input_task = self.idx_to_task[self.input_task_idx]
+        input_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for input attribute nodes.
+        for input_attr_task_idx in self.input_attr_task_idxs:
+            input_attr_task = self.idx_to_task[input_attr_task_idx]
+            input_attr_task.dag_node.type_hint.register_custom_serializer()
+
+        # Register custom serializers for output nodes.
+        for output in self.idx_to_task[self.output_task_idx].args:
+            output.type_hint.register_custom_serializer()
 
     def teardown(self, kill_actors: bool = False):
         """Teardown and cancel all actor tasks for this DAG. After this
