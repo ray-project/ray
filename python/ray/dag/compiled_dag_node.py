@@ -1939,7 +1939,6 @@ class CompiledDAG:
                     except ray.exceptions.RayChannelError:
                         # Channel error happens when a channel is closed
                         # or timed out. In this case, do not log.
-                        logger.log("RayChannelError when cancelling worker task")
                         pass
                     except Exception:
                         logger.exception("Error cancelling worker task")
