@@ -17,7 +17,7 @@ from types import ModuleType
 from typing import Any, Dict, Optional
 
 from ray._private import ray_constants
-from ray.autoscaler._private.command_runner import DockerCommandRunner, SSHCommandRunner
+from ray.autoscaler._private.command_runner import SSHCommandRunner
 from ray.autoscaler._private.gcp.node import GCPTPUNode
 from ray.autoscaler.command_runner import CommandRunnerInterface
 from ray.autoscaler.node_provider import NodeProvider
@@ -92,59 +92,6 @@ class TPUVMSSHCommandRunner(SSHCommandRunner):
         )
 
 
-class TPUVMDockerCommandRunner(DockerCommandRunner):
-    """A Docker command runner with overwritten IP addresses."""
-
-    def __init__(
-        self,
-        docker_config: Dict[str, Any],
-        internal_ip: str,
-        external_ip: str,
-        worker_id: int,
-        accelerator_type: str,
-        **common_args,
-    ):
-        super().__init__(docker_config=docker_config, **common_args)
-        self._worker_id = worker_id
-        self._accelerator_type = accelerator_type
-
-        self.ssh_command_runner = TPUVMSSHCommandRunner(
-            internal_ip=internal_ip,
-            external_ip=external_ip,
-            worker_id=worker_id,
-            accelerator_type=accelerator_type,
-            **common_args,
-        )
-
-    def run(
-        self,
-        cmd,
-        timeout=120,
-        exit_on_fail=False,
-        port_forward=None,
-        with_output=False,
-        environment_variables: Optional[Dict[str, object]] = None,
-        run_env="auto",
-        ssh_options_override_ssh_key="",
-        shutdown_after_run=False,
-    ):
-        if environment_variables:
-            environment_variables = _maybe_remove_head_resource(
-                environment_variables, self._worker_id, self._accelerator_type
-            )
-        return super().run(
-            cmd,
-            timeout,
-            exit_on_fail,
-            port_forward,
-            with_output,
-            environment_variables,
-            run_env,
-            ssh_options_override_ssh_key,
-            shutdown_after_run,
-        )
-
-
 class TPUCommandRunner(CommandRunnerInterface):
     """A TPU pod command runner."""
 
@@ -179,8 +126,9 @@ class TPUCommandRunner(CommandRunnerInterface):
                 "use_internal_ip": use_internal_ip,
             }
             if docker_config and docker_config["container_name"] != "":
-                return TPUVMDockerCommandRunner(
-                    docker_config=docker_config, **common_args
+                raise ValueError(
+                    "The docker backend of the VM cluster launcher has been removed, we "
+                    "recommend KubeRay for container based Ray deployments going forward"
                 )
             else:
                 return TPUVMSSHCommandRunner(**common_args)
