@@ -52,21 +52,13 @@ config = (
     # as remote learners.
     .offline_data(
         input_=[data_path.as_posix()],
-        # Define the number of reading blocks, these should be larger than 1
-        # and aligned with the data size.
-        input_read_method_kwargs={
-            "override_num_blocks": max((args.num_learners or 1) * 2, 2)
-        },
         # Concurrency defines the number of processes that run the
         # `map_batches` transformations. This should be aligned with the
         # 'prefetch_batches' argument in 'iter_batches_kwargs'.
         map_batches_kwargs={"concurrency": 2, "num_cpus": 2},
         # This data set is small so do not prefetch too many batches and use no
         # local shuffle.
-        iter_batches_kwargs={
-            "prefetch_batches": 1,
-            "local_shuffle_buffer_size": None,
-        },
+        iter_batches_kwargs={"prefetch_batches": 1},
         # The number of iterations to be run per learner when in multi-learner
         # mode in a single RLlib training iteration. Leave this to `None` to
         # run an entire epoch on the dataset during a single RLlib training
