@@ -62,9 +62,9 @@ def test_was_current_actor_reconstructed(shutdown_only):
         assert ray.get_runtime_context().get_job_id() is not None
         context = ray.get_runtime_context().get()
         assert "actor_id" not in context
-        assert context["task_id"] == ray.get_runtime_context().get_task_id()
-        assert context["node_id"] == ray.get_runtime_context().get_node_id()
-        assert context["job_id"] == ray.get_runtime_context().get_job_id()
+        assert context["task_id"].hex() == ray.get_runtime_context().get_task_id()
+        assert context["node_id"].hex() == ray.get_runtime_context().get_node_id()
+        assert context["job_id"].hex() == ray.get_runtime_context().get_job_id()
 
     a = A.remote()
     assert ray.get(a.current_job_id.remote()) is not None
