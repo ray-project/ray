@@ -2,7 +2,7 @@ import logging
 import numpy as np
 import os
 import sys
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 import tree  # pip install dm_tree
 
@@ -13,6 +13,9 @@ from ray.rllib.utils.typing import (
     TensorStructType,
     TensorType,
 )
+
+if TYPE_CHECKING:
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
 logger = logging.getLogger(__name__)
 

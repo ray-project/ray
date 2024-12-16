@@ -288,22 +288,22 @@ class IMPALAConfig(AlgorithmConfig):
             deprecation_warning(
                 old="config.training(num_aggregation_workers=..)",
                 help="Aggregator workers are no longer supported on the old API "
-                     "stack! To use aggregation (and GPU pre-loading) on the new API "
-                     "stack, activate the new API stack and THEN set "
-                     "`config.training(num_aggregator_actors_per_learner=..)`. Good "
-                     "choices are normally 1 or 2, but this depends on your overall "
-                     "setup, especially your `EnvRunner` throughput.",
-                error=True
+                "stack! To use aggregation (and GPU pre-loading) on the new API "
+                "stack, activate the new API stack and THEN set "
+                "`config.training(num_aggregator_actors_per_learner=..)`. Good "
+                "choices are normally 1 or 2, but this depends on your overall "
+                "setup, especially your `EnvRunner` throughput.",
+                error=True,
             )
         if max_requests_in_flight_per_aggregator_worker != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.training(max_requests_in_flight_per_aggregator_worker=..)",
                 help="Aggregator workers are no longer supported on the old API "
-                     "stack! To use aggregation (and GPU pre-loading) on the new API "
-                     "stack, activate the new API stack and THEN set "
-                     "`config.training(max_requests_in_flight_per_aggregator_actor=..)"
-                     "`.",
-                error=True
+                "stack! To use aggregation (and GPU pre-loading) on the new API "
+                "stack, activate the new API stack and THEN set "
+                "`config.training(max_requests_in_flight_per_aggregator_actor=..)"
+                "`.",
+                error=True,
             )
 
         # Pass kwargs onto super's `training()` method.
@@ -476,7 +476,11 @@ class IMPALAConfig(AlgorithmConfig):
         input_action_space,
         device=None,
     ):
-        connector = super().build_learner_connector(input_observation_space, input_action_space, device)
+        connector = super().build_learner_connector(
+            input_observation_space,
+            input_action_space,
+            device,
+        )
         # Extend all episodes by one artificial timestep to allow the value function net
         # to compute the bootstrap values (and add a mask to the batch to know, which
         # slots to mask out).
@@ -567,9 +571,9 @@ class IMPALA(Algorithm):
                 [
                     agg_cls.remote(self.config, rl_module_spec)
                     for _ in range(
-                    (self.config.num_learners or 1)
-                    * self.config.num_aggregator_actors_per_learner
-                )
+                        (self.config.num_learners or 1)
+                        * self.config.num_aggregator_actors_per_learner
+                    )
                 ],
                 max_remote_requests_in_flight_per_actor=(
                     self.config.max_requests_in_flight_per_aggregator_actor
@@ -639,25 +643,27 @@ class IMPALA(Algorithm):
 
         time.sleep(0.01)
 
-        if self.config.learner_config_dict.get("_training_step_sample_only"):
-            return
-
         # "Batch" collected episode refs into groups, such that exactly
         # `total_train_batch_size` timesteps are sent to
         # `LearnerGroup.update_from_episodes()`.
         data_packages_for_aggregators = self._pre_queue_episode_refs(episode_refs)
-        ma_batches_refs_remote_results = self._aggregator_actor_manager.fetch_ready_async_reqs(
-            timeout_seconds=0.0,
-            return_obj_refs=True,
+        ma_batches_refs_remote_results = (
+            self._aggregator_actor_manager.fetch_ready_async_reqs(
+                timeout_seconds=0.0,
+                return_obj_refs=True,
+            )
         )
         ma_batches_refs = []
         for call_result in ma_batches_refs_remote_results:
             ma_batches_refs.append((call_result.actor_id, call_result.get()))
         while data_packages_for_aggregators:
+
             def _func(actor, p):
                 return actor.get_batch(p)
 
-            num_agg = self.config.num_aggregator_actors_per_learner * (self.config.num_learners or 1)
+            num_agg = self.config.num_aggregator_actors_per_learner * (
+                self.config.num_learners or 1
+            )
             packs = data_packages_for_aggregators[:num_agg]
             self._aggregator_actor_manager.foreach_actor_async(
                 func=[functools.partial(_func, p=p) for p in packs],
@@ -840,7 +846,9 @@ class IMPALA(Algorithm):
 
         return episodes_for_aggregators
 
-    def _pre_queue_batch_refs(self, batch_refs: List[Tuple[int, ObjectRef]]) -> List[List[ObjectRef]]:
+    def _pre_queue_batch_refs(
+        self, batch_refs: List[Tuple[int, ObjectRef]]
+    ) -> List[List[ObjectRef]]:
         # `batch_refs` is a list of tuple(actor_id, ObjRef[MABatch]).
 
         # Each ObjRef[MABatch] was returned by one AggregatorActor from a single
@@ -856,10 +864,12 @@ class IMPALA(Algorithm):
         while all(
             learner_list for learner_list in self._ma_batches_being_built.values()
         ):
-            batch_refs_for_learner_group.append([
-                learner_list.pop(0)
-                for learner_list in self._ma_batches_being_built.values()
-            ])
+            batch_refs_for_learner_group.append(
+                [
+                    learner_list.pop(0)
+                    for learner_list in self._ma_batches_being_built.values()
+                ]
+            )
 
         return batch_refs_for_learner_group
 
@@ -880,22 +890,30 @@ class IMPALA(Algorithm):
 
         # Main process (old API stack).
         if not cf.enable_rl_module_and_learner:
-            bundles.append({
-                "CPU": cf.num_cpus_for_main_process,
-                "GPU": 0 if cf._fake_gpus else cf.num_gpus,
-            })
+            bundles.append(
+                {
+                    "CPU": cf.num_cpus_for_main_process,
+                    "GPU": 0 if cf._fake_gpus else cf.num_gpus,
+                }
+            )
         # Main process (no local learner).
         elif cf.num_learners > 0:
             bundles.append({"CPU": cf.num_cpus_for_main_process})
         # Main process (local learner).
         else:
-            bundles.append({
-                "CPU": max(
-                    cf.num_cpus_for_main_process,
-                    cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
-                ),
-                "GPU": max(0, cf.num_gpus_per_learner - 0.01 * cf.num_aggregator_actors_per_learner),
-            })
+            bundles.append(
+                {
+                    "CPU": max(
+                        cf.num_cpus_for_main_process,
+                        cf.num_cpus_per_learner if cf.num_gpus_per_learner == 0 else 0,
+                    ),
+                    "GPU": max(
+                        0,
+                        cf.num_gpus_per_learner
+                        - 0.01 * cf.num_aggregator_actors_per_learner,
+                    ),
+                }
+            )
             # Aggregation actors (for the local learner).
             bundles += [
                 {"CPU": 1, "GPU": 0.01 if cf.num_gpus_per_learner > 0 else 0}
@@ -927,7 +945,6 @@ class IMPALA(Algorithm):
             if cf.evaluation_interval
             else []
         )
-
         # TODO (avnishn): Remove this once we have a way to extend placement group
         #  factories.
         # Only if we have actual (remote) learner workers. In case of a local learner,
@@ -937,7 +954,6 @@ class IMPALA(Algorithm):
 
         # Return PlacementGroupFactory containing all needed resources
         # (already properly defined as device bundles).
-        print(bundles)
         return PlacementGroupFactory(
             bundles=bundles,
             strategy=cf.placement_strategy,
@@ -968,16 +984,8 @@ class IMPALA(Algorithm):
         for batch in batches:
             self._counters[NUM_ENV_STEPS_SAMPLED] += batch.count
             self._counters[NUM_AGENT_STEPS_SAMPLED] += batch.agent_steps()
-
-        if self.config.learner_config_dict.get("_training_step_sample_only"):
-            return {}
-
         # Concatenate single batches into batches of size `total_train_batch_size`.
         self._concatenate_batches_and_pre_queue(batches)
-
-        if self.config.learner_config_dict.get("_training_step_sample_and_concat_batches"):
-            return {}
-
         # Move train batches (of size `total_train_batch_size`) onto learner queue.
         self._place_processed_samples_on_learner_thread_queue()
         # Extract most recent train results from learner thread.
@@ -1072,9 +1080,9 @@ class IMPALA(Algorithm):
         processed_batches = []
 
         for batch in batches:
-            assert not isinstance(batch, ObjectRef), (
-                "`IMPALA._process_experiences_old_api_stack` can not handle ObjectRefs!"
-            )
+            assert not isinstance(
+                batch, ObjectRef
+            ), "`IMPALA._process_experiences_old_api_stack` can not handle ObjectRefs!"
             batch = batch.decompress_if_needed()
             # Only make a pass through the buffer, if replay proportion is > 0.0 (and
             # we actually have one).

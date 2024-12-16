@@ -97,9 +97,7 @@ class IMPALALearner(Learner):
             )
         # Enqueue to Learner thread's in-queue.
         else:
-            _LearnerThread.enqueue(
-                self._learner_thread_in_queue, batch, self.metrics
-            )
+            _LearnerThread.enqueue(self._learner_thread_in_queue, batch, self.metrics)
 
         return self.metrics.reduce()
 

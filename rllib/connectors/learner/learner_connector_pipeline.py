@@ -11,14 +11,14 @@ from ray.util.annotations import PublicAPI
 class LearnerConnectorPipeline(ConnectorPipelineV2):
     @override(ConnectorPipelineV2)
     def __call__(
-            self,
-            *,
-            rl_module: RLModule,
-            batch: Optional[Dict[str, Any]] = None,
-            episodes: List[EpisodeType],
-            explore: bool = False,
-            shared_data: Optional[dict] = None,
-            **kwargs,
+        self,
+        *,
+        rl_module: RLModule,
+        batch: Optional[Dict[str, Any]] = None,
+        episodes: List[EpisodeType],
+        explore: bool = False,
+        shared_data: Optional[dict] = None,
+        **kwargs,
     ):
         # Make sure user does not necessarily send initial input into this pipeline.
         # Might just be empty and to be populated from `episodes`.
