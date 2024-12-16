@@ -1200,10 +1200,10 @@ class Node:
         )
         process_info = ray._private.services.start_gcs_server(
             self.redis_address,
-            self._logs_dir,
-            stdout_log_fname,
-            stderr_file,
-            self.session_name,
+            event_log_dir=self._logs_dir,
+            ray_log_filepath=stdout_log_fname,
+            stderr_file=stderr_file,
+            session_name=self.session_name,
             redis_username=self._ray_params.redis_username,
             redis_password=self._ray_params.redis_password,
             config=self._config,
