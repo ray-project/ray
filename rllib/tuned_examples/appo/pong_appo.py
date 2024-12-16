@@ -62,7 +62,7 @@ config = (
         num_aggregator_actors_per_learner=2,
         lr=0.0005 * ((args.num_learners or 1) ** 0.5),
         vf_loss_coeff=1.0,
-        entropy_coeff=0.01,#[[0, 0.02], [3000000, 0.0]],  # <- crucial parameter to finetune
+        entropy_coeff=[[0, 0.01], [3000000, 0.0]],  # <- crucial parameter to finetune
         # Only update connector states and model weights every n training_step calls.
         broadcast_interval=5,
         # learner_queue_size=1,
