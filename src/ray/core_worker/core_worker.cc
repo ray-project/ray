@@ -730,7 +730,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   // Unfortunately the raylet client has to be constructed after the receivers.
   if (task_receiver_ != nullptr) {
     task_argument_waiter_ = std::make_unique<DependencyWaiterImpl>(*local_raylet_client_);
-    task_receiver_->Init(core_worker_client_pool_, rpc_address_, task_argument_waiter_);
+    task_receiver_->Init(
+        core_worker_client_pool_, rpc_address_, task_argument_waiter_.get());
   }
 
   actor_manager_ = std::make_unique<ActorManager>(
