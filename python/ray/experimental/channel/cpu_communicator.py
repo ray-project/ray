@@ -176,7 +176,7 @@ class CPUCommunicator(Communicator):
         """
         return self._world_size
 
-    def get_device_type(self) -> str:
+    def get_transport_name(self) -> str:
         return "cpu"
 
     def recv_stream(self):

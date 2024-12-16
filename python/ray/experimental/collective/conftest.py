@@ -70,7 +70,7 @@ class AbstractNcclGroup(Communicator):
     def destroy(self) -> None:
         pass
 
-    def get_device_type(self) -> str:
+    def get_transport_name(self) -> str:
         return "nccl"
 
 
@@ -112,15 +112,15 @@ class MockNcclGroupSet:
 
         ctx = ChannelContext.get_current()
         if custom_nccl_group is not None:
-            ctx.nccl_groups[group_id] = custom_nccl_group
+            ctx.communicators[group_id] = custom_nccl_group
         else:
-            ctx.nccl_groups[group_id] = AbstractNcclGroup(actors)
+            ctx.communicators[group_id] = AbstractNcclGroup(actors)
 
         return group_id
 
     def mock_destroy_nccl_group(self, group_id: str) -> None:
         ctx = ChannelContext.get_current()
-        if group_id not in ctx.nccl_groups:
+        if group_id not in ctx.communicators:
             return
 
         actors, _ = self.ids_to_actors_and_custom_comms[group_id]
@@ -135,8 +135,8 @@ class MockNcclGroupSet:
 
         if group_id in self.ids_to_actors_and_custom_comms:
             del self.ids_to_actors_and_custom_comms[group_id]
-        ctx.nccl_groups[group_id].destroy()
-        del ctx.nccl_groups[group_id]
+        ctx.communicators[group_id].destroy()
+        del ctx.communicators[group_id]
 
     def check_init(
         self,
@@ -167,7 +167,7 @@ class MockNcclGroupSet:
         ctx = ChannelContext.get_current()
         for nccl_group_id in nccl_group_ids:
             assert nccl_group_id not in self.ids_to_actors_and_custom_comms
-            assert nccl_group_id not in ctx.nccl_groups
+            assert nccl_group_id not in ctx.communicators
 
 
 @ray.remote
@@ -194,18 +194,18 @@ def mock_do_init_nccl_group(
     if custom_nccl_group is None:
         nccl_group = AbstractNcclGroup(actors)
         nccl_group.initialize(rank)
-        ctx.nccl_groups[group_id] = nccl_group
+        ctx.communicators[group_id] = nccl_group
     else:
         custom_nccl_group.initialize(rank)
-        ctx.nccl_groups[group_id] = custom_nccl_group
+        ctx.communicators[group_id] = custom_nccl_group
 
 
 def mock_do_destroy_nccl_group(self, group_id: str) -> None:
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
+    if group_id not in ctx.communicators:
         return
-    ctx.nccl_groups[group_id].destroy()
-    del ctx.nccl_groups[group_id]
+    ctx.communicators[group_id].destroy()
+    del ctx.communicators[group_id]
 
 
 def check_nccl_group_init(

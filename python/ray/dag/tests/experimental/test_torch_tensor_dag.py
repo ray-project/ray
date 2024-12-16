@@ -428,7 +428,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         def destroy(self) -> None:
             return self._inner.destroy()
 
-        def get_device_type(self) -> str:
+        def get_transport_name(self) -> str:
             return "nccl"
 
     from cupy.cuda import nccl
@@ -537,7 +537,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
         def destroy(self) -> None:
             pass
 
-        def get_device_type(self) -> str:
+        def get_transport_name(self) -> str:
             return "nccl"
 
     nccl_group = MockNcclGroup(2, [actor1, actor2])
@@ -695,7 +695,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
         def destroy(self) -> None:
             pass
 
-        def get_device_type(self) -> str:
+        def get_transport_name(self) -> str:
             return "nccl"
 
     nccl_group = InitedNcclGroup(2, [sender, receiver])
@@ -1156,7 +1156,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         def destroy(self) -> None:
             return self._inner.destroy()
 
-        def get_device_type(self) -> str:
+        def get_transport_name(self) -> str:
             return "nccl"
 
     comm_id = nccl.get_unique_id()

@@ -309,13 +309,13 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         ctx = ChannelContext.get_current()
         assert isinstance(
-            typ.nccl_group_id, str
+            typ.communicator_id, str
         ), "NCCL group ID ({nccl_group_id}) must be a str."
         self._typ = typ
 
-        assert self._typ.nccl_group_id is not None, "No NCCL group specified."
-        self._nccl_group_id: str = self._typ.nccl_group_id
-        self._nccl_group: "Communicator" = ctx.nccl_groups[self._typ.nccl_group_id]
+        assert self._typ.communicator_id is not None, "No NCCL group specified."
+        self._nccl_group_id: str = self._typ.communicator_id
+        self._nccl_group: "Communicator" = ctx.communicators[self._typ.communicator_id]
         assert (
             self._nccl_group is not None
         ), "ChannelContext.nccl_group is not initialized."
@@ -538,11 +538,11 @@ class _TorchTensorNcclChannel(ChannelInterface):
 
         self._nccl_group.destroy()
         ctx = ChannelContext.get_current()
-        if self._nccl_group_id in ctx.nccl_groups:
-            del ctx.nccl_groups[self._nccl_group_id]
+        if self._nccl_group_id in ctx.communicators:
+            del ctx.communicators[self._nccl_group_id]
 
 
-def _do_init_nccl_group(
+def _do_init_communicator(
     self,
     group_id,
     world_size,
@@ -550,22 +550,22 @@ def _do_init_nccl_group(
     rank,
     actor_handles,
     use_communication_streams,
-    custom_nccl_group: Optional[Communicator] = None,
+    custom_communicator: Optional[Communicator] = None,
 ):
     import torch
 
-    if not custom_nccl_group:
+    if not custom_communicator:
         assert (
             ray.get_gpu_ids()
         ), "Actors participating in NCCL group must have at least one GPU assigned"
 
     ctx = ChannelContext.get_current()
-    if custom_nccl_group is not None:
-        custom_nccl_group.initialize(rank)
-        ctx.nccl_groups[group_id] = custom_nccl_group
+    if custom_communicator is not None:
+        custom_communicator.initialize(rank)
+        ctx.communicators[group_id] = custom_communicator
     else:
         # default to NcclGroup
-        ctx.nccl_groups[group_id] = _NcclGroup(
+        ctx.communicators[group_id] = _NcclGroup(
             world_size,
             comm_id,
             rank,
@@ -575,11 +575,11 @@ def _do_init_nccl_group(
         )
 
 
-def _do_destroy_nccl_group(self, group_id):
+def _do_destroy_communicator(self, group_id):
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
+    if group_id not in ctx.communicators:
         return
-    ctx.nccl_groups[group_id].destroy()
+    ctx.communicators[group_id].destroy()
 
     # Keep the NCCL group in the map after destruction in case there is still a
     # task loop running.
@@ -628,9 +628,9 @@ def _get_ranks(
     return ranks
 
 
-def _init_nccl_group(
+def _init_communicator(
     actors: List[ray.actor.ActorHandle],
-    custom_nccl_group: Optional[Communicator] = None,
+    custom_communicator: Optional[Communicator] = None,
     use_communication_streams: bool = False,
 ) -> str:
     """
@@ -639,15 +639,15 @@ def _init_nccl_group(
 
     Args:
         actors: A list of actors that participate in the NCCL group.
-        custom_nccl_group: A custom NCCL group to initialize.
+        custom_communicator: A custom NCCL group to initialize.
         use_communication_streams: Whether to use dedicated send and recv
                 streams for communication. If True, communication and computation
                 can be overlapped to improve perfomrance.
     """
     ctx = ChannelContext.get_current()
 
-    is_cpu_communicator = custom_nccl_group and isinstance(
-        custom_nccl_group, CPUCommunicator
+    is_cpu_communicator = custom_communicator and isinstance(
+        custom_communicator, CPUCommunicator
     )
 
     has_gpus = ray.get(
@@ -676,23 +676,23 @@ def _init_nccl_group(
     # Used to uniquely identify this NCCL group.
     group_id = str(uuid.uuid4())
 
-    if custom_nccl_group is not None:
+    if custom_communicator is not None:
         logger.info(f"Initializing custom NCCL group {group_id} on actors: {actors}")
     else:
         logger.info(f"Creating NCCL group {group_id} on actors: {actors}")
 
     world_size = len(actors)
-    ranks = _get_ranks(actors, custom_nccl_group)
+    ranks = _get_ranks(actors, custom_communicator)
     init_tasks = [
         actor.__ray_call__.remote(
-            _do_init_nccl_group,
+            _do_init_communicator,
             group_id,
             world_size,
             nccl_comm_id,
             rank,
             actors,
             use_communication_streams,
-            custom_nccl_group,
+            custom_communicator,
         )
         for rank, actor in zip(ranks, actors)
     ]
@@ -706,10 +706,10 @@ def _init_nccl_group(
 
     logger.info("NCCL group initialized.")
 
-    if custom_nccl_group is not None:
-        ctx.nccl_groups[group_id] = custom_nccl_group
+    if custom_communicator is not None:
+        ctx.communicators[group_id] = custom_communicator
     else:
-        ctx.nccl_groups[group_id] = _NcclGroup(
+        ctx.communicators[group_id] = _NcclGroup(
             world_size,
             nccl_comm_id,
             rank=None,
@@ -719,19 +719,19 @@ def _init_nccl_group(
     return group_id
 
 
-def _destroy_nccl_group(group_id: str) -> None:
+def _destroy_communicator(group_id: str) -> None:
     """
     Destroy the NCCL group with the given ID.
     """
     ctx = ChannelContext.get_current()
-    if group_id not in ctx.nccl_groups:
+    if group_id not in ctx.communicators:
         return
 
-    group = ctx.nccl_groups[group_id]
+    group = ctx.communicators[group_id]
     actors = group.get_actor_handles()
     destroy_tasks = [
         actor.__ray_call__.remote(
-            _do_destroy_nccl_group,
+            _do_destroy_communicator,
             group_id,
         )
         for actor in actors
@@ -744,4 +744,4 @@ def _destroy_nccl_group(group_id: str) -> None:
             "may be hung."
         )
 
-    del ctx.nccl_groups[group_id]
+    del ctx.communicators[group_id]

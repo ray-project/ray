@@ -65,10 +65,10 @@ class TorchTensorType(ChannelOutputType):
         self._static_shape = _static_shape
         self._direct_return = _direct_return
 
-        self._nccl_group: Optional[Communicator] = None
+        self._communicator: Optional[Communicator] = None
         if isinstance(transport, Communicator):
-            self._nccl_group = transport
-            transport = transport.get_device_type()
+            self._communicator = transport
+            transport = transport.get_transport_name()
 
         if transport not in [self.AUTO, self.NCCL, self.CPU]:
             raise ValueError(
@@ -77,7 +77,7 @@ class TorchTensorType(ChannelOutputType):
             )
         self.transport = transport
 
-        self._nccl_group_id: Optional[str] = None
+        self._communicator_id: Optional[str] = None
 
         if self._static_shape and self.transport == self.AUTO:
             logger.info(
@@ -164,18 +164,18 @@ class TorchTensorType(ChannelOutputType):
     def requires_nccl(self) -> bool:
         return self.transport == self.NCCL
 
-    def get_custom_nccl_group(self) -> Optional[Communicator]:
+    def get_custom_communicator(self) -> Optional[Communicator]:
         """
         Return the NCCL group if one is specified.
         """
-        return self._nccl_group
+        return self._communicator
 
-    def set_nccl_group_id(self, group_id: str) -> None:
-        self._nccl_group_id = group_id
+    def set_communicator_id(self, group_id: str) -> None:
+        self._communicator_id = group_id
 
     @property
-    def nccl_group_id(self) -> Optional[str]:
-        return self._nccl_group_id
+    def communicator_id(self) -> Optional[str]:
+        return self._communicator_id
 
     def __deepcopy__(self, memo):
         """
@@ -188,6 +188,6 @@ class TorchTensorType(ChannelOutputType):
             _static_shape=self._static_shape,
             _direct_return=self._direct_return,
         )
-        copy._nccl_group = self._nccl_group
-        copy._nccl_group_id = self._nccl_group_id
+        copy._communicator = self._communicator
+        copy._communicator_id = self._communicator_id
         return copy

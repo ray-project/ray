@@ -151,8 +151,8 @@ class Communicator(ABC):
         raise NotImplementedError
 
     @abstractmethod
-    def get_device_type() -> str:
+    def get_transport_name() -> str:
         """
-        Return the type of the communicator (nccl or cpu).
+        Return the type of the communicator (gpu or cpu).
         """
         raise NotImplementedError

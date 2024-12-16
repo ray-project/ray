@@ -305,5 +305,5 @@ class _NcclGroup(Communicator):
             self._comm.abort()
             self._comm.destroy()
 
-    def get_device_type(self) -> str:
+    def get_transport_name(self) -> str:
         return "nccl"
