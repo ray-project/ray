@@ -843,8 +843,7 @@ def test_redis_with_sentinel_failureover(
     automatically, and GCS can continue talking to the same address
     without any human intervention on Redis.
     For this test we ensure:
-    - When Redis master failed, Ray should crash (TODO: GCS should
-        autommatically try re-connect to sentinel).
+    - When Redis master failed, Ray should reconnect to sentinel.
     - When restart Ray, it should continue talking to sentinel, which
         should return information about new master.
     """
