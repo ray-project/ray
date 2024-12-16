@@ -359,4 +359,4 @@ Shuffling API
    :nosignatures:
    :toctree: doc/
 
-   datasource.FileShuffleConfig
+   FileShuffleConfig

@@ -84,7 +84,7 @@ class FileShuffleConfig:
         >>> import ray
         >>> from ray.data import FileShuffleConfig
         >>> shuffle = FileShuffleConfig(seed=42)
-        >>> ray.data.read_parquet("example://iris.parquet", shuffle=shuffle)
+        >>> ray.data.read_parquet("s3://ray-example-data/batoidea", shuffle=shuffle)
     """  # noqa: E501
 
     seed: Optional[int] = None
