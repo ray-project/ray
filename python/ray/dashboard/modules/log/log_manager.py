@@ -459,9 +459,12 @@ class LogsManager:
                 result["core_worker"].append(log_file)
             elif "core-driver" in log_file and log_file.endswith(".log"):
                 result["driver"].append(log_file)
-            elif "raylet." in log_file:
+            # To address problems when multiple nodes running on single machine, ray
+            # formats new log filename as "{prefix}-{index}.{suffix}".
+            # For example, "raylet-3.out".
+            elif "raylet." in log_file or "raylet-" in log_file:
                 result["raylet"].append(log_file)
-            elif "gcs_server." in log_file:
+            elif "gcs_server." in log_file or "gcs_server-" in log_file:
                 result["gcs_server"].append(log_file)
             elif "log_monitor" in log_file:
                 result["internal"].append(log_file)

@@ -1810,15 +1810,15 @@ class Node:
         # We need to set both ray param's system config and self._config
         # because they could've been diverged at this point.
         deserialized_config = json.loads(object_spilling_config)
-        self._ray_params._system_config[
-            "object_spilling_config"
-        ] = object_spilling_config
+        self._ray_params._system_config["object_spilling_config"] = (
+            object_spilling_config
+        )
         self._config["object_spilling_config"] = object_spilling_config
 
         is_external_storage_type_fs = deserialized_config["type"] == "filesystem"
-        self._ray_params._system_config[
-            "is_external_storage_type_fs"
-        ] = is_external_storage_type_fs
+        self._ray_params._system_config["is_external_storage_type_fs"] = (
+            is_external_storage_type_fs
+        )
         self._config["is_external_storage_type_fs"] = is_external_storage_type_fs
 
         # Validate external storage usage.
