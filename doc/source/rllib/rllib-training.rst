@@ -269,7 +269,7 @@ Specifying Framework Options
 Specifying Rollout Workers
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rollouts.env_runners
+.. automethod:: ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners
     :noindex:
 
 
