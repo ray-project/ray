@@ -262,7 +262,7 @@ class RayLog {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_dir Logging output directory name.
-  /// \param log_filepath Logging output filepath for stdout.
+  /// \param log_filepath Logging output filepath.
   ///
   /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
   /// both empty, the log won't output to file, but to stdout. It's illegal to set

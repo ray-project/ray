@@ -76,7 +76,7 @@ DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(
     ray_log_filepath,
     "",
-    "The filename to dump gcs server log on stdout, which is written via `RAY_LOG`.");
+    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
