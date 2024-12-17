@@ -6,7 +6,6 @@ from ray.train.context import TrainContext as TrainV1Context
 from ray.train.context import _copy_doc
 from ray.util.annotations import Deprecated, PublicAPI
 
-
 # The context singleton on this process.
 _tune_context: Optional["TuneContext"] = None
 _tune_context_lock = threading.Lock()
