@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include <condition_variable>
+#include <csignal>
 #include <utility>
 
 #include "ray/common/ray_config.h"
@@ -30,6 +31,16 @@ const int64_t kUnhandledErrorGracePeriodNanos = static_cast<int64_t>(5e9);
 // Only scan at most this many items for unhandled errors, to avoid slowdowns
 // when there are too many local objects.
 const int kMaxUnhandledErrorScanItems = 1000;
+
+namespace {
+
+Status signal_status = Status::OK();
+
+void SignalHandler(int sigint) {
+  signal_status = Status::Interrupted("Interrupted by signal: " + std::to_string(sigint));
+}
+
+}  // namespace
 
 /// A class that represents a `Get` request.
 class GetRequest {
@@ -153,14 +164,12 @@ CoreWorkerMemoryStore::CoreWorkerMemoryStore(
     instrumented_io_context &io_context,
     ReferenceCounter *counter,
     std::shared_ptr<raylet::RayletClient> raylet_client,
-    std::function<Status()> check_signals,
     std::function<void(const RayObject &)> unhandled_exception_handler,
     std::function<std::shared_ptr<ray::RayObject>(
         const ray::RayObject &object, const ObjectID &object_id)> object_allocator)
     : io_context_(io_context),
       ref_counter_(counter),
       raylet_client_(std::move(raylet_client)),
-      check_signals_(std::move(check_signals)),
       unhandled_exception_handler_(std::move(unhandled_exception_handler)),
       object_allocator_(std::move(object_allocator)) {}
 
@@ -366,7 +375,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
 
   bool done = false;
   bool timed_out = false;
-  Status signal_status = Status::OK();
   int64_t remaining_timeout = timeout_ms;
   int64_t iteration_timeout =
       std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
@@ -379,16 +387,16 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // calls. If timeout_ms == -1, this should run forever until all objects are
   // ready or a signal is received. Else it should run repeatedly until that timeout
   // is reached.
-  while (!timed_out && signal_status.ok() &&
-         !(done = get_request->Wait(iteration_timeout))) {
-    if (check_signals_) {
-      signal_status = check_signals_();
-    }
-
-    if (remaining_timeout >= 0) {
-      remaining_timeout -= iteration_timeout;
-      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
-      timed_out = remaining_timeout <= 0;
+  {
+    std::signal(SIGINT, SignalHandler);
+    std::signal(SIGTERM, SignalHandler);
+    while (!timed_out && signal_status.ok() &&
+           !(done = get_request->Wait(iteration_timeout))) {
+      if (remaining_timeout >= 0) {
+        remaining_timeout -= iteration_timeout;
+        iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+        timed_out = remaining_timeout <= 0;
+      }
     }
   }
 

@@ -44,11 +44,9 @@ TEST(TestMemoryStore, TestReportUnhandledErrors) {
 
   std::shared_ptr<CoreWorkerMemoryStore> provider =
       std::make_shared<CoreWorkerMemoryStore>(
-          io_context.GetIoService(),
-          nullptr,
-          nullptr,
-          nullptr,
-          [&](const RayObject &obj) { unhandled_count++; });
+          io_context.GetIoService(), nullptr, nullptr, [&](const RayObject &obj) {
+            unhandled_count++;
+          });
   RayObject obj1(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   RayObject obj2(rpc::ErrorType::TASK_EXECUTION_EXCEPTION);
   auto id1 = ObjectID::FromRandom();
@@ -200,7 +198,6 @@ TEST(TestMemoryStore, TestObjectAllocator) {
 
   std::shared_ptr<CoreWorkerMemoryStore> memory_store =
       std::make_shared<CoreWorkerMemoryStore>(io_context.GetIoService(),
-                                              nullptr,
                                               nullptr,
                                               nullptr,
                                               nullptr,
