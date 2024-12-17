@@ -101,6 +101,12 @@ class TorchTensorWorker:
     def ping(self):
         return
 
+    @ray.method(num_returns=2)
+    def return_two_tensors(
+        self, t1: torch.Tensor, t2: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        return t1, t2
+
 
 @ray.remote(num_cpus=1)
 class TrainWorker:
@@ -1241,6 +1247,43 @@ def test_torch_tensor_nccl_all_reduce_scheduling(ray_start_regular):
     assert torch.equal(result[0], expected_tensor_val)
     assert torch.equal(result[1], expected_tensor_val)
     assert result[2] == (value, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_nccl_all_reduce_with_class_method_output_node(ray_start_regular):
+    """
+    Test all-reduce with class method output node.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
+        t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
+        tensors = collective.allreduce.bind([t1, t4], ReduceOp.SUM)
+        dag = MultiOutputNode(tensors + [t2, t3])
+
+    compiled_dag = dag.experimental_compile()
+
+    t1 = torch.tensor([1], device="cuda")
+    t2 = torch.tensor([2], device="cuda")
+    t3 = torch.tensor([3], device="cuda")
+    t4 = torch.tensor([4], device="cuda")
+
+    for i in range(3):
+        i += 1
+        ref = compiled_dag.execute(t1, t2, t3, t4)
+        result = ray.get(ref)
+        assert result == [t1 + t4, t1 + t4, t2, t3]
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)
