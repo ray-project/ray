@@ -19,6 +19,7 @@ from ray.actor import ActorClassInheritanceException
 from ray.tests.client_test_utils import create_remote_signal_actor
 from ray._private.test_utils import SignalActor
 from ray.core.generated import gcs_pb2
+from ray._private.utils import hex_to_binary
 
 # NOTE: We have to import setproctitle after ray because we bundle setproctitle
 # with ray.
@@ -1266,7 +1267,8 @@ def test_actor_parent_task_correct(shutdown_only, actor_type):
         core_worker = ray._private.worker.global_worker.core_worker
         refs = [child_actor.child.remote(), child.remote()]
         expected = {ref.task_id().hex() for ref in refs}
-        task_id = ray.get_runtime_context().task_id
+        task_id_hex = ray.get_runtime_context().get_task_id()
+        task_id = ray.TaskID(hex_to_binary(task_id_hex))
         children_task_ids = core_worker.get_pending_children_task_ids(task_id)
         actual = {task_id.hex() for task_id in children_task_ids}
         ray.get(refs)
@@ -1342,7 +1344,8 @@ def test_parent_task_correct_concurrent_async_actor(shutdown_only):
             refs = [child.remote(sig) for _ in range(2)]
             core_worker = ray._private.worker.global_worker.core_worker
             expected = {ref.task_id().hex() for ref in refs}
-            task_id = ray.get_runtime_context().task_id
+            task_id_hex = ray.get_runtime_context().get_task_id()
+            task_id = ray.TaskID(hex_to_binary(task_id_hex))
             children_task_ids = core_worker.get_pending_children_task_ids(task_id)
             actual = {task_id.hex() for task_id in children_task_ids}
             await sig.wait.remote()
