@@ -79,7 +79,7 @@ from ray.data._internal.logical.optimizers import LogicalPlan
 from ray.data._internal.pandas_block import PandasBlockBuilder, PandasBlockSchema
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.planner.exchange.sort_task_spec import SortKey
-from ray.data._internal.planner.plan_write_op import gen_data_sink_write_result
+from ray.data._internal.planner.plan_write_op import gen_datasink_write_result
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data._internal.split import _get_num_rows, _split_at_indices
 from ray.data._internal.stats import DatasetStats, DatasetStatsSummary, StatsManager
@@ -3884,7 +3884,7 @@ class Dataset:
             # TODO: Get and handle the blocks with an iterator instead of getting
             # everything in a blocking way, so some blocks can be freed earlier.
             raw_write_results = ray.get(self._write_ds._plan.execute().block_refs)
-            write_result = gen_data_sink_write_result(raw_write_results)
+            write_result = gen_datasink_write_result(raw_write_results)
             logger.info(
                 "Data sink %s finished. %d rows and %s data written.",
                 datasink.get_name(),

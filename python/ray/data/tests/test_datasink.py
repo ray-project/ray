@@ -160,14 +160,12 @@ def test_write_result(ray_start_regular_shared):
 
     ds = ray.data.range(num_items).map(map_fn)
 
-    data_sink = CustomDatasink()
-    ds.write_datasink(data_sink)
+    datasink = CustomDatasink()
+    ds.write_datasink(datasink)
 
-    assert data_sink.ids == list(range(num_items))
-    assert data_sink.num_rows == num_items
-    assert data_sink.size_bytes == pytest.approx(
-        num_items * size_bytes_per_row, rel=0.1
-    )
+    assert datasink.ids == list(range(num_items))
+    assert datasink.num_rows == num_items
+    assert datasink.size_bytes == pytest.approx(num_items * size_bytes_per_row, rel=0.1)
 
 
 if __name__ == "__main__":

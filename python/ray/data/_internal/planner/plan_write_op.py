@@ -18,7 +18,7 @@ from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.datasource import Datasource
 
 
-def gen_data_sink_write_result(
+def gen_datasink_write_result(
     write_result_blocks: List[Block],
 ) -> WriteResult:
     assert all(
@@ -42,9 +42,9 @@ def generate_write_fn(
         # Create a copy of the iterator, so we can return the original blocks.
         it1, it2 = itertools.tee(blocks, 2)
         if isinstance(datasink_or_legacy_datasource, Datasink):
-            ctx.kwargs[
-                "_data_sink_custom_result"
-            ] = datasink_or_legacy_datasource.write(it1, ctx)
+            ctx.kwargs["_datasink_write_return"] = datasink_or_legacy_datasource.write(
+                it1, ctx
+            )
         else:
             datasink_or_legacy_datasource.write(it1, ctx, **write_args)
 
@@ -74,7 +74,7 @@ def generate_collect_write_stats_fn() -> (
             {
                 "num_rows": [total_num_rows],
                 "size_bytes": [total_size_bytes],
-                "write_return": [ctx.kwargs.get("_data_sink_custom_result", None)],
+                "write_return": [ctx.kwargs.get("_datasink_write_return", None)],
             }
         )
         return iter([block])
