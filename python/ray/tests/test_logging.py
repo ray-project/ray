@@ -218,8 +218,10 @@ def test_log_rotation(shutdown_only, monkeypatch):
     # Create a runtime env to make sure dashboard agent is alive.
     ray.get(f.options(runtime_env={"env_vars": {"A": "a", "B": "b"}}).remote())
 
-    # Filter out only paths that end in .log, .log.1, etc.
-    # These paths are handled by the logger; the others (.out, .err) are not.
+    # Filter out only paths that end in .log, .log.1, (which is produced by python
+    # rotating log handler) and 1.out and so on (which is produced by C++ spdlog
+    # rotation handler) . etc. These paths are handled by the logger; the others (.err)
+    # are not.
     paths = []
     for path in log_dir_path.iterdir():
         # Match all rotated files, which suffixes with `log.x` or `log.x.out`.
