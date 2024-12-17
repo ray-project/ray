@@ -20,7 +20,7 @@ from ray.air._internal.usage import AirEntrypoint
 from ray.air.config import RunConfig, ScalingConfig
 from ray.air.result import Result
 from ray.train import Checkpoint
-from ray.train._internal.session import _get_session
+from ray.train._internal.session import get_session
 from ray.train._internal.storage import (
     StorageContext,
     _exists_at_fs_path,
@@ -83,7 +83,7 @@ def _train_coordinator_fn(
     """
     assert metadata is not None, metadata
     # Propagate user metadata from the Trainer constructor.
-    _get_session().metadata = metadata
+    get_session().metadata = metadata
 
     # config already contains merged values.
     # Instantiate new Trainer in Trainable.
@@ -756,10 +756,10 @@ class BaseTrainer(abc.ABC):
                 )
                 if isinstance(merged_scaling_config, dict):
                     merged_scaling_config = ScalingConfig(**merged_scaling_config)
-                self._merged_config[
-                    "scaling_config"
-                ] = self._reconcile_scaling_config_with_trial_resources(
-                    merged_scaling_config
+                self._merged_config["scaling_config"] = (
+                    self._reconcile_scaling_config_with_trial_resources(
+                        merged_scaling_config
+                    )
                 )
                 if self.has_base_dataset():
                     # Set the DataContext on the Trainer actor to the DataContext
