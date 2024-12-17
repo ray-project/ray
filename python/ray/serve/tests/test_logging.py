@@ -418,10 +418,10 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
         if json_log_format:
             user_method_log_regex = (
                 '.*"message": "user func".*'
+                f'"timestamp_ns": \d+, '
                 f'"route": "{resp["route"]}", '
                 f'"request_id": "{resp["request_id"]}", '
                 f'"application": "{resp["app_name"]}", '
-                f'"timestamp_ns": \d+, '
                 f'"worker_id": "{resp["worker_id"]}", '
                 f'"node_id": "{resp["node_id"]}", '
                 f'"actor_id": "{resp["actor_id"]}", '
@@ -434,10 +434,10 @@ def test_context_information_in_logging(serve_and_ray_shutdown, json_log_format)
             )
             user_class_method_log_regex = (
                 '.*"message": "user log message from class method".*'
+                f'"timestamp_ns": \d+, '
                 f'"route": "{resp2["route"]}", '
                 f'"request_id": "{resp2["request_id"]}", '
                 f'"application": "{resp2["app_name"]}", '
-                f'"timestamp_ns": \d+, '
                 f'"worker_id": "{resp2["worker_id"]}", '
                 f'"node_id": "{resp2["node_id"]}", '
                 f'"actor_id": "{resp2["actor_id"]}", '

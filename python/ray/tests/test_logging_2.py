@@ -5,14 +5,11 @@ import os
 import logging
 import sys
 import json
-import time
 
 from ray._private.ray_logging.filters import CoreContextFilter
 from ray._private.ray_logging.formatters import JSONFormatter, TextFormatter
 from ray.job_config import LoggingConfig
 from ray._private.test_utils import run_string_as_driver
-
-from unittest.mock import patch
 
 
 class TestCoreContextFilter:
@@ -110,6 +107,7 @@ class TestJSONFormatter:
             "message",
             "filename",
             "lineno",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -132,6 +130,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "exc_text",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -150,6 +149,7 @@ class TestJSONFormatter:
             "filename",
             "lineno",
             "user",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -178,6 +178,7 @@ class TestJSONFormatter:
             "lineno",
             "key1",
             "key2",
+            "timestamp_ns",
         ]
         for key in should_exist:
             assert key in record_dict
@@ -400,43 +401,6 @@ ray.init(
         should_exist = "timestamp_ns="
         assert should_exist in stderr
 
-    def test_logging_setup_with_core_context_filter(self, shutdown_only):
-        """Test logging setup with core context fileter
-
-        We added `timestamp_ns` to the log record in `_setup_log_record_factory()` and
-        in `CoreContextFilter`. This test checks if `timestamp_ns` is still in the log
-        record as is part of the logged message.
-        """
-        script = """
-import ray
-import logging
-
-from ray._private.ray_logging.filters import CoreContextFilter
-
-ray.init(
-    logging_config=ray.LoggingConfig(encoding="TEXT")
-)
-
-@ray.remote
-class actor:
-    def __init__(self):
-        pass
-
-    def print_message(self):
-        logger = logging.getLogger(__name__)
-        logger.info("This is a Ray actor")
-
-logger = logging.getLogger()
-logger.info("This is a Ray driver")
-
-actor_instance = actor.remote()
-ray.get(actor_instance.print_message.remote())
-"""
-        stderr = run_string_as_driver(script)
-        for message in stderr.strip().split("\n"):
-            should_exist = "timestamp_ns="
-            assert should_exist in message
-
 
 def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
     working_dir = tmp_path / "test-working-dir"
@@ -448,42 +412,6 @@ def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
         runtime_env=runtime_env,
         logging_config=ray.LoggingConfig(encoding="TEXT"),
     )
-
-
-class TestSetupLogRecordFactory:
-    @pytest.fixture
-    def log_record_factory(self):
-        orig_factory = logging.getLogRecordFactory()
-        yield
-        logging.setLogRecordFactory(orig_factory)
-
-    def test_setup_log_record_factory(self, log_record_factory):
-        logging_config = LoggingConfig()
-        logging_config._setup_log_record_factory()
-
-        ct = time.time_ns()
-        with patch("time.time_ns") as patched_ns:
-            patched_ns.return_value = ct
-            record = logging.makeLogRecord({})
-            assert record.__dict__["timestamp_ns"] == ct
-
-    def test_setup_log_record_factory_already_set(self, log_record_factory):
-        def existing_factory(*args, **kwargs):
-            record = logging.LogRecord(*args, **kwargs)
-            record.__dict__["existing_factory"] = True
-            return record
-
-        logging.setLogRecordFactory(existing_factory)
-
-        logging_config = LoggingConfig()
-        logging_config._setup_log_record_factory()
-
-        ct = time.time_ns()
-        with patch("time.time_ns") as patched_ns:
-            patched_ns.return_value = ct
-            record = logging.makeLogRecord({})
-            assert record.__dict__["timestamp_ns"] == ct
-            assert record.__dict__["existing_factory"]
 
 
 def test_text_mode_no_prefix(shutdown_only):

@@ -1,6 +1,7 @@
 import logging
 import threading
 from typing import Union
+import time
 
 
 def _print_loggers():
@@ -89,3 +90,23 @@ def generate_logging_config():
         # See https://github.com/ray-project/ray/pull/31858 for related PR
         rllib_logger = logging.getLogger("ray.rllib")
         rllib_logger.setLevel(logging.WARN)
+
+        # Set up the LogRecord factory.
+        old_factory = logging.getLogRecordFactory()
+
+        def record_factory(*args, **kwargs):
+            record = old_factory(*args, **kwargs)
+            # Python logging module starts to use `time.time_ns()` to generate `created`
+            # from Python 3.13 to avoid the precision loss caused by the float type.
+            # Here, we generate the `created` for the LogRecord to support older Python
+            # versions.
+            ct = time.time_ns()
+            record.created = ct / 1e9
+
+            from ray._private.ray_logging.constants import LogKey
+
+            record.__dict__[LogKey.TIMESTAMP_NS.value] = ct
+
+            return record
+
+        logging.setLogRecordFactory(record_factory)
