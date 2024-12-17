@@ -154,12 +154,12 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
                 )
 
         if not object_ext_type_fallback_allowed:
-            # NOTE: To avoid logging following warning for every block it's
-            #       only going to be logged in following cases
-            #           - When fallback is disallowed, and
-            #           - Configuration enabling fallback is not set, and
-            #           - It's being logged for the first time
-            if enable_fallback_config is None and log_once(
+            # To avoid logging following warning for every block it's
+            # only going to be logged in following cases
+            #   - When fallback is disallowed, and
+            #   - Fallback configuration is not set or set to false, and
+            #   - It's being logged for the first time
+            if not enable_fallback_config and log_once(
                 "_fallback_to_arrow_object_extension_type_warning"
             ):
                 logger.warning(
