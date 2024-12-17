@@ -89,6 +89,7 @@ def lightgbm_train_loop_function(config: Dict):
 
     label_column, params = config["label_column"], config["params"]
     train_X, train_y = train_df.drop(label_column, axis=1), train_df[label_column]
+    train_set = lgb.Dataset(train_X, label=train_y)
 
     # 2. Do distributed data-parallel training.
     # Ray Train sets up the necessary coordinator processes and
@@ -96,8 +97,7 @@ def lightgbm_train_loop_function(config: Dict):
     report_callback = config["report_callback_cls"]
     lgb.train(
         params,
-        train_set=train_X,
-        label=train_y,
+        train_set=train_set,
         num_boost_round=10,
         callbacks=[report_callback()],
     )
