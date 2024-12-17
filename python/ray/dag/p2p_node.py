@@ -112,7 +112,7 @@ class _P2PSendNode(_P2PNode):
             raise ValueError("Expected a single input node that is a ClassMethodNode")
         elif isinstance(method_args[0], _P2PNode):
             raise ValueError("NCCL send node cannot bind to another NCCL P2P node")
-        self.requires_nccl_write = True
+        # self.requires_nccl_write = True
 
     def _copy_impl(
         self,
@@ -128,6 +128,10 @@ class _P2PSendNode(_P2PNode):
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,
         )
+
+    @property
+    def nccl_op_type(self) -> P2POp:
+        return P2POp.SEND
 
 
 @DeveloperAPI
@@ -154,7 +158,7 @@ class _P2PRecvNode(_P2PNode):
             and isinstance(method_args[0], _P2PSendNode)
         ):
             raise ValueError("Expected a single input node that is a _P2PSendNode")
-        self.requires_nccl_read = True
+        # self.requires_nccl_read = True
 
     def _copy_impl(
         self,
@@ -170,3 +174,7 @@ class _P2PRecvNode(_P2PNode):
             new_options,
             other_args_to_resolve=new_other_args_to_resolve,
         )
+
+    @property
+    def nccl_op_type(self) -> P2POp:
+        return P2POp.RECV

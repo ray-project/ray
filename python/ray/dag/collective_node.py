@@ -167,7 +167,7 @@ class CollectiveOutputNode(ClassMethodNode):
         )
         if self._collective_op is None:
             raise ValueError("Expected a collective op")
-        self.requires_nccl_collective = True
+        # self.requires_nccl_collective = True
 
     def _copy_impl(
         self,
@@ -192,3 +192,7 @@ class CollectiveOutputNode(ClassMethodNode):
     @property
     def nccl_op(self) -> _CollectiveOperation:
         return self._collective_op
+
+    @property
+    def nccl_op_type(self) -> _CollectiveOp:
+        return self._collective_op._op

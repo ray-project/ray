@@ -19,6 +19,7 @@ from typing import (
 import uuid
 import asyncio
 
+from ray.experimental.util.types import _NcclOp
 from ray.dag.nccl_operation import _NcclOperation
 from ray.dag.compiled_dag_node import build_compiled_dag_from_ray_dag
 from ray.experimental.channel import ChannelOutputType
@@ -83,10 +84,20 @@ class DAGNode(DAGNodeBase):
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
 
-        # Whether this node requires NCCL read/write/collective operations.
-        self.requires_nccl_read = False
-        self.requires_nccl_write = False
-        self.requires_nccl_collective = False
+        # [CL]
+        # # Whether this node requires NCCL read/write/collective operations.
+        # self.requires_nccl_read = False
+        # self.requires_nccl_write = False
+        # self.requires_nccl_collective = False
+
+    @property
+    def nccl_op_type(self) -> Optional[_NcclOp]:
+        """
+        [CL]
+        Return the NCCL op type of this node. If this node is not a NCCL op,
+        return None.
+        """
+        return None
 
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """

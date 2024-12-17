@@ -50,7 +50,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
 )
-from ray.experimental.util.types import P2POp
+from ray.experimental.util.types import _NcclOp, P2POp
 from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
@@ -376,13 +376,19 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # Whther the task requires a NCCL read, write, or collective operation.
-        self.requires_nccl_read = task.dag_node.requires_nccl_read
-        self.requires_nccl_write = task.dag_node.requires_nccl_write
-        self.requires_nccl_collective = task.dag_node.requires_nccl_collective
+        # The NCCL op type of the task. If None, the task is not a NCCL op.
+        self.nccl_op_type: Optional[_NcclOp] = task.dag_node.nccl_op_type
+        # Whether the task requires a NCCL read, write, or collective operation.
+        # self.requires_nccl_read = task.dag_node.requires_nccl_read
+        # self.requires_nccl_write = task.dag_node.requires_nccl_write
+        # self.requires_nccl_collective = task.dag_node.requires_nccl_collective
         # The NCCL operation of the task. It can be a NCCL read, write, or
         # collective operation.
         self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
+        if self.nccl_op_type is None:
+            assert self.nccl_op is None
+        else:
+            assert self.nccl_op is not None
         if self.nccl_op is not None:
             self.nccl_op.task_idxs.append(task.idx)
 
@@ -429,15 +435,17 @@ class ExecutableTask:
         self.output_writer: WriterInterface = SynchronousWriter(
             self.output_channels, self.output_idxs
         )
-        # An executable task cannot both read and write via NCCL.
-        assert self.requires_nccl_read + self.requires_nccl_write <= 1
-        # The NCCL channel for P2P communication if the task is NCCL read or write.
-        # None if the task is not NCCL read or write.
+        # # An executable task cannot both read and write via NCCL.
+        # assert self.requires_nccl_read + self.requires_nccl_write <= 1
+        # # The NCCL channel for P2P communication if the task is NCCL read or write.
+        # # None if the task is not NCCL read or write.
         self.nccl_ch: Optional[ChannelInterface] = None
-        if self.requires_nccl_read:
+        # if self.requires_nccl_read:
+        if self.nccl_op_type == P2POp.RECV:
             assert len(self.input_channels) == 1
             self.nccl_ch = self.input_channels[0]
-        elif self.requires_nccl_write:
+        # elif self.requires_nccl_write:
+        elif self.nccl_op_type == P2POp.SEND:
             assert len(self.output_channels) == 1
             self.nccl_ch = self.output_channels[0]
 
@@ -722,7 +730,8 @@ class ExecutableTask:
         )
         """
 
-        if self.requires_nccl_read:
+        # if self.requires_nccl_read:
+        if self.nccl_op_type == P2POp.RECV:
             input_values = [P2POp.RECV, self.nccl_ch]
         else:
             try:
@@ -748,7 +757,8 @@ class ExecutableTask:
                     exc, wrap_in_gpu_future=overlap_gpu_communication
                 )
 
-            if self.requires_nccl_write:
+            # if self.requires_nccl_write:
+            if self.nccl_op_type == P2POp.SEND:
                 if input_values is not None:
                     assert len(input_values) == 1
                     tensor = input_values[0]
@@ -769,9 +779,11 @@ class ExecutableTask:
             else:
                 method = getattr(class_handle, self.method_name)
 
-            if self.requires_nccl_read:
+            # if self.requires_nccl_read:
+            if self.nccl_op_type == P2POp.RECV:
                 stream = self._recv_stream
-            elif self.requires_nccl_write:
+            # elif self.requires_nccl_write:
+            elif self.nccl_op_type == P2POp.SEND:
                 stream = self._send_stream
             else:
                 stream = nullcontext()
@@ -787,7 +799,8 @@ class ExecutableTask:
                     else:
                         output_val = _wrap_exception(exc)
 
-                if not self.requires_nccl_write:
+                # if not self.requires_nccl_write:
+                if self.nccl_op_type != P2POp.SEND:
                     self.wrap_and_set_intermediate_future(
                         output_val, wrap_in_gpu_future=overlap_gpu_communication
                     )
@@ -798,8 +811,10 @@ class ExecutableTask:
             )
             """
 
-        if not self.requires_nccl_write:
-            if self.requires_nccl_read and overlap_gpu_communication:
+        # if not self.requires_nccl_write:
+        if self.nccl_op_type != P2POp.SEND:
+            # if self.requires_nccl_read and overlap_gpu_communication:
+            if self.nccl_op_type == P2POp.RECV and overlap_gpu_communication:
                 output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             else:
                 output_val = self.fetch_intermediate_future(wait_gpu_future=True)
@@ -1858,13 +1873,17 @@ class CompiledDAG:
             executable_tasks.sort(
                 # If the bind index is the same, there are P2P send/recv tasks.
                 # The order is determined as follows:
-                # 1. P2P recv tasks, with `requires_nccl_read` as True.
+                # # 1. P2P recv tasks, with `requires_nccl_read` as True.
+                # 1. P2P recv tasks.
                 # 2. Non-P2P tasks.
-                # 3. P2P send tasks, with `requires_nccl_write` as True.
+                # # 3. P2P send tasks, with `requires_nccl_write` as True.
+                # 3. P2P send tasks.
                 key=lambda task: (
                     task.bind_index,
-                    not task.requires_nccl_read,
-                    task.requires_nccl_write,
+                    # not task.requires_nccl_read,
+                    task.nccl_op_type != P2POp.RECV,
+                    # task.requires_nccl_write,
+                    task.nccl_op_type == P2POp.SEND,
                 )
             )
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
@@ -1968,18 +1987,20 @@ class CompiledDAG:
                 dag_node = self.idx_to_task[task_idx].dag_node
                 method_name = exec_task.method_name
                 actor_handle = dag_node._get_actor_handle()
-                requires_nccl_read = dag_node.requires_nccl_read
-                requires_nccl_write = dag_node.requires_nccl_write
-                requires_nccl_collective = dag_node.requires_nccl_collective
+                nccl_op_type = dag_node.nccl_op_type
+                # requires_nccl_read = dag_node.requires_nccl_read
+                # requires_nccl_write = dag_node.requires_nccl_write
+                # requires_nccl_collective = dag_node.requires_nccl_collective
 
                 compute_node = _DAGOperationGraphNode(
                     _DAGNodeOperation(exec_task_idx, method_name),
                     task_idx,
                     actor_handle,
                     exec_task.nccl_op,
-                    requires_nccl_read,
-                    requires_nccl_write,
-                    requires_nccl_collective,
+                    # requires_nccl_read,
+                    # requires_nccl_write,
+                    # requires_nccl_collective,
+                    nccl_op_type,
                 )
 
                 actor_to_op_nodes[actor_handle].append(compute_node)
