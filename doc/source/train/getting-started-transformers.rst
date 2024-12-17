@@ -8,7 +8,7 @@ This tutorial walks through the process of converting an existing Hugging Face T
 Learn how to:
 
 1. Configure a :ref:`training function <train-overview-training-function>` to report metrics and save checkpoints.
-2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU, or :ref:`other accelerator <using-other-accelerators>` resource requirements for your training job.
+2. Configure :ref:`scaling <train-overview-scaling-config>` and CPU, GPU, or other accelerator resource requirements for your training job.
 3. Launch your distributed training job with a :class:`~ray.train.torch.TorchTrainer`.
 
 Quickstart
@@ -30,7 +30,7 @@ For reference, the final code follows:
     result = trainer.fit()
 
 1. `train_func` is the Python code that executes on each distributed training worker.
-2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use GPUs or other types of accelerator devices.
+2. :class:`~ray.train.ScalingConfig` defines the number of distributed training workers and whether to use CPUs, GPUs, or other types of accelerator devices.
 3. :class:`~ray.train.torch.TorchTrainer` launches the distributed training job.
 
 Compare a Hugging Face Transformers training script with and without Ray Train.

@@ -4,7 +4,8 @@ Configure scale and resources (CPU, GPU, and other accelerators)
 Outside of your training function, create a :class:`~ray.train.ScalingConfig` object to configure:
 
 1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
-2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a CPU, GPU, or :ref:`other accelerators <using-other-accelerators>`.
+2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
+3. (Optional) :class:`resources_per_worker <ray.train.ScalingConfig>` - The resources reserved for each worker. This can also be used to specify other accelerators.
 
 .. testcode::
 

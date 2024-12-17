@@ -178,13 +178,13 @@ in a :ref:`Ray runtime environment <runtime-environments>`:
 
 .. _using-other-accelerators:
 
-Using Other Accelerators
+Using other accelerators
 ------------------------
 
 Using HPUs
 ~~~~~~~~~~
 
-To use HPUs, you can set HPU resources by ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
+To use HPUs, specify the HPU resources using the ``resources_per_worker`` parameter and pass it to the :class:`~ray.train.ScalingConfig`.
 In the example below, training will run on 8 HPUs (8 workers, each using one HPU).
 
 .. testcode::
@@ -226,7 +226,7 @@ You can get the associated devices with :meth:`ray.train.torch.get_device`.
 (PyTorch) Setting the communication backend
 """""""""""""""""""""""""""""""""""""""""""
 
-PyTorch supports a few communication backends such as MPI, Gloo and NCCL natively. Intel® Gaudi® AI accelerator support for distributed communication can be enabled using Habana Collective Communication Library (HCCL) backend. When using HPU resources, You can set HCCL as the communication backend by configuring a :class:`~ray.train.torch.TorchConfig` and pass it into the :class:`~ray.train.torch.TorchTrainer` as follows.
+PyTorch supports a few communication backends such as MPI, Gloo and NCCL natively. Intel® Gaudi® AI accelerator support for distributed communication can be enabled using Habana Collective Communication Library (HCCL) backend. When using HPU resources, You can set HCCL as the communication backend by configuring a :class:`~ray.train.torch.TorchConfig` and passing it into the :class:`~ray.train.torch.TorchTrainer` as follows.
 
 .. testcode::
     :hide:
