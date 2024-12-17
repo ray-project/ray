@@ -1245,7 +1245,7 @@ class Dataset:
             compute = TaskPoolStrategy(size=concurrency)
         else:
             warnings.warn(
-                f"Use expr instead of fn when possible for performant filters."
+                "Use expr instead of fn when possible for performant filters."
             )
 
             if callable(fn):
