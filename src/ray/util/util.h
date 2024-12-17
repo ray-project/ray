@@ -147,6 +147,13 @@ inline int64_t current_sys_time_us() {
   return mu_since_epoch.count();
 }
 
+inline int64_t current_sys_time_ns() {
+  std::chrono::nanoseconds mn_since_epoch =
+      std::chrono::duration_cast<std::chrono::nanoseconds>(
+          std::chrono::system_clock::now().time_since_epoch());
+  return mn_since_epoch.count();
+}
+
 inline std::string GenerateUUIDV4() {
   thread_local std::random_device rd;
   thread_local std::mt19937 gen(rd());

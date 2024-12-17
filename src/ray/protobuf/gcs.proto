@@ -375,6 +375,9 @@ message GcsNodeInfo {
 
   // The death info of this node.
   NodeDeathInfo death_info = 29;
+
+  // The template_id of this node.
+  string template_id = 30;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -707,7 +710,7 @@ message JobTableData {
 }
 ///////////////////////////////////////////////////////////////////////////////
 
-enum JobExecMode {
+enum AllocationMode {
   // A single node can carray tasks for multiple jobs.
   Mixed = 0;
   // A single node can only carray tasks for one job.
@@ -719,8 +722,6 @@ message NodeInstance {
   string hostname = 1;
   // The template id of the node instance.
   string template_id = 2;
-  // Whether it's dead.
-  bool is_dead = 3;
 }
 
 message VirtualClusterTableData {
@@ -728,10 +729,14 @@ message VirtualClusterTableData {
   string id = 1;
   // The virtual cluster name.
   string name = 2;
-  // The mode of jobs executed in this virtual cluster.
-  JobExecMode mode = 3;
+  // The allocation mode of the virtual cluster.
+  AllocationMode mode = 3;
+  // The replica set list of the virtual cluster.
+  map<string, int32> replica_sets = 4;
   // Mapping from node id to it's instance.
-  map<string, NodeInstance> node_instances = 4;
+  map<string, NodeInstance> node_instances = 5;
+  // Whether this virtual cluster is removed.
+  bool is_removed = 6;
   // Version number of the last modification to the virtual cluster.
-  uint64 revision = 5;
+  uint64 revision = 7;
 }

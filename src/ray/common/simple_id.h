@@ -20,29 +20,48 @@ namespace ray {
 
 template <typename T>
 struct SimpleID {
-  static T FromBinary(const std::string &binary) {
-    T id;
-    id.id_ = binary;
-    return id;
-  }
+  static T FromBinary(const std::string &binary);
+  static const T &Nil();
 
-  size_t Hash() const {
-    // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
-    // default value 0)
-    if (!hash_) {
-      hash_ = MurmurHash64A(id_.data(), id_.size(), 0);
-    }
-    return hash_;
-  }
+  SimpleID() = default;
 
+  size_t Hash() const;
+  bool IsNil() const;
   const std::string &Binary() const { return id_; }
-
   bool operator==(const T &rhs) const { return id_ == rhs.id_; }
   bool operator!=(const T &rhs) const { return !(*this == rhs); }
 
- private:
+ protected:
   std::string id_;
   mutable size_t hash_ = 0;
 };
+
+template <typename T>
+T SimpleID<T>::FromBinary(const std::string &binary) {
+  T id;
+  id.id_ = binary;
+  return id;
+}
+
+template <typename T>
+const T &SimpleID<T>::Nil() {
+  static const T nil_id;
+  return nil_id;
+}
+
+template <typename T>
+size_t SimpleID<T>::Hash() const {
+  // Note(ashione): hash code lazy calculation(it's invoked every time if hash code is
+  // default value 0)
+  if (!hash_) {
+    hash_ = MurmurHash64A(id_.data(), id_.size(), 0);
+  }
+  return hash_;
+}
+
+template <typename T>
+bool SimpleID<T>::IsNil() const {
+  return *this == T::Nil();
+}
 
 }  // namespace ray

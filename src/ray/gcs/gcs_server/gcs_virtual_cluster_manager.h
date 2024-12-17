@@ -15,6 +15,9 @@
 #pragma once
 
 #include "ray/gcs/gcs_server/gcs_init_data.h"
+#include "ray/gcs/gcs_server/gcs_table_storage.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster.h"
+#include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 
 namespace ray {
@@ -23,11 +26,30 @@ namespace gcs {
 /// This implementation class of `VirtualClusterInfoHandler`.
 class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
  public:
+  explicit GcsVirtualClusterManager(GcsTableStorage &gcs_table_storage,
+                                    GcsPublisher &gcs_publisher)
+      : gcs_table_storage_(gcs_table_storage),
+        gcs_publisher_(gcs_publisher),
+        primary_cluster_(
+            std::make_unique<PrimaryCluster>([this](auto data, auto callback) {
+              return FlushAndPublish(std::move(data), std::move(callback));
+            })) {}
+
   /// Initialize with the gcs tables data synchronously.
   /// This should be called when GCS server restarts after a failure.
   ///
   /// \param gcs_init_data.
   void Initialize(const GcsInitData &gcs_init_data);
+
+  /// Handle the node added event.
+  ///
+  /// \param node The node that is added.
+  void OnNodeAdd(const rpc::GcsNodeInfo &node);
+
+  /// Handle the node dead event.
+  ///
+  /// \param node The node that is dead.
+  void OnNodeDead(const rpc::GcsNodeInfo &node);
 
  protected:
   void HandleCreateOrUpdateVirtualCluster(
@@ -42,6 +64,20 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   void HandleGetAllVirtualClusters(rpc::GetAllVirtualClustersRequest request,
                                    rpc::GetAllVirtualClustersReply *reply,
                                    rpc::SendReplyCallback send_reply_callback) override;
+
+  Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
+
+  Status FlushAndPublish(std::shared_ptr<rpc::VirtualClusterTableData> data,
+                         CreateOrUpdateVirtualClusterCallback callback);
+
+ private:
+  /// The storage of the GCS tables.
+  GcsTableStorage &gcs_table_storage_;
+  /// The publisher of the GCS tables.
+  GcsPublisher &gcs_publisher_;
+
+  /// The global cluster.
+  std::unique_ptr<PrimaryCluster> primary_cluster_;
 };
 
 }  // namespace gcs

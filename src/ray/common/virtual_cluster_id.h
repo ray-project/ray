@@ -18,8 +18,32 @@
 
 namespace ray {
 
+const std::string kPrimaryClusterID = "kPrimaryClusterID";
+const std::string kJobClusterIDSeperator = "##";
+
 class VirtualClusterID : public SimpleID<VirtualClusterID> {
+ public:
   using SimpleID::SimpleID;
+
+  VirtualClusterID BuildJobClusterID(const std::string &job_name) const {
+    return VirtualClusterID::FromBinary(id_ + kJobClusterIDSeperator + job_name);
+  }
+
+  bool IsJobClusterID() const {
+    return id_.find(kJobClusterIDSeperator) != std::string::npos;
+  }
+
+  VirtualClusterID OwnerID() const {
+    auto pos = id_.find(kJobClusterIDSeperator);
+    return pos == std::string::npos ? Nil()
+                                    : VirtualClusterID::FromBinary(id_.substr(0, pos));
+  }
+
+  std::string JobName() const {
+    auto pos = id_.find(kJobClusterIDSeperator);
+    return pos == std::string::npos ? ""
+                                    : id_.substr(pos + kJobClusterIDSeperator.size());
+  }
 };
 
 inline std::ostream &operator<<(std::ostream &os, const ray::VirtualClusterID &id) {

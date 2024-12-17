@@ -25,6 +25,7 @@
 #include "ray/gcs/gcs_server/gcs_job_manager.h"
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
+#include "ray/gcs/gcs_server/gcs_virtual_cluster_manager.h"
 #include "ray/gcs/gcs_server/gcs_worker_manager.h"
 #include "ray/gcs/gcs_server/store_client_kv.h"
 #include "ray/pubsub/publisher.h"
@@ -697,6 +698,7 @@ void GcsServer::InstallEventListeners() {
         // placement groups and the pending actors.
         auto node_id = NodeID::FromBinary(node->node_id());
         gcs_resource_manager_->OnNodeAdd(*node);
+        gcs_virtual_cluster_manager_->OnNodeAdd(*node);
         gcs_placement_group_manager_->OnNodeAdd(node_id);
         gcs_actor_manager_->SchedulePendingActors();
         gcs_autoscaler_state_manager_->OnNodeAdd(*node);
@@ -722,6 +724,7 @@ void GcsServer::InstallEventListeners() {
         // All of the related placement groups and actors should be reconstructed when a
         // node is removed from the GCS.
         gcs_resource_manager_->OnNodeDead(node_id);
+        gcs_virtual_cluster_manager_->OnNodeDead(*node);
         gcs_placement_group_manager_->OnNodeDead(node_id);
         gcs_actor_manager_->OnNodeDead(node, node_ip_address);
         gcs_job_manager_->OnNodeDead(node_id);

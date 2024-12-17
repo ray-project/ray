@@ -818,22 +818,15 @@ service TaskInfoGcsService {
 
 ///////////////////////////////////////////////////////////////////////////////
 
-message ReplicaSet {
-  // The number of replica instances.
-  int32 replicas = 1;
-  // The template id for the replica instances.
-  string template_id = 2;
-}
-
 message CreateOrUpdateVirtualClusterRequest {
   // The virtual cluster id.
   string virtual_cluster_id = 1;
   // The virtual cluster name.
   string virtual_cluster_name = 2;
-  // The mode of jobs executed in this virtual cluster.
-  JobExecMode mode = 3;
-  // The replica set list of the virtual cluster.
-  repeated ReplicaSet replica_set_list = 4;
+  // The allocation mode of the virtual cluster.
+  AllocationMode mode = 3;
+  // The replica set of the virtual cluster.
+  map<string, int32> replica_sets = 4;
   // Version number of the last modification to the virtual cluster.
   uint64 revision = 5;
 }
