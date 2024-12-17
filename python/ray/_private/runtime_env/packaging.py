@@ -724,7 +724,6 @@ async def download_and_unpack_package(
         assert local_dir != pkg_file, "Invalid pkg_file!"
         if local_dir.exists():
             shutil.rmtree(local_dir)
-            assert local_dir.is_dir(), f"{local_dir} is not a directory"
 
         protocol, pkg_name = parse_uri(pkg_uri)
         if protocol == Protocol.GCS:
