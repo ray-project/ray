@@ -120,9 +120,9 @@ if __name__ == "__main__":
     arg_parser.add_argument(
         "--updates",
         type=str,
-        default="",
+        nargs="+",
         help=(
-            "A comma separated list of updates, each update has format: "
+            "A list of updates, each update has format: "
             "field_path:field_value:update_time_seconds_since_run."
             "field_path is a dot separated list of fields from root "
             "to the target field to be updated, e.g. worker_nodes.0.max_nodes."
@@ -131,7 +131,7 @@ if __name__ == "__main__":
 
     args = arg_parser.parse_args()
 
-    updates = [ClusterComputeConfigUpdate(update) for update in args.updates.split(",")]
+    updates = [ClusterComputeConfigUpdate(update) for update in args.updates]
     logging.info(f"Compute config updates are {updates}")
 
     head_node_id = ray.get_runtime_context().get_node_id()
