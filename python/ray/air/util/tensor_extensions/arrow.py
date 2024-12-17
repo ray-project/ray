@@ -118,15 +118,15 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
     except ArrowConversionError as ace:
+        from ray.data import DataContext
         from ray.data.extensions.object_extension import (
             ArrowPythonObjectArray,
             _object_extension_type_allowed,
         )
-        from ray.data import DataContext
 
-        enable_fallback_config: Optional[bool] = (
-            DataContext.get_current().enable_fallback_to_arrow_object_ext_type
-        )
+        enable_fallback_config: Optional[
+            bool
+        ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
 
         if not _object_extension_type_allowed():
             object_ext_type_fallback_allowed = False
