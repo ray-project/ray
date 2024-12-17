@@ -235,10 +235,12 @@ def debug(address: str, verbose: bool):
     if os.environ.get("RAY_DEBUG", "1") != "legacy":
         print(
             "NOTE: The distributed debugger "
-            "https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html "
-            "is now the default and recommended way to debug Ray applications. It has better "
-            "interactive debugging support than 'ray debug' which lacks readline support. "
-            "If you want to keep using 'ray debug' you need to set RAY_DEBUG=legacy "
+            "https://docs.ray.io/en/latest/ray-observability"
+            "/ray-distributed-debugger.html is now the default "
+            "and recommended way to debug Ray applications. It has "
+            "better interactive debugging support than 'ray debug' "
+            "which lacks completion and readline support. If you want "
+            "to keep using 'ray debug' you need to set RAY_DEBUG=legacy "
             "in your cluster (e.g. via runtime environment)."
         )
     while True:
