@@ -12,10 +12,10 @@ from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
     TrialInfo,
     _TrainSession,
+    _warn_session_misuse,
     get_session,
     init_session,
     shutdown_session,
-    _warn_session_misuse,
 )
 from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory

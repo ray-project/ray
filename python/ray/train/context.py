@@ -1,6 +1,6 @@
 import threading
-from typing import TYPE_CHECKING, Any, Dict, Optional
 import warnings
+from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
@@ -91,8 +91,8 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    from ray.tune import get_context as get_tune_context
     from ray.train._internal.session import get_session
+    from ray.tune import get_context as get_tune_context
 
     # If we are running in a Tune function, switch to Tune context.
     if get_session() and get_session().world_rank is None:

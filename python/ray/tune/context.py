@@ -2,9 +2,10 @@ import threading
 from typing import Any, Dict, Optional
 
 from ray.train._internal import session
-from ray.train.context import TrainContext as TrainV1Context, _copy_doc
-from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.train.context import TrainContext as TrainV1Context
+from ray.train.context import _copy_doc
 from ray.util.annotations import Deprecated, PublicAPI
+
 
 # The context singleton on this process.
 _tune_context: Optional["TuneContext"] = None
