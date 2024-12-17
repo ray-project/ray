@@ -6,6 +6,7 @@ from PIL import Image
 
 import ray
 from ray.data import ActorPoolStrategy
+from benchmark import Benchmark
 
 BUCKET = "anyscale-imagenet"
 # This Parquet file contains the keys of images in the 'anyscale-imagenet' bucket.
@@ -13,6 +14,12 @@ METADATA_PATH = "s3://anyscale-imagenet/metadata.parquet"
 
 
 def main():
+    benchmark = Benchmark("read-from-uris")
+    benchmark.run_fn("imagenet", benchmark_fn)
+    benchmark.write_result()
+
+
+def benchmark_fn():
     metadata = ray.data.read_parquet(METADATA_PATH)
     # Assuming there are 80 CPUs and 4 in-flight tasks per actor, we need at least 320
     # partitions to utilize all CPUs.
