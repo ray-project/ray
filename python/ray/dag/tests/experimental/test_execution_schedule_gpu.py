@@ -440,6 +440,78 @@ def test_overlap_gpu_communication(ray_start_regular, overlap_gpu_communication)
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("overlap_gpu_communication", [True, False])
+def test_overlap_gpu_communication_overlap2(
+    ray_start_regular, overlap_gpu_communication
+):
+    """
+    Test GPU communication can be overlapped when NCCL read and write
+    peers are different.
+
+    Our prior overlap algorithm works by moving a candidate READ (NCCL)
+    operation before a COMPUTE operation. If there are other READ (NCCL)
+    or WRITE (NCCL) operations in between, the swap is skipped to avoid
+    deadlock.
+
+    Now we make the algorithm less conservative by removing the constraint for a
+    WRITE (NCCL) operation in between. Specifically, if there is a WRITE (NCCL)
+    operation in between, and if its peer rank is different from the peer rank
+    of the candidate READ (NCCL) operation, we still allow the swap to happen.
+    We test this case here.
+    """
+
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    actor_cls = Worker.options(num_cpus=0, num_gpus=1)
+
+    worker1 = actor_cls.remote()
+    worker2 = actor_cls.remote()
+    worker3 = actor_cls.remote()
+
+    with InputNode() as inp:
+        w2 = worker2.send.bind(inp.shape, inp.dtype, inp[0])
+        w2 = w2.with_type_hint(TorchTensorType(transport="nccl"))
+        w3_out = worker3.recv.bind(w2)
+        w1 = worker1.send.bind(inp.shape, inp.dtype, inp[0])
+        w1 = w1.with_type_hint(TorchTensorType(transport="nccl"))
+        w2_out = worker2.recv.bind(w1)
+        dag = MultiOutputNode([w2_out, w3_out])
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    # Check worker2 schedule
+    expected_no_overlap_schedule = [
+        (0, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
+    ]
+    expected_overlap_schedule = [
+        (0, _DAGNodeOperationType.READ),
+        (1, _DAGNodeOperationType.READ),
+        (0, _DAGNodeOperationType.COMPUTE),
+        (0, _DAGNodeOperationType.WRITE),
+        (1, _DAGNodeOperationType.COMPUTE),
+        (1, _DAGNodeOperationType.WRITE),
+    ]
+    if overlap_gpu_communication:
+        expected_worker2_schedule = expected_overlap_schedule
+    else:
+        expected_worker2_schedule = expected_no_overlap_schedule
+
+    worker2_schedule = compiled_dag.actor_to_execution_schedule[worker2]
+
+    assert len(worker2_schedule) == len(expected_worker2_schedule)
+    for i, operation in enumerate(worker2_schedule):
+        assert operation.exec_task_idx == expected_worker2_schedule[i][0]
+        assert operation.type == expected_worker2_schedule[i][1]
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
