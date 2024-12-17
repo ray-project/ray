@@ -421,6 +421,20 @@
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
 
+- name: batch_inference_chaos_no_scale_back
+  stable: False
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
 # 10 TB image classification parquet data with autoscaling heterogenous cluster
 # 10 g4dn.12xlarge, 10 m5.16xlarge
 - name: batch_inference_hetero
