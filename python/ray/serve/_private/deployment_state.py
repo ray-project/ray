@@ -2369,6 +2369,8 @@ class DeploymentStateManager:
         )
         self._autoscaling_state_manager = autoscaling_state_manager
 
+        self._shutting_down = False
+
         self._deployment_states: Dict[DeploymentID, DeploymentState] = {}
 
         self._recover_from_checkpoint(
@@ -2506,6 +2508,7 @@ class DeploymentStateManager:
         One can send multiple shutdown signals but won't effectively make any
         difference compare to calling it once.
         """
+        self._shutting_down = True
 
         for deployment_state in self._deployment_states.values():
             deployment_state.delete()
@@ -2524,12 +2527,17 @@ class DeploymentStateManager:
         Check there are no deployment states and no checkpoints.
         """
         return (
-            len(self._deployment_states) == 0
+            self._shutting_down
+            and len(self._deployment_states) == 0
             and self._kv_store.get(CHECKPOINT_KEY) is None
         )
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all deployment states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         deployment_state_info = {
             deployment_id: deployment_state.get_checkpoint_data()

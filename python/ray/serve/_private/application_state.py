@@ -877,6 +877,9 @@ class ApplicationStateManager:
         self._endpoint_state = endpoint_state
         self._kv_store = kv_store
         self._logging_config = logging_config
+
+        self._shutting_down = False
+
         self._application_states: Dict[str, ApplicationState] = {}
         self._recover_from_checkpoint()
 
@@ -1079,6 +1082,8 @@ class ApplicationStateManager:
             ServeUsageTag.NUM_APPS.record(str(len(self._application_states)))
 
     def shutdown(self) -> None:
+        self._shutting_down = True
+
         for app_state in self._application_states.values():
             app_state.delete()
 
@@ -1090,12 +1095,16 @@ class ApplicationStateManager:
         Iterate through all application states and check if all their applications
         are deleted.
         """
-        return all(
+        return self._shutting_down and all(
             app_state.is_deleted() for app_state in self._application_states.values()
         )
 
     def save_checkpoint(self) -> None:
         """Write a checkpoint of all application states."""
+        if self._shutting_down:
+            # Once we're told to shut down, stop writing checkpoints.
+            # Calling .shutdown() deletes any existing checkpoint.
+            return
 
         application_state_info = {
             app_name: app_state.get_checkpoint_data()

@@ -2729,6 +2729,9 @@ def test_recover_during_rolling_update(mock_deployment_state_manager):
     info2, v2 = deployment_info(version="2")
     assert dsm.deploy(TEST_DEPLOYMENT_ID, info2)
 
+    # In real code this checkpoint would be done by the caller of .deploy()
+    dsm.save_checkpoint()
+
     # Before the replica could be stopped and restarted, simulate
     # controller crashed! A new deployment state manager should be
     # created, and it should call _recover_from_checkpoint
