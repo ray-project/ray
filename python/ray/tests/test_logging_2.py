@@ -400,6 +400,43 @@ ray.init(
         should_exist = "timestamp_ns="
         assert should_exist in stderr
 
+    def test_logging_setup_with_core_context_filter(self, shutdown_only):
+        """Test logging setup with core context fileter
+
+        We added `timestamp_ns` to the log record in `_setup_log_record_factory()` and
+        in `CoreContextFilter`. This test checks if `timestamp_ns` is still in the log
+        record as is part of the logged message.
+        """
+        script = """
+import ray
+import logging
+
+from ray._private.ray_logging.filters import CoreContextFilter
+
+ray.init(
+    logging_config=ray.LoggingConfig(encoding="TEXT")
+)
+
+@ray.remote
+class actor:
+    def __init__(self):
+        pass
+
+    def print_message(self):
+        logger = logging.getLogger(__name__)
+        logger.info("This is a Ray actor")
+
+logger = logging.getLogger()
+logger.info("This is a Ray driver")
+
+actor_instance = actor.remote()
+ray.get(actor_instance.print_message.remote())
+"""
+        stderr = run_string_as_driver(script)
+        for message in stderr.strip().split("\n"):
+            should_exist = "timestamp_ns="
+            assert should_exist in message
+
 
 def test_structured_logging_with_working_dir(tmp_path, shutdown_only):
     working_dir = tmp_path / "test-working-dir"
