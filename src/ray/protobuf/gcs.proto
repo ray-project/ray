@@ -727,16 +727,14 @@ message NodeInstance {
 message VirtualClusterTableData {
   // The virtual cluster id.
   string id = 1;
-  // The virtual cluster name.
-  string name = 2;
   // The allocation mode of the virtual cluster.
-  AllocationMode mode = 3;
+  AllocationMode mode = 2;
   // The replica set list of the virtual cluster.
-  map<string, int32> replica_sets = 4;
+  map<string, int32> replica_sets = 3;
   // Mapping from node id to it's instance.
-  map<string, NodeInstance> node_instances = 5;
+  map<string, NodeInstance> node_instances = 4;
   // Whether this virtual cluster is removed.
-  bool is_removed = 6;
+  bool is_removed = 5;
   // Version number of the last modification to the virtual cluster.
-  uint64 revision = 7;
+  uint64 revision = 6;
 }

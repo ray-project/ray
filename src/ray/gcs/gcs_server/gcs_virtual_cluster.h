@@ -104,9 +104,6 @@ class VirtualCluster {
   /// Get the id of the cluster.
   virtual const std::string &GetID() const = 0;
 
-  /// Get the id of the cluster.
-  virtual const std::string &GetName() const = 0;
-
   /// Get the allocation mode of the cluster.
   /// There are two modes of the cluster:
   ///  - Exclusive mode means that a signle node in the cluster can execute one or
@@ -228,7 +225,6 @@ class PrimaryCluster : public JobClusterManager {
 
   const std::string &GetID() const override { return kPrimaryClusterID; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::Exclusive; }
-  const std::string &GetName() const override { return kPrimaryClusterID; }
 
   /// Create or update a new virtual cluster.
   ///
@@ -283,13 +279,12 @@ class LogicalCluster : public JobClusterManager {
                  const std::string &id,
                  const std::string &name,
                  rpc::AllocationMode mode)
-      : JobClusterManager(async_data_flusher), id_(id), name_(name), mode_(mode) {}
+      : JobClusterManager(async_data_flusher), id_(id), mode_(mode) {}
 
   LogicalCluster &operator=(const LogicalCluster &) = delete;
 
   const std::string &GetID() const override { return id_; }
   rpc::AllocationMode GetMode() const override { return mode_; }
-  const std::string &GetName() const override { return name_; }
 
  protected:
   bool IsIdleNodeInstance(const std::string &job_cluster_id,
@@ -298,19 +293,16 @@ class LogicalCluster : public JobClusterManager {
  private:
   /// The id of the virtual cluster.
   std::string id_;
-  /// The name of the virtual cluster.
-  std::string name_;
   /// The allocation mode of the virtual cluster.
   rpc::AllocationMode mode_;
 };
 
 class JobCluster : public VirtualCluster {
  public:
-  JobCluster(const std::string &id, const std::string &name) : id_(id), name_(name) {}
+  JobCluster(const std::string &id) : id_(id) {}
 
   const std::string &GetID() const override { return id_; }
   rpc::AllocationMode GetMode() const override { return rpc::AllocationMode::Mixed; }
-  const std::string &GetName() const override { return id_; }
 
   bool IsIdleNodeInstance(const std::string &job_cluster_id,
                           const gcs::NodeInstance &node_instance) const override;
@@ -318,8 +310,6 @@ class JobCluster : public VirtualCluster {
  private:
   /// The id of the job cluster.
   std::string id_;
-  /// The name of the job cluster.
-  std::string name_;
 };
 
 }  // namespace gcs

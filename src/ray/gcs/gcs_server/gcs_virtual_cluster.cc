@@ -163,7 +163,6 @@ bool VirtualCluster::MarkNodeInstanceAsDead(const std::string &template_id,
 std::shared_ptr<rpc::VirtualClusterTableData> VirtualCluster::ToProto() const {
   auto data = std::make_shared<rpc::VirtualClusterTableData>();
   data->set_id(GetID());
-  data->set_name(GetName());
   data->set_mode(GetMode());
   data->set_revision(GetRevision());
   data->mutable_replica_sets()->insert(replica_sets_.begin(), replica_sets_.end());
@@ -237,7 +236,7 @@ Status JobClusterManager::CreateJobCluster(
                       std::move(replica_instances_to_remove_from_current_cluster));
 
   // Create a job cluster.
-  auto job_cluster = std::make_shared<JobCluster>(job_cluster_id, job_cluster_id);
+  auto job_cluster = std::make_shared<JobCluster>(job_cluster_id);
   job_cluster->UpdateNodeInstances(std::move(replica_instances_to_add),
                                    ReplicaInstances());
   RAY_CHECK(job_clusters_.emplace(job_cluster_id, job_cluster).second);
