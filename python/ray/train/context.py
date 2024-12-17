@@ -1,9 +1,15 @@
 import threading
 from typing import TYPE_CHECKING, Any, Dict, Optional
+import warnings
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import (
+    Deprecated,
+    DeveloperAPI,
+    PublicAPI,
+    RayDeprecationWarning,
+)
 
 if TYPE_CHECKING:
     from ray.tune.execution.placement_groups import PlacementGroupFactory
@@ -26,6 +32,7 @@ def _copy_doc(copy_func):
 class TrainContext:
     """Context for Ray training executions."""
 
+    @Deprecated(warn=True)
     @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
         return session.get_metadata()
@@ -84,14 +91,23 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    global _default_context
-
     from ray.tune.context import get_context as get_tune_context
     from ray.train._internal.session import get_session
 
+    # If we are running in a Tune function, switch to Tune context.
     if get_session() and get_session().world_rank is None:
-        # TODO(justinvyu): Deprecation warning.
+        warnings.warn(
+            (
+                "`ray.train.get_context()` should be switched to "
+                "`ray.tune.get_context()` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
+            ),
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
         return get_tune_context()
+
+    global _default_context
 
     with _context_lock:
         if _default_context is None:

@@ -1,10 +1,10 @@
 import threading
-from typing import Optional
+from typing import Any, Dict, Optional
 
 from ray.train._internal import session
-from ray.util.annotations import Deprecated, PublicAPI
-
 from ray.train.context import TrainContext as TrainV1Context, _copy_doc
+from ray.tune.execution.placement_groups import PlacementGroupFactory
+from ray.util.annotations import Deprecated, PublicAPI
 
 # The context singleton on this process.
 _tune_context: Optional["TuneContext"] = None
@@ -20,6 +20,14 @@ _TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
 
 @PublicAPI(stability="stable")
 class TuneContext(TrainV1Context):
+    """Context for Ray Tune training executions."""
+
+    @Deprecated
+    def get_metadata(self) -> Dict[str, Any]:
+        raise DeprecationWarning(
+            "`get_metadata` is deprecated for Ray Tune, as it has never been usable."
+        )
+
     @Deprecated(
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_world_size"),
         warning=True,
