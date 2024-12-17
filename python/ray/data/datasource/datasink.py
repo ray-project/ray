@@ -10,8 +10,8 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-# Generic type for the return value of `Datasink.write`.
 WriteReturnType = TypeVar("WriteReturnType")
+"""Generic type for the return value of `Datasink.write`."""
 
 
 @dataclass
