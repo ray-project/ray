@@ -238,10 +238,8 @@ def debug(address: str, verbose: bool):
             f"{colorama.Fore.YELLOW}NOTE: The distributed debugger "
             "https://docs.ray.io/en/latest/ray-observability"
             "/ray-distributed-debugger.html is now the default "
-            "and recommended way to debug Ray applications. It has "
-            "better interactive debugging support than 'ray debug' "
-            "which lacks completion and readline support. If you want "
-            "to keep using 'ray debug' you need to set RAY_DEBUG=legacy "
+            "due to better interactive debugging support. If you want "
+            "to keep using 'ray debug' please set RAY_DEBUG=legacy "
             f"in your cluster (e.g. via runtime environment).{colorama.Fore.RESET}"
         )
     while True:
