@@ -28,7 +28,7 @@
 DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
-DEFINE_string(log_dir, "", "The path of the dir where event log files are created.");
+DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
 DEFINE_string(ray_log_filepath,
               "",
               "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
