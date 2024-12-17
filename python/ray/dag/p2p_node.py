@@ -1,24 +1,19 @@
-from typing import Any, Dict, List, Optional, Tuple, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple
 
 if TYPE_CHECKING:
     import torch
 
-from ray.dag import (
-    DAGNode,
-    ClassMethodNode,
-)
-from ray.dag.nccl_operation import _NcclOperation
+from ray.dag import ClassMethodNode, DAGNode
 from ray.dag.constants import P2P_OPERATION_KEY
-from ray.util.annotations import DeveloperAPI
+from ray.dag.nccl_operation import _NcclOperation
 from ray.experimental.channel import ChannelInterface
 from ray.experimental.util.types import P2POp
-
-# [CL] Format. Class comments.
+from ray.util.annotations import DeveloperAPI
 
 
 class _P2POperation(_NcclOperation):
     """
-    Represent a group of actors in a NCCL P2P operation.
+    Represent metadata for a group of actors in a NCCL P2P operation.
     """
 
     def __init__(self):
@@ -28,24 +23,19 @@ class _P2POperation(_NcclOperation):
         self, op: P2POp, ch: ChannelInterface, data: Optional["torch.Tensor"] = None
     ) -> Any:
         """
-        Execute the NCCL P2P operation.
-
-        [CL]
-        If the operation is a NCCL send, write the data to the output writer.
-        If the operation is a NCCL recv, read the data from the input reader.
+        Execute the NCCL P2P operation. If it is a NCCL send, write the data to the
+        output channel. If it is a NCCL recv, read the data from the input channel.
 
         Args:
-            op: The type of the P2P operation, either SEND or RECV.
-            ch: The channel to use for the P2P operation.
-            data: The data involved in the P2P operation. If the operation is a
-                NCCL send, this is the data to send. If the operation is a NCCL
-                recv, this should be None.
+            op: The type of the P2P operation.
+            ch: The channel of the P2P operation.
+            data: The data of the P2P operation. If it is a NCCL send, this is the
+                data to send. If it is a NCCL recv, this is None.
 
         Returns:
-            If the operation is a NCCL send, return None. If the operation is a
-            NCCL recv, return the received data.
+            If it is a NCCL send, return None. If it is a NCCL recv, return the
+            received data.
         """
-        # [CL]
         if op == P2POp.SEND:
             assert data is not None
             ch.write(data)

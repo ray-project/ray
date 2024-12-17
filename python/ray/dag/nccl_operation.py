@@ -1,19 +1,18 @@
 from abc import ABC, abstractmethod
-
 from typing import List, Set
 
 
 class _NcclOperation(ABC):
     """
-    Represents a group of tasks in a NCCL operation.
+    Represent metadata for a group of actors in a NCCL operation.
     """
 
     def __init__(self):
-        # Task idxs in a compiled DAG.
+        # Task indices in a compiled DAG.
         self.task_idxs: List[int] = []
-        # Indices of tasks that are ready (in-degree=0).
+        # Indices of tasks that are ready with a zero in-degree.
         self.ready_task_idxs: Set[int] = set()
-        # Whether the group has been added to the execution schedule.
+        # Whether all the taskss have been added to the execution schedule.
         self.scheduled: bool = False
 
     @property

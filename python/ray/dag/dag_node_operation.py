@@ -90,8 +90,8 @@ class _DAGOperationGraphNode:
         # the edge is a control dependency.
         self.in_edges: Dict[int, Tuple[str, bool]] = {}
         self.out_edges: Dict[int, Tuple[str, bool]] = {}
-        # [CL]
-        # NCCL op of this task. None if the task is not a NCCL op.
+        # The NCCL operation of the task. It can be a NCCL read, write, or
+        # collective operation.
         self.nccl_op: Optional[_NcclOperation] = nccl_op
 
     def __repr__(self):
@@ -234,13 +234,16 @@ def _select_next_nodes(
     select the node with the top priority. The priority is defined in
     `_DAGOperationGraphNode.__lt__`.
 
-    [CL]
     For the implementation details, we maintain a priority queue for each actor,
     where the head of the priority queue is the node with the smallest `exec_task_idx`.
+
     When a node is ready, it is added to the corresponding actor's priority queue.
-    For a node that is not a member of a NCCL op, it is ready to be executed
-    if it has a zero in-degree. For a node that is part of a NCCL op, it is
-    ready to be executed when all the nodes in the group have zero in-degrees.
+    For a node other than a NCCL operation node, it is ready to be executed if it
+    has a zero in-degree. For a NCCL operation node, it is ready to be executed
+    when all the nodes in the NCCL operation have zero in-degrees.
+
+    If the selected node is a NCCL operation node, all the nodes in the operation
+    are selected.
 
     Args:
         actor_to_candidates: A dictionary mapping an actor id to a list of
@@ -264,7 +267,6 @@ def _select_next_nodes(
         return None
 
     heapq.heappop(actor_to_candidates[top_priority_node.actor_handle._actor_id])
-
     if top_priority_node.nccl_op is not None:
         next_nodes = [graph[idx] for idx in top_priority_node.nccl_op.task_idxs]
     else:
@@ -541,10 +543,9 @@ def _generate_actor_to_execution_schedule(
 
     # Use topological sort algorithm to generate the execution schedule.
     while True:
-        # [CL]
         # Select a list of nodes to be executed. There are two cases:
-        # 1. If a selected node is not in a NCCL op, only itself is returned.
-        # 2. If a selected node is part of a NCCL op, all nodes in the group
+        # 1. If the selected node is not a NCCL operation, only itself is returned.
+        # 2. If the selected node is a NCCL operation, all the nodes in the operation
         #    are returned.
         nodes = _select_next_nodes(actor_to_candidates, graph)
         if nodes is None:

@@ -376,17 +376,12 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # [CL]
-        # We need a flag for NCCL read because currently we only support
-        # overlapping NCCL read with computation. The other two flags are kept
-        # for symmetry. We may be able to merge them into one flag after
-        # supporting overlapping NCCL collective with computation.
+        # Whther the task requires a NCCL read, write, or collective operation.
         self.requires_nccl_read = task.dag_node.requires_nccl_read
         self.requires_nccl_write = task.dag_node.requires_nccl_write
         self.requires_nccl_collective = task.dag_node.requires_nccl_collective
-        # [CL]
-        # The NCCL op this task belongs to that is used for scheduling.
-        # If None, the task is not part of a NCCL op.
+        # The NCCL operation of the task. It can be a NCCL read, write, or
+        # collective operation.
         self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
         if self.nccl_op is not None:
             self.nccl_op.task_idxs.append(task.idx)
@@ -529,20 +524,17 @@ class ExecutableTask:
 
     def fetch_intermediate_future(self, wait_gpu_future: bool) -> Any:
         """
-        [CL]
-        Reset the intermediate future. Return the future or wait for the result.
+        Fetch the intermediate future. If `wait_gpu_future` is True, the future
+        is waited and the result is returned. Otherwise, the future is returned
+        without waiting.
 
-        If the result is waited, the wait does not block the CPU because:
+        If the future is waited, the wait does not block the CPU because:
         - If the future is a ResolvedFuture, the result is immediately returned.
         - If the future is a GPUFuture, the result is only waited by the current
             CUDA stream, and the CPU is not blocked.
 
         Args:
             wait_gpu_future: Whether to wait for the GPU future.
-
-        Returns:
-            The intermediate future if `wait_gpu_future` is False; the result from
-            the intermediate future if `wait_gpu_future` is True.
         """
         future = self._intermediate_future
         self._intermediate_future = None
@@ -1076,23 +1068,20 @@ class CompiledDAG:
 
     def _create_nccl_p2p_nodes(self) -> None:
         """
-        [CL]
-        Find DAG nodes that involve in NCCL send/recv operations. Create nodes
-        to represent these operations and add them to the DAG.
+        Create NCCL P2P nodes for the DAG.
 
-        Check for errors as well:
-        1. The driver cannot participate in NCCL send/recv operations.
-        2. An actor must be present for a NCCL send/recv operation.
-        3. `P2PSendNode` and `P2PRecvNode` should not be directly added to the DAG.
+        Requirements:
+        1. The driver cannot participate in NCCL P2P operations.
+        2. An actor must be present for a NCCL P2P operation.
+        3. `_P2PSendNode` and `_P2PRecvNode` should not be directly added to the DAG.
 
-        [CL]
         Example:
 
         a.foo -(NCCL)-> b.bar
 
         is transformed to:
 
-        a.foo -(IPC)-> P2PSendNode -(NCCL)-> P2PRecvNode -(IPC)-> b.bar
+        a.foo -(IPC)-> _P2PSendNode -(NCCL)-> _P2PRecvNode -(IPC)-> b.bar
 
         where IPC is IntraProcessChannel.
         """
@@ -1117,7 +1106,7 @@ class CompiledDAG:
             if isinstance(task.dag_node, _P2PNode):
                 raise ValueError(
                     "Please use type hints to specify NCCL transport instead of "
-                    "adding P2PSendNode or P2PRecvNode to the DAG"
+                    "adding _P2PSendNode or _P2PRecvNode to the DAG"
                 )
             if not task.dag_node.type_hint.requires_nccl():
                 continue
@@ -1128,7 +1117,7 @@ class CompiledDAG:
                 )
             elif not isinstance(task.dag_node, ClassMethodNode):
                 raise ValueError(
-                    "NCCL P2P send/recv is only supported with ClassMethodNodes"
+                    "NCCL P2P operation is only supported with ClassMethodNode"
                 )
             elif task.dag_node.is_adag_output_node:
                 raise ValueError(
@@ -1161,7 +1150,7 @@ class CompiledDAG:
                     )
                 elif not isinstance(task.dag_node, ClassMethodNode):
                     raise ValueError(
-                        "NCCL P2P send/recv is only supported with ClassMethodNodes"
+                        "NCCL P2P operation is only supported with ClassMethodNode"
                     )
 
                 send_node = send_nodes[arg]

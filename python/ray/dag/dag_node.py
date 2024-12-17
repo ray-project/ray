@@ -88,19 +88,6 @@ class DAGNode(DAGNodeBase):
         self.requires_nccl_write = False
         self.requires_nccl_collective = False
 
-    @property
-    def nccl_op(self) -> Optional[_NcclOperation]:
-        """
-        [CL]
-        Return the NCCL op that this node belongs to. If this node is not
-        in any NCCL op, return None.
-
-        [CL]
-        NCCL ops in the DAG are synchronous. During DAG compilation, when
-        scheduling NCCL ops, all nodes in the same NCCL op must be ready.
-        """
-        return None
-
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
         Retrieve upstream nodes and update their downstream dependencies.
@@ -155,6 +142,12 @@ class DAGNode(DAGNodeBase):
     @property
     def type_hint(self) -> ChannelOutputType:
         return self._type_hint
+
+    @property
+    def nccl_op(self) -> Optional[_NcclOperation]:
+        """Return the NCCL operation for this node."""
+
+        return None
 
     def get_args(self) -> Tuple[Any]:
         """Return the tuple of arguments for this node."""
