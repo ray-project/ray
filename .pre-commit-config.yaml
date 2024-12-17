@@ -143,3 +143,11 @@ repos:
         types: [python]
         pass_filenames: false
         args: [".", "-s", "ci", "-s", "python/ray/thirdparty_files", "-s", "python/build", "-s", "lib"]
+
+  - repo: local
+    hooks:
+      - id: check_cpp_files_inclusion
+        name: Check ray core C++ files inclusion violations
+        entry: python ci/lint/check_cpp_files_inclusion.py
+        language: python
+        types: [python]
