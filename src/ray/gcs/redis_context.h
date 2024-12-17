@@ -171,7 +171,12 @@ class RedisContext {
   }
 
   RedisAsyncContext &async_context() {
-    RAY_CHECK(redis_async_context_);
+    // redis_async_context_ is nullptr means the connection is lost because it is reset in
+    // the disconnect callback. If the connection is lost, we need to reconnect before
+    // sending the request.
+    if (redis_async_context_ == nullptr) {
+      RAY_CHECK_OK(this->Reconnect());
+    }
     return *redis_async_context_;
   }
 

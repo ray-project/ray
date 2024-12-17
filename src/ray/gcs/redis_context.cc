@@ -788,12 +788,6 @@ std::unique_ptr<CallbackReply> RedisContext::RunArgvSync(
 
 void RedisContext::RunArgvAsync(std::vector<std::string> args,
                                 RedisCallback redis_callback) {
-  // redis_async_context_ is nullptr means the connection is lost because it is reset in
-  // the disconnect callback. If the connection is lost, we need to reconnect before
-  // sending the request.
-  if (redis_async_context_ == nullptr) {
-    RAY_CHECK_OK(this->Reconnect());
-  }
   auto request_context = new RedisRequestContext(
       io_service_, std::move(redis_callback), *this, std::move(args));
   // RedisRequestContext is thread safe.
