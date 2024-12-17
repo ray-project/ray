@@ -11,29 +11,53 @@ _tune_context: Optional["TuneContext"] = None
 _tune_context_lock = threading.Lock()
 
 
+_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
+    "`{}` is deprecated for Ray Tune because there is no concept of worker ranks "
+    "for Ray Tune, so these methods only make sense to use in the context of "
+    "a Ray Train worker."
+)
+
+
 @PublicAPI(stability="stable")
 class TuneContext(TrainV1Context):
-    @Deprecated
+    @Deprecated(
+        message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_world_size"),
+        warning=True,
+    )
     @_copy_doc(TrainV1Context.get_world_size)
     def get_world_size(self) -> int:
         return session.get_world_size()
 
-    @Deprecated
+    @Deprecated(
+        message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_world_rank"),
+        warning=True,
+    )
     @_copy_doc(TrainV1Context.get_world_rank)
     def get_world_rank(self) -> int:
         return session.get_world_rank()
 
-    @Deprecated
+    @Deprecated(
+        message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_local_rank"),
+        warning=True,
+    )
     @_copy_doc(TrainV1Context.get_local_rank)
     def get_local_rank(self) -> int:
         return session.get_local_rank()
 
-    @Deprecated
+    @Deprecated(
+        message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format(
+            "get_local_world_size"
+        ),
+        warning=True,
+    )
     @_copy_doc(TrainV1Context.get_local_world_size)
     def get_local_world_size(self) -> int:
         return session.get_local_world_size()
 
-    @Deprecated
+    @Deprecated(
+        message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_node_rank"),
+        warning=True,
+    )
     @_copy_doc(TrainV1Context.get_node_rank)
     def get_node_rank(self) -> int:
         return session.get_node_rank()
