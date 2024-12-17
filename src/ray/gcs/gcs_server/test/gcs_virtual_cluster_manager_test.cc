@@ -146,7 +146,6 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
   {
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_0");
-    request.set_virtual_cluster_name("virtual_cluster_id_0");
     request.set_mode(rpc::AllocationMode::Exclusive);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 5});
@@ -199,7 +198,6 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_1 and check that the status is ok.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_1");
-    request.set_virtual_cluster_name("virtual_cluster_id_1");
     request.set_mode(rpc::AllocationMode::Exclusive);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, node_count_per_template - 5});
@@ -248,7 +246,6 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_2 and check that the status is succeed.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_2");
-    request.set_virtual_cluster_name("virtual_cluster_id_2");
     request.set_mode(rpc::AllocationMode::Exclusive);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 0});
@@ -275,7 +272,6 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_3 and check that the status is failed.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_3");
-    request.set_virtual_cluster_name("virtual_cluster_id_3");
     request.set_mode(rpc::AllocationMode::Exclusive);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 1});
@@ -511,6 +507,116 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
     // Remove the job cluster that does not exist.
     auto status = primary_cluster->RemoveJobCluster(
         "job_1",
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_FALSE(true);
+        });
+    ASSERT_TRUE(status.IsNotFound());
+  }
+}
+
+TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
+  auto primary_cluster =
+      std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
+        callback(Status::OK(), data);
+        return Status::OK();
+      });
+
+  size_t node_count = 200;
+  size_t template_count = 10;
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_template_id(template_id);
+    primary_cluster->OnNodeAdd(*node);
+  }
+
+  std::string template_id_0 = "0";
+  std::string template_id_1 = "1";
+  size_t node_count_per_template = node_count / template_count;
+
+  std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
+
+  {
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id(virtual_cluster_id_0);
+    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 5});
+    request.mutable_replica_sets()->insert({template_id_1, 10});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
+
+  {
+    // Check the logical cluster virtual_cluster_id_0 visible node instances.
+    auto logical_cluster = primary_cluster->GetLogicalCluster(virtual_cluster_id_0);
+    ASSERT_NE(logical_cluster, nullptr);
+    const auto &visiable_node_instances = logical_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 has 5 nodes, template_id_1 has 10 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), 2);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(), 5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+              10);
+
+    // Check that the revision changed.
+    EXPECT_NE(logical_cluster->GetRevision(), 0);
+  }
+
+  {
+    // Check the primary cluster visible node instances.
+    const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 remains template_count - 5 nodes, template_id_1 has
+    // template_count - 10 nodes.
+    EXPECT_EQ(visiable_node_instances.size(), template_count);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+              node_count_per_template - 5);
+
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+              node_count_per_template - 10);
+
+    // Check that the revision unchanged.
+    EXPECT_NE(primary_cluster->GetRevision(), 0);
+  }
+
+  {
+    auto status = primary_cluster->RemoveLogicalCluster(
+        virtual_cluster_id_0,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+          ASSERT_TRUE(data->is_removed());
+        });
+    ASSERT_TRUE(status.ok());
+    ASSERT_EQ(primary_cluster->GetLogicalCluster(virtual_cluster_id_0), nullptr);
+  }
+
+  {
+    // Check the primary cluster visible node instances.
+    const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
+    // Check that template_id_0 has node_count_per_template nodes.
+    EXPECT_EQ(visiable_node_instances.size(), template_count);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_0).at(kEmptyJobClusterId).size(),
+              node_count_per_template);
+
+    // Check that template_id_1 has node_count_per_template nodes.
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).size(), 1);
+    EXPECT_EQ(visiable_node_instances.at(template_id_1).at(kEmptyJobClusterId).size(),
+              node_count_per_template);
+  }
+
+  {
+    // Remove the logical cluster that does not exist.
+    auto status = primary_cluster->RemoveLogicalCluster(
+        virtual_cluster_id_0,
         [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
           ASSERT_FALSE(true);
         });

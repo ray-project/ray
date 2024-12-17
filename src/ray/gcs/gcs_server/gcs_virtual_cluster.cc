@@ -191,11 +191,10 @@ std::string VirtualCluster::DebugString() const {
   return stream.str();
 }
 
-///////////////////////// JobClusterManager /////////////////////////
-Status JobClusterManager::CreateJobCluster(
-    const std::string &job_name,
-    ReplicaSets replica_sets,
-    CreateOrUpdateVirtualClusterCallback callback) {
+///////////////////////// ExclusiveCluster /////////////////////////
+Status ExclusiveCluster::CreateJobCluster(const std::string &job_name,
+                                          ReplicaSets replica_sets,
+                                          CreateOrUpdateVirtualClusterCallback callback) {
   if (GetMode() != rpc::AllocationMode::Exclusive) {
     std::ostringstream ostr;
     ostr << "The job cluster can only be created in exclusive mode, virtual_cluster_id: "
@@ -245,8 +244,8 @@ Status JobClusterManager::CreateJobCluster(
   return async_data_flusher_(job_cluster->ToProto(), std::move(callback));
 }
 
-Status JobClusterManager::RemoveJobCluster(const std::string &job_name,
-                                           RemoveVirtualClusterCallback callback) {
+Status ExclusiveCluster::RemoveJobCluster(const std::string &job_name,
+                                          RemoveVirtualClusterCallback callback) {
   if (GetMode() != rpc::AllocationMode::Exclusive) {
     std::ostringstream ostr;
     ostr << "The job cluster can only be removed in exclusive mode, virtual_cluster_id: "
@@ -287,7 +286,7 @@ Status JobClusterManager::RemoveJobCluster(const std::string &job_name,
   return async_data_flusher_(std::move(data), std::move(callback));
 }
 
-std::shared_ptr<JobCluster> JobClusterManager::GetJobCluster(
+std::shared_ptr<JobCluster> ExclusiveCluster::GetJobCluster(
     const std::string &job_id) const {
   auto job_cluster_id =
       VirtualClusterID::FromBinary(GetID()).BuildJobClusterID(job_id).Binary();
@@ -295,8 +294,30 @@ std::shared_ptr<JobCluster> JobClusterManager::GetJobCluster(
   return iter != job_clusters_.end() ? iter->second : nullptr;
 }
 
+bool ExclusiveCluster::InUse() const { return !job_clusters_.empty(); }
+
+bool ExclusiveCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
+                                          const gcs::NodeInstance &node_instance) const {
+  RAY_CHECK(GetMode() == rpc::AllocationMode::Exclusive);
+  return job_cluster_id == kEmptyJobClusterId;
+}
+
+///////////////////////// MixedCluster /////////////////////////
+bool MixedCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
+                                      const gcs::NodeInstance &node_instance) const {
+  // TODO(Shanly): The job_cluster_id will always be empty in mixed mode although the node
+  // instance is assigned to one or two jobs, so we need to check the node resources
+  // usage.
+  return node_instance.is_dead();
+}
+
+bool MixedCluster::InUse() const {
+  // TODO(Shanly): Check if the virtual cluster still running jobs or placement groups.
+  return true;
+}
+
 ///////////////////////// PrimaryCluster /////////////////////////
-std::shared_ptr<LogicalCluster> PrimaryCluster::GetLogicalCluster(
+std::shared_ptr<VirtualCluster> PrimaryCluster::GetLogicalCluster(
     const std::string &logical_cluster_id) const {
   auto iter = logical_clusters_.find(logical_cluster_id);
   return iter != logical_clusters_.end() ? iter->second : nullptr;
@@ -320,10 +341,12 @@ Status PrimaryCluster::CreateOrUpdateVirtualCluster(
   if (logical_cluster == nullptr) {
     // replica_instances_to_remove must be empty as the virtual cluster is a new one.
     RAY_CHECK(replica_instances_to_remove_from_logical_cluster.empty());
-    logical_cluster = std::make_shared<LogicalCluster>(async_data_flusher_,
-                                                       request.virtual_cluster_id(),
-                                                       request.virtual_cluster_name(),
-                                                       request.mode());
+    if (request.mode() == rpc::AllocationMode::Exclusive) {
+      logical_cluster = std::make_shared<ExclusiveCluster>(request.virtual_cluster_id(),
+                                                           async_data_flusher_);
+    } else {
+      logical_cluster = std::make_shared<MixedCluster>(request.virtual_cluster_id());
+    }
     logical_clusters_[request.virtual_cluster_id()] = logical_cluster;
   }
 
@@ -406,27 +429,39 @@ void PrimaryCluster::OnNodeDead(const rpc::GcsNodeInfo &node) {
   }
 }
 
-///////////////////////// LogicalCluster /////////////////////////
-bool LogicalCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
-                                        const gcs::NodeInstance &node_instance) const {
-  if (GetMode() == rpc::AllocationMode::Exclusive) {
-    return job_cluster_id == kEmptyJobClusterId;
+Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_id,
+                                            RemoveVirtualClusterCallback callback) {
+  auto logical_cluster = GetLogicalCluster(logical_cluster_id);
+  if (logical_cluster == nullptr) {
+    return Status::NotFound("The logical cluster " + logical_cluster_id +
+                            " does not exist.");
   }
 
-  // TODO(Shanly): The job_cluster_id will always be empty in mixed mode although the node
-  // instance is assigned to one or two jobs, so we need to check the node resources
-  // usage.
-  return node_instance.is_dead();
-}
+  // Check if the virtual cluster is in use.
+  if (logical_cluster->InUse()) {
+    std::ostringstream ostr;
+    ostr << "The virtual cluster " << logical_cluster_id
+         << " can not be removed as it still in use.";
+    auto message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    // TODO(Shanly): build a new status.
+    return Status::InvalidArgument(message);
+  }
 
-///////////////////////// JobCluster /////////////////////////
-bool JobCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
-                                    const gcs::NodeInstance &node_instance) const {
-  RAY_CHECK(GetMode() == rpc::AllocationMode::Mixed);
-  // TODO(Shanly): The job_cluster_id will always be empty in mixed mode although the node
-  // instance is assigned to one or two jobs, so we need to check the node resources
-  // usage.
-  return node_instance.is_dead();
+  const auto &replica_instances_to_remove = logical_cluster->GetVisibleNodeInstances();
+
+  auto replica_instances_to_add_to_primary_cluster = replica_instances_to_remove;
+  UpdateNodeInstances(std::move(replica_instances_to_add_to_primary_cluster),
+                      ReplicaInstances());
+
+  // Update the logical_cluster cluster.
+  // logical_cluster->UpdateNodeInstances(ReplicaInstances(),
+  //                                      std::move(replica_instances_to_remove));
+  logical_clusters_.erase(logical_cluster_id);
+
+  auto data = logical_cluster->ToProto();
+  data->set_is_removed(true);
+  return async_data_flusher_(std::move(data), std::move(callback));
 }
 
 }  // namespace gcs

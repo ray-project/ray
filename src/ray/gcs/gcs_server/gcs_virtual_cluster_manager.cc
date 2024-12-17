@@ -73,8 +73,28 @@ void GcsVirtualClusterManager::HandleRemoveVirtualCluster(
     rpc::SendReplyCallback send_reply_callback) {
   const auto &virtual_cluster_id = request.virtual_cluster_id();
   RAY_LOG(INFO) << "Start removing virtual cluster " << virtual_cluster_id;
-  // TODO(Shanly): To be implement.
-  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  auto on_done = [reply, virtual_cluster_id, callback = std::move(send_reply_callback)](
+                     const Status &status,
+                     std::shared_ptr<rpc::VirtualClusterTableData> data) {
+    if (status.ok()) {
+      RAY_LOG(INFO) << "Succeed in removing virtual cluster " << virtual_cluster_id;
+    } else {
+      RAY_LOG(ERROR) << "Failed to remove virtual cluster " << virtual_cluster_id
+                     << ", status = " << status.ToString();
+    }
+    GCS_RPC_SEND_REPLY(callback, reply, status);
+  };
+
+  auto status = VerifyRequest(request);
+  if (!status.ok()) {
+    on_done(status, nullptr);
+    return;
+  }
+
+  status = primary_cluster_->RemoveLogicalCluster(virtual_cluster_id, on_done);
+  if (!status.ok()) {
+    on_done(status, nullptr);
+  }
 }
 
 void GcsVirtualClusterManager::HandleGetAllVirtualClusters(
@@ -151,6 +171,27 @@ Status GcsVirtualClusterManager::VerifyRequest(
     }
   }
 
+  return Status::OK();
+}
+
+Status GcsVirtualClusterManager::VerifyRequest(
+    const rpc::RemoveVirtualClusterRequest &request) {
+  const auto &virtual_cluster_id = request.virtual_cluster_id();
+  if (virtual_cluster_id.empty()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, the virtual cluster id is empty.";
+    std::string message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
+
+  if (virtual_cluster_id == primary_cluster_->GetID()) {
+    std::ostringstream ostr;
+    ostr << "Invalid request, " << virtual_cluster_id << " can not be removed.";
+    auto message = ostr.str();
+    RAY_LOG(ERROR) << message;
+    return Status::InvalidArgument(message);
+  }
   return Status::OK();
 }
 

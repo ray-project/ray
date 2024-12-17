@@ -67,6 +67,8 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
 
   Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
 
+  Status VerifyRequest(const rpc::RemoveVirtualClusterRequest &request);
+
   Status FlushAndPublish(std::shared_ptr<rpc::VirtualClusterTableData> data,
                          CreateOrUpdateVirtualClusterCallback callback);
 

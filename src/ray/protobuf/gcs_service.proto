@@ -821,14 +821,12 @@ service TaskInfoGcsService {
 message CreateOrUpdateVirtualClusterRequest {
   // The virtual cluster id.
   string virtual_cluster_id = 1;
-  // The virtual cluster name.
-  string virtual_cluster_name = 2;
   // The allocation mode of the virtual cluster.
-  AllocationMode mode = 3;
+  AllocationMode mode = 2;
   // The replica set of the virtual cluster.
-  map<string, int32> replica_sets = 4;
+  map<string, int32> replica_sets = 3;
   // Version number of the last modification to the virtual cluster.
-  uint64 revision = 5;
+  uint64 revision = 4;
 }
 
 message CreateOrUpdateVirtualClusterReply {
