@@ -48,8 +48,8 @@ class ObjectManagerClient {
     freeobjects_rr_index_ = rand() % num_connections_;
     grpc_clients_.reserve(num_connections_);
     for (int i = 0; i < num_connections_; i++) {
-      grpc_clients_.emplace_back(new GrpcClient<ObjectManagerService>(
-          address, port, client_call_manager, num_connections_));
+      grpc_clients_.emplace_back(
+          new GrpcClient<ObjectManagerService>(address, port, client_call_manager));
     }
   };
 
