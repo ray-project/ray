@@ -131,13 +131,9 @@ def main(args):
         throughput_without_metadata_fetch,
     )
     if chaos_test:
-        resource_killer = ray.get_actor(
-            "ResourceKiller", namespace="release_test_namespace"
-        )
-        resource_killer.stop_run.remote()
-        killed = ray.get(resource_killer.get_total_killed.remote())
-        assert killed
-        print(f"Total chaos killed: {killed}")
+        dead_nodes = [node["NodeID"] for node in ray.nodes() if not node["Alive"]]
+        assert dead_nodes
+        print(f"Total chaos killed: {dead_nodes}")
 
     # For structured output integration with internal tooling
     results = {
