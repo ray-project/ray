@@ -91,7 +91,7 @@ def get_context() -> TrainContext:
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
-    from ray.tune.context import get_context as get_tune_context
+    from ray.tune import get_context as get_tune_context
     from ray.train._internal.session import get_session
 
     # If we are running in a Tune function, switch to Tune context.

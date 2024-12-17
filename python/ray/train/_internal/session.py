@@ -34,7 +34,7 @@ from ray.train.constants import (
     WORKER_PID,
 )
 from ray.train.error import SessionMisuseError
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
 from ray.util.scheduling_strategies import (
@@ -744,6 +744,20 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
     """
+    # If we are running in a Tune function, switch to `ray.tune.report`.
+    if get_session() and get_session().world_rank is None:
+        import ray.tune
+
+        warnings.warn(
+            (
+                "`ray.train.report` should be switched to "
+                "`ray.tune.report` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
+            ),
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        return ray.tune.report(metrics, checkpoint=checkpoint)
 
     get_session().report(metrics, checkpoint=checkpoint)
 
@@ -751,7 +765,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
-    """Access the session's last checkpoint to resume from if applicable.
+    """Access the latest reported checkpoint to resume from if one exists.
 
     Example:
 
@@ -791,6 +805,20 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
+    # If we are running in a Tune function, switch to `ray.tune.get_checkpoint`.
+    if get_session() and get_session().world_rank is None:
+        import ray.tune
+
+        warnings.warn(
+            (
+                "`ray.train.get_checkpoint` should be switched to "
+                "`ray.tune.get_checkpoint` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
+            ),
+            RayDeprecationWarning,
+            stacklevel=2,
+        )
+        return ray.tune.get_checkpoint()
 
     return get_session().loaded_checkpoint
 

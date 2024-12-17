@@ -50,9 +50,9 @@ from ray.tune.tuner import Tuner
 
 from ray.air.config import RunConfig, CheckpointConfig, FailureConfig
 from ray.air.result import Result
-from ray.train._internal.session import get_checkpoint, report
 from ray.train._checkpoint import Checkpoint
 from ray.tune.context import get_context, TuneContext
+from ray.tune.trainable.function_trainable import get_checkpoint, report
 
 __all__ = [
     "Trainable",

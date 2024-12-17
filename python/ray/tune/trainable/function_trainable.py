@@ -15,12 +15,14 @@ from ray.train._internal.session import (
     get_session,
     init_session,
     shutdown_session,
+    _warn_session_misuse,
 )
+from ray.tune import Checkpoint
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
-from ray.util.annotations import DeveloperAPI
+from ray.util.annotations import DeveloperAPI, PublicAPI
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +31,36 @@ logger = logging.getLogger(__name__)
 
 NULL_MARKER = ".null_marker"
 TEMP_MARKER = ".temp_marker"
+
+
+@PublicAPI(stability="stable")
+@_warn_session_misuse()
+def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
+    """Report metrics and optionally save and register a checkpoint to Ray Tune.
+
+    If a checkpoint is provided, it will be
+    :ref:`persisted to storage <persistent-storage-guide>`.
+
+    .. note::
+
+        Each invocation of this method will automatically increment the underlying
+        ``training_iteration`` number. The physical meaning of this "iteration" is
+        defined by user depending on how often they call ``report``.
+        It does not necessarily map to one epoch.
+
+    Args:
+        metrics: The metrics you want to report.
+        checkpoint: The optional checkpoint you want to report.
+    """
+    get_session().report(metrics, checkpoint=checkpoint)
+
+
+@PublicAPI(stability="stable")
+@_warn_session_misuse()
+def get_checkpoint() -> Optional[Checkpoint]:
+    """Access the latest reported checkpoint to resume from if one exists."""
+
+    return get_session().loaded_checkpoint
 
 
 @DeveloperAPI
