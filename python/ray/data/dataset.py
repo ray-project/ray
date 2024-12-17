@@ -33,7 +33,7 @@ from ray.air.util.tensor_extensions.arrow import (
     get_arrow_extension_fixed_shape_tensor_types,
 )
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
-from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
+from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum, Unique
 from ray.data._internal.compute import ComputeStrategy
 from ray.data._internal.datasource.bigquery_datasink import BigQueryDatasink
 from ray.data._internal.datasource.csv_datasink import CSVDatasink
@@ -2099,8 +2099,9 @@ class Dataset:
         return GroupedData(self, key)
 
     @AllToAllAPI
+    @ConsumptionAPI
     @PublicAPI(api_group=GGA_API_GROUP)
-    def unique(self, column: str) -> List[Any]:
+    def unique(self, column: str, ignore_nulls: bool = False) -> List[Any]:
         """List the unique elements in a given column.
 
         Examples:
@@ -2130,16 +2131,17 @@ class Dataset:
             >>> train_ds.sort("sepal length (cm)").take(1)  # Sort to make it deterministic
             [{'sepal length (cm)': 4.3, ..., 'variety': 'Setosa'}]
 
-        Time complexity: O(dataset size * log(dataset size / parallelism))
+        Time complexity: O(dataset size / parallelism)
 
         Args:
             column: The column to collect unique elements over.
+            ignore_nulls: Whether to ignore nulls when computing the unique elements.
 
         Returns:
             A list with unique elements in the given column.
         """  # noqa: E501
-        ds = self.select_columns([column]).groupby(column).count()
-        return [item[column] for item in ds.take_all()]
+        ret = self._aggregate_on(Unique, column, ignore_nulls=ignore_nulls)
+        return self._aggregate_result(ret)
 
     @AllToAllAPI
     @ConsumptionAPI

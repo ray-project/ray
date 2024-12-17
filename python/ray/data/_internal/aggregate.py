@@ -363,3 +363,51 @@ class Quantile(_AggregateOnKeyBase):
             finalize=_null_wrap_finalize(percentile),
             name=(self._rs_name),
         )
+
+
+class Unique(_AggregateOnKeyBase):
+    """Defines unique aggregation."""
+
+    def __init__(
+        self,
+        on: Optional[str] = None,
+        ignore_nulls: bool = False,
+        alias_name: Optional[str] = None,
+    ):
+        self._set_key_fn(on)
+        if alias_name:
+            self._rs_name = alias_name
+        else:
+            self._rs_name = f"unique({str(on)})"
+
+        def to_set(x):
+            if isinstance(x, set):
+                return x
+            elif isinstance(x, list):
+                return set(x)
+            else:
+                return {x}
+
+        def block_row_unique(block: Block) -> AggType:
+            col = BlockAccessor.for_block(block).to_arrow().column(on)
+            if ignore_nulls:
+                col = col.drop_null()
+
+            return set(col.to_pylist())
+
+        def merge(a, b):
+            return to_set(a) | to_set(b)
+
+        null_merge = _null_wrap_merge(ignore_nulls, merge)
+
+        super().__init__(
+            init=_null_wrap_init(lambda x: set()),
+            merge=null_merge,
+            accumulate_block=_null_wrap_accumulate_block(
+                ignore_nulls,
+                block_row_unique,
+                null_merge,
+            ),
+            name=(self._rs_name),
+            finalize=_null_wrap_finalize(lambda x: x),
+        )
