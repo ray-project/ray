@@ -24,12 +24,12 @@ from ray.util.annotations import PublicAPI
 if TYPE_CHECKING:
     from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-# This is the default schema used if no `input_read_schema` is set in
-# the config. If a user passes in a schema into `input_read_schema`
-# this user-defined schema has to comply with the keys of `SCHEMA`,
-# while values correspond to the columns in the user's dataset. Note
-# that only the user-defined values will be overridden while all
-# other values from SCHEMA remain as defined here.
+#: This is the default schema used if no `input_read_schema` is set in
+#: the config. If a user passes in a schema into `input_read_schema`
+#: this user-defined schema has to comply with the keys of `SCHEMA`,
+#: while values correspond to the columns in the user's dataset. Note
+#: that only the user-defined values will be overridden while all
+#: other values from SCHEMA remain as defined here.
 SCHEMA = {
     Columns.EPS_ID: Columns.EPS_ID,
     Columns.AGENT_ID: Columns.AGENT_ID,
