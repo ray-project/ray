@@ -232,6 +232,15 @@ def debug(address: str, verbose: bool):
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
+    if os.environ.get("RAY_DEBUG", "1") != "legacy":
+        print(
+            "NOTE: The distributed debugger "
+            "https://docs.ray.io/en/latest/ray-observability/ray-distributed-debugger.html "
+            "is now the default and recommended way to debug Ray applications. It has better "
+            "interactive debugging support than 'ray debug' which lacks readline support. "
+            "If you want to keep using 'ray debug' you need to set RAY_DEBUG=legacy "
+            "(e.g. via runtime environment)."
+        )
     while True:
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {
