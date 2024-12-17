@@ -346,9 +346,12 @@ if setup_spec.type == SetupType.RAY:
     # that most people do not need.
     #
     # Instead, when cpp is supported, we add a "all-cpp".
+    exclude_from_all = {"cpp", "azure"}
     setup_spec.extras["all"] = list(
         set(
-            chain.from_iterable([v for k, v in setup_spec.extras.items() if k != "cpp"])
+            chain.from_iterable(
+                [v for k, v in setup_spec.extras.items() if k not in exclude_from_all]
+            )
         )
     )
     if RAY_EXTRA_CPP:
