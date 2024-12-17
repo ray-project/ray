@@ -28,10 +28,8 @@ def gen_data_sink_write_result(
     total_num_rows = sum(result["num_rows"].sum() for result in write_result_blocks)
     total_size_bytes = sum(result["size_bytes"].sum() for result in write_result_blocks)
 
-    write_task_results = [
-        result["write_task_result"][0] for result in write_result_blocks
-    ]
-    return WriteResult(total_num_rows, total_size_bytes, write_task_results)
+    write_returns = [result["write_return"][0] for result in write_result_blocks]
+    return WriteResult(total_num_rows, total_size_bytes, write_returns)
 
 
 def generate_write_fn(
@@ -76,7 +74,7 @@ def generate_collect_write_stats_fn() -> (
             {
                 "num_rows": [total_num_rows],
                 "size_bytes": [total_size_bytes],
-                "write_task_result": [ctx.kwargs.get("_data_sink_custom_result", None)],
+                "write_return": [ctx.kwargs.get("_data_sink_custom_result", None)],
             }
         )
         return iter([block])

@@ -145,7 +145,7 @@ def test_write_result(ray_start_regular_shared):
 
         def on_write_complete(self, write_result: WriteResult[CustomWriteResult]):
             ids = []
-            for result in write_result.write_task_results:
+            for result in write_result.write_returns:
                 ids.extend(result.ids)
             self.ids = sorted(ids)
             self.num_rows = write_result.num_rows

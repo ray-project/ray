@@ -10,25 +10,25 @@ from ray.util.annotations import DeveloperAPI
 logger = logging.getLogger(__name__)
 
 
-# Generic type for the result of a write task.
-WriteResultType = TypeVar("WriteResultType")
+# Generic type for the return value of `Datasink.write`.
+WriteReturnType = TypeVar("WriteReturnType")
 
 
 @dataclass
 @DeveloperAPI
-class WriteResult(Generic[WriteResultType]):
+class WriteResult(Generic[WriteReturnType]):
     """Aggregated result of the Datasink write operations."""
 
     # Total number of written rows.
     num_rows: int
     # Total size in bytes of written data.
     size_bytes: int
-    # Results of all `Datasink.write`.
-    write_task_results: List[WriteResultType]
+    # All returned values of `Datasink.write`.
+    write_returns: List[WriteReturnType]
 
 
 @DeveloperAPI
-class Datasink(Generic[WriteResultType]):
+class Datasink(Generic[WriteReturnType]):
     """Interface for defining write-related logic.
 
     If you want to write data to something that isn't built-in, subclass this class
@@ -47,7 +47,7 @@ class Datasink(Generic[WriteResultType]):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> WriteResultType:
+    ) -> WriteReturnType:
         """Write blocks. This is used by a single write task.
 
         Args:
@@ -56,12 +56,12 @@ class Datasink(Generic[WriteResultType]):
 
         Returns:
             Result of this write task. When the entire write operator finishes,
-            All write tasks results will be passed as `WriteResult.write_task_results`
+            All returned values will be passed as `WriteResult.write_returns`
             to `Datasink.on_write_complete`.
         """
         raise NotImplementedError
 
-    def on_write_complete(self, write_result: WriteResult[WriteResultType]):
+    def on_write_complete(self, write_result: WriteResult[WriteReturnType]):
         """Callback for when a write job completes.
 
         This can be used to "commit" a write output. This method must
