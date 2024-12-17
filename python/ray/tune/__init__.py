@@ -52,6 +52,7 @@ from ray.air.config import RunConfig, CheckpointConfig, FailureConfig
 from ray.air.result import Result
 from ray.train._internal.session import get_checkpoint, report
 from ray.train._checkpoint import Checkpoint
+from ray.tune.context import get_context, TuneContext
 
 __all__ = [
     "Trainable",
@@ -96,12 +97,16 @@ __all__ = [
     "Checkpoint",
     "get_checkpoint",
     "report",
+    "get_context",
+    "TuneContext",
     # TODO(justinvyu): [Deprecated]
     "SyncConfig",
 ]
 
 report.__module__ = "ray.tune"
 get_checkpoint.__module__ = "ray.tune"
+get_context.__module__ = "ray.tune"
+TuneContext.__module__ = "ray.tune"
 Checkpoint.__module__ = "ray.tune"
 Result.__module__ = "ray.tune"
 RunConfig.__module__ = "ray.tune"

@@ -86,6 +86,13 @@ def get_context() -> TrainContext:
     """
     global _default_context
 
+    from ray.tune.context import get_context as get_tune_context
+    from ray.train._internal.session import get_session
+
+    if get_session() and get_session().world_rank is None:
+        # TODO(justinvyu): Deprecation warning.
+        return get_tune_context()
+
     with _context_lock:
         if _default_context is None:
             _default_context = TrainContext()
