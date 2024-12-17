@@ -1506,13 +1506,9 @@ def start_gcs_server(
     if redis_password:
         command += [f"--redis_password={redis_password}"]
 
-    devnull_handle = None
     stdout_file = None
     if ray_log_filepath:
-        devnull_handle = open(os.devnull, "w")
-        stdout_file = devnull_handle
-    else:
-        stdout_file = None
+        stdout_file = open(os.devnull, "w")
 
     process_info = start_ray_process(
         command,
