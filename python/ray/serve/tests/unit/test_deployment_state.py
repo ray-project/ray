@@ -2297,7 +2297,7 @@ def test_deploy_with_consistent_constructor_failure(mock_deployment_state_manage
     _constructor_failure_loop_two_replica(dsm, ds, 3)
 
     assert ds._replica_constructor_retry_counter == 6
-    assert ds.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     assert (
         ds.curr_status_info.status_trigger
         == DeploymentStatusTrigger.REPLICA_STARTUP_FAILED
@@ -2492,9 +2492,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 3
-    # An error message should show up after
-    # 3 * num_replicas startup failures.
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 6 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2512,7 +2510,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 6
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 3 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2527,7 +2525,7 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
     assert ds1.curr_status_info.status == DeploymentStatus.UPDATING
     check_counts(ds1, total=3, by_state=[(ReplicaState.STOPPING, 3, None)])
     assert ds1._replica_constructor_retry_counter == 9
-    assert "" == ds1.curr_status_info.message
+    assert "Retrying 0 more time(s)" in ds1.curr_status_info.message
 
     # Set all of ds1's replicas to stopped.
     for replica in ds1._replicas.get():
@@ -2537,10 +2535,10 @@ def test_deploy_with_placement_group_failure(mock_deployment_state_manager):
 
     # All replicas have failed to initialize 3 times. The deployment should
     # stop trying to initialize replicas.
-    assert ds1.curr_status_info.status == DeploymentStatus.UNHEALTHY
+    assert ds1.curr_status_info.status == DeploymentStatus.DEPLOY_FAILED
     check_counts(ds1, total=0)
     assert ds1._replica_constructor_retry_counter == 9
-    assert "Replica scheduling failed" in ds1.curr_status_info.message
+    assert "The deployment failed to start" in ds1.curr_status_info.message
 
 
 def test_deploy_with_transient_constructor_failure(mock_deployment_state_manager):

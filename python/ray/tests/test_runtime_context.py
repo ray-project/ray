@@ -264,6 +264,136 @@ def test_auto_init(shutdown_only):
     assert ray.is_initialized()
 
 
+def test_get_task_name(shutdown_only):
+    ray.init()
+
+    # for a normal task
+    @ray.remote
+    def get_task_name_for_normal_task():
+        return ray.get_runtime_context().get_task_name()
+
+    expected_task_name = "normal_task_name"
+    task_name = ray.get(
+        get_task_name_for_normal_task.options(name=expected_task_name).remote()
+    )
+    assert (
+        task_name == expected_task_name
+    ), f"Check normal task name failed. expected={expected_task_name}, \
+actual={task_name}"
+
+    # for an actor task
+    @ray.remote
+    class Actor:
+        def get_task_name_for_actor_task(self):
+            return ray.get_runtime_context().get_task_name()
+
+    expected_task_name = "Actor.get_task_name_for_actor_task"
+    actor = Actor.remote()
+    task_name = ray.get(actor.get_task_name_for_actor_task.remote())
+    assert (
+        task_name == expected_task_name
+    ), f"Check actor task name failed. expected={expected_task_name}, \
+actual={task_name}"
+
+    # for a threaded actor task
+    @ray.remote
+    class ThreadedActor:
+        def get_task_name_for_threaded_actor_task(self):
+            return ray.get_runtime_context().get_task_name()
+
+    expected_task_name = "ThreadedActor.get_task_name_for_threaded_actor_task"
+    threaded_actor = ThreadedActor.options(max_concurrency=2).remote()
+    task_name = ray.get(threaded_actor.get_task_name_for_threaded_actor_task.remote())
+    assert (
+        task_name == expected_task_name
+    ), f"Check actor task name failed. expected={expected_task_name}, \
+actual={task_name}"
+
+    # for a async actor task
+    @ray.remote
+    class AsyncActor:
+        async def get_task_name_for_async_actor_task(self):
+            return ray.get_runtime_context().get_task_name()
+
+    expected_task_name = "AsyncActor.get_task_name_for_async_actor_task"
+    async_actor = AsyncActor.remote()
+    task_name = ray.get(async_actor.get_task_name_for_async_actor_task.remote())
+    assert (
+        task_name == expected_task_name
+    ), f"Check actor task name failed. expected={expected_task_name}, \
+actual={task_name}"
+
+
+def test_get_task_function_name(shutdown_only):
+    ray.init()
+
+    # for a normal task
+    @ray.remote
+    def get_task_function_name_for_normal_task():
+        return ray.get_runtime_context().get_task_function_name()
+
+    expected_task_function_name = __name__ + ".get_task_function_name_for_normal_task"
+    task_function_name = ray.get(get_task_function_name_for_normal_task.remote())
+    assert (
+        task_function_name == expected_task_function_name
+    ), f"Check normal task function failed. expected={expected_task_function_name}, \
+actual={task_function_name}"
+
+    # for an actor task
+    @ray.remote
+    class Actor:
+        def get_task_function_name_for_actor_task(self):
+            return ray.get_runtime_context().get_task_function_name()
+
+    expected_task_function_name = (
+        __name__ + ".Actor.get_task_function_name_for_actor_task"
+    )
+    actor = Actor.remote()
+    task_function_name = ray.get(actor.get_task_function_name_for_actor_task.remote())
+    assert (
+        task_function_name == expected_task_function_name
+    ), f"Check actor task function failed. expected={expected_task_function_name}, \
+actual={task_function_name}"
+
+    # for a threaded actor task
+    @ray.remote
+    class ThreadedActor:
+        def get_task_function_name_for_threaded_actor_task(self):
+            return ray.get_runtime_context().get_task_function_name()
+
+    expected_task_function_name = (
+        __name__ + ".ThreadedActor.get_task_function_name_for_threaded_actor_task"
+    )
+    threaded_actor = ThreadedActor.options(max_concurrency=2).remote()
+    task_function_name = ray.get(
+        threaded_actor.get_task_function_name_for_threaded_actor_task.remote()
+    )
+    assert (
+        task_function_name == expected_task_function_name
+    ), f"Check actor task function failed. expected={expected_task_function_name}, \
+actual={task_function_name}"
+
+    # for a async actor task
+    @ray.remote
+    class AsyncActor:
+        async def get_task_function_name_for_async_actor_task(self):
+            return ray.get_runtime_context().get_task_function_name()
+
+    expected_task_function_name = (
+        __name__
+        + ".test_get_task_function_name.<locals>.AsyncActor.\
+get_task_function_name_for_async_actor_task"
+    )
+    async_actor = AsyncActor.remote()
+    task_function_name = ray.get(
+        async_actor.get_task_function_name_for_async_actor_task.remote()
+    )
+    assert (
+        task_function_name == expected_task_function_name
+    ), f"Check actor task function failed. expected={expected_task_function_name}, \
+actual={task_function_name}"
+
+
 def test_async_actor_task_id(shutdown_only):
     ray.init()
 

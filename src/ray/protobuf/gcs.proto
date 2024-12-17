@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.rpc;
 
@@ -39,11 +38,10 @@ enum TablePrefix {
   DIRECT_ACTOR = 14;
   // WORKER is already used in WorkerType, so use WORKERS here.
   WORKERS = 15;
-  INTERNAL_CONFIG = 16;
-  PLACEMENT_GROUP_SCHEDULE = 17;
-  PLACEMENT_GROUP = 18;
-  KV = 19;
-  ACTOR_TASK_SPEC = 20;
+  PLACEMENT_GROUP_SCHEDULE = 16;
+  PLACEMENT_GROUP = 17;
+  KV = 18;
+  ACTOR_TASK_SPEC = 19;
 }
 
 // The channel that Add operations to the Table should be published on, if any.
@@ -165,6 +163,8 @@ message ErrorTableData {
   // The error message.
   string error_message = 3;
   // The timestamp of the error message.
+  // Unit: millisecond.
+  // TODO(hjiang): Update field naming from `timestamp` to `timestamp_millisec`.
   double timestamp = 4;
 }
 
@@ -465,10 +465,6 @@ message WorkerTableData {
 message WorkerDeltaData {
   bytes raylet_id = 1;
   bytes worker_id = 2;
-}
-
-message StoredConfig {
-  string config = 1;
 }
 
 message PubSubMessage {

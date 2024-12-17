@@ -667,7 +667,7 @@ def test_unhealthy_override_updating_status(lower_slow_startup_threshold_and_res
         .applications[SERVE_DEFAULT_APP_NAME]
         .deployments["f"]
         .status
-        == "UNHEALTHY",
+        == "DEPLOY_FAILED",
         timeout=20,
     )
 

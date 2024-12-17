@@ -44,7 +44,7 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
     RAY_LOG(WARNING)
         << "This worker is still managing " << object_id_refs_.size()
         << " objects, waiting for them to go out of scope before shutting down.";
-    shutdown_hook_ = shutdown;
+    shutdown_hook_ = std::move(shutdown);
   }
 }
 
@@ -59,6 +59,7 @@ void ReferenceCounter::ShutdownIfNeeded() {
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
+  refs.reserve(proto.size());
   for (const auto &ref : proto) {
     refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));
@@ -543,7 +544,7 @@ int64_t ReferenceCounter::ReleaseLineageReferences(ReferenceTable::iterator ref)
     RAY_LOG(DEBUG) << "Releasing lineage internal for argument " << argument_id;
     arg_it->second.lineage_ref_count--;
     if (arg_it->second.OutOfScope(lineage_pinning_enabled_)) {
-      DeleteObjectPrimaryCopy(arg_it);
+      OnObjectOutOfScopeOrFreed(arg_it);
     }
     if (arg_it->second.ShouldDelete(lineage_pinning_enabled_)) {
       RAY_CHECK(arg_it->second.on_ref_removed == nullptr);
@@ -663,7 +664,7 @@ void ReferenceCounter::FreePlasmaObjects(const std::vector<ObjectID> &object_ids
     }
     // Free only the plasma value. We must keep the reference around so that we
     // have the ownership information.
-    DeleteObjectPrimaryCopy(it);
+    OnObjectOutOfScopeOrFreed(it);
   }
 }
 
@@ -700,8 +701,7 @@ void ReferenceCounter::DeleteReferenceInternal(ReferenceTable::iterator it,
         DeleteReferenceInternal(inner_it, deleted);
       }
     }
-    // Perform the deletion.
-    DeleteObjectPrimaryCopy(it);
+    OnObjectOutOfScopeOrFreed(it);
     if (deleted) {
       deleted->push_back(id);
     }
@@ -764,20 +764,20 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   return lineage_bytes_evicted;
 }
 
-void ReferenceCounter::DeleteObjectPrimaryCopy(ReferenceTable::iterator it) {
-  RAY_LOG(DEBUG) << "Calling on_object_primary_copy_delete for object " << it->first
-                 << " num callbacks: "
-                 << it->second.on_object_primary_copy_delete_callbacks.size();
-  for (const auto &callback : it->second.on_object_primary_copy_delete_callbacks) {
+void ReferenceCounter::OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it) {
+  RAY_LOG(DEBUG) << "Calling on_object_out_of_scope_or_freed_callbacks for object "
+                 << it->first << " num callbacks: "
+                 << it->second.on_object_out_of_scope_or_freed_callbacks.size();
+  for (const auto &callback : it->second.on_object_out_of_scope_or_freed_callbacks) {
     callback(it->first);
   }
-  it->second.on_object_primary_copy_delete_callbacks.clear();
+  it->second.on_object_out_of_scope_or_freed_callbacks.clear();
+  UnsetObjectPrimaryCopy(it);
+}
+
+void ReferenceCounter::UnsetObjectPrimaryCopy(ReferenceTable::iterator it) {
   it->second.pinned_at_raylet_id.reset();
   if (it->second.spilled && !it->second.spilled_node_id.IsNil()) {
-    // The spilled copy of the object should get deleted during the
-    // on_object_primary_copy_delete callback, so reset the spill location metadata here.
-    // NOTE(swang): Spilled copies in cloud storage are not GCed, so we do not
-    // reset the spilled metadata.
     it->second.spilled = false;
     it->second.spilled_url = "";
     it->second.spilled_node_id = NodeID::Nil();
@@ -795,7 +795,7 @@ bool ReferenceCounter::SetObjectRefDeletedCallback(
   return true;
 }
 
-bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
+bool ReferenceCounter::AddObjectOutOfScopeOrFreedCallback(
     const ObjectID &object_id, const std::function<void(const ObjectID &)> callback) {
   absl::MutexLock lock(&mutex_);
   auto it = object_id_refs_.find(object_id);
@@ -812,7 +812,7 @@ bool ReferenceCounter::AddObjectPrimaryCopyDeleteCallback(
     return false;
   }
 
-  it->second.on_object_primary_copy_delete_callbacks.emplace_back(callback);
+  it->second.on_object_out_of_scope_or_freed_callbacks.emplace_back(callback);
   return true;
 }
 
@@ -822,7 +822,7 @@ void ReferenceCounter::ResetObjectsOnRemovedNode(const NodeID &raylet_id) {
     const auto &object_id = it->first;
     if (it->second.pinned_at_raylet_id.value_or(NodeID::Nil()) == raylet_id ||
         it->second.spilled_node_id == raylet_id) {
-      DeleteObjectPrimaryCopy(it);
+      UnsetObjectPrimaryCopy(it);
       if (!it->second.OutOfScope(lineage_pinning_enabled_)) {
         objects_to_recover_.push_back(object_id);
       }
@@ -862,7 +862,7 @@ void ReferenceCounter::UpdateObjectPinnedAtRaylet(const ObjectID &object_id,
       if (check_node_alive_(raylet_id)) {
         it->second.pinned_at_raylet_id = raylet_id;
       } else {
-        DeleteObjectPrimaryCopy(it);
+        UnsetObjectPrimaryCopy(it);
         objects_to_recover_.push_back(object_id);
       }
     }
@@ -1429,7 +1429,7 @@ bool ReferenceCounter::HandleObjectSpilled(const ObjectID &object_id,
   } else {
     RAY_LOG(DEBUG).WithField(spilled_node_id).WithField(object_id)
         << "Object spilled to dead node ";
-    DeleteObjectPrimaryCopy(it);
+    UnsetObjectPrimaryCopy(it);
     objects_to_recover_.push_back(object_id);
   }
   return true;

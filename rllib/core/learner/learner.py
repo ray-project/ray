@@ -21,6 +21,7 @@ from typing import (
 import tree  # pip install dm_tree
 
 import ray
+from ray.data.iterator import DataIterator
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
@@ -269,6 +270,10 @@ class Learner(Checkpointable):
         # `update_from_...()` method call, the Learner will do a `self.metrics.reduce()`
         # and return the resulting (reduced) dict.
         self.metrics = MetricsLogger()
+
+        # In case of offline learning and multiple learners, each learner receives a
+        # repeatable iterator that iterates over a split of the streamed data.
+        self.iterator: DataIterator = None
 
     # TODO (sven): Do we really need this API? It seems like LearnerGroup constructs
     #  all Learner workers and then immediately builds them any ways? Seems to make
@@ -956,6 +961,7 @@ class Learner(Checkpointable):
         shuffle_batch_per_epoch: bool = False,
         # Deprecated args.
         num_iters=DEPRECATED_VALUE,
+        **kwargs,
     ) -> ResultDict:
         """Run `num_epochs` epochs over the given train batch.
 
@@ -994,13 +1000,14 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             batch=batch,
             timesteps=timesteps,
             num_epochs=num_epochs,
             minibatch_size=minibatch_size,
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
         )
+        return self.metrics.reduce()
 
     def update_from_episodes(
         self,
@@ -1062,7 +1069,7 @@ class Learner(Checkpointable):
                 new="Learner.update_from_episodes(num_epochs=...)",
                 error=True,
             )
-        return self._update_from_batch_or_episodes(
+        self._update_from_batch_or_episodes(
             episodes=episodes,
             timesteps=timesteps,
             num_epochs=num_epochs,
@@ -1070,6 +1077,7 @@ class Learner(Checkpointable):
             shuffle_batch_per_epoch=shuffle_batch_per_epoch,
             num_total_minibatches=num_total_minibatches,
         )
+        return self.metrics.reduce()
 
     def update_from_iterator(
         self,
@@ -1086,6 +1094,9 @@ class Learner(Checkpointable):
                 "`num_iters` instead."
             )
 
+        if not self.iterator:
+            self.iterator = iterator
+
         self._check_is_built()
 
         # Call `before_gradient_based_update` to allow for non-gradient based
@@ -1099,8 +1110,8 @@ class Learner(Checkpointable):
             return {"batch": self._set_slicing_by_batch_id(batch, value=True)}
 
         i = 0
-        logger.debug(f"===> [Learner {id(self)}]: SLooping through batches ... ")
-        for batch in iterator.iter_batches(
+        logger.debug(f"===> [Learner {id(self)}]: Looping through batches ... ")
+        for batch in self.iterator.iter_batches(
             # Note, this needs to be one b/c data is already mapped to
             # `MultiAgentBatch`es of `minibatch_size`.
             batch_size=1,
@@ -1134,18 +1145,18 @@ class Learner(Checkpointable):
             fwd_out, loss_per_module, tensor_metrics = self._update(
                 batch.policy_batches
             )
+            # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
+            # to actual (numpy) values.
+            self.metrics.tensors_to_numpy(tensor_metrics)
 
             self._set_slicing_by_batch_id(batch, value=False)
             # If `num_iters` is reached break and return.
             if num_iters and i == num_iters:
                 break
 
-        logger.info(
+        logger.debug(
             f"===> [Learner {id(self)}] number of iterations run in this epoch: {i}"
         )
-        # Convert logged tensor metrics (logged during tensor-mode of MetricsLogger)
-        # to actual (numpy) values.
-        self.metrics.tensors_to_numpy(tensor_metrics)
 
         # Log all individual RLModules' loss terms and its registered optimizers'
         # current learning rates.
@@ -1350,15 +1361,6 @@ class Learner(Checkpointable):
                 {next(iter(self.module.keys())): batch}, env_steps=len(batch)
             )
 
-        # TODO (sven): Remove this leftover hack here for the situation in which we
-        #  did not go through the learner connector.
-        #  Options:
-        #  a) Either also pass given batches through the learner connector (even if
-        #     episodes is None). (preferred solution)
-        #  b) Get rid of the option to pass in a batch altogether.
-        # if episodes is None:
-        #    batch = self._convert_batch_type(batch)
-
         # Check the MultiAgentBatch, whether our RLModule contains all ModuleIDs
         # found in this batch. If not, throw an error.
         unknown_module_ids = set(batch.policy_batches.keys()) - set(self.module.keys())
@@ -1440,9 +1442,6 @@ class Learner(Checkpointable):
         # Call `after_gradient_based_update` to allow for non-gradient based
         # cleanups-, logging-, and update logic to happen.
         self.after_gradient_based_update(timesteps=timesteps or {})
-
-        # Reduce results across all minibatch update steps.
-        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -1704,6 +1703,7 @@ class Learner(Checkpointable):
             (ALL_MODULES, NUM_ENV_STEPS_TRAINED_LIFETIME),
             batch.env_steps(),
             reduce="sum",
+            with_throughput=True,
         )
 
     @Deprecated(

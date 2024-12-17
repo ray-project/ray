@@ -117,12 +117,14 @@ class ProxyManager:
         runtime_env_agent_address: str,
         *,
         session_dir: Optional[str] = None,
+        redis_username: Optional[str] = None,
         redis_password: Optional[str] = None,
         runtime_env_agent_port: int = 0,
     ):
         self.servers: Dict[str, SpecificServer] = dict()
         self.server_lock = RLock()
         self._address = address
+        self._redis_username = redis_username
         self._redis_password = redis_password
         self._free_ports: List[int] = list(
             range(MIN_SPECIFIC_SERVER_PORT, MAX_SPECIFIC_SERVER_PORT)
@@ -317,6 +319,7 @@ class ProxyManager:
             fate_share=self.fate_share,
             server_type="specific-server",
             serialized_runtime_env_context=serialized_runtime_env_context,
+            redis_username=self._redis_username,
             redis_password=self._redis_password,
         )
 
@@ -828,6 +831,7 @@ def serve_proxier(
     connection_str: str,
     address: Optional[str],
     *,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     session_dir: Optional[str] = None,
     runtime_env_agent_address: Optional[str] = None,
@@ -847,6 +851,7 @@ def serve_proxier(
     proxy_manager = ProxyManager(
         address,
         session_dir=session_dir,
+        redis_username=redis_username,
         redis_password=redis_password,
         runtime_env_agent_address=runtime_env_agent_address,
     )

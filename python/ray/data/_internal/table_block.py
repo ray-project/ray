@@ -15,9 +15,10 @@ import numpy as np
 
 from ray.air.constants import TENSOR_COLUMN_NAME
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.numpy_support import convert_udf_returns_to_numpy, is_array_like
+from ray.data._internal.numpy_support import is_array_like
 from ray.data._internal.row import TableRow
 from ray.data._internal.size_estimator import SizeEstimator
+from ray.data._internal.util import MiB
 from ray.data.block import Block, BlockAccessor
 
 if TYPE_CHECKING:
@@ -28,7 +29,7 @@ T = TypeVar("T")
 
 # The max size of Python tuples to buffer before compacting them into a
 # table in the BlockBuilder.
-MAX_UNCOMPACTED_SIZE_BYTES = 50 * 1024 * 1024
+MAX_UNCOMPACTED_SIZE_BYTES = 50 * MiB
 
 
 class TableBlockBuilder(BlockBuilder):
@@ -121,14 +122,13 @@ class TableBlockBuilder(BlockBuilder):
         return self._concat_would_copy() and len(self._tables) > 1
 
     def build(self) -> Block:
-        columns = {
-            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
-        }
-        if columns:
-            tables = [self._table_from_pydict(columns)]
+        if self._columns:
+            tables = [self._table_from_pydict(self._columns)]
         else:
             tables = []
+
         tables.extend(self._tables)
+
         if len(tables) > 0:
             return self._concat_tables(tables)
         else:
@@ -149,10 +149,7 @@ class TableBlockBuilder(BlockBuilder):
         assert self._columns
         if self._uncompacted_size.size_bytes() < MAX_UNCOMPACTED_SIZE_BYTES:
             return
-        columns = {
-            key: convert_udf_returns_to_numpy(col) for key, col in self._columns.items()
-        }
-        block = self._table_from_pydict(columns)
+        block = self._table_from_pydict(self._columns)
         self.add_block(block)
         self._uncompacted_size = SizeEstimator()
         self._columns.clear()
@@ -169,6 +166,10 @@ class TableBlockAccessor(BlockAccessor):
         base_row = self.slice(index, index + 1, copy=copy)
         row = self.ROW_TYPE(base_row)
         return row
+
+    @staticmethod
+    def _munge_conflict(name, count):
+        return f"{name}_{count+1}"
 
     @staticmethod
     def _build_tensor_row(row: TableRow) -> np.ndarray:

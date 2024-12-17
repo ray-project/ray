@@ -14,6 +14,8 @@
 
 #include "ray/gcs/gcs_server/gcs_placement_group_manager.h"
 
+#include <utility>
+
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/ray_config.h"
@@ -180,16 +182,20 @@ rpc::PlacementGroupStats *GcsPlacementGroup::GetMutableStats() {
 /////////////////////////////////////////////////////////////////////////////////////////
 
 GcsPlacementGroupManager::GcsPlacementGroupManager(
+    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
+    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
+
+GcsPlacementGroupManager::GcsPlacementGroupManager(
     instrumented_io_context &io_context,
-    std::shared_ptr<GcsPlacementGroupSchedulerInterface> scheduler,
-    std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage,
+    GcsPlacementGroupSchedulerInterface *scheduler,
+    gcs::GcsTableStorage *gcs_table_storage,
     GcsResourceManager &gcs_resource_manager,
     std::function<std::string(const JobID &)> get_ray_namespace)
     : io_context_(io_context),
-      gcs_placement_group_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
+      gcs_placement_group_scheduler_(scheduler),
+      gcs_table_storage_(gcs_table_storage),
       gcs_resource_manager_(gcs_resource_manager),
-      get_ray_namespace_(get_ray_namespace) {
+      get_ray_namespace_(std::move(get_ray_namespace)) {
   placement_group_state_counter_.reset(
       new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
   placement_group_state_counter_->SetOnChangeCallback(
@@ -202,10 +208,6 @@ GcsPlacementGroupManager::GcsPlacementGroupManager(
       });
   Tick();
 }
-
-GcsPlacementGroupManager::GcsPlacementGroupManager(
-    instrumented_io_context &io_context, GcsResourceManager &gcs_resource_manager)
-    : io_context_(io_context), gcs_resource_manager_(gcs_resource_manager) {}
 
 void GcsPlacementGroupManager::RegisterPlacementGroup(
     const std::shared_ptr<GcsPlacementGroup> &placement_group, StatusCallback callback) {

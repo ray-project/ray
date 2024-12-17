@@ -122,7 +122,7 @@ class Actor:
         return 1, 2
 
     def get_events(self):
-        return getattr(self, "__ray_adag_events", [])
+        return getattr(self, "__ray_cg_events", [])
 
 
 @ray.remote
@@ -168,6 +168,37 @@ def test_basic(ray_start_regular):
         assert (result == val).all()
         # Delete the buffer so that the next DAG output can be written.
         del result
+
+
+def test_basic_destruction(ray_start_regular):
+    a = Actor.remote(0)
+    with InputNode() as i:
+        dag = a.echo.bind(i)
+
+    compiled_dag = dag.experimental_compile()
+
+    try:
+        for i in range(3):
+            val = np.ones(100) * i
+            ref = compiled_dag.execute(val)
+            # Since ref.get() is not called, the destructor releases its native
+            # buffer without deserializing the value. If the destructor fails to
+            # release the buffer, the subsequent DAG execution will fail due to
+            # memory leak.
+            del ref
+    except RayChannelTimeoutError:
+        pytest.fail(
+            "The native buffer associated with the CompiledDAGRef was not "
+            "released upon destruction."
+        )
+
+    # Ensure that subsequent DAG executions do not fail due to memory leak
+    # and the results can be retrieved by ray.get().
+    val = np.ones(100)
+    ref = compiled_dag.execute(val)
+    result = ray.get(ref)
+    assert (result == val).all()
+    del ref
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -223,6 +254,7 @@ def test_inc_two_returns(ray_start_regular, single_fetch):
         dag = MultiOutputNode([o1, o2])
 
     compiled_dag = dag.experimental_compile()
+    compiled_dag.visualize(channel_details=True)
     for i in range(3):
         refs = compiled_dag.execute(1)
         if single_fetch:
@@ -1021,7 +1053,7 @@ def test_get_with_zero_timeout(ray_start_regular):
     compiled_dag = dag.experimental_compile()
     ref = compiled_dag.execute(1)
     # Give enough time for DAG execution result to be ready
-    time.sleep(1)
+    time.sleep(2)
     # Use timeout=0 to either get result immediately or raise an exception
     result = ray.get(ref, timeout=0)
     assert result == 1
@@ -1077,6 +1109,12 @@ def test_dag_exception_chained(ray_start_regular, capsys):
 
     # Can use the DAG after exceptions are thrown.
     assert ray.get(compiled_dag.execute(1)) == 2
+
+    # Note: somehow the auto triggered teardown() from ray.shutdown()
+    # does not finish in time for this test, leading to a segfault
+    # of the following test (likely due to a dangling monitor thread
+    # upon the new Ray init).
+    compiled_dag.teardown()
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -2072,6 +2110,18 @@ def test_channel_write_after_close(ray_start_regular):
         dag.execute(1)
 
 
+def test_multiple_reads_from_same_actor(ray_start_cluster):
+    a = Actor.remote(0)
+    b = Actor.remote(10)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = b.inc.bind(x)
+        z = b.inc.bind(x)
+        dag = MultiOutputNode([y, z])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [11, 12]
+
+
 def test_driver_and_actor_as_readers(ray_start_cluster):
     a = Actor.remote(0)
     b = Actor.remote(10)
@@ -2079,14 +2129,24 @@ def test_driver_and_actor_as_readers(ray_start_cluster):
         x = a.inc.bind(inp)
         y = b.inc.bind(x)
         dag = MultiOutputNode([x, y])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 11]
 
-    with pytest.raises(
-        ValueError,
-        match="DAG outputs currently can only be read by the driver or "
-        "the same actor that is also the InputNode, not by both "
-        "the driver and actors.",
-    ):
-        dag.experimental_compile()
+
+def test_driver_and_intraprocess_read(ray_start_cluster):
+    """
+    This test is similar to the `test_driver_and_actor_as_readers` test, but now for x,
+    there is IntraProcessChannel to Actor a and a BufferedSharedMemoryChannel to the
+    driver and the CompositeChannel has to choose the correct channel to read from in
+    both situations.
+    """
+    a = Actor.remote(0)
+    with InputNode() as inp:
+        x = a.inc.bind(inp)
+        y = a.inc.bind(x)
+        dag = MultiOutputNode([x, y])
+    dag = dag.experimental_compile()
+    assert ray.get(dag.execute(1)) == [1, 2]
 
 
 @pytest.mark.skip("Currently buffer size is set to 1 because of regression.")
@@ -2185,7 +2245,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
-    monkeypatch.setattr(ray.dag.constants, "RAY_ADAG_ENABLE_PROFILING", True)
+    monkeypatch.setattr(ray.dag.constants, "RAY_CG_ENABLE_PROFILING", True)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)
@@ -2289,6 +2349,45 @@ def test_intra_process_channel(shutdown_only):
     replica = Replica.remote()
     ref = replica.call.remote(1)
     assert ray.get(ref) == 3
+
+
+def test_driver_as_actor_and_actor_reading(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
+            self.w2 = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w2.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
+
+
+def test_driver_as_actor_and_intraprocess_read(ray_start_cluster):
+    @ray.remote
+    class Replica:
+        def __init__(self):
+            self.w = TestWorker.remote()
+            with InputNode() as inp:
+                x = self.w.add_one.bind(inp)
+                y = self.w.add_one.bind(x)
+                dag = MultiOutputNode([x, y])
+            self.compiled_dag = dag.experimental_compile()
+
+        def exec_and_get(self, value):
+            return ray.get(self.compiled_dag.execute(value))
+
+    replica = Replica.remote()
+    result = replica.exec_and_get.remote(1)
+    assert ray.get(result) == [2, 3]
 
 
 @pytest.mark.parametrize("single_fetch", [True, False])
@@ -2483,6 +2582,68 @@ def test_multi_arg_exception_async(shutdown_only):
 
     loop = get_or_create_event_loop()
     loop.run_until_complete(main())
+
+
+def test_signature_mismatch(shutdown_only):
+    @ray.remote
+    class Worker:
+        def w(self, x):
+            return 1
+
+        def f(self, x, *, y):
+            pass
+
+        def g(self, x, y, z=1):
+            pass
+
+    worker = Worker.remote()
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"got an unexpected keyword argument 'y'\. The function `w` has a "
+            r"signature `\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r".*args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, y=inp)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"too many positional arguments\. The function `w` has a signature "
+            r"`\(x\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.w.bind(inp, inp)
+
+    with pytest.raises(
+        TypeError,
+        # Starting from Python 3.12, the error message includes "keyword-only."
+        # Therefore, we need to match both "required keyword-only argument" and
+        # "required argument."
+        match=(
+            r"missing a required (keyword-only )?argument: 'y'\. "
+            r"The function `f` has a signature `\(x, \*, y\)`, "
+            r"but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.f.bind(inp)
+
+    with pytest.raises(
+        TypeError,
+        match=(
+            r"missing a required argument: 'y'\. The function `g` has a signature "
+            r"`\(x, y, z=1\)`, but the given arguments to `bind` doesn't match\. "
+            r"args:.*kwargs:.*"
+        ),
+    ):
+        with InputNode() as inp:
+            _ = worker.g.bind(inp)
 
 
 if __name__ == "__main__":

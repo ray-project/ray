@@ -115,10 +115,6 @@ def parse_and_validate_conda(conda: Union[str, dict]) -> Union[str, dict]:
     return result
 
 
-# TODO(hjiang): More package installation options to implement:
-# 1. `pip_check` has different semantics for `uv` and `pip`, see
-# https://github.com/astral-sh/uv/pull/2544/files, consider whether we need to support
-# it; or simply ignore the field when people come from `pip`.
 def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     """Parses and validates a user-provided 'uv' option.
 
@@ -128,6 +124,12 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
         2) a string containing the path to a local pip “requirements.txt” file.
         3) A python dictionary that has one field:
             a) packages (required, List[str]): a list of uv packages, it same as 1).
+            b) uv_check (optional, bool): whether to enable pip check at the end of uv
+               install, default to False.
+            c) uv_version (optional, str): user provides a specific uv to use; if
+               unspecified, default version of uv will be used.
+            d) uv_pip_install_options (optional, List[str]): user-provided options for
+              `uv pip install` command, default to ["--no-cache"].
 
     The returned parsed value will be a list of packages. If a Ray library
     (e.g. "ray[serve]") is specified, it will be deleted and replaced by its
@@ -144,27 +146,54 @@ def parse_and_validate_uv(uv: Union[str, List[str], Dict]) -> Optional[Dict]:
     result: str = ""
     if isinstance(uv, str):
         uv_list = _handle_local_deps_requirement_file(uv)
-        result = dict(packages=uv_list)
+        result = dict(packages=uv_list, uv_check=False)
     elif isinstance(uv, list) and all(isinstance(dep, str) for dep in uv):
-        result = dict(packages=uv)
+        result = dict(packages=uv, uv_check=False)
     elif isinstance(uv, dict):
-        if set(uv.keys()) - {"packages", "uv_version"}:
+        if set(uv.keys()) - {
+            "packages",
+            "uv_check",
+            "uv_version",
+            "uv_pip_install_options",
+        }:
             raise ValueError(
                 "runtime_env['uv'] can only have these fields: "
-                "packages and uv_version, but got: "
+                "packages, uv_check, uv_version and uv_pip_install_options, but got: "
                 f"{list(uv.keys())}"
             )
         if "packages" not in uv:
             raise ValueError(
                 f"runtime_env['uv'] must include field 'packages', but got {uv}"
             )
+        if "uv_check" in uv and not isinstance(uv["uv_check"], bool):
+            raise TypeError(
+                "runtime_env['uv']['uv_check'] must be of type bool, "
+                f"got {type(uv['uv_check'])}"
+            )
         if "uv_version" in uv and not isinstance(uv["uv_version"], str):
             raise TypeError(
                 "runtime_env['uv']['uv_version'] must be of type str, "
                 f"got {type(uv['uv_version'])}"
             )
+        if "uv_pip_install_options" in uv:
+            if not isinstance(uv["uv_pip_install_options"], list):
+                raise TypeError(
+                    "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                    f"list[str] got {type(uv['uv_pip_install_options'])}"
+                )
+            # Check each item in installation option.
+            for idx, cur_opt in enumerate(uv["uv_pip_install_options"]):
+                if not isinstance(cur_opt, str):
+                    raise TypeError(
+                        "runtime_env['uv']['uv_pip_install_options'] must be of type "
+                        f"list[str] got {type(cur_opt)} for {idx}-th item."
+                    )
 
         result = uv.copy()
+        result["uv_check"] = uv.get("uv_check", False)
+        result["uv_pip_install_options"] = uv.get(
+            "uv_pip_install_options", ["--no-cache"]
+        )
         if not isinstance(uv["packages"], list):
             raise ValueError(
                 "runtime_env['uv']['packages'] must be of type list, "

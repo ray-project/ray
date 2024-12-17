@@ -179,6 +179,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
 
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
+
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
   int num_inlined_dependencies = 0;
@@ -245,6 +247,11 @@ class MockRayletClient : public WorkerLeaseInterface {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
+  }
+  void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+    RAY_LOG(FATAL) << "Not implemented";
   }
 
   void ReleaseUnusedActorWorkers(

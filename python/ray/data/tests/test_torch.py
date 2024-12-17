@@ -8,6 +8,11 @@ from ray.data.tests.conftest import *  # noqa
 from ray.tests.conftest import *  # noqa
 
 
+def test_to_torch_emits_deprecation_warning(ray_start_10_cpus_shared):
+    with pytest.warns(DeprecationWarning):
+        ray.data.range(1).to_torch()
+
+
 def test_to_torch(ray_start_10_cpus_shared):
     import torch
 

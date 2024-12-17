@@ -28,7 +28,10 @@ import ray
 import ray.cloudpickle as pickle
 from ray._private.thirdparty.tabulate.tabulate import tabulate
 from ray._private.usage import usage_lib
-from ray.air.util.tensor_extensions.arrow import ArrowTensorTypeV2
+from ray.air.util.tensor_extensions.arrow import (
+    ArrowTensorTypeV2,
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.air.util.tensor_extensions.utils import _create_possibly_ragged_ndarray
 from ray.data._internal.aggregate import Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
@@ -84,6 +87,7 @@ from ray.data.block import (
     Block,
     BlockAccessor,
     DataBatch,
+    DataBatchColumn,
     T,
     U,
     UserDefinedFunction,
@@ -526,7 +530,8 @@ class Dataset:
             compute: This argument is deprecated. Use ``concurrency`` argument.
             batch_format: If ``"default"`` or ``"numpy"``, batches are
                 ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
-                ``pandas.DataFrame``.
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``.
             zero_copy_batch: Whether ``fn`` should be provided zero-copy, read-only
                 batches. If this is ``True`` and no copy is required for the
                 ``batch_format`` conversion, the batch is a zero-copy, read-only
@@ -697,16 +702,21 @@ class Dataset:
     def add_column(
         self,
         col: str,
-        fn: Callable[["pandas.DataFrame"], "pandas.Series"],
+        fn: Callable[
+            [DataBatch],
+            DataBatchColumn,
+        ],
         *,
+        batch_format: Optional[str] = "pandas",
         compute: Optional[str] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Add the given column to the dataset.
 
-        A function generating the new column values given the batch in pandas
-        format must be specified.
+        A function generating the new column values given the batch in pyarrow or pandas
+        format must be specified. This function must operate on batches of
+        `batch_format`.
 
         Examples:
 
@@ -726,11 +736,6 @@ class Dataset:
             id      int64
             new_id  int64
 
-            Overwrite the existing values with zeros.
-
-            >>> ds.add_column("id", lambda df: 0).take(3)
-            [{'id': 0}, {'id': 0}, {'id': 0}]
-
         Time complexity: O(dataset size / parallelism)
 
         Args:
@@ -738,6 +743,11 @@ class Dataset:
                 column is overwritten.
             fn: Map function generating the column values given a batch of
                 records in pandas format.
+            batch_format: If ``"default"`` or ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``. If ``"pandas"``, batches are
+                ``pandas.DataFrame``. If ``"pyarrow"``, batches are
+                ``pyarrow.Table``. If ``"numpy"``, batches are
+                ``Dict[str, numpy.ndarray]``.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``. For
@@ -746,17 +756,55 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
+        # Check that batch_format
+        accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
+        if batch_format not in accepted_batch_formats:
+            raise ValueError(
+                f"batch_format argument must be on of {accepted_batch_formats}, "
+                f"got: {batch_format}"
+            )
 
-        def add_column(batch: "pandas.DataFrame") -> "pandas.DataFrame":
-            batch.loc[:, col] = fn(batch)
-            return batch
+        def add_column(batch: DataBatch) -> DataBatch:
+            column = fn(batch)
+            if batch_format == "pandas":
+                batch.loc[:, col] = column
+                return batch
+            elif batch_format == "pyarrow":
+                import pyarrow as pa
+
+                assert isinstance(column, (pa.Array, pa.ChunkedArray)), (
+                    f"For pyarrow batch format, the function must return a pyarrow "
+                    f"Array, got: {type(column)}"
+                )
+                # Historically, this method was written for pandas batch format.
+                # To resolve https://github.com/ray-project/ray/issues/48090,
+                # we also allow pyarrow batch format which is preferred but would be
+                # a breaking change to enforce.
+
+                # For pyarrow, the index of the column will be -1 if it is missing in
+                # which case we'll want to append it
+                column_idx = batch.schema.get_field_index(col)
+                if column_idx == -1:
+                    return batch.append_column(col, column)
+                else:
+                    return batch.set_column(column_idx, col, column)
+
+            else:
+                # batch format is assumed to be numpy since we checked at the
+                # beginning of the add_column function
+                assert isinstance(column, np.ndarray), (
+                    f"For numpy batch format, the function must return a "
+                    f"numpy.ndarray, got: {type(column)}"
+                )
+                batch[col] = column
+                return batch
 
         if not callable(fn):
             raise ValueError("`fn` must be callable, got {}".format(fn))
 
         return self.map_batches(
             add_column,
-            batch_format="pandas",  # TODO(ekl) we should make this configurable.
+            batch_format=batch_format,
             compute=compute,
             concurrency=concurrency,
             zero_copy_batch=False,
@@ -798,7 +846,7 @@ class Dataset:
 
         Args:
             cols: Names of the columns to drop. If any name does not exist,
-                an exception is raised.
+                an exception is raised. Column names must be unique.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a fixed-sized
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
@@ -807,12 +855,15 @@ class Dataset:
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """  # noqa: E501
 
+        if len(cols) != len(set(cols)):
+            raise ValueError(f"drop_columns expects unique column names, got: {cols}")
+
         def drop_columns(batch):
-            return batch.drop(columns=cols)
+            return batch.drop(cols)
 
         return self.map_batches(
             drop_columns,
-            batch_format="pandas",
+            batch_format="pyarrow",
             zero_copy_batch=True,
             compute=compute,
             concurrency=concurrency,
@@ -1113,7 +1164,8 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], bool],
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
+        expr: Optional[str] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -1122,7 +1174,8 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class to perform the transformation.
+        You can use either a function or a callable class or an expression string to
+        perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
@@ -1150,6 +1203,8 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
+            expr: An expression string that will be
+                converted to pyarrow.dataset.Expression type.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1164,16 +1219,41 @@ class Dataset:
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
         """
-        compute = get_compute_strategy(
-            fn,
-            compute=compute,
-            concurrency=concurrency,
-        )
+        # Ensure exactly one of fn or expr is provided
+        resolved_expr = None
+        if not ((fn is None) ^ (expr is None)):
+            raise ValueError("Exactly one of 'fn' or 'expr' must be provided.")
+        elif expr is not None:
+            from ray.data._internal.compute import TaskPoolStrategy
+            from ray.data._internal.planner.plan_expression.expression_evaluator import (  # noqa: E501
+                ExpressionEvaluator,
+            )
+
+            # TODO: (srinathk) bind the expression to the actual schema.
+            # If fn is a string, convert it to a pyarrow.dataset.Expression
+            # Initialize ExpressionEvaluator with valid columns, if available
+            evaluator = ExpressionEvaluator()
+            resolved_expr = evaluator.get_filters(expression=expr)
+
+            compute = TaskPoolStrategy(size=concurrency)
+        else:
+            if callable(fn):
+                compute = get_compute_strategy(
+                    fn=fn,
+                    compute=compute,
+                    concurrency=concurrency,
+                )
+            else:
+                raise ValueError(
+                    f"fn must be a UserDefinedFunction, but got "
+                    f"{type(fn).__name__} instead."
+                )
 
         plan = self._plan.copy()
         op = Filter(
             input_op=self._logical_plan.dag,
             fn=fn,
+            filter_expr=resolved_expr,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -2340,11 +2420,12 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,
-        key: Union[str, List[str], None] = None,
+        key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
         boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
+        The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
             The `descending` parameter must be a boolean, or a list of booleans.
@@ -2393,7 +2474,12 @@ class Dataset:
 
         Returns:
             A new, sorted :class:`Dataset`.
+
+        Raises:
+            ``ValueError``: if the sort key is None.
         """
+        if key is None:
+            raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
         op = Sort(
@@ -3811,9 +3897,7 @@ class Dataset:
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
-    def iter_rows(
-        self, *, prefetch_batches: int = 1, prefetch_blocks: int = 0
-    ) -> Iterable[Dict[str, Any]]:
+    def iter_rows(self) -> Iterable[Dict[str, Any]]:
         """Return an iterable over the rows in this dataset.
 
         Examples:
@@ -3826,18 +3910,10 @@ class Dataset:
 
         Time complexity: O(1)
 
-        Args:
-            prefetch_batches: The number of batches to prefetch ahead of the current
-                batch during the scan.
-            prefetch_blocks: This argument is deprecated. Use ``prefetch_batches``
-                instead.
-
         Returns:
             An iterable over the rows in this dataset.
         """
-        return self.iterator().iter_rows(
-            prefetch_batches=prefetch_batches, prefetch_blocks=prefetch_blocks
-        )
+        return self.iterator().iter_rows()
 
     @ConsumptionAPI
     @PublicAPI(api_group=CD_API_GROUP)
@@ -4018,7 +4094,7 @@ class Dataset:
         )
 
     @ConsumptionAPI
-    @PublicAPI(api_group=CD_API_GROUP)
+    @Deprecated
     def iter_tf_batches(
         self,
         *,
@@ -4091,6 +4167,11 @@ class Dataset:
             :meth:`Dataset.iter_batches`
                 Call this method to manually convert your data to TensorFlow tensors.
         """  # noqa: E501
+        warnings.warn(
+            "`iter_tf_batches` is deprecated and will be removed after May 2025. Use "
+            "`to_tf` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().iter_tf_batches(
             prefetch_batches=prefetch_batches,
             batch_size=batch_size,
@@ -4101,7 +4182,7 @@ class Dataset:
         )
 
     @ConsumptionAPI(pattern="Time complexity:")
-    @PublicAPI(api_group=IOC_API_GROUP)
+    @Deprecated
     def to_torch(
         self,
         *,
@@ -4212,7 +4293,11 @@ class Dataset:
         Returns:
             A `Torch IterableDataset`_.
         """  # noqa: E501
-
+        warnings.warn(
+            "`to_torch` is deprecated and will be removed after May 2025. Use "
+            "`iter_torch_batches` instead.",
+            DeprecationWarning,
+        )
         return self.iterator().to_torch(
             label_column=label_column,
             feature_columns=feature_columns,
@@ -4314,7 +4399,8 @@ class Dataset:
             If your model accepts additional metadata aside from features and label, specify a single additional column or a list of additional columns.
             A common use case is to include sample weights in the data samples and train a ``tf.keras.Model`` with ``tf.keras.Model.fit``.
 
-            >>> ds = ds.add_column("sample weights", lambda df: 1)
+            >>> import pandas as pd
+            >>> ds = ds.add_column("sample weights", lambda df: pd.Series([1] * len(df)))
             >>> ds.to_tf(feature_columns="features", label_columns="target", additional_columns="sample weights")
             <_OptionsDataset element_spec=(TensorSpec(shape=(None, 4), dtype=tf.float64, name='features'), TensorSpec(shape=(None,), dtype=tf.int64, name='target'), TensorSpec(shape=(None,), dtype=tf.int64, name='sample weights'))>
 
@@ -4479,15 +4565,17 @@ class Dataset:
                     }
                 )
             elif pa is not None and isinstance(schema, pa.Schema):
-                from ray.data.extensions import ArrowTensorType
+                arrow_tensor_ext_types = get_arrow_extension_fixed_shape_tensor_types()
 
-                if any(isinstance(type_, ArrowTensorType) for type_ in schema.types):
+                if any(
+                    isinstance(type_, arrow_tensor_ext_types) for type_ in schema.types
+                ):
                     meta = pd.DataFrame(
                         {
                             col: pd.Series(
                                 dtype=(
                                     dtype.to_pandas_dtype()
-                                    if not isinstance(dtype, ArrowTensorType)
+                                    if not isinstance(dtype, arrow_tensor_ext_types)
                                     else np.object_
                                 )
                             )

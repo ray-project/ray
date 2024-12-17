@@ -5,7 +5,6 @@ from libcpp.vector cimport vector as c_vector
 from ray.includes.common cimport (
     CObjectLocation,
     CGcsClientOptions,
-    CPythonGcsClient,
     CPythonGcsPublisher,
     CPythonGcsSubscriber,
     kWorkerSetupHookKeyName,

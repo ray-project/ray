@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -44,9 +47,9 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
+#include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -59,8 +62,7 @@
 ///    "RPC_SERVICE_HANDLER(CoreWorkerService, ExampleCall, 1)"
 /// 4) Add a method to the CoreWorker class below: "CoreWorker::HandleExampleCall"
 
-namespace ray {
-namespace core {
+namespace ray::core {
 
 JobID GetProcessJobID(const CoreWorkerOptions &options);
 
@@ -69,57 +71,10 @@ JobID GetProcessJobID(const CoreWorkerOptions &options);
 class TaskCounter {
   /// A task can only be one of the following state. Received state in particular
   /// covers from the point of RPC call to beginning execution.
-  enum TaskStatusType { kPending, kRunning, kFinished };
+  enum class TaskStatusType { kPending, kRunning, kFinished };
 
  public:
-  TaskCounter() {
-    counter_.SetOnChangeCallback(
-        [this](const std::tuple<std::string, TaskStatusType, bool> &key)
-            ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) mutable {
-              if (std::get<1>(key) != kRunning) {
-                return;
-              }
-              auto func_name = std::get<0>(key);
-              auto is_retry = std::get<2>(key);
-              int64_t running_total = counter_.Get(key);
-              int64_t num_in_get = running_in_get_counter_.Get({func_name, is_retry});
-              int64_t num_in_wait = running_in_wait_counter_.Get({func_name, is_retry});
-              auto is_retry_label = is_retry ? "1" : "0";
-              // RUNNING_IN_RAY_GET/WAIT are sub-states of RUNNING, so we need to subtract
-              // them out to avoid double-counting.
-              ray::stats::STATS_tasks.Record(
-                  running_total - num_in_get - num_in_wait,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING)},
-                   {"Name", func_name},
-                   {"IsRetry", is_retry_label},
-                   {"JobId", job_id_},
-                   {"Source", "executor"}});
-              // Negate the metrics recorded from the submitter process for these tasks.
-              ray::stats::STATS_tasks.Record(
-                  -running_total,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::SUBMITTED_TO_WORKER)},
-                   {"Name", func_name},
-                   {"IsRetry", is_retry_label},
-                   {"JobId", job_id_},
-                   {"Source", "executor"}});
-              // Record sub-state for get.
-              ray::stats::STATS_tasks.Record(
-                  num_in_get,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_GET)},
-                   {"Name", func_name},
-                   {"IsRetry", is_retry_label},
-                   {"JobId", job_id_},
-                   {"Source", "executor"}});
-              // Record sub-state for wait.
-              ray::stats::STATS_tasks.Record(
-                  num_in_wait,
-                  {{"State", rpc::TaskStatus_Name(rpc::TaskStatus::RUNNING_IN_RAY_WAIT)},
-                   {"Name", func_name},
-                   {"IsRetry", is_retry_label},
-                   {"JobId", job_id_},
-                   {"Source", "executor"}});
-            });
-  }
+  TaskCounter();
 
   void BecomeActor(const std::string &actor_name) {
     absl::MutexLock l(&mu_);
@@ -133,95 +88,35 @@ class TaskCounter {
 
   bool IsActor() ABSL_EXCLUSIVE_LOCKS_REQUIRED(&mu_) { return actor_name_.size() > 0; }
 
-  void RecordMetrics() {
-    absl::MutexLock l(&mu_);
-    counter_.FlushOnChangeCallbacks();
-    if (IsActor()) {
-      float running = 0.0;
-      float in_get = 0.0;
-      float in_wait = 0.0;
-      float idle = 0.0;
-      if (running_in_wait_counter_.Total() > 0) {
-        in_wait = 1.0;
-      } else if (running_in_get_counter_.Total() > 0) {
-        in_get = 1.0;
-      } else if (num_tasks_running_ > 0) {
-        running = 1.0;
-      } else {
-        idle = 1.0;
-      }
-      ray::stats::STATS_actors.Record(idle,
-                                      {{"State", "IDLE"},
-                                       {"Name", actor_name_},
-                                       {"Source", "executor"},
-                                       {"JobId", job_id_}});
-      ray::stats::STATS_actors.Record(running,
-                                      {{"State", "RUNNING_TASK"},
-                                       {"Name", actor_name_},
-                                       {"Source", "executor"},
-                                       {"JobId", job_id_}});
-      ray::stats::STATS_actors.Record(in_get,
-                                      {{"State", "RUNNING_IN_RAY_GET"},
-                                       {"Name", actor_name_},
-                                       {"Source", "executor"},
-                                       {"JobId", job_id_}});
-      ray::stats::STATS_actors.Record(in_wait,
-                                      {{"State", "RUNNING_IN_RAY_WAIT"},
-                                       {"Name", actor_name_},
-                                       {"Source", "executor"},
-                                       {"JobId", job_id_}});
-    }
-  }
+  void RecordMetrics();
 
   void IncPending(const std::string &func_name, bool is_retry) {
     absl::MutexLock l(&mu_);
-    counter_.Increment({func_name, kPending, is_retry});
+    counter_.Increment({func_name, TaskStatusType::kPending, is_retry});
   }
 
   void MovePendingToRunning(const std::string &func_name, bool is_retry) {
     absl::MutexLock l(&mu_);
-    counter_.Swap({func_name, kPending, is_retry}, {func_name, kRunning, is_retry});
+    counter_.Swap({func_name, TaskStatusType::kPending, is_retry},
+                  {func_name, TaskStatusType::kRunning, is_retry});
     num_tasks_running_++;
   }
 
   void MoveRunningToFinished(const std::string &func_name, bool is_retry) {
     absl::MutexLock l(&mu_);
-    counter_.Swap({func_name, kRunning, is_retry}, {func_name, kFinished, is_retry});
+    counter_.Swap({func_name, TaskStatusType::kRunning, is_retry},
+                  {func_name, TaskStatusType::kFinished, is_retry});
     num_tasks_running_--;
-    RAY_CHECK(num_tasks_running_ >= 0);
+    RAY_CHECK_GE(num_tasks_running_, 0);
   }
 
   void SetMetricStatus(const std::string &func_name,
                        rpc::TaskStatus status,
-                       bool is_retry) {
-    absl::MutexLock l(&mu_);
-    // Add a no-op increment to counter_ so that
-    // it will invoke a callback upon RecordMetrics.
-    counter_.Increment({func_name, TaskStatusType::kRunning, is_retry}, 0);
-    if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      running_in_get_counter_.Increment({func_name, is_retry});
-    } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-      running_in_wait_counter_.Increment({func_name, is_retry});
-    } else {
-      RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
-    }
-  }
+                       bool is_retry);
 
   void UnsetMetricStatus(const std::string &func_name,
                          rpc::TaskStatus status,
-                         bool is_retry) {
-    absl::MutexLock l(&mu_);
-    // Add a no-op decrement to counter_ so that
-    // it will invoke a callback upon RecordMetrics.
-    counter_.Decrement({func_name, TaskStatusType::kRunning, is_retry}, 0);
-    if (status == rpc::TaskStatus::RUNNING_IN_RAY_GET) {
-      running_in_get_counter_.Decrement({func_name, is_retry});
-    } else if (status == rpc::TaskStatus::RUNNING_IN_RAY_WAIT) {
-      running_in_wait_counter_.Decrement({func_name, is_retry});
-    } else {
-      RAY_CHECK(false) << "Unexpected status " << rpc::TaskStatus_Name(status);
-    }
-  }
+                         bool is_retry);
 
  private:
   mutable absl::Mutex mu_;
@@ -274,7 +169,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] options The various initialization options.
   /// \param[in] worker_id ID of this worker.
-  CoreWorker(const CoreWorkerOptions &options, const WorkerID &worker_id);
+  CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id);
 
   CoreWorker(CoreWorker const &) = delete;
 
@@ -293,11 +188,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
-
-  /// Connect to the raylet and notify that the core worker is ready.
-  /// If the options.connect_on_start is false, it doesn't need to be explicitly
-  /// called.
-  void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
@@ -334,6 +224,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   WorkerContext &GetWorkerContext() { return worker_context_; }
 
   const TaskID &GetCurrentTaskId() const { return worker_context_.GetCurrentTaskID(); }
+
+  const std::string GetCurrentTaskName() const {
+    return worker_context_.GetCurrentTask() != nullptr
+               ? worker_context_.GetCurrentTask()->GetName()
+               : "";
+  }
+
+  const std::string GetCurrentTaskFunctionName() const {
+    return (worker_context_.GetCurrentTask() != nullptr &&
+            worker_context_.GetCurrentTask()->FunctionDescriptor() != nullptr)
+               ? worker_context_.GetCurrentTask()->FunctionDescriptor()->CallSiteString()
+               : "";
+  }
 
   /// Controls the is debugger paused flag.
   ///
@@ -402,11 +305,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   }
 
   bool GetCurrentTaskRetryExceptions() const {
-    if (!options_.is_local_mode) {
-      return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
-    } else {
+    if (options_.is_local_mode) {
       return false;
     }
+    return worker_context_.GetCurrentTask()->ShouldRetryExceptions();
   }
 
   void SetWebuiDisplay(const std::string &key, const std::string &message);
@@ -795,6 +697,11 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// This calls DeleteImpl() locally for objects we own, and DeleteImpl() remotely
   /// for objects we do not own.
   ///
+  /// If IOError is returned from DeleteImpl() when deleting objects locally, we will
+  /// return an UnexpectedSystemExit status instead. This is to make sure the tasks
+  /// that calls this function in application code can properly retry when hitting the
+  /// IOError.
+  ///
   /// \param[in] object_ids IDs of the objects to delete.
   /// \param[in] local_only Whether only delete the objects in local node, or all nodes in
   /// the cluster.
@@ -915,6 +822,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                    const std::string &type,
                    const std::string &error_message,
                    double timestamp);
+
+  // Prestart workers. The workers:
+  // - uses current language.
+  // - uses current JobID.
+  // - does NOT support root_detached_actor_id.
+  // - uses provided runtime_env_info applied to the job runtime env, as if it's a task
+  // request.
+  //
+  // This API is async. It provides no guarantee that the workers are actually started.
+  void PrestartWorkers(const std::string &serialized_runtime_env_info,
+                       uint64_t keep_alive_duration_secs,
+                       size_t num_workers);
 
   /// Submit a normal task.
   ///
@@ -1092,12 +1011,10 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
+  ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
-  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(
-
-      const std::string &event_name);
+  std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
 
   int64_t GetNumTasksSubmitted() const {
     return normal_task_submitter_->GetNumTasksSubmitted();
@@ -1426,8 +1343,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
-                                           const std::shared_ptr<nlohmann::json> parent);
+  static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
+                                           std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1462,7 +1379,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
       int64_t generator_backpressure_num_objects = -1,
-      bool enable_task_events = true);
+      bool enable_task_events = true,
+      const std::unordered_map<std::string, std::string> &labels = {});
   void SetCurrentTaskId(const TaskID &task_id,
                         uint64_t attempt_number,
                         const std::string &task_name);
@@ -1532,7 +1450,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 worker. If nullopt, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
   /// to the caller.
@@ -1552,7 +1470,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -1746,6 +1664,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success,
+                      std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id,
+                      void *py_future);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1776,7 +1700,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1829,7 +1753,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::shared_ptr<ActorTaskSubmitter> actor_task_submitter_;
+  std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::Publisher> object_info_publisher_;
@@ -1887,14 +1811,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_ ABSL_GUARDED_BY(mutex_);
+  ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
 
   /// Used to notify the task receiver when the arguments of a queued
   /// actor task are ready.
-  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
@@ -1922,12 +1846,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success,
-                      std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id,
-                      void *py_future);
-
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
@@ -1954,6 +1872,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   uint32_t pid_;
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+
+  /// TODO(hjiang):
+  /// 1. Cached job runtime env info, it's not implemented at first place since
+  /// `OverrideRuntimeEnv` mutates parent job runtime env info.
+  /// 2. Cleanup cache on job change.
+  ///
+  /// Maps serialized runtime env info to **immutable** deserialized protobuf.
+  mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
+      runtime_env_json_serialization_cache_;
 };
 
 // Lease request rate-limiter based on cluster node size.
@@ -1965,8 +1892,7 @@ class ClusterSizeBasedLeaseRequestRateLimiter : public LeaseRequestRateLimiter {
   void OnNodeChanges(const rpc::GcsNodeInfo &data);
 
  private:
-  const size_t kMinConcurrentLeaseCap;
+  const size_t min_concurrent_lease_cap_;
   std::atomic<size_t> num_alive_nodes_;
 };
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core

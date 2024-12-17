@@ -96,7 +96,6 @@ class UvProcessor:
             "install",
             "--disable-pip-version-check",
             "--no-cache-dir",
-            "--force-reinstall",
             _get_uv_exec_to_install(),
         ]
         logger.info("Installing package uv to %s", virtualenv_path)
@@ -122,6 +121,20 @@ class UvProcessor:
         except Exception:
             return False
 
+    async def _uv_check(sef, python: str, cwd: str, logger: logging.Logger) -> None:
+        """Check virtual env dependency compatibility.
+        If any incompatibility detected, exception will be thrown.
+
+        param:
+            python: the path for python executable within virtual environment.
+        """
+        cmd = [python, "-m", "uv", "pip", "check"]
+        await check_output_cmd(
+            cmd,
+            logger=logger,
+            cwd=cwd,
+        )
+
     async def _install_uv_packages(
         self,
         path: str,
@@ -140,11 +153,6 @@ class UvProcessor:
         uv_exists = await self._check_uv_existence(python, cwd, pip_env, logger)
 
         # Install uv, which acts as the default package manager.
-        #
-        # TODO(hjiang): If `uv` in virtual env perfectly matches the version users
-        # require, we don't need to install also. It requires a different
-        # implementation to execute and check existence. Here we take the simpliest
-        # implementation, always reinstall the required version.
         if (not uv_exists) or (self._uv_config.get("uv_version", None) is not None):
             await self._install_uv(path, cwd, pip_env, logger)
 
@@ -158,19 +166,27 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. `--no-cache-dir` for `pip` maps to `--no-cache` for uv.
-        pip_install_cmd = [
+        # 2. Allow user to specify their own options to install packages via `uv`.
+        uv_install_cmd = [
             python,
             "-m",
             "uv",
             "pip",
             "install",
-            "--no-cache",
             "-r",
             requirements_file,
         ]
+
+        uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
+        if uv_opt_list:
+            uv_install_cmd += uv_opt_list
+
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+
+        # Check python environment for conflicts.
+        if self._uv_config.get("uv_check", False):
+            await self._uv_check(python, cwd, logger)
 
     async def _run(self):
         path = self._target_dir

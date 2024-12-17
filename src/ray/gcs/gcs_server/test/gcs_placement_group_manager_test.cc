@@ -83,14 +83,14 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
         cluster_resource_manager_(io_service_) {
     gcs_publisher_ =
         std::make_shared<GcsPublisher>(std::make_unique<ray::pubsub::MockPublisher>());
-    gcs_table_storage_ = std::make_shared<gcs::InMemoryGcsTableStorage>(io_service_);
+    gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     gcs_node_manager_ = std::make_shared<gcs::MockGcsNodeManager>();
     gcs_resource_manager_ = std::make_shared<gcs::GcsResourceManager>(
         io_service_, cluster_resource_manager_, *gcs_node_manager_, NodeID::FromRandom());
     gcs_placement_group_manager_.reset(new gcs::GcsPlacementGroupManager(
         io_service_,
-        mock_placement_group_scheduler_,
-        gcs_table_storage_,
+        mock_placement_group_scheduler_.get(),
+        gcs_table_storage_.get(),
         *gcs_resource_manager_,
         [this](const JobID &job_id) { return job_namespace_table_[job_id]; }));
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());
@@ -148,7 +148,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   }
 
   std::shared_ptr<GcsInitData> LoadDataFromDataStorage() {
-    auto gcs_init_data = std::make_shared<GcsInitData>(gcs_table_storage_);
+    auto gcs_init_data = std::make_shared<GcsInitData>(*gcs_table_storage_);
     std::promise<void> promise;
     gcs_init_data->AsyncLoad([&promise] { promise.set_value(); });
     RunIOService();
@@ -166,7 +166,7 @@ class GcsPlacementGroupManagerTest : public ::testing::Test {
   std::shared_ptr<CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>> counter_;
 
  protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
 
  private:
   instrumented_io_context io_service_;
@@ -1011,8 +1011,3 @@ TEST_F(GcsPlacementGroupManagerTest, TestCheckCreatorJobIsDeadWhenGcsRestart) {
 
 }  // namespace gcs
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

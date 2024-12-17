@@ -14,8 +14,10 @@
 
 #include "ray/raylet/worker_pool.h"
 
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
+#include <gmock/gmock.h>
+#include <gtest/gtest.h>
+
+#include "absl/time/time.h"
 #include "nlohmann/json.hpp"
 #include "ray/common/asio/asio_util.h"
 #include "ray/common/asio/instrumented_io_context.h"
@@ -26,9 +28,8 @@
 #include "src/ray/protobuf/runtime_env_agent.pb.h"
 
 using json = nlohmann::json;
-namespace ray {
 
-namespace raylet {
+namespace ray::raylet {
 
 int MAXIMUM_STARTUP_CONCURRENCY = 15;
 int PYTHON_PRESTART_WORKERS = 15;
@@ -140,7 +141,7 @@ class WorkerPoolMock : public WorkerPool {
             "",
             []() {},
             0,
-            [this]() { return current_time_ms_; }),
+            [this]() { return absl::FromUnixMillis(current_time_ms_); }),
         last_worker_process_(),
         instrumented_io_service_(io_service),
         error_message_type_(1),
@@ -241,9 +242,7 @@ class WorkerPoolMock : public WorkerPool {
 
   size_t GetIdleWorkerSize() { return idle_of_all_languages_.size(); }
 
-  std::list<std::pair<std::shared_ptr<WorkerInterface>, int64_t>> &GetIdleWorkers() {
-    return idle_of_all_languages_;
-  }
+  auto &GetIdleWorkers() { return idle_of_all_languages_; }
 
   std::shared_ptr<WorkerInterface> CreateWorker(
       const Process &proc,
@@ -425,7 +424,7 @@ class WorkerPoolTest : public ::testing::Test {
       io_service_.run();
     }));
     promise.get_future().get();
-    worker_pool_->SetRuntimeEnvAgentClient(std::make_shared<MockRuntimeEnvAgentClient>());
+    worker_pool_->SetRuntimeEnvAgentClient(std::make_unique<MockRuntimeEnvAgentClient>());
   }
 
   void TearDown() override {
@@ -583,11 +582,13 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
     ASSERT_EQ(worker_pool_->NumWorkersStarting(), 1);
     // Check that we cannot lookup the worker before it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), nullptr);
     RAY_CHECK_OK(worker_pool_->RegisterWorker(
         worker, proc.GetId(), worker_pool_->GetStartupToken(proc), [](Status, int) {}));
     worker_pool_->OnWorkerStarted(worker);
     // Check that we can lookup the worker after it's registered.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), worker);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), worker);
   }
   // Check that there's no starting worker process
   ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
@@ -596,6 +597,7 @@ TEST_F(WorkerPoolDriverRegisteredTest, HandleWorkerRegistration) {
         worker, /*disconnect_type=*/rpc::WorkerExitType::INTENDED_USER_EXIT);
     // Check that we cannot lookup the worker after it's disconnected.
     ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->Connection()), nullptr);
+    ASSERT_EQ(worker_pool_->GetRegisteredWorker(worker->WorkerId()), nullptr);
   }
 
   {
@@ -761,6 +763,74 @@ TEST_F(WorkerPoolDriverRegisteredTest, StartWorkerWithDynamicOptionsCommand) {
   expected_command.push_back("--language=JAVA");
   ASSERT_EQ(real_command, expected_command);
   worker_pool_->HandleJobFinished(job_id);
+}
+
+TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerStartupKeepAliveDuration) {
+  // Test starting workers with keep alive duration.
+  // To make sure they are killable, start POOL_SIZE_SOFT_LIMIT + 2 workers.
+  // On creation: StartNewWorker does not respect POOL_SIZE_SOFT_LIMIT, can start more
+  // workers than POOL_SIZE_SOFT_LIMIT.
+  // On idle killing: KillIdleWorkers respects keep alive duration, not killing anyone.
+  // After keep alive duration expires: KillIdleWorkers kills 2 workers, leaving
+  // POOL_SIZE_SOFT_LIMIT workers.
+  constexpr char kRuntimeEnvJson[] = R"({"env_vars": {"FOO": "BAR"}})";
+  rpc::RuntimeEnvInfo runtime_env_info;
+  runtime_env_info.set_serialized_runtime_env(kRuntimeEnvJson);
+
+  auto keep_alive_duration = absl::Seconds(10);
+  auto pop_worker_request = std::make_shared<PopWorkerRequest>(
+      Language::PYTHON,
+      rpc::WorkerType::WORKER,
+      JOB_ID,
+      ActorID::Nil(),
+      /*gpu=*/std::nullopt,
+      /*actor_worker=*/std::nullopt,
+      runtime_env_info,
+      CalculateRuntimeEnvHash(runtime_env_info.serialized_runtime_env()),
+      /*options=*/std::vector<std::string>{},
+      keep_alive_duration,
+      /*callback=*/
+      [](const std::shared_ptr<WorkerInterface> &worker,
+         PopWorkerStatus status,
+         const std::string &runtime_env_setup_error_message) { return false; });
+
+  // Before starting the worker, it's empty.
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), 0);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // Start the worker
+  for (int i = 0; i < POOL_SIZE_SOFT_LIMIT + 2; i++) {
+    worker_pool_->StartNewWorker(pop_worker_request);
+  }
+  // Worker started but not registered.
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), POOL_SIZE_SOFT_LIMIT + 2);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), POOL_SIZE_SOFT_LIMIT + 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+
+  // The worker registered. There's no pending tasks so it becomes idle.
+  worker_pool_->PushWorkers(0, JOB_ID);
+  ASSERT_EQ(worker_pool_->NumWorkersStarting(), 0);
+  ASSERT_EQ(worker_pool_->GetProcessSize(), POOL_SIZE_SOFT_LIMIT + 2);
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 2);
+
+  // Time passes. The worker is not killed because it's protected by keep-alive.
+  worker_pool_->SetCurrentTimeMs(2000);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT + 2);
+
+  // After the keep-alive expires, the worker is killed.
+  worker_pool_->SetCurrentTimeMs(2000 + absl::ToDoubleMilliseconds(keep_alive_duration));
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
+
+  // Finish the job, all workers killed.
+  worker_pool_->HandleJobFinished(JOB_ID);
+  worker_pool_->TryKillingIdleWorkers();
+  ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), 0);
+  for (const auto &[worker_id, mock_rpc_client] : mock_worker_rpc_clients_) {
+    mock_rpc_client->ExitReplySucceed();
+  }
 }
 
 TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerMultiTenancy) {
@@ -1309,8 +1379,8 @@ TEST_F(WorkerPoolDriverRegisteredTest, TestWorkerCapping) {
   worker_pool_->SetCurrentTimeMs(10000);
   worker_pool_->TryKillingIdleWorkers();
   ASSERT_EQ(worker_pool_->GetIdleWorkerSize(), POOL_SIZE_SOFT_LIMIT);
-  for (auto &worker : worker_pool_->GetIdleWorkers()) {
-    mock_rpc_client_it = mock_worker_rpc_clients_.find(worker.first->WorkerId());
+  for (auto &entry : worker_pool_->GetIdleWorkers()) {
+    mock_rpc_client_it = mock_worker_rpc_clients_.find(entry.worker->WorkerId());
     ASSERT_EQ(mock_rpc_client_it->second->last_exit_forced, false);
     ASSERT_FALSE(mock_rpc_client_it->second->ExitReplySucceed());
   }
@@ -1928,6 +1998,19 @@ TEST_F(WorkerPoolDriverRegisteredTest, PopWorkerStatus) {
   worker_pool_->ClearProcesses();
 }
 
+TEST_F(WorkerPoolDriverRegisteredTest, WorkerPendingRegistrationErasesRequest) {
+  std::shared_ptr<WorkerInterface> popped_worker;
+  PopWorkerStatus status;
+  auto task_spec = ExampleTaskSpec();
+  // Create a task without push worker. It should time out (WorkerPendingRegistration).
+  popped_worker = worker_pool_->PopWorkerSync(task_spec, false, &status);
+  ASSERT_EQ(popped_worker, nullptr);
+  ASSERT_EQ(status, PopWorkerStatus::WorkerPendingRegistration);
+  // The request should be erased.
+  ASSERT_EQ(worker_pool_->NumPendingRegistrationRequests(), 0);
+  worker_pool_->ClearProcesses();
+}
+
 TEST_F(WorkerPoolDriverRegisteredTest, TestIOWorkerFailureAndSpawn) {
   std::unordered_set<std::shared_ptr<WorkerInterface>> spill_worker_set;
   auto spill_worker_callback =
@@ -2138,9 +2221,7 @@ TEST_F(WorkerPoolTest, RegisterFirstJavaDriverCallbackImmediately) {
   ASSERT_TRUE(callback_called);
 }
 
-}  // namespace raylet
-
-}  // namespace ray
+}  // namespace ray::raylet
 
 int main(int argc, char **argv) {
   InitShutdownRAII ray_log_shutdown_raii(
