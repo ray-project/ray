@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
-
-#ifdef __linux__
-#include <stdlib.h>
-#endif
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -126,6 +124,26 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 
 int main(int argc, char *argv[]) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  if (const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+      rotation_max_bytes == nullptr) {
+    const long max_rotation_size = std::numeric_limits<long>::max();
+    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
+    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
+  }
+
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
