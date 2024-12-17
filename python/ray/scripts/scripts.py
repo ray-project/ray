@@ -239,7 +239,7 @@ def debug(address: str, verbose: bool):
             "is now the default and recommended way to debug Ray applications. It has better "
             "interactive debugging support than 'ray debug' which lacks readline support. "
             "If you want to keep using 'ray debug' you need to set RAY_DEBUG=legacy "
-            "(e.g. via runtime environment)."
+            "in your cluster (e.g. via runtime environment)."
         )
     while True:
         # Used to filter out and clean up entries from dead jobs.
