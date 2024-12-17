@@ -323,7 +323,7 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
-    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
+    std::unique_ptr<GcsActorSchedulerInterface> scheduler,
     GcsTableStorage *gcs_table_storage,
     GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,

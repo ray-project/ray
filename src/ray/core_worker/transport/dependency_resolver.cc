@@ -64,8 +64,8 @@ void LocalDependencyResolver::CancelDependencyResolution(const TaskID &task_id) 
 
 void LocalDependencyResolver::ResolveDependencies(
     TaskSpecification &task, std::function<void(Status)> on_dependencies_resolved) {
-  std::unordered_set<ObjectID> local_dependency_ids;
-  std::unordered_set<ActorID> actor_dependency_ids;
+  absl::flat_hash_set<ObjectID> local_dependency_ids;
+  absl::flat_hash_set<ActorID> actor_dependency_ids;
   for (size_t i = 0; i < task.NumArgs(); i++) {
     if (task.ArgByRef(i)) {
       local_dependency_ids.insert(task.ArgId(i));
@@ -110,6 +110,7 @@ void LocalDependencyResolver::ResolveDependencies(
             absl::MutexLock lock(&mu_);
 
             auto it = pending_tasks_.find(task_id);
+            // The dependency resolution for the task has been cancelled.
             if (it == pending_tasks_.end()) {
               return;
             }
