@@ -62,10 +62,12 @@ void ClusterResourceManager::AddOrUpdateNode(scheduling::NodeID node_id,
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     // This node is new, so add it to the map.
-    nodes_.emplace(node_id, node_resources);
+    // include node_id during node creation, helping track resource ownership effectively.
+    auto node = Node(node_resources, node_id);
+    nodes_.emplace(node_id, node);
   } else {
     // This node exists, so update its resources.
-    it->second = Node(node_resources);
+    it->second = Node(node_resources, node_id);
   }
 }
 
@@ -133,7 +135,8 @@ void ClusterResourceManager::UpdateResourceCapacity(scheduling::NodeID node_id,
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
-    it = nodes_.emplace(node_id, node_resources).first;
+    auto node = Node(node_resources, node_id);
+    it = nodes_.emplace(node_id, node).first;
   }
 
   auto local_view = it->second.GetMutableLocalView();
@@ -282,7 +285,8 @@ void ClusterResourceManager::SetNodeLabels(
   auto it = nodes_.find(node_id);
   if (it == nodes_.end()) {
     NodeResources node_resources;
-    it = nodes_.emplace(node_id, node_resources).first;
+    auto node = Node(node_resources, node_id);
+    it = nodes_.emplace(node_id, node).first;
   }
   it->second.GetMutableLocalView()->labels = labels;
 }
