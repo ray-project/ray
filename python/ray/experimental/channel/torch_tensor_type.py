@@ -131,27 +131,14 @@ class TorchTensorType(ChannelOutputType):
         if self.requires_nccl():
             from ray.experimental.channel.torch_tensor_nccl_channel import (
                 TorchTensorNcclChannel,
-                _TorchTensorNcclChannel,
             )
-
-            gpu_data_channel = _TorchTensorNcclChannel(
-                writer,
-                reader_and_node_list,
-                self,
-                _meta_channel=_tensor_metadata_channel,
-            )
-
-            if _cpu_data_channel is None and not self._direct_return:
-                # Create a CPU channel to send non-tensor data.
-                _cpu_data_channel = SharedMemoryType().create_channel(
-                    writer, reader_and_node_list, driver_actor_id
-                )
 
             return TorchTensorNcclChannel(
                 writer,
                 reader_and_node_list,
                 self,
-                gpu_data_channel,
+                driver_actor_id,
+                _tensor_metadata_channel,
                 _cpu_data_channel,
             )
 

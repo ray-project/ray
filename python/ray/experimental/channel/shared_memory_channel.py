@@ -7,8 +7,10 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 import ray
 import ray.exceptions
 from ray._raylet import SerializedObject
+from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
 from ray.experimental.channel.intra_process_channel import IntraProcessChannel
+from ray.experimental.channel.utils import get_self_actor
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 # Logger for this module. It should be configured at the entry point
@@ -63,17 +65,6 @@ def _create_channel_ref(
         )
         raise
     return object_ref
-
-
-def _get_self_actor() -> Optional["ray.actor.ActorHandle"]:
-    """
-    Get the current actor handle in this worker.
-    If this is called in a driver process, it will return None.
-    """
-    try:
-        return ray.get_runtime_context().current_actor
-    except RuntimeError:
-        return None
 
 
 # aDAG maintains 1 reader object reference (also called buffer) per node.
@@ -235,7 +226,7 @@ class Channel(ChannelInterface):
             # actor, so we shouldn't need to include `writer` in the
             # constructor args. Either support Channels being constructed by
             # someone other than the writer or remove it from the args.
-            self_actor = _get_self_actor()
+            self_actor = get_self_actor()
             assert writer == self_actor
 
             self._writer_node_id = (
@@ -503,6 +494,18 @@ class Channel(ChannelInterface):
 
         return ret
 
+    def release_buffer(self, timeout: Optional[float] = None) -> None:
+        assert (
+            timeout is None or timeout >= 0 or timeout == -1
+        ), "Timeout must be non-negative or -1."
+        self.ensure_registered_as_reader()
+        self._worker.get_objects(
+            [self._local_reader_ref],
+            timeout=timeout,
+            return_exceptions=True,
+            skip_deserialization=True,
+        )
+
     def close(self) -> None:
         """
         Close this channel by setting the error bit on both the writer_ref and the
@@ -604,6 +607,21 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index %= self._num_shm_buffers
         return output
 
+    def release_buffer(self, timeout: Optional[float] = None):
+        """Release the native buffer of the channel to allow the buffer to be reused for
+        future data.
+
+        If the next buffer is available, it returns immediately. If the next
+        buffer is not written by an upstream producer, it blocks until a buffer is
+        available to be released. If a buffer is not available within timeout, it raises
+        RayChannelTimeoutError.
+        """
+        # A single channel is not supposed to read and write at the same time.
+        assert self._next_write_index == 0
+        self._buffers[self._next_read_index].release_buffer(timeout)
+        self._next_read_index += 1
+        self._next_read_index %= self._num_shm_buffers
+
     def close(self) -> None:
         for buffer in self._buffers:
             buffer.close()
@@ -661,15 +679,13 @@ class CompositeChannel(ChannelInterface):
             # We don't need to create channels again.
             return
 
-        remote_reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]] = []
-        for reader, node in self._reader_and_node_list:
-            if reader != self._writer:
-                remote_reader_and_node_list.append((reader, node))
+        (
+            remote_reader_and_node_list,
+            local_reader_and_node_list,
+        ) = utils.split_readers_by_locality(self._writer, self._reader_and_node_list)
         # There are some local readers which are the same worker process as the writer.
         # Create a local channel for the writer and the local readers.
-        num_local_readers = len(self._reader_and_node_list) - len(
-            remote_reader_and_node_list
-        )
+        num_local_readers = len(local_reader_and_node_list)
         if num_local_readers > 0:
             # Use num_readers = 1 when creating the local channel,
             # because we have channel cache to support reading
@@ -732,16 +748,23 @@ class CompositeChannel(ChannelInterface):
 
     def read(self, timeout: Optional[float] = None) -> Any:
         self.ensure_registered_as_reader()
+        return self._channel_dict[self._resolve_actor_id()].read(timeout)
+
+    def release_buffer(self, timeout: Optional[float] = None):
+        self.ensure_registered_as_reader()
+        self._channel_dict[self._resolve_actor_id()].release_buffer(timeout)
+
+    def _resolve_actor_id(self) -> str:
         actor_id = ray.get_runtime_context().get_actor_id()
-        # if actor_id is None, read was called by the driver
-        # if the driver is an actor, driver_actor_id will be set to that actor id
+        # If actor_id is None, read was called by the driver
+        # If the driver is an actor, driver_actor_id will be set to that actor id
         if actor_id is None or actor_id == self._driver_actor_id:
             # Use the actor ID of the DAGDriverProxyActor.
             # The proxy actor is always the first actor in the reader_and_node_list.
             assert len(self._reader_and_node_list) >= 1
             driver_proxy_actor = self._reader_and_node_list[0][0]
             actor_id = self._get_actor_id(driver_proxy_actor)
-        return self._channel_dict[actor_id].read(timeout)
+        return actor_id
 
     def close(self) -> None:
         for channel in self._channels:

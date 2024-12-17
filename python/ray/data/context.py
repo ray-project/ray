@@ -341,6 +341,8 @@ class DataContext:
         default_factory=lambda: list(DEFAULT_RETRIED_IO_ERRORS)
     )
 
+    override_object_store_memory_limit_fraction: float = None
+
     def __post_init__(self):
         # The additonal ray remote args that should be added to
         # the task-pool-based data tasks.

@@ -87,12 +87,13 @@ def ray_deps_setup():
     # Explicitly bring in protobuf dependency to work around
     # https://github.com/ray-project/ray/issues/14117
     # This is copied from grpc's bazel/grpc_deps.bzl
+    #
+    # Pinned grpc version: v23.4
     http_archive(
         name = "com_google_protobuf",
         sha256 = "76a33e2136f23971ce46c72fd697cd94dc9f73d56ab23b753c3e16854c90ddfd",
         strip_prefix = "protobuf-2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a",
         urls = [
-            # https://github.com/protocolbuffers/protobuf/commits/v23.4
             "https://github.com/protocolbuffers/protobuf/archive/2c5fa078d8e86e5f4bd34e6f4c9ea9e8d7d4d44a.tar.gz",
         ],
         patches = [
