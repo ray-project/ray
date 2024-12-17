@@ -1493,8 +1493,6 @@ def start_gcs_server(
     if ray_log_filepath:
         command += [f"--ray_log_filepath={ray_log_filepath}"]
 
-    logger.warning(f"ray log filepath = {ray_log_filepath}")
-
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
 
