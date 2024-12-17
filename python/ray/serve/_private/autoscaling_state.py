@@ -381,7 +381,6 @@ class AutoscalingStateManager:
                 send_timestamp=send_timestamp,
             )
 
-    # TODO: fix tests
     def record_request_metrics_for_handle(self, report: HandleMetricReport) -> None:
         """Update request metric for a specific handle."""
 

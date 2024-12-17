@@ -204,11 +204,6 @@ class RouterMetricsManager:
                     ),
                 )
                 # Push metrics to the controller periodically.
-                # self.metrics_pusher.register_or_update_task(
-                #     self.PUSH_METRICS_TO_CONTROLLER_TASK_NAME,
-                #     self.push_autoscaling_metrics_to_controller,
-                #     autoscaling_config.metrics_interval_s,
-                # )
                 shared = SharedHandleMetricsPusher.get_or_create(
                     self._controller_handle
                 )
