@@ -48,6 +48,11 @@ from ray.tune.tune import run, run_experiments
 from ray.tune.tune_config import ResumeConfig, TuneConfig
 from ray.tune.tuner import Tuner
 
+from ray.air.config import RunConfig, CheckpointConfig, FailureConfig
+from ray.air.result import Result
+from ray.train._internal.session import get_checkpoint, report
+from ray.train._checkpoint import Checkpoint
+
 __all__ = [
     "Trainable",
     "Callback",
@@ -84,6 +89,24 @@ __all__ = [
     "Tuner",
     "TuneConfig",
     "ResumeConfig",
+    "RunConfig",
+    "CheckpointConfig",
+    "FailureConfig",
+    "Result",
+    "Checkpoint",
+    "get_checkpoint",
+    "report",
     # TODO(justinvyu): [Deprecated]
     "SyncConfig",
 ]
+
+report.__module__ = "ray.tune"
+get_checkpoint.__module__ = "ray.tune"
+Checkpoint.__module__ = "ray.tune"
+Result.__module__ = "ray.tune"
+RunConfig.__module__ = "ray.tune"
+CheckpointConfig.__module__ = "ray.tune"
+FailureConfig.__module__ = "ray.tune"
+
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.
