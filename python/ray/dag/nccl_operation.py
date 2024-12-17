@@ -4,7 +4,7 @@ from typing import List, Set
 
 class _NcclOperation(ABC):
     """
-    Represent metadata for a group of actors in a NCCL operation.
+    Represent metadata for a NCCL operation.
     """
 
     def __init__(self):

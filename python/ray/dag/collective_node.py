@@ -19,7 +19,7 @@ from ray.util.annotations import DeveloperAPI
 
 class _CollectiveOperation(_NcclOperation):
     """
-    Represent metadata for a group of actors in a NCCL collective operation.
+    Represent metadata for a NCCL collective operation.
 
     Args:
         input_nodes: A list of input nodes to the collective operation.

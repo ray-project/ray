@@ -13,7 +13,7 @@ from ray.util.annotations import DeveloperAPI
 
 class _P2POperation(_NcclOperation):
     """
-    Represent metadata for a group of actors in a NCCL P2P operation.
+    Represent metadata for a NCCL P2P operation.
     """
 
     def __init__(self):
@@ -109,7 +109,7 @@ class _P2PSendNode(_P2PNode):
             and len(method_args) == 1
             and isinstance(method_args[0], ClassMethodNode)
         ):
-            raise ValueError("Expected a single input node that is a ClassMethodNode")
+            raise ValueError("Expected a single input node as ClassMethodNode")
         elif isinstance(method_args[0], _P2PNode):
             raise ValueError("NCCL send node cannot bind to another NCCL P2P node")
         # self.requires_nccl_write = True
@@ -157,7 +157,7 @@ class _P2PRecvNode(_P2PNode):
             and len(method_args) == 1
             and isinstance(method_args[0], _P2PSendNode)
         ):
-            raise ValueError("Expected a single input node that is a _P2PSendNode")
+            raise ValueError("Expected a single input node as _P2PSendNode")
         # self.requires_nccl_read = True
 
     def _copy_impl(
