@@ -47,7 +47,7 @@ struct RedisContextDeleter {
   RedisContextDeleter(){};
 
   void operator()(redisContext *context) { redisFree(context); }
-  void operator()(redisAsyncContext *context) { redisAsyncFree(context); }
+  void operator()(redisAsyncContext *context) { redisAsyncDisconnect(context); }
 };
 
 /// \class RedisAsyncContext
