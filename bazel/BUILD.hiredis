@@ -50,6 +50,9 @@ cc_library(
         "*.h",
         "adapters/*.h",
     ]),
+    includes = [
+        ".",
+    ],
     copts = COPTS,
     linkopts = LOPTS,
     include_prefix = "hiredis",

@@ -22,6 +22,9 @@ cc_library(
         "include/msgpack.h",
         "include/msgpack.hpp",
     ],
+    includes = [
+        "include/",
+    ],
     strip_include_prefix = "include",
     copts = [
     ],
