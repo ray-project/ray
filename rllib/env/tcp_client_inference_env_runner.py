@@ -13,6 +13,7 @@ import gymnasium as gym
 import numpy as np
 import onnxruntime
 
+from ray._private import net
 from ray.rllib.core import (
     Columns,
     COMPONENT_RL_MODULE,
@@ -286,7 +287,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         time.sleep(sleep)
 
         # Start listening on the configured port.
-        self.server_socket = net._get_sock_stream_from_host(host)
+        self.server_socket = net._get_sock_stream_from_host(self.host)
         # Allow reuse of the address.
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
