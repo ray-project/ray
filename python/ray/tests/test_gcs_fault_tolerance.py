@@ -878,7 +878,7 @@ def test_redis_with_sentinel_failureover(
     import redis
 
     redis_addr = os.environ.get("RAY_REDIS_ADDRESS")
-    ip, port = redis_addr.split(":")
+    ip, port = net._parse_ip_port(redis_addr)
     redis_cli = redis.Redis(ip, port)
     print(redis_cli.info("sentinel"))
     redis_name = redis_cli.info("sentinel")["master0"]["name"]
