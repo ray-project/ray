@@ -234,8 +234,8 @@ Ray can optionally capture and display the stacktrace of where your code invokes
 To enable call site capture, set the environment variable ``RAY_record_task_actor_creation_sites=true``. When enabled:
 
 - Ray captures the stacktrace when creating tasks, actors or calling actor methods
-- The stacktrace is visible in:
-  - Ray Dashboard UI under the actor details
+- The call site stacktrace is visible in:
+  - Ray Dashboard UI under the task details and actor details pages
   - ``ray list task --detail`` CLI command output
   - State API responses
 
