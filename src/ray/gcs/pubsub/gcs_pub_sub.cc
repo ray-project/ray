@@ -450,9 +450,14 @@ Status PythonGcsSubscriber::Close() {
   return Status::OK();
 }
 
-int64_t PythonGcsSubscriber::last_batch_size() {
+int64_t PythonGcsSubscriber::last_batch_size() const {
   absl::MutexLock lock(&mu_);
   return last_batch_size_;
+}
+
+int64_t PythonGcsSubscriber::queue_size() const {
+  absl::MutexLock lock(&mu_);
+  return queue_.size();
 }
 
 }  // namespace gcs
