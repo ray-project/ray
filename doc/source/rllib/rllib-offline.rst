@@ -2,7 +2,7 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-Working With Offline Data
+Working with Offline Data
 =========================
 
 Getting Started
@@ -119,7 +119,7 @@ this agent and then use its policy to record expert data to local disk.
     # Store the best checkpoint to use it later for recording
     # an expert policy.
     best_checkpoint = (
-        analysis
+        results
         .get_best_result(
             metric=metric,
             mode="max"
