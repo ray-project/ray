@@ -29,6 +29,12 @@
       python read_and_consume_benchmark.py
       s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
 
+- name: read_from_uris
+  run:
+    timeout: 5400
+    script: >
+      python read_from_uris_benchmark.py
+
 # TODO: Rewrite this as a multi-node test
 - name: read_tfrecords_benchmark_single_node
 
