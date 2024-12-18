@@ -8,26 +8,28 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DAGContext]" = None
 _context_lock = threading.Lock()
 
-DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_DAG_submit_timeout", 10))
-DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_DAG_get_timeout", 10))
-DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_DAG_teardown_timeout", 30))
+DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_submit_timeout", 10))
+DEFAULT_GET_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_get_timeout", 10))
+DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_CGRAPH_teardown_timeout", 30))
 # Default buffer size is 1MB.
-DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_DAG_buffer_size_bytes", 1e6))
+DEFAULT_BUFFER_SIZE_BYTES = int(os.environ.get("RAY_CGRAPH_buffer_size_bytes", 1e6))
 # Default asyncio_max_queue_size is 0, which means no limit.
 DEFAULT_ASYNCIO_MAX_QUEUE_SIZE = int(
-    os.environ.get("RAY_DAG_asyncio_max_queue_size", 0)
+    os.environ.get("RAY_CGRAPH_asyncio_max_queue_size", 0)
 )
 # The default max_buffered_results is 1000, and the default buffer size is 1 MB.
 # The maximum memory usage for buffered results is 1 GB.
-DEFAULT_MAX_BUFFERED_RESULTS = int(os.environ.get("RAY_DAG_max_buffered_results", 1000))
+DEFAULT_MAX_BUFFERED_RESULTS = int(
+    os.environ.get("RAY_CGRAPH_max_buffered_results", 1000)
+)
 # The default number of in-flight executions that can be submitted before consuming the
 # output.
 DEFAULT_MAX_INFLIGHT_EXECUTIONS = int(
-    os.environ.get("RAY_DAG_max_inflight_executions", 10)
+    os.environ.get("RAY_CGRAPH_max_inflight_executions", 10)
 )
 
 DEFAULT_OVERLAP_GPU_COMMUNICATION = bool(
-    os.environ.get("RAY_DAG_overlap_gpu_communication", 0)
+    os.environ.get("RAY_CGRAPH_overlap_gpu_communication", 0)
 )
 
 
@@ -37,7 +39,7 @@ class DAGContext:
     """Global settings for Ray DAG.
 
     You can configure parameters in the DAGContext by setting the environment
-    variables, `RAY_DAG_<param>` (e.g., `RAY_DAG_buffer_size_bytes`) or Python.
+    variables, `RAY_CGRAPH_<param>` (e.g., `RAY_CGRAPH_buffer_size_bytes`) or Python.
 
     Examples:
         >>> from ray.dag import DAGContext
