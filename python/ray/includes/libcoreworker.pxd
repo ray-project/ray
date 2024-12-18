@@ -128,6 +128,10 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
             c_string debugger_breakpoint,
             c_string serialized_retry_exception_allowlist,
             const CTaskID current_task_id)
+        CRayStatus PrestartWorkers(
+            const c_string& serialized_runtime_env,
+            int keep_alive_s,
+            size_t num_workers)
         CRayStatus CreateActor(
             const CRayFunction &function,
             const c_vector[unique_ptr[CTaskArg]] &args,
