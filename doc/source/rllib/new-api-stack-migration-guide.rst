@@ -17,7 +17,7 @@ RLlib classes and code to RLlib's new API stack.
 .. note::
 
     Even though the new API stack still provides rudimentary support for `TensorFlow <https://tensorflow.org>`__,
-    RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__ 
+    RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__
     framework, dropping TensorFlow support entirely.
     Note, though, that the Ray team continues to  design RLlib to be framework-agnostic.
 
@@ -330,7 +330,7 @@ The following is a one-to-one translation guide for these types of Callbacks met
             **kwargs,
         ):
             # The `SingleAgentEpisode` or `MultiAgentEpisode` that RLlib has just started.
-            # See https://docs.ray.io/en/latest/rllib/single-agent-episode.html for more details: 
+            # See https://docs.ray.io/en/latest/rllib/single-agent-episode.html for more details:
             print(episode)
 
             # The `EnvRunner` class that collects the episode in question.
@@ -418,7 +418,7 @@ It also provides superior scalability, allowing training in a multi-GPU setup in
 and multi-node with multi-GPU training on the `Anyscale <https://anyscale.com>`__ platform.
 
 
-Custom connectors (old-stack) 
+Custom connectors (old-stack)
 -----------------------------
 
 If you're using custom connectors from the old API stack, move your logic into the

@@ -3173,7 +3173,7 @@ def read_iceberg(
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
         ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the
-       read tasks.
+            read tasks.
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
