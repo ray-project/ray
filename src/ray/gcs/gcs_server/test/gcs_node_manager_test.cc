@@ -28,22 +28,24 @@ class GcsNodeManagerTest : public ::testing::Test {
  public:
   GcsNodeManagerTest() {
     raylet_client_ = std::make_shared<GcsServerMocker::MockRayletClient>();
-    client_pool_ = std::make_shared<rpc::NodeManagerClientPool>(
+    client_pool_ = std::make_unique<rpc::NodeManagerClientPool>(
         [this](const rpc::Address &) { return raylet_client_; });
-    gcs_publisher_ = std::make_shared<gcs::GcsPublisher>(
+    gcs_publisher_ = std::make_unique<gcs::GcsPublisher>(
         std::make_unique<ray::pubsub::MockPublisher>());
   }
 
  protected:
-  std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
+  std::unique_ptr<gcs::GcsTableStorage> gcs_table_storage_;
   std::shared_ptr<GcsServerMocker::MockRayletClient> raylet_client_;
-  std::shared_ptr<rpc::NodeManagerClientPool> client_pool_;
-  std::shared_ptr<gcs::GcsPublisher> gcs_publisher_;
+  std::unique_ptr<rpc::NodeManagerClientPool> client_pool_;
+  std::unique_ptr<gcs::GcsPublisher> gcs_publisher_;
 };
 
 TEST_F(GcsNodeManagerTest, TestManagement) {
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   // Test Add/Get/Remove functionality.
   auto node = Mocker::GenNodeInfo();
   auto node_id = NodeID::FromBinary(node->node_id());
@@ -51,13 +53,16 @@ TEST_F(GcsNodeManagerTest, TestManagement) {
   node_manager.AddNode(node);
   ASSERT_EQ(node, node_manager.GetAliveNode(node_id).value());
 
-  node_manager.RemoveNode(node_id);
+  rpc::NodeDeathInfo death_info;
+  node_manager.RemoveNode(node_id, death_info);
   ASSERT_TRUE(!node_manager.GetAliveNode(node_id).has_value());
 }
 
 TEST_F(GcsNodeManagerTest, TestListener) {
-  gcs::GcsNodeManager node_manager(
-      gcs_publisher_, gcs_table_storage_, client_pool_, ClusterID::Nil());
+  gcs::GcsNodeManager node_manager(gcs_publisher_.get(),
+                                   gcs_table_storage_.get(),
+                                   client_pool_.get(),
+                                   ClusterID::Nil());
   // Test AddNodeAddedListener.
   int node_count = 1000;
   std::vector<std::shared_ptr<rpc::GcsNodeInfo>> added_nodes;
@@ -84,8 +89,9 @@ TEST_F(GcsNodeManagerTest, TestListener) {
       [&removed_nodes](std::shared_ptr<rpc::GcsNodeInfo> node) {
         removed_nodes.emplace_back(std::move(node));
       });
+  rpc::NodeDeathInfo death_info;
   for (int i = 0; i < node_count; ++i) {
-    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()));
+    node_manager.RemoveNode(NodeID::FromBinary(added_nodes[i]->node_id()), death_info);
   }
   ASSERT_EQ(node_count, removed_nodes.size());
   ASSERT_TRUE(node_manager.GetAllAliveNodes().empty());
@@ -95,8 +101,3 @@ TEST_F(GcsNodeManagerTest, TestListener) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

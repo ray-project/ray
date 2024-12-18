@@ -2,8 +2,6 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. include:: /_includes/rllib/new_api_stack_component.rst
-
 
 Catalog (Alpha)
 ===============
@@ -110,7 +108,7 @@ Since we mostly build RLModules out of :py:class:`~ray.rllib.core.models.base.En
 For example, the PPOCatalog will output Encoders that output a latent vector and two Heads that take this latent vector as input.
 (That's why Catalogs have a ``latent_dims`` attribute). Heads and distributions behave accordingly.
 Whenever you create a Catalog, the decision tree is executed to find suitable configs for models and classes for distributions.
-By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
+By default this happens in :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_encoder_config` and :py:meth:`~ray.rllib.core.models.catalog.Catalog._get_dist_cls_from_action_space`.
 Whenever you build a model, the config is turned into a model.
 Distributions are instantiated per forward pass of an `RLModule` and are therefore not built.
 
@@ -146,9 +144,9 @@ Since Catalogs effectively control what ``models`` and ``distributions`` RLlib u
 they are also part of RLlib’s configurations. As the primary entry point for configuring RLlib,
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` is the place where you can configure the
 Catalogs of the RLModules that are created.
-You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.SingleAgentRLModuleSpec`
-or :py:class:`~ray.rllib.core.rl_module.marl_module.MultiAgentRLModuleSpec` of an AlgorithmConfig.
-For example, in heterogeneous multi-agent cases, you modify the MultiAgentRLModuleSpec.
+You set the ``catalog class`` by going through the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec`
+or :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` of an AlgorithmConfig.
+For example, in heterogeneous multi-agent cases, you modify the MultiRLModuleSpec.
 
 .. image:: images/catalog/catalog_rlmspecs_diagram.svg
     :align: center
@@ -244,7 +242,7 @@ The following examples showcase such modifications:
         Note that, if you only want to inject your Encoder into a single :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, the recommended workflow is to inherit
         from an existing RL Module and place the Encoder there.
 
-        .. literalinclude:: ../../../rllib/examples/catalog/mobilenet_v2_encoder.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/mobilenet_v2_encoder.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
@@ -257,7 +255,7 @@ The following examples showcase such modifications:
         - How to write a custom :py:class:`~ray.rllib.models.distributions.Distribution`
         - How to inject the custom action distribution into a :py:class:`~ray.rllib.core.models.catalog.Catalog`
 
-        .. literalinclude:: ../../../rllib/examples/catalog/custom_action_distribution.py
+        .. literalinclude:: ../../../rllib/examples/catalogs/custom_action_distribution.py
            :language: python
            :start-after: __sphinx_doc_begin__
            :end-before: __sphinx_doc_end__
@@ -281,7 +279,7 @@ The following are typical requirements and steps for writing a new Catalog:
 - Does the Algorithm need a special tokenizer? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog.get_tokenizer_config`.
 - Does the Algorithm not need an Encoder at all? Overwrite :py:meth:`~ray.rllib.core.models.catalog.Catalog._determine_components_hook`.
 
-The following example shows our implementation of a Catalog for PPO that follows the above steps:
+The following example shows the implementation of a Catalog for the PPO algorithm based on the preceeding steps:
 
 .. dropdown:: **Catalog for PPORLModules**
 

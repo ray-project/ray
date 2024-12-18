@@ -14,20 +14,18 @@
 
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 
-#include "absl/strings/str_cat.h"
 #include "ray/rpc/gcs_server/gcs_rpc_client.h"
-#include "ray/rpc/grpc_client.h"
 
 namespace ray {
 namespace gcs {
 
 Status GcsPublisher::PublishActor(const ActorID &id,
-                                  const rpc::ActorTableData &message,
+                                  rpc::ActorTableData message,
                                   const StatusCallback &done) {
   rpc::PubMessage msg;
   msg.set_channel_type(rpc::ChannelType::GCS_ACTOR_CHANNEL);
   msg.set_key_id(id.Binary());
-  *msg.mutable_actor_message() = message;
+  *msg.mutable_actor_message() = std::move(message);
   publisher_->Publish(std::move(msg));
   if (done != nullptr) {
     done(Status::OK());
@@ -91,16 +89,16 @@ Status GcsPublisher::PublishError(const std::string &id,
   return Status::OK();
 }
 
-std::string GcsPublisher::DebugString() const { return "GcsPublisher {}"; }
+std::string GcsPublisher::DebugString() const { return publisher_->DebugString(); }
 
 Status GcsSubscriber::SubscribeAllJobs(
     const SubscribeCallback<JobID, rpc::JobTableData> &subscribe,
     const StatusCallback &done) {
   // GCS subscriber.
-  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+  auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_JOB_CHANNEL);
     const JobID id = JobID::FromBinary(msg.key_id());
-    subscribe(id, msg.job_message());
+    subscribe(id, std::move(*msg.mutable_job_message()));
   };
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to Job channel failed: " << status.ToString();
@@ -125,10 +123,10 @@ Status GcsSubscriber::SubscribeActor(
     const SubscribeCallback<ActorID, rpc::ActorTableData> &subscribe,
     const StatusCallback &done) {
   // GCS subscriber.
-  auto subscription_callback = [id, subscribe](const rpc::PubMessage &msg) {
+  auto subscription_callback = [id, subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_ACTOR_CHANNEL);
     RAY_CHECK(msg.key_id() == id.Binary());
-    subscribe(id, msg.actor_message());
+    subscribe(id, std::move(*msg.mutable_actor_message()));
   };
   auto subscription_failure_callback = [id](const std::string &failed_id,
                                             const Status &status) {
@@ -166,9 +164,9 @@ bool GcsSubscriber::IsActorUnsubscribed(const ActorID &id) {
 Status GcsSubscriber::SubscribeAllNodeInfo(
     const ItemCallback<rpc::GcsNodeInfo> &subscribe, const StatusCallback &done) {
   // GCS subscriber.
-  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+  auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_NODE_INFO_CHANNEL);
-    subscribe(msg.node_info_message());
+    subscribe(std::move(*msg.mutable_node_info_message()));
   };
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to NodeInfo channel failed: " << status.ToString();
@@ -190,9 +188,9 @@ Status GcsSubscriber::SubscribeAllNodeInfo(
 
 Status GcsSubscriber::SubscribeAllWorkerFailures(
     const ItemCallback<rpc::WorkerDeltaData> &subscribe, const StatusCallback &done) {
-  auto subscribe_item_callback = [subscribe](const rpc::PubMessage &msg) {
+  auto subscribe_item_callback = [subscribe](rpc::PubMessage &&msg) {
     RAY_CHECK(msg.channel_type() == rpc::ChannelType::GCS_WORKER_DELTA_CHANNEL);
-    subscribe(msg.worker_delta_message());
+    subscribe(std::move(*msg.mutable_worker_delta_message()));
   };
   auto subscription_failure_callback = [](const std::string &, const Status &status) {
     RAY_LOG(WARNING) << "Subscription to WorkerDelta channel failed: "
@@ -440,20 +438,14 @@ Status PythonGcsSubscriber::Close() {
 
   grpc::ClientContext context;
 
-  rpc::GcsSubscriberCommandBatchRequest request;
+  rpc::GcsUnregisterSubscriberRequest request;
   request.set_subscriber_id(subscriber_id_);
-  request.set_sender_id(worker_id_);
-  auto *cmd = request.add_commands();
-  cmd->set_channel_type(channel_type_);
-  cmd->mutable_unsubscribe_message();
-
-  rpc::GcsSubscriberCommandBatchReply reply;
-  grpc::Status status =
-      pubsub_stub_->GcsSubscriberCommandBatch(&context, request, &reply);
+  rpc::GcsUnregisterSubscriberReply reply;
+  grpc::Status status = pubsub_stub_->GcsUnregisterSubscriber(&context, request, &reply);
 
   if (!status.ok()) {
-    RAY_LOG(DEBUG) << "Error while closing the subscriber: " << status.error_message()
-                   << " [code " << status.error_code() << "]";
+    RAY_LOG(WARNING) << "Error while unregistering the subscriber: "
+                     << status.error_message() << " [code " << status.error_code() << "]";
   }
   return Status::OK();
 }

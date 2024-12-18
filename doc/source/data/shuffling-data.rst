@@ -5,14 +5,14 @@ Shuffling Data
 ==============
 
 When consuming or iterating over Ray :class:`Datasets <ray.data.dataset.Dataset>`, it can be useful to
-shuffle or randomize the order of data (for example, randomizing data ingest order during ML training). 
+shuffle or randomize the order of data (for example, randomizing data ingest order during ML training).
 This guide shows several different methods of shuffling data with Ray Data and their respective trade-offs.
 
 Types of shuffling
 ==================
 
 Ray Data provides several different options for shuffling data, trading off the granularity of shuffle
-control with memory consumption and runtime. The options below are listed in increasing order of 
+control with memory consumption and runtime. The options below are listed in increasing order of
 resource consumption and runtime; choose the most appropriate method for your use case.
 
 .. _shuffling_file_order:
@@ -74,6 +74,23 @@ ordering of files; see :ref:`Shuffle the ordering of files <shuffling_file_order
     time spent in other steps, decrease ``local_shuffle_buffer_size`` or turn off the local
     shuffle buffer altogether and only :ref:`shuffle the ordering of files <shuffling_file_order>`.
 
+Shuffling block order
+~~~~~~~~~~~~~~~~~~~~~
+
+This option randomizes the order of blocks in a dataset. Blocks are the basic unit of data chunk that Ray Data stores in the object store. Applying this operation alone doesn't involve heavy computation and communication. However, it requires Ray Data to materialize all blocks in memory before applying the operation. Only use this option when your dataset is small enough to fit into the object store memory.
+
+To perform block order shuffling, use :meth:`randomize_block_order <ray.data.Dataset.randomize_block_order>`.
+
+.. testcode::
+    import ray
+
+    ds = ray.data.read_text(
+        "s3://anonymous@ray-example-data/sms_spam_collection_subset.txt"
+    )
+
+    # Randomize the block order of this dataset.
+    ds = ds.randomize_block_order()
+
 Shuffle all rows
 ~~~~~~~~~~~~~~~~
 
@@ -94,8 +111,8 @@ network between workers. This option achieves the best randomness among all opti
 
 Advanced: Optimizing shuffles
 =============================
-.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle, 
-    `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_. 
+.. note:: This is an active area of development. If your Dataset uses a shuffle operation and you are having trouble configuring shuffle,
+    `file a Ray Data issue on GitHub <https://github.com/ray-project/ray/issues/new?assignees=&labels=bug%2Ctriage%2Cdata&projects=&template=bug-report.yml&title=[data]+>`_.
 
 When should you use global per-epoch shuffling?
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -130,7 +147,7 @@ Enabling push-based shuffle
 
 Some Dataset operations require a *shuffle* operation, meaning that data is shuffled from all of the input partitions to all of the output partitions.
 These operations include :meth:`Dataset.random_shuffle <ray.data.Dataset.random_shuffle>`,
-:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`. 
+:meth:`Dataset.sort <ray.data.Dataset.sort>` and :meth:`Dataset.groupby <ray.data.Dataset.groupby>`.
 For example, during a sort operation, data is reordered between blocks and therefore requires shuffling across partitions.
 Shuffling can be challenging to scale to large data sizes and clusters, especially when the total dataset size can't fit into memory.
 

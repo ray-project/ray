@@ -17,12 +17,7 @@ import ray.actor
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.serve._private.client import ServeControllerClient
-from ray.serve._private.common import (
-    ApplicationStatus,
-    DeploymentID,
-    DeploymentStatus,
-    ReplicaID,
-)
+from ray.serve._private.common import DeploymentID, DeploymentStatus, ReplicaID
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.test_utils import (
     check_num_replicas_eq,
@@ -30,7 +25,12 @@ from ray.serve._private.test_utils import (
     check_num_replicas_lte,
 )
 from ray.serve.context import _get_global_client
-from ray.serve.schema import ServeDeploySchema, ServeInstanceDetails
+from ray.serve.schema import (
+    ApplicationStatus,
+    ServeApplicationSchema,
+    ServeDeploySchema,
+    ServeInstanceDetails,
+)
 from ray.serve.tests.common.remote_uris import (
     TEST_DAG_PINNED_URI,
     TEST_RUNTIME_ENV_PINNED_URI,
@@ -677,46 +677,52 @@ def test_update_config_graceful_shutdown_timeout(client: ServeControllerClient):
     wait_for_condition(partial(check_deployments_dead, [DeploymentID(name="f")]))
 
 
-@pytest.mark.parametrize("use_max_concurrent_queries", [True, False])
-def test_update_config_max_ongoing_requests(
-    client: ServeControllerClient, use_max_concurrent_queries
-):
+def test_update_config_max_ongoing_requests(client: ServeControllerClient):
     """Check that replicas stay alive when max_ongoing_requests is updated."""
 
-    max_ongoing_requests_field_name = (
-        "max_concurrent_queries"
-        if use_max_concurrent_queries
-        else "max_ongoing_requests"
-    )
-    config_template = {
-        "import_path": "ray.serve.tests.test_config_files.pid.node",
-        "deployments": [{"name": "f"}],
-    }
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 1000
+    signal = SignalActor.options(name="signal123").remote()
 
-    # Deploy first time, max_concurent_queries set to 1000.
+    config_template = {
+        "import_path": "ray.serve.tests.test_config_files.get_signal.app",
+        "deployments": [{"name": "A"}],
+    }
+    config_template["deployments"][0]["max_ongoing_requests"] = 1000
+
+    # Deploy first time, max_ongoing_requests set to 1000.
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
     wait_for_condition(check_running, timeout=15)
-
-    all_replicas = ray.get(client._controller._all_running_replicas.remote())
-    assert len(all_replicas) == 1
-    assert all_replicas[list(all_replicas.keys())[0]][0].max_ongoing_requests == 1000
-
     handle = serve.get_app_handle(SERVE_DEFAULT_APP_NAME)
 
+    # Send 10 requests. All of them should be sent to the replica immediately,
+    # but the requests should be blocked waiting for the signal
     refs = [handle.remote() for _ in range(10)]
-    pids1 = {ref.result()[0] for ref in refs}
-    assert len(pids1) == 1
+    wait_for_condition(
+        lambda: ray.get(signal.cur_num_waiters.remote()) == 10, timeout=2
+    )
 
-    # Redeploy with max concurrent queries set to 2.
-    config_template["deployments"][0][max_ongoing_requests_field_name] = 2
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert len(pids) == 1
+    pid1 = pids.pop()
+
+    # Reset for redeployment
+    signal.send.remote(clear=True)
+    # Redeploy with max concurrent queries set to 5
+    config_template["deployments"][0]["max_ongoing_requests"] = 5
     client.deploy_apps(ServeDeploySchema.parse_obj({"applications": [config_template]}))
-    wait_for_condition(check_running, timeout=15)
+    wait_for_condition(check_running, timeout=2)
 
-    # Verify that the PID of the replica didn't change.
+    # Send 10 requests. Only 5 of them should be sent to the replica
+    # immediately, and the remaining 5 should queue at the handle.
     refs = [handle.remote() for _ in range(10)]
-    pids2 = {ref.result()[0] for ref in refs}
-    assert pids2 == pids1
+    with pytest.raises(RuntimeError):
+        wait_for_condition(
+            lambda: ray.get(signal.cur_num_waiters.remote()) > 5, timeout=2
+        )
+
+    signal.send.remote()
+    pids = {ref.result() for ref in refs}
+    assert pids == {pid1}
 
 
 def test_update_config_health_check_period(client: ServeControllerClient):
@@ -1109,53 +1115,6 @@ def test_get_app_handle(client: ServeControllerClient):
     assert handle_2.route.remote("ADD", 2).result() == "5 pizzas please!"
 
 
-@pytest.mark.parametrize("heavyweight", [True, False])
-def test_deploy_lightweight_multiple_route_prefix(
-    client: ServeControllerClient, heavyweight: bool
-):
-    """If user deploys a config that sets route prefix for a non-ingress deployment,
-    the deploy should fail.
-    """
-
-    config = {
-        "applications": [
-            {
-                "name": "default",
-                "import_path": "ray.serve.tests.test_config_files.world.DagNode",
-            }
-        ]
-    }
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check():
-        assert requests.post("http://localhost:8000/").text == "wonderful world"
-        return True
-
-    wait_for_condition(check)
-
-    # Add route prefix for non-ingress deployment
-    config["applications"][0]["deployments"] = [{"name": "f", "route_prefix": "/"}]
-    if heavyweight:
-        # Trigger re-build of the application
-        config["applications"][0]["runtime_env"] = {"env_vars": {"test": "3"}}
-    client.deploy_apps(ServeDeploySchema(**config))
-
-    def check_failed():
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        return True
-
-    wait_for_condition(check_failed)
-
-    # Check 10 more times to make sure the status doesn't oscillate
-    for _ in range(10):
-        s = serve.status().applications["default"]
-        assert s.status == ApplicationStatus.DEPLOY_FAILED
-        assert "Found multiple route prefixes" in s.message
-        time.sleep(0.1)
-
-
 @pytest.mark.parametrize("rebuild", [True, False])
 def test_redeploy_old_config_after_failed_deployment(
     client: ServeControllerClient, rebuild
@@ -1191,9 +1150,9 @@ def test_redeploy_old_config_after_failed_deployment(
         ] = "ray.serve.tests.test_config_files.import_error.app"
         err_msg = "ZeroDivisionError"
     else:
-        # Trying to add a route prefix for non-ingress deployment will fail
-        new_app_config["deployments"] = [{"name": "f", "route_prefix": "/"}]
-        err_msg = "Found multiple route prefixes"
+        # Set config for a nonexistent deployment
+        new_app_config["deployments"] = [{"name": "nonexistent", "num_replicas": 1}]
+        err_msg = "nonexistent deployment 'nonexistent'"
     client.deploy_apps(ServeDeploySchema(**{"applications": [new_app_config]}))
 
     def check_deploy_failed(message):
@@ -1208,6 +1167,167 @@ def test_redeploy_old_config_after_failed_deployment(
     client.deploy_apps(ServeDeploySchema(**{"applications": [app_config]}))
 
     wait_for_condition(check_application_running)
+
+
+def test_deploy_does_not_affect_dynamic_apps(client: ServeControllerClient):
+    """
+    Deploy a set of apps via the declarative API (REST API) and then a dynamic
+    app via the imperative API (`serve.run`).
+
+    Check that applying a new config via the declarative API does not affect
+    the app deployed using the imperative API.
+    """
+
+    config = ServeDeploySchema(
+        applications=[
+            ServeApplicationSchema(
+                name="declarative-app-1",
+                route_prefix="/app-1",
+                import_path="ray.serve.tests.test_config_files.world.DagNode",
+            ),
+        ],
+    )
+    client.deploy_apps(config)
+
+    def check_application_running(
+        name: str, route_prefix: str, *, msg: str = "wonderful world"
+    ):
+        status = serve.status().applications[name]
+        assert status.status == "RUNNING"
+        assert requests.post(f"http://localhost:8000{route_prefix}/").text == msg
+        return True
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+
+    # Now `serve.run` a dynamic app.
+    @serve.deployment
+    class D:
+        def __call__(self, *args) -> str:
+            return "Hello!"
+
+    serve.run(D.bind(), name="dynamic-app", route_prefix="/dynamic")
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Add a new app via declarative API.
+    # Existing declarative app and dynamic app should not be affected.
+    config.applications.append(
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    )
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running, name="declarative-app-1", route_prefix="/app-1"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    # Delete one of the apps via declarative API.
+    # Other declarative app and dynamic app should not be affected.
+    config.applications.pop(0)
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running, name="declarative-app-2", route_prefix="/app-2"
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+
+    wait_for_condition(lambda: "declarative-app-1" not in serve.status().applications)
+
+    # Now overwrite the declarative app with a dynamic app with the same name.
+    # On subsequent declarative apply, that app should not be affected.
+    serve.run(D.bind(), name="declarative-app-2", route_prefix="/app-2")
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-1",
+            route_prefix="/app-1",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-1",
+        route_prefix="/app-1",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Verify that the controller does not delete the dynamic apps on recovery.
+    ray.kill(client._controller, no_restart=False)
+    wait_for_condition(
+        check_application_running,
+        name="dynamic-app",
+        route_prefix="/dynamic",
+        msg="Hello!",
+    )
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+        msg="Hello!",
+    )
+
+    # Now overwrite the dynamic app with a declarative one and check that it gets
+    # deleted upon another apply that doesn't include it.
+    config.applications = [
+        ServeApplicationSchema(
+            name="declarative-app-2",
+            route_prefix="/app-2",
+            import_path="ray.serve.tests.test_config_files.world.DagNode",
+        ),
+    ]
+    client.deploy_apps(config)
+    wait_for_condition(
+        check_application_running,
+        name="declarative-app-2",
+        route_prefix="/app-2",
+    )
+
+    config.applications = []
+    client.deploy_apps(config)
+
+    wait_for_condition(lambda: "declarative-app-2" not in serve.status().applications)
 
 
 def test_change_route_prefix(client: ServeControllerClient):
@@ -1261,7 +1381,6 @@ def test_num_replicas_auto_api(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Untouched defaults
@@ -1313,7 +1432,6 @@ def test_num_replicas_auto_basic(client: ServeControllerClient):
     assert deployment_config["autoscaling_config"] == {
         # Set by `num_replicas="auto"`
         "target_ongoing_requests": 2.0,
-        "target_num_ongoing_requests_per_replica": 2.0,
         "min_replicas": 1,
         "max_replicas": 100,
         # Overrided by `autoscaling_config`

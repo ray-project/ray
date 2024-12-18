@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 # Original Code: https://github.com/pytorch/examples/blob/master/mnist/main.py
 
 # fmt: off

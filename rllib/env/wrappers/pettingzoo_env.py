@@ -4,7 +4,6 @@ import gymnasium as gym
 
 from ray.rllib.env.multi_agent_env import MultiAgentEnv
 from ray.rllib.utils.annotations import PublicAPI
-from ray.rllib.utils.typing import MultiAgentDict
 
 
 @PublicAPI
@@ -125,20 +124,12 @@ class PettingZooEnv(MultiAgentEnv):
 
         self._agent_ids = set(self.env.agents)
 
-        self.observation_space = gym.spaces.Dict(self.env.observation_spaces)
-        self.action_space = gym.spaces.Dict(self.env.action_spaces)
-
-    def observation_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.observation_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
-
-    def action_space_sample(self, agent_ids: list = None) -> MultiAgentDict:
-        sample = self.action_space.sample()
-        if agent_ids is None:
-            return sample
-        return {aid: sample[aid] for aid in agent_ids}
+        self.observation_space = gym.spaces.Dict(
+            {aid: self.env.observation_space(aid) for aid in self._agent_ids}
+        )
+        self.action_space = gym.spaces.Dict(
+            {aid: self.env.action_space(aid) for aid in self._agent_ids}
+        )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         info = self.env.reset(seed=seed, options=options)
@@ -195,8 +186,12 @@ class ParallelPettingZooEnv(MultiAgentEnv):
         self.par_env.reset()
         self._agent_ids = set(self.par_env.agents)
 
-        self.observation_space = gym.spaces.Dict(self.par_env.observation_spaces)
-        self.action_space = gym.spaces.Dict(self.par_env.action_spaces)
+        self.observation_space = gym.spaces.Dict(
+            {aid: self.par_env.observation_space(aid) for aid in self._agent_ids}
+        )
+        self.action_space = gym.spaces.Dict(
+            {aid: self.par_env.action_space(aid) for aid in self._agent_ids}
+        )
 
     def reset(self, *, seed: Optional[int] = None, options: Optional[dict] = None):
         obs, info = self.par_env.reset(seed=seed, options=options)

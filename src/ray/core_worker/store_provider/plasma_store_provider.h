@@ -90,7 +90,7 @@ class CoreWorkerPlasmaStoreProvider {
   CoreWorkerPlasmaStoreProvider(
       const std::string &store_socket,
       const std::shared_ptr<raylet::RayletClient> raylet_client,
-      const std::shared_ptr<ReferenceCounter> reference_counter,
+      ReferenceCounter &reference_counter,
       std::function<Status()> check_signals,
       bool warmup,
       std::function<std::string()> get_current_call_site = nullptr);
@@ -194,6 +194,8 @@ class CoreWorkerPlasmaStoreProvider {
 
   std::string MemoryUsageString();
 
+  std::shared_ptr<plasma::PlasmaClient> &store_client() { return store_client_; }
+
  private:
   /// Ask the raylet to fetch a set of objects and then attempt to get them
   /// from the local plasma store. Successfully fetched objects will be removed
@@ -232,9 +234,9 @@ class CoreWorkerPlasmaStoreProvider {
   Status WarmupStore();
 
   const std::shared_ptr<raylet::RayletClient> raylet_client_;
-  plasma::PlasmaClient store_client_;
+  std::shared_ptr<plasma::PlasmaClient> store_client_;
   /// Used to look up a plasma object's owner.
-  const std::shared_ptr<ReferenceCounter> reference_counter_;
+  ReferenceCounter &reference_counter_;
   std::function<Status()> check_signals_;
   std::function<std::string()> get_current_call_site_;
   uint32_t object_store_full_delay_ms_;

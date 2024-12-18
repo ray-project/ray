@@ -1,9 +1,12 @@
 import collections
+import logging
 import os
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import (
     TYPE_CHECKING,
+    Any,
     Callable,
     Dict,
     Iterator,
@@ -20,8 +23,10 @@ import numpy as np
 
 import ray
 from ray import DynamicObjectRefGenerator
+from ray.air.util.tensor_extensions.arrow import ArrowConversionError
 from ray.data._internal.util import _check_pyarrow_version, _truncated_repr
 from ray.types import ObjectRef
+from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
 
 import psutil
@@ -53,9 +58,25 @@ AggType = TypeVar("AggType")
 # ``ArrowBlockAccessor``.
 Block = Union["pyarrow.Table", "pandas.DataFrame"]
 
+
+logger = logging.getLogger(__name__)
+
+
+@DeveloperAPI
+class BlockType(Enum):
+    ARROW = "arrow"
+    PANDAS = "pandas"
+
+
 # User-facing data batch type. This is the data type for data that is supplied to and
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
+
+# User-facing data column type. This is the data type for data that is supplied to and
+# returned from column UDFs.
+DataBatchColumn = Union[
+    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
+]
 
 
 # A class type that implements __call__.
@@ -103,17 +124,9 @@ def _apply_batch_format(given_batch_format: Optional[str]) -> str:
 
 
 def _apply_batch_size(
-    given_batch_size: Optional[Union[int, Literal["default"]]], use_gpu: bool
+    given_batch_size: Optional[Union[int, Literal["default"]]]
 ) -> Optional[int]:
-    if use_gpu and (not given_batch_size or given_batch_size == "default"):
-        raise ValueError(
-            "`batch_size` must be provided to `map_batches` when requesting GPUs. "
-            "The optimal batch size depends on the model, data, and GPU used. "
-            "It is recommended to use the largest batch size that doesn't result "
-            "in your GPU device running out of memory. You can view the GPU memory "
-            "usage via the Ray dashboard."
-        )
-    elif given_batch_size == "default":
+    if given_batch_size == "default":
         return ray.data.context.DEFAULT_BATCH_SIZE
     else:
         return given_batch_size
@@ -329,7 +342,9 @@ class BlockAccessor:
         raise NotImplementedError
 
     def get_metadata(
-        self, input_files: List[str], exec_stats: Optional[BlockExecStats]
+        self,
+        input_files: Optional[List[str]] = None,
+        exec_stats: Optional[BlockExecStats] = None,
     ) -> BlockMetadata:
         """Create a metadata object from this block."""
         return BlockMetadata(
@@ -349,8 +364,12 @@ class BlockAccessor:
         """Create a builder for this block type."""
         raise NotImplementedError
 
-    @staticmethod
-    def batch_to_block(batch: DataBatch) -> Block:
+    @classmethod
+    def batch_to_block(
+        cls,
+        batch: DataBatch,
+        block_type: Optional[BlockType] = None,
+    ) -> Block:
         """Create a block from user-facing data formats."""
 
         if isinstance(batch, np.ndarray):
@@ -362,19 +381,38 @@ class BlockAccessor:
             )
 
         elif isinstance(batch, collections.abc.Mapping):
-            import pyarrow as pa
+            if block_type is None or block_type == BlockType.ARROW:
+                try:
+                    return cls.batch_to_arrow_block(batch)
+                except ArrowConversionError as e:
+                    if log_once("_fallback_to_pandas_block_warning"):
+                        logger.warning(
+                            f"Failed to convert batch to Arrow due to: {e}; "
+                            f"falling back to Pandas block"
+                        )
 
-            from ray.data._internal.arrow_block import ArrowBlockAccessor
-
-            try:
-                return ArrowBlockAccessor.numpy_to_block(batch)
-            except (pa.ArrowNotImplementedError, pa.ArrowInvalid, pa.ArrowTypeError):
-                import pandas as pd
-
-                # TODO(ekl) once we support Python objects within Arrow blocks, we
-                # don't need this fallback path.
-                return pd.DataFrame(dict(batch))
+                    if block_type is None:
+                        return cls.batch_to_pandas_block(batch)
+                    else:
+                        raise e
+            else:
+                assert block_type == BlockType.PANDAS
+                return cls.batch_to_pandas_block(batch)
         return batch
+
+    @classmethod
+    def batch_to_arrow_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create an Arrow block from user-facing data formats."""
+        from ray.data._internal.arrow_block import ArrowBlockBuilder
+
+        return ArrowBlockBuilder._table_from_pydict(batch)
+
+    @classmethod
+    def batch_to_pandas_block(cls, batch: Dict[str, Any]) -> Block:
+        """Create a Pandas block from user-facing data formats."""
+        from ray.data._internal.pandas_block import PandasBlockAccessor
+
+        return PandasBlockAccessor.numpy_to_block(batch)
 
     @staticmethod
     def for_block(block: Block) -> "BlockAccessor[T]":
@@ -416,7 +454,7 @@ class BlockAccessor:
         """Return a list of sorted partitions of this block."""
         raise NotImplementedError
 
-    def combine(self, key: Optional[str], agg: "AggregateFn") -> Block:
+    def combine(self, key: "SortKey", aggs: Tuple["AggregateFn"]) -> Block:
         """Combine rows with the same key into an accumulator."""
         raise NotImplementedError
 
@@ -429,7 +467,11 @@ class BlockAccessor:
 
     @staticmethod
     def aggregate_combined_blocks(
-        blocks: List[Block], key: Optional[str], agg: "AggregateFn"
+        blocks: List[Block], sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> Tuple[Block, BlockMetadata]:
         """Aggregate partially combined and sorted blocks."""
+        raise NotImplementedError
+
+    def block_type(self) -> BlockType:
+        """Return the block type of this block."""
         raise NotImplementedError

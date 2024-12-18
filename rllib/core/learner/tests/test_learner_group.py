@@ -1,124 +1,125 @@
 import gymnasium as gym
-import itertools
 import numpy as np
-from typing import Any, Dict, List
 import tempfile
 import unittest
+import pytest
 
 import ray
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
-from ray.rllib.algorithms.ppo.tests.test_ppo_learner import FAKE_BATCH
+from ray.rllib.algorithms.bc import BCConfig
+from ray.rllib.core import (
+    Columns,
+    COMPONENT_LEARNER,
+    COMPONENT_MULTI_RL_MODULE_SPEC,
+    COMPONENT_RL_MODULE,
+    DEFAULT_MODULE_ID,
+)
 from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.testing.tf.bc_learner import BCTfLearner
-from ray.rllib.core.testing.tf.bc_module import DiscreteBCTFModule
-from ray.rllib.core.testing.utils import (
-    add_module_to_learner_or_learner_group,
-)
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule, MultiRLModuleSpec
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.testing.torch.bc_learner import BCTorchLearner
+from ray.rllib.core.testing.torch.bc_module import DiscreteBCTorchModule
 from ray.rllib.core.testing.testing_learner import BaseTestingAlgorithmConfig
-from ray.rllib.examples.env.multi_agent import MultiAgentCartPole
-from ray.rllib.policy.sample_batch import (
-    DEFAULT_POLICY_ID,
-    SampleBatch,
-    MultiAgentBatch,
-)
-from ray.rllib.utils.test_utils import check, get_cartpole_dataset_reader
+from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
+from ray.rllib.env.single_agent_episode import SingleAgentEpisode
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
 from ray.rllib.utils.metrics import ALL_MODULES
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
+from ray.rllib.utils.test_utils import check
 from ray.util.timer import _Timer
 
 
 REMOTE_CONFIGS = {
-    "remote-cpu": AlgorithmConfig.overrides(num_learner_workers=1),
-    "remote-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=1, num_gpus_per_learner_worker=1
-    ),
-    "multi-gpu-ddp": AlgorithmConfig.overrides(
-        num_learner_workers=2, num_gpus_per_learner_worker=1
-    ),
-    "multi-cpu-ddp": AlgorithmConfig.overrides(
-        num_learner_workers=2, num_cpus_per_learner_worker=2
-    ),
+    "remote-cpu": AlgorithmConfig.overrides(num_learners=1),
+    "remote-gpu": AlgorithmConfig.overrides(num_learners=1, num_gpus_per_learner=1),
+    "multi-gpu-ddp": AlgorithmConfig.overrides(num_learners=2, num_gpus_per_learner=1),
+    "multi-cpu-ddp": AlgorithmConfig.overrides(num_learners=2, num_cpus_per_learner=2),
     # "multi-gpu-ddp-pipeline": AlgorithmConfig.overrides(
-    #     num_learner_workers=2, num_gpus_per_learner_worker=2
+    #     num_learners=2, num_gpus_per_learner=2
     # ),
 }
 
 
 LOCAL_CONFIGS = {
-    "local-cpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=0
-    ),
-    "local-gpu": AlgorithmConfig.overrides(
-        num_learner_workers=0, num_gpus_per_learner_worker=1
-    ),
+    "local-cpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=0),
+    "local-gpu": AlgorithmConfig.overrides(num_learners=0, num_gpus_per_learner=1),
 }
 
 
-# TODO(avnishn) Make this a ray task later. Currently thats not possible because the
-#  task is not dying after the test is done. This is a bug with ray core.
-@ray.remote(num_gpus=1)
-class RemoteTrainingHelper:
-    def local_training_helper(self, fw, scaling_mode) -> None:
-        if fw == "torch":
-            import torch
+FAKE_EPISODES = [
+    SingleAgentEpisode(
+        observation_space=gym.spaces.Box(-1.0, 1.0, (4,), np.float32),
+        observations=[
+            np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+            np.array([0.9, 1.0, 1.1, 1.2], dtype=np.float32),
+            np.array([0.1, 0.2, 0.3, 0.4], dtype=np.float32),
+            np.array([-0.1, -0.2, -0.3, -0.4], dtype=np.float32),
+        ],
+        action_space=gym.spaces.Discrete(2),
+        actions=[0, 1, 1, 0],
+        rewards=[1.0, -1.0, 0.5, 0.3],
+        terminated=True,
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
 
-            torch.manual_seed(0)
-        elif fw == "tf2":
-            import tensorflow as tf
+FAKE_MA_EPISODES = [
+    MultiAgentEpisode(
+        agent_module_ids={
+            0: "p0",
+            1: "p1",
+        },
+        observation_space=gym.spaces.Dict(
+            {
+                0: FAKE_EPISODES[0].observation_space,
+                1: FAKE_EPISODES[0].observation_space,
+            }
+        ),
+        observations=[
+            {
+                0: FAKE_EPISODES[0].get_observations(i),
+                1: FAKE_EPISODES[0].get_observations(i),
+            }
+            for i in range(5)
+        ],
+        action_space=gym.spaces.Dict(
+            {
+                0: FAKE_EPISODES[0].action_space,
+                1: FAKE_EPISODES[0].action_space,
+            }
+        ),
+        actions=[
+            {
+                0: FAKE_EPISODES[0].get_actions(i),
+                1: FAKE_EPISODES[0].get_actions(i),
+            }
+            for i in range(4)
+        ],
+        rewards=[
+            {
+                0: FAKE_EPISODES[0].get_rewards(i),
+                1: FAKE_EPISODES[0].get_rewards(i),
+            }
+            for i in range(4)
+        ],
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
+FAKE_MA_EPISODES[0].finalize()
 
-            # this is done by rllib already inside of the policy class, but we need to
-            # do it here for testing purposes
-            tf.compat.v1.enable_eager_execution()
-            tf.random.set_seed(0)
-
-        env = gym.make("CartPole-v1")
-        config_overrides = LOCAL_CONFIGS[scaling_mode]
-        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-        learner_group = config.build_learner_group(env=env)
-        local_learner = config.build_learner(env=env)
-
-        # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()["learner_state"])
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
-        reader = get_cartpole_dataset_reader(batch_size=500)
-        batch = reader.next()
-        batch = batch.as_multi_agent()
-        learner_update = local_learner.update_from_batch(batch=batch)
-        learner_group_update = learner_group.update_from_batch(batch=batch)
-        check(learner_update, learner_group_update)
-
-        new_module_id = "test_module"
-
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, learner_group
-        )
-        add_module_to_learner_or_learner_group(
-            config, env, new_module_id, local_learner
-        )
-
-        # make the state of the learner and the local learner_group identical
-        local_learner.set_state(learner_group.get_state()["learner_state"])
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
-
-        # do another update
-        batch = reader.next()
-        ma_batch = MultiAgentBatch(
-            {new_module_id: batch, DEFAULT_POLICY_ID: batch}, env_steps=batch.count
-        )
-        # the optimizer state is not initialized fully until the first time that
-        # training is completed. A call to get state before that won't contain the
-        # optimizer state. So we do a dummy update here to initialize the optimizer
-        local_learner.update_from_batch(batch=ma_batch)
-        learner_group.update_from_batch(batch=ma_batch)
-
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
-        local_learner_results = local_learner.update_from_batch(batch=ma_batch)
-        learner_group_results = learner_group.update_from_batch(batch=ma_batch)
-
-        check(local_learner_results, learner_group_results)
-
-        check(local_learner.get_state(), learner_group.get_state()["learner_state"])
+FAKE_MA_EPISODES_WO_P1 = [
+    MultiAgentEpisode(
+        agent_module_ids={0: "p0"},
+        observation_space=gym.spaces.Dict({0: FAKE_EPISODES[0].observation_space}),
+        observations=[{0: FAKE_EPISODES[0].get_observations(i)} for i in range(5)],
+        action_space=gym.spaces.Dict({0: FAKE_EPISODES[0].action_space}),
+        actions=[{0: FAKE_EPISODES[0].get_actions(i)} for i in range(4)],
+        rewards=[{0: FAKE_EPISODES[0].get_rewards(i)} for i in range(4)],
+        len_lookback_buffer=0,  # all data part of actual episode
+    ),
+]
+FAKE_MA_EPISODES_WO_P1[0].finalize()
 
 
 class TestLearnerGroupSyncUpdate(unittest.TestCase):
@@ -144,11 +145,11 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         # Config for which user defines custom learner class and RLModule spec.
         config = (
             BaseTestingAlgorithmConfig()
-            .training(learner_class=BCTfLearner)
+            .training(learner_class=BCTorchLearner)
             .rl_module(
-                rl_module_spec=SingleAgentRLModuleSpec(
-                    module_class=DiscreteBCTFModule,
-                    model_config_dict={"fcnet_hiddens": [32]},
+                rl_module_spec=RLModuleSpec(
+                    module_class=DiscreteBCTorchModule,
+                    model_config={"fcnet_hiddens": [32]},
                 )
             )
         )
@@ -156,42 +157,22 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
         print(learner_group)
         learner_group.shutdown()
 
-    def test_learner_group_local(self):
-        fws = ["torch", "tf2"]
-
-        test_iterator = itertools.product(fws, LOCAL_CONFIGS)
-
-        # run the logic of this test inside of a ray actor because we want tensorflow
-        # resources to be gracefully released. Tensorflow blocks the gpu resources
-        # otherwise between test cases, causing a gpu oom error.
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling_mode: {scaling_mode}")
-            training_helper = RemoteTrainingHelper.remote()
-            ray.get(training_helper.local_training_helper.remote(fw, scaling_mode))
-            del training_helper
-
-    def test_update_multigpu(self):
+    def test_update_multi_gpu(self):
         return
 
-        fws = ["torch", "tf2"]
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=1024)
 
             min_loss = float("inf")
             for iter_i in range(1000):
-                batch = reader.next()
-                results = learner_group.update_from_batch(
-                    batch=batch.as_multi_agent(), reduce_fn=None
-                )
+                results = learner_group.update_from_episodes(FAKE_EPISODES)
 
                 loss = np.mean(
                     [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
@@ -205,8 +186,8 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
 
                 for res1, res2 in zip(results, results[1:]):
                     self.assertEqual(
-                        res1[DEFAULT_POLICY_ID]["mean_weight"],
-                        res2[DEFAULT_POLICY_ID]["mean_weight"],
+                        res1[DEFAULT_MODULE_ID]["mean_weight"],
+                        res2[DEFAULT_MODULE_ID]["mean_weight"],
                     )
 
             self.assertLess(min_loss, 0.57)
@@ -216,82 +197,65 @@ class TestLearnerGroupSyncUpdate(unittest.TestCase):
             learner_group.shutdown()
             del learner_group
 
-    def test_add_remove_module(self):
-        fws = ["torch", "tf2"]
-        scaling_modes = ["multi-gpu-ddp"]
-        test_iterator = itertools.product(fws, scaling_modes)
+    def test_add_module_and_remove_module(self):
+        scaling_modes = ["local-cpu", "multi-cpu-ddp"]
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
-            env = gym.make("CartPole-v1")
-            config_overrides = REMOTE_CONFIGS[scaling_mode]
-            config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-            learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            batch = reader.next()
-
-            # update once with the default policy
-            results = learner_group.update_from_batch(
-                batch=batch.as_multi_agent(), reduce_fn=None
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
+            ma_env = MultiAgentCartPole({"num_agents": 2})
+            config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
+                scaling_mode
             )
-            module_ids_before_add = {DEFAULT_POLICY_ID}
-            new_module_id = "test_module"
-
-            # add a test_module
-            add_module_to_learner_or_learner_group(
-                config, env, new_module_id, learner_group
+            config = (
+                BCConfig()
+                .update_from_dict(config_overrides)
+                .multi_agent(
+                    policies={"p0"},
+                    policy_mapping_fn=lambda aid, *ar, **kw: f"p{aid}",
+                )
+                .rl_module(
+                    rl_module_spec=MultiRLModuleSpec(
+                        rl_module_specs={"p0": RLModuleSpec()},
+                    )
+                )
             )
+            learner_group = config.build_learner_group(env=ma_env)
 
-            # do training that includes the test_module
-            results = learner_group.update_from_batch(
-                batch=MultiAgentBatch(
-                    {new_module_id: batch, DEFAULT_POLICY_ID: batch}, batch.count
-                ),
-                reduce_fn=None,
+            # Update once with the default policy.
+            learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
+
+            # Add a test_module.
+            learner_group.add_module(
+                module_id="p1",
+                module_spec=config.get_multi_rl_module_spec(env=ma_env).module_specs[
+                    "p0"
+                ],
             )
-
-            self._check_multi_worker_weights(results)
+            # Do training that includes the test_module.
+            results = learner_group.update_from_episodes(episodes=FAKE_MA_EPISODES)
 
             # check that module ids are updated to include the new module
-            module_ids_after_add = {DEFAULT_POLICY_ID, new_module_id}
-            for result in results:
-                # remove the total_loss key since its not a module key
-                self.assertEqual(
-                    set(result.keys()) - {ALL_MODULES}, module_ids_after_add
-                )
-
-            # remove the test_module
-            learner_group.remove_module(module_id=new_module_id)
-
-            # run training without the test_module
-            results = learner_group.update_from_batch(
-                batch=batch.as_multi_agent(), reduce_fn=None
+            module_ids_after_add = {"p0", "p1"}
+            # Compare module IDs in results with expected ones.
+            self.assertEqual(
+                set(results[0].keys()) - {ALL_MODULES}, module_ids_after_add
             )
 
-            self._check_multi_worker_weights(results)
+            # Remove the test_module.
+            learner_group.remove_module(module_id="p1")
+
+            # Run training without the test_module.
+            results = learner_group.update_from_episodes(FAKE_MA_EPISODES_WO_P1)
 
             # check that module ids are updated after remove operation to not
             # include the new module
-            for result in results:
-                # remove the total_loss key since its not a module key
-                self.assertEqual(
-                    set(result.keys()) - {ALL_MODULES}, module_ids_before_add
-                )
+            # remove the total_loss key since its not a module key
+            self.assertEqual(set(results[0].keys()) - {ALL_MODULES}, {"p0"})
 
             # make sure the learner_group resources are freed up so that we don't
             # autoscale
             learner_group.shutdown()
             del learner_group
-
-    def _check_multi_worker_weights(self, results: List[Dict[str, Any]]):
-        # check that module weights are updated across workers and synchronized
-        for i in range(1, len(results)):
-            for module_id in results[i].keys():
-                if module_id == ALL_MODULES:
-                    continue
-                current_weights = results[i][module_id]["mean_weight"]
-                prev_weights = results[i - 1][module_id]["mean_weight"]
-                self.assertEqual(current_weights, prev_weights)
 
 
 class TestLearnerGroupCheckpointRestore(unittest.TestCase):
@@ -303,15 +267,13 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_load_module_state(self):
-        """Test that module state can be loaded from a checkpoint."""
-        fws = ["torch", "tf2"]
+    def test_restore_from_path_multi_rl_module_and_individual_modules(self):
+        """Tests whether MultiRLModule- and single RLModule states can be restored."""
         # this is expanded to more scaling modes on the release ci.
         scaling_modes = ["local-cpu", "multi-gpu-ddp"]
 
-        test_iterator = itertools.product(fws, scaling_modes)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             # env will have agent ids 0 and 1
             env = MultiAgentCartPole({"num_agents": 2})
 
@@ -320,123 +282,121 @@ class TestLearnerGroupCheckpointRestore(unittest.TestCase):
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            spec = config.get_marl_module_spec(env=env).module_specs[DEFAULT_POLICY_ID]
+            spec = config.get_multi_rl_module_spec(env=env).module_specs[
+                DEFAULT_MODULE_ID
+            ]
             learner_group.add_module(module_id="0", module_spec=spec)
             learner_group.add_module(module_id="1", module_spec=spec)
-            learner_group.remove_module(DEFAULT_POLICY_ID)
+            learner_group.remove_module(DEFAULT_MODULE_ID)
 
             module_0 = spec.build()
             module_1 = spec.build()
-            marl_module = MultiAgentRLModule()
-            marl_module.add_module(module_id="0", module=module_0)
-            marl_module.add_module(module_id="1", module=module_1)
+            multi_rl_module = MultiRLModule()
+            multi_rl_module.add_module(module_id="0", module=module_0)
+            multi_rl_module.add_module(module_id="1", module=module_1)
 
-            # Check if we can load just the MARL Module
+            # Check if we can load just the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
-                marl_module.save_to_checkpoint(tmpdir)
+                multi_rl_module.save_to_path(tmpdir)
                 old_learner_weights = learner_group.get_weights()
-                learner_group.load_module_state(marl_module_ckpt_dir=tmpdir)
-                # check the weights of the module in the learner group are the
-                # same as the weights of the newly created marl module
-                check(learner_group.get_weights(), marl_module.get_state())
-                learner_group.set_weights(old_learner_weights)
+                learner_group.restore_from_path(
+                    tmpdir,
+                    component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
+                )
+                # Check the weights of the module in the learner group are the
+                # same as the weights of the newly created MultiRLModule
+                check(learner_group.get_weights(), multi_rl_module.get_state())
+                learner_group.set_state(
+                    {
+                        COMPONENT_LEARNER: {COMPONENT_RL_MODULE: old_learner_weights},
+                    }
+                )
+                check(learner_group.get_weights(), old_learner_weights)
 
-            # Check if we can load just single agent RL Modules
+            # Check if we can load just single agent RL Modules.
             with tempfile.TemporaryDirectory() as tmpdir:
-                module_0.save_to_checkpoint(tmpdir)
+                module_0.save_to_path(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     temp_module = spec.build()
-                    temp_module.save_to_checkpoint(tmpdir2)
+                    temp_module.save_to_path(tmpdir2)
 
                     old_learner_weights = learner_group.get_weights()
-                    learner_group.load_module_state(
-                        rl_module_ckpt_dirs={"0": tmpdir, "1": tmpdir2}
+                    learner_group.restore_from_path(
+                        tmpdir,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/0",
+                    )
+                    learner_group.restore_from_path(
+                        tmpdir2,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
                     )
                     # check the weights of the module in the learner group are the
-                    # same as the weights of the newly created marl module
-                    new_marl_module = MultiAgentRLModule()
-                    new_marl_module.add_module(module_id="0", module=module_0)
-                    new_marl_module.add_module(module_id="1", module=temp_module)
-                    check(learner_group.get_weights(), new_marl_module.get_state())
+                    # same as the weights of the newly created MultiRLModule
+                    new_multi_rl_module = MultiRLModule()
+                    new_multi_rl_module.add_module(module_id="0", module=module_0)
+                    new_multi_rl_module.add_module(module_id="1", module=temp_module)
+                    check(learner_group.get_weights(), new_multi_rl_module.get_state())
                     learner_group.set_weights(old_learner_weights)
 
-            # Check if we can load a MARL Module and single agent RL Module
-            # at the same time. Check that the single agent RL Module is loaded
-            # over the sub module in the MARL Module
+            # Check if we can first load a MultiRLModule, then a single agent RLModule
+            # (within that MultiRLModule). Check that the single agent RL Module is
+            # loaded over the matching submodule in the MultiRLModule.
             with tempfile.TemporaryDirectory() as tmpdir:
                 module_0 = spec.build()
-                marl_module = MultiAgentRLModule()
-                marl_module.add_module(module_id="0", module=module_0)
-                marl_module.add_module(module_id="1", module=spec.build())
-                marl_module.save_to_checkpoint(tmpdir)
+                multi_rl_module = MultiRLModule()
+                multi_rl_module.add_module(module_id="0", module=module_0)
+                multi_rl_module.add_module(module_id="1", module=spec.build())
+                multi_rl_module.save_to_path(tmpdir)
                 with tempfile.TemporaryDirectory() as tmpdir2:
                     module_1 = spec.build()
-                    module_1.save_to_checkpoint(tmpdir2)
-                    learner_group.load_module_state(
-                        marl_module_ckpt_dir=tmpdir, rl_module_ckpt_dirs={"1": tmpdir2}
+                    module_1.save_to_path(tmpdir2)
+                    learner_group.restore_from_path(
+                        tmpdir,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE,
                     )
-                    new_marl_module = MultiAgentRLModule()
-                    new_marl_module.add_module(module_id="0", module=module_0)
-                    new_marl_module.add_module(module_id="1", module=module_1)
-                    check(learner_group.get_weights(), new_marl_module.get_state())
-            del learner_group
-
-    def test_load_module_state_errors(self):
-        """Check error cases for load_module_state.
-
-        check that loading marl modules and specifing a module id to
-        be loaded using modules_to_load and rl_module_ckpt_dirs raises
-        an error
-        """
-        # env will have agent ids 0 and 1
-        env = MultiAgentCartPole({"num_agents": 2})
-
-        config_overrides = LOCAL_CONFIGS["local-cpu"]
-        config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-        learner_group = config.build_learner_group(env=env)
-        rl_module_spec = config.get_default_rl_module_spec()
-        rl_module_spec.observation_space = env.observation_space[0]
-        rl_module_spec.action_space = env.action_space[0]
-
-        learner_group.add_module(module_id="0", module_spec=rl_module_spec)
-        learner_group.add_module(module_id="1", module_spec=rl_module_spec)
-        learner_group.remove_module(DEFAULT_POLICY_ID)
-
-        module_0 = rl_module_spec.build()
-        module_1 = rl_module_spec.build()
-        marl_module = MultiAgentRLModule()
-        marl_module.add_module(module_id="0", module=module_0)
-        marl_module.add_module(module_id="1", module=module_1)
-
-        with tempfile.TemporaryDirectory() as tmpdir:
-            module_0.save_to_checkpoint(tmpdir)
-            with tempfile.TemporaryDirectory() as tmpdir:
-                module_0 = rl_module_spec.build()
-                marl_module = MultiAgentRLModule()
-                marl_module.add_module(module_id="0", module=module_0)
-                marl_module.add_module(module_id="1", module=rl_module_spec.build())
-                marl_module.save_to_checkpoint(tmpdir)
-                with tempfile.TemporaryDirectory() as tmpdir2:
-                    module_1 = rl_module_spec.build()
-                    module_1.save_to_checkpoint(tmpdir2)
-                    with self.assertRaisesRegex(
-                        (ValueError,),
-                        ".*`modules_to_load` AND `rl_module_ckpt_dirs`!.*",
-                    ):
-                        # check that loading marl modules and specifing a module id to
-                        # be loaded using modules_to_load and rl_module_ckpt_dirs raises
-                        # an error
-                        learner_group.load_module_state(
-                            marl_module_ckpt_dir=tmpdir,
-                            rl_module_ckpt_dirs={"1": tmpdir2},
-                            modules_to_load={
-                                "1",
-                            },
-                        )
+                    learner_group.restore_from_path(
+                        tmpdir2,
+                        component=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/1",
+                    )
+                    new_multi_rl_module = MultiRLModule()
+                    new_multi_rl_module.add_module(module_id="0", module=module_0)
+                    new_multi_rl_module.add_module(module_id="1", module=module_1)
+                    check(learner_group.get_weights(), new_multi_rl_module.get_state())
             del learner_group
 
 
 class TestLearnerGroupSaveLoadState(unittest.TestCase):
+
+    FAKE_BATCH = {
+        Columns.OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.NEXT_OBS: np.array(
+            [
+                [0.1, 0.2, 0.3, 0.4],
+                [0.5, 0.6, 0.7, 0.8],
+                [0.9, 1.0, 1.1, 1.2],
+                [1.3, 1.4, 1.5, 1.6],
+            ],
+            dtype=np.float32,
+        ),
+        Columns.ACTIONS: np.array([0, 1, 1, 0]),
+        Columns.REWARDS: np.array([1.0, -1.0, 0.5, 0.6], dtype=np.float32),
+        Columns.TERMINATEDS: np.array([False, False, True, False]),
+        Columns.TRUNCATEDS: np.array([False, False, False, False]),
+        Columns.VF_PREDS: np.array([0.5, 0.6, 0.7, 0.8], dtype=np.float32),
+        Columns.ACTION_DIST_INPUTS: np.array(
+            [[-2.0, 0.5], [-3.0, -0.3], [-0.1, 2.5], [-0.2, 3.5]], dtype=np.float32
+        ),
+        Columns.ACTION_LOGP: np.array([-0.5, -0.1, -0.2, -0.3], dtype=np.float32),
+        Columns.EPS_ID: np.array([0, 0, 0, 0]),
+    }
+
     @classmethod
     def setUpClass(cls) -> None:
         ray.init()
@@ -445,68 +405,92 @@ class TestLearnerGroupSaveLoadState(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_save_load_state(self):
+    def test_save_to_path_and_restore_from_path(self):
         """Check that saving and loading learner group state works."""
-        fws = ["torch", "tf2"]
         # this is expanded to more scaling modes on the release ci.
-        scaling_modes = ["multi-gpu-ddp", "local-cpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
-        batch = SampleBatch(FAKE_BATCH)
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        scaling_modes = ["local-cpu", "multi-gpu-ddp"]
+
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
 
             config_overrides = REMOTE_CONFIGS.get(scaling_mode) or LOCAL_CONFIGS.get(
                 scaling_mode
             )
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
-            initial_learner_group = config.build_learner_group(env=env)
-
-            # checkpoint the initial learner state for later comparison
-            initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(initial_learner_checkpoint_dir)
-            initial_learner_group_weights = initial_learner_group.get_weights()
-
-            # do a single update
-            initial_learner_group.update_from_batch(
-                batch=batch.as_multi_agent(), reduce_fn=None
-            )
-
-            # checkpoint the learner state after 1 update for later comparison
-            learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
-            initial_learner_group.save_state(learner_after_1_update_checkpoint_dir)
-
-            # remove that learner, construct a new one, and load the state of the old
-            # learner into the new one
-            initial_learner_group.shutdown()
-            del initial_learner_group
-            new_learner_group = config.build_learner_group(env=env)
-            new_learner_group.load_state(learner_after_1_update_checkpoint_dir)
-
-            # do another update
-            results_with_break = new_learner_group.update_from_batch(
-                batch=batch.as_multi_agent(), reduce_fn=None
-            )
-            weights_after_1_update_with_break = new_learner_group.get_weights()
-            new_learner_group.shutdown()
-            del new_learner_group
-
-            # construct a new learner group and load the initial state of the learner
             learner_group = config.build_learner_group(env=env)
-            learner_group.load_state(initial_learner_checkpoint_dir)
-            check(learner_group.get_weights(), initial_learner_group_weights)
-            learner_group.update_from_batch(batch.as_multi_agent(), reduce_fn=None)
-            results_without_break = learner_group.update_from_batch(
-                batch=batch.as_multi_agent(), reduce_fn=None
-            )
-            weights_after_1_update_without_break = learner_group.get_weights()
+
+            # Checkpoint the initial learner state for later comparison.
+            initial_learner_checkpoint_dir = tempfile.TemporaryDirectory().name
+            learner_group.save_to_path(initial_learner_checkpoint_dir)
+            # Test the convenience method `.get_weights()`.
+            initial_weights = learner_group.get_weights()
+
+            # Do a single update.
+            learner_group.update_from_episodes(FAKE_EPISODES)
+            weights_after_update = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_update.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            # Weights after the update must be different from original ones.
+            check(initial_weights, weights_after_update, false=True)
+
+            # Checkpoint the learner state after 1 update for later comparison.
+            learner_after_1_update_checkpoint_dir = tempfile.TemporaryDirectory().name
+            learner_group.save_to_path(learner_after_1_update_checkpoint_dir)
+
+            # Remove that learner, construct a new one, and load the state of the old
+            # learner into the new one.
             learner_group.shutdown()
             del learner_group
 
-            # compare the results of the two updates
-            check(results_with_break, results_without_break)
+            learner_group = config.build_learner_group(env=env)
+            learner_group.restore_from_path(learner_after_1_update_checkpoint_dir)
+
+            # Do another update.
+            results_2nd_update_with_break = learner_group.update_from_episodes(
+                FAKE_EPISODES
+            )
+            weights_after_2_updates_with_break = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_2_updates_with_break.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            learner_group.shutdown()
+            del learner_group
+
+            # Construct a new learner group and load the initial state of the learner.
+            learner_group = config.build_learner_group(env=env)
+            learner_group.restore_from_path(initial_learner_checkpoint_dir)
+            weights_after_restore = learner_group.get_state(
+                components=COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE
+            )[COMPONENT_LEARNER][COMPONENT_RL_MODULE]
+            weights_after_restore.pop(COMPONENT_MULTI_RL_MODULE_SPEC)
+            check(initial_weights, weights_after_restore)
+            # Perform 2 updates to get to the same state as the previous learners.
+            learner_group.update_from_episodes(FAKE_EPISODES)
+            results_2nd_update_without_break = learner_group.update_from_episodes(
+                FAKE_EPISODES
+            )
+            weights_after_2_updates_without_break = learner_group.get_weights()
+            learner_group.shutdown()
+            del learner_group
+
+            # Compare the results of the two updates.
+            for r1, r2 in zip(
+                results_2nd_update_with_break,
+                results_2nd_update_without_break,
+            ):
+                r1[ALL_MODULES].pop("learner_connector_timer")
+                r2[ALL_MODULES].pop("learner_connector_timer")
             check(
-                weights_after_1_update_with_break, weights_after_1_update_without_break
+                MetricsLogger.peek_results(results_2nd_update_with_break),
+                MetricsLogger.peek_results(results_2nd_update_without_break),
+                rtol=0.05,
+            )
+            check(
+                weights_after_2_updates_with_break,
+                weights_after_2_updates_without_break,
+                rtol=0.05,
             )
 
 
@@ -521,75 +505,85 @@ class TestLearnerGroupAsyncUpdate(unittest.TestCase):
 
     def test_async_update(self):
         """Test that async style updates converge to the same result as sync."""
-        fws = ["torch", "tf2"]
         # async_update only needs to be tested for the most complex case.
         # so we'll only test it for multi-gpu-ddp.
         scaling_modes = ["multi-gpu-ddp", "remote-gpu"]
-        test_iterator = itertools.product(fws, scaling_modes)
 
-        for fw, scaling_mode in test_iterator:
-            print(f"Testing framework: {fw}, scaling mode: {scaling_mode}.")
+        for scaling_mode in scaling_modes:
+            print(f"Testing scaling mode: {scaling_mode}.")
             env = gym.make("CartPole-v1")
             config_overrides = REMOTE_CONFIGS[scaling_mode]
             config = BaseTestingAlgorithmConfig().update_from_dict(config_overrides)
             learner_group = config.build_learner_group(env=env)
-            reader = get_cartpole_dataset_reader(batch_size=512)
-            min_loss = float("inf")
-            batch = reader.next()
             timer_sync = _Timer()
             timer_async = _Timer()
             with timer_sync:
-                learner_group.update_from_batch(
-                    batch=batch.as_multi_agent(), async_update=False, reduce_fn=None
+                learner_group.update_from_episodes(
+                    episodes=FAKE_EPISODES, async_update=False
                 )
             with timer_async:
-                result_async = learner_group.update_from_batch(
-                    batch=batch.as_multi_agent(), async_update=True, reduce_fn=None
+                result_async = learner_group.update_from_episodes(
+                    episodes=FAKE_EPISODES, async_update=True
                 )
-            # ideally the the first async update will return nothing, and an easy
+            # Ideally the first async update will return nothing, and an easy
             # way to check that is if the time for an async update call is faster
             # than the time for a sync update call.
             self.assertLess(timer_async.mean, timer_sync.mean)
             self.assertIsInstance(result_async, list)
-            self.assertEqual(len(result_async), 0)
+            loss = float("inf")
             iter_i = 0
             while True:
-                batch = reader.next()
-                async_results = learner_group.update_from_batch(
-                    batch.as_multi_agent(), async_update=True, reduce_fn=None
+                result_async = learner_group.update_from_episodes(
+                    FAKE_EPISODES, async_update=True
                 )
-                if not async_results:
+                if not result_async:
                     continue
-                losses = [
-                    np.mean(
-                        [res[ALL_MODULES][Learner.TOTAL_LOSS_KEY] for res in results]
-                    )
-                    for results in async_results
-                ]
-                min_loss_this_iter = min(losses)
-                min_loss = min(min_loss_this_iter, min_loss)
-                print(
-                    f"[iter = {iter_i}] Loss: {min_loss_this_iter:.3f}, Min Loss: "
-                    f"{min_loss:.3f}"
-                )
+                self.assertIsInstance(result_async[0], list)
+                self.assertIsInstance(result_async[0][0], dict)
+                # Check the latest async result AND those sub-results of the first
+                # Learner in the group.
+                loss = result_async[-1][0][DEFAULT_MODULE_ID][Learner.TOTAL_LOSS_KEY]
                 # The loss is initially around 0.69 (ln2). When it gets to around
                 # 0.57 the return of the policy gets to around 100.
-                if min_loss < 0.57:
+                if loss < 0.57:
                     break
-                for results in async_results:
-                    for res1, res2 in zip(results, results[1:]):
-                        self.assertEqual(
-                            res1[DEFAULT_POLICY_ID]["mean_weight"],
-                            res2[DEFAULT_POLICY_ID]["mean_weight"],
-                        )
+                # Compare reported "mean_weight" with actual ones.
+                _check_multi_worker_weights(
+                    learner_group, result_async, result_async=True
+                )
                 iter_i += 1
             learner_group.shutdown()
-            self.assertLess(min_loss, 0.57)
+            self.assertLess(loss, 0.57)
+
+
+def _check_multi_worker_weights(learner_group, results, result_async=False):
+    # Check that module weights are updated across workers and synchronized.
+    # for i in range(1, len(results)):
+
+    if result_async:
+        results = results[-1]
+
+    learner_1_results = results[0]
+    for module_id, mod_result in learner_1_results.items():
+        if module_id == ALL_MODULES:
+            continue
+        results = MetricsLogger.peek_results(results)
+        reported_mean_weights = np.mean([r[module_id]["mean_weight"] for r in results])
+
+        # Compare the reported mean weights (merged across all Learner workers,
+        # which all should have the same weights after updating) with the actual
+        # current mean weights.
+        parameters = learner_group.get_state(
+            components=(
+                COMPONENT_LEARNER + "/" + COMPONENT_RL_MODULE + "/" + module_id
+            ),
+        )[COMPONENT_LEARNER][COMPONENT_RL_MODULE][module_id]
+        actual_mean_weights = np.mean([w.mean() for w in parameters.values()])
+        check(reported_mean_weights, actual_mean_weights, rtol=0.02)
 
 
 if __name__ == "__main__":
     import sys
-    import pytest
 
     class_ = sys.argv[1] if len(sys.argv) > 1 else None
     sys.exit(pytest.main(["-v", __file__ + ("" if class_ is None else "::" + class_)]))

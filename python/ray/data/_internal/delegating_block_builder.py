@@ -1,10 +1,9 @@
 import collections
-from typing import Any, Mapping
+from typing import Any, Mapping, Optional
 
 from ray.data._internal.arrow_block import ArrowBlockBuilder
 from ray.data._internal.block_builder import BlockBuilder
-from ray.data._internal.pandas_block import PandasBlockBuilder
-from ray.data.block import Block, BlockAccessor, DataBatch
+from ray.data.block import Block, BlockAccessor, BlockType, DataBatch
 
 
 class DelegatingBlockBuilder(BlockBuilder):
@@ -12,20 +11,18 @@ class DelegatingBlockBuilder(BlockBuilder):
         self._builder = None
         self._empty_block = None
 
+    @property
+    def _inferred_block_type(self) -> Optional[BlockType]:
+        """The block type inferred from the first item added to the builder."""
+        if self._builder is not None:
+            return self._builder.block_type()
+        return None
+
     def add(self, item: Mapping[str, Any]) -> None:
         assert isinstance(item, collections.abc.Mapping), item
 
-        import pyarrow
-
         if self._builder is None:
-            try:
-                check = ArrowBlockBuilder()
-                check.add(item)
-                check.build()
-                self._builder = ArrowBlockBuilder()
-            except (TypeError, pyarrow.lib.ArrowInvalid):
-                # Can also handle nested Python objects, which Arrow cannot.
-                self._builder = PandasBlockBuilder()
+            self._builder = ArrowBlockBuilder()
 
         self._builder.add(item)
 
@@ -35,7 +32,7 @@ class DelegatingBlockBuilder(BlockBuilder):
         This data batch will be converted to an internal block and then added to the
         underlying builder.
         """
-        block = BlockAccessor.batch_to_block(batch)
+        block = BlockAccessor.batch_to_block(batch, self._inferred_block_type)
         return self.add_block(block)
 
     def add_block(self, block: Block):
@@ -47,6 +44,13 @@ class DelegatingBlockBuilder(BlockBuilder):
             return
         if self._builder is None:
             self._builder = accessor.builder()
+        else:
+            block_type = accessor.block_type()
+            assert block_type == self._inferred_block_type, (
+                block_type,
+                self._inferred_block_type,
+            )
+
         self._builder.add_block(accessor.to_block())
 
     def will_build_yield_copy(self) -> bool:

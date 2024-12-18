@@ -1,6 +1,7 @@
 import base64
 import io
 import logging
+import os
 import subprocess
 import sys
 import tempfile
@@ -10,11 +11,21 @@ from typing import List
 from math import ceil
 
 import ci.ray_ci.bazel_sharding as bazel_sharding
+from ray_release.bazel import bazel_runfile
 from ray_release.test import Test, TestState
+from ray_release.configs.global_config import init_global_config
 
-
-POSTMERGE_PIPELINE = "0189e759-8c96-4302-b6b5-b4274406bf89"
+GLOBAL_CONFIG_FILE = (
+    os.environ.get("RAYCI_GLOBAL_CONFIG") or "ci/ray_ci/oss_config.yaml"
+)
 RAY_VERSION = "3.0.0.dev0"
+
+
+def ci_init() -> None:
+    """
+    Initialize global config
+    """
+    init_global_config(bazel_runfile(GLOBAL_CONFIG_FILE))
 
 
 def chunk_into_n(list: List[str], n: int) -> List[List[str]]:

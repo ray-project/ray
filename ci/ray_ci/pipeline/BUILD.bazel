@@ -1,0 +1,38 @@
+load("@rules_python//python:defs.bzl", "py_library", "py_test")
+load("@py_deps_buildkite//:requirements.bzl", ci_require = "requirement")
+
+py_binary(
+    name="scheduler",
+    srcs = ["scheduler.py"],
+    deps = [":pipeline"],
+    exec_compatible_with = ["//:hermetic_python"],
+)
+
+py_library(
+    name = "pipeline",
+    srcs = glob(
+        ["*.py"],
+        exclude = [
+            "test_*.py",
+        ],
+    ),
+    visibility = ["//ci/ray_ci/pipeline:__subpackages__"],
+    deps = [
+        "//ci/ray_ci:ray_ci_lib",
+    ],
+)
+
+py_test(
+    name = "test_gap_filling_scheduler",
+    size = "small",
+    srcs = ["test_gap_filling_scheduler.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "ci_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":pipeline",
+        ci_require("pytest"),
+    ],
+)

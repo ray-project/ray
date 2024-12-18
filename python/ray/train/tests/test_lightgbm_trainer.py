@@ -1,4 +1,5 @@
 import math
+from unittest import mock
 
 import lightgbm as lgbm
 import pandas as pd
@@ -10,7 +11,7 @@ import ray
 from ray import tune
 from ray.train import ScalingConfig
 from ray.train.constants import TRAIN_DATASET_KEY
-from ray.train.lightgbm import LightGBMTrainer
+from ray.train.lightgbm import LightGBMTrainer, RayTrainReportCallback
 
 
 @pytest.fixture
@@ -101,10 +102,11 @@ def test_resume_from_checkpoint(ray_start_6_cpus, tmpdir):
 @pytest.mark.parametrize(
     "freq_end_expected",
     [
-        (4, True, 7),  # 4, 8, 12, 16, 20, 24, 25
-        (4, False, 6),  # 4, 8, 12, 16, 20, 24
-        (5, True, 5),  # 5, 10, 15, 20, 25
-        (0, True, 1),
+        # With num_boost_round=25 with 0 indexing, the checkpoints will be at:
+        (4, True, 7),  # 3, 7, 11, 15, 19, 23, 24 (end)
+        (4, False, 6),  # 3, 7, 11, 15, 19, 23
+        (5, True, 5),  # 4, 9, 14, 19, 24
+        (0, True, 1),  # 24 (end)
         (0, False, 0),
     ],
 )
@@ -164,6 +166,26 @@ def test_validation(ray_start_6_cpus):
             params=params,
             datasets={"valid": valid_dataset},
         )
+
+
+@pytest.mark.parametrize("rank", [None, 0, 1])
+def test_checkpoint_only_on_rank0(rank):
+    """Tests that the callback only reports checkpoints on rank 0,
+    or if the rank is not available (Tune usage)."""
+    callback = RayTrainReportCallback(frequency=2, checkpoint_at_end=True)
+
+    booster = mock.MagicMock()
+
+    with mock.patch("ray.train.get_context") as mock_get_context:
+        mock_context = mock.MagicMock()
+        mock_context.get_world_rank.return_value = rank
+        mock_get_context.return_value = mock_context
+
+        with callback._get_checkpoint(booster) as checkpoint:
+            if rank in (0, None):
+                assert checkpoint
+            else:
+                assert not checkpoint
 
 
 if __name__ == "__main__":

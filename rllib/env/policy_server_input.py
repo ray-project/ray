@@ -32,8 +32,8 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
     and port to serve policy requests and forward experiences to RLlib. For
     high performance experience collection, it implements InputReader.
 
-    For an example, run `examples/serving/cartpole_server.py` along
-    with `examples/serving/cartpole_client.py --inference-mode=local|remote`.
+    For an example, run `examples/envs/external_envs/cartpole_server.py` along
+    with `examples/envs/external_envs/cartpole_client.py --inference-mode=local|remote`.
 
     WARNING: This class is not meant to be publicly exposed. Anyone that can
     communicate with this server can execute arbitary code on the machine. Use
@@ -49,12 +49,16 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         addr, port = ...
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .offline_data(
                 input_=lambda ioctx: PolicyServerInput(ioctx, addr, port)
             )
-            # Run just 1 server (in the Algorithm's WorkerSet).
-            .rollouts(num_rollout_workers=0)
+            # Run just 1 server (in the Algorithm's EnvRunnerGroup).
+            .env_runners(num_env_runners=0)
         )
         algo = config.build()
         while True:
@@ -86,13 +90,13 @@ class PolicyServerInput(ThreadingMixIn, HTTPServer, InputReader):
         any Algorithm by configuring
 
         [AlgorithmConfig object]
-        .rollouts(num_rollout_workers=0)
+        .env_runners(num_env_runners=0)
         .offline_data(input_=lambda ioctx: PolicyServerInput(ioctx, addr, port))
 
-        Note that by setting num_rollout_workers: 0, the algorithm will only create one
+        Note that by setting num_env_runners: 0, the algorithm will only create one
         rollout worker / PolicyServerInput. Clients can connect to the launched
         server using rllib.env.PolicyClient. You can increase the number of available
-        connections (ports) by setting num_rollout_workers to a larger number. The ports
+        connections (ports) by setting num_env_runners to a larger number. The ports
         used will then be `port` + the worker's index.
 
         Args:

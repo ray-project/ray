@@ -1,0 +1,64 @@
+// Copyright 2024 The Ray Authors.
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//  http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+syntax = "proto3";
+
+package ray.rpc;
+
+// ExportSubmissionJobEventData defines the event_data stored by the export API
+// for EXPORT_SUBMISSION_JOB type events. This schema is public and any changes must
+// be backward compatible.
+message ExportSubmissionJobEventData {
+  // Status of a job. This should be kept in sync with
+  // python/ray/dashboard/modules/job/common.JobStatus
+  enum JobStatus {
+    // The job has not started yet, likely waiting for the runtime_env to be set up.
+    PENDING = 0;
+    // The job is currently running.
+    RUNNING = 1;
+    // The job was intentionally stopped by the user.
+    STOPPED = 2;
+    // The job finished successfully.
+    SUCCEEDED = 3;
+    // The job failed.
+    FAILED = 4;
+  }
+
+  // Submission ID of the job.
+  string submission_job_id = 1;
+  // The status of the job.
+  JobStatus status = 2;
+  // The entrypoint command for this job.
+  string entrypoint = 3;
+  // A message describing the status in more detail.
+  optional string message = 4;
+  // Error type (e.g. Runtime env setup failure, Internal error, user script error)
+  optional string error_type = 5;
+  // The time when the job was started.  A Unix timestamp in ms.
+  optional uint64 start_time = 6;
+  // The time when the job moved into a terminal state.  A Unix timestamp in ms.
+  optional uint64 end_time = 7;
+  // Arbitrary user-provided metadata for the job.
+  map<string, string> metadata = 8;
+  // The JSON-serialized runtime environment for the job.
+  optional string runtime_env_json = 9;
+  // Driver agent http address
+  optional string driver_agent_http_address = 10;
+  // The node id that driver running on. It will be None only when the job status
+  // is PENDING, and this field will not be deleted or modified even if the driver dies
+  optional string driver_node_id = 11;
+  // The driver process exit code after the driver executed. Return None if driver
+  // doesn't finish executing
+  optional int32 driver_exit_code = 12;
+}

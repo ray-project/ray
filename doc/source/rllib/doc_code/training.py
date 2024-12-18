@@ -4,7 +4,7 @@
 try:
     import gymnasium as gym
 
-    env = gym.make("ALE/Pong-v5")
+    env = gym.make("ale_py:ALE/Pong-v5")
     obs, infos = env.reset()
 except Exception:
     import gym
@@ -29,15 +29,24 @@ prep.transform(obs).shape
 # __query_action_dist_start__
 # Get a reference to the policy
 import numpy as np
+import torch
+
 from ray.rllib.algorithms.dqn import DQNConfig
 
 algo = (
     DQNConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
+    )
+    .framework("torch")
     .environment("CartPole-v1")
-    .framework("tf2")
-    .rollouts(num_rollout_workers=0)
-    .build()
-)
+    .env_runners(num_env_runners=0)
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentPrioritizedReplayBuffer",
+        }
+    )
+).build()
 # <ray.rllib.algorithms.ppo.PPO object at 0x7fd020186384>
 
 policy = algo.get_policy()
@@ -45,7 +54,7 @@ policy = algo.get_policy()
 
 # Run a forward pass to get model output logits. Note that complex observations
 # must be preprocessed as in the above code block.
-logits, _ = policy.model({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+logits, _ = policy.model({"obs": torch.from_numpy(np.array([[0.1, 0.2, 0.3, 0.4]]))})
 # (<tf.Tensor: id=1274, shape=(1, 2), dtype=float32, numpy=...>, [])
 
 # Compute action distribution given logits
@@ -57,14 +66,14 @@ dist = policy.dist_class(logits, policy.model)
 # Query the distribution for samples, sample logps
 dist.sample()
 # <tf.Tensor: id=661, shape=(1,), dtype=int64, numpy=..>
-dist.logp([1])
+dist.logp(torch.tensor([1]))
 # <tf.Tensor: id=1298, shape=(1,), dtype=float32, numpy=...>
 
 # Get the estimated values for the most recent forward pass
 policy.model.value_function()
 # <tf.Tensor: id=670, shape=(1,), dtype=float32, numpy=...>
 
-policy.model.base_model.summary()
+print(policy.model)
 """
 Model: "model"
 _____________________________________________________________________
@@ -95,22 +104,37 @@ _____________________________________________________________________
 # __get_q_values_dqn_start__
 # Get a reference to the model through the policy
 import numpy as np
+import torch
+
 from ray.rllib.algorithms.dqn import DQNConfig
 
-algo = DQNConfig().environment("CartPole-v1").framework("tf2").build()
+algo = (
+    DQNConfig()
+    .api_stack(
+        enable_rl_module_and_learner=False, enable_env_runner_and_connector_v2=False
+    )
+    .framework("torch")
+    .environment("CartPole-v1")
+    .training(
+        replay_buffer_config={
+            "type": "MultiAgentPrioritizedReplayBuffer",
+        }
+    )
+).build()
 model = algo.get_policy().model
 # <ray.rllib.models.catalog.FullyConnectedNetwork_as_DistributionalQModel ...>
 
 # List of all model variables
-model.variables()
+list(model.parameters())
 
 # Run a forward pass to get base model output. Note that complex observations
-# must be preprocessed. An example of preprocessing is examples/saving_experiences.py
-model_out = model({"obs": np.array([[0.1, 0.2, 0.3, 0.4]])})
+# must be preprocessed. An example of preprocessing is
+# examples/offline_rl/saving_experiences.py
+model_out = model({"obs": torch.from_numpy(np.array([[0.1, 0.2, 0.3, 0.4]]))})
 # (<tf.Tensor: id=832, shape=(1, 256), dtype=float32, numpy=...)
 
 # Access the base Keras models (all default models have a base)
-model.base_model.summary()
+print(model)
 """
 Model: "model"
 _______________________________________________________________________
@@ -131,16 +155,16 @@ ______________________________________________________________________________
 """
 
 # Access the Q value model (specific to DQN)
-print(model.get_q_value_distributions(model_out)[0])
+print(model.get_q_value_distributions(model_out[0])[0])
 # tf.Tensor([[ 0.13023682 -0.36805138]], shape=(1, 2), dtype=float32)
 # ^ exact numbers may differ due to randomness
 
-model.q_value_head.summary()
+print(model.advantage_module)
 
 # Access the state value model (specific to DQN)
-print(model.get_state_value(model_out))
+print(model.get_state_value(model_out[0]))
 # tf.Tensor([[0.09381643]], shape=(1, 1), dtype=float32)
 # ^ exact number may differ due to randomness
 
-model.state_value_head.summary()
+print(model.value_module)
 # __get_q_values_dqn_end__

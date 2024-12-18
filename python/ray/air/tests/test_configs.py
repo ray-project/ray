@@ -1,14 +1,8 @@
+import pyarrow.fs
 import pytest
 
-import pyarrow.fs
-
-from ray.train import (
-    ScalingConfig,
-    FailureConfig,
-    CheckpointConfig,
-    RunConfig,
-)
 from ray.air.constants import MAX_REPR_LENGTH
+from ray.train import CheckpointConfig, FailureConfig, RunConfig, ScalingConfig
 
 
 @pytest.mark.parametrize(

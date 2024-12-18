@@ -9,7 +9,6 @@ from ray.rllib.env.base_env import ASYNC_RESET_RETURN, BaseEnv
 from ray.rllib.env.external_env import ExternalEnvWrapper
 from ray.rllib.env.wrappers.atari_wrappers import MonitorEnv, get_wrapper_by_cls
 from ray.rllib.evaluation.collectors.simple_list_collector import _PolicyCollectorGroup
-from ray.rllib.policy.rnn_sequencing import pad_batch_to_sequences_of_same_size
 from ray.rllib.evaluation.episode_v2 import EpisodeV2
 from ray.rllib.evaluation.metrics import RolloutMetrics
 from ray.rllib.models.preprocessors import Preprocessor
@@ -178,24 +177,6 @@ def _build_multi_agent_batch(
             )
 
         batch = collector.build()
-
-        policy = collector.policy
-
-        if policy.config.get("_enable_new_api_stack", False):
-            # Before we send the collected batch back for training, we may need
-            # to add a time dimension for the RLModule.
-            seq_lens = batch.get(SampleBatch.SEQ_LENS)
-            pad_batch_to_sequences_of_same_size(
-                batch=batch,
-                max_seq_len=policy.config["model"]["max_seq_len"],
-                shuffle=False,
-                batch_divisibility_req=getattr(policy, "batch_divisibility_req", 1),
-                view_requirements=getattr(policy, "view_requirements", None),
-                _enable_new_api_stack=True,
-            )
-            batch = policy.maybe_add_time_dimension(
-                batch, seq_lens=seq_lens, framework="np"
-            )
 
         ma_batch[pid] = batch
 
@@ -1072,16 +1053,9 @@ class EnvRunnerV2:
                 # changed (mapping fn not staying constant within one episode).
                 policy: Policy = _try_find_policy_again(eval_data)
 
-            if policy.config.get("_enable_new_api_stack", False):
-                # _batch_inference_sample_batches does nothing but concatenating AND
-                # setting SEQ_LENS to ones in the recurrent case. We do not need this
-                # because RLModules do not care about SEQ_LENS anymore. They have an
-                # expected input shape convention of [B, T, ...]
-                input_dict = concat_samples([d.data.sample_batch for d in eval_data])
-            else:
-                input_dict = _batch_inference_sample_batches(
-                    [d.data.sample_batch for d in eval_data]
-                )
+            input_dict = _batch_inference_sample_batches(
+                [d.data.sample_batch for d in eval_data]
+            )
 
             eval_results[policy_id] = policy.compute_actions_from_input_dict(
                 input_dict,
@@ -1147,11 +1121,13 @@ class EnvRunnerV2:
                 input_dict: TensorStructType = eval_data[i].data.raw_dict
 
                 rnn_states: List[StateBatches] = tree.map_structure(
-                    lambda x: x[i], rnn_out
+                    lambda x, i=i: x[i], rnn_out
                 )
 
                 # extra_action_out could be a nested dict
-                fetches: Dict = tree.map_structure(lambda x: x[i], extra_action_out)
+                fetches: Dict = tree.map_structure(
+                    lambda x, i=i: x[i], extra_action_out
+                )
 
                 # Post-process policy output by running them through action connectors.
                 ac_data = ActionConnectorDataType(

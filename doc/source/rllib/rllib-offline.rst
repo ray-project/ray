@@ -55,11 +55,11 @@ Off-Policy Estimation (OPE)
 
 In practice, when training on offline data, it is usually not straightforward to evaluate the trained policies using a simulator as in online RL. For example, in recommender systems, rolling out a policy trained on offline data in a real-world environment can jeopardize your business if the policy is suboptimal. For these situations we can use `off-policy estimation <https://arxiv.org/abs/1911.06854>`__ methods which avoid the risk of evaluating a possibly sub-optimal policy in a real-world environment.
 
-With RLlib's evaluation framework you can: 
+With RLlib's evaluation framework you can:
 
-- Evaluate policies on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``). 
+- Evaluate policies on a simulated environment, if available, using ``evaluation_config["input"] = "sampler"``. You can then monitor your policy's performance on tensorboard as it is getting trained (by using ``tensorboard --logdir=~/ray_results``).
 
-- Use RLlib's off-policy estimation methods, which estimate the policy's performance on a separate offline dataset. To be able to use this feature, the evaluation dataset should contain ``action_prob`` key that represents the action probability distribution of the collected data so that we can do counterfactual evaluation. 
+- Use RLlib's off-policy estimation methods, which estimate the policy's performance on a separate offline dataset. To be able to use this feature, the evaluation dataset should contain ``action_prob`` key that represents the action probability distribution of the collected data so that we can do counterfactual evaluation.
 
 RLlib supports the following off-policy estimators:
 
@@ -116,7 +116,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         .evaluation(
             evaluation_interval=1,
             evaluation_duration=10,
-            evaluation_num_workers=1,
+            evaluation_num_env_runners=1,
             evaluation_duration_unit="episodes",
             evaluation_config={"input": "/tmp/cartpole-eval"},
             off_policy_estimation_methods={
@@ -163,7 +163,7 @@ We can now train a DQN algorithm offline and evaluate it using OPE:
         batch = reader.next()
         print(estimator.train(batch))
         # {'loss': ...}
-    
+
     reader = JsonReader("/tmp/cartpole-eval")
     # Compute off-policy estimates
     for _ in range(100):
@@ -176,9 +176,9 @@ Example: Converting external experiences to batch format
 --------------------------------------------------------
 
 When the env does not support simulation (e.g., it is a web application), it is necessary to generate the ``*.json`` experience batch files outside of RLlib. This can be done by using the `JsonWriter <https://github.com/ray-project/ray/blob/master/rllib/offline/json_writer.py>`__ class to write out batches.
-This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
+This `runnable example <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/saving_experiences.py>`__ shows how to generate and save experience batches for CartPole-v1 to disk:
 
-.. literalinclude:: ../../../rllib/examples/saving_experiences.py
+.. literalinclude:: ../../../rllib/examples/offline_rl/saving_experiences.py
    :language: python
    :start-after: __sphinx_doc_begin__
    :end-before: __sphinx_doc_end__
@@ -218,7 +218,7 @@ RLlib supports multiplexing inputs from multiple input sources, including simula
 Scaling I/O throughput
 -----------------------
 
-Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_workers`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
+Similar to scaling online training, you can scale offline I/O throughput by increasing the number of RLlib workers via the ``num_env_runners`` config. Each worker accesses offline storage independently in parallel, for linear scaling of I/O throughput. Within each read worker, files are chosen in random order for reads, but file contents are read sequentially.
 
 Ray Data Integration
 --------------------
@@ -228,7 +228,7 @@ RLlib has experimental support for reading/writing training samples from/to larg
 We support JSON and Parquet files today. Other file formats supported by Ray Data can also be easily added.
 
 Unlike JSON input, a single dataset can be automatically sharded and replayed by multiple rollout workers
-by simply specifying the desired num_workers config.
+by simply specifying the desired ``num_env_runners`` config.
 
 To load sample data using Dataset, specify input and input_config keys like the following:
 
@@ -241,7 +241,7 @@ To load sample data using Dataset, specify input and input_config keys like the 
             "format": "json",  # json or parquet
 	    # Path to data file or directory.
             "path": "/path/to/json_dir/",
-	    # Num of tasks reading dataset in parallel, default is num_workers.
+	    # Num of tasks reading dataset in parallel, default is num_env_runners.
             "parallelism": 3,
 	    # Dataset allocates 0.5 CPU for each reader by default.
 	    # Adjust this value based on the size of your offline dataset.
@@ -363,7 +363,7 @@ You can configure experience input for an agent using the following options:
     # on-policy algorithms.
     "postprocess_inputs": False,
     # If positive, input batches will be shuffled via a sliding window buffer
-    # of this number of batches. Use this if the input data is not in random
+    # of this number of batches. Use this if the input data isn't in random
     # enough order. Input is delayed until the shuffle buffer is filled.
     "shuffle_buffer_size": 0,
 
@@ -406,7 +406,7 @@ The interface for the ``IOContext`` is the following:
     :members:
     :noindex:
 
-See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_input_api.py>`__ for a runnable example.
+See `custom_input_api.py <https://github.com/ray-project/ray/blob/master/rllib/examples/offline_rl/custom_input_api.py>`__ for a runnable example.
 
 Output API
 ----------

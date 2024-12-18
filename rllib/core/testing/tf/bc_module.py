@@ -1,27 +1,19 @@
 import tensorflow as tf
-from typing import Any, Mapping
+from typing import Any, Dict
 
 from ray.rllib.core.columns import Columns
-from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleConfig
-from ray.rllib.core.rl_module.marl_module import (
-    MultiAgentRLModule,
-    MultiAgentRLModuleConfig,
-)
+from ray.rllib.core.rl_module.rl_module import RLModule
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 from ray.rllib.core.rl_module.tf.tf_rl_module import TfRLModule
-from ray.rllib.models.tf.tf_distributions import TfCategorical
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.nested_dict import NestedDict
+from ray.rllib.utils.typing import StateDict
 
 
 class DiscreteBCTFModule(TfRLModule):
-    def __init__(self, config: RLModuleConfig) -> None:
-        super().__init__(config)
-
     def setup(self):
-        input_dim = self.config.observation_space.shape[0]
-        hidden_dim = self.config.model_config_dict["fcnet_hiddens"][0]
-        output_dim = self.config.action_space.n
+        input_dim = self.observation_space.shape[0]
+        hidden_dim = self.model_config["fcnet_hiddens"][0]
+        output_dim = self.action_space.n
         layers = []
 
         layers.append(tf.keras.Input(shape=(input_dim,)))
@@ -33,51 +25,16 @@ class DiscreteBCTFModule(TfRLModule):
         self.policy = tf.keras.Sequential(layers)
         self._input_dim = input_dim
 
-    def get_train_action_dist_cls(self):
-        return TfCategorical
-
-    def get_exploration_action_dist_cls(self):
-        return TfCategorical
-
-    def get_inference_action_dist_cls(self):
-        return TfCategorical
-
-    @override(RLModule)
-    def output_specs_exploration(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_inference(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
-
-    @override(RLModule)
-    def output_specs_train(self) -> SpecType:
-        return [Columns.ACTION_DIST_INPUTS]
-
-    def _forward_shared(self, batch: NestedDict) -> Mapping[str, Any]:
-        # We can use a shared forward method because BC does not need to distinguish
-        # between train, inference, and exploration.
+    def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         action_logits = self.policy(batch["obs"])
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
     @override(RLModule)
-    def _forward_inference(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_shared(batch)
-
-    @override(RLModule)
-    def _forward_exploration(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_shared(batch)
-
-    @override(RLModule)
-    def _forward_train(self, batch: NestedDict) -> Mapping[str, Any]:
-        return self._forward_shared(batch)
-
-    @override(RLModule)
-    def get_state(self) -> Mapping[str, Any]:
+    def get_state(self, *args, **kwargs) -> StateDict:
         return {"policy": self.policy.get_weights()}
 
     @override(RLModule)
-    def set_state(self, state: Mapping[str, Any]) -> None:
+    def set_state(self, state: StateDict) -> None:
         self.policy.set_weights(state["policy"])
 
 
@@ -98,23 +55,7 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
             ]
         )
 
-    @override(RLModule)
-    def _default_input_specs(self):
-        return [("obs", "global"), ("obs", "local")]
-
-    @override(RLModule)
-    def _forward_inference(self, batch):
-        return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_exploration(self, batch):
-        return self._common_forward(batch)
-
-    @override(RLModule)
-    def _forward_train(self, batch):
-        return self._common_forward(batch)
-
-    def _common_forward(self, batch):
+    def _forward(self, batch, **kwargs):
         obs = batch["obs"]
         global_enc = self.encoder(obs["global"])
         policy_in = tf.concat([global_enc, obs["local"]], axis=-1)
@@ -122,11 +63,12 @@ class BCTfRLModuleWithSharedGlobalEncoder(TfRLModule):
 
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
+    @override(RLModule)
+    def _default_input_specs(self):
+        return [("obs", "global"), ("obs", "local")]
 
-class BCTfMultiAgentModuleWithSharedEncoder(MultiAgentRLModule):
-    def __init__(self, config: MultiAgentRLModuleConfig) -> None:
-        super().__init__(config)
 
+class BCTfMultiAgentModuleWithSharedEncoder(MultiRLModule):
     def setup(self):
         # constructing the global encoder based on the observation_space of the first
         # module

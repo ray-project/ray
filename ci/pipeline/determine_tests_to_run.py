@@ -8,7 +8,6 @@ import re
 import subprocess
 import sys
 from pprint import pformat
-import traceback
 
 
 # NOTE(simon): do not add type hint here because it's ran using python2 in CI.
@@ -36,41 +35,19 @@ def list_changed_files(commit_range):
 
 
 def is_pull_request():
-    event_type = None
-
-    for key in ["GITHUB_EVENT_NAME", "TRAVIS_EVENT_TYPE"]:
-        event_type = os.getenv(key, event_type)
-
-    if (
-        os.environ.get("BUILDKITE")
-        and os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
-    ):
-        event_type = "pull_request"
-
-    return event_type == "pull_request"
+    return os.environ.get("BUILDKITE_PULL_REQUEST", "false") != "false"
 
 
 def get_commit_range():
-    commit_range = None
-
-    if os.environ.get("TRAVIS"):
-        commit_range = os.environ["TRAVIS_COMMIT_RANGE"]
-    elif os.environ.get("GITHUB_EVENT_PATH"):
-        with open(os.environ["GITHUB_EVENT_PATH"], "rb") as f:
-            event = json.loads(f.read())
-        base = event["pull_request"]["base"]["sha"]
-        commit_range = "{}...{}".format(base, event.get("after", ""))
-    elif os.environ.get("BUILDKITE"):
-        commit_range = "origin/{}...{}".format(
-            os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
-            os.environ["BUILDKITE_COMMIT"],
-        )
-
-    assert commit_range is not None
-    return commit_range
+    return "origin/{}...{}".format(
+        os.environ["BUILDKITE_PULL_REQUEST_BASE_BRANCH"],
+        os.environ["BUILDKITE_COMMIT"],
+    )
 
 
 if __name__ == "__main__":
+    assert os.environ.get("BUILDKITE")
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "--output", type=str, help="json, rayci_tags or envvars", default="envvars"
@@ -87,11 +64,10 @@ if __name__ == "__main__":
     # Set to 1 for any changes to Ray Tune or python source files that are
     # NOT related to Serve, Dashboard or Train.
     RAY_CI_RLLIB_AFFECTED = 0
+    RAY_CI_RLLIB_GPU_AFFECTED = 0
     # Whether all RLlib tests should be run.
     # Set to 1 only when a source file in `ray/rllib` has been changed.
     RAY_CI_RLLIB_DIRECTLY_AFFECTED = 0
-    # Whether to run all RLlib contrib tests
-    RAY_CI_RLLIB_CONTRIB_AFFECTED = 0
     RAY_CI_SERVE_AFFECTED = 0
     RAY_CI_CORE_CPP_AFFECTED = 0
     RAY_CI_CPP_AFFECTED = 0
@@ -108,34 +84,15 @@ if __name__ == "__main__":
     RAY_CI_WORKFLOW_AFFECTED = 0
     RAY_CI_RELEASE_TESTS_AFFECTED = 0
     RAY_CI_COMPILED_PYTHON_AFFECTED = 0
+    RAY_CI_ACCELERATED_DAG_AFFECTED = 0
+    # Whether to run jobs that are affected by any changes
+    RAY_CI_LINT_AFFECTED = 1
 
     if is_pull_request():
         commit_range = get_commit_range()
         files = list_changed_files(commit_range)
         print(pformat(commit_range), file=sys.stderr)
         print(pformat(files), file=sys.stderr)
-
-        # Dry run py_dep_analysis.py to see which tests we would have run.
-        try:
-            import py_dep_analysis as pda
-
-            graph = pda.build_dep_graph()
-            rllib_tests = pda.list_rllib_tests()
-            print("Total # of RLlib tests: ", len(rllib_tests), file=sys.stderr)
-
-            impacted = {}
-            for test in rllib_tests:
-                for file in files:
-                    if pda.test_depends_on_file(graph, test, file):
-                        impacted[test[0]] = True
-
-            print("RLlib tests impacted: ", len(impacted), file=sys.stderr)
-            for test in impacted.keys():
-                print("    ", test, file=sys.stderr)
-        except Exception:
-            print("Failed to dry run py_dep_analysis.py", file=sys.stderr)
-            traceback.print_exc(file=sys.stderr)
-        # End of dry run.
 
         skip_prefix_list = [
             "doc/",
@@ -160,8 +117,8 @@ if __name__ == "__main__":
                 or changed_file == "ci/docker/data.build.Dockerfile"
                 or changed_file == "ci/docker/data.build.wanda.yaml"
                 or changed_file == "ci/docker/datan.build.wanda.yaml"
-                or changed_file == "ci/docker/data6.build.wanda.yaml"
-                or changed_file == "ci/docker/data14.build.wanda.yaml"
+                or changed_file == "ci/docker/data9.build.wanda.yaml"
+                or changed_file == "ci/docker/datal.build.wanda.yaml"
             ):
                 RAY_CI_DATA_AFFECTED = 1
                 RAY_CI_ML_AFFECTED = 1
@@ -204,16 +161,10 @@ if __name__ == "__main__":
                 or changed_file == ".buildkite/rllib.rayci.yml"
             ):
                 RAY_CI_RLLIB_AFFECTED = 1
+                RAY_CI_RLLIB_GPU_AFFECTED = 1
                 RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
-            elif (
-                re.match("rllib_contrib/", changed_file)
-                or changed_file == ".buildkite/rllib_contrib.rayci.yml"
-                or changed_file == ".buildkite/pipeline.ml.yml"
-            ):
-                if not changed_file.endswith(".md"):
-                    RAY_CI_RLLIB_CONTRIB_AFFECTED = 1
             elif (
                 changed_file.startswith("python/ray/serve")
                 or changed_file == ".buildkite/serve.rayci.yml"
@@ -258,6 +209,14 @@ if __name__ == "__main__":
                     if changed_file.endswith(compiled_extension):
                         RAY_CI_COMPILED_PYTHON_AFFECTED = 1
                         break
+
+                # Some accelerated DAG tests require GPUs so we only run them
+                # if Ray DAGs or experimental.channels were affected.
+                if changed_file.startswith("python/ray/dag") or changed_file.startswith(
+                    "python/ray/experimental/channel"
+                ):
+                    RAY_CI_ACCELERATED_DAG_AFFECTED = 1
+
             elif changed_file == ".buildkite/core.rayci.yml":
                 RAY_CI_PYTHON_AFFECTED = 1
                 RAY_CI_CORE_CPP_AFFECTED = 1
@@ -314,8 +273,6 @@ if __name__ == "__main__":
                 ):
                     # Do not run on config changes
                     RAY_CI_RELEASE_TESTS_AFFECTED = 1
-                    if changed_file == "ci/ray_ci/macos/macos_ci.sh":
-                        RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif any(changed_file.startswith(prefix) for prefix in skip_prefix_list):
                 # nothing is run but linting in these cases
                 pass
@@ -325,6 +282,13 @@ if __name__ == "__main__":
             ):
                 # Linter will always be run
                 RAY_CI_TOOLS_AFFECTED = 1
+            elif (
+                changed_file == ".buildkite/macos.rayci.yml"
+                or changed_file == ".buildkite/pipeline.macos.yml"
+                or changed_file == "ci/ray_ci/macos/macos_ci.sh"
+                or changed_file == "ci/ray_ci/macos/macos_ci_build.sh"
+            ):
+                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif (
                 changed_file.startswith("ci/pipeline")
                 or changed_file.startswith("ci/build")
@@ -339,8 +303,7 @@ if __name__ == "__main__":
                 # These scripts are always run as part of the build process
                 RAY_CI_TOOLS_AFFECTED = 1
             elif (
-                changed_file.endswith("build-docker-images.py")
-                or changed_file == ".buildkite/base.rayci.yml"
+                changed_file == ".buildkite/base.rayci.yml"
                 or changed_file == ".buildkite/build.rayci.yml"
                 or changed_file == ".buildkite/pipeline.arm64.yml"
                 or changed_file == "ci/docker/manylinux.Dockerfile"
@@ -356,11 +319,6 @@ if __name__ == "__main__":
                 RAY_CI_DOCKER_AFFECTED = 1
                 RAY_CI_LINUX_WHEELS_AFFECTED = 1
                 RAY_CI_TOOLS_AFFECTED = 1
-            elif (
-                changed_file == ".buildkite/macos.rayci.yml"
-                or changed_file == ".buildkite/pipeline.macos.yml"
-            ):
-                RAY_CI_MACOS_WHEELS_AFFECTED = 1
             elif changed_file.startswith("ci/run") or changed_file == "ci/ci.sh":
                 RAY_CI_TOOLS_AFFECTED = 1
             elif changed_file.startswith("src/"):
@@ -377,6 +335,9 @@ if __name__ == "__main__":
                 RAY_CI_MACOS_WHEELS_AFFECTED = 1
                 RAY_CI_DASHBOARD_AFFECTED = 1
                 RAY_CI_RELEASE_TESTS_AFFECTED = 1
+                RAY_CI_ACCELERATED_DAG_AFFECTED = 1
+            elif changed_file.startswith(".github/"):
+                pass
             else:
                 print(
                     "Unhandled source code change: {changed_file}".format(
@@ -410,8 +371,6 @@ if __name__ == "__main__":
         RAY_CI_TRAIN_AFFECTED = 1
         RAY_CI_RLLIB_AFFECTED = 1
         RAY_CI_RLLIB_DIRECTLY_AFFECTED = 1
-        # the rllib contrib ci should only be run on pull requests
-        RAY_CI_RLLIB_CONTRIB_AFFECTED = 0
         RAY_CI_SERVE_AFFECTED = 1
         RAY_CI_CPP_AFFECTED = 1
         RAY_CI_CORE_CPP_AFFECTED = 1
@@ -436,8 +395,8 @@ if __name__ == "__main__":
             "RAY_CI_TUNE_AFFECTED={}".format(RAY_CI_TUNE_AFFECTED),
             "RAY_CI_TRAIN_AFFECTED={}".format(RAY_CI_TRAIN_AFFECTED),
             "RAY_CI_RLLIB_AFFECTED={}".format(RAY_CI_RLLIB_AFFECTED),
+            "RAY_CI_RLLIB_GPU_AFFECTED={}".format(RAY_CI_RLLIB_GPU_AFFECTED),
             "RAY_CI_RLLIB_DIRECTLY_AFFECTED={}".format(RAY_CI_RLLIB_DIRECTLY_AFFECTED),
-            "RAY_CI_RLLIB_CONTRIB_AFFECTED={}".format(RAY_CI_RLLIB_CONTRIB_AFFECTED),
             "RAY_CI_SERVE_AFFECTED={}".format(RAY_CI_SERVE_AFFECTED),
             "RAY_CI_DASHBOARD_AFFECTED={}".format(RAY_CI_DASHBOARD_AFFECTED),
             "RAY_CI_DOC_AFFECTED={}".format(RAY_CI_DOC_AFFECTED),
@@ -458,6 +417,10 @@ if __name__ == "__main__":
             "RAY_CI_COMPILED_PYTHON_AFFECTED={}".format(
                 RAY_CI_COMPILED_PYTHON_AFFECTED
             ),
+            "RAY_CI_ACCELERATED_DAG_AFFECTED={}".format(
+                RAY_CI_ACCELERATED_DAG_AFFECTED
+            ),
+            "RAY_CI_LINT_AFFECTED={}".format(RAY_CI_LINT_AFFECTED),
         ]
     )
 

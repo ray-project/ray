@@ -1,12 +1,17 @@
 import copy
-from collections import OrderedDict
-import pytest
 import sys
 import unittest
+from collections import OrderedDict
 from unittest.mock import patch
 
-from ray.tune.utils.util import wait_for_gpu
-from ray.tune.utils.util import flatten_dict, unflatten_dict, unflatten_list_dict
+import pytest
+
+from ray.tune.utils.util import (
+    flatten_dict,
+    unflatten_dict,
+    unflatten_list_dict,
+    wait_for_gpu,
+)
 
 
 class FlattenDictTest(unittest.TestCase):

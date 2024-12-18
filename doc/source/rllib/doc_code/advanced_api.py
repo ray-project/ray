@@ -29,7 +29,7 @@ counter.inc.remote(1)  # async call to increment the global count
 # __rllib-adv_api_explore_begin__
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 
-config = AlgorithmConfig().exploration(
+config = AlgorithmConfig().env_runners(
     exploration_config={
         # Special `type` key provides class information
         "type": "StochasticSampling",
@@ -73,7 +73,7 @@ config = AlgorithmConfig().evaluation(
     # What if number of eval workers is non-dividable by 10?
     # -> Run 7 episodes (1 per eval worker), then run 3 more episodes only using
     #    evaluation workers 1-3 (evaluation workers 4-7 remain idle during that time).
-    evaluation_num_workers=7,
+    evaluation_num_env_runners=7,
 )
 # __rllib-adv_api_evaluation_3_end__
 

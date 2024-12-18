@@ -10,17 +10,17 @@
 # Authors responsible for copy-editing of the documentation.
 # NOTE: Add @ray-project/ray-docs to all following docs subdirs.
 /doc/ @ray-project/ray-docs
-/doc/source/use-cases.rst @ericl @pcmoritz
+/doc/source/use-cases.rst @pcmoritz
 
 # ==== Ray core ====
 
 # API compatibility
-/src/ray/protobuf/common.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
-/src/ray/protobuf/gcs_service.proto @ericl @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/common.proto @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs.proto @pcmoritz @raulchen @ray-project/ray-core
+/src/ray/protobuf/gcs_service.proto @pcmoritz @raulchen @ray-project/ray-core
 
 # Autoscaler
-/python/ray/autoscaler/ @ericl @ray-project/ray-core @architkulkarni @hongchaodeng
+/python/ray/autoscaler/ @ray-project/ray-core @hongchaodeng
 
 # Metrics
 /src/ray/stats/metric_defs.h @ray-project/ray-core
@@ -36,14 +36,12 @@
 /src/ray/gcs/ @ray-project/ray-core
 
 # Dependencies
-/python/setup.py @richardliaw @ericl @edoakes
+/python/setup.py @richardliaw @edoakes @aslonnie
 
-# Formatting tool
-/ci/lint/format.sh @richardliaw @ericl @edoakes
-
-# Docker image and build scripts.
-/ci/build/build-docker-images.py @ray-project/ray-core @aslonnie @can-anyscale
-/ci/docker @aslonnie @can-anyscale
+# CI
+/ci/lint/format.sh @ray-project/ray-ci
+/ci/docker @ray-project/ray-ci
+/ci/ray_ci @ray-project/ray-ci
 
 # Python worker.
 #/python/ray/ @ray-project/ray-core
@@ -51,77 +49,79 @@
 #!/python/ray/rllib/ @ray-project/ray-core
 
 # Java worker.
-/java/dependencies.bzl @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang
-/java/pom.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang
-/java/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang
-/java/*/pom_template.xml @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang
-/java/api/ @kfstorm @raulchen @ericl @iycheng @WangTaoTheTonic @SongGuyang
+/java/dependencies.bzl @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/pom.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/*/pom_template.xml @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
+/java/api/ @kfstorm @raulchen @WangTaoTheTonic @SongGuyang
 
 # C++ worker
 /cpp/include/ray @SongGuyang @raulchen @kfstorm @ray-project/ray-core
 
 # Ray Client
-/src/ray/protobuf/ray_client.proto @ameerhajali @ckw017 @ray-project/ray-core
+/src/ray/protobuf/ray_client.proto @ray-project/ray-core
 
 # Runtime Env
 # TODO(SongGuyang): Add new items to guarantee runtime env API compatibility in multiple languages.
-/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @architkulkarni @ray-project/ray-core
-/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @architkulkarni @ray-project/ray-core
+/src/ray/protobuf/runtime_env_common.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
+/src/ray/protobuf/runtime_env_agent.proto @SongGuyang @raulchen @edoakes @ray-project/ray-core
 
 # ==== Libraries and frameworks ====
 
 # Ray data.
-/python/ray/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @omatthew98
-/doc/source/data/ @ericl @scv119 @c21 @amogkam @scottjlee @bveeramani @raulchen @stephanie-wang @omatthew98
+/python/ray/data/ @ray-project/ray-data
+/doc/source/data/ @ray-project/ray-data
 
 # Ray workflows.
-/python/ray/workflow/ @ericl @iycheng @stephanie-wang @suquark
-/doc/source/workflows/ @ericl @iycheng @stephanie-wang @suquark @maxpumperla @ray-project/ray-docs
+/python/ray/workflow/ @stephanie-wang
+/doc/source/workflows/ @stephanie-wang @maxpumperla @ray-project/ray-docs
 
 # RLlib.
-/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980
-/doc/source/rllib/ @sven1977 @avnishn @arturniederfahrenhorst @maxpumperla @kouroshhakha @simonsays1980 @ray-project/ray-docs
+/rllib/ @sven1977 @simonsays1980
+/doc/source/rllib/ @sven1977 @maxpumperla @simonsays1980 @ray-project/ray-docs
 
 # Cluster (docs)
-/doc/source/cluster/ @architkulkarni @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
+/doc/source/cluster/ @maxpumperla @pcmoritz @kevin85421 @ray-project/ray-docs
 
 # Tune
-/python/ray/tune/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/tune/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/tune/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Train
-/python/ray/train/ @matthewdeng @justinvyu @woshiyyya
-/doc/source/train/ @matthewdeng @justinvyu @woshiyyya @ray-project/ray-docs
+/python/ray/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya
+/doc/source/train/ @hongpeng-guo @justinvyu @matthewdeng @raulchen @woshiyyya @ray-project/ray-docs
 
 # Serve (docs)
-/doc/source/serve/ @edoakes @shrekris-anyscale @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
+/doc/source/serve/ @edoakes @zcin @GeneDer @akshay-anyscale @ray-project/ray-docs
 
 # ML Docker Dependencies
-/python/requirements/ml/dl-cpu-requirements.txt @amogkam @richardliaw @matthewdeng
-/python/requirements/ml/dl-gpu-requirements.txt @amogkam @richardliaw @matthewdeng
+/python/requirements/ml/dl-cpu-requirements.txt @richardliaw @matthewdeng
+/python/requirements/ml/dl-gpu-requirements.txt @richardliaw @matthewdeng
 
 # Ray symbol export
-/src/ray/ray_version_script.lds @iycheng @ericl @scv119
-/src/ray/ray_exported_symbols.lds @iycheng @ericl @scv119
+/src/ray/ray_version_script.lds @aslonnie
+/src/ray/ray_exported_symbols.lds @aslonnie
 
 # Ray usage stats
-/python/ray/_private/usage/ @ericl @richardliaw @rkooo567 @jjyao
-/dashboard/modules/usage_stats/ @ericl @richardliaw @rkooo567 @jjyao
+/python/ray/_private/usage/ @richardliaw @rkooo567 @jjyao
+/python/ray/dashboard/modules/usage_stats/ @richardliaw @rkooo567 @jjyao
 
 
 # ==== Build and CI ====
 
 # Bazel.
-#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci-reviewers
-#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci-reviewers
-#/bazel/ @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/BUILD.bazel @ray-project/ray-core @ray-project/ray-ci
+#/WORKSPACE @ray-project/ray-core @ray-project/ray-ci
+#/bazel/ @ray-project/ray-core @ray-project/ray-ci
 
 # CI scripts.
-#/ci/ @ray-project/ray-core @ray-project/ray-ci-reviewers
+#/ci/ @ray-project/ray-core @ray-project/ray-ci
 
 # Buildkite pipeline management
-.buildkite/hooks @ray-project/ray-ci-reviewers
+.buildkite/hooks @ray-project/ray-ci
 
-/release/ray_release @ray-project/ray-ci-reviewers
+/release/ray_release @ray-project/ray-ci
 
-/.github/ISSUE_TEMPLATE/ @ericl @stephanie-wang @scv119 @pcmoritz
+/.github/ISSUE_TEMPLATE/ @anyscalesam @aslonnie
+
+/.github/workflows/ @ray-project/ray-ci

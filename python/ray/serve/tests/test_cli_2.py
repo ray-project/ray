@@ -49,11 +49,15 @@ def ping_endpoint(endpoint: str, params: str = ""):
         return CONNECTION_ERROR_MSG
 
 
-def check_app_running(app_name: str):
+def check_app_status(app_name: str, expected_status: str):
     status_response = subprocess.check_output(["serve", "status"])
     status = yaml.safe_load(status_response)["applications"]
-    assert status[app_name]["status"] == "RUNNING"
+    assert status[app_name]["status"] == expected_status
     return True
+
+
+def check_app_running(app_name: str):
+    return check_app_status(app_name, "RUNNING")
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -525,8 +529,8 @@ TestBuildFNode = global_f.bind()
 TestBuildDagNode = NoArgDriver.bind(TestBuildFNode)
 
 
-TestApp1Node = global_f.options(route_prefix="/app1").bind()
-TestApp2Node = NoArgDriver.options(route_prefix="/app2").bind(global_f.bind())
+TestApp1Node = global_f.options(name="app1").bind()
+TestApp2Node = NoArgDriver.options(name="app2").bind(global_f.bind())
 
 
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
@@ -813,6 +817,7 @@ from ray import serve
 @serve.deployment
 class MessageDeployment:
     def __init__(self, msg):
+        {invalid_suffix}
         self.msg = msg
 
     def __call__(self):
@@ -822,9 +827,9 @@ class MessageDeployment:
 msg_app = MessageDeployment.bind("Hello {message}!")
     """
 
-    def write_file(message: str):
+    def write_file(message: str, invalid_suffix: str = ""):
         with open(os.path.join(tmp_path, "reload_serve.py"), "w") as f:
-            code = code_template.format(message=message)
+            code = code_template.format(invalid_suffix=invalid_suffix, message=message)
             print(f"Writing updated code:\n{code}")
             f.write(code)
             f.flush()
@@ -850,6 +855,18 @@ msg_app = MessageDeployment.bind("Hello {message}!")
     # Write the file: an update should be auto-triggered.
     write_file("Updated")
     wait_for_condition(lambda: ping_endpoint("") == "Hello Updated!", timeout=10)
+
+    # Ensure a bad change doesn't shut down serve and serve reports deploy failed.
+    write_file(message="update1", invalid_suffix="foobar")
+    wait_for_condition(
+        condition_predictor=check_app_status,
+        app_name="default",
+        expected_status="DEPLOY_FAILED",
+    )
+
+    # Ensure the following reload happens as expected.
+    write_file("Updated2")
+    wait_for_condition(lambda: ping_endpoint("") == "Hello Updated2!", timeout=10)
 
     p.send_signal(signal.SIGINT)
     p.wait()
@@ -931,37 +948,26 @@ def test_grpc_proxy_model_composition(ray_start_stop):
     ping_fruit_stand(channel, app)
 
 
-@serve.deployment(route_prefix="/foo")
-async def deployment_with_route_prefix(args):
-    return "bar..."
-
-
-route_prefix_app = deployment_with_route_prefix.bind()
-
-
 @pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
-def test_serve_run_mount_to_correct_deployment_route_prefix(ray_start_stop):
-    """Test running serve run with deployment with route_prefix should mount the
-    deployment to the correct route."""
+def test_control_c_shutdown_serve_components(ray_start_stop):
+    """Test ctrl+c after `serve run` shuts down serve components."""
 
-    import_path = "ray.serve.tests.test_cli_2.route_prefix_app"
-    subprocess.Popen(["serve", "run", import_path])
+    p = subprocess.Popen(["serve", "run", "ray.serve.tests.test_cli_2.echo_app"])
 
-    # /-/routes should show the app having the correct route.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/-/routes").text
-        == '{"/foo":"default"}'
-    )
+    # Make sure Serve components are up and running
+    wait_for_condition(check_app_running, app_name=SERVE_DEFAULT_APP_NAME)
+    assert ping_endpoint("/-/healthz") == "success"
+    assert json.loads(ping_endpoint("/-/routes")) == {"/": "default"}
+    assert ping_endpoint("/") == "hello"
 
-    # Ping root path directly should 404.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/").status_code == 404
-    )
+    # Send ctrl+c to shutdown Serve components
+    p.send_signal(signal.SIGINT)
+    p.wait()
 
-    # Ping the mounting route should return 200.
-    wait_for_condition(
-        lambda: requests.get("http://localhost:8000/foo").status_code == 200
-    )
+    # Make sure Serve components are shutdown
+    status_response = subprocess.check_output(["serve", "status"])
+    status = yaml.safe_load(status_response)
+    assert status == {"applications": {}, "proxies": {}, "target_capacity": None}
 
 
 if __name__ == "__main__":

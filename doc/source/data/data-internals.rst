@@ -11,79 +11,204 @@ For a gentler introduction to Ray Data, see :ref:`Quickstart <data_quickstart>`.
 
 .. _dataset_concept:
 
-Datasets and blocks
-===================
+Key concepts
+============
 
-A :class:`Dataset <ray.data.Dataset>` operates over a sequence of Ray object references
-to :term:`blocks <Block>`. Each block contains a disjoint subset of rows, and Ray Data
+Datasets and blocks
+-------------------
+
+Datasets
+~~~~~~~~
+
+:class:`Dataset <ray.data.Dataset>` is the main user-facing Python API. It represents a
+distributed data collection, and defines data loading and processing operations. You
+typically use the API in this way:
+
+1. Create a Ray Dataset from external storage or in-memory data.
+2. Apply transformations to the data.
+3. Write the outputs to external storage or feed the outputs to training workers.
+
+Blocks
+~~~~~~
+
+A *block* is the basic unit of data bulk that Ray Data stores in the object store and
+transfers over the network. Each block contains a disjoint subset of rows, and Ray Data
 loads and transforms these blocks in parallel.
 
 The following figure visualizes a dataset with three blocks, each holding 1000 rows.
-The :class:`~ray.data.Dataset` is the user-facing Python object
-(usually held in the driver), while materialized blocks are stored as objects in Ray's
-shared-memory :ref:`object store <objects-in-ray>`.
-
-Generally speaking, the number of concurrently executing tasks determines CPU utilization (or GPU utilization if using GPU transforms).
-The total heap memory usage is a function (determined by your UDF) of the number of concurrently executing tasks multiplied by the block size.
-The total number of materialized blocks in scope determines Ray's object store usage; if this exceeds Ray's object store capacity, then Ray automatically spills blocks to disk.
-Ray Data uses :ref:`streaming execution <streaming_execution>` to minimize the total number of materialized blocks in scope and therefore avoid spilling.
+Ray Data holds the :class:`~ray.data.Dataset` on the process that triggers execution
+(which is usually the driver) and stores the blocks as objects in Ray's shared-memory
+:ref:`object store <objects-in-ray>`.
 
 .. image:: images/dataset-arch.svg
 
 ..
   https://docs.google.com/drawings/d/1PmbDvHRfVthme9XD7EYM-LIHPXtHdOfjCbc1SCsM64k/edit
 
-Operations
-==========
+Block formats
+~~~~~~~~~~~~~
 
-Reading files
--------------
+Blocks are Arrow tables or `pandas` DataFrames. Generally, blocks are Arrow tables
+unless Arrow can’t represent your data.
 
-Ray Data uses :ref:`Ray tasks <task-key-concept>` to read files in parallel. Each read
-task reads one or more files and produces a stream of one or more output blocks.
-These output blocks are either stored in Ray's object store or fed directly to the downstream transform.
+The block format doesn’t affect the type of data returned by APIs like
+:meth:`~ray.data.Dataset.iter_batches`.
 
-.. image:: images/dataset-read.svg
-   :align: center
+Block size limiting
+~~~~~~~~~~~~~~~~~~~
 
-..
-  https://docs.google.com/drawings/d/15B4TB8b5xN15Q9S8-s0MjW6iIvo_PrH7JtV1fL123pU/edit
+Ray Data bounds block sizes to avoid excessive communication overhead and prevent
+out-of-memory errors. Small blocks are good for latency and more streamed execution,
+while large blocks reduce scheduler and communication overhead. The default range
+attempts to make a good tradeoff for most jobs.
 
-To handle transient errors from remote datasources, Ray Data retries application-level
-exceptions.
+Ray Data attempts to bound block sizes between 1 MiB and 128 MiB. To change the block
+size range, configure the ``target_min_block_size`` and  ``target_max_block_size``
+attributes of :class:`~ray.data.context.DataContext`.
 
-For more information on loading data, see :ref:`Loading data <loading_data>`.
+.. testcode::
 
-Transforming data
------------------
+    import ray
 
-Ray Data uses either :ref:`Ray tasks <task-key-concept>` or
-:ref:`Ray actors <actor-key-concept>` to transform blocks. By default, it uses tasks.
-Usually, transforms are fused together and with the upstream read task.
+    ctx = ray.data.DataContext.get_current()
+    ctx.target_min_block_size = 1 * 1024 * 1024
+    ctx.target_max_block_size = 128 * 1024 * 1024
 
-.. image:: images/dataset-map.svg
-   :align: center
-..
-  https://docs.google.com/drawings/d/12STHGV0meGWfdWyBlJMUgw7a-JcFPu9BwSOn5BjRw9k/edit
+Dynamic block splitting
+~~~~~~~~~~~~~~~~~~~~~~~
 
-For the preceding example, each read task generates one output block. In the case where the read input file
-is large, a single read task may output multiple blocks. For more information on transforming data, see
-:ref:`Transforming data <transforming_data>`.
+If a block is larger than 192 MiB (50% more than the target max size), Ray Data
+dynamically splits the block into smaller blocks.
 
-Shuffling data
---------------
+To change the size at which Ray Data splits blocks, configure
+``MAX_SAFE_BLOCK_SIZE_FACTOR``. The default value is 1.5.
 
-When you call :meth:`~ray.data.Dataset.random_shuffle`,
-:meth:`~ray.data.Dataset.sort`, or :meth:`~ray.data.Dataset.groupby`, Ray Data shuffles
-blocks in a map-reduce style: map tasks partition blocks by value and then reduce tasks
-merge co-partitioned blocks.
+.. testcode::
 
-.. note::
+    import ray
 
-    Shuffles materialize :class:`Datasets <ray.data.Dataset>` in memory. In other
-    words, shuffle execution isn't streamed through memory.
+    ray.data.context.MAX_SAFE_BLOCK_SIZE_FACTOR = 1.5
 
-For an in-depth guide on shuffle performance, see :ref:`Performance Tips and Tuning <shuffle_performance_tips>`.
+Ray Data can’t split rows. So, if your dataset contains large rows (for example, large
+images), then Ray Data can’t bound the block size.
+
+Operators, plans, and planning
+------------------------------
+
+Operators
+~~~~~~~~~
+
+There are two types of operators: *logical operators* and *physical operators*. Logical
+operators are stateless objects that describe “what” to do. Physical operators are
+stateful objects that describe “how” to do it. An example of a logical operator is
+``ReadOp``, and an example of a physical operator is ``TaskPoolMapOperator``.
+
+Plans
+~~~~~
+
+A *logical plan* is a series of logical operators, and a *physical plan* is a series of
+physical operators. When you call APIs like :func:`ray.data.read_images` and
+:meth:`ray.data.Dataset.map_batches`, Ray Data produces a logical plan. When execution
+starts, the planner generates a corresponding physical plan.
+
+The planner
+~~~~~~~~~~~
+
+The Ray Data planner translates logical operators to one or more physical operators. For
+example, the planner translates the ``ReadOp`` logical operator into two physical
+operators: an ``InputDataBuffer`` and ``TaskPoolMapOperator``. Whereas the ``ReadOp``
+logical operator only describes the input data, the ``TaskPoolMapOperator`` physical
+operator actually launches tasks to read the data.
+
+Plan optimization
+~~~~~~~~~~~~~~~~~
+
+Ray Data applies optimizations to both logical and physical plans. For example, the
+``OperatorFusionRule`` combines a chain of physical map operators into a single map
+operator. This prevents unnecessary serialization between map operators.
+
+To add custom optimization rules, implement a class that extends ``Rule`` and configure
+``DEFAULT_LOGICAL_RULES`` or ``DEFAULT_PHYSICAL_RULES``.
+
+.. testcode::
+
+    import ray
+    from ray.data._internal.logical.interfaces import Rule
+
+    class CustomRule(Rule):
+        def apply(self, plan):
+            ...
+
+    ray.data._internal.logical.optimizers.DEFAULT_LOGICAL_RULES.append(CustomRule)
+
+Types of physical operators
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Physical operators take in a stream of block references and output another stream of
+block references. Some physical operators launch Ray Tasks and Actors to transform
+the blocks, and others only manipulate the references.
+
+``MapOperator`` is the most common operator. All read, transform, and write operations
+are implemented with it. To process data, ``MapOperator`` implementations use either Ray
+Tasks or Ray Actors.
+
+Non-map operators include ``OutputSplitter`` and ``LimitOperator``. These two operators
+manipulate references to data, but don’t launch tasks or modify the underlying data.
+
+Execution
+---------
+
+The executor
+~~~~~~~~~~~~
+
+The *executor* schedules tasks and moves data between physical operators.
+
+The executor and operators are located on the process where dataset execution starts.
+For batch inference jobs, this process is usually the driver. For training jobs, the
+executor runs on a special actor called ``SplitCoordinator`` which handles
+:meth:`~ray.data.Dataset.streaming_split`.
+
+Tasks and actors launched by operators are scheduled across the cluster, and outputs are
+stored in Ray’s distributed object store. The executor manipulates references to
+objects, and doesn’t fetch the underlying data itself to the executor.
+
+Out queues
+~~~~~~~~~~
+
+Each physical operator has an associated *out queue*. When a physical operator produces
+outputs, the executor moves the outputs to the operator’s out queue.
+
+.. _streaming_execution:
+
+Streaming execution
+~~~~~~~~~~~~~~~~~~~
+
+In contrast to bulk synchronous execution, Ray Data’s streaming execution doesn’t wait
+for one operator to complete to start the next. Each operator takes in and outputs a
+stream of blocks. This approach allows you to process datasets that are too large to fit
+in your cluster’s memory.
+
+The scheduling loop
+~~~~~~~~~~~~~~~~~~~
+
+The executor runs a loop. Each step works like this:
+
+1. Wait until running tasks and actors have new outputs.
+2. Move new outputs into the appropriate operator out queues.
+3. Choose some operators and assign new inputs to them. These operator process the new
+   inputs either by launching new tasks or manipulating metadata.
+
+Choosing the best operator to assign inputs is one of the most important decisions in
+Ray Data. This decision is critical to the performance, stability, and scalability of a
+Ray Data job. The executor can schedule an operator if the operator satisfies the
+following conditions:
+
+* The operator has inputs.
+* There are adequate resources available.
+* The operator isn’t backpressured.
+
+If there are multiple viable operators, the executor chooses the operator with the
+smallest out queue.
 
 Scheduling
 ==========
@@ -120,145 +245,6 @@ To ensure CPU resources are always available for Ray Data execution, limit the n
   :language: python
   :start-after: __resource_allocation_1_begin__
   :end-before: __resource_allocation_1_end__
-
-.. _dataset_execution:
-
-Execution
-=========
-
-Ray Data execution by default is:
-
-- **Lazy**: This means that transformations on Dataset aren't executed until you call a
-  consumption operation like :meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`
-  or :meth:`Dataset.materialize() <ray.data.Dataset.materialize>`. This creates
-  opportunities for optimizing the execution plan like :ref:`operator fusion <datasets_operator_fusion>`.
-- **Streaming**: This means that Dataset transformations are executed in a
-  streaming way, incrementally on the base data, instead of on all of the data
-  at once, and overlapping the execution of operations. This can be used for streaming
-  data loading into ML training to overlap the data preprocessing and model training,
-  or to execute batch transformations on large datasets without needing to load the
-  entire dataset into cluster memory.
-
-.. _datasets_lazy_execution:
-
-Lazy Execution
---------------
-
-Lazy execution offers opportunities for improved performance and memory stability, thanks to
-optimizations such as operator fusion and aggressive garbage collection of intermediate results.
-
-Dataset creation and transformation APIs are lazy, with execution only triggered by "sink"
-APIs, such as consuming (:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>`),
-writing (:meth:`ds.write_parquet() <ray.data.Dataset.write_parquet>`), or manually triggering with
-:meth:`ds.materialize() <ray.data.Dataset.materialize>`. There are a few
-exceptions to this rule, where transformations such as :meth:`ds.union()
-<ray.data.Dataset.union>` and
-:meth:`ds.limit() <ray.data.Dataset.limit>` trigger execution.
-
-Check the API docs for Ray Data methods to see if they
-trigger execution. Those that do trigger execution have a ``Note`` indicating as
-much.
-
-.. _streaming_execution:
-
-Streaming Execution
--------------------
-
-The following code is a hello world example which invokes the execution with
-:meth:`ds.iter_batches() <ray.data.Dataset.iter_batches>` consumption. The example also enables verbose progress reporting, which shows per-operator progress in addition to overall progress.
-
-.. code-block::
-
-   import ray
-   import time
-
-   # Enable verbose reporting. This can also be toggled on by setting
-   # the environment variable RAY_DATA_VERBOSE_PROGRESS=1.
-   ctx = ray.data.DataContext.get_current()
-   ctx.execution_options.verbose_progress = True
-
-   def sleep(x):
-       time.sleep(0.1)
-       return x
-
-   class SleepClass():
-       def __call__(self, x):
-           time.sleep(0.1)
-           return x
-
-   for _ in (
-       ray.data.range_tensor(5000, shape=(80, 80, 3), override_num_blocks=200)
-       .map_batches(sleep, num_cpus=2)
-       .map_batches(SleepClass, concurrency=(2, 4))
-       .map_batches(sleep, num_cpus=1)
-       .iter_batches()
-   ):
-       pass
-
-This launches a simple 4-operator Dataset. The example uses different compute arguments for each operator, which forces them to be run as separate operators instead of getting fused together. You should see a log message indicating streaming execution is being used:
-
-.. code-block::
-
-   2023-03-30 16:40:10,076	INFO streaming_executor.py:83 -- Executing DAG InputDataBuffer[Input] -> TaskPoolMapOperator[ReadRange] -> TaskPoolMapOperator[MapBatches(sleep)] -> ActorPoolMapOperator[MapBatches(sleep)] -> TaskPoolMapOperator[MapBatches(sleep)]
-
-The next few lines shows execution progress. Here is how to interpret the output:
-
-.. code-block::
-
-   Running: 7.0/16.0 CPU, 0.0/0.0 GPU, 76.91 MiB/2.25 GiB object_store_memory 65%|██▊ | 130/200 [00:08<00:02, 22.52it/s]
-
-This line tells you how many resources are currently being used by the streaming executor out of the limits, as well as the number of completed output blocks. The streaming executor attempts to keep resource usage under the printed limits by throttling task executions.
-
-.. code-block::
-
-   ReadRange: 2 active, 37 queued, 7.32 MiB objects 1:  80%|████████▊  | 161/200 [00:08<00:02, 17.81it/s]
-   MapBatches(sleep): 5 active, 5 queued, 18.31 MiB objects 2:  76%|██▎| 151/200 [00:08<00:02, 19.93it/s]
-   MapBatches(sleep): 7 active, 2 queued, 25.64 MiB objects, 2 actors [all objects local] 3:  71%|▋| 142/
-   MapBatches(sleep): 2 active, 0 queued, 7.32 MiB objects 4:  70%|██▊ | 139/200 [00:08<00:02, 23.16it/s]
-
-These lines are only shown when verbose progress reporting is enabled. The `active` count indicates the number of running tasks for the operator. The `queued` count is the number of input blocks for the operator that are computed but are not yet submitted for execution. For operators that use actor-pool execution, the number of running actors is shown as `actors`.
-
-.. tip::
-
-    Avoid returning large outputs from the final operation of a Dataset you are iterating over, since the consumer process is a serial bottleneck.
-
-Fault tolerance
----------------
-
-Ray Data performs *lineage reconstruction* to recover data. If an application error or
-system failure occurs, Ray Data recreates blocks by re-executing tasks.
-
-.. note::
-
-    Fault tolerance isn't supported if the process that created the
-    :class:`~ray.data.Dataset` dies.
-
-
-.. _datasets_operator_fusion:
-
-Operator Fusion Optimization
-----------------------------
-
-In order to reduce memory usage and task overheads, Ray Data automatically fuses together
-compatible operators which share the same compute pattern and strategy:
-
-* Same compute pattern: embarrassingly parallel map vs. all-to-all shuffle
-* Same compute strategy: Ray tasks vs Ray actors
-* Same resource specification, for example, ``num_cpus`` or ``num_gpus`` requests
-
-Read operators and subsequent map-like transformations are usually fused together.
-All-to-all transformations such as
-:meth:`ds.random_shuffle() <ray.data.Dataset.random_shuffle>` can be fused with earlier
-map-like operators, but not later operators.
-
-You can tell if operator fusion is enabled by checking the :ref:`Dataset stats <data_performance_tips>` and looking for fused operators (for example, ``Read->MapBatches``).
-
-.. code-block::
-
-    Operator N Read->MapBatches->RandomShuffleMap: N tasks executed, N blocks produced in T
-    * Remote wall time: T min, T max, T mean, T total
-    * Remote cpu time: T min, T max, T mean, T total
-    * Output num rows: N min, N max, N mean, N total
 
 Memory Management
 =================

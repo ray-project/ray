@@ -157,8 +157,38 @@ class TestSingelAgentEpisode(unittest.TestCase):
         self.assertTrue(episode.is_truncated == truncated)
         self.assertTrue(episode.is_done == terminated or truncated)
 
+    def test_getters(self):
+        """Tests whether the SingleAgentEpisode's getter methods work as expected."""
+        # Create a simple episode.
+        episode = SingleAgentEpisode(
+            observations=[0, 1, 2, 3, 4, 5, 6],
+            actions=[0, 1, 2, 3, 4, 5],
+            rewards=[0.0, 0.1, 0.2, 0.3, 0.4, 0.5],
+            len_lookback_buffer=0,
+        )
+        check(episode.get_observations(0), 0)
+        check(episode.get_observations([0, 1]), [0, 1])
+        check(episode.get_observations([-1]), [6])
+        check(episode.get_observations(-2), 5)
+        check(episode.get_observations(slice(1, 3)), [1, 2])
+        check(episode.get_observations(slice(-3, None)), [4, 5, 6])
+
+        check(episode.get_actions(0), 0)
+        check(episode.get_actions([0, 1]), [0, 1])
+        check(episode.get_actions([-1]), [5])
+        check(episode.get_actions(-2), 4)
+        check(episode.get_actions(slice(1, 3)), [1, 2])
+        check(episode.get_actions(slice(-3, None)), [3, 4, 5])
+
+        check(episode.get_rewards(0), 0.0)
+        check(episode.get_rewards([0, 1]), [0.0, 0.1])
+        check(episode.get_rewards([-1]), [0.5])
+        check(episode.get_rewards(-2), 0.4)
+        check(episode.get_rewards(slice(1, 3)), [0.1, 0.2])
+        check(episode.get_rewards(slice(-3, None)), [0.3, 0.4, 0.5])
+
     def test_cut(self):
-        """Tests creation of a scucessor of a `SingleAgentEpisode`.
+        """Tests creation of a successor of a `SingleAgentEpisode` via the `cut` API.
 
         This test makes sure that when creating a successor the successor's
         data is coherent with the episode that should be succeeded.
@@ -217,20 +247,214 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # Assert that this does not change also the predecessor's data.
         self.assertFalse(len(episode_1.observations) == len(episode_2.observations))
 
-    def test_slices(self):
-        # TEST #1: even split (50/50)
+    def test_slice(self):
+        """Tests whether slicing with the []-operator works as expected."""
+        # Generate a simple single-agent episode.
+        observations = [0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+        actions = observations[:-1]
+        rewards = [o / 10 for o in observations[:-1]]
+        episode = SingleAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=0,
+        )
+        check(len(episode), 9)
+
+        # Slice the episode in different ways and check results.
+        for s in [
+            slice(None, None, None),
+            slice(-100, None, None),
+            slice(None, 1000, None),
+            slice(-1000, 1000, None),
+        ]:
+            slice_ = episode[s]
+            check(len(slice_), len(episode))
+            check(slice_.observations, observations)
+            check(slice_.actions, observations[:-1])
+            check(slice_.rewards, [o / 10 for o in observations[:-1]])
+            check(slice_.is_done, False)
+
+        slice_ = episode[-100:]
+        check(len(slice_), len(episode))
+        check(slice_.observations, observations)
+        check(slice_.actions, observations[:-1])
+        check(slice_.rewards, [o / 10 for o in observations[:-1]])
+        check(slice_.is_done, False)
+
+        slice_ = episode[2:]
+        check(len(slice_), 7)
+        check(slice_.observations, [2, 3, 4, 5, 6, 7, 8, 9])
+        check(slice_.actions, [2, 3, 4, 5, 6, 7, 8])
+        check(slice_.rewards, [0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:1]
+        check(len(slice_), 1)
+        check(slice_.observations, [0, 1])
+        check(slice_.actions, [0])
+        check(slice_.rewards, [0.0])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:3]
+        check(len(slice_), 3)
+        check(slice_.observations, [0, 1, 2, 3])
+        check(slice_.actions, [0, 1, 2])
+        check(slice_.rewards, [0.0, 0.1, 0.2])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:-4]
+        check(len(slice_), 5)
+        check(slice_.observations, [0, 1, 2, 3, 4, 5])
+        check(slice_.actions, [0, 1, 2, 3, 4])
+        check(slice_.rewards, [0.0, 0.1, 0.2, 0.3, 0.4])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-2:]
+        check(len(slice_), 2)
+        check(slice_.observations, [7, 8, 9])
+        check(slice_.actions, [7, 8])
+        check(slice_.rewards, [0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-3:]
+        check(len(slice_), 3)
+        check(slice_.observations, [6, 7, 8, 9])
+        check(slice_.actions, [6, 7, 8])
+        check(slice_.rewards, [0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-5:]
+        check(len(slice_), 5)
+        check(slice_.observations, [4, 5, 6, 7, 8, 9])
+        check(slice_.actions, [4, 5, 6, 7, 8])
+        check(slice_.rewards, [0.4, 0.5, 0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:-2]
+        check(len(slice_), 2)
+        check(slice_.observations, [5, 6, 7])
+        check(slice_.actions, [5, 6])
+        check(slice_.rewards, [0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:6]
+        check(len(slice_), 1)
+        check(slice_.observations, [5, 6])
+        check(slice_.actions, [5])
+        check(slice_.rewards, [0.5])
+        check(slice_.is_done, False)
+
+        slice_ = episode[1:3]
+        check(len(slice_), 2)
+        check(slice_.observations, [1, 2, 3])
+        check(slice_.actions, [1, 2])
+        check(slice_.rewards, [0.1, 0.2])
+        check(slice_.is_done, False)
+
+        # Generate a single-agent episode with lookback.
+        episode = SingleAgentEpisode(
+            observations=observations,
+            actions=actions,
+            rewards=rewards,
+            len_lookback_buffer=4,  # some data is in lookback buffer
+        )
+        check(len(episode), 5)
+
+        # Slice the episode in different ways and check results.
+        for s in [
+            slice(None, None, None),
+            slice(-100, None, None),
+            slice(None, 1000, None),
+            slice(-1000, 1000, None),
+        ]:
+            slice_ = episode[s]
+            check(len(slice_), len(episode))
+            check(slice_.observations, [4, 5, 6, 7, 8, 9])
+            check(slice_.actions, [4, 5, 6, 7, 8])
+            check(slice_.rewards, [0.4, 0.5, 0.6, 0.7, 0.8])
+            check(slice_.is_done, False)
+
+        slice_ = episode[2:]
+        check(len(slice_), 3)
+        check(slice_.observations, [6, 7, 8, 9])
+        check(slice_.actions, [6, 7, 8])
+        check(slice_.rewards, [0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:1]
+        check(len(slice_), 1)
+        check(slice_.observations, [4, 5])
+        check(slice_.actions, [4])
+        check(slice_.rewards, [0.4])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:3]
+        check(len(slice_), 3)
+        check(slice_.observations, [4, 5, 6, 7])
+        check(slice_.actions, [4, 5, 6])
+        check(slice_.rewards, [0.4, 0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[:-4]
+        check(len(slice_), 1)
+        check(slice_.observations, [4, 5])
+        check(slice_.actions, [4])
+        check(slice_.rewards, [0.4])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-2:]
+        check(len(slice_), 2)
+        check(slice_.observations, [7, 8, 9])
+        check(slice_.actions, [7, 8])
+        check(slice_.rewards, [0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-3:]
+        check(len(slice_), 3)
+        check(slice_.observations, [6, 7, 8, 9])
+        check(slice_.actions, [6, 7, 8])
+        check(slice_.rewards, [0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-5:]
+        check(len(slice_), 5)
+        check(slice_.observations, [4, 5, 6, 7, 8, 9])
+        check(slice_.actions, [4, 5, 6, 7, 8])
+        check(slice_.rewards, [0.4, 0.5, 0.6, 0.7, 0.8])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:-2]
+        check(len(slice_), 2)
+        check(slice_.observations, [5, 6, 7])
+        check(slice_.actions, [5, 6])
+        check(slice_.rewards, [0.5, 0.6])
+        check(slice_.is_done, False)
+
+        slice_ = episode[-4:2]
+        check(len(slice_), 1)
+        check(slice_.observations, [5, 6])
+        check(slice_.actions, [5])
+        check(slice_.rewards, [0.5])
+        check(slice_.is_done, False)
+
+        slice_ = episode[1:3]
+        check(len(slice_), 2)
+        check(slice_.observations, [5, 6, 7])
+        check(slice_.actions, [5, 6])
+        check(slice_.rewards, [0.5, 0.6])
+        check(slice_.is_done, False)
+
+        # Even split (50/50).
         episode = self._create_episode(100)
         self.assertTrue(episode.t == 100 and episode.t_started == 0)
-
         # Convert to numpy before splitting.
         episode.finalize()
-
         # Create two 50/50 episode chunks.
         e1 = episode[:50]
         self.assertTrue(e1.is_finalized)
         e2 = episode.slice(slice(50, None))
         self.assertTrue(e2.is_finalized)
-
         # Make sure, `e1` and `e2` make sense.
         self.assertTrue(len(e1) == 50)
         self.assertTrue(len(e2) == 50)
@@ -245,19 +469,16 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(e1.observations[4], e2.observations[4], false=True)
         check(e1.observations[10], e2.observations[10], false=True)
 
-        # TEST #2: Uneven split (33/66).
+        # Uneven split (33/66).
         episode = self._create_episode(99)
         self.assertTrue(episode.t == 99 and episode.t_started == 0)
-
         # Convert to numpy before splitting.
         episode.finalize()
-
         # Create two 50/50 episode chunks.
         e1 = episode.slice(slice(None, 33))
         self.assertTrue(e1.is_finalized)
         e2 = episode[33:]
         self.assertTrue(e2.is_finalized)
-
         # Make sure, `e1` and `e2` chunk make sense.
         self.assertTrue(len(e1) == 33)
         self.assertTrue(len(e2) == 66)
@@ -272,22 +493,19 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(e1.observations[4], e2.observations[4], false=True)
         check(e1.observations[10], e2.observations[10], false=True)
 
-        # TEST #3: Split with lookback buffer (buffer=10, split=20/30).
+        # Split with lookback buffer (buffer=10, split=20/30).
         len_lookback_buffer = 10
         episode = self._create_episode(
             num_data=60, t_started=15, len_lookback_buffer=len_lookback_buffer
         )
         self.assertTrue(episode.t == 65 and episode.t_started == 15)
-
         # Convert to numpy before splitting.
         episode.finalize()
-
         # Create two 20/30 episode chunks.
         e1 = episode.slice(slice(None, 20))
         self.assertTrue(e1.is_finalized)
         e2 = episode[20:]
         self.assertTrue(e2.is_finalized)
-
         # Make sure, `e1` and `e2` make sense.
         self.assertTrue(len(e1) == 20)
         self.assertTrue(len(e2) == 30)
@@ -303,22 +521,22 @@ class TestSingelAgentEpisode(unittest.TestCase):
         check(e1.observations[11], e2.observations[11], false=True)
         # Make sure the lookback buffers of both chunks are still working.
         check(
-            e1.get_observations(-1, neg_indices_left_of_zero=True),
+            e1.get_observations(-1, neg_index_as_lookback=True),
             episode.observations.data[len_lookback_buffer - 1],
         )
         check(
-            e1.get_actions(-1, neg_indices_left_of_zero=True),
+            e1.get_actions(-1, neg_index_as_lookback=True),
             episode.actions.data[len_lookback_buffer - 1],
         )
         check(
-            e2.get_observations([-5, -2], neg_indices_left_of_zero=True),
+            e2.get_observations([-5, -2], neg_index_as_lookback=True),
             [
                 episode.observations.data[20 + len_lookback_buffer - 5],
                 episode.observations.data[20 + len_lookback_buffer - 2],
             ],
         )
         check(
-            e2.get_rewards([-5, -2], neg_indices_left_of_zero=True),
+            e2.get_rewards([-5, -2], neg_index_as_lookback=True),
             [
                 episode.rewards.data[20 + len_lookback_buffer - 5],
                 episode.rewards.data[20 + len_lookback_buffer - 2],
@@ -418,6 +636,41 @@ class TestSingelAgentEpisode(unittest.TestCase):
         # TODO (sven): Do we really need a deepcopy here?
         # self.assertNotEqual(id(episode_2.observations[5]),
         # id(episode_1.observations[105]))
+
+    def test_get_and_from_state(self):
+        """Tests the `get_state` and `set_state` methods of `SingleAgentEpisode`.
+
+        This test ensures that the state of an episode can be stored and
+        restored correctly.
+        """
+        # Create an episode and fill it with 100 timesteps.
+        episode = self._create_episode(100)
+        # Store the state.
+        state = episode.get_state()
+        episode_2 = SingleAgentEpisode.from_state(state)
+
+        # Assert that the episode is now at the same state as before.
+        self.assertEqual(episode_2.id_, episode.id_)
+        self.assertEqual(episode_2.agent_id, episode.agent_id)
+        self.assertEqual(
+            episode_2.multi_agent_episode_id, episode.multi_agent_episode_id
+        )
+        check(episode_2.t, episode.t)
+        check(episode_2.t_started, episode.t_started)
+        check(episode_2.observations[5], episode.observations[5])
+        check(episode_2.actions[5], episode.actions[5])
+        check(episode_2.rewards[5], episode.rewards[5])
+        check(episode_2.infos[5], episode.infos[5])
+        check(episode_2.is_terminated, episode.is_terminated)
+        check(episode_2.is_truncated, episode.is_truncated)
+        self.assertEqual(
+            type(episode_2._observation_space), type(episode._observation_space)
+        )
+        self.assertEqual(type(episode_2._action_space), type(episode._action_space))
+        check(episode_2._start_time, episode._start_time)
+        check(episode_2._last_step_time, episode._last_step_time)
+        check(episode_2._temporary_timestep_data, episode._temporary_timestep_data)
+        self.assertDictEqual(episode_2.extra_model_outputs, episode.extra_model_outputs)
 
     def _create_episode(self, num_data, t_started=None, len_lookback_buffer=0):
         # Sample 100 values and initialize episode with observations and infos.

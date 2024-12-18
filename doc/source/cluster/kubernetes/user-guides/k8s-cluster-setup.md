@@ -7,19 +7,21 @@
 
 aws-eks-gpu-cluster
 gcp-gke-gpu-cluster
+gcp-gke-tpu-cluster
 ```
 
-The KubeRay operator and Ray can run on any cloud or on-prem Kubernetes cluster.
-The simplest way to provision a remote Kubernetes cluster is to use a cloud-based managed service.
-We collect a few helpful links for users who are getting started with a managed Kubernetes service.
+Most KubeRay documentation examples only require a local Kubernetes cluster such as [Kind](https://kind.sigs.k8s.io/).
+Some KubeRay examples require GPU nodes, which can be provided by a managed Kubernetes service.
+We collect a few helpful links for users who are getting started with a managed Kubernetes service to launch a Kubernetes cluster equipped with GPUs.
 
 (gke-setup)=
-# Setting up a GKE cluster (Google Cloud)
+# Set up a GKE cluster (Google Cloud)
 
 - {ref}`kuberay-gke-gpu-cluster-setup`
+- {ref}`kuberay-gke-tpu-cluster-setup`
 
 (eks-setup)=
-# Setting up an EKS cluster (AWS)
+# Set up an EKS cluster (AWS)
 
 - {ref}`kuberay-eks-gpu-cluster-setup`
 

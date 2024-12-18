@@ -26,8 +26,6 @@ class XGBoostTrainer(DataParallelTrainer):
         from ray.train.xgboost.v2 import XGBoostTrainer
 
         def train_fn_per_worker(config: dict):
-            from xgboost.collective import CommunicatorContext
-
             # (Optional) Add logic to resume training state from a checkpoint.
             # ray.train.get_checkpoint()
 
@@ -53,17 +51,16 @@ class XGBoostTrainer(DataParallelTrainer):
                 "max_depth": 2,
             }
 
-            # 2. Do distributed data-parallel training with the `CommunicatorContext`.
+            # 2. Do distributed data-parallel training.
             # Ray Train sets up the necessary coordinator processes and
             # environment variables for your workers to communicate with each other.
-            with CommunicatorContext():
-                bst = xgboost.train(
-                    params,
-                    dtrain=dtrain,
-                    evals=[(deval, "validation")],
-                    num_boost_round=10,
-                    callbacks=[RayTrainReportCallback()],
-                )
+            bst = xgboost.train(
+                params,
+                dtrain=dtrain,
+                evals=[(deval, "validation")],
+                num_boost_round=10,
+                callbacks=[RayTrainReportCallback()],
+            )
 
         train_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(32)])
         eval_ds = ray.data.from_items([{"x": x, "y": x + 1} for x in range(16)])

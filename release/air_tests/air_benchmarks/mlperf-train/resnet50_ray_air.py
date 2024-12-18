@@ -529,7 +529,7 @@ if __name__ == "__main__":
     available_disk_space = statvfs.f_bavail * statvfs.f_frsize
     expected_disk_usage = args.num_images_per_epoch * APPROX_PREPROCESS_IMAGE_BYTES
     print(f"Available disk space: {available_disk_space / 1e9}GB")
-    print(f"Expected disk usage: {expected_disk_usage/ 1e9}GB")
+    print(f"Expected disk usage: {expected_disk_usage / 1e9}GB")
     disk_error_expected = expected_disk_usage > available_disk_space * 0.8
 
     datasets = {}

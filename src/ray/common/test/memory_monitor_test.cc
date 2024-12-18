@@ -143,7 +143,7 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodSetMaxUsageThresholdCallbackExecuted)
                     [has_checked_once](bool is_usage_above_threshold,
                                        MemorySnapshot system_memory,
                                        float usage_threshold) {
-                      ASSERT_EQ(1.0f, usage_threshold);
+                      ASSERT_FLOAT_EQ(1.0f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
                       ASSERT_GT(system_memory.used_bytes, 0);
                       has_checked_once->count_down();
@@ -160,7 +160,7 @@ TEST_F(MemoryMonitorTest, TestMonitorPeriodDisableMinMemoryCallbackExecuted) {
                     [has_checked_once](bool is_usage_above_threshold,
                                        MemorySnapshot system_memory,
                                        float usage_threshold) {
-                      ASSERT_EQ(0.4f, usage_threshold);
+                      ASSERT_FLOAT_EQ(0.4f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
                       ASSERT_GT(system_memory.used_bytes, 0);
                       has_checked_once->count_down();
@@ -178,7 +178,7 @@ TEST_F(MemoryMonitorTest, TestMonitorMinFreeZeroThresholdIsOne) {
                     [has_checked_once](bool is_usage_above_threshold,
                                        MemorySnapshot system_memory,
                                        float usage_threshold) {
-                      ASSERT_EQ(1.0f, usage_threshold);
+                      ASSERT_FLOAT_EQ(1.0f, usage_threshold);
                       ASSERT_GT(system_memory.total_bytes, 0);
                       ASSERT_GT(system_memory.used_bytes, 0);
                       has_checked_once->count_down();
@@ -479,8 +479,3 @@ TEST_F(MemoryMonitorTest, TestGetProcessMemoryUsageFiltersBadPids) {
 }
 
 }  // namespace ray
-
-int main(int argc, char **argv) {
-  ::testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
-}

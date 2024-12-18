@@ -14,6 +14,7 @@
 
 #include <boost/asio/ip/tcp.hpp>
 #include <chrono>
+#include <future>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -91,8 +92,11 @@ class GcsClientReconnectionTest : public ::testing::Test {
           new boost::asio::io_service::work(*client_io_service_));
       client_io_service_->run();
     });
-    gcs::GcsClientOptions options("127.0.0.1:" +
-                                  std::to_string(config_.grpc_server_port));
+    gcs::GcsClientOptions options("127.0.0.1",
+                                  config_.grpc_server_port,
+                                  ClusterID::Nil(),
+                                  /*allow_cluster_id_nil=*/true,
+                                  /*fetch_cluster_id_if_nil=*/false);
     gcs_client_ = std::make_unique<gcs::GcsClient>(options);
     RAY_CHECK_OK(gcs_client_->Connect(*client_io_service_));
     return gcs_client_.get();
@@ -178,7 +182,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   std::promise<void> p0;
   auto f0 = p0.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, [&p0](auto status, auto) {
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p0](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p0.set_value();
       }));
@@ -190,11 +194,12 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   // Send get request
   std::promise<std::string> p1;
   auto f1 = p1.get_future();
-  RAY_UNUSED(client->InternalKV().AsyncInternalKVGet("", "A", [&p1](auto status, auto p) {
-    ASSERT_TRUE(status.ok()) << status.ToString();
-    p1.set_value(*p);
-  }));
-  ASSERT_EQ(f1.wait_for(1s), std::future_status::timeout);
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVGet(
+      "", "A", gcs::GetGcsTimeoutMs(), [&p1](auto status, auto p) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p1.set_value(*p);
+      }));
+  ASSERT_EQ(std::future_status::timeout, f1.wait_for(1s));
 
   // Make sure io context is not blocked
   std::promise<void> p2;
@@ -206,7 +211,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   StartGCS();
 
   // Make sure the request is executed
-  ASSERT_EQ(f1.get(), "B");
+  ASSERT_EQ("B", f1.get());
 }
 
 TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
@@ -226,7 +231,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, [&p1](auto status, auto) {
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -237,8 +242,14 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
 
   ShutdownGCS();
 
-  RAY_UNUSED(
-      client->InternalKV().AsyncInternalKVPut("", "A", "B", false, [](auto, auto) {}));
+  std::promise<void> p2;
+  auto f2 = p2.get_future();
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p2.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
   ASSERT_TRUE(WaitUntil(
       [channel]() {
@@ -292,7 +303,7 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   std::promise<void> p1;
   auto f1 = p1.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, [&p1](auto status, auto) {
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p1](auto status, auto) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value();
       }));
@@ -301,27 +312,41 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ShutdownGCS();
 
   // Send one request which should fail
+  std::promise<void> p2;
+  auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, [](auto status, auto) {}));
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p2.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
   // Make sure it's not blocking
-  std::promise<void> p2;
-  client_io_service_->post([&p2]() { p2.set_value(); }, "");
-  auto f2 = p2.get_future();
-  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
-
-  // Send the second one and it should block the thread
-  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, [](auto status, auto) {}));
-  std::this_thread::sleep_for(1s);
   std::promise<void> p3;
   client_io_service_->post([&p3]() { p3.set_value(); }, "");
   auto f3 = p3.get_future();
-  ASSERT_EQ(std::future_status::timeout, f3.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f3.wait_for(1s));
+
+  // Send the second one and it should block the thread
+  std::promise<void> p4;
+  auto f4 = p4.get_future();
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p4.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f4.wait_for(1s));
+
+  std::promise<void> p5;
+  client_io_service_->post([&p5]() { p5.set_value(); }, "");
+  auto f5 = p5.get_future();
+  ASSERT_EQ(std::future_status::timeout, f5.wait_for(1s));
 
   // Resume GCS server and it should unblock
   StartGCS();
-  ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
+  ASSERT_EQ(std::future_status::ready, f5.wait_for(5s));
+  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f4.wait_for(1s));
 }
 
 TEST_F(GcsClientReconnectionTest, Timeout) {
@@ -331,22 +356,24 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10,
-  "gcs_server_request_timeout_seconds": 3
+  "gcs_server_request_timeout_seconds": 10
 }
   )");
   StartGCS();
   auto client = CreateGCSClient();
   bool added = false;
-  ASSERT_TRUE(client->InternalKV().Put("", "A", "B", false, added).ok());
+  ASSERT_TRUE(
+      client->InternalKV().Put("", "A", "B", false, gcs::GetGcsTimeoutMs(), added).ok());
   ASSERT_TRUE(added);
 
   ShutdownGCS();
-
   std::vector<std::string> values;
-  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).IsTimedOut());
+  ASSERT_TRUE(
+      client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).IsTimedOut());
   ASSERT_TRUE(values.empty());
+
   StartGCS();
-  ASSERT_TRUE(client->InternalKV().Keys("", "A", values).ok());
+  ASSERT_TRUE(client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);
 }
 

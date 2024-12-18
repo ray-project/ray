@@ -1,3 +1,5 @@
+# @OldAPIStack
+
 import gymnasium as gym
 from gymnasium.spaces import Box
 import numpy as np
@@ -274,6 +276,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         data = AgentConnectorDataType(0, 1, agent_data)
 
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rq_dict,
             config=config,
@@ -300,8 +303,6 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         check(sample_batch, sample_batch_expected)
 
     def test_vr_connector_shift_by_one(self):
-        """Test that the ViewRequirementAgentConnector can handle shift by one correctly and
-        can ignore future referencing view_requirements to respect causality"""
         view_rq_dict = {
             "state": ViewRequirement("obs"),
             "next_state": ViewRequirement(
@@ -312,6 +313,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
 
         obs_arrs = np.arange(10)[:, None] + 1
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
         )
@@ -347,6 +349,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
 
         obs_arrs = np.arange(10)[:, None] + 1
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
         )
@@ -419,6 +422,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         act_arrs = (np.arange(10)[:, None] + 1) * 100
         n_steps = obs_arrs.shape[0]
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rq_dict, config=config, is_policy_recurrent=True
         )
@@ -460,12 +464,15 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
     def test_connector_pipline_with_view_requirement(self):
         """A very minimal test that checks wheter pipeline connectors work in a
         simulation rollout."""
-        # TODO: make this test beefier and more comprehensive
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
             .environment(env="CartPole-v1")
-            .rollouts(create_env_on_local_worker=True)
+            .env_runners(create_env_on_local_worker=True)
         )
 
         env = gym.make("CartPole-v1")
@@ -560,6 +567,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         }
 
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rqs,
             config=config,
@@ -594,6 +602,7 @@ class TestViewRequirementAgentConnector(unittest.TestCase):
         }
 
         config = PPOConfig().to_dict()
+        config["_enable_new_api_stack"] = False
         ctx = ConnectorContext(
             view_requirements=view_rqs,
             config=config,

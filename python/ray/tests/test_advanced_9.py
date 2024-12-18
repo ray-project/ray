@@ -263,19 +263,10 @@ def test_gcs_connection_no_leak(ray_start_cluster):
     gcs_server_process = head_node.all_processes["gcs_server"][0].process
     gcs_server_pid = gcs_server_process.pid
 
-    ray.init(cluster.address)
-
     def get_gcs_num_of_connections():
         p = psutil.Process(gcs_server_pid)
         print(">>", len(p.connections()))
         return len(p.connections())
-
-    # Wait for everything to be ready.
-    import time
-
-    time.sleep(10)
-
-    fds_without_workers = get_gcs_num_of_connections()
 
     @ray.remote
     class A:
@@ -283,12 +274,21 @@ def test_gcs_connection_no_leak(ray_start_cluster):
             print("HELLO")
             return "WORLD"
 
-    num_of_actors = 10
-    actors = [A.remote() for _ in range(num_of_actors)]
-    print(ray.get([t.ready.remote() for t in actors]))
+    with ray.init(cluster.address):
+        # Wait for everything to be ready.
+        time.sleep(10)
+        # Note: `fds_without_workers` need to be recorded *after* `ray.init`, because
+        # a prestarted worker is started on the first driver init. This worker keeps 1
+        # connection to the GCS, and it stays alive even after the driver exits. If
+        # we move this line before `ray.init`, we will find 1 extra connection after
+        # the driver exits.
+        fds_without_workers = get_gcs_num_of_connections()
+        num_of_actors = 10
+        actors = [A.remote() for _ in range(num_of_actors)]
+        print(ray.get([t.ready.remote() for t in actors]))
 
-    # Kill the actors
-    del actors
+        # Kill the actors
+        del actors
 
     # Make sure the # of fds opened by the GCS dropped.
     # This assumes worker processes are not created after the actor worker
@@ -392,8 +392,10 @@ def test_redis_full(ray_start_cluster_head):
 
     gcs_cli = ray._raylet.GcsClient(address=gcs_address)
     # GCS should fail
+    # GcsClient assumes GCS is HA so it keeps retrying, although GCS is down. We must
+    # set timeout for this.
     with pytest.raises(ray.exceptions.RpcError):
-        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, None)
+        gcs_cli.internal_kv_put(b"A", b"A" * 6 * 1024 * 1024, True, timeout=5)
     logs_dir = ray_start_cluster_head.head_node._logs_dir
 
     with open(os.path.join(logs_dir, "gcs_server.err")) as err:

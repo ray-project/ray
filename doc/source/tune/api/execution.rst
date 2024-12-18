@@ -53,4 +53,6 @@ tune.run_experiments
     :toctree: doc/
 
     run_experiments
+    run
     Experiment
+    TuneError

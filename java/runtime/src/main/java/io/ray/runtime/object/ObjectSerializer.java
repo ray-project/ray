@@ -33,6 +33,8 @@ public class ObjectSerializer {
       String.valueOf(ErrorType.WORKER_DIED.getNumber()).getBytes();
   private static final byte[] ACTOR_EXCEPTION_META =
       String.valueOf(ErrorType.ACTOR_DIED.getNumber()).getBytes();
+  private static final byte[] ACTOR_UNAVAILABLE_EXCEPTION_META =
+      String.valueOf(ErrorType.ACTOR_UNAVAILABLE.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_EXCEPTION_META =
       String.valueOf(ErrorType.OBJECT_UNRECONSTRUCTABLE.getNumber()).getBytes();
   private static final byte[] UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META =
@@ -90,6 +92,10 @@ public class ObjectSerializer {
         return Serializer.decode(data, objectType);
       } else if (Bytes.indexOf(meta, WORKER_EXCEPTION_META) == 0) {
         return new RayWorkerException();
+      } else if (Bytes.indexOf(meta, ACTOR_UNAVAILABLE_EXCEPTION_META) == 0) {
+        // TODO(ryw): Add a new exception type ActorUnavailableException.
+        // Also clean up the indexOf usage, should use equals.
+        return new RayActorException();
       } else if (Bytes.indexOf(meta, UNRECONSTRUCTABLE_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_LINEAGE_EVICTED_EXCEPTION_META) == 0
           || Bytes.indexOf(meta, UNRECONSTRUCTABLE_MAX_ATTEMPTS_EXCEEDED_EXCEPTION_META) == 0

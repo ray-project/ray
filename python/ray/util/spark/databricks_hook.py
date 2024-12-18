@@ -8,6 +8,19 @@ import time
 
 _logger = logging.getLogger(__name__)
 
+DATABRICKS_HOST = "DATABRICKS_HOST"
+DATABRICKS_TOKEN = "DATABRICKS_TOKEN"
+DATABRICKS_CLIENT_ID = "DATABRICKS_CLIENT_ID"
+DATABRICKS_CLIENT_SECRET = "DATABRICKS_CLIENT_SECRET"
+
+
+def verify_databricks_auth_env():
+    return (DATABRICKS_HOST in os.environ and DATABRICKS_TOKEN in os.environ) or (
+        DATABRICKS_HOST in os.environ
+        and DATABRICKS_CLIENT_ID in os.environ
+        and DATABRICKS_CLIENT_SECRET in os.environ
+    )
+
 
 def get_databricks_function(func_name):
     import IPython
@@ -53,7 +66,7 @@ def display_databricks_driver_proxy_url(spark_context, port, title):
 
     get_databricks_display_html_function()(
         f"""
-      <div style="margin-bottom: 16px">
+      <div style="margin-top: 16px;margin-bottom: 16px">
           <a href="{proxy_link}">
               Open {title} in a new tab
           </a>
@@ -83,15 +96,7 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
     def on_cluster_created(self, ray_cluster_handler):
         db_api_entry = get_db_entry_point()
 
-        try:
-            get_databricks_display_html_function()(
-                "<b style='background-color:yellow;'>When you are using Ray on Spark "
-                "cluster, you only pay for Spark cluster usage.</b>"
-            )
-        except Exception:
-            pass
-
-        if ray_cluster_handler.autoscale or self.is_global:
+        if self.is_global:
             # Disable auto shutdown if
             # 1) autoscaling enabled
             #  because in autoscaling mode, background spark job will be killed
@@ -171,11 +176,46 @@ class DefaultDatabricksRayOnSparkStartHook(RayOnSparkStartHook):
         db_api_entry.registerBackgroundSparkJobGroup(job_group_id)
 
     def custom_environment_variables(self):
-        """Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
-
-        Torch on DBR does not reliably detect the correct interface to use,
-        and ends up selecting the loopback interface, breaking cross-node
-        commnication."""
-        return {
+        conf = {
+            **super().custom_environment_variables(),
+            # Hardcode `GLOO_SOCKET_IFNAME` to `eth0` for Databricks runtime.
+            # Torch on DBR does not reliably detect the correct interface to use,
+            # and ends up selecting the loopback interface, breaking cross-node
+            # commnication.
             "GLOO_SOCKET_IFNAME": "eth0",
+            # 'DISABLE_MLFLOW_INTEGRATION' is the environmental variable to disable
+            # huggingface transformers MLflow integration,
+            # it doesn't work well in Databricks runtime,
+            # So disable it by default.
+            "DISABLE_MLFLOW_INTEGRATION": "TRUE",
         }
+
+        if verify_databricks_auth_env():
+            conf[DATABRICKS_HOST] = os.environ[DATABRICKS_HOST]
+            if DATABRICKS_TOKEN in os.environ:
+                # PAT auth
+                conf[DATABRICKS_TOKEN] = os.environ[DATABRICKS_TOKEN]
+            else:
+                # OAuth
+                conf[DATABRICKS_CLIENT_ID] = os.environ[DATABRICKS_CLIENT_ID]
+                conf[DATABRICKS_CLIENT_SECRET] = os.environ[DATABRICKS_CLIENT_SECRET]
+        else:
+            warn_msg = (
+                "MLflow support is not correctly configured within Ray tasks."
+                "To enable MLflow integration, "
+                "you need to set environmental variables DATABRICKS_HOST + "
+                "DATABRICKS_TOKEN, or set environmental variables "
+                "DATABRICKS_HOST + DATABRICKS_CLIENT_ID + DATABRICKS_CLIENT_SECRET "
+                "before calling `ray.util.spark.setup_ray_cluster`, these variables "
+                "are used to set up authentication with Databricks MLflow "
+                "service. For details, you can refer to Databricks documentation at "
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/pat.html'>"
+                "Databricks PAT auth</a> or "
+                "<a href='https://docs.databricks.com/en/dev-tools/auth/"
+                "oauth-m2m.html'>Databricks OAuth</a>."
+            )
+            get_databricks_display_html_function()(
+                f"<b style='color:red;'>{warn_msg}<br></b>"
+            )
+
+        return conf

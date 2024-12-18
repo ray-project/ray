@@ -34,42 +34,35 @@ Template for testing with these mocks:
 """
 
 import gc
+import os
+import tempfile
+import time
 from pathlib import Path
+from unittest.mock import Mock, patch
 
 import numpy as np
-import os
 import pytest
-import time
-import tempfile
-from unittest.mock import (
-    Mock,
-    patch,
-)
-
 
 import ray
-from ray.exceptions import RayActorError
-from ray.air.integrations.wandb import (
-    WandbLoggerCallback,
-    _QueueItem,
-    _WandbLoggingActor,
-)
 from ray.air.integrations.wandb import (
     WANDB_ENV_VAR,
     WANDB_GROUP_ENV_VAR,
     WANDB_POPULATE_RUN_LOCATION_HOOK,
     WANDB_PROJECT_ENV_VAR,
     WANDB_SETUP_API_KEY_HOOK,
+    WandbLoggerCallback,
+    _QueueItem,
+    _WandbLoggingActor,
 )
-from ray.tune.execution.placement_groups import PlacementGroupFactory
-
 from ray.air.tests.mocked_wandb_integration import (
-    _MockWandbAPI,
-    _MockWandbLoggingActor,
     Trial,
     WandbTestExperimentLogger,
+    _MockWandbAPI,
+    _MockWandbLoggingActor,
     get_mock_wandb_logger,
 )
+from ray.exceptions import RayActorError
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 
 
 @pytest.fixture(autouse=True, scope="module")
@@ -490,6 +483,26 @@ class TestWandbLogger:
             state = ray.get(actor.get_state.remote())
             assert [metrics["training_iteration"] for metrics in state.logs] == [4, 5]
 
+    def test_wandb_restart(self, trial):
+        """Test that the WandbLoggerCallback reuses actors for trial restarts."""
+
+        logger = WandbLoggerCallback(project="test_project", api_key="1234")
+        logger._logger_actor_cls = _MockWandbLoggingActor
+        logger.setup()
+
+        assert len(logger._trial_logging_futures) == 0
+        assert len(logger._logging_future_to_trial) == 0
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
+        logger.log_trial_start(trial)
+
+        assert len(logger._trial_logging_futures) == 1
+        assert len(logger._logging_future_to_trial) == 1
+
 
 def test_wandb_logging_process_run_info_hook(monkeypatch):
     """
@@ -518,7 +531,8 @@ def test_wandb_logging_process_run_info_hook(monkeypatch):
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", __file__]))

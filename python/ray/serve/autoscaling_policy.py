@@ -2,7 +2,7 @@ import logging
 import math
 from typing import Any, Dict, Optional
 
-from ray.serve._private.constants import CONTROL_LOOP_PERIOD_S, SERVE_LOGGER_NAME
+from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 
@@ -130,7 +130,7 @@ def replica_queue_length_autoscaling_policy(
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_up_consecutive_periods' in a row.
-        if decision_counter > int(config.upscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter > int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 
@@ -144,7 +144,7 @@ def replica_queue_length_autoscaling_policy(
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_down_consecutive_periods' in a row.
-        if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_PERIOD_S):
+        if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S):
             decision_counter = 0
             decision_num_replicas = desired_num_replicas
 

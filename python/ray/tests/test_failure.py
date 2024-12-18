@@ -2,6 +2,8 @@ import os
 import signal
 import sys
 import time
+import logging
+import threading
 
 import numpy as np
 import pytest
@@ -17,7 +19,7 @@ from ray._private.test_utils import (
     init_error_pubsub,
     wait_for_condition,
 )
-from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError
+from ray.exceptions import GetTimeoutError, RayActorError, RayTaskError, ActorDiedError
 
 
 def test_unhandled_errors(ray_start_regular):
@@ -105,7 +107,7 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
     def expect_exception(objects, exception):
         with pytest.raises(ray.exceptions.RayError) as err:
             ray.get(objects)
-        assert err.type is exception
+        assert issubclass(err.type, exception)
 
     signal1 = SignalActor.remote()
     actor = Actor.options(max_concurrency=2).remote()
@@ -125,7 +127,6 @@ def test_get_throws_quickly_when_found_exception(ray_start_regular):
 
 
 def test_failed_actor_init(ray_start_regular, error_pubsub):
-    p = error_pubsub
     error_message1 = "actor constructor failed"
     error_message2 = "actor method failed"
 
@@ -139,38 +140,10 @@ def test_failed_actor_init(ray_start_regular, error_pubsub):
 
     a = FailedActor.remote()
 
-    # Make sure that we get errors from a failed constructor.
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message1 in errors[0]["error_message"]
-
     # Incoming methods will get the exception in creation task
     with pytest.raises(ray.exceptions.RayActorError) as e:
         ray.get(a.fail_method.remote())
     assert error_message1 in str(e.value)
-
-
-def test_failed_actor_method(ray_start_regular, error_pubsub):
-    p = error_pubsub
-    error_message2 = "actor method failed"
-
-    @ray.remote
-    class FailedActor:
-        def __init__(self):
-            pass
-
-        def fail_method(self):
-            raise Exception(error_message2)
-
-    a = FailedActor.remote()
-
-    # Make sure that we get errors from a failed method.
-    a.fail_method.remote()
-    errors = get_error_message(p, 1, ray_constants.TASK_PUSH_ERROR)
-    assert len(errors) == 1
-    assert errors[0]["type"] == ray_constants.TASK_PUSH_ERROR
-    assert error_message2 in errors[0]["error_message"]
 
 
 def test_incorrect_method_calls(ray_start_regular):
@@ -333,6 +306,68 @@ def test_actor_scope_or_intentionally_killed_message(ray_start_regular, error_pu
     assert len(errors) == 0, "Should not have propogated an error - {}".format(errors)
 
 
+def test_mixed_hanging_and_exception_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+    def print_and_raise_error(i):
+        print(i)
+        raise ValueError
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    refs = [actor.execute.remote(print_and_raise_error) for actor in actors[:2]]
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+    refs.extend([actor.execute.remote(print_and_sleep_forever) for actor in actors[2:]])
+
+    with pytest.raises(ValueError):
+        ray.get(refs)
+
+
+def test_mixed_hanging_and_died_actor_should_not_hang(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def __init__(self, _id):
+            self._id = _id
+
+        def execute(self, fn) -> None:
+            return fn(self._id)
+
+        def exit(self):
+            ray.actor.exit_actor()
+
+    def print_and_sleep_forever(i):
+        import time
+
+        print(i)
+        while True:
+            time.sleep(3600)
+
+    actors = [Actor.remote(i) for i in range(10)]
+    ray.get([actor.__ray_ready__.remote() for actor in actors])
+    error_refs = [actor.exit.remote() for actor in actors[:2]]
+
+    with pytest.raises(ActorDiedError):
+        ray.get(error_refs)
+
+    with pytest.raises(ActorDiedError):
+        ray.get([actor.execute.remote(print_and_sleep_forever) for actor in actors])
+
+
 def test_exception_chain(ray_start_regular):
     @ray.remote
     def bar():
@@ -347,6 +382,26 @@ def test_exception_chain(ray_start_regular):
         ray.get(r)
     except ZeroDivisionError as ex:
         assert isinstance(ex, RayTaskError)
+
+
+def test_baseexception_task(ray_start_regular):
+    @ray.remote
+    def task():
+        raise BaseException("abc")
+
+    with pytest.raises(ray.exceptions.WorkerCrashedError):
+        ray.get(task.remote())
+
+
+def test_baseexception_actor(ray_start_regular):
+    @ray.remote
+    class Actor:
+        def f(self):
+            raise BaseException("abc")
+
+    with pytest.raises(ActorDiedError):
+        a = Actor.remote()
+        ray.get(a.f.remote())
 
 
 @pytest.mark.skip("This test does not work yet.")
@@ -496,14 +551,14 @@ def test_warning_many_actor_tasks_queued(shutdown_only, sync: bool):
         def f(self):
             import time
 
-            time.sleep(1)
+            time.sleep(1000)
 
     @ray.remote(num_cpus=1)
     class AsyncFoo:
         async def f(self):
             import asyncio
 
-            await asyncio.sleep(1)
+            await asyncio.sleep(1000)
 
     Foo = SyncFoo if sync else AsyncFoo
     a = Foo.remote()
@@ -626,6 +681,58 @@ def test_actor_failover_with_bad_network(ray_start_cluster_head):
 
     # We should be able to get the return value of task 2 without any issue
     ray.get(obj2)
+
+
+# Previously when threading.Lock is in the exception, it causes
+# the serialization to fail. This test case is to cover that scenario.
+def test_unserializable_exception(ray_start_regular, propagate_logs):
+    class UnserializableException(Exception):
+        def __init__(self):
+            self.lock = threading.Lock()
+
+    @ray.remote
+    def func():
+        raise UnserializableException
+
+    with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+        ray.get(func.remote())
+
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, ray.exceptions.RayError)
+    assert "isn't serializable" in str(exc_info.value.cause)
+
+
+def test_final_user_exception(ray_start_regular, propagate_logs, caplog):
+    class MyFinalException(Exception):
+        def __init_subclass__(cls, /, *args, **kwargs):
+            raise TypeError("Can't subclass special typing classes")
+
+    # This should error.
+    with pytest.raises(MyFinalException):
+        raise MyFinalException("MyFinalException from driver")
+
+    @ray.remote
+    def func():
+        # This should also error. Problem is, the user exception is final so we can't
+        # subclass it (raises exception if so). This means Ray cannot raise an exception
+        # that can be caught as both `RayTaskError` and the user exception. So we
+        # issue a warning and just raise it as `RayTaskError`. User needs to use
+        # `e.cause` to get the user exception.
+        raise MyFinalException("MyFinalException from task")
+
+    with caplog.at_level(logging.WARNING, logger="ray.exceptions"):
+        with pytest.raises(ray.exceptions.RayTaskError) as exc_info:
+            ray.get(func.remote())
+
+    assert (
+        "This exception is raised as RayTaskError only. You can use "
+        "`ray_task_error.cause` to access the user exception."
+    ) in caplog.text
+    assert isinstance(exc_info.value, ray.exceptions.RayTaskError)
+    assert isinstance(exc_info.value.cause, MyFinalException)
+    assert str(exc_info.value.cause) == "MyFinalException from task"
+
+    caplog.clear()
 
 
 if __name__ == "__main__":

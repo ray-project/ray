@@ -99,7 +99,7 @@ import ray
 from pandas import DataFrame
 from ray.data.preprocessor import Preprocessor
 from ray.data import Dataset
-from ray.data.aggregate import Max
+from ray.data._internal.aggregate import Max
 
 
 class CustomPreprocessor(Preprocessor):
@@ -147,7 +147,7 @@ print(dataset.take())
 # [{'X': 1.0, 'Y': 2.0}, {'X': 4.0, 'Y': 0.0}]
 
 scaler = StandardScaler(columns=["X", "Y"])
-concatenator = Concatenator()
+concatenator = Concatenator(columns=["X", "Y"])
 dataset_transformed = scaler.fit_transform(dataset)
 dataset_transformed = concatenator.fit_transform(dataset_transformed)
 print(dataset_transformed.take())

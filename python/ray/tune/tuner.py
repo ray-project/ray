@@ -1,27 +1,25 @@
 import logging
 import os
 from pathlib import Path
-from typing import Any, Callable, Dict, Optional, Type, Union, TYPE_CHECKING
+from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Type, Union
 
 import pyarrow.fs
 
 import ray
-from ray.air.config import RunConfig
 from ray.air._internal.usage import AirEntrypoint
+from ray.air.config import RunConfig
 from ray.air.util.node import _force_on_current_node
 from ray.train._internal.storage import _exists_at_fs_path, get_fs_and_path
 from ray.tune import ResumeConfig
-from ray.tune.experimental.output import (
-    get_air_verbosity,
-)
-from ray.tune.result_grid import ResultGrid
-from ray.tune.trainable import Trainable
-from ray.tune.impl.tuner_internal import TunerInternal, _TUNER_PKL
-from ray.tune.tune_config import TuneConfig
+from ray.tune.experimental.output import get_air_verbosity
+from ray.tune.impl.tuner_internal import _TUNER_PKL, TunerInternal
 from ray.tune.progress_reporter import (
     _prepare_progress_reporter_for_ray_client,
     _stream_client_output,
 )
+from ray.tune.result_grid import ResultGrid
+from ray.tune.trainable import Trainable
+from ray.tune.tune_config import TuneConfig
 from ray.util import PublicAPI
 
 logger = logging.getLogger(__name__)
@@ -393,7 +391,7 @@ class Tuner:
     def get_results(self) -> ResultGrid:
         """Get results of a hyperparameter tuning run.
 
-        This method returns the same results as :meth:`fit() <ray.tune.tuner.Tuner.fit>`
+        This method returns the same results as :meth:`~ray.tune.Tuner.fit`
         and can be used to retrieve the results after restoring a tuner without
         calling ``fit()`` again.
 

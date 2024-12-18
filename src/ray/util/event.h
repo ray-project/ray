@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #pragma once
+#include <google/protobuf/util/json_util.h>
 #include <gtest/gtest_prod.h>
 
 #include <boost/asio.hpp>
@@ -33,8 +34,7 @@
 #include "spdlog/sinks/rotating_file_sink.h"
 #include "spdlog/spdlog.h"
 #include "src/ray/protobuf/event.pb.h"
-
-using json = nlohmann::json;
+#include "src/ray/protobuf/export_api/export_event.pb.h"
 
 namespace ray {
 
@@ -83,16 +83,20 @@ class BaseEventReporter {
  public:
   virtual void Init() = 0;
 
-  virtual void Report(const rpc::Event &event, const json &custom_fields) = 0;
+  virtual void Report(const rpc::Event &event, const nlohmann::json &custom_fields) = 0;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) = 0;
 
   virtual void Close() = 0;
 
   virtual std::string GetReporterKey() = 0;
 };
 // responsible for writing event to specific file
+using SourceTypeVariant =
+    std::variant<rpc::Event_SourceType, rpc::ExportEvent_SourceType>;
 class LogEventReporter : public BaseEventReporter {
  public:
-  LogEventReporter(rpc::Event_SourceType source_type,
+  LogEventReporter(SourceTypeVariant source_type,
                    const std::string &log_dir,
                    bool force_flush = true,
                    int rotate_max_file_size = 100,
@@ -100,14 +104,20 @@ class LogEventReporter : public BaseEventReporter {
 
   virtual ~LogEventReporter();
 
+  virtual void Report(const rpc::Event &event,
+                      const nlohmann::json &custom_fields) override;
+
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override;
+
  private:
   virtual std::string replaceLineFeed(std::string message);
 
-  virtual std::string EventToString(const rpc::Event &event, const json &custom_fields);
+  virtual std::string EventToString(const rpc::Event &event,
+                                    const nlohmann::json &custom_fields);
+
+  virtual std::string ExportEventToString(const rpc::ExportEvent &export_event);
 
   virtual void Init() override {}
-
-  virtual void Report(const rpc::Event &event, const json &custom_fields) override;
 
   virtual void Close() override {}
 
@@ -137,13 +147,18 @@ class EventManager final {
   // fields.
   // TODO(SongGuyang): Remove the protobuf `rpc::Event` and use an internal struct
   // instead.
-  void Publish(const rpc::Event &event, const json &custom_fields);
+  void Publish(const rpc::Event &event, const nlohmann::json &custom_fields);
+
+  void PublishExportEvent(const rpc::ExportEvent &export_event);
 
   // NOTE(ruoqiu) AddReporters, ClearPeporters (along with the Pushlish function) would
   // not be thread-safe. But we assume default initialization and shutdown are placed in
   // the construction and destruction of a resident class, or at the beginning and end of
   // a process.
   void AddReporter(std::shared_ptr<BaseEventReporter> reporter);
+
+  void AddExportReporter(rpc::ExportEvent_SourceType source_type,
+                         std::shared_ptr<LogEventReporter> reporter);
 
   void ClearReporters();
 
@@ -156,6 +171,8 @@ class EventManager final {
 
  private:
   absl::flat_hash_map<std::string, std::shared_ptr<BaseEventReporter>> reporter_map_;
+  absl::flat_hash_map<rpc::ExportEvent_SourceType, std::shared_ptr<LogEventReporter>>
+      export_log_reporter_map_;
 };
 
 // store the event context. Different workers of a process in core_worker have different
@@ -301,26 +318,60 @@ class RayEvent {
   std::string label_;
   const char *file_name_;
   int line_number_;
-  json custom_fields_;
+  nlohmann::json custom_fields_;
   std::ostringstream osstream_;
+};
+
+using ExportEventDataPtr = std::variant<std::shared_ptr<rpc::ExportTaskEventData>,
+                                        std::shared_ptr<rpc::ExportNodeData>,
+                                        std::shared_ptr<rpc::ExportActorData>,
+                                        std::shared_ptr<rpc::ExportDriverJobEventData>>;
+class RayExportEvent {
+ public:
+  RayExportEvent(ExportEventDataPtr event_data_ptr) : event_data_ptr_(event_data_ptr) {}
+
+  ~RayExportEvent();
+
+  void SendEvent();
+
+ private:
+  RayExportEvent(const RayExportEvent &event) = delete;
+
+  const RayExportEvent &operator=(const RayExportEvent &event) = delete;
+
+ private:
+  ExportEventDataPtr event_data_ptr_;
 };
 
 /// Ray Event initialization.
 ///
 /// This function should be called when the main thread starts.
 /// Redundant calls in other thread don't take effect.
-/// \param source_type The type of current process.
-/// \param custom_fields The global custom fields.
+/// \param source_types List of source types the current process can create events for. If
+/// there are multiple rpc::Event_SourceType source_types, the last one will be used as
+/// the source type for the RAY_EVENT macro.
+/// \param custom_fields The global custom fields. These are only set for
+/// rpc::Event_SourceType events.
 /// \param log_dir The log directory to generate event subdirectory.
 /// \param event_level The input event level. It should be one of "info","warning",
 /// "error" and "fatal". You can also use capital letters for the options above.
 /// \param emit_event_to_log_file if True, it will emit the event to the process log file
 /// (e.g., gcs_server.out). Otherwise, event will only be recorded to the event log file.
 /// \return void.
-void RayEventInit(rpc::Event_SourceType source_type,
+void RayEventInit(const std::vector<SourceTypeVariant> source_types,
                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
                   const std::string &log_dir,
                   const std::string &event_level = "warning",
                   bool emit_event_to_log_file = false);
+
+/// Logic called by RayEventInit. This function can be called multiple times,
+/// and has been separated out so RayEventInit can be called multiple times in
+/// tests.
+/// **Note**: This should only be called from tests.
+void RayEventInit_(const std::vector<SourceTypeVariant> source_types,
+                   const absl::flat_hash_map<std::string, std::string> &custom_fields,
+                   const std::string &log_dir,
+                   const std::string &event_level,
+                   bool emit_event_to_log_file);
 
 }  // namespace ray

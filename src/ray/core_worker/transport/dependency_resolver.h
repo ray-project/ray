@@ -16,6 +16,8 @@
 
 #include <memory>
 
+#include "absl/container/flat_hash_map.h"
+#include "absl/container/flat_hash_set.h"
 #include "ray/common/id.h"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/actor_creator.h"
@@ -33,8 +35,7 @@ class LocalDependencyResolver {
                           ActorCreatorInterface &actor_creator)
       : in_memory_store_(store),
         task_finisher_(task_finisher),
-        actor_creator_(actor_creator),
-        num_pending_(0) {}
+        actor_creator_(actor_creator) {}
 
   /// Resolve all local and remote dependencies for the task, calling the specified
   /// callback when done. Direct call ids in the task specification will be resolved
@@ -52,8 +53,8 @@ class LocalDependencyResolver {
   void ResolveDependencies(TaskSpecification &task,
                            std::function<void(Status)> on_dependencies_resolved);
 
-  /// Cancel resolution of the given task's dependencies. Its registered
-  /// callback will not be called.
+  /// Cancel resolution of the given task's dependencies.
+  /// If cancellation succeeds, the registered callback will not be called.
   void CancelDependencyResolution(const TaskID &task_id);
 
   /// Return the number of tasks pending dependency resolution.
@@ -66,14 +67,15 @@ class LocalDependencyResolver {
  private:
   struct TaskState {
     TaskState(TaskSpecification t,
-              const std::unordered_set<ObjectID> &deps,
-              const std::unordered_set<ActorID> &actor_ids,
+              const absl::flat_hash_set<ObjectID> &deps,
+              const absl::flat_hash_set<ActorID> &actor_ids,
               std::function<void(Status)> on_dependencies_resolved)
         : task(t),
           local_dependencies(),
           actor_dependencies_remaining(actor_ids.size()),
           status(Status::OK()),
-          on_dependencies_resolved(on_dependencies_resolved) {
+          on_dependencies_resolved(std::move(on_dependencies_resolved)) {
+      local_dependencies.reserve(deps.size());
       for (const auto &dep : deps) {
         local_dependencies.emplace(dep, nullptr);
       }
@@ -88,6 +90,7 @@ class LocalDependencyResolver {
     /// map).
     size_t actor_dependencies_remaining;
     size_t obj_dependencies_remaining;
+    /// Dependency resolution status.
     Status status;
     std::function<void(Status)> on_dependencies_resolved;
   };
@@ -99,8 +102,6 @@ class LocalDependencyResolver {
   TaskFinisherInterface &task_finisher_;
 
   ActorCreatorInterface &actor_creator_;
-  /// Number of tasks pending dependency resolution.
-  std::atomic<int> num_pending_;
 
   absl::flat_hash_map<TaskID, std::unique_ptr<TaskState>> pending_tasks_
       ABSL_GUARDED_BY(mu_);

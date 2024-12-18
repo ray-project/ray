@@ -7,7 +7,6 @@ import os
 import random
 import string
 import time
-import traceback
 import uuid
 from abc import ABC, abstractmethod
 from decimal import ROUND_HALF_UP, Decimal
@@ -24,7 +23,7 @@ from ray._private.utils import import_attr
 from ray._private.worker import LOCAL_MODE, SCRIPT_MODE
 from ray._raylet import MessagePackSerializer
 from ray.actor import ActorHandle
-from ray.exceptions import RayTaskError
+from ray.serve._private.common import ServeComponentType
 from ray.serve._private.constants import HTTP_PROXY_TIMEOUT, SERVE_LOGGER_NAME
 from ray.types import ObjectRef
 from ray.util.serialization import StandaloneSerializationContext
@@ -40,6 +39,11 @@ except ImportError:
     np = None
 
 MESSAGE_PACK_OFFSET = 9
+GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR = RuntimeError(
+    "Streaming deployment handle results cannot be passed to "
+    "downstream handle calls. If you have a use case requiring "
+    "this feature, please file a feature request on GitHub."
+)
 
 
 # Use a global singleton enum to emulate default options. We cannot use None
@@ -66,6 +70,9 @@ T = TypeVar("T")
 Default = Union[DEFAULT, T]
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
+
+# Format for component files
+FILE_FMT = "{component_name}_{component_id}{suffix}"
 
 
 class _ServeCustomEncoders:
@@ -154,17 +161,6 @@ def ensure_serialization_context():
     been started."""
     ctx = StandaloneSerializationContext()
     ray.util.serialization_addons.apply(ctx)
-
-
-def wrap_to_ray_error(function_name: str, exception: Exception) -> RayTaskError:
-    """Utility method to wrap exceptions in user code."""
-
-    try:
-        # Raise and catch so we can access traceback.format_exc()
-        raise exception
-    except Exception as e:
-        traceback_str = ray._private.utils.format_error_message(traceback.format_exc())
-        return ray.exceptions.RayTaskError(function_name, traceback_str, e)
 
 
 def msgpack_serialize(obj):
@@ -553,26 +549,60 @@ def inside_ray_client_context() -> bool:
     return ray.util.client.ray.is_connected()
 
 
-class FakeObjectRefOrGen:
-    def __init__(self, replica_id):
-        self._replica_id = replica_id
+def get_component_file_name(
+    component_name: str,
+    component_id: str,
+    component_type: Optional[ServeComponentType],
+    suffix: str = "",
+) -> str:
+    """Get the component's file name."""
 
-    @property
-    def replica_id(self):
-        return self._replica_id
+    # For DEPLOYMENT component type, we want to log the deployment name
+    # instead of adding the component type to the component name.
+    component_log_file_name = component_name
+    if component_type is not None:
+        component_log_file_name = f"{component_type.value}_{component_name}"
+        if component_type != ServeComponentType.REPLICA:
+            component_name = f"{component_type}_{component_name}"
+    file_name = FILE_FMT.format(
+        component_name=component_log_file_name,
+        component_id=component_id,
+        suffix=suffix,
+    )
+    return file_name
 
 
-class FakeObjectRef(FakeObjectRefOrGen):
-    def __await__(self):
-        raise NotImplementedError
+def validate_route_prefix(route_prefix: Union[DEFAULT, None, str]):
+    if route_prefix is DEFAULT.VALUE or route_prefix is None:
+        return
 
-    def _on_completed(self, callback: Callable):
-        pass
+    if not route_prefix.startswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "must start with a forward slash ('/')."
+        )
+
+    if route_prefix != "/" and route_prefix.endswith("/"):
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', "
+            "may not end with a trailing '/'."
+        )
+
+    if "{" in route_prefix or "}" in route_prefix:
+        raise ValueError(
+            f"Invalid route_prefix '{route_prefix}', " "may not contain wildcards."
+        )
 
 
-class FakeObjectRefGen(FakeObjectRefOrGen):
-    def __anext__(self):
-        raise NotImplementedError
+async def resolve_deployment_response(obj: Any):
+    """Resolve `DeploymentResponse` objects to underlying object references.
 
-    def completed(self):
-        return FakeObjectRef(self._replica_id)
+    This enables composition without explicitly calling `_to_object_ref`.
+    """
+    from ray.serve.handle import DeploymentResponse, DeploymentResponseGenerator
+
+    if isinstance(obj, DeploymentResponseGenerator):
+        raise GENERATOR_COMPOSITION_NOT_SUPPORTED_ERROR
+    elif isinstance(obj, DeploymentResponse):
+        # Launch async task to convert DeploymentResponse to an object ref
+        return asyncio.create_task(obj._to_object_ref())

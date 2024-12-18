@@ -15,6 +15,7 @@ from uvicorn.config import Config
 from uvicorn.lifespan.on import LifespanOn
 
 from ray._private.pydantic_compat import IS_PYDANTIC_2
+from ray.serve._private.common import RequestMetadata
 from ray.serve._private.constants import SERVE_LOGGER_NAME
 from ray.serve._private.utils import serve_encoders
 from ray.serve.exceptions import RayServeException
@@ -156,6 +157,7 @@ class MessageQueue(Send):
         self._message_queue = deque()
         self._new_message_event = asyncio.Event()
         self._closed = False
+        self._error = None
 
     def close(self):
         """Close the queue, rejecting new messages.
@@ -166,6 +168,9 @@ class MessageQueue(Send):
         """
         self._closed = True
         self._new_message_event.set()
+
+    def set_error(self, e: BaseException):
+        self._error = e
 
     def put_nowait(self, message: Message):
         self._message_queue.append(message)
@@ -181,6 +186,18 @@ class MessageQueue(Send):
 
         self.put_nowait(message)
 
+    async def wait_for_message(self):
+        """Wait until at least one new message is available.
+
+        If a message is available, this method will return immediately on each call
+        until `get_messages_nowait` is called.
+
+        After the queue is closed using `.close()`, this will always return
+        immediately.
+        """
+        if not self._closed:
+            await self._new_message_event.wait()
+
     def get_messages_nowait(self) -> List[Message]:
         """Returns all messages that are currently available (non-blocking).
 
@@ -195,17 +212,35 @@ class MessageQueue(Send):
         self._new_message_event.clear()
         return messages
 
-    async def wait_for_message(self):
-        """Wait until at least one new message is available.
+    async def get_one_message(self) -> Message:
+        """This blocks until a message is ready.
 
-        If a message is available, this method will return immediately on each call
-        until `get_messages_nowait` is called.
+        This method should not be used together with get_messages_nowait.
+        Please use either `get_one_message` or `get_messages_nowait`.
 
-        After the queue is closed using `.close()`, this will always return
-        immediately.
+        Raises:
+            StopAsyncIteration: if the queue is closed and there are no
+                more messages.
+            Exception (self._error): if there are no more messages in
+                the queue and an error has been set.
         """
-        if not self._closed:
-            await self._new_message_event.wait()
+
+        if self._error:
+            raise self._error
+
+        await self._new_message_event.wait()
+
+        if len(self._message_queue) > 0:
+            msg = self._message_queue.popleft()
+
+            if len(self._message_queue) == 0 and not self._closed:
+                self._new_message_event.clear()
+
+            return msg
+        elif len(self._message_queue) == 0 and self._error:
+            raise self._error
+        elif len(self._message_queue) == 0 and self._closed:
+            raise StopAsyncIteration
 
 
 class ASGIReceiveProxy:
@@ -217,13 +252,33 @@ class ASGIReceiveProxy:
 
     def __init__(
         self,
-        request_id: str,
-        receive_asgi_messages: Callable[[str], Awaitable[bytes]],
+        scope: Scope,
+        request_metadata: RequestMetadata,
+        receive_asgi_messages: Callable[[RequestMetadata], Awaitable[bytes]],
     ):
+        self._type = scope["type"]  # Either 'http' or 'websocket'.
         self._queue = asyncio.Queue()
-        self._request_id = request_id
+        self._request_metadata = request_metadata
         self._receive_asgi_messages = receive_asgi_messages
         self._disconnect_message = None
+
+    def _get_default_disconnect_message(self) -> Message:
+        """Return the appropriate disconnect message based on the connection type.
+
+        HTTP ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event
+
+        WS ASGI spec:
+            https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws
+        """
+        if self._type == "websocket":
+            return {
+                "type": "websocket.disconnect",
+                # 1005 is the default disconnect code according to the ASGI spec.
+                "code": 1005,
+            }
+        else:
+            return {"type": "http.disconnect"}
 
     async def fetch_until_disconnect(self):
         """Fetch messages repeatedly until a disconnect message is received.
@@ -235,7 +290,9 @@ class ASGIReceiveProxy:
         """
         while True:
             try:
-                pickled_messages = await self._receive_asgi_messages(self._request_id)
+                pickled_messages = await self._receive_asgi_messages(
+                    self._request_metadata
+                )
                 for message in pickle.loads(pickled_messages):
                     self._queue.put_nowait(message)
 
@@ -244,8 +301,11 @@ class ASGIReceiveProxy:
                         return
             except KeyError:
                 # KeyError can be raised if the request is no longer active in the proxy
-                # (e.g., the user disconnects). This is expected behavior and we should
+                # (i.e., the user disconnects). This is expected behavior and we should
                 # not log an error: https://github.com/ray-project/ray/issues/43290.
+                message = self._get_default_disconnect_message()
+                self._queue.put_nowait(message)
+                self._disconnect_message = message
                 return
             except Exception as e:
                 # Raise unexpected exceptions in the next `__call__`.
@@ -410,6 +470,10 @@ class ASGIAppReplicaWrapper:
 
         # Replace uvicorn logger with our own.
         self._serve_asgi_lifespan.logger = logger
+
+    @property
+    def app(self) -> ASGIApp:
+        return self._asgi_app
 
     async def _run_asgi_lifespan_startup(self):
         # LifespanOn's logger logs in INFO level thus becomes spammy

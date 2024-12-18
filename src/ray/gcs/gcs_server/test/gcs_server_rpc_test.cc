@@ -87,10 +87,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
+  std::optional<rpc::ActorTableData> GetActorInfo(const std::string &actor_id) {
     rpc::GetActorInfoRequest request;
     request.set_actor_id(actor_id);
-    boost::optional<rpc::ActorTableData> actor_table_data_opt;
+    std::optional<rpc::ActorTableData> actor_table_data_opt;
     std::promise<bool> promise;
     client_->GetActorInfo(request,
                           [&actor_table_data_opt, &promise](
@@ -99,7 +99,7 @@ class GcsServerTest : public ::testing::Test {
                             if (reply.has_actor_table_data()) {
                               actor_table_data_opt = reply.actor_table_data();
                             } else {
-                              actor_table_data_opt = boost::none;
+                              actor_table_data_opt = std::nullopt;
                             }
                             promise.set_value(true);
                           });
@@ -118,13 +118,14 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  bool DrainNode(const rpc::DrainNodeRequest &request) {
+  bool UnregisterNode(const rpc::UnregisterNodeRequest &request) {
     std::promise<bool> promise;
-    client_->DrainNode(
-        request, [&promise](const Status &status, const rpc::DrainNodeReply &reply) {
+    client_->UnregisterNode(
+        request, [&promise](const Status &status, const rpc::UnregisterNodeReply &reply) {
           RAY_CHECK_OK(status);
           promise.set_value(true);
         });
+
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
@@ -157,10 +158,10 @@ class GcsServerTest : public ::testing::Test {
     return WaitReady(promise.get_future(), timeout_ms_);
   }
 
-  boost::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
+  std::optional<rpc::WorkerTableData> GetWorkerInfo(const std::string &worker_id) {
     rpc::GetWorkerInfoRequest request;
     request.set_worker_id(worker_id);
-    boost::optional<rpc::WorkerTableData> worker_table_data_opt;
+    std::optional<rpc::WorkerTableData> worker_table_data_opt;
     std::promise<bool> promise;
     client_->GetWorkerInfo(
         request,
@@ -170,7 +171,7 @@ class GcsServerTest : public ::testing::Test {
           if (reply.has_worker_table_data()) {
             worker_table_data_opt = reply.worker_table_data();
           } else {
-            worker_table_data_opt = boost::none;
+            worker_table_data_opt = std::nullopt;
           }
           promise.set_value(true);
         });
@@ -280,18 +281,104 @@ TEST_F(GcsServerTest, TestNodeInfo) {
   ASSERT_TRUE(RegisterNode(register_node_info_request));
   std::vector<rpc::GcsNodeInfo> node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_ALIVE);
+  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::ALIVE);
 
   // Unregister node info
-  rpc::DrainNodeRequest unregister_node_info_request;
-  auto draining_request = unregister_node_info_request.add_drain_node_data();
-  draining_request->set_node_id(gcs_node_info->node_id());
-  ASSERT_TRUE(DrainNode(unregister_node_info_request));
+  rpc::UnregisterNodeRequest unregister_node_request;
+  unregister_node_request.set_node_id(gcs_node_info->node_id());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  std::string reason_message = "Terminate node for testing.";
+  node_death_info.set_reason_message(reason_message);
+  unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
+  ASSERT_TRUE(UnregisterNode(unregister_node_request));
   node_info_list = GetAllNodeInfo();
   ASSERT_TRUE(node_info_list.size() == 1);
-  ASSERT_TRUE(node_info_list[0].state() ==
-              rpc::GcsNodeInfo_GcsNodeState::GcsNodeInfo_GcsNodeState_DEAD);
+  ASSERT_TRUE(node_info_list[0].state() == rpc::GcsNodeInfo::DEAD);
+  ASSERT_TRUE(node_info_list[0].death_info().reason() ==
+              rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  ASSERT_TRUE(node_info_list[0].death_info().reason_message() == reason_message);
+}
+
+TEST_F(GcsServerTest, TestNodeInfoFilters) {
+  // Create gcs node info
+  auto node1 = Mocker::GenNodeInfo(1, "127.0.0.1", "node1");
+  auto node2 = Mocker::GenNodeInfo(2, "127.0.0.2", "node2");
+  auto node3 = Mocker::GenNodeInfo(3, "127.0.0.3", "node3");
+
+  // Register node infos
+  for (auto &node : {node1, node2, node3}) {
+    rpc::RegisterNodeRequest register_node_info_request;
+    register_node_info_request.mutable_node_info()->CopyFrom(*node);
+    ASSERT_TRUE(RegisterNode(register_node_info_request));
+  }
+
+  // Kill node3
+  rpc::UnregisterNodeRequest unregister_node_request;
+  unregister_node_request.set_node_id(node3->node_id());
+  rpc::NodeDeathInfo node_death_info;
+  node_death_info.set_reason(rpc::NodeDeathInfo::EXPECTED_TERMINATION);
+  std::string reason_message = "Terminate node for testing.";
+  node_death_info.set_reason_message(reason_message);
+  unregister_node_request.mutable_node_death_info()->CopyFrom(node_death_info);
+  ASSERT_TRUE(UnregisterNode(unregister_node_request));
+
+  {
+    // Get all
+    rpc::GetAllNodeInfoRequest request;
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 3);
+    ASSERT_EQ(reply.num_filtered(), 0);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by node id
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_id(node1->node_id());
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+  {
+    // Get by state == ALIVE
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::ALIVE);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 2);
+    ASSERT_EQ(reply.num_filtered(), 1);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by state == DEAD
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_state(rpc::GcsNodeInfo::DEAD);
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
+
+  {
+    // Get by node_name
+    rpc::GetAllNodeInfoRequest request;
+    request.mutable_filters()->set_node_name("node1");
+    rpc::GetAllNodeInfoReply reply;
+    RAY_CHECK_OK(client_->SyncGetAllNodeInfo(request, &reply));
+
+    ASSERT_EQ(reply.node_info_list_size(), 1);
+    ASSERT_EQ(reply.num_filtered(), 2);
+    ASSERT_EQ(reply.total(), 3);
+  }
 }
 
 TEST_F(GcsServerTest, TestWorkerInfo) {
@@ -314,7 +401,7 @@ TEST_F(GcsServerTest, TestWorkerInfo) {
   ASSERT_TRUE(GetAllWorkerInfo().size() == 2);
 
   // Get worker info
-  boost::optional<rpc::WorkerTableData> result =
+  std::optional<rpc::WorkerTableData> result =
       GetWorkerInfo(worker_data->worker_address().worker_id());
   ASSERT_TRUE(result->worker_address().worker_id() ==
               worker_data->worker_address().worker_id());

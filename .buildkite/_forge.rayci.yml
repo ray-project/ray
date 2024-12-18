@@ -18,15 +18,16 @@ steps:
           - "3.9"
           - "3.10"
           - "3.11"
+          - "3.12"
         cuda:
-          - "11.5.2"
-          - "11.6.2"
-          - "11.7.1"
-          - "11.8.0"
-          - "12.1.1"
+          - "11.7.1-cudnn8"
+          - "11.8.0-cudnn8"
+          - "12.1.1-cudnn8"
+          - "12.3.2-cudnn9"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
+
 
   - name: raycpubase
     label: "wanda: ray.py{{matrix}}.cpu.base"
@@ -41,6 +42,7 @@ steps:
       - "3.9"
       - "3.10"
       - "3.11"
+      - "3.12"
     env:
       PYTHON_VERSION: "{{matrix}}"
 
@@ -56,8 +58,9 @@ steps:
         python:
           - "3.9"
           - "3.10"
+          - "3.11"
         cuda:
-          - "11.8.0"
+          - "12.1.1-cudnn8"
     env:
       PYTHON_VERSION: "{{matrix.python}}"
       CUDA_VERSION: "{{matrix.cuda}}"
@@ -72,5 +75,6 @@ steps:
     matrix:
       - "3.9"
       - "3.10"
+      - "3.11"
     env:
       PYTHON_VERSION: "{{matrix}}"

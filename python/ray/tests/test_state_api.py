@@ -4,15 +4,16 @@ import json
 import sys
 import signal
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple
-from unittest.mock import MagicMock, AsyncMock
+from unittest.mock import MagicMock, AsyncMock, patch
 
 import pytest
+import pytest_asyncio
 from ray._private.state_api_test_utils import get_state_api_manager
 from ray.util.state import get_job
 from ray.dashboard.modules.job.pydantic_models import JobDetails
-from ray.util.state.common import Humanify
-from ray._private import net
+from ray.util.state.common import Humanify, PredicateType
 from ray._private.gcs_utils import GcsAioClient
 import yaml
 from click.testing import CliRunner
@@ -22,12 +23,13 @@ import ray
 import ray.dashboard.consts as dashboard_consts
 import ray._private.state as global_state
 import ray._private.ray_constants as ray_constants
-from ray._raylet import ActorID
+from ray._raylet import ActorID, JobID, TaskID
 from ray._private.test_utils import (
     run_string_as_driver,
     wait_for_condition,
     async_wait_for_condition_async_predicate,
     find_free_port,
+    SignalActor,
 )
 from ray.cluster_utils import cluster_not_supported
 from ray._raylet import NodeID
@@ -40,6 +42,7 @@ from ray.core.generated.common_pb2 import (
     WorkerType,
     TaskType,
 )
+from ray.core.generated.gcs_service_pb2_grpc import TaskInfoGcsServiceStub
 from ray.core.generated.gcs_pb2 import (
     TaskEvents,
     TaskStateUpdate,
@@ -49,6 +52,7 @@ from ray.core.generated.gcs_pb2 import (
     WorkerTableData,
 )
 from ray.core.generated.gcs_service_pb2 import (
+    FilterPredicate,
     GcsStatus,
     GetTaskEventsReply,
     GetAllActorInfoReply,
@@ -120,6 +124,7 @@ from ray.util.state.state_cli import ray_list
 from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
+from ray._private import net
 
 """
 Unit tests
@@ -129,7 +134,9 @@ Unit tests
 @pytest.fixture
 def state_api_manager():
     data_source_client = AsyncMock(StateDataSourceClient)
-    manager = StateAPIManager(data_source_client)
+    manager = StateAPIManager(
+        data_source_client, thread_pool_executor=ThreadPoolExecutor()
+    )
     yield manager
 
 
@@ -149,8 +156,8 @@ def state_source_client(gcs_address):
     return client
 
 
-@pytest.fixture
-def state_api_manager_e2e(ray_start_with_dashboard):
+@pytest_asyncio.fixture
+async def state_api_manager_e2e(ray_start_with_dashboard):
     address_info = ray_start_with_dashboard
     gcs_address = address_info["gcs_address"]
     manager = get_state_api_manager(gcs_address)
@@ -169,6 +176,9 @@ def verify_schema(state, result_dict: dict, detail: bool = False):
 
     for k in result_dict:
         assert k in state_fields_columns
+
+    # Make the field values can be converted without error as well
+    state(**result_dict)
 
 
 def generate_actor_data(id, state=ActorTableData.ActorState.ALIVE, class_name="class"):
@@ -250,8 +260,8 @@ def generate_task_event(
     )
     state_updates = TaskStateUpdate(
         node_id=node_id,
+        state_ts_ns={state: 1},
     )
-    setattr(state_updates, TaskStatus.Name(state).lower() + "_ts", 1)
     return TaskEvents(
         task_id=id,
         job_id=job_id,
@@ -268,6 +278,28 @@ def generate_task_data(events_by_task):
         num_status_task_events_dropped=0,
         num_profile_task_events_dropped=0,
         num_total_stored=len(events_by_task),
+    )
+
+
+def generate_failure_test_data():
+    return GetTaskEventsReply(
+        status=GcsStatus(code=34, message="Unknown filter predicate"),
+        events_by_task=[],
+        num_status_task_events_dropped=0,
+        num_profile_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
+    )
+
+
+def generate_early_return_task_data():
+    return GetTaskEventsReply(
+        num_profile_task_events_dropped=0,
+        num_status_task_events_dropped=0,
+        num_total_stored=0,
+        num_filtered_on_gcs=0,
+        num_truncated=0,
     )
 
 
@@ -321,7 +353,7 @@ def generate_runtime_env_info(runtime_env, creation_time=None, success=True):
 def create_api_options(
     timeout: int = DEFAULT_RPC_TIMEOUT,
     limit: int = DEFAULT_LIMIT,
-    filters: List[Tuple[str, SupportedFilterType]] = None,
+    filters: List[Tuple[str, PredicateType, SupportedFilterType]] = None,
     detail: bool = False,
     exclude_driver: bool = True,
 ):
@@ -335,6 +367,30 @@ def create_api_options(
         detail=detail,
         exclude_driver=exclude_driver,
     )
+
+
+def test_list_api_options_has_conflicting_filters():
+    # single filter
+    options = ListApiOptions(filters=[("name", "=", "task_name")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, different keys
+    options = ListApiOptions(filters=[("name", "=", "task_name"), ("job_id", "=", "1")])
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, not equal predicate
+    options = ListApiOptions(
+        filters=[("name", "!=", "task_name_1"), ("name", "!=", "task_name_2")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, same value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_1")]
+    )
+    assert not options.has_conflicting_filters()
+    # multiple filters, same key, different value, equal predicate
+    options = ListApiOptions(
+        filters=[("name", "=", "task_name_1"), ("name", "=", "task_name_2")]
+    )
+    assert options.has_conflicting_filters()
 
 
 def test_ray_address_to_api_server_url(shutdown_only):
@@ -743,12 +799,14 @@ async def test_api_manager_list_cluster_events(state_api_manager):
                 "severity": "DEBUG",
                 "message": "a",
                 "event_id": event_id_1,
+                "source_type": "GCS",
             },
             event_id_2: {
                 "timestamp": 10,
                 "severity": "INFO",
                 "message": "b",
                 "event_id": event_id_2,
+                "source_type": "GCS",
             },
         }
     }
@@ -793,7 +851,9 @@ async def test_api_manager_list_nodes(state_api_manager):
     data_source_client = state_api_manager.data_source_client
     id = b"1234"
     data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
-        node_info_list=[generate_node_data(id), generate_node_data(b"12345")]
+        node_info_list=[generate_node_data(id), generate_node_data(b"12345")],
+        total=2,
+        num_filtered=0,
     )
     result = await state_api_manager.list_nodes(option=create_api_options())
     data = result.result
@@ -813,6 +873,11 @@ async def test_api_manager_list_nodes(state_api_manager):
     Test limit
     """
     assert len(result.result) == 2
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(option=create_api_options(limit=1))
     data = result.result
     assert len(data) == 1
@@ -826,6 +891,11 @@ async def test_api_manager_list_nodes(state_api_manager):
         result = await state_api_manager.list_nodes(
             option=create_api_options(filters=[("stat", "=", "DEAD")])
         )
+    data_source_client.get_all_node_info.return_value = GetAllNodeInfoReply(
+        node_info_list=[generate_node_data(id)],
+        total=2,
+        num_filtered=1,
+    )
     result = await state_api_manager.list_nodes(
         option=create_api_options(filters=[("node_id", "=", bytearray(id).hex())])
     )
@@ -985,6 +1055,114 @@ async def test_api_manager_list_tasks(state_api_manager):
     )
     assert len(result.result) == 1
 
+    """
+    Test failure reply
+    """
+    data_source_client.get_all_task_info.side_effect = [generate_failure_test_data()]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert len(result.warnings) > 0
+
+    """
+    Test early reply
+    """
+    data_source_client.get_all_task_info.side_effect = [
+        generate_early_return_task_data()
+    ]
+    result = await state_api_manager.list_tasks(option=create_api_options())
+    assert len(result.result) == 0
+    assert result.total == 0
+    assert result.num_filtered == 0
+    assert result.num_after_truncation == 0
+    assert result.warnings is None
+
+
+@pytest.mark.asyncio
+@patch.object(
+    StateDataSourceClient, "__init__", lambda self, gcs_channel, gcs_aio_client: None
+)
+async def test_state_data_source_client_get_all_task_info_no_early_return():
+    #  Setup
+    mock_gcs_task_info_stub = AsyncMock(TaskInfoGcsServiceStub)
+
+    client = StateDataSourceClient(None, None)
+    client._gcs_task_info_stub = mock_gcs_task_info_stub
+
+    mock_reply = MagicMock(GetTaskEventsReply)
+    mock_gcs_task_info_stub.GetTaskEvents = AsyncMock()
+    mock_gcs_task_info_stub.GetTaskEvents.side_effect = [mock_reply]
+
+    test_actor_id = ActorID.from_random()
+    test_job_id = JobID.from_int(1)
+    test_task_id_1 = TaskID.for_fake_task(test_job_id)
+    test_task_id_2 = TaskID.for_fake_task(test_job_id)
+    test_task_name = "task_name"
+    test_state = "running"
+    input_filters = []
+    input_filters.append(("actor_id", "=", test_actor_id.hex()))
+    input_filters.append(("job_id", "!=", test_job_id.hex()))
+    input_filters.append(("task_id", "=", test_task_id_1.hex()))
+    input_filters.append(("name", "=", test_task_name))
+    input_filters.append(("task_id", "!=", test_task_id_2.hex()))
+    input_filters.append(("state", "=", test_state))
+    input_timeout = 100
+    input_limit = 200
+    input_exclude_driver = True
+
+    # Execute the function
+    result = await client.get_all_task_info(
+        input_timeout, input_limit, input_filters, input_exclude_driver
+    )
+
+    # Verify
+    assert result is mock_reply
+    mock_gcs_task_info_stub.GetTaskEvents.assert_awaited_once()
+
+    input_args = mock_gcs_task_info_stub.GetTaskEvents.await_args
+    assert len(input_args.kwargs) == 1
+    assert input_args.kwargs["timeout"] == input_timeout
+
+    assert len(input_args.args) == 1
+    request_arg = input_args.args[0]
+    assert request_arg.limit == input_limit
+
+    filters_arg = request_arg.filters
+    task_filters_arg = request_arg.filters.task_filters
+    assert len(task_filters_arg) == 2
+    if task_filters_arg[0].predicate == FilterPredicate.EQUAL:
+        assert TaskID(task_filters_arg[0].task_id) == test_task_id_1
+        assert task_filters_arg[1].predicate == FilterPredicate.NOT_EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_2
+    else:
+        assert task_filters_arg[0].task_id == test_task_id_2
+        assert task_filters_arg[1].predicate == FilterPredicate.EQUAL
+        assert TaskID(task_filters_arg[1].task_id) == test_task_id_1
+
+    actor_filters_arg = request_arg.filters.actor_filters
+    assert len(actor_filters_arg) == 1
+    assert ActorID(actor_filters_arg[0].actor_id) == test_actor_id
+    assert actor_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    job_filters_arg = request_arg.filters.job_filters
+    assert len(job_filters_arg) == 1
+    assert JobID(job_filters_arg[0].job_id) == test_job_id
+    assert job_filters_arg[0].predicate == FilterPredicate.NOT_EQUAL
+
+    task_name_filters_arg = request_arg.filters.task_name_filters
+    assert len(task_name_filters_arg) == 1
+    assert task_name_filters_arg[0].task_name == test_task_name
+    assert task_name_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    state_filters_arg = request_arg.filters.state_filters
+    assert len(state_filters_arg) == 1
+    assert state_filters_arg[0].state == test_state
+    assert state_filters_arg[0].predicate == FilterPredicate.EQUAL
+
+    assert filters_arg.exclude_driver == input_exclude_driver
+
 
 @pytest.mark.asyncio
 async def test_api_manager_list_tasks_events(state_api_manager):
@@ -1007,10 +1185,12 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     second = int(1e9)
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
-        finished_ts=current + (3 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+            TaskStatus.FINISHED: current + (3 * second),
+        },
     )
 
     """
@@ -1056,9 +1236,11 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     """
     state_updates = TaskStateUpdate(
         node_id=node_id.binary(),
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
-        running_ts=current + (2 * second),
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+            TaskStatus.RUNNING: current + (2 * second),
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -1077,8 +1259,10 @@ async def test_api_manager_list_tasks_events(state_api_manager):
     Test None of start & end time is updated.
     """
     state_updates = TaskStateUpdate(
-        pending_args_avail_ts=current,
-        submitted_to_worker_ts=current + second,
+        state_ts_ns={
+            TaskStatus.PENDING_ARGS_AVAIL: current,
+            TaskStatus.SUBMITTED_TO_WORKER: current + second,
+        },
     )
     events = TaskEvents(
         task_id=id,
@@ -1675,11 +1859,7 @@ async def test_state_data_source_client_limit_gcs_source(ray_start_cluster):
     """
     result = await client.get_all_worker_info(limit=2)
     assert len(result.worker_table_data) == 2
-    # Driver + 3 workers for actors + 2 prestarted task-only workers
-    # TODO(clarng): prestart worker on worker lease request doesn't
-    # work, otherwise it should have created the 2 prestarted task-only
-    # workers prior to https://github.com/ray-project/ray/pull/33623
-    assert result.total == 6
+    assert result.total == 4
 
 
 def test_humanify():
@@ -2154,19 +2334,23 @@ def test_list_get_nodes(ray_start_cluster):
     cluster = ray_start_cluster
     cluster.add_node(num_cpus=1, node_name="head_node")
     ray.init(address=cluster.address)
-    cluster.add_node(num_cpus=1, node_name="worker_node")
+    worker_node = cluster.add_node(num_cpus=1, node_name="worker_node")
+
+    cluster.remove_node(worker_node)
 
     def verify():
         nodes = list_nodes(detail=True)
         for node in nodes:
-            assert node["state"] == "ALIVE"
             assert is_hex(node["node_id"])
-            assert (
-                node["is_head_node"]
-                if node["node_name"] == "head_node"
-                else not node["is_head_node"]
-            )
             assert node["labels"] == {"ray.io/node_id": node["node_id"]}
+            if node["node_name"] == "head_node":
+                assert node["is_head_node"]
+                assert node["state"] == "ALIVE"
+                assert node["state_message"] is None
+            else:
+                assert not node["is_head_node"]
+                assert node["state"] == "DEAD"
+                assert node["state_message"] == "Expected termination: received SIGTERM"
 
         # Check with legacy API
         check_nodes = ray.nodes()
@@ -2205,11 +2389,13 @@ def test_list_get_jobs(shutdown_only):
     )
 
     def verify():
-        job_data = list_jobs()[0]
+        job_data = list_jobs(detail=True)[0]
         print(job_data)
         job_id_from_api = job_data["submission_id"]
         assert job_data["status"] == "SUCCEEDED"
         assert job_id == job_id_from_api
+        assert job_data["start_time"] > 0
+        assert job_data["end_time"] > 0
         return True
 
     wait_for_condition(verify)
@@ -2230,10 +2416,11 @@ ray.get(f.remote())
     run_string_as_driver(script)
 
     def verify():
-        jobs = list_jobs(filters=[("type", "=", "DRIVER")])
+        jobs = list_jobs(filters=[("type", "=", "DRIVER")], detail=True)
         assert len(jobs) == 2, "1 test driver + 1 script run above"
         for driver_job in jobs:
             assert driver_job["driver_info"] is not None
+            assert driver_job["start_time"] > 0
 
         sub_jobs = list_jobs(filters=[("type", "=", "SUBMISSION")])
         assert len(sub_jobs) == 1
@@ -2420,7 +2607,11 @@ def test_list_get_tasks(shutdown_only):
         for task in tasks:
             assert task["job_id"] == job_id
 
-        tasks = list_tasks(filters=[("name", "=", "f_0")])
+        tasks = list_tasks(filters=[("name", "=", "f_0")], limit=1)
+        assert len(tasks) == 1
+
+        # using limit to make sure state filtering is done on the gcs side
+        tasks = list_tasks(filters=[("STATE", "=", "PENDING_ARGS_AVAIL")], limit=1)
         assert len(tasks) == 1
 
         return True
@@ -2598,7 +2789,7 @@ def test_list_actor_tasks(shutdown_only):
     ray.init(num_cpus=2)
     job_id = ray.get_runtime_context().get_job_id()
 
-    @ray.remote
+    @ray.remote(max_concurrency=2)
     class Actor:
         def call(self):
             import time
@@ -2616,18 +2807,19 @@ def test_list_actor_tasks(shutdown_only):
         for task in tasks:
             assert task["actor_id"] == actor_id
         # Actor.__init__: 1 finished
-        # Actor.call: 1 running, 9 waiting for execution (queued).
+        # Actor.call: 2 running, 8 waiting for execution (queued).
         assert len(tasks) == 11
         assert (
             len(
                 list(
                     filter(
-                        lambda task: task["state"] == "SUBMITTED_TO_WORKER",
+                        lambda task: task["state"]
+                        == "PENDING_ACTOR_TASK_ORDERING_OR_CONCURRENCY",
                         tasks,
                     )
                 )
             )
-            == 9
+            == 8
         )
         assert (
             len(
@@ -2660,7 +2852,7 @@ def test_list_actor_tasks(shutdown_only):
                     )
                 )
             )
-            == 1
+            == 2
         )
 
         # Filters with actor id.
@@ -3560,9 +3752,58 @@ def test_core_state_api_usage_tags(shutdown_only):
     )
 
 
-if __name__ == "__main__":
-    import sys
+# Tests fix for https://github.com/ray-project/ray/issues/44459
+def test_job_info_is_running_task(shutdown_only):
+    ray.init()
 
+    # To reliably know a job has a long running task, we need to wait a SignalActor
+    # to know the task has started.
+    signal = SignalActor.remote()
+
+    @ray.remote
+    def f(signal):
+        ray.get(signal.send.remote())
+        import time
+
+        while True:
+            time.sleep(10000)
+
+    long_running = f.remote(signal)  # noqa: F841
+    ray.get(signal.wait.remote())
+
+    client = ray.worker.global_worker.gcs_client
+    job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert len(all_job_info) == 1
+    assert job_id in all_job_info
+    assert all_job_info[job_id].is_running_tasks is True
+
+
+def test_hang_driver_has_no_is_running_task(monkeypatch, ray_start_cluster):
+    """
+    When there's a call to JobInfoGcsService.GetAllJobInfo, GCS sends RPC
+    CoreWorkerService.NumPendingTasks to all drivers for "is_running_task". Our driver
+    however has trouble serving such RPC, and GCS should timeout that RPC and unsest the
+    field.
+    """
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=10)
+    address = cluster.address
+
+    monkeypatch.setenv(
+        "RAY_testing_asio_delay_us",
+        "CoreWorkerService.grpc_server.NumPendingTasks=2000000:2000000",
+    )
+    ray.init(address=address)
+
+    client = ray.worker.global_worker.gcs_client
+    my_job_id = ray.worker.global_worker.current_job_id
+    all_job_info = client.get_all_job_info()
+    assert list(all_job_info.keys()) == [my_job_id]
+    assert not all_job_info[my_job_id].HasField("is_running_tasks")
+
+
+if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
     else:

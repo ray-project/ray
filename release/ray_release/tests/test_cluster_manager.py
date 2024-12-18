@@ -94,7 +94,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
             test=MockTest(
                 {
                     "name": f"unit_test__{self.__class__.__name__}",
-                    "cluster": {},
+                    "cluster": {"byod": {}},
                 }
             ),
         )
@@ -125,7 +125,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         sdk.returns["get_project"] = APIDict(result=APIDict(name="release_unit_tests"))
         sdk.returns["get_cloud"] = APIDict(result=APIDict(provider="AWS"))
         cluster_manager = self.cls(
-            test=MockTest({"name": "test", "cluster": {}}),
+            test=MockTest({"name": "test", "cluster": {"byod": {}}}),
             project_id=UNIT_TEST_PROJECT_ID,
             smoke_test=False,
             sdk=sdk,
@@ -134,7 +134,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
         self.assertEqual(
             cluster_manager.cluster_env_name,
             "anyscale__env__"
-            "44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+            "a93b7dec6c1b606a9814ceb96ace13e116d04cc8ce3a2bdea1b0f279c34ff692",
         )
 
     @patch("time.sleep", lambda *a, **kw: None)
@@ -275,19 +275,20 @@ class MinimalSessionManagerTest(unittest.TestCase):
         # All ResourceTypes as in
         # ray_release.aws.RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
-        target_cluster_compute["aws"] = {
+        target_cluster_compute["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "instance", "Tags": [{"Key": "foo", "Value": "bar"}]},
                 {"ResourceType": "volume", "Tags": [{"Key": "foo", "Value": "bar"}]},
             ]
         }
         self.assertEqual(
-            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["advanced_configurations_json"],
+            target_cluster_compute["advanced_configurations_json"],
         )
 
         # Test merging with already existing tags
         cluster_compute_with_tags = TEST_CLUSTER_COMPUTE.copy()
-        cluster_compute_with_tags["aws"] = {
+        cluster_compute_with_tags["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "fake", "Tags": []},
                 {"ResourceType": "instance", "Tags": [{"Key": "key", "Value": "val"}]},
@@ -299,7 +300,7 @@ class MinimalSessionManagerTest(unittest.TestCase):
 
         # All ResourceTypes as in RELEASE_AWS_RESOURCE_TYPES_TO_TRACK_FOR_BILLING
         target_cluster_compute = TEST_CLUSTER_COMPUTE.copy()
-        target_cluster_compute["aws"] = {
+        target_cluster_compute["advanced_configurations_json"] = {
             "TagSpecifications": [
                 {"ResourceType": "fake", "Tags": []},
                 {
@@ -313,7 +314,8 @@ class MinimalSessionManagerTest(unittest.TestCase):
             ]
         }
         self.assertEqual(
-            self.cluster_manager.cluster_compute["aws"], target_cluster_compute["aws"]
+            self.cluster_manager.cluster_compute["advanced_configurations_json"],
+            target_cluster_compute["advanced_configurations_json"],
         )
 
     @patch("time.sleep", lambda *a, **kw: None)

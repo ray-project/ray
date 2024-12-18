@@ -17,32 +17,16 @@
 namespace ray {
 namespace gcs {
 
-InternalPubSubHandler::InternalPubSubHandler(
-    instrumented_io_context &io_service,
-    const std::shared_ptr<gcs::GcsPublisher> &gcs_publisher)
-    : io_service_(io_service), gcs_publisher_(gcs_publisher) {
-  io_service_thread_ = std::make_unique<std::thread>([this] {
-    SetThreadName("pubsub");
-    // Keep io_service_ alive.
-    boost::asio::io_service::work io_service_work_(io_service_);
-    io_service_.run();
-  });
-}
+InternalPubSubHandler::InternalPubSubHandler(instrumented_io_context &io_service,
+                                             gcs::GcsPublisher &gcs_publisher)
+    : io_service_(io_service), gcs_publisher_(gcs_publisher) {}
 
 void InternalPubSubHandler::HandleGcsPublish(rpc::GcsPublishRequest request,
                                              rpc::GcsPublishReply *reply,
                                              rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   RAY_LOG(DEBUG) << "received publish request: " << request.DebugString();
   for (const auto &msg : request.pub_messages()) {
-    gcs_publisher_->GetPublisher()->Publish(msg);
+    gcs_publisher_.GetPublisher().Publish(msg);
   }
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
@@ -54,21 +38,13 @@ void InternalPubSubHandler::HandleGcsSubscriberPoll(
     rpc::GcsSubscriberPollRequest request,
     rpc::GcsSubscriberPollReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   rpc::PubsubLongPollingRequest pubsub_req;
   pubsub_req.set_subscriber_id(request.subscriber_id());
   pubsub_req.set_publisher_id(request.publisher_id());
   pubsub_req.set_max_processed_sequence_id(request.max_processed_sequence_id());
   auto pubsub_reply = std::make_shared<rpc::PubsubLongPollingReply>();
   auto pubsub_reply_ptr = pubsub_reply.get();
-  gcs_publisher_->GetPublisher()->ConnectToSubscriber(
+  gcs_publisher_.GetPublisher().ConnectToSubscriber(
       pubsub_req,
       pubsub_reply_ptr,
       [reply,
@@ -89,14 +65,6 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
     rpc::GcsSubscriberCommandBatchRequest request,
     rpc::GcsSubscriberCommandBatchReply *reply,
     rpc::SendReplyCallback send_reply_callback) {
-  if (gcs_publisher_ == nullptr) {
-    send_reply_callback(
-        Status::NotImplemented("GCS pubsub is not yet enabled. Please enable it with "
-                               "system config `gcs_grpc_based_pubsub=True`"),
-        nullptr,
-        nullptr);
-    return;
-  }
   const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
 
   // If the sender_id field is not set, subscriber_id will be used instead.
@@ -112,13 +80,13 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
 
   for (const auto &command : request.commands()) {
     if (command.has_unsubscribe_message()) {
-      gcs_publisher_->GetPublisher()->UnregisterSubscription(
+      gcs_publisher_.GetPublisher().UnregisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
       iter->second.erase(subscriber_id);
     } else if (command.has_subscribe_message()) {
-      gcs_publisher_->GetPublisher()->RegisterSubscription(
+      gcs_publisher_.GetPublisher().RegisterSubscription(
           command.channel_type(),
           subscriber_id,
           command.key_id().empty() ? std::nullopt : std::make_optional(command.key_id()));
@@ -132,22 +100,24 @@ void InternalPubSubHandler::HandleGcsSubscriberCommandBatch(
   send_reply_callback(Status::OK(), nullptr, nullptr);
 }
 
+void InternalPubSubHandler::HandleGcsUnregisterSubscriber(
+    rpc::GcsUnregisterSubscriberRequest request,
+    rpc::GcsUnregisterSubscriberReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  const auto subscriber_id = UniqueID::FromBinary(request.subscriber_id());
+  gcs_publisher_.GetPublisher().UnregisterSubscriber(subscriber_id);
+  send_reply_callback(Status::OK(), nullptr, nullptr);
+}
+
 void InternalPubSubHandler::RemoveSubscriberFrom(const std::string &sender_id) {
   auto iter = sender_to_subscribers_.find(sender_id);
   if (iter == sender_to_subscribers_.end()) {
     return;
   }
   for (auto &subscriber_id : iter->second) {
-    gcs_publisher_->GetPublisher()->UnregisterSubscriber(subscriber_id);
+    gcs_publisher_.GetPublisher().UnregisterSubscriber(subscriber_id);
   }
   sender_to_subscribers_.erase(iter);
-}
-
-void InternalPubSubHandler::Stop() {
-  io_service_.stop();
-  if (io_service_thread_->joinable()) {
-    io_service_thread_->join();
-  }
 }
 
 }  // namespace gcs

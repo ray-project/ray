@@ -1,22 +1,9 @@
-from typing import Type, TYPE_CHECKING, Union
-
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.metrics import (
-    ALL_MODULES,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
-
-if TYPE_CHECKING:
-    from ray.rllib.core.learner import Learner
+from ray.rllib.utils.typing import RLModuleSpecType
 
 
 class BCConfig(MARWILConfig):
@@ -72,48 +59,47 @@ class BCConfig(MARWILConfig):
         # Advantages (calculated during postprocessing)
         # not important for behavioral cloning.
         self.postprocess_inputs = False
-        # Set RLModule as default.
-        self.experimental(_enable_new_api_stack=True)
+
+        # Materialize only the mapped data. This is optimal as long
+        # as no connector in the connector pipeline holds a state.
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         # __sphinx_doc_end__
         # fmt: on
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
 
-            return SingleAgentRLModuleSpec(
+            return RLModuleSpec(
                 module_class=BCTorchRLModule,
                 catalog_class=BCCatalog,
             )
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.bc.tf.bc_tf_rl_module import BCTfRLModule
-
-            return SingleAgentRLModuleSpec(
-                module_class=BCTfRLModule,
-                catalog_class=BCCatalog,
-            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
+                "Use `torch` instead."
             )
 
     @override(AlgorithmConfig)
-    def get_default_learner_class(self) -> Union[Type["Learner"], str]:
-        if self.framework_str == "torch":
-            from ray.rllib.algorithms.bc.torch.bc_torch_learner import BCTorchLearner
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
 
-            return BCTorchLearner
-        elif self.framework_str == "tf2":
-            from ray.rllib.algorithms.bc.tf.bc_tf_learner import BCTfLearner
+        # Remove unneeded connectors from the MARWIL connector pipeline.
+        pipeline.remove("AddOneTsToEpisodesAndTruncate")
+        pipeline.remove("GeneralAdvantageEstimation")
 
-            return BCTfLearner
-        else:
-            raise ValueError(
-                f"The framework {self.framework_str} is not supported. "
-                "Use either 'torch' or 'tf2'."
-            )
+        return pipeline
 
     @override(MARWILConfig)
     def validate(self) -> None:
@@ -127,73 +113,10 @@ class BCConfig(MARWILConfig):
 class BC(MARWIL):
     """Behavioral Cloning (derived from MARWIL).
 
-    Simply uses MARWIL with beta force-set to 0.0.
+    Uses MARWIL with beta force-set to 0.0.
     """
 
     @classmethod
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-    @override(MARWIL)
-    def training_step(self) -> ResultDict:
-        if not self.config._enable_new_api_stack:
-            # Using ModelV2.
-            return super().training_step()
-        else:
-            # Implement logic using RLModule and Learner API.
-            # TODO (sven): Remove RolloutWorkers/EnvRunners for
-            # datasets. Use RolloutWorker/EnvRunner only for
-            # env stepping.
-            # TODO (simon): Take care of sampler metrics: right
-            # now all rewards are `nan`, which possibly confuses
-            # the user that sth. is not right, although it is as
-            # we do not step the env.
-            with self._timers[SAMPLE_TIMER]:
-                # Sampling from offline data.
-                # TODO (simon): We have to remove the `RolloutWorker`
-                # here and just use the already distributed `dataset`
-                # for sampling. Only in online evaluation
-                # `RolloutWorker/EnvRunner` should be used.
-                if self.config.count_steps_by == "agent_steps":
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_agent_steps=self.config.train_batch_size,
-                    )
-                else:
-                    train_batch = synchronous_parallel_sample(
-                        worker_set=self.workers,
-                        max_env_steps=self.config.train_batch_size,
-                    )
-
-                train_batch = train_batch.as_multi_agent()
-                self._counters[NUM_AGENT_STEPS_SAMPLED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_SAMPLED] += train_batch.env_steps()
-
-            # Updating the policy.
-            train_results = self.learner_group.update_from_batch(batch=train_batch)
-
-            # Synchronize weights.
-            # As the results contain for each policy the loss and in addition the
-            # total loss over all policies is returned, this total loss has to be
-            # removed.
-            policies_to_update = set(train_results.keys()) - {ALL_MODULES}
-
-            global_vars = {
-                "timestep": self._counters[NUM_AGENT_STEPS_SAMPLED],
-            }
-
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.workers.num_remote_workers() > 0:
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=policies_to_update,
-                        global_vars=global_vars,
-                    )
-                # Get weights from Learner to local worker.
-                else:
-                    self.workers.local_worker().set_weights(
-                        self.learner_group.get_weights()
-                    )
-
-            return train_results

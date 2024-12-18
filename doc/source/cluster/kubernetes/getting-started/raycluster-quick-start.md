@@ -6,7 +6,7 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 
 ## Preparation
 
-* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.19), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4), and [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation).
+* Install [kubectl](https://kubernetes.io/docs/tasks/tools/#kubectl) (>= 1.23), [Helm](https://helm.sh/docs/intro/install/) (>= v3.4) if needed, [Kind](https://kind.sigs.k8s.io/docs/user/quick-start/#installation), and [Docker](https://docs.docker.com/engine/install/).
 * Make sure your Kubernetes cluster has at least 4 CPU and 4 GB RAM.
 
 ## Step 1: Create a Kubernetes cluster
@@ -14,20 +14,24 @@ This guide shows you how to manage and interact with Ray clusters on Kubernetes.
 This step creates a local Kubernetes cluster using [Kind](https://kind.sigs.k8s.io/). If you already have a Kubernetes cluster, you can skip this step.
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 (kuberay-operator-deploy)=
 ## Step 2: Deploy a KubeRay operator
 
-Deploy the KubeRay operator with the [Helm chart repository](https://github.com/ray-project/kuberay-helm).
+Deploy the KubeRay operator with the [Helm chart repository](https://github.com/ray-project/kuberay-helm) or Kustomize.
+
+`````{tab-set}
+
+````{tab-item} Helm
 
 ```sh
 helm repo add kuberay https://ray-project.github.io/kuberay-helm/
 helm repo update
 
-# Install both CRDs and KubeRay operator v1.1.0-rc.0.
-helm install kuberay-operator kuberay/kuberay-operator --version 1.1.0-rc.0
+# Install both CRDs and KubeRay operator v1.2.2.
+helm install kuberay-operator kuberay/kuberay-operator --version 1.2.2
 
 # Confirm that the operator is running in the namespace `default`.
 kubectl get pods
@@ -35,25 +39,52 @@ kubectl get pods
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          27s
 ```
 
-KubeRay offers multiple options for operator installations, such as Helm, Kustomize, and a single-namespaced operator. For further information, please refer to [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+````
 
+````{tab-item} Kustomize
+
+```sh
+# Install CRD and KubeRay operator v1.2.2.
+kubectl create -k "github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+
+# Confirm that the operator is running in the namespace `ray-system`.
+kubectl get pods -n ray-system
+# NAME                                READY   STATUS    RESTARTS   AGE
+# kuberay-operator-6d57c9f797-ffvph   1/1     Running   0          2m14s
+
+```
+
+````
+
+`````
+
+For further information, see [the installation instructions in the KubeRay documentation](https://ray-project.github.io/kuberay/deploy/installation/).
+
+(raycluster-deploy)=
 ## Step 3: Deploy a RayCluster custom resource
 
-Once the KubeRay operator is running, we are ready to deploy a RayCluster. To do so, we create a RayCluster Custom Resource (CR) in the `default` namespace.
+Once the KubeRay operator is running, you're ready to deploy a RayCluster. Create a RayCluster Custom Resource (CR) in the `default` namespace.
 
   ::::{tab-set}
 
-  :::{tab-item} ARM64 (Apple Silicon)
+  :::{tab-item} Helm ARM64 (Apple Silicon)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0 --set 'image.tag=2.9.0-aarch64'
+  helm install raycluster kuberay/ray-cluster --version 1.2.2 --set 'image.tag=2.9.0-aarch64'
   ```
   :::
 
-  :::{tab-item} x86-64 (Intel/Linux)
+  :::{tab-item} Helm x86-64 (Intel/Linux)
   ```sh
   # Deploy a sample RayCluster CR from the KubeRay Helm chart repo:
-  helm install raycluster kuberay/ray-cluster --version 1.1.0-rc.0
+  helm install raycluster kuberay/ray-cluster --version 1.2.2
+  ```
+  :::
+
+  :::{tab-item} Kustomize
+  ```sh
+  # Deploy a sample RayCluster CR from the KubeRay repository:
+  kubectl apply -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
   ```
   :::
 
@@ -85,7 +116,7 @@ Note that in production scenarios, you will want to use larger Ray pods. In fact
 
 ## Step 4: Run an application on a RayCluster
 
-Now, let's interact with the RayCluster we've deployed. 
+Now, let's interact with the RayCluster we've deployed.
 
 ### Method 1: Execute a Ray job in the head Pod
 
@@ -102,7 +133,7 @@ kubectl exec -it $HEAD_POD -- python -c "import ray; ray.init(); print(ray.clust
 
 # 2023-04-07 10:57:46,472 INFO worker.py:1243 -- Using address 127.0.0.1:6379 set in the environment variable RAY_ADDRESS
 # 2023-04-07 10:57:46,472 INFO worker.py:1364 -- Connecting to existing Ray cluster at address: 10.244.0.6:6379...
-# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265 
+# 2023-04-07 10:57:46,482 INFO worker.py:1550 -- Connected to Ray cluster. View the dashboard at http://10.244.0.6:8265
 # {'object_store_memory': 802572287.0, 'memory': 3000000000.0, 'node:10.244.0.6': 1.0, 'CPU': 2.0, 'node:10.244.0.7': 1.0}
 ```
 
@@ -123,16 +154,8 @@ Now that we have the name of the service, we can use port-forwarding to access t
 
 ```sh
 # Execute this in a separate shell.
-kubectl port-forward --address 0.0.0.0 service/raycluster-kuberay-head-svc 8265:8265
-
-# Visit ${YOUR_IP}:8265 in your browser for the Dashboard (e.g. 127.0.0.1:8265)
+kubectl port-forward service/raycluster-kuberay-head-svc 8265:8265
 ```
-
-Note: We use port-forwarding in this guide as a simple way to experiment with a RayCluster's services. For production use-cases, you would typically either 
-- Access the service from within the Kubernetes cluster or
-- Use an ingress controller to expose the service outside the cluster.
-
-See the {ref}`networking notes <kuberay-networking>` for details.
 
 Now that we have access to the Dashboard port, we can submit jobs to the RayCluster:
 
@@ -141,10 +164,21 @@ Now that we have access to the Dashboard port, we can submit jobs to the RayClus
 ray job submit --address http://localhost:8265 -- python -c "import ray; ray.init(); print(ray.cluster_resources())"
 ```
 
-## Step 5: Cleanup
+## Step 5: Access the Ray Dashboard
+
+Visit `${YOUR_IP}:8265` in your browser for the Dashboard. For example, `127.0.0.1:8265`.
+See the job you submitted in Step 4 in the **Recent jobs** pane as shown below.
+
+![Ray Dashboard](../images/ray-dashboard.png)
+
+## Step 6: Cleanup
+
+`````{tab-set}
+
+````{tab-item} Helm
 
 ```sh
-# [Step 5.1]: Delete the RayCluster CR
+# [Step 6.1]: Delete the RayCluster CR
 # Uninstall the RayCluster Helm chart
 helm uninstall raycluster
 # release "raycluster" uninstalled
@@ -156,7 +190,7 @@ kubectl get pods
 # NAME                                READY   STATUS    RESTARTS   AGE
 # kuberay-operator-7fbdbf8c89-pt8bk   1/1     Running   0          XXm
 
-# [Step 5.2]: Delete the KubeRay operator
+# [Step 6.2]: Delete the KubeRay operator
 # Uninstall the KubeRay operator Helm chart
 helm uninstall kuberay-operator
 # release "kuberay-operator" uninstalled
@@ -165,6 +199,33 @@ helm uninstall kuberay-operator
 kubectl get pods
 # No resources found in default namespace.
 
-# [Step 5.3]: Delete the Kubernetes cluster
+# [Step 6.3]: Delete the Kubernetes cluster
 kind delete cluster
 ```
+
+````
+
+````{tab-item} Kustomize
+
+```sh
+# [Step 6.1]: Delete the RayCluster CR
+kubectl delete -f "https://raw.githubusercontent.com/ray-project/kuberay/refs/heads/release-1.2.2/ray-operator/config/samples/ray-cluster.sample.yaml"
+
+# Confirm that the RayCluster's pods are gone by running
+kubectl get pods
+# No resources found in default namespace.
+
+# [Step 6.2]: Delete the KubeRay operator
+kubectl delete -k "https://github.com/ray-project/kuberay/ray-operator/config/default?ref=v1.2.2"
+
+# Confirm that the KubeRay operator pod is gone by running
+kubectl get pods -n ray-system
+# No resources found in ray-system namespace.
+
+# [Step 6.3]: Delete the Kubernetes cluster
+kind delete cluster
+```
+
+````
+
+`````

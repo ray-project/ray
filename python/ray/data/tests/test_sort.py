@@ -51,6 +51,26 @@ def test_sort_with_specified_boundaries(ray_start_regular, descending, boundarie
         assert np.all(block["id"] == expected_block)
 
 
+def test_sort_multiple_keys_produces_equally_sized_blocks(ray_start_regular):
+    # Test for https://github.com/ray-project/ray/issues/45303.
+    ds = ray.data.from_items(
+        [{"a": i, "b": j} for i in range(2) for j in range(5)], override_num_blocks=5
+    )
+
+    ds_sorted = ds.sort(["a", "b"])
+
+    num_rows_per_block = [
+        bundle.num_rows() for bundle in ds_sorted.iter_internal_ref_bundles()
+    ]
+    # Number of output blocks should be equal to the number of input blocks.
+    assert len(num_rows_per_block) == 5, len(num_rows_per_block)
+    # Ideally we should have 10 rows / 5 blocks = 2 rows per block, but to make this
+    # test less fragile we allow for a small deviation.
+    assert all(
+        1 <= num_rows <= 3 for num_rows in num_rows_per_block
+    ), num_rows_per_block
+
+
 def test_sort_simple(ray_start_regular, use_push_based_shuffle):
     num_items = 100
     parallelism = 4
@@ -119,7 +139,7 @@ def test_sort_arrow(
             offset += shard
         if offset < num_items:
             dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-        ds = ray.data.from_pandas(dfs).map_batches(
+        ds = ray.data.from_blocks(dfs).map_batches(
             lambda t: t, batch_format="pyarrow", batch_size=None
         )
 
@@ -181,7 +201,7 @@ def test_sort_arrow_with_empty_blocks(
         assert (
             len(
                 SortTaskSpec.sample_boundaries(
-                    ds._plan.execute().get_blocks(), SortKey("id"), 3
+                    ds._plan.execute().block_refs, SortKey("id"), 3
                 )
             )
             == 2
@@ -235,7 +255,7 @@ def test_sort_pandas(ray_start_regular, num_items, parallelism, use_push_based_s
         offset += shard
     if offset < num_items:
         dfs.append(pd.DataFrame({"a": a[offset:], "b": b[offset:]}))
-    ds = ray.data.from_pandas(dfs)
+    ds = ray.data.from_blocks(dfs)
 
     def assert_sorted(sorted_ds, expected_rows):
         assert [tuple(row.values()) for row in sorted_ds.iter_rows()] == list(
@@ -282,7 +302,7 @@ def test_sort_pandas_with_empty_blocks(ray_start_regular, use_push_based_shuffle
     assert (
         len(
             SortTaskSpec.sample_boundaries(
-                ds._plan.execute().get_blocks(), SortKey("id"), 3
+                ds._plan.execute().block_refs, SortKey("id"), 3
             )
         )
         == 2

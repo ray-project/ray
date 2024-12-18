@@ -15,6 +15,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 
 #include "absl/memory/memory.h"
 #include "absl/time/clock.h"
@@ -67,6 +68,8 @@ class WorkerInterface {
   virtual void AssignTaskId(const TaskID &task_id) = 0;
   virtual const TaskID &GetAssignedTaskId() const = 0;
   virtual const JobID &GetAssignedJobId() const = 0;
+  virtual std::optional<bool> GetIsGpu() const = 0;
+  virtual std::optional<bool> GetIsActorWorker() const = 0;
   virtual int GetRuntimeEnvHash() const = 0;
   virtual void AssignActorId(const ActorID &actor_id) = 0;
   virtual const ActorID &GetActorId() const = 0;
@@ -112,6 +115,8 @@ class WorkerInterface {
 
   virtual void SetJobId(const JobID &job_id) = 0;
 
+  virtual const ActorID &GetRootDetachedActorId() const = 0;
+
  protected:
   virtual void SetStartupToken(StartupToken startup_token) = 0;
 
@@ -120,6 +125,7 @@ class WorkerInterface {
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               TestWorkerCappingLaterNWorkersNotOwningObjects);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForceKillIdleWorker);
+  FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestJobFinishedForPopWorker);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest,
               WorkerFromAliveJobDoesNotBlockWorkerFromDeadJobFromGettingKilled);
   FRIEND_TEST(WorkerPoolDriverRegisteredTest, TestWorkerCappingWithExitDelay);
@@ -135,7 +141,7 @@ class Worker : public WorkerInterface {
   /// A constructor that initializes a worker object.
   /// NOTE: You MUST manually set the worker process.
   Worker(const JobID &job_id,
-         const int runtime_env_hash,
+         int runtime_env_hash,
          const WorkerID &worker_id,
          const Language &language,
          rpc::WorkerType worker_type,
@@ -144,7 +150,7 @@ class Worker : public WorkerInterface {
          rpc::ClientCallManager &client_call_manager,
          StartupToken startup_token);
   /// A destructor responsible for freeing all worker state.
-  ~Worker() {}
+  ~Worker() = default;
   rpc::WorkerType GetWorkerType() const;
   void MarkDead();
   bool IsDead() const;
@@ -171,6 +177,8 @@ class Worker : public WorkerInterface {
   void AssignTaskId(const TaskID &task_id);
   const TaskID &GetAssignedTaskId() const;
   const JobID &GetAssignedJobId() const;
+  std::optional<bool> GetIsGpu() const;
+  std::optional<bool> GetIsActorWorker() const;
   int GetRuntimeEnvHash() const;
   void AssignActorId(const ActorID &actor_id);
   const ActorID &GetActorId() const;
@@ -205,6 +213,8 @@ class Worker : public WorkerInterface {
     lifetime_allocated_instances_ = allocated_instances;
   };
 
+  const ActorID &GetRootDetachedActorId() const { return root_detached_actor_id_; }
+
   std::shared_ptr<TaskResourceInstances> GetLifetimeAllocatedInstances() {
     return lifetime_allocated_instances_;
   };
@@ -214,8 +224,16 @@ class Worker : public WorkerInterface {
   RayTask &GetAssignedTask() { return assigned_task_; };
 
   void SetAssignedTask(const RayTask &assigned_task) {
+    const auto &task_spec = assigned_task.GetTaskSpecification();
+    SetJobId(task_spec.JobId());
+    SetBundleId(task_spec.PlacementGroupBundleId());
+    SetOwnerAddress(task_spec.CallerAddress());
+    AssignTaskId(task_spec.TaskId());
+    SetIsGpu(task_spec.GetRequiredResources().Get(scheduling::ResourceID::GPU()) > 0);
+    RAY_CHECK(!task_spec.IsActorTask());
+    SetIsActorWorker(task_spec.IsActorCreationTask());
     assigned_task_ = assigned_task;
-    task_assign_time_ = absl::Now();
+    root_detached_actor_id_ = assigned_task.GetTaskSpecification().RootDetachedActorId();
   }
 
   absl::Time GetAssignedTaskTime() const { return task_assign_time_; };
@@ -235,6 +253,8 @@ class Worker : public WorkerInterface {
   }
 
   void SetJobId(const JobID &job_id);
+  void SetIsGpu(bool is_gpu);
+  void SetIsActorWorker(bool is_actor_worker);
 
  protected:
   void SetStartupToken(StartupToken startup_token);
@@ -271,6 +291,8 @@ class Worker : public WorkerInterface {
   const int runtime_env_hash_;
   /// The worker's actor ID. If this is nil, then the worker is not an actor.
   ActorID actor_id_;
+  /// Root detached actor ID for the worker's last assigned task.
+  ActorID root_detached_actor_id_;
   /// The worker's placement group bundle. It is used to detect if the worker is
   /// associated with a placement group bundle.
   BundleID bundle_id_;
@@ -300,6 +322,12 @@ class Worker : public WorkerInterface {
   RayTask assigned_task_;
   /// Time when the last task was assigned to this worker.
   absl::Time task_assign_time_;
+  /// Whether this worker ever holded a GPU resource. Once it holds a GPU or non-GPU task
+  /// it can't switch to the other type.
+  std::optional<bool> is_gpu_ = std::nullopt;
+  /// Whether this worker can hold an actor. Once it holds an actor or a normal task, it
+  /// can't switch to the other type.
+  std::optional<bool> is_actor_worker_ = std::nullopt;
   /// If true, a RPC need to be sent to notify the worker about GCS restarting.
   bool notify_gcs_restarted_ = false;
 };

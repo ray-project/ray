@@ -80,23 +80,23 @@ async def fetch_grpc(stub, data):
 
 @ray.remote
 class HTTPClient:
-    def __init__(self):
-        self.session = aiohttp.ClientSession()
-
     def ready(self):
         return "ok"
 
     async def do_queries(self, num, data):
-        for _ in range(num):
-            await fetch_http(self.session, data)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(num):
+                await fetch_http(session, data)
 
     async def time_queries(self, num, data):
         stats = []
-        for _ in range(num):
-            start = time.time()
-            await fetch_http(self.session, data)
-            end = time.time()
-            stats.append(end - start)
+        async with aiohttp.ClientSession() as session:
+            for _ in range(num):
+                start = time.time()
+                await fetch_http(session, data)
+                end = time.time()
+                stats.append(end - start)
+
         return stats
 
 
@@ -158,6 +158,10 @@ def build_app(
             processed = self.normalize(raw)
             output = await self._handle.remote(processed)
             return serve_pb2.ModelOutput(output=output)
+
+        async def call_with_string(self, raq_data):
+            """gRPC entrypoint."""
+            return serve_pb2.ModelOutput(output=0)
 
     @serve.deployment(
         num_replicas=num_replicas,

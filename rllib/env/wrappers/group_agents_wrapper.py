@@ -58,9 +58,6 @@ class GroupAgentsWrapper(MultiAgentEnv):
         """
         super().__init__()
         self.env = env
-        # Inherit wrapped env's `_skip_env_checking` flag.
-        if hasattr(self.env, "_skip_env_checking"):
-            self._skip_env_checking = self.env._skip_env_checking
         self.groups = groups
         self.agent_id_to_group = {}
         for group_id, agent_ids in groups.items():
@@ -134,7 +131,10 @@ class GroupAgentsWrapper(MultiAgentEnv):
                 out[agent_id] = value
         return out
 
-    def _group_items(self, items, agg_fn=lambda gvals: list(gvals.values())):
+    def _group_items(self, items, agg_fn=None):
+        if agg_fn is None:
+            agg_fn = lambda gvals: list(gvals.values())  # noqa: E731
+
         grouped_items = {}
         for agent_id, item in items.items():
             if agent_id in self.agent_id_to_group:

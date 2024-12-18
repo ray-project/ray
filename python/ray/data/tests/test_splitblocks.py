@@ -37,8 +37,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_execute_read_task_split": 1,
-                "_get_datasource_or_legacy_reader": 1,
+                "ReadCSV": 1,
             },
         ),
         last_snapshot,
@@ -64,7 +63,6 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_get_datasource_or_legacy_reader": 1,
                 "MapBatches(<lambda>)": 10,
                 "ReadCSV->SplitBlocks(10)": 1,
             },
@@ -76,7 +74,7 @@ def test_small_file_split(ray_start_10_cpus_shared, restore_data_context):
     last_snapshot = assert_core_execution_metrics_equals(
         CoreExecutionMetrics(
             task_count={
-                "_execute_read_task_split": 1,
+                "ReadCSV->SplitBlocks(10)": 1,
             },
         ),
         last_snapshot,

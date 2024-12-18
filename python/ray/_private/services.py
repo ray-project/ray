@@ -178,7 +178,12 @@ def _build_python_executable_command_memory_profileable(
 
 
 def _get_gcs_client_options(gcs_server_address):
-    return GcsClientOptions.from_gcs_address(gcs_server_address)
+    return GcsClientOptions.create(
+        gcs_server_address,
+        None,
+        allow_cluster_id_nil=True,
+        fetch_cluster_id_if_nil=False,
+    )
 
 
 def serialize_config(config):
@@ -449,7 +454,9 @@ def wait_for_node(
         TimeoutError: An exception is raised if the timeout expires before
             the node appears in the client table.
     """
-    gcs_options = GcsClientOptions.from_gcs_address(gcs_address)
+    gcs_options = GcsClientOptions.create(
+        gcs_address, None, allow_cluster_id_nil=True, fetch_cluster_id_if_nil=False
+    )
     global_state = ray._private.state.GlobalState()
     global_state._initialize_global_state(gcs_options)
     start_time = time.time()
@@ -475,6 +482,16 @@ def get_node_to_connect_for_driver(gcs_address, node_ip_address):
     gcs_options = _get_gcs_client_options(gcs_address)
     global_state._initialize_global_state(gcs_options)
     return global_state.get_node_to_connect_for_driver(node_ip_address)
+
+
+def get_node(gcs_address, node_id):
+    """
+    Get the node information from the global state accessor.
+    """
+    global_state = ray._private.state.GlobalState()
+    gcs_options = _get_gcs_client_options(gcs_address)
+    global_state._initialize_global_state(gcs_options)
+    return global_state.get_node(node_id)
 
 
 def get_webui_url_from_internal_kv():
@@ -771,11 +788,11 @@ def write_node_ip_address(session_dir: str, node_ip_address: Optional[str]) -> N
                 json.dump(cached_node_ip_address, f)
 
 
-def create_redis_client(redis_address, password=None):
+def create_redis_client(redis_address, password=None, username=None):
     """Create a Redis client.
 
     Args:
-        The IP address, port, and password of the Redis server.
+        The IP address, port, username, and password of the Redis server.
 
     Returns:
         A Redis client.
@@ -794,7 +811,10 @@ def create_redis_client(redis_address, password=None):
                 canonicalize_bootstrap_address_or_die(redis_address)
             )
             cli = redis.StrictRedis(
-                host=redis_ip_address, port=int(redis_port), password=password
+                host=redis_ip_address,
+                port=int(redis_port),
+                username=username,
+                password=password,
             )
             create_redis_client.instances[redis_address] = cli
         try:
@@ -823,8 +843,8 @@ def start_ray_process(
     use_valgrind_profiler: bool = False,
     use_perftools_profiler: bool = False,
     use_tmux: bool = False,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_file: Optional[IO[AnyStr]] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
     pipe_stdin: bool = False,
 ):
     """Start one of the Ray processes.
@@ -1153,6 +1173,7 @@ def start_api_server(
     raise_on_failure: bool,
     host: str,
     gcs_address: str,
+    cluster_id_hex: str,
     node_ip_address: str,
     temp_dir: str,
     logdir: str,
@@ -1179,6 +1200,7 @@ def start_api_server(
             a warning if we fail to start the API server.
         host: The host to bind the dashboard web server to.
         gcs_address: The gcs address the dashboard should connect to
+        cluster_id_hex: Cluster ID in hex.
         node_ip_address: The IP address where this is running.
         temp_dir: The temporary directory used for log files and
             information for this Ray session.
@@ -1268,6 +1290,7 @@ def start_api_server(
             f"--logging-rotate-bytes={max_bytes}",
             f"--logging-rotate-backup-count={backup_count}",
             f"--gcs-address={gcs_address}",
+            f"--cluster-id-hex={cluster_id_hex}",
             f"--node-ip-address={node_ip_address}",
         ]
 
@@ -1307,7 +1330,7 @@ def start_api_server(
         )
 
         # Retrieve the dashboard url
-        gcs_client = GcsClient(address=gcs_address)
+        gcs_client = GcsClient(address=gcs_address, cluster_id=cluster_id_hex)
         ray.experimental.internal_kv._initialize_internal_kv(gcs_client)
         dashboard_url = None
         dashboard_returncode = None
@@ -1427,8 +1450,9 @@ def start_gcs_server(
     redis_address: str,
     log_dir: str,
     session_name: str,
-    stdout_file: Optional[str] = None,
-    stderr_file: Optional[str] = None,
+    stdout_file: Optional[IO[AnyStr]] = None,
+    stderr_file: Optional[IO[AnyStr]] = None,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     config: Optional[dict] = None,
     fate_share: Optional[bool] = None,
@@ -1446,7 +1470,8 @@ def start_gcs_server(
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_password: The password of the redis server.
+        redis_username: The username of the Redis server.
+        redis_password: The password of the Redis server.
         config: Optional configuration that will
             override defaults in RayConfig.
         gcs_server_port: Port number of the gcs server.
@@ -1466,6 +1491,7 @@ def start_gcs_server(
         f"--metrics-agent-port={metrics_agent_port}",
         f"--node-ip-address={node_ip_address}",
         f"--session-name={session_name}",
+        f"--ray-commit={ray.__commit__}",
     ]
     if redis_address:
         redis_ip_address, redis_port, enable_redis_ssl = get_address(redis_address)
@@ -1475,6 +1501,8 @@ def start_gcs_server(
             f"--redis_port={redis_port}",
             f"--redis_enable_ssl={'true' if enable_redis_ssl else 'false'}",
         ]
+    if redis_username:
+        command += [f"--redis_username={redis_username}"]
     if redis_password:
         command += [f"--redis_password={redis_password}"]
     process_info = start_ray_process(
@@ -1490,6 +1518,7 @@ def start_gcs_server(
 def start_raylet(
     redis_address: str,
     gcs_address: str,
+    node_id: str,
     node_ip_address: str,
     node_manager_port: int,
     raylet_name: str,
@@ -1511,6 +1540,7 @@ def start_raylet(
     max_worker_port: Optional[int] = None,
     worker_port_list: Optional[List[int]] = None,
     object_manager_port: Optional[int] = None,
+    redis_username: Optional[str] = None,
     redis_password: Optional[str] = None,
     metrics_agent_port: Optional[int] = None,
     metrics_export_port: Optional[int] = None,
@@ -1537,6 +1567,7 @@ def start_raylet(
     Args:
         redis_address: The address of the primary Redis server.
         gcs_address: The address of GCS server.
+        node_id: The hex ID of this node.
         node_ip_address: The IP address of this node.
         node_manager_port: The port to use for the node manager. If it's
             0, a random port will be used.
@@ -1560,6 +1591,7 @@ def start_raylet(
             on. If not set, random ports will be chosen.
         max_worker_port: The highest port number that workers will bind
             on. If set, min_worker_port must also be set.
+        redis_username: The username to use when connecting to Redis.
         redis_password: The password to use when connecting to Redis.
         metrics_agent_port: The port where metrics agent is bound to.
         metrics_export_port: The port at which metrics are exposed to.
@@ -1627,6 +1659,7 @@ def start_raylet(
             gcs_address,
             plasma_store_name,
             raylet_name,
+            redis_username,
             redis_password,
             session_dir,
             node_ip_address,
@@ -1640,6 +1673,7 @@ def start_raylet(
             gcs_address,
             plasma_store_name,
             raylet_name,
+            redis_username,
             redis_password,
             session_dir,
             log_dir,
@@ -1684,6 +1718,9 @@ def start_raylet(
 
     start_worker_command.append("RAY_WORKER_DYNAMIC_OPTION_PLACEHOLDER")
 
+    if redis_username:
+        start_worker_command += [f"--redis-username={redis_username}"]
+
     if redis_password:
         start_worker_command += [f"--redis-password={redis_password}"]
 
@@ -1721,6 +1758,7 @@ def start_raylet(
         f"--logging-rotate-backup-count={backup_count}",
         f"--session-name={session_name}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
     ]
     if stdout_file is None and stderr_file is None:
         # If not redirecting logging to files, unset log filename.
@@ -1746,6 +1784,7 @@ def start_raylet(
         f"--node-ip-address={node_ip_address}",
         f"--runtime-env-agent-port={runtime_env_agent_port}",
         f"--gcs-address={gcs_address}",
+        f"--cluster-id-hex={cluster_id}",
         f"--runtime-env-dir={resource_dir}",
         f"--logging-rotate-bytes={max_bytes}",
         f"--logging-rotate-backup-count={backup_count}",
@@ -1761,6 +1800,7 @@ def start_raylet(
         f"--min_worker_port={min_worker_port}",
         f"--max_worker_port={max_worker_port}",
         f"--node_manager_port={node_manager_port}",
+        f"--node_id={node_id}",
         f"--node_ip_address={node_ip_address}",
         f"--maximum_startup_concurrency={maximum_startup_concurrency}",
         f"--static_resource_list={resource_argument}",
@@ -1844,6 +1884,7 @@ def build_java_worker_command(
     bootstrap_address: str,
     plasma_store_name: str,
     raylet_name: str,
+    redis_username: str,
     redis_password: str,
     session_dir: str,
     node_ip_address: str,
@@ -1856,9 +1897,10 @@ def build_java_worker_command(
         plasma_store_name: The name of the plasma store socket to connect
            to.
         raylet_name: The name of the raylet socket to create.
-        redis_password: The password of connect to redis.
+        redis_username: The username to connect to Redis.
+        redis_password: The password to connect to Redis.
         session_dir: The path of this session.
-        node_ip_address: The ip address for this node.
+        node_ip_address: The IP address for this node.
         setup_worker_path: The path of the Python file that will set up
             the environment for the worker process.
     Returns:
@@ -1874,6 +1916,9 @@ def build_java_worker_command(
 
     if raylet_name is not None:
         pairs.append(("ray.raylet.socket-name", raylet_name))
+
+    if redis_username is not None:
+        pairs.append(("ray.redis.username", redis_username))
 
     if redis_password is not None:
         pairs.append(("ray.redis.password", redis_password))
@@ -1900,6 +1945,7 @@ def build_cpp_worker_command(
     bootstrap_address: str,
     plasma_store_name: str,
     raylet_name: str,
+    redis_username: str,
     redis_password: str,
     session_dir: str,
     log_dir: str,
@@ -1913,7 +1959,8 @@ def build_cpp_worker_command(
         plasma_store_name: The name of the plasma store socket to connect
            to.
         raylet_name: The name of the raylet socket to create.
-        redis_password: The password of connect to redis.
+        redis_username: The username to connect to Redis.
+        redis_password: The password to connect to Redis.
         session_dir: The path of this session.
         log_dir: The path of logs.
         node_ip_address: The ip address for this node.
@@ -1931,6 +1978,7 @@ def build_cpp_worker_command(
         f"--ray_raylet_socket_name={raylet_name}",
         "--ray_node_manager_port=RAY_NODE_MANAGER_PORT_PLACEHOLDER",
         f"--ray_address={bootstrap_address}",
+        f"--ray_redis_username={redis_username}",
         f"--ray_redis_password={redis_password}",
         f"--ray_session_dir={session_dir}",
         f"--ray_logs_dir={log_dir}",
@@ -2149,6 +2197,7 @@ def start_ray_client_server(
     ray_client_server_port: int,
     stdout_file: Optional[int] = None,
     stderr_file: Optional[int] = None,
+    redis_username: Optional[int] = None,
     redis_password: Optional[int] = None,
     fate_share: Optional[bool] = None,
     runtime_env_agent_address: Optional[str] = None,
@@ -2165,7 +2214,8 @@ def start_ray_client_server(
             no redirection should happen, then this should be None.
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
-        redis_password: The password of the redis server.
+        redis_username: The username of the Redis server.
+        redis_password: The password of the Redis server.
         runtime_env_agent_address: Address to the Runtime Env Agent listens on via HTTP.
             Only needed when server_type == "proxy".
         server_type: Whether to start the proxy version of Ray Client.
@@ -2194,6 +2244,8 @@ def start_ray_client_server(
         f"--mode={server_type}",
         f"--language={Language.Name(Language.PYTHON)}",
     ]
+    if redis_username:
+        command.append(f"--redis-username={redis_username}")
     if redis_password:
         command.append(f"--redis-password={redis_password}")
     if serialized_runtime_env_context:

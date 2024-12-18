@@ -11,13 +11,18 @@ import typer
 
 import ray
 import ray.cloudpickle as cloudpickle
+from ray.rllib.common import CLIArguments as cli
 from ray.rllib.env import MultiAgentEnv
 from ray.rllib.env.base_env import _DUMMY_AGENT_ID
 from ray.rllib.env.env_context import EnvContext
-from ray.rllib.evaluation.worker_set import WorkerSet
+from ray.rllib.env.env_runner_group import EnvRunnerGroup
 from ray.rllib.policy.sample_batch import DEFAULT_POLICY_ID
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_LEN_MEAN,
+    EPISODE_RETURN_MEAN,
+)
 from ray.rllib.utils.spaces.space_utils import flatten_to_single_ndarray
-from ray.rllib.common import CLIArguments as cli
 from ray.train._checkpoint import Checkpoint
 from ray.train._internal.session import _TrainingResult
 from ray.tune.utils import merge_dicts
@@ -234,8 +239,12 @@ def run(
         env = config.get("env")
 
     # Make sure we have evaluation workers.
-    if not config.get("evaluation_num_workers"):
-        config["evaluation_num_workers"] = config.get("num_workers", 0)
+    if not config.get(
+        "evaluation_num_workers", config.get("evaluation_num_env_runners")
+    ):
+        config["evaluation_num_env_runners"] = config.get(
+            "num_env_runners", config.get("num_workers")
+        )
     if not config.get("evaluation_duration"):
         config["evaluation_duration"] = 1
 
@@ -311,36 +320,38 @@ def rollout(
     if saver is None:
         saver = RolloutSaver()
 
-    # Normal case: Agent was setup correctly with an evaluation WorkerSet,
+    # Normal case: Agent was setup correctly with an evaluation EnvRunnerGroup,
     # which we will now use to rollout.
-    if hasattr(agent, "evaluation_workers") and isinstance(
-        agent.evaluation_workers, WorkerSet
+    if hasattr(agent, "eval_env_runner_group") and isinstance(
+        agent.eval_env_runner_group, EnvRunnerGroup
     ):
         steps = 0
         episodes = 0
         while keep_going(steps, num_steps, episodes, num_episodes):
             saver.begin_rollout()
-            eval_result = agent.evaluate()["evaluation"]
+            eval_result = agent.evaluate()
             # Increase time-step and episode counters.
             eps = agent.config["evaluation_duration"]
             episodes += eps
-            steps += eps * eval_result["episode_len_mean"]
+            steps += eps * eval_result[ENV_RUNNER_RESULTS][EPISODE_LEN_MEAN]
             # Print out results and continue.
             print(
                 "Episode #{}: reward: {}".format(
-                    episodes, eval_result["episode_reward_mean"]
+                    episodes, eval_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
                 )
             )
             saver.end_rollout()
         return
 
     # Agent has no evaluation workers, but RolloutWorkers.
-    elif hasattr(agent, "workers") and isinstance(agent.workers, WorkerSet):
-        env = agent.workers.local_worker().env
+    elif hasattr(agent, "env_runner_group") and isinstance(
+        agent.env_runner_group, EnvRunnerGroup
+    ):
+        env = agent.env_runner.env
         multiagent = isinstance(env, MultiAgentEnv)
-        if agent.workers.local_worker().multiagent:
+        if agent.env_runner.multiagent:
             policy_agent_mapping = agent.config.policy_mapping_fn
-        policy_map = agent.workers.local_worker().policy_map
+        policy_map = agent.env_runner.policy_map
         state_init = {p: m.get_initial_state() for p, m in policy_map.items()}
         use_lstm = {p: len(s) > 0 for p, s in state_init.items()}
 
@@ -378,10 +389,10 @@ def rollout(
         saver.begin_rollout()
         obs, info = env.reset()
         agent_states = DefaultMapping(
-            lambda agent_id: state_init[mapping_cache[agent_id]]
+            lambda agent_id: state_init[mapping_cache[agent_id]]  # noqa
         )
         prev_actions = DefaultMapping(
-            lambda agent_id: action_init[mapping_cache[agent_id]]
+            lambda agent_id: action_init[mapping_cache[agent_id]]  # noqa
         )
         prev_rewards = collections.defaultdict(lambda: 0.0)
         terminated = truncated = False

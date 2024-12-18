@@ -76,6 +76,7 @@ TEST_F(LocalResourceManagerTest, BasicGetResourceUsageMapTest) {
                            {ResourceID(pg_index_1_resource), 2.0}}),
       nullptr,
       nullptr,
+      nullptr,
       nullptr);
 
   ///
@@ -142,6 +143,7 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
       CreateNodeResources({{ResourceID::CPU(), 8.0}}),
       nullptr,
       nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
@@ -153,7 +155,9 @@ TEST_F(LocalResourceManagerTest, NodeDrainingTest) {
     manager->AllocateLocalTaskResources(resource_request, task_allocation);
   }
 
-  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Make the node idle so that the node is drained and terminated.
@@ -172,13 +176,16 @@ TEST_F(LocalResourceManagerTest, ObjectStoreMemoryDrainingTest) {
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
       nullptr,
+      [](const rpc::NodeDeathInfo &node_death_info) { _Exit(1); },
       nullptr);
 
   // Make the node non-idle.
   *used_object_store = 1;
   manager->UpdateAvailableObjectStoreMemResource();
 
-  manager->SetLocalNodeDraining(std::numeric_limits<int64_t>::max());
+  rpc::DrainRayletRequest drain_request;
+  drain_request.set_deadline_timestamp_ms(std::numeric_limits<int64_t>::max());
+  manager->SetLocalNodeDraining(drain_request);
   ASSERT_TRUE(manager->IsLocalNodeDraining());
 
   // Free object store memory so that the node is drained and terminated.
@@ -204,6 +211,7 @@ TEST_F(LocalResourceManagerTest, IdleResourceTimeTest) {
                            {ResourceID(pg_index_1_resource), 2.0}}),
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
+      nullptr,
       nullptr,
       nullptr);
 
@@ -349,6 +357,7 @@ TEST_F(LocalResourceManagerTest, CreateSyncMessageNegativeResourceAvailability) 
           {{ResourceID::CPU(), 1.0}, {ResourceID::ObjectStoreMemory(), 100.0}}),
       /* get_used_object_store_memory */
       [&used_object_store]() { return *used_object_store; },
+      nullptr,
       nullptr,
       nullptr);
 

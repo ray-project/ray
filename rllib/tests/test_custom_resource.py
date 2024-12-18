@@ -1,8 +1,8 @@
 import pytest
 
 import ray
-from ray import air
-from ray import tune
+from ray import air, tune
+from ray.air.constants import TRAINING_ITERATION
 from ray.tune.registry import get_trainable_cls
 
 
@@ -21,10 +21,13 @@ def test_custom_resource(algorithm):
         .get_default_config()
         .environment("CartPole-v1")
         .framework("torch")
-        .rollouts(num_rollout_workers=1)
-        .resources(num_gpus=0, custom_resources_per_worker={"custom_resource": 0.01})
+        .env_runners(
+            num_env_runners=1,
+            custom_resources_per_env_runner={"custom_resource": 0.01},
+        )
+        .resources(num_gpus=0)
     )
-    stop = {"training_iteration": 1}
+    stop = {TRAINING_ITERATION: 1}
 
     tune.Tuner(
         algorithm,

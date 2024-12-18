@@ -1,20 +1,6 @@
 #!/usr/bin/env python
-# Runs one or more regression tests. Retries tests up to 3 times.
-#
-# Example usage:
-# $ python run_regression_tests.py regression-tests/cartpole-es-[tf|torch].yaml
-#
-# When using in BAZEL (with py_test), e.g. see in ray/rllib/BUILD:
-# py_test(
-#     name = "run_regression_tests",
-#     main = "tests/run_regression_tests.py",
-#     tags = ["learning_tests"],
-#     size = "medium",  # 5min timeout
-#     srcs = ["tests/run_regression_tests.py"],
-#     data = glob(["tuned_examples/regression_tests/*.yaml"]),
-#     # Pass `BAZEL` option and the path to look for yaml regression files.
-#     args = ["BAZEL", "tuned_examples/regression_tests"]
-# )
+
+# @OldAPIStack
 
 import argparse
 import os
@@ -30,6 +16,11 @@ from ray.rllib import _register_all
 from ray.rllib.common import SupportedFileType
 from ray.rllib.train import load_experiments_from_file
 from ray.rllib.utils.deprecation import deprecation_warning
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+)
 from ray.tune import run_experiments
 
 parser = argparse.ArgumentParser()
@@ -99,15 +90,6 @@ parser.add_argument(
     default=None,
     help="The WandB run name to use.",
 )
-# parser.add_argument(
-#    "--wandb-from-checkpoint",
-#    type=str,
-#    default=None,
-#    help=(
-#        "The WandB checkpoint location (e.g. `[team name]/[project name]/checkpoint_"
-#        "[run name]:v[version]`) from which to resume an experiment."
-#    ),
-# )
 parser.add_argument(
     "--checkpoint-freq",
     type=int,
@@ -193,7 +175,7 @@ if __name__ == "__main__":
         # long learning tests such as sac and ddpg on the pendulum environment.
         if args.override_mean_reward != 0.0:
             exp["stop"][
-                "sampler_results/episode_reward_mean"
+                f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
             ] = args.override_mean_reward
 
         # Checkpoint settings.
@@ -266,31 +248,34 @@ if __name__ == "__main__":
                 # we evaluate against an actual environment.
                 check_eval = bool(exp["config"].get("evaluation_interval"))
                 reward_mean = (
-                    t.last_result["evaluation"]["sampler_results"][
-                        "episode_reward_mean"
+                    t.last_result[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][
+                        EPISODE_RETURN_MEAN
                     ]
                     if check_eval
                     else (
-                        # Some algos don't store sampler results under `sampler_results`
+                        # Some algos don't store sampler results under `env_runners`
                         # e.g. ARS. Need to keep this logic around for now.
-                        t.last_result["sampler_results"]["episode_reward_mean"]
-                        if "sampler_results" in t.last_result
-                        else t.last_result["episode_reward_mean"]
+                        t.last_result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+                        if ENV_RUNNER_RESULTS in t.last_result
+                        else t.last_result[EPISODE_RETURN_MEAN]
                     )
                 )
 
                 # If we are using evaluation workers, we may have
                 # a stopping criterion under the "evaluation/" scope. If
-                # not, use `episode_reward_mean`.
+                # not, use `episode_return_mean`.
                 if check_eval:
                     min_reward = t.stopping_criterion.get(
-                        "evaluation/sampler_results/episode_reward_mean",
-                        t.stopping_criterion.get("sampler_results/episode_reward_mean"),
+                        f"{EVALUATION_RESULTS}/{ENV_RUNNER_RESULTS}/"
+                        f"{EPISODE_RETURN_MEAN}",
+                        t.stopping_criterion.get(
+                            f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
+                        ),
                     )
-                # Otherwise, expect `episode_reward_mean` to be set.
+                # Otherwise, expect `env_runners/episode_return_mean` to be set.
                 else:
                     min_reward = t.stopping_criterion.get(
-                        "sampler_results/episode_reward_mean"
+                        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}"
                     )
 
                 # If min reward not defined, always pass.

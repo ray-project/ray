@@ -1,12 +1,12 @@
+from collections import defaultdict
 import logging
-import pathlib
 from typing import (
     Any,
     Callable,
     Dict,
     Hashable,
+    Optional,
     Sequence,
-    Union,
     Tuple,
 )
 
@@ -14,11 +14,15 @@ from ray.rllib.algorithms.algorithm_config import (
     AlgorithmConfig,
     TorchCompileWhatToCompile,
 )
-from ray.rllib.core.learner.learner import Learner
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModule
+from ray.rllib.core.columns import Columns
+from ray.rllib.core.learner.learner import Learner, LR_KEY
+from ray.rllib.core.rl_module.multi_rl_module import (
+    MultiRLModule,
+    MultiRLModuleSpec,
+)
 from ray.rllib.core.rl_module.rl_module import (
     RLModule,
-    SingleAgentRLModuleSpec,
+    RLModuleSpec,
 )
 from ray.rllib.core.rl_module.torch.torch_rl_module import (
     TorchCompileConfig,
@@ -29,16 +33,27 @@ from ray.rllib.policy.sample_batch import MultiAgentBatch
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic,
+    OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.deprecation import deprecation_warning
 from ray.rllib.utils.framework import try_import_torch
-from ray.rllib.utils.metrics import ALL_MODULES
-from ray.rllib.utils.nested_dict import NestedDict
-from ray.rllib.utils.torch_utils import (
-    convert_to_torch_tensor,
-    copy_torch_tensors,
+from ray.rllib.utils.metrics import (
+    ALL_MODULES,
+    DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
+    NUM_TRAINABLE_PARAMETERS,
+    NUM_NON_TRAINABLE_PARAMETERS,
+    WEIGHTS_SEQ_NO,
 )
-from ray.rllib.utils.typing import ModuleID, Optimizer, Param, ParamDict, TensorType
+from ray.rllib.utils.numpy import convert_to_numpy
+from ray.rllib.utils.torch_utils import convert_to_torch_tensor, copy_torch_tensors
+from ray.rllib.utils.typing import (
+    ModuleID,
+    Optimizer,
+    Param,
+    ParamDict,
+    ShouldModuleBeUpdatedFn,
+    StateDict,
+    TensorType,
+)
 
 torch, nn = try_import_torch()
 
@@ -50,6 +65,7 @@ logger = logging.getLogger(__name__)
 
 
 class TorchLearner(Learner):
+
     framework: str = "torch"
 
     def __init__(self, **kwargs):
@@ -87,27 +103,32 @@ class TorchLearner(Learner):
                 torch_dynamo_mode=self.config.torch_compile_learner_dynamo_mode,
             )
 
+        # Loss scalers for mixed precision training. Map optimizer names to
+        # associated torch GradScaler objects.
+        self._grad_scalers = None
+        if self.config._torch_grad_scaler_class:
+            self._grad_scalers = defaultdict(
+                lambda: self.config._torch_grad_scaler_class()
+            )
+        self._lr_schedulers = {}
+        self._lr_scheduler_classes = None
+        if self.config._torch_lr_scheduler_classes:
+            self._lr_scheduler_classes = self.config._torch_lr_scheduler_classes
+
     @OverrideToImplementCustomLogic
     @override(Learner)
     def configure_optimizers_for_module(
         self,
         module_id: ModuleID,
         config: "AlgorithmConfig" = None,
-        hps=None,
     ) -> None:
-        if hps is not None:
-            deprecation_warning(
-                old="Learner.configure_optimizers_for_module(.., hps=..)",
-                help="Deprecated argument. Use `config` (AlgorithmConfig) instead.",
-                error=True,
-            )
         module = self._module[module_id]
 
         # For this default implementation, the learning rate is handled by the
         # attached lr Scheduler (controlled by self.config.lr, which can be a
-        # fixed value of a schedule setting).
-        optimizer = torch.optim.Adam(self.get_parameters(module))
+        # fixed value or a schedule setting).
         params = self.get_parameters(module)
+        optimizer = torch.optim.Adam(params)
 
         # Register the created optimizer (under the default optimizer name).
         self.register_optimizer(
@@ -119,90 +140,207 @@ class TorchLearner(Learner):
 
     def _uncompiled_update(
         self,
-        batch: NestedDict,
+        batch: Dict,
         **kwargs,
     ):
         """Performs a single update given a batch of data."""
+        # Activate tensor-mode on our MetricsLogger.
+        self.metrics.activate_tensor_mode()
+
+        # TODO (sven): Causes weird cuda error when WandB is used.
+        #  Diagnosis thus far:
+        #  - All peek values during metrics.reduce are non-tensors.
+        #  - However, in impala.py::training_step(), a tensor does arrive after learner
+        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    possible (learner, which performs the reduce() and learner thread, which
+        #    performs the logging of tensors into metrics logger).
+        self._compute_off_policyness(batch)
+
         fwd_out = self.module.forward_train(batch)
-        loss_per_module = self.compute_loss(fwd_out=fwd_out, batch=batch)
+        loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
 
         gradients = self.compute_gradients(loss_per_module)
         postprocessed_gradients = self.postprocess_gradients(gradients)
         self.apply_gradients(postprocessed_gradients)
-        return fwd_out, loss_per_module, self._metrics
+
+        # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+        # results.
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(
-        self, loss_per_module: Dict[str, TensorType], **kwargs
+        self, loss_per_module: Dict[ModuleID, TensorType], **kwargs
     ) -> ParamDict:
         for optim in self._optimizer_parameters:
-            # set_to_none is a faster way to zero out the gradients
+            # `set_to_none=True` is a faster way to zero out the gradients.
             optim.zero_grad(set_to_none=True)
-        loss_per_module[ALL_MODULES].backward()
+
+        if self._grad_scalers is not None:
+            total_loss = sum(
+                self._grad_scalers[mid].scale(loss)
+                for mid, loss in loss_per_module.items()
+            )
+        else:
+            total_loss = sum(loss_per_module.values())
+
+        total_loss.backward()
         grads = {pid: p.grad for pid, p in self._params.items()}
 
         return grads
 
     @override(Learner)
     def apply_gradients(self, gradients_dict: ParamDict) -> None:
-        # Make sure the parameters do not carry gradients on their own.
-        for optim in self._optimizer_parameters:
-            optim.zero_grad(set_to_none=True)
-
         # Set the gradient of the parameters.
         for pid, grad in gradients_dict.items():
-            self._params[pid].grad = grad
+            # If updates should not be skipped turn `nan` and `inf` gradients to zero.
+            if (
+                not torch.isfinite(grad).all()
+                and not self.config.torch_skip_nan_gradients
+            ):
+                # Warn the user about `nan` gradients.
+                logger.warning(f"Gradients {pid} contain `nan/inf` values.")
+                # If updates should be skipped, do not step the optimizer and return.
+                if not self.config.torch_skip_nan_gradients:
+                    logger.warning(
+                        "Setting `nan/inf` gradients to zero. If updates with "
+                        "`nan/inf` gradients should not be set to zero and instead "
+                        "the update be skipped entirely set `torch_skip_nan_gradients` "
+                        "to `True`."
+                    )
+                # If necessary turn `nan` gradients to zero. Note this can corrupt the
+                # internal state of the optimizer, if many `nan` gradients occur.
+                self._params[pid].grad = torch.nan_to_num(grad)
+            # Otherwise, use the gradient as is.
+            else:
+                self._params[pid].grad = grad
 
         # For each optimizer call its step function.
-        for optim in self._optimizer_parameters:
-            optim.step()
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                optim = self.get_optimizer(module_id, optimizer_name)
+                # If we have learning rate schedulers for a module add them, if
+                # necessary.
+                if self._lr_scheduler_classes is not None:
+                    if (
+                        module_id not in self._lr_schedulers
+                        or optimizer_name not in self._lr_schedulers[module_id]
+                    ):
+                        # Set for each module and optimizer a scheduler.
+                        self._lr_schedulers[module_id] = {optimizer_name: []}
+                        # If the classes are in a dictionary each module might have
+                        # a different set of schedulers.
+                        if isinstance(self._lr_scheduler_classes, dict):
+                            scheduler_classes = self._lr_scheduler_classes[module_id]
+                        # Else, each module has the same learning rate schedulers.
+                        else:
+                            scheduler_classes = self._lr_scheduler_classes
+                        # Initialize and add the schedulers.
+                        for scheduler_class in scheduler_classes:
+                            self._lr_schedulers[module_id][optimizer_name].append(
+                                scheduler_class(optim)
+                            )
+
+                # Step through the scaler (unscales gradients, if applicable).
+                if self._grad_scalers is not None:
+                    scaler = self._grad_scalers[module_id]
+                    scaler.step(optim)
+                    self.metrics.log_value(
+                        (module_id, "_torch_grad_scaler_current_scale"),
+                        scaler.get_scale(),
+                        window=1,  # snapshot in time, no EMA/mean.
+                    )
+                    # Update the scaler.
+                    scaler.update()
+                # `step` the optimizer (default), but only if all gradients are finite.
+                elif all(
+                    param.grad is None or torch.isfinite(param.grad).all()
+                    for group in optim.param_groups
+                    for param in group["params"]
+                ):
+                    optim.step()
+                # If gradients are not all finite warn the user that the update will be
+                # skipped.
+                elif not all(
+                    torch.isfinite(param.grad).all()
+                    for group in optim.param_groups
+                    for param in group["params"]
+                ):
+                    logger.warning(
+                        "Skipping this update. If updates with `nan/inf` gradients "
+                        "should not be skipped entirely and instead `nan/inf` "
+                        "gradients set to `zero` set `torch_skip_nan_gradients` to "
+                        "`False`."
+                    )
+
+    @OverrideToImplementCustomLogic_CallToSuperRecommended
+    @override(Learner)
+    def after_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
+        """Called after gradient-based updates are completed.
+
+        Should be overridden to implement custom cleanup-, logging-, or non-gradient-
+        based Learner/RLModule update logic after(!) gradient-based updates have been
+        completed.
+
+        Note, for `framework="torch"` users can register
+        `torch.optim.lr_scheduler.LRScheduler` via
+        `AlgorithmConfig._torch_lr_scheduler_classes`. These schedulers need to be
+        stepped here after gradient updates and reported.
+
+        Args:
+            timesteps: Timesteps dict, which must have the key
+                `NUM_ENV_STEPS_SAMPLED_LIFETIME`.
+                # TODO (sven): Make this a more formal structure with its own type.
+        """
+
+        # If we have no `torch.optim.lr_scheduler.LRScheduler` registered call the
+        # `super()`'s method to update RLlib's learning rate schedules.
+        if not self._lr_schedulers:
+            return super().after_gradient_based_update(timesteps=timesteps)
+
+        # Only update this optimizer's lr, if a scheduler has been registered
+        # along with it.
+        for module_id, optimizer_names in self._module_optimizers.items():
+            for optimizer_name in optimizer_names:
+                # If learning rate schedulers are provided step them here. Note,
+                # stepping them in `TorchLearner.apply_gradients` updates the
+                # learning rates during minibatch updates; we want to update
+                # between whole batch updates.
+                if (
+                    module_id in self._lr_schedulers
+                    and optimizer_name in self._lr_schedulers[module_id]
+                ):
+                    for scheduler in self._lr_schedulers[module_id][optimizer_name]:
+                        scheduler.step()
+                optimizer = self.get_optimizer(module_id, optimizer_name)
+                self.metrics.log_value(
+                    # Cut out the module ID from the beginning since it's already
+                    # part of the key sequence: (ModuleID, "[optim name]_lr").
+                    key=(
+                        module_id,
+                        f"{optimizer_name[len(module_id) + 1:]}_{LR_KEY}",
+                    ),
+                    value=convert_to_numpy(self._get_optimizer_lr(optimizer)),
+                    window=1,
+                )
 
     @override(Learner)
-    def set_module_state(self, state: Dict[str, Any]) -> None:
-        """Sets the weights of the underlying MultiAgentRLModule"""
-        state = convert_to_torch_tensor(state, device=self._device)
-        return self._module.set_state(state)
+    def _get_optimizer_state(self) -> StateDict:
+        return {
+            name: copy_torch_tensors(optim.state_dict(), device="cpu")
+            for name, optim in self._named_optimizers.items()
+        }
 
     @override(Learner)
-    def _save_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        path.mkdir(parents=True, exist_ok=True)
-        optim_state = self.get_optimizer_state()
-        for name, state in optim_state.items():
-            torch.save(state, path / f"{name}.pt")
-
-    @override(Learner)
-    def _load_optimizers(self, path: Union[str, pathlib.Path]) -> None:
-        path = pathlib.Path(path)
-        if not path.exists():
-            raise ValueError(f"Directory {path} does not exist.")
-        state = {}
-        for name in self._named_optimizers.keys():
-            state[name] = torch.load(path / f"{name}.pt")
-        self.set_optimizer_state(state)
-
-    @override(Learner)
-    def get_optimizer_state(self) -> Dict[str, Any]:
-        optimizer_name_state = {}
-        for name, optim in self._named_optimizers.items():
-            optim_state_dict = optim.state_dict()
-            optim_state_dict_cpu = copy_torch_tensors(optim_state_dict, device="cpu")
-            optimizer_name_state[name] = optim_state_dict_cpu
-        return optimizer_name_state
-
-    @override(Learner)
-    def set_optimizer_state(self, state: Dict[str, Any]) -> None:
+    def _set_optimizer_state(self, state: StateDict) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
                 raise ValueError(
                     f"Optimizer {name} in `state` is not known."
                     f"Known optimizers are {self._named_optimizers.keys()}"
                 )
-            optim = self._named_optimizers[name]
-            state_dict_correct_device = copy_torch_tensors(
-                state_dict, device=self._device
+            self._named_optimizers[name].load_state_dict(
+                copy_torch_tensors(state_dict, device=self._device)
             )
-            optim.load_state_dict(state_dict_correct_device)
 
     @override(Learner)
     def get_param_ref(self, param: Param) -> Hashable:
@@ -225,11 +363,17 @@ class TorchLearner(Learner):
         self,
         *,
         module_id: ModuleID,
-        module_spec: SingleAgentRLModuleSpec,
-    ) -> None:
-        super().add_module(
+        # TODO (sven): Rename to `rl_module_spec`.
+        module_spec: RLModuleSpec,
+        config_overrides: Optional[Dict] = None,
+        new_should_module_be_updated: Optional[ShouldModuleBeUpdatedFn] = None,
+    ) -> MultiRLModuleSpec:
+        # Call super's add_module method.
+        marl_spec = super().add_module(
             module_id=module_id,
             module_spec=module_spec,
+            config_overrides=config_overrides,
+            new_should_module_be_updated=new_should_module_be_updated,
         )
 
         # we need to ddpify the module that was just added to the pool
@@ -262,12 +406,16 @@ class TorchLearner(Learner):
                         "torch compile."
                     )
                 self._module.add_module(
-                    module_id, TorchDDPRLModule(module), override=True
+                    module_id,
+                    TorchDDPRLModule(module, **self.config.torch_ddp_kwargs),
+                    override=True,
                 )
 
+        return marl_spec
+
     @override(Learner)
-    def remove_module(self, module_id: ModuleID) -> None:
-        super().remove_module(module_id)
+    def remove_module(self, module_id: ModuleID, **kwargs) -> MultiRLModuleSpec:
+        marl_spec = super().remove_module(module_id, **kwargs)
 
         if self._torch_compile_complete_update:
             # When compiling the update, we need to reset and recompile
@@ -280,6 +428,8 @@ class TorchLearner(Learner):
                 mode=self._torch_compile_cfg.torch_dynamo_mode,
                 **self._torch_compile_cfg.kwargs,
             )
+
+        return marl_spec
 
     @override(Learner)
     def build(self) -> None:
@@ -299,9 +449,9 @@ class TorchLearner(Learner):
         #  API in ray.train but allow for session to be None without any errors raised.
         if self._use_gpu:
             # get_devices() returns a list that contains the 0th device if
-            # it is called from outside of a Ray Train session. Its necessary to give
+            # it is called from outside a Ray Train session. It's necessary to give
             # the user the option to run on the gpu of their choice, so we enable that
-            # option here via the local gpu id scaling config parameter.
+            # option here through the local gpu id scaling config parameter.
             if self._distributed:
                 devices = get_devices()
                 assert len(devices) == 1, (
@@ -337,7 +487,7 @@ class TorchLearner(Learner):
             if self._torch_compile_forward_train:
                 if isinstance(self._module, TorchRLModule):
                     self._module.compile(self._torch_compile_cfg)
-                elif isinstance(self._module, MultiAgentRLModule):
+                elif isinstance(self._module, MultiRLModule):
                     for module in self._module._rl_modules.values():
                         # Compile only TorchRLModules, e.g. we don't want to compile
                         # a RandomRLModule.
@@ -346,15 +496,46 @@ class TorchLearner(Learner):
                 else:
                     raise ValueError(
                         "Torch compile is only supported for TorchRLModule and "
-                        "MultiAgentRLModule."
+                        "MultiRLModule."
                     )
 
             self._possibly_compiled_update = self._uncompiled_update
 
+        # Log number of non-trainable and trainable parameters of our RLModule.
+        num_trainable_params = {
+            (mid, NUM_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+        num_non_trainable_params = {
+            (mid, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                p.numel() for p in rlm.parameters() if not p.requires_grad
+            )
+            for mid, rlm in self.module._rl_modules.items()
+            if isinstance(rlm, TorchRLModule)
+        }
+
+        self.metrics.log_dict(
+            {
+                **{
+                    (ALL_MODULES, NUM_TRAINABLE_PARAMETERS): sum(
+                        num_trainable_params.values()
+                    ),
+                    (ALL_MODULES, NUM_NON_TRAINABLE_PARAMETERS): sum(
+                        num_non_trainable_params.values()
+                    ),
+                },
+                **num_trainable_params,
+                **num_non_trainable_params,
+            }
+        )
+
         self._make_modules_ddp_if_necessary()
 
     @override(Learner)
-    def _update(self, batch: NestedDict) -> Tuple[Any, Any, Any]:
+    def _update(self, batch: Dict[str, Any]) -> Tuple[Any, Any, Any]:
         # The first time we call _update after building the learner or
         # adding/removing models, we update with the uncompiled update method.
         # This makes it so that any variables that may be created during the first
@@ -374,25 +555,31 @@ class TorchLearner(Learner):
     def _make_modules_ddp_if_necessary(self) -> None:
         """Default logic for (maybe) making all Modules within self._module DDP."""
 
-        # If the module is a MultiAgentRLModule and nn.Module we can simply assume
+        # If the module is a MultiRLModule and nn.Module we can simply assume
         # all the submodules are registered. Otherwise, we need to loop through
         # each submodule and move it to the correct device.
         # TODO (Kourosh): This can result in missing modules if the user does not
-        #  register them in the MultiAgentRLModule. We should find a better way to
+        #  register them in the MultiRLModule. We should find a better way to
         #  handle this.
         if self._distributed:
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
-                self._module = TorchDDPRLModule(self._module)
+                self._module = TorchDDPRLModule(
+                    self._module, **self.config.torch_ddp_kwargs
+                )
             # Multi agent module: Convert each submodule to `TorchDDPRLModule`.
             else:
-                assert isinstance(self._module, MultiAgentRLModule)
+                assert isinstance(self._module, MultiRLModule)
                 for key in self._module.keys():
                     sub_module = self._module[key]
                     if isinstance(sub_module, TorchRLModule):
                         # Wrap and override the module ID key in self._module.
                         self._module.add_module(
-                            key, TorchDDPRLModule(sub_module), override=True
+                            key,
+                            TorchDDPRLModule(
+                                sub_module, **self.config.torch_ddp_kwargs
+                            ),
+                            override=True,
                         )
 
     def _is_module_compatible_with_learner(self, module: RLModule) -> bool:
@@ -418,12 +605,12 @@ class TorchLearner(Learner):
                 )
 
     @override(Learner)
-    def _make_module(self) -> MultiAgentRLModule:
+    def _make_module(self) -> MultiRLModule:
         module = super()._make_module()
         self._map_module_to_device(module)
         return module
 
-    def _map_module_to_device(self, module: MultiAgentRLModule) -> None:
+    def _map_module_to_device(self, module: MultiRLModule) -> None:
         """Moves the module to the correct device."""
         if isinstance(module, torch.nn.Module):
             module.to(self._device)
@@ -431,6 +618,25 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
 
     @override(Learner)
     def _get_tensor_variable(
@@ -471,3 +677,10 @@ class TorchLearner(Learner):
         from ray.rllib.utils.torch_utils import clip_gradients
 
         return clip_gradients
+
+    @staticmethod
+    @override(Learner)
+    def _get_global_norm_function() -> Callable:
+        from ray.rllib.utils.torch_utils import compute_global_norm
+
+        return compute_global_norm

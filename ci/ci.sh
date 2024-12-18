@@ -29,29 +29,6 @@ suppress_xtrace() {
   { return "${status}"; } 2> /dev/null
 }
 
-# If provided the names of one or more environment variables, returns 0 if any of them is triggered.
-# Usage: should_run_job [VAR_NAME]...
-should_run_job() {
-  local skip=0
-  if [ -n "${1-}" ]; then  # were any triggers provided? (if not, then the job will always run)
-    local envvar active_triggers=()
-    for envvar in "$@"; do
-      if [ "${!envvar}" = 1 ]; then
-        # success! we found at least one of the given triggers is occurring
-        active_triggers+=("${envvar}=${!envvar}")
-      fi
-    done
-    if [ 0 -eq "${#active_triggers[@]}" ]; then
-      echo "Job is not triggered by any of $1; skipping job."
-      sleep 15  # make sure output is flushed
-      skip=1
-    else
-      echo "Job is triggered by: ${active_triggers[*]}"
-    fi
-  fi
-  return "${skip}"
-}
-
 # Idempotent environment loading
 reload_env() {
   # Try to only modify CI-specific environment variables here (TRAVIS_... or GITHUB_...),
@@ -129,11 +106,11 @@ compile_pip_dependencies() {
     "${WORKSPACE_DIR}/python/requirements/ml/train-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/train-test-requirements.txt" \
     "${WORKSPACE_DIR}/python/requirements/ml/tune-requirements.txt" \
-    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt"
+    "${WORKSPACE_DIR}/python/requirements/ml/tune-test-requirements.txt" \
+    "${WORKSPACE_DIR}/python/requirements/security-requirements.txt"
 
-  # Remove some pins from upstream dependencies:
-  # ray, xgboost-ray, lightgbm-ray, tune-sklearn
-  sed -i "/^ray==/d;/^xgboost-ray==/d;/^lightgbm-ray==/d;/^tune-sklearn==/d" "${WORKSPACE_DIR}/python/$TARGET"
+  # Remove some pins from upstream dependencies: ray
+  sed -i "/^ray==/d" "${WORKSPACE_DIR}/python/$TARGET"
 
   # Delete local installation
   sed -i "/@ file/d" "${WORKSPACE_DIR}/python/$TARGET"
@@ -143,12 +120,6 @@ compile_pip_dependencies() {
   # the resolver adds the device-specific version tag. If this is not removed,
   # pip install will complain about irresolvable constraints.
   sed -i -E 's/==([\.0-9]+)\+[^\b]*cpu/==\1/g' "${WORKSPACE_DIR}/python/$TARGET"
-
-  # Add python_version < 3.11 to scikit-image, scipy, networkx
-  # as they need more recent versions in python 3.11.
-  # These will be automatically resolved. Remove as
-  # soon as we resolve to versions of scikit-image that are built for py311.
-  sed -i -E 's/((scikit-image|scipy|networkx)==[\.0-9]+\b)/\1 ; python_version < "3.11"/g' "${WORKSPACE_DIR}/python/$TARGET"
 
   cat "${WORKSPACE_DIR}/python/$TARGET"
 
@@ -172,8 +143,9 @@ test_core() {
       )
       ;;
   esac
-  # shellcheck disable=SC2046
-  bazel test --config=ci --build_tests_only $(./ci/run/bazel_export_options) -- "${args[@]}"
+
+  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
+  bazel test --config=ci --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" -- "${args[@]}"
 }
 
 # For running Serve tests on Windows.
@@ -194,17 +166,16 @@ test_serve() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
 
-    # shellcheck disable=SC2046,SC2086
+    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
     bazel test --config=ci \
-      --build_tests_only $(./ci/run/bazel_export_options) \
+      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_output=streamed \
-      -- \
-      ${test_shard_selection};
+      -- "${TEST_SELECTION[@]}"
   fi
 }
 
@@ -246,17 +217,16 @@ test_python() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
 
-    # shellcheck disable=SC2046,SC2086
+    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
     bazel test --config=ci \
-      --build_tests_only $(./ci/run/bazel_export_options) \
+      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_output=streamed \
-      -- \
-      ${test_shard_selection};
+      -- "${TEST_SELECTION[@]}"
   fi
 }
 
@@ -273,24 +243,23 @@ test_train_windows() {
     # Shard the args.
     BUILDKITE_PARALLEL_JOB=${BUILDKITE_PARALLEL_JOB:-'0'}
     BUILDKITE_PARALLEL_JOB_COUNT=${BUILDKITE_PARALLEL_JOB_COUNT:-'1'}
-    test_shard_selection=$(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}")
+    TEST_SELECTION=($(python ./ci/ray_ci/bazel_sharding.py --exclude_manual --index "${BUILDKITE_PARALLEL_JOB}" --count "${BUILDKITE_PARALLEL_JOB_COUNT}" "${args[@]}"))
 
-    # shellcheck disable=SC2046,SC2086
+    BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
     bazel test --config=ci \
-      --build_tests_only $(./ci/run/bazel_export_options) \
+      --build_tests_only "${BAZEL_EXPORT_OPTIONS[@]}" \
       --test_env=CI="1" \
       --test_env=RAY_CI_POST_WHEEL_TESTS="1" \
       --test_env=USERPROFILE="${USERPROFILE}" \
       --test_output=streamed \
-      -- \
-      ${test_shard_selection};
+      -- "${TEST_SELECTION[@]}"
   fi
 }
 
 # For running large Python tests on Linux and MacOS.
 test_large() {
-  # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
+  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
+  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_env=CONDA_EXE --test_env=CONDA_PYTHON_EXE \
       --test_env=CONDA_SHLVL --test_env=CONDA_PREFIX --test_env=CONDA_DEFAULT_ENV --test_env=CONDA_PROMPT_MODIFIER \
       --test_env=CI --test_tag_filters="large_size_python_tests_shard_${BUILDKITE_PARALLEL_JOB}"  "$@" \
       -- python/ray/tests/...
@@ -301,17 +270,20 @@ test_cpp() {
   # So only set the flag in c++ worker example. More details: https://github.com/ray-project/ray/pull/18273
   echo build --cxxopt="-D_GLIBCXX_USE_CXX11_ABI=0" >> ~/.bazelrc
   bazel build --config=ci //cpp:all
-  # shellcheck disable=SC2046
-  bazel test --config=ci $(./ci/run/bazel_export_options) --test_strategy=exclusive //cpp:all --build_tests_only
+
+  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
+  bazel test --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" --test_strategy=exclusive //cpp:all --build_tests_only
   # run cluster mode test with external cluster
-  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true --test_arg=--redis_password="1234" \
-    --test_arg=--ray_redis_password="1234"
+  bazel test //cpp:cluster_mode_test --test_arg=--external_cluster=true \
+    --test_arg=--ray_redis_password="1234" --test_arg=--ray_redis_username="default"
   bazel test --test_output=all //cpp:test_python_call_cpp
 
-  # run the cpp example
-  rm -rf ray-template
-  ray cpp --generate-bazel-project-template-to ray-template
-  pushd ray-template && bash run.sh
+  # run the cpp example, currently does not work on mac
+  if [[ "${OSTYPE}" != darwin* ]]; then
+    rm -rf ray-template
+    ray cpp --generate-bazel-project-template-to ray-template
+    pushd ray-template && bash run.sh
+  fi
 }
 
 test_wheels() {
@@ -477,7 +449,6 @@ build_wheels_and_jars() {
       # wheels, but not between different travis runs, because that
       # caused timeouts in the past. See the "cache: false" line below.
       local MOUNT_BAZEL_CACHE=(
-        -v "${HOME}/ray-bazel-cache":/root/ray-bazel-cache
         -e "TRAVIS=true"
         -e "TRAVIS_PULL_REQUEST=${TRAVIS_PULL_REQUEST:-false}"
         -e "TRAVIS_COMMIT=${TRAVIS_COMMIT}"
@@ -509,8 +480,6 @@ build_wheels_and_jars() {
         rm -rf /ray/.whl || true
         cp -rT /ray /ray-mount
         ls -a /ray-mount
-        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /
-        docker run --rm -v /ray:/ray-mounted ubuntu:focal ls /ray-mounted
         docker run --rm -w /ray -v /ray:/ray "${MOUNT_BAZEL_CACHE[@]}" \
           "${MOUNT_ENV[@]}" "${IMAGE_NAME}:${IMAGE_TAG}" /ray/python/build-wheel-manylinux2014.sh
         cp -rT /ray-mount /ray # copy new files back here
@@ -546,47 +515,6 @@ build_wheels_and_jars() {
   esac
 }
 
-_check_job_triggers() {
-  local job_names
-  job_names="$1"
-
-  local variable_definitions
-  if command -v python3; then
-    # shellcheck disable=SC2031
-    variable_definitions=($(python3 "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  else
-    # shellcheck disable=SC2031
-    variable_definitions=($(python "${ROOT_DIR}"/pipeline/determine_tests_to_run.py))
-  fi
-  if [ 0 -lt "${#variable_definitions[@]}" ]; then
-    local expression restore_shell_state=""
-    if [ -o xtrace ]; then set +x; restore_shell_state="set -x;"; fi  # Disable set -x (noisy here)
-    {
-      expression="$(printf "%q " "${variable_definitions[@]}")"
-      printf "%s\n" "${expression}" >> ~/.bashrc
-    }
-    eval "${restore_shell_state}" "${expression}"  # Restore set -x, then evaluate expression
-  fi
-
-  # shellcheck disable=SC2086
-  if ! (set +x && should_run_job ${job_names//,/ }); then
-    if [ "${GITHUB_ACTIONS-}" = true ]; then
-      # If this job is to be skipped, emit 'exit' into .bashrc to quickly exit all following steps.
-      # This isn't needed on Travis (since everything runs in one shell), but is on GitHub Actions.
-      cat <<EOF1 >> ~/.bashrc
-      cat <<EOF2 1>&2
-Exiting shell as no triggers were active for this job:
-  ${job_names//,/}
-The active triggers during job initialization were the following:
-  ${variable_definitions[*]}
-EOF2
-      exit 0
-EOF1
-    fi
-    exit 0
-  fi
-}
-
 configure_system() {
   git config --global advice.detachedHead false
   git config --global core.askpass ""
@@ -594,7 +522,7 @@ configure_system() {
   git config --global credential.modalprompt false
 
   # Requests library need root certificates.
-  if [ "${OSTYPE}" = msys ]; then
+  if [[ "${OSTYPE}" == "msys" ]]; then
     certutil -generateSSTFromWU roots.sst && certutil -addstore -f root roots.sst && rm roots.sst
   fi
 }
@@ -611,11 +539,6 @@ configure_system() {
 # Usage: init [JOB_NAMES]
 # - JOB_NAMES (optional): Comma-separated list of job names to trigger on.
 init() {
-  # TODO(jjyao): fix it for windows
-  if [ "${OSTYPE}" != msys ]; then
-    _check_job_triggers "${1-}"
-  fi
-
   configure_system
 
   "${ROOT_DIR}/env/install-dependencies.sh"
@@ -634,47 +557,28 @@ build() {
 }
 
 run_minimal_test() {
-  EXPECTED_PYTHON_VERSION=$1
-  BAZEL_EXPORT_OPTIONS="$(./ci/run/bazel_export_options)"
-  # Ignoring shellcheck is necessary because if ${BAZEL_EXPORT_OPTIONS} is wrapped by the double quotation,
-  # bazel test cannot recognize the option.
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_minimal_install
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_2
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_3
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_4
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_basic_5
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_output
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_runtime_env_ray_minimal
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_utils
+  EXPECTED_PYTHON_VERSION="$1"
+  BAZEL_EXPORT_OPTIONS=($(./ci/run/bazel_export_options))
 
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_serve_ray_minimal
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/dashboard/test_dashboard
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
-  # shellcheck disable=SC2086
-  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 ${BAZEL_EXPORT_OPTIONS} python/ray/tests/test_usage_stats
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "--test_env=EXPECTED_PYTHON_VERSION=$EXPECTED_PYTHON_VERSION" "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_minimal_install
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_2
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_3
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_4
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_basic_5
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_output
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_runtime_env_ray_minimal
+  bazel test --test_output=streamed --config=ci "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_utils
+
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_serve_ray_minimal
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/dashboard/test_dashboard
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
+  bazel test --test_output=streamed --config=ci --test_env=RAY_MINIMAL=1 --test_env=TEST_EXTERNAL_REDIS=1 "${BAZEL_EXPORT_OPTIONS[@]}" python/ray/tests/test_usage_stats
 }
 
 test_minimal() {

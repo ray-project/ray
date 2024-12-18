@@ -1,11 +1,15 @@
 from collections import Counter
 import unittest
 
+import gymnasium as gym
+
 import ray
+from ray import train, tune
 from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPOConfig
-from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.env.env_runner import EnvRunner
+from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
+from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 
 
 class EpisodeAndSampleCallbacks(DefaultCallbacks):
@@ -13,24 +17,39 @@ class EpisodeAndSampleCallbacks(DefaultCallbacks):
         super().__init__()
         self.counts = Counter()
 
-    def on_environment_created(self, *args, **kwargs):
+    def on_environment_created(self, *args, env_runner, metrics_logger, env, **kwargs):
+
         self.counts.update({"env_created": 1})
 
-    def on_episode_start(self, *args, **kwargs):
+    def on_episode_start(self, *args, env_runner, metrics_logger, env, **kwargs):
+        assert isinstance(env_runner, EnvRunner)
+        assert isinstance(metrics_logger, MetricsLogger)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"start": 1})
 
-    def on_episode_step(self, *args, **kwargs):
+    def on_episode_step(self, *args, env_runner, metrics_logger, env, **kwargs):
+        assert isinstance(env_runner, EnvRunner)
+        assert isinstance(metrics_logger, MetricsLogger)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"step": 1})
 
-    def on_episode_end(self, *args, **kwargs):
+    def on_episode_end(self, *args, env_runner, metrics_logger, env, **kwargs):
+        assert isinstance(env_runner, EnvRunner)
+        assert isinstance(metrics_logger, MetricsLogger)
+        assert isinstance(env, (gym.Env, gym.vector.VectorEnv))
         self.counts.update({"end": 1})
 
-    def on_sample_end(self, *args, **kwargs):
+    def on_sample_end(self, *args, env_runner, metrics_logger, **kwargs):
+        assert isinstance(env_runner, EnvRunner)
+        assert isinstance(metrics_logger, MetricsLogger)
         self.counts.update({"sample": 1})
 
 
 class OnEnvironmentCreatedCallback(DefaultCallbacks):
     def on_environment_created(self, *, env_runner, env, env_context, **kwargs):
+        assert isinstance(env_runner, EnvRunner)
+        assert isinstance(env, gym.Env)
+        assert env_runner.tune_trial_id is not None
         # Create a vector-index-sum property per remote worker.
         if not hasattr(env_runner, "sum_sub_env_vector_indices"):
             env_runner.sum_sub_env_vector_indices = 0
@@ -39,7 +58,8 @@ class OnEnvironmentCreatedCallback(DefaultCallbacks):
         print(
             f"sub-env {env} created; "
             f"worker={env_runner.worker_index}; "
-            f"vector-idx={env_context.vector_index}"
+            f"vector-idx={env_context.vector_index}; "
+            f"tune-trial-id={env_runner.tune_trial_id}; "
         )
 
 
@@ -50,6 +70,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
         episode,
         worker=None,
         env_runner=None,
+        metrics_logger=None,
         base_env=None,
         env=None,
         policies=None,
@@ -63,6 +84,7 @@ class OnEpisodeCreatedCallback(DefaultCallbacks):
 class TestCallbacks(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
+        tune.register_env("multi_cart", lambda _: MultiAgentCartPole({"num_agents": 2}))
         ray.init()
 
     @classmethod
@@ -72,23 +94,28 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_truncate_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
-                num_rollout_workers=0,
+            .env_runners(
+                num_env_runners=0,
                 batch_mode="truncate_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+
+        for multi_agent in [False, True]:
+            if multi_agent:
+                config.multi_agent(
+                    policies={"p0", "p1"},
+                    policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+                )
+                config.environment("multi_cart")
             algo = config.build()
-            callback_obj = algo.workers.local_worker()._callbacks
+            callback_obj = algo.env_runner._callbacks
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
@@ -115,31 +142,35 @@ class TestCallbacks(unittest.TestCase):
     def test_episode_and_sample_callbacks_batch_mode_complete_episodes(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
             .environment("CartPole-v1")
-            .rollouts(
+            .env_runners(
                 batch_mode="complete_episodes",
-                env_runner_cls=SingleAgentEnvRunner,
-                num_rollout_workers=0,
+                num_env_runners=0,
             )
             .callbacks(EpisodeAndSampleCallbacks)
             .training(
                 train_batch_size=50,  # <- rollout_fragment_length=50
-                sgd_minibatch_size=50,
-                num_sgd_iter=1,
+                minibatch_size=50,
+                num_epochs=1,
             )
         )
-        for _ in framework_iterator(config, frameworks=("torch", "tf2")):
+
+        for multi_agent in [False, True]:
+            if multi_agent:
+                config.multi_agent(
+                    policies={"p0", "p1"},
+                    policy_mapping_fn=lambda aid, *a, **kw: f"p{aid}",
+                )
+                config.environment("multi_cart")
+
             algo = config.build()
-            callback_obj = algo.workers.local_worker()._callbacks
+            callback_obj = algo.env_runner._callbacks
 
             # We must have had exactly one env creation event (already before training).
             self.assertEqual(callback_obj.counts["env_created"], 1)
 
             # Train one iteration.
             algo.train()
-            # We must have has exactly one `sample()` call on our EnvRunner.
-            self.assertEqual(callback_obj.counts["sample"], 1)
             # We should have had at least one episode start.
             self.assertGreater(callback_obj.counts["start"], 0)
             # Episode starts must be exact same as episode ends (b/c we always complete
@@ -155,14 +186,25 @@ class TestCallbacks(unittest.TestCase):
             algo.stop()
 
     def test_overriding_on_episode_created_throws_error_on_new_api_stack(self):
-        """Tests, whw"""
+        """Tests whether overriding `on_episode_created` raises error w/ SAEnvRunner."""
+        config = PPOConfig().callbacks(OnEpisodeCreatedCallback)
+        self.assertRaises(ValueError, lambda: config.validate())
+
+    def test_tune_trial_id_visible_in_callbacks(self):
         config = (
             PPOConfig()
-            .experimental(_enable_new_api_stack=True)
-            .rollouts(env_runner_cls=SingleAgentEnvRunner)
-            .callbacks(OnEpisodeCreatedCallback)
+            .environment("multi_cart", env_config={"num_agents": 2})
+            .callbacks(OnEnvironmentCreatedCallback)
+            .multi_agent(
+                policies={"default_policy", "p1"},
+                policy_mapping_fn=lambda *a, **kw: "default_policy",
+            )
         )
-        self.assertRaises(ValueError, lambda: config.validate())
+        tune.Tuner(
+            trainable=config.algo_class,
+            param_space=config,
+            run_config=train.RunConfig(stop={"training_iteration": 1}),
+        ).fit()
 
 
 if __name__ == "__main__":

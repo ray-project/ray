@@ -16,6 +16,7 @@ from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 from ray._private.test_utils import wait_for_condition, enable_external_redis
 from ray._private import net
+from ray._private import ray_constants
 
 
 @pytest.mark.skipif(
@@ -125,7 +126,7 @@ def test_ray_init_existing_instance_crashed(address):
     ray._private.utils.write_ray_address("localhost:6379")
     try:
         # If no address is specified, we will default to an existing cluster.
-        ray._private.node.NUM_REDIS_GET_RETRIES = 1
+        ray_constants.NUM_REDIS_GET_RETRIES = 1
         with pytest.raises(ConnectionError):
             ray.init(address=address)
     finally:

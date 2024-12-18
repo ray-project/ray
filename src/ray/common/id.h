@@ -318,7 +318,12 @@ class ObjectID : public BaseID<ObjectID> {
   /// \return The computed object ID.
   static ObjectID ForActorHandle(const ActorID &actor_id);
 
+  /// Whether this ObjectID represents an actor handle. This is the ObjectID
+  /// returned by the actor's creation task.
   static bool IsActorID(const ObjectID &object_id);
+  /// Return the ID of the actor that produces this object. For the actor
+  /// creation task and for tasks executed by the actor, this will return a
+  /// non-nil ActorID.
   static ActorID ToActorID(const ObjectID &object_id);
 
   MSGPACK_DEFINE(id_);
@@ -545,6 +550,41 @@ std::string BaseID<T>::Hex() const {
   return result;
 }
 
+template <>
+struct DefaultLogKey<JobID> {
+  constexpr static std::string_view key = kLogKeyJobID;
+};
+
+template <>
+struct DefaultLogKey<WorkerID> {
+  constexpr static std::string_view key = kLogKeyWorkerID;
+};
+
+template <>
+struct DefaultLogKey<NodeID> {
+  constexpr static std::string_view key = kLogKeyNodeID;
+};
+
+template <>
+struct DefaultLogKey<ActorID> {
+  constexpr static std::string_view key = kLogKeyActorID;
+};
+
+template <>
+struct DefaultLogKey<TaskID> {
+  constexpr static std::string_view key = kLogKeyTaskID;
+};
+
+template <>
+struct DefaultLogKey<ObjectID> {
+  constexpr static std::string_view key = kLogKeyObjectID;
+};
+
+template <>
+struct DefaultLogKey<PlacementGroupID> {
+  constexpr static std::string_view key = kLogKeyPlacementGroupID;
+};
+
 }  // namespace ray
 
 namespace std {
@@ -552,10 +592,6 @@ namespace std {
 #define DEFINE_UNIQUE_ID(type)                                           \
   template <>                                                            \
   struct hash<::ray::type> {                                             \
-    size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
-  };                                                                     \
-  template <>                                                            \
-  struct hash<const ::ray::type> {                                       \
     size_t operator()(const ::ray::type &id) const { return id.Hash(); } \
   };
 

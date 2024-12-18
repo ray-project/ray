@@ -516,9 +516,9 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   if (node_vector.empty()) {
     // Pull from remote node, it will be restored prior to push.
     if (!spilled_node_id.IsNil() && spilled_node_id != self_node_id_) {
-      RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
-                     << " to spilled location at " << spilled_node_id << " of object "
-                     << object_id;
+      RAY_LOG(DEBUG).WithField(object_id)
+          << "Sending pull request from " << self_node_id_ << " to spilled location at "
+          << spilled_node_id;
       send_pull_request_(object_id, spilled_node_id);
       return true;
     }
@@ -534,8 +534,8 @@ bool PullManager::PullFromRandomLocation(const ObjectID &object_id) {
   int node_index = distribution(gen_);
   NodeID node_id = node_vector[node_index];
   RAY_CHECK(node_id != self_node_id_);
-  RAY_LOG(DEBUG) << "Sending pull request from " << self_node_id_
-                 << " to in-memory location at " << node_id << " of object " << object_id;
+  RAY_LOG(DEBUG).WithField(object_id) << "Sending pull request from " << self_node_id_
+                                      << " to in-memory location at " << node_id;
   send_pull_request_(object_id, node_id);
   return true;
 }

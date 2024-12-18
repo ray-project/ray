@@ -1,7 +1,7 @@
 from sklearn.datasets import load_breast_cancer
 
 from ray import tune
-from ray.data import read_datasource, Dataset, Datasource, ReadTask
+from ray.data import Dataset, Datasource, ReadTask, read_datasource
 from ray.data.block import BlockMetadata
 from ray.tune.impl.utils import execute_dataset
 
@@ -59,7 +59,8 @@ def test_choice():
 
 
 if __name__ == "__main__":
-    import pytest
     import sys
+
+    import pytest
 
     sys.exit(pytest.main(["-v", "-x", __file__]))

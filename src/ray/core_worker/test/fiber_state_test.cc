@@ -95,6 +95,14 @@ TEST(FiberStateTest, RespectsConcurrencyLimit) {
   fiber_state.Join();
 }
 
+TEST(FiberStateTest, DoubleStopJoin) {
+  FiberState fiber_state(2);
+  fiber_state.Stop();
+  fiber_state.Join();
+  fiber_state.Stop();
+  fiber_state.Join();
+}
+
 }  // namespace core
 }  // namespace ray
 

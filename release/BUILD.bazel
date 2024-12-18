@@ -33,6 +33,16 @@ compile_pip_requirements(
 )
 
 compile_pip_requirements(
+    name = "requirements_byod_3.12",
+    requirements_in = "ray_release/byod/requirements_byod_3.12.in",
+    requirements_txt = "ray_release/byod/requirements_byod_3.12.txt",
+    tags = [
+        "team:ci",
+    ],
+    visibility = ["//visibility:private"],
+)
+
+compile_pip_requirements(
     name = "requirements_ml_byod_3.9",
     requirements_in = "ray_release/byod/requirements_ml_byod_3.9.in",
     requirements_txt = "ray_release/byod/requirements_ml_byod_3.9.txt",
@@ -67,24 +77,6 @@ py_test(
 )
 
 py_test(
-    name = "single_deployment_1k_noop_replica_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "single_deployment_1k_noop_replica.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
     name = "multi_deployment_1k_noop_replica_smoke_test",
     size = "medium",
     srcs = test_srcs,
@@ -92,114 +84,6 @@ py_test(
         "IS_SMOKE_TEST": "1",
     },
     main = "multi_deployment_1k_noop_replica.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "deployment_graph_long_chain",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "deployment_graph_long_chain.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "deployment_graph_wide_ensemble",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "deployment_graph_wide_ensemble.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "serve_handle_long_chain",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "serve_handle_long_chain.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "serve_handle_wide_ensemble",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "serve_handle_wide_ensemble.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "autoscaling_single_deployment_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "autoscaling_single_deployment.py",
-    tags = [
-        "exclusive",
-        "team:serve",
-    ],
-    deps = [
-        "//:ray_lib",
-        "//python/ray/serve:serve_lib",
-    ],
-)
-
-py_test(
-    name = "autoscaling_multi_deployment_smoke_test",
-    size = "medium",
-    srcs = test_srcs,
-    env = {
-        "IS_SMOKE_TEST": "1",
-    },
-    main = "autoscaling_multi_deployment.py",
     tags = [
         "exclusive",
         "team:serve",
@@ -384,6 +268,22 @@ py_test(
 # RELEASE TEST INFRA unit tests
 ####
 
+sh_binary(
+    name = "run",
+    srcs = ["run_release_test.sh"],
+    data = ["run_release_test"],
+    env = {
+        "NO_INSTALL": "1",
+        "RAY_TEST_SCRIPT": "./run_release_test",
+    }
+)
+
+py_binary(
+    name = "run_release_test",
+    srcs = ["ray_release/scripts/run_release_test.py"],
+    deps = [":ray_release"],
+)
+
 py_library(
     name = "ray_release",
     srcs = glob(
@@ -393,13 +293,14 @@ py_library(
     data = glob(["ray_release/environments/*.env"]) + [
         "ray_release/buildkite/aws_instance_types.csv",
         "ray_release/schema.json",
-        "ray_release/configs/oss_config.yaml",
-    ],
+    ] + glob(["ray_release/configs/*.yaml"]),
     imports = ["."],
     visibility = ["//visibility:public"],
     deps = [
         bk_require("anyscale"),
+        bk_require("aws-requests-auth"),
         bk_require("bazel-runfiles"),
+        bk_require("aioboto3"),
         bk_require("boto3"),
         bk_require("botocore"),
         bk_require("click"),
@@ -407,7 +308,7 @@ py_library(
         bk_require("jinja2"),
         bk_require("pybuildkite"),
         bk_require("pygithub"),
-        bk_require("retry"),
+        bk_require("requests"),
     ],
 )
 
@@ -719,6 +620,21 @@ py_test(
     deps = [
         ":ray_release",
         bk_require("freezegun"),
+        bk_require("pytest"),
+    ],
+)
+
+py_test(
+    name = "test_retry",
+    size = "small",
+    srcs = ["ray_release/tests/test_retry.py"],
+    exec_compatible_with = ["//:hermetic_python"],
+    tags = [
+        "release_unit",
+        "team:ci",
+    ],
+    deps = [
+        ":ray_release",
         bk_require("pytest"),
     ],
 )

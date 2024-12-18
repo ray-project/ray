@@ -1,11 +1,13 @@
 import asyncio
+import datetime
+import os
 import threading
 import time
+from contextlib import asynccontextmanager
 from copy import copy, deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
 import grpc
-import pytest
 import requests
 from starlette.requests import Request
 
@@ -13,13 +15,16 @@ import ray
 import ray.util.state as state_api
 from ray import serve
 from ray.actor import ActorHandle
-from ray.serve._private.common import ApplicationStatus, DeploymentID, DeploymentStatus
+from ray.serve._private.client import ServeControllerClient
+from ray.serve._private.common import DeploymentID, DeploymentStatus, RequestProtocol
 from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_NAMESPACE
 from ray.serve._private.deployment_state import ALL_REPLICA_STATES, ReplicaState
 from ray.serve._private.proxy import DRAINING_MESSAGE
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import TimerBase
+from ray.serve.context import _get_global_client
 from ray.serve.generated import serve_pb2, serve_pb2_grpc
+from ray.serve.schema import ApplicationStatus
 
 TELEMETRY_ROUTE_PREFIX = "/telemetry"
 STORAGE_ACTOR_NAME = "storage"
@@ -194,6 +199,55 @@ class MockPlacementGroup:
         self._soft_target_node_id = _soft_target_node_id
 
 
+class MockDeploymentHandle:
+    def __init__(self, deployment_name: str, app_name: str = SERVE_DEFAULT_APP_NAME):
+        self._deployment_name = deployment_name
+        self._app_name = app_name
+        self._protocol = RequestProtocol.UNDEFINED
+        self._running_replicas_populated = False
+        self._initialized = False
+
+    def is_initialized(self):
+        return self._initialized
+
+    def _init(self):
+        if self._initialized:
+            raise RuntimeError("already initialized")
+
+        self._initialized = True
+
+    def options(self, *args, **kwargs):
+        return self
+
+    def __eq__(self, dep: Tuple[str]):
+        other_deployment_name, other_app_name = dep
+        return (
+            self._deployment_name == other_deployment_name
+            and self._app_name == other_app_name
+        )
+
+    def _set_request_protocol(self, protocol: RequestProtocol):
+        self._protocol = protocol
+
+    def _get_or_create_router(self):
+        pass
+
+    def running_replicas_populated(self) -> bool:
+        return self._running_replicas_populated
+
+    def set_running_replicas_populated(self, val: bool):
+        self._running_replicas_populated = val
+
+
+@serve.deployment
+class GetPID:
+    def __call__(self):
+        return os.getpid()
+
+
+get_pid_entrypoint = GetPID.bind()
+
+
 def check_ray_stopped():
     try:
         requests.get("http://localhost:52365/api/ray/version")
@@ -204,22 +258,6 @@ def check_ray_stopped():
 
 def check_ray_started():
     return requests.get("http://localhost:52365/api/ray/version").status_code == 200
-
-
-def check_telemetry_recorded(storage_handle, key, expected_value):
-    report = ray.get(storage_handle.get_report.remote())
-    assert report["extra_usage_tags"][key] == expected_value
-    return True
-
-
-def check_telemetry_not_recorded(storage_handle, key):
-    report = ray.get(storage_handle.get_report.remote())
-    assert (
-        ServeUsageTag.DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED.get_value_from_report(
-            report
-        )
-        is None
-    )
 
 
 def check_deployment_status(
@@ -374,7 +412,19 @@ def start_telemetry_app():
     return storage
 
 
+def check_telemetry(
+    tag: ServeUsageTag, expected: Any, storage_actor_name: str = STORAGE_ACTOR_NAME
+):
+    storage_handle = ray.get_actor(storage_actor_name, namespace=SERVE_NAMESPACE)
+    report = ray.get(storage_handle.get_report.remote())
+    print(report["extra_usage_tags"])
+    assert tag.get_value_from_report(report) == expected
+    return True
+
+
 def ping_grpc_list_applications(channel, app_names, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.ListApplicationsRequest()
     if test_draining:
@@ -391,6 +441,8 @@ def ping_grpc_list_applications(channel, app_names, test_draining=False):
 
 
 def ping_grpc_healthz(channel, test_draining=False):
+    import pytest
+
     stub = serve_pb2_grpc.RayServeAPIServiceStub(channel)
     request = serve_pb2.HealthzRequest()
     if test_draining:
@@ -406,6 +458,8 @@ def ping_grpc_healthz(channel, test_draining=False):
 
 
 def ping_grpc_call_method(channel, app_name, test_not_found=False):
+    import pytest
+
     stub = serve_pb2_grpc.UserDefinedServiceStub(channel)
     request = serve_pb2.UserDefinedMessage(name="foo", num=30, foo="bar")
     metadata = (("application", app_name),)
@@ -461,13 +515,22 @@ def ping_fruit_stand(channel, app_name):
     assert response.costs == 32
 
 
+@asynccontextmanager
 async def send_signal_on_cancellation(signal_actor: ActorHandle):
+    cancelled = False
     try:
-        await asyncio.sleep(100000)
+        yield
+        await asyncio.sleep(100)
     except asyncio.CancelledError:
+        cancelled = True
         # Clear the context var to avoid Ray recursively cancelling this method call.
         ray._raylet.async_task_id.set(None)
         await signal_actor.send.remote()
+
+    if not cancelled:
+        raise RuntimeError(
+            "CancelledError wasn't raised during `send_signal_on_cancellation` block"
+        )
 
 
 class FakeGrpcContext:
@@ -519,50 +582,78 @@ class FakeGrpcContext:
 class FakeGauge:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.value = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.values = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def set(self, value: Union[int, float], tags: Dict[str, str] = None):
-        self.value = value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_value(self):
-        return self.value
+        d = self.values
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
 
-    def get_tags(self):
-        return self.tags
+        d[merged_tags[self.tags[-1]]] = value
+
+    def get_value(self, tags: Dict[str, str]):
+        value = self.values
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
 
 class FakeCounter:
     def __init__(self, name: str = None, tag_keys: Tuple[str] = None):
         self.name = name
-        self.count: int = 0
-        if tag_keys:
-            self.tags = {key: None for key in tag_keys}
-        else:
-            self.tags = dict()
+        self.counts = dict()
+
+        self.tags = tag_keys or ()
+        self.default_tags = dict()
 
     def set_default_tags(self, tags: Dict[str, str]):
         for key, tag in tags.items():
             assert key in self.tags
-            self.tags[key] = tag
+            self.default_tags[key] = tag
 
     def inc(self, value: Union[int, float] = 1.0, tags: Dict[str, str] = None):
-        self.count += value
-        if tags:
-            self.tags.update(tags)
+        merged_tags = self.default_tags.copy()
+        merged_tags.update(tags or {})
+        assert set(merged_tags.keys()) == set(self.tags)
 
-    def get_count(self) -> int:
-        return self.count
+        d = self.counts
+        for tag in self.tags[:-1]:
+            tag_value = merged_tags[tag]
+            if tag_value not in d:
+                d[tag_value] = dict()
+            d = d[tag_value]
+
+        key = merged_tags[self.tags[-1]]
+        d[key] = d.get(key, 0) + value
+
+    def get_count(self, tags: Dict[str, str]) -> int:
+        value = self.counts
+        for tag in self.tags:
+            tag_value = tags[tag]
+            value = value.get(tag_value)
+            if value is None:
+                return
+
+        return value
 
     def get_tags(self):
         return self.tags
@@ -577,3 +668,36 @@ def check_num_alive_nodes(target: int):
     alive_nodes = [node for node in ray.nodes() if node["Alive"]]
     assert len(alive_nodes) == target
     return True
+
+
+def get_deployment_details(
+    deployment_name: str,
+    app_name: str = SERVE_DEFAULT_APP_NAME,
+    _client: ServeControllerClient = None,
+):
+    client = _client or _get_global_client()
+    details = client.get_serve_details()
+    return details["applications"][app_name]["deployments"][deployment_name]
+
+
+@ray.remote
+class Counter:
+    def __init__(self, target: int):
+        self.count = 0
+        self.target = target
+        self.ready_event = asyncio.Event()
+
+    def inc(self):
+        self.count += 1
+        if self.count == self.target:
+            self.ready_event.set()
+
+    async def wait(self):
+        await self.ready_event.wait()
+
+
+def tlog(s: str, level: str = "INFO"):
+    """Convenient logging method for testing."""
+
+    now = datetime.datetime.now().strftime("%H:%M:%S.%f")[:-3]
+    print(f"[{level}] {now} {s}")

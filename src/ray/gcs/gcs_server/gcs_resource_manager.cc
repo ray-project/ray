@@ -20,17 +20,16 @@
 namespace ray {
 namespace gcs {
 
-GcsResourceManager::GcsResourceManager(
-    instrumented_io_context &io_context,
-    ClusterResourceManager &cluster_resource_manager,
-    GcsNodeManager &gcs_node_manager,
-    NodeID local_node_id,
-    std::shared_ptr<ClusterTaskManager> cluster_task_manager)
+GcsResourceManager::GcsResourceManager(instrumented_io_context &io_context,
+                                       ClusterResourceManager &cluster_resource_manager,
+                                       GcsNodeManager &gcs_node_manager,
+                                       NodeID local_node_id,
+                                       ClusterTaskManager *cluster_task_manager)
     : io_context_(io_context),
       cluster_resource_manager_(cluster_resource_manager),
       gcs_node_manager_(gcs_node_manager),
       local_node_id_(std::move(local_node_id)),
-      cluster_task_manager_(std::move(cluster_task_manager)) {}
+      cluster_task_manager_(cluster_task_manager) {}
 
 void GcsResourceManager::ConsumeSyncMessage(
     std::shared_ptr<const syncer::RaySyncMessage> message) {
@@ -119,6 +118,30 @@ void GcsResourceManager::HandleGetAllAvailableResources(
   ++counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST];
 }
 
+void GcsResourceManager::HandleGetAllTotalResources(
+    rpc::GetAllTotalResourcesRequest request,
+    rpc::GetAllTotalResourcesReply *reply,
+    rpc::SendReplyCallback send_reply_callback) {
+  auto local_scheduling_node_id = scheduling::NodeID(local_node_id_.Binary());
+  for (const auto &node_resources_entry : cluster_resource_manager_.GetResourceView()) {
+    if (node_resources_entry.first == local_scheduling_node_id) {
+      continue;
+    }
+    rpc::TotalResources resource;
+    resource.set_node_id(node_resources_entry.first.Binary());
+    const auto &node_resources = node_resources_entry.second.GetLocalView();
+    for (const auto &resource_id : node_resources.total.ExplicitResourceIds()) {
+      const auto &resource_name = resource_id.Binary();
+      const auto &resource_value = node_resources.total.Get(resource_id);
+      resource.mutable_resources_total()->insert(
+          {resource_name, resource_value.Double()});
+    }
+    reply->add_resources_list()->CopyFrom(resource);
+  }
+  GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+  ++counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST];
+}
+
 void GcsResourceManager::UpdateFromResourceView(
     const NodeID &node_id,
     const syncer::ResourceViewSyncMessage &resource_view_sync_message) {
@@ -173,7 +196,7 @@ void GcsResourceManager::HandleGetAllResourceUsage(
       batch.add_batch()->CopyFrom(usage.second);
     }
 
-    if (cluster_task_manager_) {
+    if (cluster_task_manager_ != nullptr) {
       // Fill the gcs info when gcs actor scheduler is enabled.
       rpc::ResourcesData gcs_resources_data;
       cluster_task_manager_->FillPendingActorInfo(gcs_resources_data);
@@ -281,8 +304,8 @@ void GcsResourceManager::OnNodeAdd(const rpc::GcsNodeInfo &node) {
           scheduling_node_id, scheduling::ResourceID(entry.first), entry.second);
     }
   } else {
-    RAY_LOG(WARNING) << "The registered node " << node_id
-                     << " doesn't set the total resources.";
+    RAY_LOG(WARNING).WithField(node_id)
+        << "The registered node doesn't set the total resources.";
   }
 
   absl::flat_hash_map<std::string, std::string> labels(node.labels().begin(),
@@ -311,8 +334,10 @@ void GcsResourceManager::UpdatePlacementGroupLoad(
 std::string GcsResourceManager::DebugString() const {
   std::ostringstream stream;
   stream << "GcsResourceManager: "
-         << "\n- GetAllAvailableResources request count"
+         << "\n- GetAllAvailableResources request count: "
          << counts_[CountType::GET_ALL_AVAILABLE_RESOURCES_REQUEST]
+         << "\n- GetAllTotalResources request count: "
+         << counts_[CountType::GET_All_TOTAL_RESOURCES_REQUEST]
          << "\n- GetAllResourceUsage request count: "
          << counts_[CountType::GET_ALL_RESOURCE_USAGE_REQUEST];
   return stream.str();

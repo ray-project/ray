@@ -10,16 +10,28 @@ from ray.rllib.connectors.common.numpy_to_tensor import NumpyToTensor
 from ray.rllib.connectors.learner.add_columns_from_episodes_to_train_batch import (
     AddColumnsFromEpisodesToTrainBatch,
 )
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
+from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
+    AddOneTsToEpisodesAndTruncate,
+)
+from ray.rllib.connectors.learner.general_advantage_estimation import (
+    GeneralAdvantageEstimation,
+)
 from ray.rllib.connectors.learner.learner_connector_pipeline import (
     LearnerConnectorPipeline,
 )
 
 __all__ = [
     "AddColumnsFromEpisodesToTrainBatch",
+    "AddNextObservationsFromEpisodesToTrainBatch",
     "AddObservationsFromEpisodesToBatch",
+    "AddOneTsToEpisodesAndTruncate",
     "AddStatesFromEpisodesToBatch",
     "AgentToModuleMapping",
     "BatchIndividualItems",
+    "GeneralAdvantageEstimation",
     "LearnerConnectorPipeline",
     "NumpyToTensor",
 ]

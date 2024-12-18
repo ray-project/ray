@@ -6,7 +6,6 @@ import pytest
 import ray
 from ray import serve
 from ray._private.test_utils import wait_for_condition
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.constants import (
     DEFAULT_AUTOSCALING_POLICY,
     SERVE_DEFAULT_APP_NAME,
@@ -15,7 +14,7 @@ from ray.serve._private.deployment_info import DeploymentInfo
 from ray.serve.autoscaling_policy import default_autoscaling_policy
 from ray.serve.context import _get_global_client
 from ray.serve.generated.serve_pb2 import DeploymentRoute
-from ray.serve.schema import ServeDeploySchema
+from ray.serve.schema import ApplicationStatus, ServeDeploySchema
 from ray.serve.tests.conftest import TEST_GRPC_SERVICER_FUNCTIONS
 
 
@@ -66,7 +65,7 @@ def test_deploy_app_custom_exception(serve_instance):
         ]
     }
 
-    ray.get(controller.deploy_config.remote(config=ServeDeploySchema.parse_obj(config)))
+    ray.get(controller.apply_config.remote(config=ServeDeploySchema.parse_obj(config)))
 
     def check_custom_exception() -> bool:
         status = serve.status().applications["broken_app"]
@@ -148,6 +147,7 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                     "message": "",
                     "last_deployed_time_s": deployment_timestamp,
                     "deployed_app_config": None,
+                    "source": "imperative",
                     "deployments": {
                         "autoscaling_app": {
                             "name": "autoscaling_app",
@@ -156,16 +156,14 @@ def test_get_serve_instance_details_json_serializable(serve_instance, policy):
                             "message": "",
                             "deployment_config": {
                                 "name": "autoscaling_app",
-                                "max_concurrent_queries": 100,
-                                "max_ongoing_requests": 100,
+                                "max_ongoing_requests": 5,
                                 "max_queued_requests": -1,
                                 "user_config": None,
                                 "autoscaling_config": {
                                     "min_replicas": 1,
                                     "initial_replicas": None,
                                     "max_replicas": 10,
-                                    "target_num_ongoing_requests_per_replica": 1.0,
-                                    "target_ongoing_requests": None,
+                                    "target_ongoing_requests": 2.0,
                                     "metrics_interval_s": 10.0,
                                     "look_back_period_s": 30.0,
                                     "smoothing_factor": 1.0,

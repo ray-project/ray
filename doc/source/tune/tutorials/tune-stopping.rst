@@ -9,7 +9,7 @@ When running a Tune experiment, it can be challenging to determine the ideal dur
 For instance, one may want to set up the experiment to stop under the following circumstances:
 
 1. Set up an experiment to end after ``N`` epochs or when the reported evaluation score surpasses a particular threshold, whichever occurs first.
-2. Stop the experiment after ``T``` seconds.
+2. Stop the experiment after ``T`` seconds.
 3. Terminate when trials encounter runtime errors.
 4. Stop underperforming trials early by utilizing Tune's early-stopping schedulers.
 

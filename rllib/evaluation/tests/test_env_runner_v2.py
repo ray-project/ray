@@ -6,17 +6,18 @@ from ray.rllib.algorithms.callbacks import DefaultCallbacks
 from ray.rllib.algorithms.ppo import PPO, PPOConfig
 from ray.rllib.connectors.connector import ActionConnector, ConnectorContext
 from ray.rllib.evaluation.metrics import RolloutMetrics
-from ray.rllib.examples.env.debug_counter_env import DebugCounterEnv
-from ray.rllib.examples.env.multi_agent import BasicMultiAgent, GuessTheNumberGame
-from ray.rllib.examples.policy.random_policy import RandomPolicy
+from ray.rllib.examples.envs.classes.debug_counter_env import DebugCounterEnv
+from ray.rllib.examples.envs.classes.multi_agent import GuessTheNumberGame
+from ray.rllib.examples._old_api_stack.policy.random_policy import RandomPolicy
 from ray.rllib.policy.policy import PolicySpec
 from ray.tune import register_env
 from ray.rllib.policy.sample_batch import convert_ma_batch_to_sample_batch
 
 # The new RLModule / Learner API
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.core.rl_module.marl_module import MultiAgentRLModuleSpec
-from ray.rllib.examples.rl_module.random_rl_module import RandomRLModule
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
+from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
+from ray.rllib.env.tests.test_multi_agent_env import BasicMultiAgent
+from ray.rllib.examples.rl_modules.classes.random_rlm import RandomRLModule
 
 from ray.rllib.utils.test_utils import check
 
@@ -51,23 +52,25 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_single_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(DebugCounterEnv)
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
         )
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         sample_batch = convert_ma_batch_to_sample_batch(sample_batch)
 
@@ -78,23 +81,25 @@ class TestEnvRunnerV2(unittest.TestCase):
     def test_sample_batch_rollout_multi_agent_env(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
         )
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
 
         # 2 agents. So the multi-agent SampleBatch should have
@@ -147,13 +152,15 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .framework("torch")
-            .environment("env_under_test", disable_env_checking=True)
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .environment("env_under_test")
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
                 rollout_fragment_length=100,
             )
             .multi_agent(
@@ -169,10 +176,10 @@ class TestEnvRunnerV2(unittest.TestCase):
             # placeholder RLModule, since the compute_actions() method is
             # directly overridden in the policy class.
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "pol1": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "pol2": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "pol1": RLModuleSpec(module_class=RandomRLModule),
+                        "pol2": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -181,7 +188,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         sample_batch = rollout_worker.sample()
         pol1_batch = sample_batch.policy_batches["pol1"]
 
@@ -210,17 +217,19 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
             .multi_agent(
                 policies={
@@ -236,17 +245,17 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
         )
 
         algo = PPO(config)
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
         env = local_worker.env
 
         obs, rewards, terminateds, truncateds, infos = local_worker.env.step(
@@ -281,6 +290,10 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
@@ -290,34 +303,34 @@ class TestEnvRunnerV2(unittest.TestCase):
             .callbacks(
                 callbacks_class=AddActionConnectorCallbacks,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
         )
 
         algo = PPO(config)
 
-        rollout_worker = algo.workers.local_worker()
+        rollout_worker = algo.env_runner
         # As long as we can successfully sample(), things should be good.
         _ = rollout_worker.sample()
 
     def test_start_episode(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
             .multi_agent(
                 policies={
@@ -333,10 +346,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -344,7 +357,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -363,17 +376,19 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
             .multi_agent(
                 policies={
@@ -389,10 +404,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -400,7 +415,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 
@@ -422,17 +437,19 @@ class TestEnvRunnerV2(unittest.TestCase):
         # Test if we can produce RolloutMetrics just by stepping
         config = (
             PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("basic_multiagent")
             .framework("torch")
             .training(
                 # Specifically ask for a batch of 200 samples.
                 train_batch_size=200,
             )
-            .rollouts(
-                num_envs_per_worker=1,
-                num_rollout_workers=0,
-                # Enable EnvRunnerV2.
-                enable_connectors=True,
+            .env_runners(
+                num_envs_per_env_runner=1,
+                num_env_runners=0,
             )
             .multi_agent(
                 policies={
@@ -448,10 +465,10 @@ class TestEnvRunnerV2(unittest.TestCase):
                 count_steps_by="agent_steps",
             )
             .rl_module(
-                rl_module_spec=MultiAgentRLModuleSpec(
-                    module_specs={
-                        "one": SingleAgentRLModuleSpec(module_class=RandomRLModule),
-                        "two": SingleAgentRLModuleSpec(module_class=RandomRLModule),
+                rl_module_spec=MultiRLModuleSpec(
+                    rl_module_specs={
+                        "one": RLModuleSpec(module_class=RandomRLModule),
+                        "two": RLModuleSpec(module_class=RandomRLModule),
                     }
                 ),
             )
@@ -462,7 +479,7 @@ class TestEnvRunnerV2(unittest.TestCase):
 
         algo = PPO(config)
 
-        local_worker = algo.workers.local_worker()
+        local_worker = algo.env_runner
 
         env_runner = local_worker.sampler._env_runner_obj
 

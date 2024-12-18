@@ -19,6 +19,7 @@ from ray.autoscaler._private.cli_logger import cli_logger
 from ray.dashboard.modules.dashboard_sdk import parse_runtime_env_args
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
 from ray.serve._private import api as _private_api
+from ray.serve._private.build_app import BuiltApplication, build_app
 from ray.serve._private.constants import (
     DEFAULT_GRPC_PORT,
     DEFAULT_HTTP_HOST,
@@ -26,11 +27,6 @@ from ray.serve._private.constants import (
     SERVE_DEFAULT_APP_NAME,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve._private.deployment_graph_build import (
-    get_and_validate_ingress_deployment,
-)
-from ray.serve._private.utils import DEFAULT
 from ray.serve.config import DeploymentMode, ProxyLocation, gRPCOptions
 from ray.serve.deployment import Application, deployment_to_schema
 from ray.serve.schema import (
@@ -276,9 +272,7 @@ def _generate_config_from_file_or_import_path(
         "a function that returns one. If a function is used, arguments can be "
         "passed to it in 'key=val' format after the import path, for example:\n\n"
         "serve deploy main:app model_path='/path/to/model.pkl' num_replicas=5\n\n"
-        "This command supports different 'providers'. By default, it uses a 'local'"
-        "provider that makes a REST API request to a running Ray cluster. "
-        "Not all arguments are supported by all providers."
+        "This command makes a REST API request to a running Ray cluster."
     ),
 )
 @click.argument("config_or_import_path")
@@ -303,9 +297,8 @@ def _generate_config_from_file_or_import_path(
     default=None,
     required=False,
     help=(
-        "Directory containing files that your application(s) will run in. When using "
-        "the 'local' provider, this must be a remote URI to a .zip file (e.g., S3 "
-        "bucket). Other providers may support local paths. This overrides the "
+        "Directory containing files that your application(s) will run in. This must "
+        "be a remote URI to a .zip file (e.g., S3 bucket). This overrides the "
         "working_dir in --runtime-env if both are specified."
     ),
 )
@@ -322,7 +315,7 @@ def _generate_config_from_file_or_import_path(
     default=os.environ.get("RAY_DASHBOARD_ADDRESS", "http://localhost:8265"),
     required=False,
     type=str,
-    help=RAY_DASHBOARD_ADDRESS_HELP_STR + " Only used by the 'local' provider.",
+    help=RAY_DASHBOARD_ADDRESS_HELP_STR,
 )
 def deploy(
     config_or_import_path: str,
@@ -441,6 +434,7 @@ def deploy(
     "--route-prefix",
     required=False,
     type=str,
+    default="/",
     help=(
         "Route prefix for the application. This should only be used "
         "when running an application specified by import path and "
@@ -468,11 +462,9 @@ def run(
     address: str,
     blocking: bool,
     reload: bool,
-    route_prefix: Optional[str],
+    route_prefix: str,
     name: str,
 ):
-    if route_prefix is None:
-        route_prefix = DEFAULT.VALUE
     sys.path.insert(0, app_dir)
     args_dict = convert_args_to_dict(arguments)
     final_runtime_env = parse_runtime_env_args(
@@ -500,7 +492,7 @@ def run(
         is_config = False
         import_path = config_or_import_path
         cli_logger.print(f"Running import path: '{import_path}'.")
-        app = _private_api.call_app_builder_with_args_if_necessary(
+        app = _private_api.call_user_app_builder_with_args_if_necessary(
             import_attr(import_path), args_dict
         )
 
@@ -566,17 +558,23 @@ def run(
                 yield_on_timeout=True,
             ):
                 if changes:
-                    cli_logger.info(
-                        f"Detected file change in path {watch_dir}. Redeploying app."
-                    )
-                    # The module needs to be reloaded with `importlib` in order to pick
-                    # up any changes.
-                    app = _private_api.call_app_builder_with_args_if_necessary(
-                        import_attr(import_path, reload_module=True), args_dict
-                    )
-                    serve.run(
-                        target=app, blocking=True, name=name, route_prefix=route_prefix
-                    )
+                    try:
+                        # The module needs to be reloaded with `importlib` in order to
+                        # pick up any changes.
+                        app = _private_api.call_user_app_builder_with_args_if_necessary(
+                            import_attr(import_path, reload_module=True), args_dict
+                        )
+                        serve.run(
+                            target=app,
+                            blocking=False,
+                            name=name,
+                            route_prefix=route_prefix,
+                        )
+                    except Exception:
+                        traceback.print_exc()
+                        cli_logger.error(
+                            "Deploying the latest version of the application failed."
+                        )
 
     except KeyboardInterrupt:
         cli_logger.info("Got KeyboardInterrupt, shutting down...")
@@ -796,16 +794,13 @@ def build(
                 f"Expected '{import_path}' to be an Application but got {type(app)}."
             )
 
-        deployments = pipeline_build(app, name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        built_app: BuiltApplication = build_app(app, name=name)
         schema = ServeApplicationSchema(
             name=name,
-            route_prefix=ingress.route_prefix,
+            route_prefix="/" if len(import_paths) == 1 else f"/{name}",
             import_path=import_path,
             runtime_env={},
-            deployments=[
-                deployment_to_schema(d, include_route_prefix=False) for d in deployments
-            ],
+            deployments=[deployment_to_schema(d) for d in built_app.deployments],
         )
 
         return schema.dict(exclude_unset=True)

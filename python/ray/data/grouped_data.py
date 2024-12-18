@@ -1,13 +1,17 @@
-from typing import Any, Dict, Iterable, List, Optional, Union
+from functools import partial
+from typing import Any, Dict, Iterable, List, Optional, Tuple, Union
 
+from ray.data._internal.aggregate import Count, Max, Mean, Min, Std, Sum
 from ray.data._internal.compute import ComputeStrategy
-from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.logical.interfaces import LogicalPlan
 from ray.data._internal.logical.operators.all_to_all_operator import Aggregate
-from ray.data.aggregate import AggregateFn, Count, Max, Mean, Min, Std, Sum
-from ray.data.block import BlockAccessor, UserDefinedFunction
+from ray.data.aggregate import AggregateFn
+from ray.data.block import BlockAccessor, CallableClass, UserDefinedFunction
 from ray.data.dataset import DataBatch, Dataset
 from ray.util.annotations import PublicAPI
+
+CDS_API_GROUP = "Computations or Descriptive Stats"
+FA_API_GROUP = "Function Application"
 
 
 class _MultiColumnSortedKey:
@@ -32,7 +36,6 @@ class _MultiColumnSortedKey:
         return "T" + self.data.__repr__()
 
 
-@PublicAPI
 class GroupedData:
     """Represents a grouped dataset created by calling ``Dataset.groupby()``.
 
@@ -57,6 +60,7 @@ class GroupedData:
             f"{self.__class__.__name__}(dataset={self._dataset}, " f"key={self._key!r})"
         )
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def aggregate(self, *aggs: AggregateFn) -> Dataset:
         """Implements an accumulator-based aggregation.
 
@@ -76,7 +80,7 @@ class GroupedData:
             key=self._key,
             aggs=aggs,
         )
-        logical_plan = LogicalPlan(op)
+        logical_plan = LogicalPlan(op, self._dataset.context)
         return Dataset(
             plan,
             logical_plan,
@@ -102,6 +106,7 @@ class GroupedData:
         )
         return self.aggregate(*aggs)
 
+    @PublicAPI(api_group=FA_API_GROUP)
     def map_groups(
         self,
         fn: UserDefinedFunction[DataBatch, DataBatch],
@@ -110,6 +115,11 @@ class GroupedData:
         batch_format: Optional[str] = "default",
         fn_args: Optional[Iterable[Any]] = None,
         fn_kwargs: Optional[Dict[str, Any]] = None,
+        fn_constructor_args: Optional[Iterable[Any]] = None,
+        fn_constructor_kwargs: Optional[Dict[str, Any]] = None,
+        num_cpus: Optional[float] = None,
+        num_gpus: Optional[float] = None,
+        concurrency: Optional[Union[int, Tuple[int, int]]] = None,
         **ray_remote_args,
     ) -> "Dataset":
         """Apply the given function to each group of records of this dataset.
@@ -119,6 +129,12 @@ class GroupedData:
             * It requires that each group fits in memory on a single node.
 
         In general, prefer to use aggregate() instead of map_groups().
+
+        .. warning::
+            Specifying both ``num_cpus`` and ``num_gpus`` for map tasks is experimental,
+            and may result in scheduling or stability issues. Please
+            `report any issues <https://github.com/ray-project/ray/issues/new/choose>`_
+            to the Ray team.
 
         Examples:
             >>> # Return a single record per group (list of multiple records in,
@@ -163,6 +179,16 @@ class GroupedData:
                 exactly as is with no additional formatting.
             fn_args: Arguments to `fn`.
             fn_kwargs: Keyword arguments to `fn`.
+            fn_constructor_args: Positional arguments to pass to ``fn``'s constructor.
+                You can only provide this if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            fn_constructor_kwargs: Keyword arguments to pass to ``fn``'s constructor.
+                This can only be provided if ``fn`` is a callable class. These arguments
+                are top-level arguments in the underlying Ray actor construction task.
+            num_cpus: The number of CPUs to reserve for each parallel map worker.
+            num_gpus: The number of GPUs to reserve for each parallel map worker. For
+                example, specify `num_gpus=1` to request 1 GPU for each parallel map
+                worker.
             ray_remote_args: Additional resource requirements to request from
                 ray (e.g., num_gpus=1 to request GPUs for the map tasks).
 
@@ -201,14 +227,13 @@ class GroupedData:
 
         # The batch is the entire block, because we have batch_size=None for
         # map_batches() below.
-        def group_fn(batch, *args, **kwargs):
+        def apply_udf_to_groups(udf, batch, *args, **kwargs):
             block = BlockAccessor.batch_to_block(batch)
             block_accessor = BlockAccessor.for_block(block)
             if self._key:
                 boundaries = get_key_boundaries(block_accessor)
             else:
                 boundaries = [block_accessor.num_rows()]
-            builder = DelegatingBlockBuilder()
             start = 0
             for end in boundaries:
                 group_block = block_accessor.slice(start, end)
@@ -217,24 +242,51 @@ class GroupedData:
                 # block format here can be different from batch format
                 # (e.g. block is Arrow format, and batch is NumPy format).
                 group_batch = group_block_accessor.to_batch_format(batch_format)
-                applied = fn(group_batch, *args, **kwargs)
-                builder.add_batch(applied)
+                applied = udf(group_batch, *args, **kwargs)
+                yield applied
                 start = end
-            rs = builder.build()
-            return rs
+
+        if isinstance(fn, CallableClass):
+
+            class wrapped_fn:
+                def __init__(self, *args, **kwargs):
+                    self.fn = fn(*args, **kwargs)
+
+                def __call__(self, batch, *args, **kwargs):
+                    yield from apply_udf_to_groups(self.fn, batch, *args, **kwargs)
+
+        else:
+
+            def wrapped_fn(batch, *args, **kwargs):
+                yield from apply_udf_to_groups(fn, batch, *args, **kwargs)
+
+        # Change the name of the wrapped function so that users see the name of their
+        # function rather than `wrapped_fn` in the progress bar.
+        if isinstance(fn, partial):
+            wrapped_fn.__name__ = fn.func.__name__
+        else:
+            wrapped_fn.__name__ = fn.__name__
 
         # Note we set batch_size=None here, so it will use the entire block as a batch,
         # which ensures that each group will be contained within a batch in entirety.
-        return sorted_ds.map_batches(
-            group_fn,
+        return sorted_ds._map_batches_without_batch_size_validation(
+            wrapped_fn,
             batch_size=None,
             compute=compute,
             batch_format=batch_format,
+            zero_copy_batch=False,
             fn_args=fn_args,
             fn_kwargs=fn_kwargs,
+            fn_constructor_args=fn_constructor_args,
+            fn_constructor_kwargs=fn_constructor_kwargs,
+            num_cpus=num_cpus,
+            num_gpus=num_gpus,
+            concurrency=concurrency,
+            ray_remote_args_fn=None,
             **ray_remote_args,
         )
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def count(self) -> Dataset:
         """Compute count aggregation.
 
@@ -251,6 +303,7 @@ class GroupedData:
         """
         return self.aggregate(Count())
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def sum(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -294,6 +347,7 @@ class GroupedData:
         """
         return self._aggregate_on(Sum, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def min(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -332,6 +386,7 @@ class GroupedData:
         """
         return self._aggregate_on(Min, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def max(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -370,6 +425,7 @@ class GroupedData:
         """
         return self._aggregate_on(Max, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def mean(
         self, on: Union[str, List[str]] = None, ignore_nulls: bool = True
     ) -> Dataset:
@@ -408,6 +464,7 @@ class GroupedData:
         """
         return self._aggregate_on(Mean, on, ignore_nulls)
 
+    @PublicAPI(api_group=CDS_API_GROUP)
     def std(
         self,
         on: Union[str, List[str]] = None,

@@ -17,10 +17,13 @@ from typing import (
     Tuple,
 )
 
-from ray.exceptions import RayActorError
+from ray.actor import ActorHandle
+from ray.exceptions import ActorDiedError, ActorUnavailableError
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     ReplicaID,
+    ReplicaQueueLengthInfo,
     RequestMetadata,
     RunningReplicaInfo,
 )
@@ -33,9 +36,9 @@ from ray.serve._private.constants import (
 from ray.serve._private.replica_scheduler.common import (
     PendingRequest,
     ReplicaQueueLengthCache,
-    ReplicaScheduler,
-    ReplicaWrapper,
 )
+from ray.serve._private.replica_scheduler.replica_scheduler import ReplicaScheduler
+from ray.serve._private.replica_scheduler.replica_wrapper import ReplicaWrapper
 from ray.util import metrics
 
 logger = logging.getLogger(SERVE_LOGGER_NAME)
@@ -87,23 +90,29 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def __init__(
         self,
-        event_loop: asyncio.AbstractEventLoop,
         deployment_id: DeploymentID,
+        handle_source: DeploymentHandleSource,
         prefer_local_node_routing: bool = False,
         prefer_local_az_routing: bool = False,
         self_node_id: Optional[str] = None,
         self_actor_id: Optional[str] = None,
+        self_actor_handle: Optional[ActorHandle] = None,
         self_availability_zone: Optional[str] = None,
         use_replica_queue_len_cache: bool = False,
         get_curr_time_s: Optional[Callable[[], float]] = None,
+        create_replica_wrapper_func: Optional[
+            Callable[[RunningReplicaInfo], ReplicaWrapper]
+        ] = None,
     ):
-        self._loop = event_loop
         self._deployment_id = deployment_id
+        self._handle_source = handle_source
         self._prefer_local_node_routing = prefer_local_node_routing
         self._prefer_local_az_routing = prefer_local_az_routing
         self._self_node_id = self_node_id
+        self._self_actor_handle = self_actor_handle
         self._self_availability_zone = self_availability_zone
         self._use_replica_queue_len_cache = use_replica_queue_len_cache
+        self._create_replica_wrapper_func = create_replica_wrapper_func
 
         # Current replicas available to be scheduled.
         # Updated via `update_replicas`.
@@ -119,6 +128,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # from a different loop than it uses for scheduling, so we need to construct it
         # lazily to avoid an error due to the event being attached to the wrong loop.
         self._lazily_constructed_replicas_updated_event: Optional[asyncio.Event] = None
+        self._lazily_fetched_loop: Optional[asyncio.AbstractEventLoop] = None
 
         # Colocated replicas (e.g. wrt node, AZ)
         self._colocated_replica_ids: DefaultDict[
@@ -185,6 +195,13 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
 
     @property
+    def _event_loop(self) -> asyncio.AbstractEventLoop:
+        if self._lazily_fetched_loop is None:
+            self._lazily_fetched_loop = asyncio.get_running_loop()
+
+        return self._lazily_fetched_loop
+
+    @property
     def _replicas_updated_event(self) -> asyncio.Event:
         """Lazily construct `asyncio.Event`.
 
@@ -219,7 +236,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         return min(self.num_pending_requests, self.max_num_scheduling_tasks)
 
     @property
-    def curr_replicas(self) -> Dict[str, ReplicaWrapper]:
+    def curr_replicas(self) -> Dict[ReplicaID, ReplicaWrapper]:
         return self._replicas
 
     @property
@@ -229,6 +246,31 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
     @property
     def replica_queue_len_cache(self) -> ReplicaQueueLengthCache:
         return self._replica_queue_len_cache
+
+    def create_replica_wrapper(
+        self, replica_info: RunningReplicaInfo
+    ) -> ReplicaWrapper:
+        return self._create_replica_wrapper_func(replica_info)
+
+    def on_replica_actor_died(self, replica_id: ReplicaID):
+        """Drop replica from replica set so it's not considered for future requests."""
+        self._replicas.pop(replica_id, None)
+        self._replica_id_set.discard(replica_id)
+        for id_set in self._colocated_replica_ids.values():
+            id_set.discard(replica_id)
+
+    def on_replica_actor_unavailable(self, replica_id: ReplicaID):
+        """Invalidate cache entry so active probing is required for the next request."""
+        self._replica_queue_len_cache.invalidate_key(replica_id)
+
+    def on_new_queue_len_info(
+        self, replica_id: ReplicaID, queue_len_info: ReplicaQueueLengthInfo
+    ):
+        """Update queue length cache with new info received from replica."""
+        if self._use_replica_queue_len_cache:
+            self._replica_queue_len_cache.update(
+                replica_id, queue_len_info.num_ongoing_requests
+            )
 
     def update_replicas(self, replicas: List[ReplicaWrapper]):
         """Update the set of available replicas to be considered for scheduling.
@@ -240,7 +282,17 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         new_replica_id_set = set()
         new_colocated_replica_ids = defaultdict(set)
         new_multiplexed_model_id_to_replica_ids = defaultdict(set)
+
         for r in replicas:
+            # If on the proxy, replica needs to call back into the proxy with
+            # `receive_asgi_messages` which can be blocked when GCS is down.
+            # To prevent that from happening, push proxy handle eagerly
+            if (
+                self._handle_source == DeploymentHandleSource.PROXY
+                and r.replica_id not in self._replicas
+            ):
+                r.push_proxy_handle(self._self_actor_handle)
+
             new_replicas[r.replica_id] = r
             new_replica_id_set.add(r.replica_id)
             if self._self_node_id is not None and r.node_id == self._self_node_id:
@@ -263,6 +315,10 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 extra={"log_to_stderr": False},
             )
 
+        # Get list of new replicas
+        new_ids = new_replica_id_set - self._replica_id_set
+        replicas_to_ping = [new_replicas.get(id) for id in new_ids]
+
         self._replicas = new_replicas
         self._replica_id_set = new_replica_id_set
         self._colocated_replica_ids = new_colocated_replica_ids
@@ -272,6 +328,8 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         self._replica_queue_len_cache.remove_inactive_replicas(
             active_replica_ids=new_replica_id_set
         )
+        # Populate cache for new replicas
+        self._event_loop.create_task(self._probe_queue_lens(replicas_to_ping, 0))
         self._replicas_updated_event.set()
         self.maybe_start_scheduling_tasks()
 
@@ -389,6 +447,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         # If the timeout is up and we've already tried the candidates
                         # with the fewest models loaded, fall back to all replicas.
                         candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
                 elif (
                     self._prefer_local_node_routing
                     and not tried_same_node
@@ -400,6 +459,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.NODE
                     ]
                     tried_same_node = True
+                    should_backoff = False
                 elif (
                     self._prefer_local_az_routing
                     and not tried_same_az
@@ -414,10 +474,12 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         LocalityScope.AVAILABILITY_ZONE
                     ]
                     tried_same_az = True
+                    should_backoff = False
                 else:
                     # On subsequent iterations or when there are no replicas on the same
                     # node or AZ, consider all available replicas.
                     candidate_replica_ids = self._replica_id_set
+                    should_backoff = True
 
                 if candidate_replica_ids:
                     chosen_ids = random.sample(
@@ -425,6 +487,15 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                         k=min(2, len(candidate_replica_ids)),
                     )
                     yield [self._replicas[chosen_id] for chosen_id in chosen_ids]
+
+                # We have a slight unintended behavior when enabled locality routing
+                # for both node and AZ. The intention is to try same node first,
+                # then try same AZ if node fails, then try everything else until a
+                # replica is found. These sequence should only help to reduce the
+                # latency of the request. No backoff and sleep should be applied, until
+                # we have fall into the case trying on all available replicas.
+                if not should_backoff:
+                    continue
 
                 if not entered_backoff:
                     entered_backoff = True
@@ -483,7 +554,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
         get_queue_len_tasks = []
         for r in replicas:
-            t = self._loop.create_task(
+            t = self._event_loop.create_task(
                 r.get_queue_len(deadline_s=queue_len_response_deadline_s)
             )
             t.replica = r
@@ -514,15 +585,27 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                     "Failed to fetch queue length for "
                     f"{replica.replica_id}: '{t.exception()}'"
                 )
-                # If we get a RayActorError, it means the replica actor has died. This
+                # If we get an ActorDiedError, the replica actor has died. This
                 # is not recoverable (the controller will start a new replica in its
                 # place), so we should no longer consider it for requests.
-                if isinstance(t.exception(), RayActorError):
-                    self._replicas.pop(replica.replica_id, None)
-                    self._replica_id_set.discard(replica.replica_id)
-                    for id_set in self._colocated_replica_ids.values():
-                        id_set.discard(replica.replica_id)
+                # We do not catch RayActorError here because that error can be
+                # raised even when a replica is temporarily unavailable.
+                # See https://github.com/ray-project/ray/issues/44185 for details.
+                if isinstance(t.exception(), ActorDiedError):
+                    self.on_replica_actor_died(replica.replica_id)
                     msg += " This replica will no longer be considered for requests."
+                # Replica is temporarily unavailable because of network issues, or
+                # replica has died but GCS is down so ActorUnavailableError will
+                # be raised until the GCS recovers. For the time being, invalidate
+                # the cache entry so that we don't try to send requests to this
+                # replica without actively probing.
+                elif isinstance(t.exception(), ActorUnavailableError):
+                    self.on_replica_actor_unavailable(replica.replica_id)
+                    msg = (
+                        "Failed to fetch queue length for "
+                        f"{replica.replica_id}. Replica is temporarily "
+                        "unavailable."
+                    )
 
                 logger.warning(msg)
             else:
@@ -583,7 +666,9 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         elif len(not_in_cache) > 0:
             # If there are replicas without a valid cache entry, probe them in the
             # background to populate the cache.
-            self._loop.create_task(self._probe_queue_lens(not_in_cache, backoff_index))
+            self._event_loop.create_task(
+                self._probe_queue_lens(not_in_cache, backoff_index)
+            )
 
         # `self._replicas` may have been updated since the candidates were chosen.
         # In that case, return `None` so a new one is selected.
@@ -591,7 +676,6 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
 
     def _get_pending_request_matching_metadata(
         self,
-        replica: ReplicaWrapper,
         request_metadata: Optional[RequestMetadata] = None,
     ) -> Optional[PendingRequest]:
         if request_metadata is None or not request_metadata.multiplexed_model_id:
@@ -620,7 +704,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         # First try to match a pending request based on the request metadata (currently
         # this only looks at the multiplexed model ID).
         matched_pending_request = self._get_pending_request_matching_metadata(
-            replica, request_metadata
+            request_metadata
         )
         if matched_pending_request is not None:
             matched_pending_request.future.set_result(replica)
@@ -662,6 +746,18 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
                 async for candidates in self.choose_two_replicas_with_backoff(
                     request_metadata
                 ):
+                    # Clear out pending requests at the front of the
+                    # queue that have been cancelled, then reevaluate
+                    # if we need to continue this scheduling task.
+                    while (
+                        len(self._pending_requests_to_fulfill) > 0
+                        and self._pending_requests_to_fulfill[0].future.done()
+                    ):
+                        self._pending_requests_to_fulfill.popleft()
+
+                    if len(self._scheduling_tasks) > self.target_num_scheduling_tasks:
+                        break
+
                     replica = await self.select_from_candidate_replicas(
                         candidates, backoff_index
                     )
@@ -691,7 +787,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         except Exception:
             logger.exception("Unexpected error in fulfill_pending_requests.")
         finally:
-            self._scheduling_tasks.remove(asyncio.current_task(loop=self._loop))
+            self._scheduling_tasks.remove(asyncio.current_task(loop=self._event_loop))
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)
 
     def maybe_start_scheduling_tasks(self):
@@ -709,7 +805,7 @@ class PowerOfTwoChoicesReplicaScheduler(ReplicaScheduler):
         )
         for _ in range(tasks_to_start):
             self._scheduling_tasks.add(
-                self._loop.create_task(self.fulfill_pending_requests())
+                self._event_loop.create_task(self.fulfill_pending_requests())
             )
         if tasks_to_start > 0:
             self.num_scheduling_tasks_gauge.set(self.curr_num_scheduling_tasks)

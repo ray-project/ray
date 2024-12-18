@@ -5,8 +5,10 @@
 # Allow linkcheck to run without treating warnings as errors; -W will
 # fast-fail if enabled; it's better to gather the whole list of bad links at once.
 SPHINXOPTS    = -a -E -W -j auto
+LOCALSPHINXOPTS = -W -j auto
 LINKCHECKOPTS = -a -E -j auto
 SPHINXBUILD   = sphinx-build
+SPHINXAUTOBUILD = sphinx-autobuild --port 0 --open-browser --ignore "*.log" --ignore "*data/examples*" --ignore "*train/examples*" --ignore "*serve/examples*"
 PAPER         =
 BUILDDIR      = _build
 
@@ -19,6 +21,7 @@ endif
 PAPEROPT_a4      = -D latex_paper_size=a4
 PAPEROPT_letter  = -D latex_paper_size=letter
 ALLSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
+ALLLOCALSPHINXOPTS    = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LOCALSPHINXOPTS) source
 ALLLINKCHECKOPTS = -d $(BUILDDIR)/doctrees $(PAPEROPT_$(PAPER)) $(LINKCHECKOPTS) source
 # the i18n builder cannot share the environment and doctrees with the others
 I18NSPHINXOPTS  = $(PAPEROPT_$(PAPER)) $(SPHINXOPTS) source
@@ -55,12 +58,19 @@ help:
 
 clean:
 	rm -rf $(BUILDDIR)/*
+	rm -rf ./source/__pycache__/
+	rm -rf ./source/_ext/__pycache__/
 	rm -rf ./source/*/api/doc/*
 	rm -rf ./source/ray-references/api/*/doc/*
 	rm -rf ./source/cluster/running_applications/doc/*
 	rm -rf ./source/cluster/running_applications/job-submission/doc/*
 	rm -rf ./source/ray-observability/api/state/doc*
 	rm -rf ./source/rllib/package_ref/doc*
+	rm -rf ./source/ray-more-libs/doc/*
+	rm -rf ./source/ray-observability/reference/doc/*
+	rm -f ./source/data/examples.rst
+	rm -f ./source/serve/examples.rst
+	rm -f ./source/train/examples.rst
 
 html:
 	$(SPHINXBUILD) -W --keep-going -b html $(ALLSPHINXOPTS) $(BUILDDIR)/html
@@ -69,6 +79,13 @@ html:
 	@echo "View the documentation by opening a browser and going to $(BUILDDIR)/html/index.html."
 
 develop: html
+
+RAY_DIR := $(shell pwd | rev | cut -d'/' -f2- | rev)
+
+local:
+	python load_doc_cache.py --ray-dir=$(RAY_DIR)
+	python update_cache_env.py --ray-dir=$(RAY_DIR)
+	$(SPHINXAUTOBUILD) -W --keep-going -b html $(ALLLOCALSPHINXOPTS) $(BUILDDIR)/html
 
 dirhtml:
 	$(SPHINXBUILD) -b dirhtml $(ALLSPHINXOPTS) $(BUILDDIR)/dirhtml

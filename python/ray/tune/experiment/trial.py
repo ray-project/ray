@@ -1,35 +1,39 @@
 import copy
 import json
 import logging
-from contextlib import contextmanager
-from functools import partial
-from numbers import Number
 import os
-from pathlib import Path
 import platform
 import re
 import time
-from typing import Any, Dict, Optional, Sequence, Union, Callable, List, Tuple
 import uuid
+from contextlib import contextmanager
+from functools import partial
+from numbers import Number
+from pathlib import Path
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
 
 import ray
+import ray.cloudpickle as cloudpickle
+from ray._private.utils import binary_to_hex, hex_to_binary
 from ray.air.constants import (
-    EXPR_ERROR_PICKLE_FILE,
     EXPR_ERROR_FILE,
+    EXPR_ERROR_PICKLE_FILE,
     TRAINING_ITERATION,
 )
-
-import ray.cloudpickle as cloudpickle
 from ray.exceptions import RayActorError, RayTaskError
 from ray.train import Checkpoint, CheckpointConfig
+from ray.train._internal.checkpoint_manager import _CheckpointManager
+from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
+from ray.train._internal.storage import StorageContext, _exists_at_fs_path
 from ray.train.constants import (
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
 )
-from ray.train._internal.checkpoint_manager import _CheckpointManager
-from ray.train._internal.session import _FutureTrainingResult, _TrainingResult
-from ray.train._internal.storage import StorageContext, _exists_at_fs_path
-from ray.tune import TuneError
+from ray.tune.error import TuneError
+from ray.tune.execution.placement_groups import (
+    PlacementGroupFactory,
+    resource_dict_to_pg_factory,
+)
 from ray.tune.logger import NoopLogger
 
 # NOTE(rkn): We import ray.tune.registry here instead of importing the names we
@@ -37,25 +41,20 @@ from ray.tune.logger import NoopLogger
 # have been defined yet. See https://github.com/ray-project/ray/issues/1716.
 from ray.tune.registry import get_trainable_cls, validate_trainable
 from ray.tune.result import (
+    DEBUG_METRICS,
     DONE,
     NODE_IP,
     PID,
-    TRIAL_ID,
-    DEBUG_METRICS,
-    TRIAL_INFO,
-    STDOUT_FILE,
     STDERR_FILE,
-)
-from ray.tune.execution.placement_groups import (
-    PlacementGroupFactory,
-    resource_dict_to_pg_factory,
+    STDOUT_FILE,
+    TRIAL_ID,
+    TRIAL_INFO,
 )
 from ray.tune.trainable.metadata import _TrainingRunMetadata
-from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
 from ray.tune.utils import date_str, flatten_dict
-from ray.util.annotations import DeveloperAPI, Deprecated
-from ray._private.utils import binary_to_hex, hex_to_binary
-
+from ray.tune.utils.serialization import TuneFunctionDecoder, TuneFunctionEncoder
+from ray.util import log_once
+from ray.util.annotations import Deprecated, DeveloperAPI
 
 DEBUG_PRINT_INTERVAL = 5
 _DEFAULT_WIN_MAX_PATH_LENGTH = 260
@@ -99,7 +98,7 @@ class ExportFormat:
         """Validates formats.
 
         Raises:
-            ValueError if the format is unknown.
+            ValueError: if the format is unknown.
         """
         for i in range(len(formats)):
             formats[i] = formats[i].strip().lower()
@@ -661,7 +660,7 @@ class Trial:
         Should only be called when the trial is not running.
 
         Raises:
-            ValueError if trial status is running.
+            ValueError: if trial status is running.
         """
         if self.status is Trial.RUNNING:
             raise ValueError("Cannot update resources while Trial is running.")
@@ -794,11 +793,11 @@ class Trial:
         return None
 
     def _handle_restore_error(self, exc: Exception):
+        # For Restoration errors, we only increment the restore failure count
+        # if the number of failures exceeds the restore retry limit.
         if self.temporary_state.num_restore_failures >= int(
             os.environ.get("TUNE_RESTORE_RETRY_NUM", 0)
         ):
-            # Restore was unsuccessful, try again without checkpoint.
-            self.clear_checkpoint()
             self.run_metadata.num_failures += 1
         else:
             self.temporary_state.num_restore_failures += 1
@@ -853,18 +852,21 @@ class Trial:
         if result.get(DONE):
             return True
 
-        for criteria, stop_value in self.stopping_criterion.items():
-            if criteria not in result:
-                raise TuneError(
-                    "Stopping criteria {} not provided in result dict. Keys "
-                    "are {}.".format(criteria, list(result.keys()))
-                )
-            elif isinstance(criteria, dict):
+        for criterion, stop_value in self.stopping_criterion.items():
+            if isinstance(criterion, dict):
                 raise ValueError(
                     "Stopping criteria is now flattened by default. "
                     "Use forward slashes to nest values `key1/key2/key3`."
                 )
-            elif result[criteria] >= stop_value:
+            elif criterion not in result:
+                if log_once("tune_trial_stop_criterion_not_found"):
+                    logger.warning(
+                        f"Stopping criterion '{criterion}' not found in result dict! "
+                        f"Available keys are {list(result.keys())}. If '{criterion}' is"
+                        " never reported, the run will continue until training is "
+                        "finished."
+                    )
+            elif result[criterion] >= stop_value:
                 return True
         return False
 
@@ -880,12 +882,6 @@ class Trial:
 
     def has_checkpoint(self) -> bool:
         return self.checkpoint is not None
-
-    def clear_checkpoint(self):
-        if self.latest_checkpoint_result:
-            self.latest_checkpoint_result.checkpoint = None
-        self.temporary_state.restoring_from = None
-        self.run_metadata.invalidate_cache()
 
     def on_checkpoint(self, checkpoint_result: _TrainingResult):
         """Hook for handling checkpoints taken by the Trainable.

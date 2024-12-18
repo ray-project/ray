@@ -95,21 +95,28 @@ std::string BundleSpecification::DebugString() const {
 }
 
 std::string FormatPlacementGroupResource(const std::string &original_resource_name,
-                                         const PlacementGroupID &group_id,
+                                         const std::string &group_id_hex,
                                          int64_t bundle_index) {
   std::stringstream os;
   if (bundle_index >= 0) {
     os << original_resource_name << kGroupKeyword << std::to_string(bundle_index) << "_"
-       << group_id.Hex();
+       << group_id_hex;
   } else {
     RAY_CHECK(bundle_index == -1) << "Invalid index " << bundle_index;
-    os << original_resource_name << kGroupKeyword << group_id.Hex();
+    os << original_resource_name << kGroupKeyword << group_id_hex;
   }
   std::string result = os.str();
   RAY_DCHECK(GetOriginalResourceName(result) == original_resource_name)
       << "Generated: " << GetOriginalResourceName(result)
       << " Original: " << original_resource_name;
   return result;
+}
+
+std::string FormatPlacementGroupResource(const std::string &original_resource_name,
+                                         const PlacementGroupID &group_id,
+                                         int64_t bundle_index) {
+  return FormatPlacementGroupResource(
+      original_resource_name, group_id.Hex(), bundle_index);
 }
 
 std::string GetOriginalResourceName(const std::string &resource) {
@@ -146,6 +153,7 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(
         match_groups.size() == 3) {
       data.original_resource = match_groups[1].str();
       data.bundle_index = -1;
+      data.group_id = match_groups[2].str();
       return data;
     }
   }
@@ -157,6 +165,7 @@ std::optional<PgFormattedResourceData> ParsePgFormattedResource(
         match_groups.size() == 4) {
       data.original_resource = match_groups[1].str();
       data.bundle_index = stoi(match_groups[2].str());
+      data.group_id = match_groups[3].str();
       return data;
     }
   }

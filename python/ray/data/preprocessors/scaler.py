@@ -4,14 +4,15 @@ import numpy as np
 import pandas as pd
 
 from ray.data import Dataset
-from ray.data.aggregate import AbsMax, Max, Mean, Min, Std
+from ray.data._internal.aggregate import AbsMax, Max, Mean, Min, Std
 from ray.data.preprocessor import Preprocessor
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
 class StandardScaler(Preprocessor):
-    r"""Translate and scale each column by its mean and standard deviation, respectively.
+    r"""Translate and scale each column by its mean and standard deviation,
+    respectively.
 
     The general formula is given by
 

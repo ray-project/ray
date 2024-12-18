@@ -9,8 +9,10 @@ import logging
 from collections import Counter, defaultdict
 from contextlib import redirect_stderr, redirect_stdout
 from pathlib import Path
-from unittest.mock import Mock, MagicMock
+from typing import Dict
+from unittest.mock import Mock, MagicMock, patch
 
+import colorama
 import pytest
 
 import ray
@@ -32,6 +34,7 @@ from ray._private.test_utils import (
 )
 from ray.cross_language import java_actor_class
 from ray.autoscaler._private.cli_logger import cli_logger
+from ray._private.worker import print_worker_logs
 
 
 def set_logging_config(monkeypatch, max_bytes, backup_count):
@@ -460,6 +463,15 @@ assert set(log_component_names).isdisjoint(set(paths)), paths
         assert f"({component}" in stderr, stderr
 
 
+def test_custom_logging_format(shutdown_only):
+    script = """
+import ray
+ray.init(logging_format='custom logging format - %(message)s')
+"""
+    stderr = run_string_as_driver(script)
+    assert "custom logging format - " in stderr
+
+
 def test_segfault_stack_trace(ray_start_cluster, capsys):
     @ray.remote
     def f():
@@ -881,29 +893,6 @@ def test_ray_does_not_break_makeRecord():
 
 
 @pytest.mark.parametrize(
-    "logger_name,package_name",
-    (
-        ("ray", ""),
-        ("ray.air", "[Ray AIR]"),
-        ("ray.data", "[Ray Data]"),
-        ("ray.rllib", "[Ray RLlib]"),
-        ("ray.serve", "[Ray Serve]"),
-        ("ray.train", "[Ray Train]"),
-        ("ray.tune", "[Ray Tune]"),
-        ("ray.workflow", "[Ray Workflow]"),
-    ),
-)
-def test_log_library_context(propagate_logs, caplog, logger_name, package_name):
-    """Test that the log configuration injects the correct context into log messages."""
-    logger = logging.getLogger(logger_name)
-    logger.critical("Test!")
-
-    assert (
-        caplog.records[-1].package == package_name
-    ), "Missing ray package name in log record."
-
-
-@pytest.mark.parametrize(
     "logger_name,logger_level",
     (
         ("ray", logging.INFO),
@@ -973,6 +962,100 @@ def test_log_monitor_ip_correct(ray_start_cluster):
         p, num=6, timeout=10, job_id=ray.get_runtime_context().get_job_id()
     )
     assert data[0]["ip"] == "127.0.0.2"
+
+
+def get_print_worker_logs_output(data: Dict[str, str]) -> str:
+    """
+    Helper function that returns the output of `print_worker_logs` as a str.
+    """
+    out = io.StringIO()
+    print_worker_logs(data, out)
+    out.seek(0)
+    return out.readline()
+
+
+def test_print_worker_logs_default_color() -> None:
+    # Test multiple since pid may affect color
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == (
+            f"{colorama.Fore.CYAN}(my_task pid={pid}, ip=10.0.0.1)"
+            + f"{colorama.Style.RESET_ALL} is running\n"
+        )
+
+    # Special case
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == (
+        f"{colorama.Fore.YELLOW}(raylet, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "Warning: uh oh\n"
+    )
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "0"})
+def test_print_worker_logs_no_color() -> None:
+    for pid in (0, 1):
+        data = dict(
+            ip="10.0.0.1",
+            localhost="172.0.0.1",
+            pid=str(pid),
+            task_name="my_task",
+            lines=["is running"],
+        )
+        output = get_print_worker_logs_output(data)
+        assert output == f"(my_task pid={pid}, ip=10.0.0.1) is running\n"
+
+    raylet = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="raylet",
+        task_name="my_task",
+        lines=["Warning: uh oh"],
+    )
+    output = get_print_worker_logs_output(raylet)
+    assert output == "(raylet, ip=10.0.0.1) Warning: uh oh\n"
+
+
+@patch.dict(os.environ, {"RAY_COLOR_PREFIX": "1"})
+def test_print_worker_logs_multi_color() -> None:
+    data_pid_0 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="0",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_0)
+    assert output == (
+        f"{colorama.Fore.MAGENTA}(my_task pid=0, ip=10.0.0.1)"
+        + f"{colorama.Style.RESET_ALL} is running\n"
+    )
+
+    data_pid_2 = dict(
+        ip="10.0.0.1",
+        localhost="172.0.0.1",
+        pid="2",
+        task_name="my_task",
+        lines=["is running"],
+    )
+    output = get_print_worker_logs_output(data_pid_2)
+    assert output == (
+        f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
+        + "is running\n"
+    )
 
 
 if __name__ == "__main__":

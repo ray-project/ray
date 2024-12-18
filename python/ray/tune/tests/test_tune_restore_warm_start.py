@@ -1,31 +1,31 @@
 # coding: utf-8
 import os
-from packaging.version import Version
-import pandas
-import pytest
 import shutil
+import sys
 import tempfile
 import unittest
 
 import numpy as np
+import pandas
+import pytest
 from hyperopt import hp
 from nevergrad.optimization import optimizerlib
+from packaging.version import Version
 from zoopt import ValueType
-from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
 import ray
 from ray import train, tune
 from ray.rllib import _register_all
+from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 from ray.tune.search import ConcurrencyLimiter
-from ray.tune.search.hyperopt import HyperOptSearch
+from ray.tune.search.ax import AxSearch
 from ray.tune.search.bayesopt import BayesOptSearch
+from ray.tune.search.bohb import TuneBOHB
+from ray.tune.search.hebo import HEBOSearch
+from ray.tune.search.hyperopt import HyperOptSearch
 from ray.tune.search.nevergrad import NevergradSearch
 from ray.tune.search.optuna import OptunaSearch
 from ray.tune.search.zoopt import ZOOptSearch
-from ray.tune.search.hebo import HEBOSearch
-from ray.tune.search.ax import AxSearch
-from ray.tune.search.bohb import TuneBOHB
-from ray.tune.schedulers.hb_bohb import HyperBandForBOHB
 
 
 class AbstractWarmStartTest:
@@ -251,10 +251,13 @@ class ZOOptWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="HEBO doesn't support py312")
 class HEBOWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         if Version(pandas.__version__) >= Version("2.0.0"):
             pytest.skip("HEBO does not support pandas>=2.0.0")
+
+        from hebo.design_space.design_space import DesignSpace as HEBODesignSpace
 
         space_config = [
             {"name": "width", "type": "num", "lb": 0, "ub": 20},
@@ -326,6 +329,7 @@ class AxWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
         return search_alg, cost
 
 
+@pytest.mark.skipif(sys.version_info >= (3, 12), reason="BOHB doesn't support py312")
 class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
     def set_basic_conf(self):
         space = {"width": tune.uniform(0, 20), "height": tune.uniform(-100, 100)}
@@ -345,6 +349,4 @@ class BOHBWarmStartTest(AbstractWarmStartTest, unittest.TestCase):
 
 
 if __name__ == "__main__":
-    import sys
-
     sys.exit(pytest.main(["-v", __file__] + sys.argv[1:]))

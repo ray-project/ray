@@ -152,7 +152,7 @@ For example, the following code executes :func:`~ray.data.read_csv` with only on
     ...
     Operator 1 ReadCSV->SplitBlocks(4): 1 tasks executed, 4 blocks produced in 0.01s
     ...
-    
+
     Operator 2 Map(<lambda>): 4 tasks executed, 4 blocks produced in 0.3s
     ...
 
@@ -191,28 +191,52 @@ By default, Ray requests 1 CPU per read task, which means one read task per CPU 
 For datasources that benefit from more IO parallelism, you can specify a lower ``num_cpus`` value for the read function with the ``ray_remote_args`` parameter.
 For example, use ``ray.data.read_parquet(path, ray_remote_args={"num_cpus": 0.25})`` to allow up to four read tasks per CPU.
 
-Parquet column pruning
-~~~~~~~~~~~~~~~~~~~~~~
+.. _parquet_column_pruning:
 
-Current Dataset reads all Parquet columns into memory.
+Parquet column pruning (projection pushdown)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+By default, :func:`ray.data.read_parquet` reads all columns in the Parquet files into memory.
 If you only need a subset of the columns, make sure to specify the list of columns
-explicitly when calling :meth:`ray.data.read_parquet() <ray.data.read_parquet>` to
-avoid loading unnecessary data (projection pushdown).
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", columns=["sepal.length", "variety"])`` to read
-just two of the five columns of Iris dataset.
+explicitly when calling :func:`ray.data.read_parquet` to
+avoid loading unnecessary data (projection pushdown). Note that this is more efficient than
+calling :func:`~ray.data.Dataset.select_columns`, since column selection is pushed down to the file scan.
+
+.. testcode::
+
+    import ray
+    # Read just two of the five columns of the Iris dataset.
+    ray.data.read_parquet(
+        "s3://anonymous@ray-example-data/iris.parquet",
+        columns=["sepal.length", "variety"],
+    )
+
+.. testoutput::
+
+    Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
 .. _parquet_row_pruning:
 
-Parquet row pruning
-~~~~~~~~~~~~~~~~~~~
+Parquet row pruning (filter pushdown)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-Similarly, you can pass in a filter to :meth:`ray.data.read_parquet() <ray.data.Dataset.read_parquet>` (filter pushdown)
+Similar to Parquet column pruning, you can pass in a filter to :func:`ray.data.read_parquet` (filter pushdown)
 which is applied at the file scan so only rows that match the filter predicate
-are returned.
-For example, use ``ray.data.read_parquet("s3://anonymous@ray-example-data/iris.parquet", filter=pyarrow.dataset.field("sepal.length") > 5.0)``
-(where ``pyarrow`` has to be imported)
-to read rows with sepal.length greater than 5.0.
-This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+are returned. This can be used in conjunction with column pruning when appropriate to get the benefits of both.
+
+.. testcode::
+
+    import ray
+    # Only read rows with `sepal.length` greater than 5.0.
+    # The row count will be less than the total number of rows (150) in the full dataset.
+    ray.data.read_parquet(
+        "s3://anonymous@ray-example-data/iris.parquet",
+        filter=pyarrow.dataset.field("sepal.length") > 5.0,
+    ).count()
+
+.. testoutput::
+
+    118
 
 
 .. _data_memory:

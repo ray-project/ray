@@ -1,14 +1,17 @@
-from typing import Any, List, Optional, Union
+from typing import Any, Dict, List, Optional, Union
 
 import gymnasium as gym
 import numpy as np
 import tree  # pip install dm_tree
 
 from ray.rllib.utils.numpy import LARGE_INTEGER, one_hot, one_hot_multidiscrete
+from ray.rllib.utils.serialization import gym_space_from_dict, gym_space_to_dict
 from ray.rllib.utils.spaces.space_utils import (
     batch,
+    from_jsonable_if_needed,
     get_dummy_batch_for_space,
     get_base_struct_from_space,
+    to_jsonable_if_needed,
 )
 
 
@@ -34,6 +37,76 @@ class InfiniteLookbackBuffer:
         self.space_struct = None
         self.space = space
 
+    def __eq__(
+        self,
+        other: "InfiniteLookbackBuffer",
+    ) -> bool:
+        """Compares two `InfiniteLookbackBuffers.
+
+        Args:
+            other: Another object. If another `LookbackBuffer` instance all
+                their attributes are compared.
+
+        Returns:
+            `True`, if `other` is an `InfiniteLookbackBuffer` instance and all
+            attributes are identical. Otherwise, returns `False`.
+        """
+        if isinstance(other, InfiniteLookbackBuffer):
+            if (
+                self.data == other.data
+                and self.lookback == other.lookback
+                and self.finalized == other.finalized
+                and self.space_struct == other.space_struct
+                and self.space == other.space
+            ):
+                return True
+        return False
+
+    def get_state(self) -> Dict[str, Any]:
+        """Returns the pickable state of a buffer.
+
+        The data in the buffer is stored into a dictionary. Note that
+        buffers can also be generated from pickable states (see
+        `InfiniteLookbackBuffer.from_state`)
+
+        Returns:
+            A dict containing all the data and metadata from the buffer.
+        """
+        return {
+            "data": to_jsonable_if_needed(self.data, self.space)
+            if self.space
+            else self.data,
+            "lookback": self.lookback,
+            "finalized": self.finalized,
+            "space": gym_space_to_dict(self.space) if self.space else self.space,
+        }
+
+    @staticmethod
+    def from_state(state: Dict[str, Any]) -> None:
+        """Creates a new `InfiniteLookbackBuffer` from a state dict.
+
+        Args:
+            state: The state dict, as returned by `self.get_state`.
+
+        Returns:
+            A new `InfiniteLookbackBuffer` instance with the data and metadata
+            from the state dict.
+        """
+        buffer = InfiniteLookbackBuffer()
+        buffer.lookback = state["lookback"]
+        buffer.finalized = state["finalized"]
+        buffer.space = gym_space_from_dict(state["space"]) if state["space"] else None
+        buffer.space_struct = (
+            get_base_struct_from_space(buffer.space) if buffer.space else None
+        )
+        buffer.data = (
+            from_jsonable_if_needed(state["data"], buffer.space)
+            if buffer.space
+            else state["data"]
+        )
+
+        return buffer
+
     def append(self, item) -> None:
         """Appends the given item to the end of this buffer."""
         if self.finalized:
@@ -43,15 +116,26 @@ class InfiniteLookbackBuffer:
         else:
             self.data.append(item)
 
-    def extend(self, items):
+    def extend(self, items) -> None:
         """Appends all items in `items` to the end of this buffer."""
         if self.finalized:
+            # TODO (sven): When extending with a list of structs, we should
+            #  probably rather do: `tree.map_structure(..., self.data,
+            #  tree.map_structure(lambda *s: np.array(*s), *items)`)??
             self.data = tree.map_structure(
                 lambda d, i: np.concatenate([d, i], axis=0), self.data, np.array(items)
             )
         else:
             for item in items:
                 self.append(item)
+
+    def concat(self, other: "InfiniteLookbackBuffer") -> None:
+        """Concatenates the data of `other` (w/o its lookback) to `self`.
+
+        Args:
+            other: The other InfiniteLookbackBuffer to be concatenated to self.
+        """
+        self.data.extend(other.get())
 
     def pop(self, index: int = -1) -> None:
         """Removes the item at `index` from this buffer, but does NOT return it.
@@ -67,7 +151,7 @@ class InfiniteLookbackBuffer:
         else:
             self.data.pop(index)
 
-    def finalize(self):
+    def finalize(self) -> None:
         """Finalizes this buffer by converting internal data lists into numpy arrays.
 
         Thereby, if the individual items in the list are nested structures, the
@@ -81,12 +165,12 @@ class InfiniteLookbackBuffer:
         self,
         indices: Optional[Union[int, slice, List[int]]] = None,
         *,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
         fill: Optional[Any] = None,
         one_hot_discrete: bool = False,
         _ignore_last_ts: bool = False,
         _add_last_ts_value: Optional[Any] = None,
-    ):
+    ) -> Any:
         """Returns data, based on the given args, from this buffer.
 
         Args:
@@ -96,15 +180,15 @@ class InfiniteLookbackBuffer:
                 individual data in a batch of size len(indices).
                 A slice object is interpreted as a range of data to be returned.
                 Thereby, negative indices by default are interpreted as "before the end"
-                unless the `neg_indices_left_of_zero=True` option is used, in which case
+                unless the `neg_index_as_lookback=True` option is used, in which case
                 negative indices are interpreted as "before ts=0", meaning going back
                 into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `indices` are
+            neg_index_as_lookback: If True, negative values in `indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                respond to `get(-1, neg_indices_left_of_zero=True)` with `6` and to
-                `get(slice(-2, 1), neg_indices_left_of_zero=True)` with `[5, 6,  7]`.
+                respond to `get(-1, neg_index_as_lookback=True)` with `6` and to
+                `get(slice(-2, 1), neg_index_as_lookback=True)` with `[5, 6,  7]`.
             fill: An optional float value to use for filling up the returned results at
                 the boundaries. This filling only happens if the requested index range's
                 start/stop boundaries exceed the buffer's boundaries (including the
@@ -134,7 +218,7 @@ class InfiniteLookbackBuffer:
             data = self._get_slice(
                 indices,
                 fill=fill,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 one_hot_discrete=one_hot_discrete,
                 _ignore_last_ts=_ignore_last_ts,
                 _add_last_ts_value=_add_last_ts_value,
@@ -144,7 +228,7 @@ class InfiniteLookbackBuffer:
                 self._get_int_index(
                     idx,
                     fill=fill,
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    neg_index_as_lookback=neg_index_as_lookback,
                     one_hot_discrete=one_hot_discrete,
                     _ignore_last_ts=_ignore_last_ts,
                     _add_last_ts_value=_add_last_ts_value,
@@ -158,7 +242,7 @@ class InfiniteLookbackBuffer:
             data = self._get_int_index(
                 indices,
                 fill=fill,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
                 one_hot_discrete=one_hot_discrete,
                 _ignore_last_ts=_ignore_last_ts,
                 _add_last_ts_value=_add_last_ts_value,
@@ -166,27 +250,43 @@ class InfiniteLookbackBuffer:
 
         return data
 
-    def __add__(self, other):
-        """Adds another buffer or list to the end of this one.
+    def __add__(
+        self, other: Union[List, "InfiniteLookbackBuffer", int, float, complex]
+    ) -> "InfiniteLookbackBuffer":
+        """Adds another InfiniteLookbackBuffer object or list to the end of this one.
 
         Args:
-            other: Either `InfiniteLookbackBuffer` or `list`.
-                If a `InfiniteLookbackBuffer` the data gets
-                concatenated. If a `list` the list is concatenated to the
-                `self.data`.
+            other: Another `InfiniteLookbackBuffer` or a `list` or a number.
+                If a `InfiniteLookbackBuffer` its data (w/o its lookback buffer) gets
+                concatenated to self's data. If a `list`, we concat it to self's data.
+                If a number, we add this number to each element of self (if possible).
 
         Returns:
-            A new `InfiniteLookbackBuffer` instance `self.data` cotnaining
-            concatenated data from `self.` and `other`.
+            A new `InfiniteLookbackBuffer` instance `self.data` containing
+            concatenated data from `self` and `other` (or adding `other` to each element
+            in self's data).
         """
 
         if self.finalized:
             raise RuntimeError(f"Cannot `add` to a finalized {type(self).__name__}.")
         else:
-            if isinstance(other, InfiniteLookbackBuffer):
-                data = self.data + other.data
+            # If `other` is an int, simply add it to all our values (if possible) and
+            # use the result as the underlying data for the returned buffer.
+            if isinstance(other, (int, float, complex)):
+                data = [
+                    (d + other) if isinstance(d, (int, float, complex)) else d
+                    for d in self.data
+                ]
+            # If `other` is a InfiniteLookbackBuffer itself, do NOT include its
+            # lookback buffer anymore. We assume that `other`'s lookback buffer i
+            # already at the end of `self`.
+            elif isinstance(other, InfiniteLookbackBuffer):
+                data = self.data + other.data[other.lookback :]
+            # `other` is a list, simply concat the two lists and use the result as
+            # the underlying data for the returned buffer.
             else:
                 data = self.data + other
+
             return InfiniteLookbackBuffer(
                 data=data,
                 lookback=self.lookback,
@@ -205,7 +305,7 @@ class InfiniteLookbackBuffer:
         new_data,
         *,
         at_indices: Optional[Union[int, slice, List[int]]] = None,
-        neg_indices_left_of_zero: bool = False,
+        neg_index_as_lookback: bool = False,
     ) -> None:
         """Overwrites all or some of the data in this buffer with the provided data.
 
@@ -217,16 +317,16 @@ class InfiniteLookbackBuffer:
                 with `new_data`, which must be a batch of size `len(at_indices)`.
                 A slice object is interpreted as a range, which to overwrite with
                 `new_data`. Thereby, negative indices by default are interpreted as
-                "before the end" unless the `neg_indices_left_of_zero=True` option is
+                "before the end" unless the `neg_index_as_lookback=True` option is
                 used, in which case negative indices are interpreted as
                 "before ts=0", meaning going back into the lookback buffer.
-            neg_indices_left_of_zero: If True, negative values in `at_indices` are
+            neg_index_as_lookback: If True, negative values in `at_indices` are
                 interpreted as "before ts=0", meaning going back into the lookback
                 buffer. For example, a buffer with data [4, 5, 6,  7, 8, 9],
                 where [4, 5, 6] is the lookback buffer range (ts=0 item is 7), will
-                handle a call `set(99, at_indices=-1, neg_indices_left_of_zero=True)`
+                handle a call `set(99, at_indices=-1, neg_index_as_lookback=True)`
                 with `6` being replaced by 99 and to `set([98, 99, 100],
-                at_indices=slice(-2, 1), neg_indices_left_of_zero=True)` with
+                at_indices=slice(-2, 1), neg_index_as_lookback=True)` with
                 `[5, 6,  7]` being replaced by `[98, 99,  100]`.
         """
         # `at_indices` is None -> Override all our data (excluding the lookback buffer).
@@ -237,21 +337,21 @@ class InfiniteLookbackBuffer:
             self._set_slice(
                 new_data,
                 slice_=at_indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
             )
         elif isinstance(at_indices, list):
             for i, idx in enumerate(at_indices):
                 self._set_int_index(
                     new_data[i],
                     idx=idx,
-                    neg_indices_left_of_zero=neg_indices_left_of_zero,
+                    neg_index_as_lookback=neg_index_as_lookback,
                 )
         else:
             assert isinstance(at_indices, int)
             self._set_int_index(
                 new_data,
                 idx=at_indices,
-                neg_indices_left_of_zero=neg_indices_left_of_zero,
+                neg_index_as_lookback=neg_index_as_lookback,
             )
 
     def __len__(self):
@@ -285,7 +385,7 @@ class InfiniteLookbackBuffer:
         self,
         slice_,
         fill=None,
-        neg_indices_left_of_zero=False,
+        neg_index_as_lookback=False,
         one_hot_discrete=False,
         _ignore_last_ts=False,
         _add_last_ts_value=None,
@@ -308,7 +408,7 @@ class InfiniteLookbackBuffer:
 
         slice_, slice_len, fill_left_count, fill_right_count = self._interpret_slice(
             slice_,
-            neg_indices_left_of_zero,
+            neg_index_as_lookback,
             len_self_plus_lookback=(
                 self.len_incl_lookback()
                 + int(_add_last_ts_value is not None)
@@ -396,9 +496,9 @@ class InfiniteLookbackBuffer:
         self,
         new_data,
         slice_,
-        neg_indices_left_of_zero=False,
+        neg_index_as_lookback=False,
     ):
-        slice_, _, _, _ = self._interpret_slice(slice_, neg_indices_left_of_zero)
+        slice_, _, _, _ = self._interpret_slice(slice_, neg_index_as_lookback)
 
         # Check, whether the setting to new_data changes the length of self
         # (it shouldn't). If it does, raise an error.
@@ -418,7 +518,7 @@ class InfiniteLookbackBuffer:
         except AssertionError:
             raise IndexError(
                 f"Cannot `set()` value via at_indices={slice_} (option "
-                f"neg_indices_left_of_zero={neg_indices_left_of_zero})! Slice of data "
+                f"neg_index_as_lookback={neg_index_as_lookback})! Slice of data "
                 "does NOT have the same size as `new_data`."
             )
 
@@ -426,26 +526,35 @@ class InfiniteLookbackBuffer:
         self,
         idx: int,
         fill=None,
-        neg_indices_left_of_zero=False,
+        neg_index_as_lookback=False,
         one_hot_discrete=False,
         _ignore_last_ts=False,
         _add_last_ts_value=None,
     ):
         data_to_use = self.data
         if _ignore_last_ts:
-            data_to_use = self.data[:-1]
+            if self.finalized:
+                data_to_use = tree.map_structure(lambda s: s[:-1], self.data)
+            else:
+                data_to_use = self.data[:-1]
         if _add_last_ts_value is not None:
-            data_to_use = np.append(data_to_use.copy(), _add_last_ts_value)
+            if self.finalized:
+                data_to_use = tree.map_structure(
+                    lambda s, last: np.append(s, last), data_to_use, _add_last_ts_value
+                )
+            else:
+                data_to_use = data_to_use.copy()
+                data_to_use.append(_add_last_ts_value)
 
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
-        if idx >= 0 or neg_indices_left_of_zero:
-            idx = self.lookback + idx - (_ignore_last_ts is True)
+        if idx >= 0 or neg_index_as_lookback:
+            idx = self.lookback + idx
         # Negative indices mean: Go to left into lookback buffer starting from idx=0.
         # But if we pass the lookback buffer, the index should be invalid and we will
         # have to fill, if required. Invalidate the index by setting it to one larger
         # than max.
-        if neg_indices_left_of_zero and idx < 0:
+        if neg_index_as_lookback and idx < 0:
             idx = len(self) + self.lookback - (_ignore_last_ts is True)
 
         try:
@@ -472,17 +581,17 @@ class InfiniteLookbackBuffer:
             data = self._one_hot(data, self.space_struct)
         return data
 
-    def _set_int_index(self, new_data, idx, neg_indices_left_of_zero):
+    def _set_int_index(self, new_data, idx, neg_index_as_lookback):
         actual_idx = idx
         # If index >= 0 -> Ignore lookback buffer.
         # Otherwise, include lookback buffer.
-        if actual_idx >= 0 or neg_indices_left_of_zero:
+        if actual_idx >= 0 or neg_index_as_lookback:
             actual_idx = self.lookback + actual_idx
         # Negative indices mean: Go to left into lookback buffer starting from idx=0.
         # But if we pass the lookback buffer, the index should be invalid and we will
         # have to fill, if required. Invalidate the index by setting it to one larger
         # than max.
-        if neg_indices_left_of_zero and actual_idx < 0:
+        if neg_index_as_lookback and actual_idx < 0:
             actual_idx = len(self) + self.lookback
 
         try:
@@ -499,14 +608,14 @@ class InfiniteLookbackBuffer:
         except IndexError:
             raise IndexError(
                 f"Cannot `set()` value at index {idx} (option "
-                f"neg_indices_left_of_zero={neg_indices_left_of_zero})! Out of range "
+                f"neg_index_as_lookback={neg_index_as_lookback})! Out of range "
                 f"of buffer data."
             )
 
     def _interpret_slice(
         self,
         slice_,
-        neg_indices_left_of_zero,
+        neg_index_as_lookback,
         len_self_plus_lookback=None,
     ):
         if len_self_plus_lookback is None:
@@ -522,9 +631,9 @@ class InfiniteLookbackBuffer:
             start = self.lookback
         # Start is negative.
         elif start < 0:
-            # `neg_indices_left_of_zero=True` -> User wants to index into the lookback
+            # `neg_index_as_lookback=True` -> User wants to index into the lookback
             # range.
-            if neg_indices_left_of_zero:
+            if neg_index_as_lookback:
                 start = self.lookback + start
             # Interpret index as counting "from end".
             else:
@@ -538,10 +647,10 @@ class InfiniteLookbackBuffer:
             stop = len_self_plus_lookback
         # Stop is negative.
         elif stop < 0:
-            # `neg_indices_left_of_zero=True` -> User wants to index into the lookback
+            # `neg_index_as_lookback=True` -> User wants to index into the lookback
             # range. Set to 0 (beginning of lookback buffer) if result is a negative
             # index.
-            if neg_indices_left_of_zero:
+            if neg_index_as_lookback:
                 stop = self.lookback + stop
             # Interpret index as counting "from end". Set to 0 (beginning of actual
             # episode) if result is a negative index.
@@ -578,10 +687,6 @@ class InfiniteLookbackBuffer:
             stop = -LARGE_INTEGER
 
         assert start >= 0 and (stop >= 0 or stop == -LARGE_INTEGER), (start, stop)
-        # assert start <= len_self_plus_lookback and stop <= len_self_plus_lookback, (
-        #    start,
-        #    stop,
-        # )
 
         step = slice_.step if slice_.step is not None else 1
         slice_ = slice(start, stop, step)

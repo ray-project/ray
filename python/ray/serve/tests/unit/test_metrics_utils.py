@@ -199,6 +199,17 @@ class TestInMemoryMetricsStore:
         assert s.max("m1", window_start_timestamp_s=0) == 2
         assert s.max("m2", window_start_timestamp_s=0) == -1
 
+    def test_prune_keys_and_compact_data(self):
+        s = InMemoryMetricsStore()
+        s.add_metrics_point({"m1": 1, "m2": 2, "m3": 8, "m4": 5}, timestamp=1)
+        s.add_metrics_point({"m1": 2, "m2": 3, "m3": 8}, timestamp=2)
+        s.add_metrics_point({"m1": 2, "m2": 5}, timestamp=3)
+        s.prune_keys_and_compact_data(1.1)
+        assert set(s.data) == {"m1", "m2", "m3"}
+        assert len(s.data["m1"]) == 2 and s.data["m1"] == s._get_datapoints("m1", 1.1)
+        assert len(s.data["m2"]) == 2 and s.data["m2"] == s._get_datapoints("m2", 1.1)
+        assert len(s.data["m3"]) == 1 and s.data["m3"] == s._get_datapoints("m3", 1.1)
+
 
 if __name__ == "__main__":
     sys.exit(pytest.main(["-v", "-s", __file__]))

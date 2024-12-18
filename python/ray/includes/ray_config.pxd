@@ -59,8 +59,6 @@ cdef extern from "ray/common/ray_config.h" nogil:
 
         c_bool record_ref_creation_sites() const
 
-        c_bool gcs_grpc_based_pubsub() const
-
         c_string REDIS_CA_CERT() const
 
         c_string REDIS_CA_PATH() const
@@ -100,3 +98,5 @@ cdef extern from "ray/common/ray_config.h" nogil:
         int64_t py_gcs_connect_timeout_s() const
 
         int gcs_rpc_server_reconnect_timeout_s() const
+
+        int maximum_gcs_destroyed_actor_cached_count() const

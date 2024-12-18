@@ -60,7 +60,9 @@ class TrialInfo:
     resources: Dict[str, float]
     logdir: str
     driver_ip: str
+    driver_node_id: str
     experiment_name: Optional[str] = None
+    run_id: Optional[str] = None
 
 
 class _FutureTrainingResult:
@@ -462,6 +464,10 @@ class _TrainSession:
         return self.trial_info.id
 
     @property
+    def run_id(self) -> str:
+        return self.trial_info.run_id
+
+    @property
     def trial_resources(self) -> "PlacementGroupFactory":
         return self.trial_info.resources
 
@@ -816,6 +822,13 @@ def get_trial_name() -> str:
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
     return _get_session().trial_id
+
+
+@PublicAPI(stability="alpha")
+@_warn_session_misuse()
+def get_run_id() -> str:
+    """Unique Train Run id for the corresponding trial."""
+    return _get_session().run_id
 
 
 @PublicAPI(stability="beta")

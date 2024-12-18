@@ -9,7 +9,7 @@ from ray.rllib.policy.sample_batch import (
     concat_samples,
 )
 
-from ray.rllib.utils.replay_buffers.multi_agent_prioritized_replay_buffer import (
+from ray.rllib.utils.replay_buffers import (
     MultiAgentPrioritizedReplayBuffer,
 )
 from ray.rllib.utils.test_utils import check

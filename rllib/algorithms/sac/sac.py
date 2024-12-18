@@ -1,37 +1,24 @@
 import logging
-import numpy as np
-import tree
-from typing import Any, Dict, List, Optional, Type, Union
+from typing import Any, Dict, Optional, Tuple, Type, Union
 
 from ray.rllib.algorithms.algorithm_config import AlgorithmConfig, NotProvided
-from ray.rllib.algorithms.dqn.dqn import calculate_rr_weights, DQN
+from ray.rllib.algorithms.dqn.dqn import DQN
 from ray.rllib.algorithms.sac.sac_tf_policy import SACTFPolicy
+from ray.rllib.connectors.common.add_observations_from_episodes_to_batch import (
+    AddObservationsFromEpisodesToBatch,
+)
+from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch import (  # noqa
+    AddNextObservationsFromEpisodesToTrainBatch,
+)
 from ray.rllib.core.learner import Learner
-from ray.rllib.core.rl_module.rl_module import SingleAgentRLModuleSpec
-from ray.rllib.execution.rollout_ops import synchronous_parallel_sample
+from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.policy.policy import Policy
-from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils import deep_update
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.deprecation import (
-    DEPRECATED_VALUE,
-    deprecation_warning,
-)
+from ray.rllib.utils.deprecation import DEPRECATED_VALUE, deprecation_warning
 from ray.rllib.utils.framework import try_import_tf, try_import_tfp
-from ray.rllib.utils.metrics import (
-    ALL_MODULES,
-    LAST_TARGET_UPDATE_TS,
-    NUM_AGENT_STEPS_SAMPLED,
-    NUM_ENV_STEPS_SAMPLED,
-    NUM_AGENT_STEPS_TRAINED,
-    NUM_ENV_STEPS_TRAINED,
-    SAMPLE_TIMER,
-    SYNCH_WORKER_WEIGHTS_TIMER,
-)
-from ray.rllib.utils.replay_buffers.utils import (
-    update_priorities_in_episode_replay_buffer,
-)
-from ray.rllib.utils.typing import RLModuleSpec, ResultDict
+from ray.rllib.utils.replay_buffers.episode_replay_buffer import EpisodeReplayBuffer
+from ray.rllib.utils.typing import LearningRateOrSchedule, RLModuleSpecType
 
 tf1, tf, tfv = try_import_tf()
 tfp = try_import_tfp()
@@ -44,20 +31,39 @@ class SACConfig(AlgorithmConfig):
 
     .. testcode::
 
-        config = SACConfig().training(gamma=0.9, lr=0.01, train_batch_size=32)
-        config = config.resources(num_gpus=0)
-        config = config.rollouts(num_rollout_workers=1)
-
-        # Build a Algorithm object from the config and run 1 training iteration.
-        algo = config.build(env="CartPole-v1")
+        config = (
+            SACConfig()
+            .environment("Pendulum-v1")
+            .env_runners(num_env_runners=1)
+            .training(
+                gamma=0.9,
+                actor_lr=0.001,
+                critic_lr=0.002,
+                train_batch_size_per_learner=32,
+            )
+        )
+        # Build the SAC algo object from the config and run 1 training iteration.
+        algo = config.build()
         algo.train()
     """
 
     def __init__(self, algo_class=None):
+        self.exploration_config = {
+            # The Exploration class to use. In the simplest case, this is the name
+            # (str) of any class present in the `rllib.utils.exploration` package.
+            # You can also provide the python class directly or the full location
+            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
+            # EpsilonGreedy").
+            "type": "StochasticSampling",
+            # Add constructor kwargs here (if any).
+        }
+
         super().__init__(algo_class=algo_class or SAC)
+
         # fmt: off
         # __sphinx_doc_begin__
         # SAC-specific config settings.
+        # `.training()`
         self.twin_q = True
         self.q_model_config = {
             "fcnet_hiddens": [256, 256],
@@ -80,18 +86,18 @@ class SACConfig(AlgorithmConfig):
         self.initial_alpha = 1.0
         self.target_entropy = "auto"
         self.n_step = 1
+
+        # Replay buffer configuration.
         self.replay_buffer_config = {
-            "_enable_replay_buffer_api": True,
-            "type": "MultiAgentPrioritizedReplayBuffer",
+            "type": "PrioritizedEpisodeReplayBuffer",
+            # Size of the replay buffer. Note that if async_updates is set,
+            # then each worker will have a replay buffer of this size.
             "capacity": int(1e6),
-            # If True prioritized replay buffer will be used.
-            "prioritized_replay": False,
-            "prioritized_replay_alpha": 0.6,
-            "prioritized_replay_beta": 0.4,
-            "prioritized_replay_eps": 1e-6,
-            # Whether to compute priorities already on the remote worker side.
-            "worker_side_prioritization": False,
+            "alpha": 0.6,
+            # Beta parameter for sampling from prioritized replay buffer.
+            "beta": 0.4,
         }
+
         self.store_buffer_in_checkpoints = False
         self.training_intensity = None
         self.optimization = {
@@ -99,26 +105,19 @@ class SACConfig(AlgorithmConfig):
             "critic_learning_rate": 3e-4,
             "entropy_learning_rate": 3e-4,
         }
+        self.actor_lr = 3e-5
+        self.critic_lr = 3e-4
+        self.alpha_lr = 3e-4
+        # Set `lr` parameter to `None` and ensure it is not used.
+        self.lr = None
         self.grad_clip = None
         self.target_network_update_freq = 0
 
-        # .exploration()
-        self.exploration_config = {
-            # The Exploration class to use. In the simplest case, this is the name
-            # (str) of any class present in the `rllib.utils.exploration` package.
-            # You can also provide the python class directly or the full location
-            # of your class (e.g. "ray.rllib.utils.exploration.epsilon_greedy.
-            # EpsilonGreedy").
-            "type": "StochasticSampling",
-            # Add constructor kwargs here (if any).
-        }
-
-        # .rollout()
+        # .env_runners()
+        # Set to `self.n_step`, if 'auto'.
         self.rollout_fragment_length = "auto"
-        self.compress_observations = False
-
-        # .training()
-        self.train_batch_size = 256
+        self.train_batch_size_per_learner = 256
+        self.train_batch_size = 256  # @OldAPIstack
         # Number of timesteps to collect from rollout workers before we start
         # sampling from replay buffers for learning. Whether we count this in agent
         # steps  or environment steps depends on config.multi_agent(count_steps_by=..).
@@ -146,13 +145,16 @@ class SACConfig(AlgorithmConfig):
         tau: Optional[float] = NotProvided,
         initial_alpha: Optional[float] = NotProvided,
         target_entropy: Optional[Union[str, float]] = NotProvided,
-        n_step: Optional[int] = NotProvided,
+        n_step: Optional[Union[int, Tuple[int, int]]] = NotProvided,
         store_buffer_in_checkpoints: Optional[bool] = NotProvided,
         replay_buffer_config: Optional[Dict[str, Any]] = NotProvided,
         training_intensity: Optional[float] = NotProvided,
         clip_actions: Optional[bool] = NotProvided,
         grad_clip: Optional[float] = NotProvided,
         optimization_config: Optional[Dict[str, Any]] = NotProvided,
+        actor_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        critic_lr: Optional[LearningRateOrSchedule] = NotProvided,
+        alpha_lr: Optional[LearningRateOrSchedule] = NotProvided,
         target_network_update_freq: Optional[int] = NotProvided,
         _deterministic_loss: Optional[bool] = NotProvided,
         _use_beta_distribution: Optional[bool] = NotProvided,
@@ -188,9 +190,10 @@ class SACConfig(AlgorithmConfig):
                 automatically.
             n_step: N-step target updates. If >1, sars' tuples in trajectories will be
                 postprocessed to become sa[discounted sum of R][s t+n] tuples. An
-                integer will be interpreted as a fixed n-step value. In case of a tuple
-                the n-step value will be drawn for each sample in the train batch from
-                a uniform distribution over the  interval defined by the 'n-step'-tuple.
+                integer will be interpreted as a fixed n-step value. If a tuple of 2
+                ints is provided here, the n-step value will be drawn for each sample(!)
+                in the train batch from a uniform distribution over the closed interval
+                defined by `[n_step[0], n_step[1]]`.
             store_buffer_in_checkpoints: Set this to True, if you want the contents of
                 your buffer(s) to be stored in any saved checkpoints as well.
                 Warnings will be created if:
@@ -235,16 +238,16 @@ class SACConfig(AlgorithmConfig):
             training_intensity: The intensity with which to update the model (vs
                 collecting samples from the env).
                 If None, uses "natural" values of:
-                `train_batch_size` / (`rollout_fragment_length` x `num_workers` x
-                `num_envs_per_worker`).
+                `train_batch_size` / (`rollout_fragment_length` x `num_env_runners` x
+                `num_envs_per_env_runner`).
                 If not None, will make sure that the ratio between timesteps inserted
                 into and sampled from th buffer matches the given values.
                 Example:
                 training_intensity=1000.0
                 train_batch_size=250
                 rollout_fragment_length=1
-                num_workers=1 (or 0)
-                num_envs_per_worker=1
+                num_env_runners=1 (or 0)
+                num_envs_per_env_runner=1
                 -> natural value = 250 / 1 = 250.0
                 -> will make sure that replay+train op will be executed 4x asoften as
                 rollout+insert op (4 * 250 = 1000).
@@ -256,6 +259,56 @@ class SACConfig(AlgorithmConfig):
             optimization_config: Config dict for optimization. Set the supported keys
                 `actor_learning_rate`, `critic_learning_rate`, and
                 `entropy_learning_rate` in here.
+            actor_lr: The learning rate (float) or learning rate schedule for the
+                policy in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-5, one decimal less than the respective
+                learning rate of the critic (see `critic_lr`).
+            critic_lr: The learning rate (float) or learning rate schedule for the
+                critic in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: It is common practice (two-timescale approach) to use a smaller
+                learning rate for the policy than for the critic to ensure that the
+                critic gives adequate values for improving the policy.
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, one decimal higher than the respective
+                learning rate of the actor (policy) (see `actor_lr`).
+            alpha_lr: The learning rate (float) or learning rate schedule for the
+                hyperparameter alpha in the format of
+                [[timestep, lr-value], [timestep, lr-value], ...] In case of a
+                schedule, intermediary timesteps will be assigned to linearly
+                interpolated learning rate values. A schedule config's first entry
+                must start with timestep 0, i.e.: [[0, initial_value], [...]].
+                Note: If you require a) more than one optimizer (per RLModule),
+                b) optimizer types that are not Adam, c) a learning rate schedule that
+                is not a linearly interpolated, piecewise schedule as described above,
+                or d) specifying c'tor arguments of the optimizer that are not the
+                learning rate (e.g. Adam's epsilon), then you must override your
+                Learner's `configure_optimizer_for_module()` method and handle
+                lr-scheduling yourself.
+                The default value is 3e-4, identical to the critic learning rate (`lr`).
             target_network_update_freq: Update the target network every
                 `target_network_update_freq` steps.
             _deterministic_loss: Whether the loss should be calculated deterministically
@@ -306,6 +359,12 @@ class SACConfig(AlgorithmConfig):
             self.grad_clip = grad_clip
         if optimization_config is not NotProvided:
             self.optimization = optimization_config
+        if actor_lr is not NotProvided:
+            self.actor_lr = actor_lr
+        if critic_lr is not NotProvided:
+            self.critic_lr = critic_lr
+        if alpha_lr is not NotProvided:
+            self.alpha_lr = alpha_lr
         if target_network_update_freq is not NotProvided:
             self.target_network_update_freq = target_network_update_freq
         if _deterministic_loss is not NotProvided:
@@ -316,11 +375,6 @@ class SACConfig(AlgorithmConfig):
             self.num_steps_sampled_before_learning_starts = (
                 num_steps_sampled_before_learning_starts
             )
-
-        # Include the `twin_q` hyperparameter into the model config.
-        # TODO (simon, sven): Find a general way to update the model_config.
-        if self._enable_new_api_stack:
-            self.model.update({"twin_q": self.twin_q})
 
         return self
 
@@ -370,25 +424,85 @@ class SACConfig(AlgorithmConfig):
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
-        # TODO (sven, simon): Implement the multi-agent case for replay buffers.
-        if self.uses_new_env_runners and self.replay_buffer_config["type"] not in [
-            "EpisodeReplayBuffer",
-            "PrioritizedEpisodeReplayBuffer",
-        ]:
+        if (
+            self.enable_env_runner_and_connector_v2
+            and self.replay_buffer_config["type"]
+            not in [
+                "EpisodeReplayBuffer",
+                "PrioritizedEpisodeReplayBuffer",
+                "MultiAgentEpisodeReplayBuffer",
+                "MultiAgentPrioritizedEpisodeReplayBuffer",
+            ]
+            and not (
+                # TODO (simon): Set up an indicator `is_offline_new_stack` that
+                # includes all these variable checks.
+                self.input_
+                and (
+                    isinstance(self.input_, str)
+                    or (
+                        isinstance(self.input_, list)
+                        and isinstance(self.input_[0], str)
+                    )
+                )
+                and self.input_ != "sampler"
+                and self.enable_rl_module_and_learner
+            )
+        ):
             raise ValueError(
                 "When using the new `EnvRunner API` the replay buffer must be of type "
                 "`EpisodeReplayBuffer`."
+            )
+        elif not self.enable_env_runner_and_connector_v2 and (
+            (
+                isinstance(self.replay_buffer_config["type"], str)
+                and "Episode" in self.replay_buffer_config["type"]
+            )
+            or (
+                isinstance(self.replay_buffer_config["type"], type)
+                and issubclass(self.replay_buffer_config["type"], EpisodeReplayBuffer)
+            )
+        ):
+            raise ValueError(
+                "When using the old API stack the replay buffer must not be of type "
+                "`EpisodeReplayBuffer`! We suggest you use the following config to run "
+                "SAC on the old API stack: `config.training(replay_buffer_config={"
+                "'type': 'MultiAgentPrioritizedReplayBuffer', "
+                "'prioritized_replay_alpha': [alpha], "
+                "'prioritized_replay_beta': [beta], "
+                "'prioritized_replay_eps': [eps], "
+                "})`."
+            )
+
+        if self.enable_rl_module_and_learner:
+            if self.lr is not None:
+                raise ValueError(
+                    "Basic learning rate parameter `lr` is not `None`. For SAC "
+                    "use the specific learning rate parameters `actor_lr`, `critic_lr` "
+                    "and `alpha_lr`, for the actor, critic, and the hyperparameter "
+                    "`alpha`, respectively and set `config.lr` to None."
+                )
+            # Warn about new API stack on by default.
+            logger.warning(
+                "You are running SAC on the new API stack! This is the new default "
+                "behavior for this algorithm. If you don't want to use the new API "
+                "stack, set `config.api_stack(enable_rl_module_and_learner=False, "
+                "enable_env_runner_and_connector_v2=False)`. For a detailed "
+                "migration guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
             )
 
     @override(AlgorithmConfig)
     def get_rollout_fragment_length(self, worker_index: int = 0) -> int:
         if self.rollout_fragment_length == "auto":
-            return self.n_step[1] if isinstance(self.n_step, tuple) else self.n_step
+            return (
+                self.n_step[1]
+                if isinstance(self.n_step, (tuple, list))
+                else self.n_step
+            )
         else:
             return self.rollout_fragment_length
 
     @override(AlgorithmConfig)
-    def get_default_rl_module_spec(self) -> RLModuleSpec:
+    def get_default_rl_module_spec(self) -> RLModuleSpecType:
         from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
         if self.framework_str == "torch":
@@ -396,9 +510,7 @@ class SACConfig(AlgorithmConfig):
                 SACTorchRLModule,
             )
 
-            return SingleAgentRLModuleSpec(
-                module_class=SACTorchRLModule, catalog_class=SACCatalog
-            )
+            return RLModuleSpec(module_class=SACTorchRLModule, catalog_class=SACCatalog)
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -414,6 +526,32 @@ class SACConfig(AlgorithmConfig):
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
             )
+
+    @override(AlgorithmConfig)
+    def build_learner_connector(
+        self,
+        input_observation_space,
+        input_action_space,
+        device=None,
+    ):
+        pipeline = super().build_learner_connector(
+            input_observation_space=input_observation_space,
+            input_action_space=input_action_space,
+            device=device,
+        )
+
+        # Prepend the "add-NEXT_OBS-from-episodes-to-train-batch" connector piece (right
+        # after the corresponding "add-OBS-..." default piece).
+        pipeline.insert_after(
+            AddObservationsFromEpisodesToBatch,
+            AddNextObservationsFromEpisodesToTrainBatch(),
+        )
+
+        return pipeline
+
+    @property
+    def _model_config_auto_includes(self):
+        return super()._model_config_auto_includes | {"twin_q": self.twin_q}
 
 
 class SAC(DQN):
@@ -449,125 +587,23 @@ class SAC(DQN):
             return SACTFPolicy
 
     @override(DQN)
-    def training_step(self) -> ResultDict:
-        # If `RolloutWorker` is used, fall back to the old stack `training step`
-        # of `DQN`.
-        if not self.config.uses_new_env_runners:
-            return super().training_step()
+    def training_step(self) -> None:
+        """SAC training iteration function.
 
-        # Alternate between storing and sampling and training.
-        store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
-        train_results = {}
+        Each training iteration, we:
+        - Sample (MultiAgentBatch) from workers.
+        - Store new samples in replay buffer.
+        - Sample training batch (MultiAgentBatch) from replay buffer.
+        - Learn on training batch.
+        - Update remote workers' new policy weights.
+        - Update target network every `target_network_update_freq` sample steps.
+        - Return all collected metrics for the iteration.
 
-        # Run multiple sampling + storing to buffer iterations.
-        for _ in range(store_weight):
-            # Time sampling.
-            with self._timers[SAMPLE_TIMER]:
-                # Sample in parallel from workers.
-                episodes = synchronous_parallel_sample(
-                    worker_set=self.workers,
-                    sample_timeout_s=self.config.sample_timeout_s,
-                    _uses_new_env_runners=self.config.uses_new_env_runners,
-                )
-            # TODO (sven): single- vs multi-agent.
-            self._counters[NUM_AGENT_STEPS_SAMPLED] += sum(len(e) for e in episodes)
-            self._counters[NUM_ENV_STEPS_SAMPLED] += sum(len(e) for e in episodes)
+        Returns:
+            The results dict from executing the training iteration.
+        """
+        # Old API stack (Policy, RolloutWorker, Connector).
+        if not self.config.enable_env_runner_and_connector_v2:
+            return self._training_step_old_api_stack()
 
-            # Add the sampled experiences to the replay buffer.
-            self.local_replay_buffer.add(episodes)
-
-        # Update the target network each `target_network_update_freq` steps.
-        current_ts = self._counters[
-            NUM_AGENT_STEPS_SAMPLED
-            if self.config.count_steps_by == "agent_steps"
-            else NUM_ENV_STEPS_SAMPLED
-        ]
-
-        # If enough experiences have been sampled start training.
-        if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Run multiple sample-from-buffer and update iterations.
-            for _ in range(sample_and_train_weight):
-                # Sample training batch from replay_buffer.
-                train_dict = self.local_replay_buffer.sample(
-                    num_items=self.config.train_batch_size,
-                    n_step=self.config.n_step,
-                    gamma=self.config.gamma,
-                )
-                train_batch = SampleBatch(train_dict)
-
-                # Convert to multi-agent batch as `LearnerGroup` depends on it.
-                train_batch = train_batch.as_multi_agent()
-
-                # TODO (sven, simon): Streamline the custom metrics reduction
-                # functions via the `Learner`'s `register_metrics()` API.
-                def reduce_fn(results: List[ResultDict]) -> ResultDict:
-                    """Reduces all metrics, but the TD-errors."""
-                    # First get the single modules' results.
-                    module_results = [
-                        v for res in results for k, v in res.items() if k != "__all__"
-                    ]
-                    # Extract the TD-errors as we want to keep them as arrays.
-                    td_errors = tree.map_structure_up_to(
-                        {"td_error": True}, lambda x: x, *module_results
-                    )
-                    # Now reduce all other results.
-                    reduced_results = tree.map_structure(
-                        lambda *x: np.mean(x), *results
-                    )
-                    # Add the TD-error arrays to the results and return.
-                    return {
-                        k: v if k == "__all__" else {**v, "td_error": td_error}
-                        for k, v, td_error in zip(
-                            reduced_results.keys(),
-                            reduced_results.values(),
-                            [None] + list(td_errors.values()),
-                        )
-                    }
-
-                # Perform an update on the buffer-sampled train batch.
-                train_results = self.learner_group.update_from_batch(
-                    train_batch,
-                    reduce_fn=reduce_fn,
-                )
-
-                self._counters[NUM_AGENT_STEPS_TRAINED] += train_batch.agent_steps()
-                self._counters[NUM_ENV_STEPS_TRAINED] += train_batch.env_steps()
-
-                # Update replay buffer priorities.
-                update_priorities_in_episode_replay_buffer(
-                    self.local_replay_buffer,
-                    self.config,
-                    train_batch,
-                    train_results,
-                )
-
-                # Update the target networks if necessary.
-                modules_to_update = set(train_results.keys()) - {ALL_MODULES}
-                additional_results = self.learner_group.additional_update(
-                    module_ids_to_update=modules_to_update,
-                    timestep=self._counters[NUM_AGENT_STEPS_SAMPLED],
-                    last_update=self._counters[LAST_TARGET_UPDATE_TS],
-                )
-                for pid, res in additional_results.items():
-                    if LAST_TARGET_UPDATE_TS in res:
-                        self._counters[LAST_TARGET_UPDATE_TS] = res[
-                            LAST_TARGET_UPDATE_TS
-                        ]
-                    train_results[pid].update(res)
-
-            # Update weights and global_vars - after learning on the local worker -
-            # on all remote workers.
-            with self._timers[SYNCH_WORKER_WEIGHTS_TIMER]:
-                if self.workers.num_remote_workers() > 0:
-                    # NOTE: the new API stack does not use global vars.
-                    self.workers.sync_weights(
-                        from_worker_or_learner_group=self.learner_group,
-                        policies=modules_to_update,
-                        global_vars=None,
-                    )
-                # Then we must have a local worker.
-                else:
-                    weights = self.learner_group.get_weights()
-                    self.workers.local_worker().set_weights(weights)
-
-        return train_results
+        return self._training_step_new_api_stack(with_noise_reset=False)

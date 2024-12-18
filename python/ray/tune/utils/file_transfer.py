@@ -3,14 +3,12 @@ import io
 import os
 import shutil
 import tarfile
-
-from typing import Optional, Tuple, Dict, Generator, Union, List
+from typing import Dict, Generator, List, Optional, Tuple, Union
 
 import ray
-from ray.util.annotations import DeveloperAPI
 from ray.air._internal.filelock import TempFileLock
-from ray.air.util.node import _get_node_id_from_node_ip, _force_on_node
-
+from ray.air.util.node import _force_on_node, _get_node_id_from_node_ip
+from ray.util.annotations import DeveloperAPI
 
 _DEFAULT_CHUNK_SIZE_BYTES = 500 * 1024 * 1024  # 500 MiB
 _DEFAULT_MAX_SIZE_BYTES = 1 * 1024 * 1024 * 1024  # 1 GiB
@@ -433,7 +431,7 @@ def _copy_dir(
         with TempFileLock(f"{target_dir}.lock", timeout=0):
             _delete_path_unsafe(target_dir)
 
-            _ignore = None
+            _ignore_func = None
             if exclude:
 
                 def _ignore(path, names):
@@ -447,7 +445,9 @@ def _copy_dir(
                                 break
                     return ignored_names
 
-            shutil.copytree(source_dir, target_dir, ignore=_ignore)
+                _ignore_func = _ignore
+
+            shutil.copytree(source_dir, target_dir, ignore=_ignore_func)
     except TimeoutError:
         # wait, but do not do anything
         with TempFileLock(f"{target_dir}.lock"):

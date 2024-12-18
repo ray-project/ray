@@ -17,6 +17,7 @@ PyTorch Ecosystem
 
     ~train.torch.TorchTrainer
     ~train.torch.TorchConfig
+    ~train.torch.xla.TorchXLAConfig
 
 .. _train-pytorch-integration:
 
@@ -145,7 +146,7 @@ Ray Train Utilities
 .. autosummary::
     :nosignatures:
     :toctree: doc/
-    
+
     ~train.get_checkpoint
     ~train.get_context
     ~train.get_dataset_shard
@@ -161,6 +162,17 @@ Ray Train Output
     :toctree: doc/
 
     ~train.Result
+
+Ray Train Errors
+----------------
+
+.. autosummary::
+    :nosignatures:
+    :template: autosummary/class_without_autosummary.rst
+    :toctree: doc/
+
+    ~train.error.SessionMisuseError
+    ~train.base_trainer.TrainingFailedError
 
 
 Ray Train Developer APIs

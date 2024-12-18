@@ -17,8 +17,8 @@ from ray_release.test import (
 )
 
 DATAPLANE_S3_BUCKET = "ray-release-automation-results"
-DATAPLANE_FILENAME = "dataplane_20240311.tar.gz"
-DATAPLANE_DIGEST = "7b92d447f9da352cf55a92ec865224a212b07a6e86949da4025a826aba4bb3a3"
+DATAPLANE_FILENAME = "dataplane_20241020.tar.gz"
+DATAPLANE_DIGEST = "c0fadba1b18f57c03db99804b68b929676a8b818e3d13385498afd980e922ef3"
 BASE_IMAGE_WAIT_TIMEOUT = 7200
 BASE_IMAGE_WAIT_DURATION = 30
 RELEASE_BYOD_DIR = os.path.join(RELEASE_PACKAGE_DIR, "ray_release/byod")
@@ -110,8 +110,6 @@ def build_anyscale_base_byod_images(tests: List[Test]) -> None:
     to_be_built = {}
     built = set()
     for test in tests:
-        if not test.is_byod_cluster():
-            continue
         to_be_built[test.get_anyscale_base_byod_image()] = test
 
     env = os.environ.copy()

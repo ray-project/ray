@@ -35,16 +35,13 @@ apt-get install -y -qq \
     clang-format-12 jq \
     clang-tidy-12 clang-12
 
-# Make using GCC 9 explicit.
-update-alternatives --install /usr/bin/gcc gcc /usr/bin/gcc-9 90 --slave /usr/bin/g++ g++ /usr/bin/g++-9 \
-    --slave /usr/bin/gcov gcov /usr/bin/gcov-9
-ln -s /usr/bin/clang-format-12 /usr/bin/clang-format && \
-ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy && \
+ln -s /usr/bin/clang-format-12 /usr/bin/clang-format
+ln -s /usr/bin/clang-tidy-12 /usr/bin/clang-tidy
 ln -s /usr/bin/clang-12 /usr/bin/clang
 
 EOF
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a
@@ -56,7 +53,7 @@ RUN echo "ulimit -c 0" >> /root/.bashrc
 RUN mkdir /ray
 WORKDIR /ray
 
-# Below should be re-run each time
 COPY . .
 
+RUN ./ci/env/install-miniconda.sh
 RUN ./ci/env/install-bazel.sh

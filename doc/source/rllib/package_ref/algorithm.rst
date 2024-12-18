@@ -21,7 +21,7 @@ and thus fully supports distributed hyperparameter tuning for RL.
 
     **A typical RLlib Algorithm object:** Algorhtms are normally comprised of
     N :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker` that
-    orchestrated via a :py:class:`~ray.rllib.evaluation.worker_set.WorkerSet` object.
+    orchestrated via a :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` object.
     Each worker own its own a set of :py:class:`~ray.rllib.policy.policy.Policy` objects and their NN models per worker, plus a :py:class:`~ray.rllib.env.base_env.BaseEnv` instance per worker.
 
 .. _algo-config-api:
@@ -99,7 +99,7 @@ Getter methods
     ~AlgorithmConfig.get_default_learner_class
     ~AlgorithmConfig.get_default_rl_module_spec
     ~AlgorithmConfig.get_evaluation_config_object
-    ~AlgorithmConfig.get_marl_module_spec
+    ~AlgorithmConfig.get_multi_rl_module_spec
     ~AlgorithmConfig.get_multi_agent_setup
     ~AlgorithmConfig.get_rollout_fragment_length
 
@@ -149,6 +149,8 @@ Constructor
     :toctree: doc/
 
     ~Algorithm
+    ~Algorithm.setup
+    ~Algorithm.get_default_config
 
 Inference and Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -173,7 +175,6 @@ Saving and Restoring
     ~Algorithm.export_model
     ~Algorithm.export_policy_checkpoint
     ~Algorithm.export_policy_model
-    ~Algorithm.import_policy_model_from_h5
     ~Algorithm.restore
     ~Algorithm.restore_workers
     ~Algorithm.save
@@ -197,4 +198,3 @@ Multi Agent
 
     ~Algorithm.add_policy
     ~Algorithm.remove_policy
-

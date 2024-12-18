@@ -25,7 +25,12 @@ from ray.rllib.offline import (
 from ray.rllib.offline.json_reader import from_json_data
 from ray.rllib.offline.json_writer import _to_json_dict, _to_json
 from ray.rllib.policy.sample_batch import SampleBatch, convert_ma_batch_to_sample_batch
-from ray.rllib.utils.test_utils import framework_iterator
+from ray.rllib.utils.metrics import (
+    ENV_RUNNER_RESULTS,
+    EPISODE_RETURN_MEAN,
+    EVALUATION_RESULTS,
+    NUM_ENV_STEPS_SAMPLED_LIFETIME,
+)
 
 SAMPLES = SampleBatch(
     {
@@ -52,6 +57,10 @@ class AgentIOTest(unittest.TestCase):
     def write_outputs(self, output, fw, output_config=None):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .framework(fw)
             .training(train_batch_size=250)
@@ -65,52 +74,54 @@ class AgentIOTest(unittest.TestCase):
         return algo
 
     def test_agent_output_ok(self):
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw)
-            # PPO has two workers, so we expect 2 output files.
-            self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
-            reader = JsonReader(self.test_dir + fw + "/*.json")
-            reader.next()
+        self.write_outputs(self.test_dir, "torch")
+        # PPO has two workers, so we expect 2 output files.
+        self.assertEqual(len(os.listdir(self.test_dir + "torch")), 2)
+        reader = JsonReader(self.test_dir + "torch" + "/*.json")
+        reader.next()
 
     def test_agent_output_logdir(self):
         """Test special value 'logdir' as Agent's output."""
-        for fw in framework_iterator():
-            agent = self.write_outputs("logdir", fw)
-            # PPO has two workers, so we expect 2 output files.
-            self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 2)
+        agent = self.write_outputs("logdir", "torch")
+        # PPO has two workers, so we expect 2 output files.
+        self.assertEqual(len(glob.glob(agent.logdir + "/output-*.json")), 2)
 
     def test_agent_output_infos(self):
         """Verify that the infos dictionary is written to the output files.
 
         Note, with torch this is always the case."""
         output_config = {"store_infos": True}
-        for fw in framework_iterator(frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw, output_config=output_config)
-            # PPO has two workers, so we expect 2 output files.
-            self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
-            reader = JsonReader(self.test_dir + fw + "/*.json")
-            data = reader.next()
-            data = convert_ma_batch_to_sample_batch(data)
-            self.assertTrue("infos" in data)
+        self.write_outputs(self.test_dir, "torch", output_config=output_config)
+        # PPO has two workers, so we expect 2 output files.
+        self.assertEqual(len(os.listdir(self.test_dir + "torch")), 2)
+        reader = JsonReader(self.test_dir + "torch" + "/*.json")
+        data = reader.next()
+        data = convert_ma_batch_to_sample_batch(data)
+        self.assertTrue("infos" in data)
 
     def test_agent_input_dir(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .evaluation(off_policy_estimation_methods={})
             .training(train_batch_size=250)
         )
 
-        for fw in framework_iterator(config, frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw)
-            config.offline_data(
-                input_=self.test_dir + fw,
-            )
-            print("WROTE TO: ", self.test_dir)
-            algo = config.build()
-            result = algo.train()
-            self.assertEqual(result["timesteps_total"], 250)  # read from input
-            self.assertTrue(np.isnan(result["episode_reward_mean"]))
+        self.write_outputs(self.test_dir, "torch")
+        config.offline_data(
+            input_=self.test_dir + "torch",
+        )
+        print("WROTE TO: ", self.test_dir)
+        algo = config.build()
+        result = algo.train()
+        self.assertEqual(
+            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
+        )  # read from input
+        self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
 
     def test_split_by_episode(self):
         splits = SAMPLES.split_by_episode()
@@ -122,48 +133,58 @@ class AgentIOTest(unittest.TestCase):
     def test_agent_input_postprocessing_enabled(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
+            .training(train_batch_size=250)
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
             )
             .evaluation(off_policy_estimation_methods={})
         )
 
-        for fw in framework_iterator(config, frameworks=("tf", "torch")):
-            self.write_outputs(self.test_dir, fw)
-            config.offline_data(input_=self.test_dir + fw)
+        self.write_outputs(self.test_dir, "torch")
+        config.offline_data(input_=self.test_dir + "torch")
 
-            # Rewrite the files to drop advantages and value_targets for
-            # testing
-            for path in glob.glob(self.test_dir + fw + "/*.json"):
-                out = []
-                with open(path) as f:
-                    for line in f.readlines():
-                        data_string = json.loads(line)
-                        data = from_json_data(data_string, None)
-                        data = convert_ma_batch_to_sample_batch(data)
-                        # Data won't contain rewards as these are not included
-                        # in the write_outputs run (not needed in the
-                        # SampleBatch). Flip out "rewards" for "advantages"
-                        # just for testing.
-                        data["rewards"] = data["advantages"]
-                        del data["advantages"]
-                        if "value_targets" in data:
-                            del data["value_targets"]
-                        out.append(_to_json_dict(data, []))
-                with open(path, "w") as f:
-                    for data in out:
-                        f.write(json.dumps(data))
+        # Rewrite the files to drop advantages and value_targets for
+        # testing
+        for path in glob.glob(self.test_dir + "torch" + "/*.json"):
+            out = []
+            with open(path) as f:
+                for line in f.readlines():
+                    data_string = json.loads(line)
+                    data = from_json_data(data_string, None)
+                    data = convert_ma_batch_to_sample_batch(data)
+                    # Data won't contain rewards as these are not included
+                    # in the write_outputs run (not needed in the
+                    # SampleBatch). Flip out "rewards" for "advantages"
+                    # just for testing.
+                    data["rewards"] = data["advantages"]
+                    del data["advantages"]
+                    if "value_targets" in data:
+                        del data["value_targets"]
+                    out.append(_to_json_dict(data, []))
+            with open(path, "w") as f:
+                for data in out:
+                    f.write(json.dumps(data))
 
-            algo = config.build()
-            result = algo.train()
-            self.assertEqual(result["timesteps_total"], 250)  # read from input
-            self.assertTrue(np.isnan(result["episode_reward_mean"]))
-            algo.stop()
+        algo = config.build()
+        result = algo.train()
+        self.assertEqual(
+            result[f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}"], 250
+        )  # read from input
+        self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
+        algo.stop()
 
     def test_agent_input_eval_sampler(self):
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
             .offline_data(
                 postprocess_inputs=True,  # adds back 'advantages'
@@ -174,50 +195,17 @@ class AgentIOTest(unittest.TestCase):
             )
         )
 
-        for fw in framework_iterator(config, frameworks=["tf", "torch"]):
-            self.write_outputs(self.test_dir, fw)
-            config.offline_data(input_=self.test_dir + fw)
-            algo = config.build()
-            result = algo.train()
-            assert np.isnan(
-                result["episode_reward_mean"]
-            ), "episode reward should not be computed for offline data"
-            assert not np.isnan(
-                result["evaluation"]["episode_reward_mean"]
-            ), "Did not see simulation results during evaluation"
-            algo.stop()
-
-    def test_agent_input_list(self):
-        config = (
-            PPOConfig()
-            .environment("CartPole-v1")
-            .training(train_batch_size=98, sgd_minibatch_size=49)
-            .evaluation(off_policy_estimation_methods={})
-        )
-
-        for fw in framework_iterator(config, frameworks=("torch", "tf")):
-            self.write_outputs(self.test_dir, fw)
-            config.offline_data(input_=glob.glob(self.test_dir + fw + "/*.json"))
-            algo = config.build()
-            result = algo.train()
-            self.assertEqual(result["timesteps_total"], 250)  # read from input
-            self.assertTrue(np.isnan(result["episode_reward_mean"]))
-            algo.stop()
-
-    def test_agent_input_dict(self):
-        config = PPOConfig().environment("CartPole-v1").training(train_batch_size=2000)
-        for fw in framework_iterator(config):
-            self.write_outputs(self.test_dir, fw)
-            config.offline_data(
-                input_={
-                    self.test_dir + fw: 0.1,
-                    "sampler": 0.9,
-                }
-            )
-            algo = config.build()
-            result = algo.train()
-            self.assertTrue(not np.isnan(result["episode_reward_mean"]))
-            algo.stop()
+        self.write_outputs(self.test_dir, "torch")
+        config.offline_data(input_=self.test_dir + "torch")
+        algo = config.build()
+        result = algo.train()
+        assert np.isnan(
+            result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        ), "episode reward should not be computed for offline data"
+        assert not np.isnan(
+            result[EVALUATION_RESULTS][ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]
+        ), "Did not see simulation results during evaluation"
+        algo.stop()
 
     def test_custom_input_procedure(self):
         class CustomJsonReader(JsonReader):
@@ -231,26 +219,29 @@ class AgentIOTest(unittest.TestCase):
         test_input_procedure = [
             "custom_input",
             input_creator,
-            "ray.rllib.examples.custom_input_api.CustomJsonReader",
+            "ray.rllib.examples.offline_rl.custom_input_api.CustomJsonReader",
         ]
 
         for input_procedure in test_input_procedure:
 
             config = (
                 PPOConfig()
+                .api_stack(
+                    enable_env_runner_and_connector_v2=False,
+                    enable_rl_module_and_learner=False,
+                )
                 .environment("CartPole-v1")
                 .offline_data(input_=input_procedure)
                 .evaluation(off_policy_estimation_methods={})
             )
 
-            for fw in framework_iterator(config, frameworks=("torch", "tf")):
-                self.write_outputs(self.test_dir, fw)
-                config.offline_data(input_config={"input_files": self.test_dir + fw})
-                algo = config.build()
-                result = algo.train()
-                self.assertEqual(result["timesteps_total"], 4000)
-                self.assertTrue(np.isnan(result["episode_reward_mean"]))
-                algo.stop()
+            self.write_outputs(self.test_dir, "torch")
+            config.offline_data(input_config={"input_files": self.test_dir + "torch"})
+            algo = config.build()
+            result = algo.train()
+            self.assertEqual(result[NUM_ENV_STEPS_SAMPLED_LIFETIME], 4000)
+            self.assertTrue(np.isnan(result[ENV_RUNNER_RESULTS][EPISODE_RETURN_MEAN]))
+            algo.stop()
 
     def test_multiple_output_workers(self):
         ray.shutdown()
@@ -258,20 +249,23 @@ class AgentIOTest(unittest.TestCase):
 
         config = (
             PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment("CartPole-v1")
-            .rollouts(num_rollout_workers=2)
+            .env_runners(num_env_runners=2)
             .training(train_batch_size=500)
             .evaluation(off_policy_estimation_methods={})
         )
 
-        for fw in framework_iterator(config, frameworks=["tf", "torch"]):
-            config.offline_data(output=self.test_dir + fw)
-            algo = config.build()
-            algo.train()
-            self.assertEqual(len(os.listdir(self.test_dir + fw)), 2)
-            reader = JsonReader(self.test_dir + fw + "/*.json")
-            reader.next()
-            algo.stop()
+        config.offline_data(output=self.test_dir + "torch")
+        algo = config.build()
+        algo.train()
+        self.assertEqual(len(os.listdir(self.test_dir + "torch")), 2)
+        reader = JsonReader(self.test_dir + "torch" + "/*.json")
+        reader.next()
+        algo.stop()
 
 
 class JsonIOTest(unittest.TestCase):

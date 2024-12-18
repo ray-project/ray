@@ -1,16 +1,12 @@
 import json
 import logging
-import numpy as np
 from pathlib import Path
-
 from typing import TYPE_CHECKING, Dict, TextIO
 
-from ray.air.constants import (
-    EXPR_PARAM_FILE,
-    EXPR_PARAM_PICKLE_FILE,
-    EXPR_RESULT_FILE,
-)
+import numpy as np
+
 import ray.cloudpickle as cloudpickle
+from ray.air.constants import EXPR_PARAM_FILE, EXPR_PARAM_PICKLE_FILE, EXPR_RESULT_FILE
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
 from ray.tune.utils.util import SafeFallbackEncoder
 from ray.util.annotations import Deprecated, PublicAPI

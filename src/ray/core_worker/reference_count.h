@@ -49,11 +49,14 @@ class ReferenceCounterInterface {
       bool is_reconstructable,
       bool add_local_ref,
       const absl::optional<NodeID> &pinned_at_raylet_id = absl::optional<NodeID>()) = 0;
-  virtual bool SetDeleteCallback(
+  virtual bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) = 0;
+  virtual bool SetObjectRefDeletedCallback(
       const ObjectID &object_id,
       const std::function<void(const ObjectID &)> callback) = 0;
 
-  virtual ~ReferenceCounterInterface() {}
+  virtual ~ReferenceCounterInterface() = default;
 };
 
 /// Class used by the core worker to keep track of ObjectID reference counts for garbage
@@ -71,35 +74,34 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ReferenceCounter(const rpc::Address &rpc_address,
                    pubsub::PublisherInterface *object_info_publisher,
                    pubsub::SubscriberInterface *object_info_subscriber,
-                   const std::function<bool(const NodeID &node_id)> &check_node_alive,
-                   bool lineage_pinning_enabled = false,
-                   rpc::ClientFactoryFn client_factory = nullptr)
+                   std::function<bool(const NodeID &node_id)> check_node_alive,
+                   bool lineage_pinning_enabled = false)
       : rpc_address_(rpc_address),
         lineage_pinning_enabled_(lineage_pinning_enabled),
-        borrower_pool_(client_factory),
         object_info_publisher_(object_info_publisher),
         object_info_subscriber_(object_info_subscriber),
-        check_node_alive_(check_node_alive) {}
+        check_node_alive_(std::move(check_node_alive)) {}
 
-  ~ReferenceCounter() {}
+  ~ReferenceCounter() override = default;
 
   /// Wait for all object references to go out of scope, and then shutdown.
   ///
   /// \param shutdown The shutdown callback to call.
-  void DrainAndShutdown(std::function<void()> shutdown);
+  void DrainAndShutdown(std::function<void()> shutdown) ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Return true if the worker owns any object.
-  bool OwnObjects() const;
+  /// Return the size of the reference count table
+  /// (i.e. the number of objects that have references).
+  size_t Size() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Return true if the object is owned by us.
-  bool OwnedByUs(const ObjectID &object_id) const;
+  bool OwnedByUs(const ObjectID &object_id) const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Increase the reference count for the ObjectID by one. If there is no
   /// entry for the ObjectID, one will be created. The object ID will not have
   /// any owner information, since we don't know how it was created.
   ///
   /// \param[in] object_id The object to to increment the count for.
-  void AddLocalReference(const ObjectID &object_id, const std::string &call_site)
+  void AddLocalReference(const ObjectID &object_id, const std::string &call_site) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Decrease the local reference count for the ObjectID by one.
@@ -131,8 +133,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// have already incremented them when the task was first submitted.
   ///
   /// \param[in] argument_ids The arguments of the task to add references for.
-  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> return_ids,
-                                       const std::vector<ObjectID> &argument_ids)
+  void UpdateResubmittedTaskReferences(const std::vector<ObjectID> &argument_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Update object references that were given to a submitted task. The task
@@ -188,7 +189,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
                       bool is_reconstructable,
                       bool add_local_ref,
                       const absl::optional<NodeID> &pinned_at_raylet_id =
-                          absl::optional<NodeID>()) ABSL_LOCKS_EXCLUDED(mutex_);
+                          absl::optional<NodeID>()) override ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Add an owned object that was dynamically created. These are objects that
   /// were created by a task that we called, but that we own.
@@ -265,7 +266,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   bool AddBorrowedObject(const ObjectID &object_id,
                          const ObjectID &outer_id,
                          const rpc::Address &owner_address,
-                         bool foreign_owner_already_monitoring = false)
+                         bool foreign_owner_already_monitoring = false) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get the owner address of the given object.
@@ -316,14 +317,21 @@ class ReferenceCounter : public ReferenceCounterInterface,
   void FreePlasmaObjects(const std::vector<ObjectID> &object_ids)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  /// Sets the callback that will be run when the object goes out of scope.
+  /// Adds the callback that will be run when the object goes out of scope
+  /// (Reference.OutOfScope() returns true).
   /// Returns true if the object was in scope and the callback was added, else false.
-  bool SetDeleteCallback(const ObjectID &object_id,
-                         const std::function<void(const ObjectID &)> callback)
+  bool AddObjectOutOfScopeOrFreedCallback(
+      const ObjectID &object_id,
+      const std::function<void(const ObjectID &)> callback) override
       ABSL_LOCKS_EXCLUDED(mutex_);
 
-  void ResetDeleteCallbacks(const std::vector<ObjectID> &object_ids)
-      ABSL_LOCKS_EXCLUDED(mutex_);
+  /// Sets the callback that will be run when the object reference is deleted
+  /// from the reference table (all refs including lineage ref count go to 0).
+  /// Returns true if the object was in the reference table and the callback was added
+  /// else false.
+  bool SetObjectRefDeletedCallback(const ObjectID &object_id,
+                                   const std::function<void(const ObjectID &)> callback)
+      override ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Set a callback for when we are no longer borrowing this object (when our
   /// ref count goes to 0).
@@ -374,6 +382,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// (local, submitted_task) reference counts. For debugging purposes.
   std::unordered_map<ObjectID, std::pair<size_t, size_t>> GetAllReferenceCounts() const
       ABSL_LOCKS_EXCLUDED(mutex_);
+
+  std::string DebugString() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Populate a table with ObjectIDs that we were or are still borrowing.
   /// This should be called when a task returns, and the argument should be any
@@ -508,11 +518,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id The object id
   /// \param[out] The object information that will be filled by a given object id.
-  /// \return OK status if object information is filled. Non OK status otherwise.
-  /// It can return non-OK status, for example, if the object for the object id
-  /// doesn't exist.
-  Status FillObjectInformation(const ObjectID &object_id,
-                               rpc::WorkerObjectLocationsPubMessage *object_info)
+  void FillObjectInformation(const ObjectID &object_id,
+                             rpc::WorkerObjectLocationsPubMessage *object_info)
       ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Handle an object has been spilled to external storage.
@@ -532,7 +539,7 @@ class ReferenceCounter : public ReferenceCounterInterface,
   ///
   /// \param[in] object_id Object whose locality data we want.
   /// \return Locality data.
-  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const;
+  absl::optional<LocalityData> GetLocalityData(const ObjectID &object_id) const override;
 
   /// Report locality data for object. This is used by the FutureResolver to report
   /// locality data for borrowed refs.
@@ -562,8 +569,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// \param[in] min_bytes_to_evict The minimum number of bytes to evict.
   int64_t EvictLineage(int64_t min_bytes_to_evict);
 
-  /// Update that the object is ready to be fetched.
-  void UpdateObjectReady(const ObjectID &object_id);
+  /// Update whether the object is pending creation.
+  void UpdateObjectPendingCreation(const ObjectID &object_id, bool pending_creation);
 
   /// Whether the object is pending creation (the task that creates it is
   /// scheduled/executing).
@@ -621,19 +628,19 @@ class ReferenceCounter : public ReferenceCounterInterface,
 
   struct Reference {
     /// Constructor for a reference whose origin is unknown.
-    Reference() {}
-    Reference(std::string call_site, const int64_t object_size)
-        : call_site(call_site), object_size(object_size) {}
+    Reference() = default;
+    Reference(std::string call_site, int64_t object_size)
+        : call_site(std::move(call_site)), object_size(object_size) {}
     /// Constructor for a reference that we created.
-    Reference(const rpc::Address &owner_address,
+    Reference(rpc::Address owner_address,
               std::string call_site,
-              const int64_t object_size,
+              int64_t object_size,
               bool is_reconstructable,
-              const absl::optional<NodeID> &pinned_at_raylet_id)
-        : call_site(call_site),
+              absl::optional<NodeID> pinned_at_raylet_id)
+        : call_site(std::move(call_site)),
           object_size(object_size),
-          owner_address(owner_address),
-          pinned_at_raylet_id(pinned_at_raylet_id),
+          owner_address(std::move(owner_address)),
+          pinned_at_raylet_id(std::move(pinned_at_raylet_id)),
           owned_by_us(true),
           is_reconstructable(is_reconstructable),
           foreign_owner_already_monitoring(false),
@@ -729,6 +736,8 @@ class ReferenceCounter : public ReferenceCounterInterface,
       return nested_reference_count.get();
     }
 
+    std::string DebugString() const;
+
     /// Description of the call site where the reference was created.
     std::string call_site = "<unknown>";
     /// Object size if known, otherwise -1;
@@ -775,9 +784,16 @@ class ReferenceCounter : public ReferenceCounterInterface,
     /// Metadata related to borrowing.
     std::unique_ptr<BorrowInfo> borrow_info;
 
-    /// Callback that will be called when this ObjectID no longer has
-    /// references.
-    std::function<void(const ObjectID &)> on_delete;
+    /// Callback that will be called when this object
+    /// is out of scope or manually freed.
+    /// Note: when an object is out of scope, it can still
+    /// have lineage ref count and on_object_ref_delete
+    /// will be called when lineage ref count is also 0.
+    std::vector<std::function<void(const ObjectID &)>>
+        on_object_out_of_scope_or_freed_callbacks;
+    /// Callback that will be called when the object ref is deleted
+    /// from the reference table (all refs including lineage ref count go to 0).
+    std::function<void(const ObjectID &)> on_object_ref_delete;
     /// Callback that is called when this process is no longer a borrower
     /// (RefCount() == 0).
     std::function<void(const ObjectID &)> on_ref_removed;
@@ -832,9 +848,12 @@ class ReferenceCounter : public ReferenceCounterInterface,
                         rpc::Address *owner_address = nullptr) const
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
-  /// Release the pinned plasma object, if any. Also unsets the raylet address
-  /// that the object was pinned at, if the address was set.
-  void ReleasePlasmaObject(ReferenceTable::iterator it);
+  /// Unsets the raylet address
+  /// that the object was pinned at or spilled at, if the address was set.
+  void UnsetObjectPrimaryCopy(ReferenceTable::iterator it);
+
+  /// This should be called whenever the object is out of scope or manually freed.
+  void OnObjectOutOfScopeOrFreed(ReferenceTable::iterator it);
 
   /// Shutdown if all references have gone out of scope and shutdown
   /// is scheduled.
@@ -1012,14 +1031,6 @@ class ReferenceCounter : public ReferenceCounterInterface,
   /// Reference can be deleted. The object's lineage ref count is the number of
   /// tasks that depend on that object that may be retried in the future.
   const bool lineage_pinning_enabled_;
-
-  /// Factory for producing new core worker clients.
-  rpc::ClientFactoryFn client_factory_;
-
-  /// Pool from worker address to core worker client. The owner of an object
-  /// uses this client to request a notification from borrowers once the
-  /// borrower's ref count for the ID goes to 0.
-  rpc::CoreWorkerClientPool borrower_pool_;
 
   /// Protects access to the reference counting state.
   mutable absl::Mutex mutex_;

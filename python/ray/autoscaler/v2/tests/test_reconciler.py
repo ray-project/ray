@@ -4,11 +4,10 @@ import time
 
 # coding: utf-8
 from collections import defaultdict
+from unittest import mock
+from unittest.mock import MagicMock
 
 import pytest
-
-import mock
-from mock import MagicMock
 
 from ray._private.utils import binary_to_hex
 from ray.autoscaler.v2.instance_manager.config import InstanceReconcileConfig, Provider

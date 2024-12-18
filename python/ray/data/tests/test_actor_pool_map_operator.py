@@ -1,17 +1,19 @@
+import asyncio
 import collections
-import time
+import threading
+import unittest
+from typing import Any, Optional, Tuple
 
 import pytest
 
 import ray
+from ray._private.test_utils import wait_for_condition
+from ray.actor import ActorHandle
 from ray.data._internal.compute import ActorPoolStrategy
-from ray.data._internal.execution.operators.actor_pool_map_operator import (
-    AutoscalingConfig,
-    AutoscalingPolicy,
-    _ActorPool,
-)
+from ray.data._internal.execution.operators.actor_pool_map_operator import _ActorPool
 from ray.data._internal.execution.util import make_ref_bundles
 from ray.tests.conftest import *  # noqa
+from ray.types import ObjectRef
 
 
 @ray.remote
@@ -23,28 +25,86 @@ class PoolWorker:
         return self.node_id
 
 
-class TestActorPool:
-    def _add_ready_worker(self, pool: _ActorPool) -> ray.actor.ActorHandle:
-        actor = PoolWorker.remote()
+class TestActorPool(unittest.TestCase):
+    def setup_class(self):
+        self._last_created_actor_and_ready_ref: Optional[
+            Tuple[ActorHandle, ObjectRef[Any]]
+        ] = None
+        self._actor_node_id = "node1"
+        ray.init(num_cpus=4)
+
+    def teardown_class(self):
+        ray.shutdown()
+
+    def _create_actor_fn(self) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        actor = PoolWorker.remote(self._actor_node_id)
         ready_ref = actor.get_location.remote()
-        pool.add_pending_actor(actor, ready_ref)
-        # Wait until actor has started.
+        self._last_created_actor_and_ready_ref = actor, ready_ref
+        return actor, ready_ref
+
+    def _create_actor_pool(
+        self,
+        min_size=1,
+        max_size=4,
+        max_tasks_in_flight=4,
+    ):
+        pool = _ActorPool(
+            compute_strategy=ActorPoolStrategy(
+                min_size=min_size,
+                max_size=max_size,
+                max_tasks_in_flight_per_actor=max_tasks_in_flight,
+            ),
+            create_actor_fn=self._create_actor_fn,
+        )
+        return pool
+
+    def _add_pending_actor(
+        self, pool: _ActorPool, node_id="node1"
+    ) -> Tuple[ActorHandle, ObjectRef[Any]]:
+        self._actor_node_id = node_id
+        assert pool.scale_up(1) == 1
+        assert self._last_created_actor_and_ready_ref is not None
+        actor, ready_ref = self._last_created_actor_and_ready_ref
+        self._last_created_actor_and_ready_ref = None
+        return actor, ready_ref
+
+    def _wait_for_actor_ready(self, pool: _ActorPool, ready_ref):
         ray.get(ready_ref)
-        # Mark actor as running.
-        has_actor = pool.pending_to_running(ready_ref)
-        assert has_actor
+        pool.pending_to_running(ready_ref)
+
+    def _add_ready_actor(self, pool: _ActorPool, node_id="node1") -> ActorHandle:
+        actor, ready_ref = self._add_pending_actor(pool, node_id)
+        self._wait_for_actor_ready(pool, ready_ref)
         return actor
 
-    def test_add_pending(self, ray_start_regular_shared):
+    def _wait_for_actor_dead(self, actor_id: str):
+        def _check_actor_dead():
+            nonlocal actor_id
+            actor_info = ray.state.actors(actor_id)
+            return actor_info["State"] == "DEAD"
+
+        wait_for_condition(_check_actor_dead)
+
+    def test_basic_config(self):
+        pool = self._create_actor_pool(
+            min_size=1,
+            max_size=4,
+            max_tasks_in_flight=4,
+        )
+        assert pool.min_size() == 1
+        assert pool.max_size() == 4
+        assert pool.current_size() == 0
+        assert pool.max_tasks_in_flight_per_actor() == 4
+
+    def test_add_pending(self):
         # Test that pending actor is added in the correct state.
-        pool = _ActorPool()
-        actor = PoolWorker.remote()
-        ready_ref = actor.get_location.remote()
-        pool.add_pending_actor(actor, ready_ref)
+        pool = self._create_actor_pool()
+        _, ready_ref = self._add_pending_actor(pool)
         # Check that the pending actor is not pickable.
+
         assert pool.pick_actor() is None
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 1
+        assert pool.current_size() == 1
         assert pool.num_pending_actors() == 1
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -53,33 +113,80 @@ class TestActorPool:
         # Check that ready future is returned.
         assert pool.get_pending_actor_refs() == [ready_ref]
 
-    def test_pending_to_running(self, ray_start_regular_shared):
+    def test_pending_to_running(self):
         # Test that pending actor is correctly transitioned to running.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Check that the actor is pickable.
         picked_actor = pool.pick_actor()
         assert picked_actor == actor
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 1
+        assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 1
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 3
 
-    def test_repeated_picking(self, ray_start_regular_shared):
+    def test_restarting_to_alive(self):
+        # Test that actor is correctly transitioned from restarting to alive.
+        pool = self._create_actor_pool(max_tasks_in_flight=1)
+        actor = self._add_ready_actor(pool)
+
+        # Mark the actor as restarting and test pick_actor fails
+        pool.update_running_actor_state(actor, True)
+        assert pool.pick_actor() is None
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 1
+        assert pool.num_alive_actors() == 0
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+        assert (
+            pool.actor_info_progress_str()
+            == "; Actors: 1 (alive 0, restarting 1, pending 0)"
+        )
+
+        # Mark the actor as alive and test pick_actor succeeds
+        pool.update_running_actor_state(actor, False)
+        picked_actor = pool.pick_actor()
+        assert picked_actor == actor
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 1
+        assert pool.num_idle_actors() == 0
+        assert pool.num_free_slots() == 0
+        assert pool.actor_info_progress_str() == "; Actors: 1"
+
+        # Return the actor
+        pool.return_actor(picked_actor)
+        assert pool.current_size() == 1
+        assert pool.num_pending_actors() == 0
+        assert pool.num_running_actors() == 1
+        assert pool.num_restarting_actors() == 0
+        assert pool.num_alive_actors() == 1
+        assert pool.num_active_actors() == 0
+        assert pool.num_idle_actors() == 1
+        assert pool.num_free_slots() == 1
+        assert pool.actor_info_progress_str() == "; Actors: 1"
+
+    def test_repeated_picking(self):
         # Test that we can repeatedly pick the same actor.
-        pool = _ActorPool(max_tasks_in_flight=999)
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool(max_tasks_in_flight=999)
+        actor = self._add_ready_actor(pool)
         for _ in range(10):
             picked_actor = pool.pick_actor()
             assert picked_actor == actor
 
-    def test_return_actor(self, ray_start_regular_shared):
+    def test_return_actor(self):
         # Test that we can return an actor as many times as we've picked it.
-        pool = _ActorPool(max_tasks_in_flight=999)
-        self._add_ready_worker(pool)
+        pool = self._create_actor_pool(max_tasks_in_flight=999)
+        self._add_ready_actor(pool)
         for _ in range(10):
             picked_actor = pool.pick_actor()
         # Return the actor as many times as it was picked.
@@ -90,17 +197,17 @@ class TestActorPool:
         with pytest.raises(AssertionError):
             pool.return_actor(picked_actor)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 1
+        assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1  # Actor should now be idle.
         assert pool.num_free_slots() == 999
 
-    def test_pick_max_tasks_in_flight(self, ray_start_regular_shared):
+    def test_pick_max_tasks_in_flight(self):
         # Test that we can't pick an actor beyond the max_tasks_in_flight cap.
-        pool = _ActorPool(max_tasks_in_flight=2)
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
+        actor = self._add_ready_actor(pool)
         assert pool.num_free_slots() == 2
         assert pool.pick_actor() == actor
         assert pool.num_free_slots() == 1
@@ -109,40 +216,40 @@ class TestActorPool:
         # Check that the 3rd pick doesn't return the actor.
         assert pool.pick_actor() is None
 
-    def test_pick_ordering_lone_idle(self, ray_start_regular_shared):
+    def test_pick_ordering_lone_idle(self):
         # Test that a lone idle actor is the one that's picked.
-        pool = _ActorPool()
-        self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        self._add_ready_actor(pool)
         # Ensure that actor has been picked once.
         pool.pick_actor()
         # Add a new, idle actor.
-        actor2 = self._add_ready_worker(pool)
+        actor2 = self._add_ready_actor(pool)
         # Check that picked actor is the idle newly added actor.
         picked_actor = pool.pick_actor()
         assert picked_actor == actor2
 
-    def test_pick_ordering_full_order(self, ray_start_regular_shared):
+    def test_pick_ordering_full_order(self):
         # Test that the least loaded actor is always picked.
-        pool = _ActorPool()
+        pool = self._create_actor_pool()
         # Add 4 actors to the pool.
-        actors = [self._add_ready_worker(pool) for _ in range(4)]
+        actors = [self._add_ready_actor(pool) for _ in range(4)]
         # Pick 4 actors.
         picked_actors = [pool.pick_actor() for _ in range(4)]
         # Check that the 4 distinct actors that were added to the pool were all
         # returned.
         assert set(picked_actors) == set(actors)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 4
+        assert pool.current_size() == 4
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 4
         assert pool.num_active_actors() == 4
         assert pool.num_idle_actors() == 0
 
-    def test_pick_all_max_tasks_in_flight(self, ray_start_regular_shared):
+    def test_pick_all_max_tasks_in_flight(self):
         # Test that max_tasks_in_flight cap applies to all actors in pool.
-        pool = _ActorPool(max_tasks_in_flight=2)
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
         # Add 4 actors to the pool.
-        actors = [self._add_ready_worker(pool) for _ in range(4)]
+        actors = [self._add_ready_actor(pool) for _ in range(4)]
         picked_actors = [pool.pick_actor() for _ in range(8)]
         pick_counts = collections.Counter(picked_actors)
         # Check that picks were evenly distributed over the pool.
@@ -150,14 +257,14 @@ class TestActorPool:
         for actor, count in pick_counts.items():
             assert actor in actors
             assert count == 2
-        # Check that the next pick doesn't return an ctor.
+        # Check that the next pick doesn't return an actor.
         assert pool.pick_actor() is None
 
-    def test_pick_ordering_with_returns(self, ray_start_regular_shared):
+    def test_pick_ordering_with_returns(self):
         # Test that pick ordering works with returns.
-        pool = _ActorPool()
-        actor1 = self._add_ready_worker(pool)
-        actor2 = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor1 = self._add_ready_actor(pool)
+        actor2 = self._add_ready_actor(pool)
         picked_actors = [pool.pick_actor() for _ in range(2)]
         # Double-check that both actors were picked.
         assert set(picked_actors) == {actor1, actor2}
@@ -166,58 +273,54 @@ class TestActorPool:
         # Check that actor 2 is the next actor that's picked.
         assert pool.pick_actor() == actor2
 
-    def test_kill_inactive_pending_actor(self, ray_start_regular_shared):
+    def test_kill_inactive_pending_actor(self):
         # Test that a pending actor is killed on the kill_inactive_actor() call.
-        pool = _ActorPool()
-        actor = PoolWorker.remote()
-        ready_ref = actor.get_location.remote()
-        pool.add_pending_actor(actor, ready_ref)
+        pool = self._create_actor_pool()
+        actor, _ = self._add_pending_actor(pool)
         # Kill inactive actor.
         killed = pool.kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
         assert pool.get_pending_actor_refs() == []
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_kill_inactive_idle_actor(self, ray_start_regular_shared):
+    def test_kill_inactive_idle_actor(self):
         # Test that a idle actor is killed on the kill_inactive_actor() call.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Kill inactive actor.
         killed = pool.kill_inactive_actor()
         # Check that an actor was killed.
         assert killed
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_kill_inactive_active_actor_not_killed(self, ray_start_regular_shared):
+    def test_kill_inactive_active_actor_not_killed(self):
         # Test that active actors are NOT killed on the kill_inactive_actor() call.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actor.
@@ -227,16 +330,14 @@ class TestActorPool:
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
 
-    def test_kill_inactive_pending_over_idle(self, ray_start_regular_shared):
+    def test_kill_inactive_pending_over_idle(self):
         # Test that a killing pending actors is prioritized over killing idle actors on
         # the kill_inactive_actor() call.
-        pool = _ActorPool()
+        pool = self._create_actor_pool()
         # Add pending worker.
-        pending_actor = PoolWorker.remote()
-        ready_ref = pending_actor.get_location.remote()
-        pool.add_pending_actor(pending_actor, ready_ref)
+        pending_actor, _ = self._add_pending_actor(pool)
         # Add idle worker.
-        idle_actor = self._add_ready_worker(pool)
+        idle_actor = self._add_ready_actor(pool)
         # Kill inactive actor.
         killed = pool.kill_inactive_actor()
         # Check that an actor was killed.
@@ -246,25 +347,22 @@ class TestActorPool:
         pool.return_actor(idle_actor)
         # Check that the pending actor is not in pool.
         assert pool.get_pending_actor_refs() == []
-        # Check that actor was killed.
-        # Wait a second to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(pending_actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = pending_actor._actor_id.hex()
+        del pending_actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 1
+        assert pool.current_size() == 1
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 1
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 1
         assert pool.num_free_slots() == 4
 
-    def test_kill_all_inactive_pending_actor_killed(self, ray_start_regular_shared):
+    def test_kill_all_inactive_pending_actor_killed(self):
         # Test that pending actors are killed on the kill_all_inactive_actors() call.
-        pool = _ActorPool()
-        actor = PoolWorker.remote()
-        ready_ref = actor.get_location.remote()
-        pool.add_pending_actor(actor, ready_ref)
+        pool = self._create_actor_pool()
+        actor, ready_ref = self._add_pending_actor(pool)
         # Kill inactive actors.
         pool.kill_all_inactive_actors()
         # Check that actor is not in pool.
@@ -272,44 +370,42 @@ class TestActorPool:
         # Check that actor is no longer in the pool as pending, to protect against
         # ready/killed races.
         assert not pool.pending_to_running(ready_ref)
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_kill_all_inactive_idle_actor_killed(self, ray_start_regular_shared):
+    def test_kill_all_inactive_idle_actor_killed(self):
         # Test that idle actors are killed on the kill_all_inactive_actors() call.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Kill inactive actors.
         pool.kill_all_inactive_actors()
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_kill_all_inactive_active_actor_not_killed(self, ray_start_regular_shared):
+    def test_kill_all_inactive_active_actor_not_killed(self):
         # Test that active actors are NOT killed on the kill_all_inactive_actors() call.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors.
@@ -317,13 +413,11 @@ class TestActorPool:
         # Check that the active actor is still in the pool.
         assert pool.pick_actor() == actor
 
-    def test_kill_all_inactive_future_idle_actors_killed(
-        self, ray_start_regular_shared
-    ):
+    def test_kill_all_inactive_future_idle_actors_killed(self):
         # Test that future idle actors are killed after the kill_all_inactive_actors()
         # call.
-        pool = _ActorPool()
-        actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor
         # Kill inactive actors, of which there are currently none.
@@ -336,35 +430,32 @@ class TestActorPool:
             pool.return_actor(actor)
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor._actor_id.hex()
+        del actor
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_kill_all_inactive_mixture(self, ray_start_regular_shared):
+    def test_kill_all_inactive_mixture(self):
         # Test that in a mixture of pending, idle, and active actors, only the pending
         # and idle actors are killed on the kill_all_inactive_actors() call.
-        pool = _ActorPool()
+        pool = self._create_actor_pool()
         # Add active actor.
-        actor1 = self._add_ready_worker(pool)
+        actor1 = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == actor1
         # Add idle actor.
-        self._add_ready_worker(pool)
+        self._add_ready_actor(pool)
         # Add pending actor.
-        actor3 = PoolWorker.remote()
-        ready_ref = actor3.get_location.remote()
-        pool.add_pending_actor(actor3, ready_ref)
+        actor3, ready_ref = self._add_pending_actor(pool)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 3
+        assert pool.current_size() == 3
         assert pool.num_pending_actors() == 1
         assert pool.num_running_actors() == 2
         assert pool.num_active_actors() == 1
@@ -387,39 +478,40 @@ class TestActorPool:
             pool.return_actor(actor1)
         # Check that actor is not in pool.
         assert pool.pick_actor() is None
-        # Check that actor was killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(actor1.get_location.remote())
+        # Check that actor is dead.
+        actor_id = actor1._actor_id.hex()
+        del actor1
+        self._wait_for_actor_dead(actor_id)
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
         assert pool.num_idle_actors() == 0
         assert pool.num_free_slots() == 0
 
-    def test_all_actors_killed(self, ray_start_regular_shared):
+    def test_all_actors_killed(self):
         # Test that all actors are killed after the kill_all_actors() call.
-        pool = _ActorPool()
-        active_actor = self._add_ready_worker(pool)
+        pool = self._create_actor_pool()
+        active_actor = self._add_ready_actor(pool)
         # Pick actor (and double-check that the actor was picked).
         assert pool.pick_actor() == active_actor
-        idle_actor = self._add_ready_worker(pool)
+        idle_actor = self._add_ready_actor(pool)
         # Kill all actors, including active actors.
         pool.kill_all_actors()
         # Check that the pool is empty.
         assert pool.pick_actor() is None
-        # Check that both actors were killed.
-        # Wait a few seconds to let actor killing happen.
-        time.sleep(1)
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(idle_actor.get_location.remote())
-        with pytest.raises(ray.exceptions.RayActorError):
-            ray.get(active_actor.get_location.remote())
+
+        # Check that both actors are dead
+        actor_id = active_actor._actor_id.hex()
+        del active_actor
+        self._wait_for_actor_dead(actor_id)
+        actor_id = idle_actor._actor_id.hex()
+        del idle_actor
+        self._wait_for_actor_dead(actor_id)
+
         # Check that the per-state pool sizes are as expected.
-        assert pool.num_total_actors() == 0
+        assert pool.current_size() == 0
         assert pool.num_pending_actors() == 0
         assert pool.num_running_actors() == 0
         assert pool.num_active_actors() == 0
@@ -427,7 +519,7 @@ class TestActorPool:
         assert pool.num_free_slots() == 0
 
     def test_locality_manager_actor_ranking(self):
-        pool = _ActorPool(max_tasks_in_flight=2)
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(10)])
@@ -437,16 +529,8 @@ class TestActorPool:
         pool._get_location = lambda b: fake_loc_map[b]
 
         # Setup an actor on each node.
-        actor1 = PoolWorker.remote(node_id="node1")
-        ready_ref = actor1.get_location.remote()
-        pool.add_pending_actor(actor1, ready_ref)
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
-        actor2 = PoolWorker.remote(node_id="node2")
-        ready_ref = actor2.get_location.remote()
-        pool.add_pending_actor(actor2, ready_ref)
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
+        actor1 = self._add_ready_actor(pool, node_id="node1")
+        actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Actors on node1 should be preferred.
         res1 = pool.pick_actor(bundles[0])
@@ -463,7 +547,7 @@ class TestActorPool:
         assert res5 is None
 
     def test_locality_manager_busyness_ranking(self):
-        pool = _ActorPool(max_tasks_in_flight=2)
+        pool = self._create_actor_pool(max_tasks_in_flight=2)
 
         # Setup bundle mocks.
         bundles = make_ref_bundles([[0] for _ in range(10)])
@@ -474,24 +558,16 @@ class TestActorPool:
         pool._get_location = lambda b: fake_loc_map[b]
 
         # Setup two actors on the same node.
-        actor1 = PoolWorker.remote(node_id="node1")
-        ready_ref = actor1.get_location.remote()
-        pool.add_pending_actor(actor1, ready_ref)
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
-        actor2 = PoolWorker.remote(node_id="node1")
-        ready_ref = actor2.get_location.remote()
-        pool.add_pending_actor(actor2, ready_ref)
-        ray.get(ready_ref)
-        pool.pending_to_running(ready_ref)
+        actor1 = self._add_ready_actor(pool, node_id="node1")
+        actor2 = self._add_ready_actor(pool, node_id="node2")
 
         # Fake actor 2 as more busy.
-        pool._num_tasks_in_flight[actor2] = 1
+        pool._running_actors[actor2].num_tasks_in_flight = 1
         res1 = pool.pick_actor(bundles[0])
         assert res1 == actor1
 
         # Fake actor 2 as more busy again.
-        pool._num_tasks_in_flight[actor2] = 2
+        pool._running_actors[actor2].num_tasks_in_flight = 2
         res2 = pool.pick_actor(bundles[0])
         assert res2 == actor1
 
@@ -500,166 +576,141 @@ class TestActorPool:
         assert res3 is None
 
 
-class TestAutoscalingConfig:
-    def test_min_workers_validation(self):
-        # Test min_workers positivity validation.
-        with pytest.raises(ValueError):
-            AutoscalingConfig(min_workers=0, max_workers=2)
+def test_start_actor_timeout(ray_start_regular, restore_data_context):
+    """Tests that ActorPoolMapOperator raises an exception on
+    timeout while waiting for actors."""
 
-    def test_max_workers_validation(self):
-        # Test max_workers not being less than min_workers validation.
-        with pytest.raises(ValueError):
-            AutoscalingConfig(min_workers=3, max_workers=2)
+    class UDFClass:
+        def __call__(self, x):
+            return x
 
-    def test_max_tasks_in_flight_validation(self):
-        # Test max_tasks_in_flight positivity validation.
-        with pytest.raises(ValueError):
-            AutoscalingConfig(min_workers=1, max_workers=2, max_tasks_in_flight=0)
+    from ray.exceptions import GetTimeoutError
 
-    def test_full_specification(self):
-        # Basic regression test for full specification.
-        config = AutoscalingConfig(
-            min_workers=2,
-            max_workers=100,
-            max_tasks_in_flight=3,
-            ready_to_total_workers_ratio=0.8,
-            idle_to_total_workers_ratio=0.25,
+    ray.data.DataContext.get_current().wait_for_min_actors_s = 1
+
+    with pytest.raises(
+        GetTimeoutError,
+        match=(
+            "Timed out while starting actors. This may mean that the cluster "
+            "does not have enough resources for the requested actor pool."
+        ),
+    ):
+        # Specify an unachievable resource requirement to ensure
+        # we timeout while waiting for actors.
+        ray.data.range(10).map_batches(
+            UDFClass,
+            batch_size=1,
+            compute=ray.data.ActorPoolStrategy(size=5),
+            num_gpus=100,
+        ).take_all()
+
+
+def test_actor_pool_fault_tolerance_e2e(ray_start_cluster, restore_data_context):
+    """Test that a dataset with actor pools can finish, when
+    all nodes in the cluster are removed and added back."""
+    cluster = ray_start_cluster
+    cluster.add_node(num_cpus=0)
+    ray.init()
+
+    # Ensure block size is small enough to pass resource limits
+    context = ray.data.DataContext.get_current()
+    context.target_max_block_size = 1
+
+    @ray.remote(num_cpus=0)
+    class Signal:
+        def __init__(self):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._num_alive_actors = 0
+            self._all_nodes_removed = False
+            self._all_nodes_restarted = False
+
+        async def notify_actor_alive(self):
+            self._num_alive_actors += 1
+
+        async def wait_for_actors_alive(self, value):
+            while self._num_alive_actors != value:
+                await asyncio.sleep(0.01)
+
+        async def notify_nodes_removed(self):
+            self._all_nodes_removed = True
+
+        async def notify_nodes_restarted(self):
+            self._all_nodes_restarted = True
+
+        async def wait_for_nodes_removed(self):
+            while not self._all_nodes_removed:
+                await asyncio.sleep(0.01)
+
+        async def wait_for_nodes_restarted(self):
+            while not self._all_nodes_restarted:
+                await asyncio.sleep(0.01)
+
+    # Create the signal actor on the head node.
+    signal_actor = Signal.remote()
+
+    # Spin up nodes
+    num_nodes = 1
+    nodes = []
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
+    cluster.wait_for_nodes()
+
+    class MyUDF:
+        def __init__(self, signal_actor):
+            self._node_id = ray.get_runtime_context().get_node_id()
+            self._signal_actor = signal_actor
+            self._signal_sent = False
+
+        def __call__(self, batch):
+            if not self._signal_sent:
+                # Notify the Actor is alive
+                self._signal_actor.notify_actor_alive.remote()
+
+                # Wait for the driver to remove nodes. This makes sure all
+                # actors are running tasks when removing nodes.
+                ray.get(self._signal_actor.wait_for_nodes_removed.remote())
+
+                self._signal_sent = True
+
+            return batch
+
+    res = []
+    num_items = 100
+
+    def run_dataset():
+        nonlocal res
+
+        ds = ray.data.range(num_items, override_num_blocks=num_items)
+        ds = ds.map_batches(
+            MyUDF,
+            fn_constructor_args=[signal_actor],
+            concurrency=num_nodes,
+            batch_size=1,
+            num_gpus=1,
         )
-        assert config.min_workers == 2
-        assert config.max_workers == 100
-        assert config.max_tasks_in_flight == 3
-        assert config.ready_to_total_workers_ratio == 0.8
-        assert config.idle_to_total_workers_ratio == 0.25
+        res = ds.take_all()
 
-    def test_from_compute(self):
-        # Test that construction from ActorPoolStrategy works as expected.
-        compute = ActorPoolStrategy(
-            min_size=2, max_size=5, max_tasks_in_flight_per_actor=3
-        )
-        config = AutoscalingConfig.from_compute_strategy(compute)
-        assert config.min_workers == 2
-        assert config.max_workers == 5
-        assert config.max_tasks_in_flight == 3
-        assert config.ready_to_total_workers_ratio == 0.8
-        assert config.idle_to_total_workers_ratio == 0.5
+    # Kick off Actors
+    thread = threading.Thread(target=run_dataset)
+    thread.start()
 
+    # Wait for all actors to start
+    ray.get(signal_actor.wait_for_actors_alive.remote(num_nodes))
 
-class TestAutoscalingPolicy:
-    def test_min_workers(self):
-        # Test that the autoscaling policy forwards the config's min_workers.
-        config = AutoscalingConfig(min_workers=1, max_workers=4)
-        policy = AutoscalingPolicy(config)
-        assert policy.min_workers == 1
+    # Remove all the nodes
+    for node in nodes:
+        cluster.remove_node(node)
+    nodes.clear()
+    ray.get(signal_actor.notify_nodes_removed.remote())
 
-    def test_max_workers(self):
-        # Test that the autoscaling policy forwards the config's max_workers.
-        config = AutoscalingConfig(min_workers=1, max_workers=4)
-        policy = AutoscalingPolicy(config)
-        assert policy.max_workers == 4
+    # Add back all the nodes
+    for _ in range(num_nodes):
+        nodes.append(cluster.add_node(num_cpus=10, num_gpus=1))
+    cluster.wait_for_nodes()
+    ray.get(signal_actor.notify_nodes_restarted.remote())
 
-    def test_should_scale_up_over_min_workers(self):
-        config = AutoscalingConfig(min_workers=1, max_workers=4)
-        policy = AutoscalingPolicy(config)
-        num_total_workers = 0
-        num_running_workers = 0
-        # Should scale up since under pool min workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
-
-    def test_should_scale_up_over_max_workers(self):
-        # Test that scale-up is blocked if the pool would go over the configured max
-        # workers.
-        config = AutoscalingConfig(min_workers=1, max_workers=4)
-        policy = AutoscalingPolicy(config)
-        num_total_workers = 4
-        num_running_workers = 4
-        # Shouldn't scale up due to pool max workers.
-        assert not policy.should_scale_up(num_total_workers, num_running_workers)
-
-        num_total_workers = 3
-        num_running_workers = 3
-        # Should scale up since under pool max workers.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
-
-    def test_should_scale_up_ready_to_total_ratio(self):
-        # Test that scale-up is blocked if under the ready workers to total workers
-        # ratio.
-        config = AutoscalingConfig(
-            min_workers=1, max_workers=4, ready_to_total_workers_ratio=0.5
-        )
-        policy = AutoscalingPolicy(config)
-
-        num_total_workers = 2
-        num_running_workers = 1
-        # Shouldn't scale up due to being under ready workers to total workers ratio.
-        assert not policy.should_scale_up(num_total_workers, num_running_workers)
-
-        num_total_workers = 3
-        num_running_workers = 2
-        # Shouldn scale up due to being over ready workers to total workers ratio.
-        assert policy.should_scale_up(num_total_workers, num_running_workers)
-
-    def test_should_scale_down_min_workers(self):
-        # Test that scale-down is blocked if the pool would go under the configured min
-        # workers.
-        config = AutoscalingConfig(min_workers=2, max_workers=4)
-        policy = AutoscalingPolicy(config)
-        num_total_workers = 2
-        num_idle_workers = 2
-        # Shouldn't scale down due to pool min workers.
-        assert not policy.should_scale_down(num_total_workers, num_idle_workers)
-
-        num_total_workers = 3
-        num_idle_workers = 3
-        # Should scale down since over pool min workers.
-        assert policy.should_scale_down(num_total_workers, num_idle_workers)
-
-    def test_should_scale_down_idle_to_total_ratio(self):
-        # Test that scale-down is blocked if under the idle workers to total workers
-        # ratio.
-        config = AutoscalingConfig(
-            min_workers=1, max_workers=4, idle_to_total_workers_ratio=0.5
-        )
-        policy = AutoscalingPolicy(config)
-        num_total_workers = 4
-        num_idle_workers = 1
-        # Shouldn't scale down due to being under idle workers to total workers ratio.
-        assert not policy.should_scale_down(num_total_workers, num_idle_workers)
-
-        num_total_workers = 4
-        num_idle_workers = 3
-        # Should scale down due to being over idle workers to total workers ratio.
-        assert policy.should_scale_down(num_total_workers, num_idle_workers)
-
-    def test_start_actor_timeout(ray_start_regular_shared):
-        """Tests that ActorPoolMapOperator raises an exception on
-        timeout while waiting for actors."""
-
-        class UDFClass:
-            def __call__(self, x):
-                return x
-
-        from ray.data._internal.execution.operators import actor_pool_map_operator
-        from ray.exceptions import GetTimeoutError
-
-        original_timeout = actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC
-        actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = 1
-
-        with pytest.raises(
-            GetTimeoutError,
-            match=(
-                "Timed out while starting actors. This may mean that the cluster "
-                "does not have enough resources for the requested actor pool."
-            ),
-        ):
-            # Specify an unachievable resource requirement to ensure
-            # we timeout while waiting for actors.
-            ray.data.range(10).map_batches(
-                UDFClass,
-                batch_size=1,
-                compute=ray.data.ActorPoolStrategy(size=5),
-                num_gpus=100,
-            ).take_all()
-        actor_pool_map_operator.DEFAULT_WAIT_FOR_MIN_ACTORS_SEC = original_timeout
+    thread.join()
+    assert sorted(res, key=lambda x: x["id"]) == [{"id": i} for i in range(num_items)]
 
 
 if __name__ == "__main__":

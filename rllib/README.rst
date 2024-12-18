@@ -9,7 +9,7 @@ Whether you would like to train your agents in **multi-agent** setups,
 purely from **offline** (historic) datasets, or using **externally
 connected simulators**, RLlib offers simple solutions for your decision making needs.
 
-If you either have your problem coded (in python) as an 
+If you either have your problem coded (in python) as an
 `RL environment <https://docs.ray.io/en/master/rllib/rllib-env.html#configuring-environments>`_
 or own lots of pre-recorded, historic behavioral data to learn from, you will be
 up and running in only a few days.
@@ -33,26 +33,16 @@ Installation and Setup
 
 Install RLlib and run your first experiment on your laptop in seconds:
 
-**TensorFlow:**
-
-.. code-block:: bash
-
-    $ conda create -n rllib python=3.8
-    $ conda activate rllib
-    $ pip install "ray[rllib]" tensorflow "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0
-
-
 **PyTorch:**
 
 .. code-block:: bash
 
-    $ conda create -n rllib python=3.8
+    $ conda create -n rllib python=3.11
     $ conda activate rllib
     $ pip install "ray[rllib]" torch "gymnasium[atari]" "gymnasium[accept-rom-license]" atari_py
-    $ # Run a test job:
-    $ rllib train --run APPO --env CartPole-v0 --torch
+    $ # Run a test job (assuming you are in the `ray` pip-installed directory):
+    $ cd rllib/examples/inference/
+    $ python policy_inference_after_training.py --stop-reward=100.0
 
 
 Algorithms Supported
@@ -60,16 +50,16 @@ Algorithms Supported
 
 Model-free On-policy RL:
 
-- `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__ 
+- `Synchronous Proximal Policy Optimization (APPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#appo>`__
 - `Proximal Policy Optimization (PPO) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#ppo>`__
-- `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__   
+- `Importance Weighted Actor-Learner Architecture (IMPALA) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#impala>`__
 
 Model-free Off-policy RL:
 
 - `Deep Q Networks (DQN, Rainbow, Parametric DQN) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dqn>`__
 - `Soft Actor Critic (SAC) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sac>`__
 
-Model-based RL: 
+Model-based RL:
 
 - `DreamerV3 <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#dreamerv3>`__
 
@@ -79,16 +69,16 @@ Offline RL:
 - `Conservative Q-Learning (CQL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#cql>`__
 - `Monotonic Advantage Re-Weighted Imitation Learning (MARWIL) <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#marwil>`__
 
-Multi-agent:  
+Multi-agent:
 
-- `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__ 
+- `Parameter Sharing <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#parameter>`__
 - `Shared Critic Methods <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#sc>`__
 
-Others:  
+Others:
 
 - `Fully Independent Learning <https://docs.ray.io/en/master/rllib/rllib-algorithms.html#fil>`__
 
-A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .  
+A list of all the algorithms can be found `here <https://docs.ray.io/en/master/rllib/rllib-algorithms.html>`__ .
 
 
 Quick First Experiment
@@ -153,6 +143,10 @@ Quick First Experiment
     # act in the above environment.
     config = (
         PPOConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
         .environment(
             # Env class to use (here: our gym.Env sub-class from above).
             env=ParrotEnv,
@@ -161,8 +155,8 @@ Quick First Experiment
                 "parrot_shriek_range": gym.spaces.Box(-5.0, 5.0, (1, ))
             },
         )
-        # Parallelize environment rollouts.
-        .rollouts(num_rollout_workers=3)
+        # Parallelize environment sampling.
+        .env_runners(num_env_runners=3)
     )
     # Use the config's `build()` method to construct a PPO object.
     algo = config.build()
@@ -173,7 +167,7 @@ Quick First Experiment
     # we can expect to reach an optimal episode reward of 0.0.
     for i in range(1):
         results = algo.train()
-        print(f"Iter: {i}; avg. reward={results['episode_reward_mean']}")
+        print(f"Iter: {i}; avg. return={results['env_runners/episode_return_mean']}")
 
 .. testoutput::
     :options: +MOCK
@@ -231,11 +225,11 @@ The most **popular deep-learning frameworks**: `PyTorch <https://github.com/ray-
 (tf1.x/2.x static-graph/eager/traced) <https://github.com/ray-project/ray/blob/master/rllib/examples/custom_tf_policy.py>`_.
 
 **Highly distributed learning**: Our RLlib algorithms (such as our "PPO" or "IMPALA")
-allow you to set the ``num_workers`` config parameter, such that your workloads can run
+allow you to set the ``num_env_runners`` config parameter, such that your workloads can run
 on 100s of CPUs/nodes thus parallelizing and speeding up learning.
 
 **Vectorized (batched) and remote (parallel) environments**: RLlib auto-vectorizes
-your ``gym.Envs`` via the ``num_envs_per_worker`` config. Environment workers can
+your ``gym.Envs`` via the ``num_envs_per_env_runner`` config. Environment workers can
 then batch and thus significantly speedup the action computing forward pass.
 On top of that, RLlib offers the ``remote_worker_envs`` config to create
 `single environments (within a vectorized one) as ray Actors <https://github.com/ray-project/ray/blob/master/rllib/examples/remote_base_env_with_custom_api.py>`_,
@@ -255,8 +249,8 @@ thus parallelizing even the env stepping process.
 **External simulators**: Don't have your simulation running as a gym.Env in python?
 No problem! RLlib supports an external environment API and comes with a pluggable,
 off-the-shelve
-`client <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_client.py>`_/
-`server <https://github.com/ray-project/ray/blob/master/rllib/examples/serving/cartpole_server.py>`_
+`client <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`_/
+`server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`_
 setup that allows you to run 100s of independent simulators on the "outside"
 (e.g. a Windows cloud) connecting to a central RLlib Policy-Server that learns
 and serves actions. Alternatively, actions can be computed on the client side

@@ -24,6 +24,9 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "ray/util/event_label.h"
+#include "src/ray/protobuf/gcs.pb.h"
+
+using json = nlohmann::json;
 
 namespace ray {
 
@@ -33,6 +36,7 @@ class TestEventReporter : public BaseEventReporter {
   virtual void Report(const rpc::Event &event, const json &custom_fields) override {
     event_list.push_back(event);
   }
+  virtual void ReportExportEvent(const rpc::ExportEvent &export_event) override {}
   virtual void Close() override {}
   virtual ~TestEventReporter() {}
   virtual std::string GetReporterKey() override { return "test.event.reporter"; }
@@ -468,6 +472,65 @@ TEST_F(EventTest, TestWithField) {
   EXPECT_EQ(bool_value, true);
 }
 
+TEST_F(EventTest, TestExportEvent) {
+  std::vector<SourceTypeVariant> source_types = {
+      rpc::ExportEvent_SourceType::ExportEvent_SourceType_EXPORT_TASK,
+      rpc::Event_SourceType::Event_SourceType_RAYLET};
+  RayEventInit_(source_types,
+                absl::flat_hash_map<std::string, std::string>(),
+                log_dir,
+                "warning",
+                false);
+
+  std::shared_ptr<rpc::ExportTaskEventData> task_event_ptr =
+      std::make_shared<rpc::ExportTaskEventData>();
+  task_event_ptr->set_task_id("task_id0");
+  task_event_ptr->set_attempt_number(1);
+  task_event_ptr->set_job_id("job_id0");
+
+  std::string export_event_data_str;
+  google::protobuf::util::JsonPrintOptions options;
+  options.preserve_proto_field_names = true;
+  RAY_CHECK(google::protobuf::util::MessageToJsonString(
+                *task_event_ptr, &export_event_data_str, options)
+                .ok());
+  json event_data_as_json = json::parse(export_event_data_str);
+
+  RayExportEvent(task_event_ptr).SendEvent();
+  // Verify this event doesn't show up in the event_EXPORT_TASK_123.log file.
+  // It should only show up in the event_RAYLET.log file.
+  RAY_EVENT(WARNING, "label") << "test warning";
+
+  std::vector<std::string> vc;
+  ReadContentFromFile(
+      vc,
+      log_dir + "/export_events/event_EXPORT_TASK_" + std::to_string(getpid()) + ".log");
+
+  EXPECT_EQ((int)vc.size(), 1);
+
+  std::cout << vc[0];
+  json export_event_as_json = json::parse(vc[0]);
+  EXPECT_EQ(export_event_as_json["source_type"].get<std::string>(), "EXPORT_TASK");
+  EXPECT_EQ(export_event_as_json.contains("event_id"), true);
+  EXPECT_EQ(export_event_as_json.contains("timestamp"), true);
+  EXPECT_EQ(export_event_as_json.contains("event_data"), true);
+  // Fields that shouldn't exist for export events but do exist for standard events
+  EXPECT_EQ(export_event_as_json.contains("severity"), false);
+  EXPECT_EQ(export_event_as_json.contains("label"), false);
+  EXPECT_EQ(export_event_as_json.contains("message"), false);
+
+  json event_data = export_event_as_json["event_data"].get<json>();
+  EXPECT_EQ(event_data, event_data_as_json);
+
+  // Verify "test warning" event was written to event_RAYLET.log file
+  std::vector<std::string> vc1;
+  ReadContentFromFile(vc1, log_dir + "/events/event_RAYLET.log");
+  EXPECT_EQ((int)vc1.size(), 1);
+  json raylet_event_as_json = json::parse(vc1[0]);
+  EXPECT_EQ(raylet_event_as_json["source_type"].get<std::string>(), "RAYLET");
+  EXPECT_EQ(raylet_event_as_json["message"].get<std::string>(), "test warning");
+}
+
 TEST_F(EventTest, TestRayCheckAbort) {
   auto custom_fields = absl::flat_hash_map<std::string, std::string>();
   custom_fields.emplace("node_id", "node 1");
@@ -508,7 +571,9 @@ TEST_F(EventTest, TestRayEventInit) {
   custom_fields.emplace("node_id", "node 1");
   custom_fields.emplace("job_id", "job 1");
   custom_fields.emplace("task_id", "task 1");
-  RayEventInit(rpc::Event_SourceType::Event_SourceType_RAYLET, custom_fields, log_dir);
+  const std::vector<SourceTypeVariant> source_types = {
+      rpc::Event_SourceType::Event_SourceType_RAYLET};
+  RayEventInit_(source_types, custom_fields, log_dir, "warning", false);
 
   RAY_EVENT(FATAL, "label") << "test error event";
 

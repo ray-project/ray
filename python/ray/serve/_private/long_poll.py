@@ -4,6 +4,7 @@ import os
 import random
 from asyncio.events import AbstractEventLoop
 from collections import defaultdict
+from collections.abc import Mapping
 from dataclasses import dataclass
 from enum import Enum, auto
 from typing import Any, Callable, DefaultDict, Dict, Optional, Set, Tuple, Union
@@ -88,7 +89,11 @@ class LongPollClient:
         self.key_listeners = key_listeners
         self.event_loop = call_in_event_loop
         self.snapshot_ids: Dict[KeyType, int] = {
-            key: -1 for key in self.key_listeners.keys()
+            # The initial snapshot id for each key is < 0,
+            # but real snapshot keys in the long poll host are always >= 0,
+            # so this will always trigger an initial update.
+            key: -1
+            for key in self.key_listeners.keys()
         }
         self.is_running = True
 
@@ -175,12 +180,12 @@ class LongPollHost:
 
     The desired use case is to embed this in an Ray actor. Client will be
     expected to call actor.listen_for_change.remote(...). On the host side,
-    you can call host.notify_changed(key, object) to update the state and
+    you can call host.notify_changed({key: object}) to update the state and
     potentially notify whoever is polling for these values.
 
     Internally, we use snapshot_ids for each object to identify client with
     outdated object and immediately return the result. If the client has the
-    up-to-date verison, then the listen_for_change call will only return when
+    up-to-date version, then the listen_for_change call will only return when
     the object is updated.
     """
 
@@ -191,11 +196,9 @@ class LongPollHost:
         ] = LISTEN_FOR_CHANGE_REQUEST_TIMEOUT_S,
     ):
         # Map object_key -> int
-        self.snapshot_ids: DefaultDict[KeyType, int] = defaultdict(
-            lambda: random.randint(0, 1_000_000)
-        )
+        self.snapshot_ids: Dict[KeyType, int] = {}
         # Map object_key -> object
-        self.object_snapshots: Dict[KeyType, Any] = dict()
+        self.object_snapshots: Dict[KeyType, Any] = {}
         # Map object_key -> set(asyncio.Event waiting for updates)
         self.notifier_events: DefaultDict[KeyType, Set[asyncio.Event]] = defaultdict(
             set
@@ -247,16 +250,24 @@ class LongPollHost:
         immediately if the snapshot_ids are outdated, otherwise it will block
         until there's an update.
         """
-        watched_keys = keys_to_snapshot_ids.keys()
-        existent_keys = set(watched_keys).intersection(set(self.snapshot_ids.keys()))
-
         # If there are any keys with outdated snapshot ids,
         # return their updated values immediately.
-        updated_objects = {
-            key: UpdatedObject(self.object_snapshots[key], self.snapshot_ids[key])
-            for key in existent_keys
-            if self.snapshot_ids[key] != keys_to_snapshot_ids[key]
-        }
+        updated_objects = {}
+        for key, client_snapshot_id in keys_to_snapshot_ids.items():
+            try:
+                existing_id = self.snapshot_ids[key]
+            except KeyError:
+                # The caller may ask for keys that we don't know about (yet),
+                # just ignore them.
+                # This can happen when, for example,
+                # a deployment handle is manually created for an app
+                # that hasn't been deployed yet (by bypassing the safety checks).
+                continue
+
+            if existing_id != client_snapshot_id:
+                updated_objects[key] = UpdatedObject(
+                    self.object_snapshots[key], existing_id
+                )
         if len(updated_objects) > 0:
             self._count_send(updated_objects)
             return updated_objects
@@ -264,7 +275,7 @@ class LongPollHost:
         # Otherwise, register asyncio events to be waited.
         async_task_to_events = {}
         async_task_to_watched_keys = {}
-        for key in watched_keys:
+        for key in keys_to_snapshot_ids.keys():
             # Create a new asyncio event for this key.
             event = asyncio.Event()
 
@@ -296,15 +307,15 @@ class LongPollHost:
             self._count_send(LongPollState.TIME_OUT)
             return LongPollState.TIME_OUT
         else:
-            updated_object_key: str = async_task_to_watched_keys[done.pop()]
-            updated_object = {
-                updated_object_key: UpdatedObject(
+            updated_objects = {}
+            for task in done:
+                updated_object_key = async_task_to_watched_keys[task]
+                updated_objects[updated_object_key] = UpdatedObject(
                     self.object_snapshots[updated_object_key],
                     self.snapshot_ids[updated_object_key],
                 )
-            }
-            self._count_send(updated_object)
-            return updated_object
+            self._count_send(updated_objects)
+            return updated_objects
 
     async def listen_for_change_java(
         self,
@@ -393,15 +404,22 @@ class LongPollHost:
         proto = LongPollResult(**data)
         return proto.SerializeToString()
 
-    def notify_changed(
-        self,
-        object_key: KeyType,
-        updated_object: Any,
-    ):
-        self.snapshot_ids[object_key] += 1
-        self.object_snapshots[object_key] = updated_object
-        logger.debug(f"LongPollHost: Notify change for key {object_key}.")
+    def notify_changed(self, updates: Mapping[KeyType, Any]) -> None:
+        """
+        Update the current snapshot of some objects
+        and notify any long poll clients.
+        """
+        for object_key, updated_object in updates.items():
+            try:
+                self.snapshot_ids[object_key] += 1
+            except KeyError:
+                # Initial snapshot id must be >= 0, so that the long poll client
+                # can send a negative initial snapshot id to get a fast update.
+                # They should also be randomized; see
+                # https://github.com/ray-project/ray/pull/45881#discussion_r1645243485
+                self.snapshot_ids[object_key] = random.randint(0, 1_000_000)
+            self.object_snapshots[object_key] = updated_object
+            logger.debug(f"LongPollHost: Notify change for key {object_key}.")
 
-        if object_key in self.notifier_events:
-            for event in self.notifier_events.pop(object_key):
+            for event in self.notifier_events.pop(object_key, set()):
                 event.set()

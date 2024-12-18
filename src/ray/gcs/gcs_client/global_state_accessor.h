@@ -49,7 +49,9 @@ class GlobalStateAccessor {
   /// \return All job info. To support multi-language, we serialize each JobTableData and
   /// return the serialized string. Where used, it needs to be deserialized with
   /// protobuf function.
-  std::vector<std::string> GetAllJobInfo() ABSL_LOCKS_EXCLUDED(mutex_);
+  std::vector<std::string> GetAllJobInfo(bool skip_submission_job_info_field = false,
+                                         bool skip_is_running_tasks_field = false)
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get next job id from GCS Service.
   ///
@@ -72,6 +74,13 @@ class GlobalStateAccessor {
   /// each AvailableResources and return the serialized string. Where used, it needs to be
   /// deserialized with protobuf function.
   std::vector<std::string> GetAllAvailableResources() ABSL_LOCKS_EXCLUDED(mutex_);
+
+  /// Get total resources of all nodes.
+  ///
+  /// \return total resources of all nodes. To support multi-language, we serialize
+  /// each TotalResources and return the serialized string. Where used, it needs to be
+  /// deserialized with protobuf function.
+  std::vector<std::string> GetAllTotalResources() ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Get draining nodes.
   ///
@@ -194,6 +203,15 @@ class GlobalStateAccessor {
   /// \return The serialized system config.
   std::string GetSystemConfig() ABSL_LOCKS_EXCLUDED(mutex_);
 
+  /// Get the node with the specified node ID.
+  ///
+  /// \param[in] node_id The hex string format of the node ID.
+  /// \param[out] node_info The output parameter to store the node info. To support
+  /// multi-language, we serialize each GcsNodeInfo and return the serialized string.
+  /// Where used, it needs to be deserialized with protobuf function.
+  ray::Status GetNode(const std::string &node_id, std::string *node_info)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// Get the node to connect for a Ray driver.
   ///
   /// \param[in] node_ip_address The IP address of the desired node to connect.
@@ -205,6 +223,12 @@ class GlobalStateAccessor {
       ABSL_LOCKS_EXCLUDED(mutex_);
 
  private:
+  /// Synchronously get the current alive nodes from GCS Service.
+  ///
+  /// \param[out] nodes The output parameter to store the alive nodes.
+  ray::Status GetAliveNodes(std::vector<rpc::GcsNodeInfo> &nodes)
+      ABSL_LOCKS_EXCLUDED(mutex_);
+
   /// MultiItem transformation helper in template style.
   ///
   /// \return MultiItemCallback within in rpc type DATA.
@@ -227,7 +251,7 @@ class GlobalStateAccessor {
   template <class DATA>
   OptionalItemCallback<DATA> TransformForOptionalItemCallback(
       std::unique_ptr<std::string> &data, std::promise<bool> &promise) {
-    return [&data, &promise](const Status &status, const boost::optional<DATA> &result) {
+    return [&data, &promise](const Status &status, const std::optional<DATA> &result) {
       RAY_CHECK_OK(status);
       if (result) {
         data.reset(new std::string(result->SerializeAsString()));

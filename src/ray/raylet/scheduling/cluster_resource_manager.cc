@@ -23,8 +23,8 @@
 namespace ray {
 
 ClusterResourceManager::ClusterResourceManager(instrumented_io_context &io_service)
-    : timer_(io_service) {
-  timer_.RunFnPeriodically(
+    : timer_(PeriodicalRunner::Create(io_service)) {
+  timer_->RunFnPeriodically(
       [this]() {
         auto syncer_delay = absl::Milliseconds(
             RayConfig::instance().ray_syncer_message_refresh_interval_ms());

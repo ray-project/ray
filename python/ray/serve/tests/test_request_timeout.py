@@ -1,7 +1,6 @@
 import asyncio
 import os
 import sys
-import time
 from typing import Generator, Set
 
 import pytest
@@ -14,9 +13,8 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, wait_for_condition
 from ray.dashboard.modules.serve.sdk import ServeSubmissionClient
-from ray.serve._private.common import ApplicationStatus
 from ray.serve._private.test_utils import send_signal_on_cancellation
-from ray.serve.schema import ServeInstanceDetails
+from ray.serve.schema import ApplicationStatus, ServeInstanceDetails
 from ray.util.state import list_tasks
 
 
@@ -197,7 +195,7 @@ def test_request_hangs_in_assignment(ray_instance, shutdown_serve):
 @pytest.mark.parametrize(
     "ray_instance",
     [
-        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "0.1"},
+        {"RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S": "5"},
     ],
     indirect=True,
 )
@@ -206,22 +204,20 @@ def test_streaming_request_already_sent_and_timed_out(ray_instance, shutdown_ser
     Verify that streaming requests are timed out even if some chunks have already
     been sent.
     """
+    signal_actor = SignalActor.remote()
 
     @serve.deployment(graceful_shutdown_timeout_s=0, max_ongoing_requests=1)
-    class SleepForNSeconds:
-        def __init__(self, sleep_s: int):
-            self.sleep_s = sleep_s
-
-        def generate_numbers(self) -> Generator[str, None, None]:
+    class BlockOnSecondChunk:
+        async def generate_numbers(self) -> Generator[str, None, None]:
             for i in range(2):
                 yield f"generated {i}"
-                time.sleep(self.sleep_s)
+                await signal_actor.wait.remote()
 
         def __call__(self, request: Request) -> StreamingResponse:
             gen = self.generate_numbers()
             return StreamingResponse(gen, status_code=200, media_type="text/plain")
 
-    serve.run(SleepForNSeconds.bind(0.11))  # 0.11s > 0.1s timeout
+    serve.run(BlockOnSecondChunk.bind())
 
     r = requests.get("http://localhost:8000", stream=True)
     iterator = r.iter_content(chunk_size=None, decode_unicode=True)
@@ -300,7 +296,8 @@ def test_cancel_on_http_timeout_during_execution(
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     if use_fastapi:
         app = FastAPI()
@@ -314,7 +311,8 @@ def test_cancel_on_http_timeout_during_execution(
             @app.get("/")
             async def wait_for_cancellation(self):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     else:
 
@@ -325,7 +323,8 @@ def test_cancel_on_http_timeout_during_execution(
 
             async def __call__(self, request: Request):
                 _ = self._handle.remote()
-                await send_signal_on_cancellation(outer_signal_actor)
+                async with send_signal_on_cancellation(outer_signal_actor):
+                    pass
 
     serve.run(Ingress.bind(inner.bind()))
 

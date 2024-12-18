@@ -91,17 +91,21 @@ class DataConfig:
             worker_node_ids if self._execution_options.locality_with_output else None
         )
         for name, ds in datasets.items():
-            ds = ds.copy(ds)
-            ds.context.execution_options = copy.deepcopy(self._execution_options)
+            execution_options = copy.deepcopy(self._execution_options)
 
-            # Add training-reserved resources to Data's exclude_resources.
-            ds.context.execution_options.exclude_resources = (
-                ds.context.execution_options.exclude_resources.add(
-                    ExecutionResources(
-                        cpu=self._num_train_cpus, gpu=self._num_train_gpus
+            if execution_options.is_resource_limits_default():
+                # If "resource_limits" is not overriden by the user,
+                # add training-reserved resources to Data's exclude_resources.
+                execution_options.exclude_resources = (
+                    execution_options.exclude_resources.add(
+                        ExecutionResources(
+                            cpu=self._num_train_cpus, gpu=self._num_train_gpus
+                        )
                     )
                 )
-            )
+
+            ds = ds.copy(ds)
+            ds.context.execution_options = execution_options
 
             if name in datasets_to_split:
                 for i, split in enumerate(

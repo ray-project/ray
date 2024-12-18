@@ -21,9 +21,8 @@
 #include "nlohmann/json.hpp"
 #include "ray/common/task/task_spec.h"
 #include "ray/core_worker/common.h"
-using json = nlohmann::json;
-namespace ray {
-namespace core {
+
+namespace ray::core {
 
 struct WorkerThreadContext;
 
@@ -71,7 +70,8 @@ class WorkerContext {
 
   const std::string &GetCurrentSerializedRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
 
-  std::shared_ptr<json> GetCurrentRuntimeEnv() const ABSL_LOCKS_EXCLUDED(mutex_);
+  std::shared_ptr<nlohmann::json> GetCurrentRuntimeEnv() const
+      ABSL_LOCKS_EXCLUDED(mutex_);
 
   // Initialize worker's job_id and job_config if they haven't already.
   // Note a worker's job config can't be changed after initialization.
@@ -91,9 +91,12 @@ class WorkerContext {
 
   void ResetCurrentTask();
 
+  /// NOTE: This method can't be used in fiber/async actor context.
   std::shared_ptr<const TaskSpecification> GetCurrentTask() const;
 
   const ActorID &GetCurrentActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
+
+  const ActorID &GetRootDetachedActorID() const ABSL_LOCKS_EXCLUDED(mutex_);
 
   /// Returns whether the current thread is the main worker thread.
   bool CurrentThreadIsMain() const;
@@ -147,7 +150,7 @@ class WorkerContext {
   // Whether or not we should implicitly capture parent's placement group.
   bool placement_group_capture_child_tasks_ ABSL_GUARDED_BY(mutex_);
   // The runtime env for the current actor or task.
-  std::shared_ptr<json> runtime_env_ ABSL_GUARDED_BY(mutex_);
+  std::shared_ptr<nlohmann::json> runtime_env_ ABSL_GUARDED_BY(mutex_);
   // The runtime env info.
   std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info_ ABSL_GUARDED_BY(mutex_);
   /// The id of the (main) thread that constructed this worker context.
@@ -156,15 +159,18 @@ class WorkerContext {
   /// for concurrent actor, or the main thread's task id for other cases.
   /// Used merely for observability purposes to track task hierarchy.
   TaskID main_thread_or_actor_creation_task_id_ ABSL_GUARDED_BY(mutex_);
+  /// If the current task or actor is originated from a detached actor,
+  /// this contains that actor's id otherwise it's nil.
+  ActorID root_detached_actor_id_ ABSL_GUARDED_BY(mutex_);
   // To protect access to mutable members;
   mutable absl::Mutex mutex_;
 
  private:
+  /// NOTE: This method can't be used in fiber/async actor context.
   WorkerThreadContext &GetThreadContext() const;
 
   /// Per-thread worker context.
   static thread_local std::unique_ptr<WorkerThreadContext> thread_context_;
 };
 
-}  // namespace core
-}  // namespace ray
+}  // namespace ray::core

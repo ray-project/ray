@@ -1,8 +1,10 @@
 import copy
+import logging
 import sys
 from abc import ABC, abstractmethod
 from collections import defaultdict
 from dataclasses import dataclass
+from enum import Enum
 from functools import total_ordering
 from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 
@@ -10,13 +12,18 @@ import ray
 from ray.serve._private.cluster_node_info_cache import ClusterNodeInfoCache
 from ray.serve._private.common import DeploymentID, ReplicaID
 from ray.serve._private.config import ReplicaConfig
-from ray.serve._private.constants import RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY
+from ray.serve._private.constants import (
+    RAY_SERVE_USE_COMPACT_SCHEDULING_STRATEGY,
+    SERVE_LOGGER_NAME,
+)
 from ray.util.scheduling_strategies import (
     LabelMatchExpressionsT,
     NodeAffinitySchedulingStrategy,
     NodeLabelSchedulingStrategy,
     PlacementGroupSchedulingStrategy,
 )
+
+logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 class SpreadDeploymentSchedulingPolicy:
@@ -103,6 +110,15 @@ class Resources(dict):
         return False
 
 
+class ReplicaSchedulingRequestStatus(str, Enum):
+    """The status of a replica scheduling request."""
+
+    IN_PROGRESS = "IN_PROGRESS"
+    SUCCEEDED = "SUCCEEDED"
+    ACTOR_CREATION_FAILED = "ACTOR_CREATION_FAILED"
+    PLACEMENT_GROUP_CREATION_FAILED = "PLACEMENT_GROUP_CREATION_FAILED"
+
+
 @dataclass
 class ReplicaSchedulingRequest:
     """Request to schedule a single replica.
@@ -117,6 +133,7 @@ class ReplicaSchedulingRequest:
     actor_options: Dict
     actor_init_args: Tuple
     on_scheduled: Callable
+    status: ReplicaSchedulingRequestStatus = ReplicaSchedulingRequestStatus.IN_PROGRESS
     # Placement group bundles and strategy *for this replica*.
     # These are optional: by default replicas do not have a placement group.
     placement_group_bundles: Optional[List[Dict[str, float]]] = None
@@ -531,13 +548,25 @@ class DeploymentScheduler(ABC):
                 if scheduling_request.placement_group_strategy
                 else "PACK"
             )
-            pg = self._create_placement_group_fn(
-                scheduling_request.placement_group_bundles,
-                placement_group_strategy,
-                _soft_target_node_id=target_node_id,
-                lifetime="detached",
-                name=scheduling_request.actor_options["name"],
-            )
+            try:
+                pg = self._create_placement_group_fn(
+                    scheduling_request.placement_group_bundles,
+                    placement_group_strategy,
+                    _soft_target_node_id=target_node_id,
+                    lifetime="detached",
+                    name=scheduling_request.actor_options["name"],
+                )
+            except Exception:
+                # We add a defensive exception here, so the controller can
+                # make progress even if the placement group isn't created.
+                # See https://github.com/ray-project/ray/issues/43888.
+                logger.exception(
+                    f"Failed to create a placement group for {replica_id}."
+                )
+                scheduling_request.status = (
+                    ReplicaSchedulingRequestStatus.PLACEMENT_GROUP_CREATION_FAILED
+                )
+                return
             scheduling_strategy = PlacementGroupSchedulingStrategy(
                 placement_group=pg,
                 placement_group_capture_child_tasks=True,
@@ -566,10 +595,19 @@ class DeploymentScheduler(ABC):
                 f"{deployment_id.app_name}:{deployment_id.name}"
             ] = (1.0 / scheduling_request.max_replicas_per_node)
 
-        actor_handle = scheduling_request.actor_def.options(
-            scheduling_strategy=scheduling_strategy,
-            **actor_options,
-        ).remote(*scheduling_request.actor_init_args)
+        try:
+            actor_handle = scheduling_request.actor_def.options(
+                scheduling_strategy=scheduling_strategy,
+                **actor_options,
+            ).remote(*scheduling_request.actor_init_args)
+        except Exception:
+            # We add a defensive exception here, so the controller can
+            # make progress even if the actor options are misconfigured.
+            logger.exception(f"Failed to create an actor for {replica_id}.")
+            scheduling_request.status = (
+                ReplicaSchedulingRequestStatus.ACTOR_CREATION_FAILED
+            )
+            return
 
         del self._pending_replicas[deployment_id][replica_id]
         self._on_replica_launching(
@@ -579,6 +617,7 @@ class DeploymentScheduler(ABC):
         if isinstance(scheduling_strategy, PlacementGroupSchedulingStrategy):
             placement_group = scheduling_strategy.placement_group
 
+        scheduling_request.status = ReplicaSchedulingRequestStatus.SUCCEEDED
         scheduling_request.on_scheduled(actor_handle, placement_group=placement_group)
 
     @abstractmethod

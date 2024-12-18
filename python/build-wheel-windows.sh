@@ -5,7 +5,7 @@ set -euxo pipefail
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE:-$0}")"; pwd)"
 WORKSPACE_DIR="${ROOT_DIR}/.."
 
-PY_VERSIONS=("3.8" "3.9" "3.10" "3.11")
+PY_VERSIONS=("3.9" "3.10" "3.11" "3.12")
 
 bazel_preclean() {
   "${WORKSPACE_DIR}"/ci/run/bazel.py preclean "mnemonic(\"Genrule\", deps(//:*))"
@@ -64,8 +64,9 @@ install_ray() {
   (
     pip install wheel
 
-    pushd dashboard/client
-      choco install nodejs  -y
+
+    pushd python/ray/dashboard/client
+      choco install nodejs --version=22.4.1 -y
       refreshenv
       # https://stackoverflow.com/questions/69692842/error-message-error0308010cdigital-envelope-routinesunsupported
       export NODE_OPTIONS=--openssl-legacy-provider
@@ -96,7 +97,7 @@ build_wheel_windows() {
     echo "build --remote_cache=${BUILDKITE_BAZEL_CACHE_URL}";
   } >> ~/.bazelrc
 
-  if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
+  if [[ "${BUILDKITE_PIPELINE_ID:-}" == "0189942e-0876-4b8f-80a4-617f988ec59b" || "${BUILDKITE_CACHE_READONLY:-}" == "true" ]]; then
     # Do not upload cache results for premerge pipeline
     echo "build --remote_upload_local_results=false" >> ~/.bazelrc
   fi
@@ -113,7 +114,7 @@ build_wheel_windows() {
     # Start a subshell to prevent PATH and cd from affecting our shell environment
     (
       if ! is_python_version "${pyversion}"; then
-        conda install -y conda=23.1.0 python="${pyversion}"
+        conda install -y conda=24.1.2 python="${pyversion}"
       fi
       if ! is_python_version "${pyversion}"; then
         echo "Expected pip for Python ${pyversion} but found Python $(get_python_version) with $(pip --version); exiting..." 1>&2

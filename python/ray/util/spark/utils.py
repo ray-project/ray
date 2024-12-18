@@ -5,6 +5,7 @@ import random
 import threading
 import collections
 import logging
+import shutil
 import time
 
 from ray._private import net
@@ -272,8 +273,11 @@ def _calc_mem_per_ray_node(
         available_physical_mem_per_node * DEFAULT_OBJECT_STORE_MEMORY_PROPORTION
     )
 
-    if object_store_bytes > available_shared_mem_per_node:
-        object_store_bytes = available_shared_mem_per_node
+    # If allow Ray using slow storage oas object store,
+    # we don't need to cap object store size by /dev/shm capacity
+    if not os.environ.get("RAY_OBJECT_STORE_ALLOW_SLOW_STORAGE"):
+        if object_store_bytes > available_shared_mem_per_node:
+            object_store_bytes = available_shared_mem_per_node
 
     object_store_bytes_upper_bound = (
         available_physical_mem_per_node
@@ -289,13 +293,22 @@ def _calc_mem_per_ray_node(
         )
 
     if object_store_bytes < OBJECT_STORE_MINIMUM_MEMORY_BYTES:
+        if object_store_bytes == available_shared_mem_per_node:
+            warning_msg = (
+                "Your operating system is configured with too small /dev/shm "
+                "size, so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                f"Please increase system /dev/shm size."
+            )
+        else:
+            warning_msg = (
+                "You configured too small Ray node object store memory size, "
+                "so `object_store_memory_worker_node` value is configured "
+                f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
+                "Please increase 'object_store_memory_worker_node' argument value."
+            )
+
         object_store_bytes = OBJECT_STORE_MINIMUM_MEMORY_BYTES
-        warning_msg = (
-            "Your operating system is configured with too small /dev/shm "
-            "size, so `object_store_memory_per_node` value is configured "
-            f"to minimal size ({OBJECT_STORE_MINIMUM_MEMORY_BYTES} bytes),"
-            f"Please increase system /dev/shm size."
-        )
 
     object_store_bytes = int(object_store_bytes)
 
@@ -346,6 +359,9 @@ def _get_num_physical_gpus():
         # `RAY_ON_SPARK_WORKER_CPU_CORES` for user.
         return int(os.environ[RAY_ON_SPARK_WORKER_GPU_NUM])
 
+    if shutil.which("nvidia-smi") is None:
+        # GPU driver is not installed.
+        return 0
     try:
         completed_proc = subprocess.run(
             "nvidia-smi --query-gpu=name --format=csv,noheader",
@@ -354,11 +370,13 @@ def _get_num_physical_gpus():
             text=True,
             capture_output=True,
         )
+        return len(completed_proc.stdout.strip().split("\n"))
     except Exception as e:
-        raise RuntimeError(
-            "Running command `nvidia-smi` for inferring GPU devices list failed."
-        ) from e
-    return len(completed_proc.stdout.strip().split("\n"))
+        _logger.info(
+            "'nvidia-smi --query-gpu=name --format=csv,noheader' command execution "
+            f"failed, error: {repr(e)}"
+        )
+        return 0
 
 
 def _get_local_ray_node_slots(
@@ -379,9 +397,9 @@ def _get_local_ray_node_slots(
         if num_gpus_per_node > num_gpus:
             raise ValueError(
                 "gpu number per Ray worker node should be <= spark worker node "
-                "GPU number, you set cpu number per Ray worker node to "
-                f"{num_cpus_per_node} but spark worker node CPU core number "
-                f"is {num_cpus}."
+                "GPU number, you set GPU devices number per Ray worker node to "
+                f"{num_gpus_per_node} but spark worker node GPU devices number "
+                f"is {num_gpus}."
             )
         if num_ray_node_slots > num_gpus // num_gpus_per_node:
             num_ray_node_slots = num_gpus // num_gpus_per_node

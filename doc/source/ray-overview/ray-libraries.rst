@@ -20,6 +20,27 @@ more information.
 
     .. grid-item-card::
 
+        .. figure:: ../images/airflow_logo_full.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/astronomer/astro-provider-ray?style=social)]
+                :target: https://github.com/astronomer/astro-provider-ray
+
+            Apache Airflow® is an open-source platform that enables users to programmatically author, schedule, and monitor workflows using directed acyclic graphs (DAGs). With the Ray provider, users can seamlessly orchestrate Ray jobs within Airflow DAGs.
+
+        +++
+        .. button-link:: https://astronomer.github.io/astro-provider-ray/
+            :color: primary
+            :outline:
+            :expand:
+
+            Apache Airflow Integration
+
+
+    .. grid-item-card::
+
         .. figure:: ../images/buildflow.png
             :class: card-figure
 
@@ -100,6 +121,26 @@ more information.
             :expand:
 
             Flambé Integration
+
+    .. grid-item-card::
+
+        .. figure:: ../images/flowdapt.png
+            :class: card-figure
+
+        .. div::
+
+            .. image:: https://img.shields.io/github/stars/emergentmethods/flowdapt?style=social)]
+                :target: https://github.com/emergentmethods/flowdapt
+
+            Flowdapt is a platform designed to help developers configure, debug, schedule, trigger, deploy and serve adaptive and reactive Artificial Intelligence workflows at large-scale.
+
+        +++
+        .. button-link:: https://github.com/emergentmethods/flowdapt
+            :color: primary
+            :outline:
+            :expand:
+
+            Flowdapt Integration
 
 
     .. grid-item-card::

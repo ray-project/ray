@@ -1,14 +1,19 @@
-from typing import Dict, Any
+import logging
+import os
+import pathlib
+import sys
 from datetime import datetime
 from importlib import import_module
-import os
-import sys
-from jinja2.filters import FILTERS
+from typing import Any, Dict
+
 import sphinx
-from sphinx.ext import autodoc
 from docutils import nodes
-import pathlib
-import logging
+from jinja2.filters import FILTERS
+from sphinx.ext import autodoc
+from sphinx.ext.autosummary import generate
+from sphinx.util.inspect import safe_getattr
+
+DEFAULT_API_GROUP = "Others"
 
 logger = logging.getLogger(__name__)
 
@@ -20,21 +25,28 @@ from custom_directives import (  # noqa
     parse_navbar_config,
     setup_context,
     pregenerate_example_rsts,
+    generate_versions_json,
 )
 
 # If extensions (or modules to document with autodoc) are in another directory,
 # add these directories to sys.path here. If the directory is relative to the
 # documentation root, use os.path.abspath to make it absolute, like shown here.
+assert not os.path.exists("../../python/ray/_raylet.so"), (
+    "_raylet.so should not be imported for the purpose for doc build, "
+    "please rename the file to _raylet.so.bak and try again."
+)
 sys.path.insert(0, os.path.abspath("../../python/"))
 
 # -- General configuration ------------------------------------------------
 
-# The name of a reST role (builtin or Sphinx extension) to use as the default role, that
-# is, for text marked up `like this`. This can be set to 'py:obj' to make `filter` a
-# cross-reference to the Python function “filter”. The default is None, which doesn’t
-# reassign the default role.
-
-default_role = "py:obj"
+# This setting controls how single backticks are handled by sphinx. Developers
+# are used to using single backticks for code, but RST syntax requires that code
+# code to be denoted with _double_ backticks.
+# Here we make sphinx treat single backticks as code also, because everyone is
+# used to using single backticks as is done with markdown; without this setting,
+# lots of documentation ends up getting committed with single backticks anyway,
+# so we might as well make it work as developers intend for it to.
+default_role = "code"
 
 sys.path.append(os.path.abspath("./_ext"))
 
@@ -58,7 +70,15 @@ extensions = [
     "sphinx_remove_toctrees",
     "sphinx_design",
     "sphinx.ext.intersphinx",
+    "sphinx_docsearch",
 ]
+
+# Configuration for algolia
+# Note: This API key grants read access to our indexes and is intended to be public.
+# See https://www.algolia.com/doc/guides/security/api-keys/ for more information.
+docsearch_app_id = "LBHF0PABBL"
+docsearch_api_key = "6c42f30d9669d8e42f6fc92f44028596"
+docsearch_index_name = "docs-ray"
 
 remove_from_toctrees = [
     "cluster/running-applications/job-submission/doc/*",
@@ -92,6 +112,14 @@ myst_enable_extensions = [
 
 myst_heading_anchors = 3
 
+# Make broken internal references into build time errors.
+# See https://www.sphinx-doc.org/en/master/usage/configuration.html#confval-nitpicky
+# for more information. :py:class: references are ignored due to false positives
+# arising from type annotations. See https://github.com/ray-project/ray/pull/46103
+# for additional context.
+nitpicky = True
+nitpick_ignore_regex = [("py:class", ".*")]
+
 # Cache notebook outputs in _build/.jupyter_cache
 # To prevent notebook execution, set this to "off". To force re-execution, set this to
 # "force". To cache previous runs, set this to "cache".
@@ -121,6 +149,9 @@ html_baseurl = "https://docs.ray.io/en/latest"
 #   ("  ...: ", "     : ")
 copybutton_prompt_text = r">>> |\.\.\. |\$ |In \[\d*\]: | {2,5}\.\.\.: | {5,8}: "
 copybutton_prompt_is_regexp = True
+
+# Ignore divs with class="no-copybutton"
+copybutton_selector = "div:not(.no-copybutton) > div.highlight > pre"
 
 # By default, tabs can be closed by selecting an open tab. We disable this
 # functionality with the `sphinx_tabs_disable_tab_closing` option.
@@ -166,13 +197,21 @@ release = find_version("ray", "_version.py")
 
 language = "en"
 
+# autogen files are only used to auto-generate public API documentation.
+# They are not included in the toctree to avoid warnings such as documents not included
+# in any toctree.
+autogen_files = [
+    "data/api/_autogen.rst",
+]
+
 # List of patterns, relative to source directory, that match files and
 # directories to ignore when looking for source files.
 # Also helps resolve warnings about documents not included in any toctree.
 exclude_patterns = [
     "templates/*",
     "cluster/running-applications/doc/ray.*",
-]
+    "data/api/ray.data.*.rst",
+] + autogen_files
 
 # If "DOC_LIB" is found, only build that top-level navigation item.
 build_one_lib = os.getenv("DOC_LIB")
@@ -209,7 +248,6 @@ if os.environ.get("LINKCHECK_ALL"):
         "https://mvnrepository.com/artifact/*",  # working but somehow not with linkcheck
         # This should be fixed -- is temporal the successor of cadence? Do the examples need to be updated?
         "https://github.com/serverlessworkflow/specification/blob/main/comparisons/comparison-cadence.md",
-        # TODO(richardliaw): The following probably needs to be fixed in the tune_sklearn package
         "https://www.oracle.com/java/technologies/javase-jdk15-downloads.html",  # forbidden for client
         "https://speakerdeck.com/*",  # forbidden for bots
         r"https://huggingface.co/*",  # seems to be flaky
@@ -262,12 +300,13 @@ html_theme = "pydata_sphinx_theme"
 # documentation.
 html_theme_options = {
     "use_edit_page_button": True,
-    "announcement": None,
+    "announcement": False,
     "logo": {
         "svg": render_svg_logo("_static/img/ray_logo.svg"),
     },
     "navbar_start": ["navbar-ray-logo"],
     "navbar_end": [
+        "version-switcher",
         "navbar-icon-links",
         "navbar-anyscale",
     ],
@@ -279,15 +318,18 @@ html_theme_options = {
     ],
     "secondary_sidebar_items": [
         "page-toc",
-        "edit-this-page",
+        "edit-on-github",
     ],
     "content_footer_items": [
         "csat",
     ],
     "navigation_depth": 4,
-    "analytics": {"google_analytics_id": "UA-110413294-1"},
     "pygment_light_style": "stata-dark",
     "pygment_dark_style": "stata-dark",
+    "switcher": {
+        "json_url": "https://docs.ray.io/en/master/_static/versions.json",
+        "version_match": os.getenv("READTHEDOCS_VERSION", "master"),
+    },
 }
 
 html_context = {
@@ -298,7 +340,11 @@ html_context = {
 }
 
 html_sidebars = {
-    "**": ["main-sidebar"],
+    "**": [
+        "main-sidebar-readthedocs"
+        if os.getenv("READTHEDOCS") == "True"
+        else "main-sidebar"
+    ],
     "ray-overview/examples": [],
 }
 
@@ -372,7 +418,49 @@ def filter_out_undoc_class_members(member_name, class_name, module_name):
         return ""
 
 
+def has_public_constructor(class_name, module_name):
+    cls = getattr(import_module(module_name), class_name)
+    return _is_public_api(cls)
+
+
+def get_api_groups(method_names, class_name, module_name):
+    api_groups = set()
+    cls = getattr(import_module(module_name), class_name)
+    for method_name in method_names:
+        method = getattr(cls, method_name)
+        if _is_public_api(method):
+            api_groups.add(
+                safe_getattr(method, "_annotated_api_group", DEFAULT_API_GROUP)
+            )
+
+    return sorted(api_groups)
+
+
+def select_api_group(method_names, class_name, module_name, api_group):
+    cls = getattr(import_module(module_name), class_name)
+    return [
+        method_name
+        for method_name in method_names
+        if _is_public_api(getattr(cls, method_name))
+        and _is_api_group(getattr(cls, method_name), api_group)
+    ]
+
+
+def _is_public_api(obj):
+    api_type = safe_getattr(obj, "_annotated_type", None)
+    if not api_type:
+        return False
+    return api_type.value == "PublicAPI"
+
+
+def _is_api_group(obj, group):
+    return safe_getattr(obj, "_annotated_api_group", DEFAULT_API_GROUP) == group
+
+
 FILTERS["filter_out_undoc_class_members"] = filter_out_undoc_class_members
+FILTERS["get_api_groups"] = get_api_groups
+FILTERS["select_api_group"] = select_api_group
+FILTERS["has_public_constructor"] = has_public_constructor
 
 
 def add_custom_assets(
@@ -412,7 +500,21 @@ def add_custom_assets(
         app.add_css_file("css/use_cases.css")
 
 
+def _autogen_apis(app: sphinx.application.Sphinx):
+    """
+    Auto-generate public API documentation.
+    """
+    generate.generate_autosummary_docs(
+        [os.path.join(app.srcdir, file) for file in autogen_files],
+        app=app,
+    )
+
+
 def setup(app):
+    # Only generate versions JSON during RTD build
+    if os.getenv("READTHEDOCS") == "True":
+        generate_versions_json()
+
     pregenerate_example_rsts(app)
 
     # NOTE: 'MOCK' is a custom option we introduced to illustrate mock outputs. Since
@@ -453,6 +555,9 @@ def setup(app):
     app.connect("builder-inited", linkcheck_summarizer.add_handler_to_linkcheck)
     app.connect("build-finished", linkcheck_summarizer.summarize)
 
+    # Hook into the auto generation of public apis
+    app.connect("builder-inited", _autogen_apis)
+
 
 redoc = [
     {
@@ -475,6 +580,7 @@ autodoc_mock_imports = [
     "aiohttp",
     "aiosignal",
     "composer",
+    "cupy",
     "dask",
     "datasets",
     "fastapi",

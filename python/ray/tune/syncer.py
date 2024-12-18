@@ -3,7 +3,6 @@ import logging
 from ray.train._internal.syncer import SyncConfig as TrainSyncConfig
 from ray.util.annotations import Deprecated
 
-
 logger = logging.getLogger(__name__)
 
 

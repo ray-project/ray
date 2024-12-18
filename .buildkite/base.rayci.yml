@@ -7,8 +7,9 @@ steps:
     label: "wanda: oss-ci-base_test-py{{matrix}}"
     wanda: ci/docker/base.test.wanda.yaml
     matrix:
-      - "3.10"
+      - "3.9"
       - "3.11"
+      - "3.12"
     env:
       PYTHON: "{{matrix}}"
   
@@ -20,8 +21,9 @@ steps:
     label: "wanda: oss-ci-base_build-py{{matrix}}"
     wanda: ci/docker/base.build.wanda.yaml
     matrix:
-      - "3.10"
+      - "3.9"
       - "3.11"
+      - "3.12"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
@@ -43,7 +45,7 @@ steps:
     label: "wanda: oss-ci-base_ml-py{{matrix}}"
     wanda: ci/docker/base.ml.wanda.yaml
     matrix:
-      - "3.10"
+      - "3.12"
     env:
       PYTHON: "{{matrix}}"
     depends_on: oss-ci-base_test-multipy
@@ -55,13 +57,19 @@ steps:
     label: "wanda: oss-ci-base_gpu-py{{matrix}}"
     wanda: ci/docker/base.gpu.wanda.yaml
     matrix:
-      - "3.10"
+      - "3.12"
     env:
       PYTHON: "{{matrix}}"
 
   - name: docbuild
+    label: "wanda: docbuild-py{{matrix}}"
     wanda: ci/docker/doc.build.wanda.yaml
-    depends_on: oss-ci-base_build
+    depends_on: oss-ci-base_build-multipy
+    matrix:
+      - "3.9"
+      - "3.12"
+    env:
+      PYTHON: "{{matrix}}"
 
   - name: docgpubuild
     wanda: ci/docker/docgpu.build.wanda.yaml

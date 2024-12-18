@@ -1,13 +1,15 @@
 from collections import defaultdict
-from typing import Any, List, Optional
+from typing import Any, Dict, List, Optional
 
 from ray.rllib.connectors.connector_v2 import ConnectorV2
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.multi_agent_episode import MultiAgentEpisode
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.typing import EpisodeType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class ModuleToAgentUnmapping(ConnectorV2):
     """Performs flipping of `data` from ModuleID- to AgentID based mapping.
 
@@ -29,7 +31,7 @@ class ModuleToAgentUnmapping(ConnectorV2):
         self,
         *,
         rl_module: RLModule,
-        data: Optional[Any],
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
@@ -39,7 +41,7 @@ class ModuleToAgentUnmapping(ConnectorV2):
         assert isinstance(episodes[0], MultiAgentEpisode)
 
         agent_data = defaultdict(dict)
-        for module_id, module_data in data.items():
+        for module_id, module_data in batch.items():
             for column, values_dict in module_data.items():
                 agent_data[column].update(values_dict)
 

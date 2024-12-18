@@ -36,6 +36,15 @@ class StartTraceback(Exception):
     pass
 
 
+class StartTracebackWithWorkerRank(StartTraceback):
+    def __init__(self, worker_rank: int) -> None:
+        super().__init__()
+        self.worker_rank = worker_rank
+
+    def __reduce__(self):
+        return (self.__class__, (self.worker_rank,))
+
+
 def skip_exceptions(exc: Optional[Exception]) -> Exception:
     """Skip all contained `StartTracebacks` to reduce traceback output.
 

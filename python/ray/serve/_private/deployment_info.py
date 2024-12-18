@@ -1,7 +1,6 @@
 from typing import Any, Dict, Optional
 
 import ray
-from ray.serve._private.autoscaling_policy import AutoscalingPolicyManager
 from ray.serve._private.common import TargetCapacityDirection
 from ray.serve._private.config import DeploymentConfig, ReplicaConfig
 from ray.serve.generated.serve_pb2 import DeploymentInfo as DeploymentInfoProto
@@ -46,10 +45,6 @@ class DeploymentInfo:
         self.target_capacity = target_capacity
         self.target_capacity_direction = target_capacity_direction
 
-        self.autoscaling_policy_manager = AutoscalingPolicyManager(
-            config=deployment_config.autoscaling_config
-        )
-
     def __getstate__(self) -> Dict[Any, Any]:
         clean_dict = self.__dict__.copy()
         del clean_dict["_cached_actor_def"]
@@ -88,6 +83,15 @@ class DeploymentInfo:
     ):
         self.target_capacity = new_target_capacity
         self.target_capacity_direction = new_target_capacity_direction
+
+    def config_changed(self, other) -> bool:
+        return (
+            self.deployment_config != other.deployment_config
+            or self.replica_config.ray_actor_options
+            != other.replica_config.ray_actor_options
+            or other.version is None
+            or self.version != other.version
+        )
 
     @property
     def actor_def(self):

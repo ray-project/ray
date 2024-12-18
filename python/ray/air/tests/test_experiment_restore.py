@@ -1,19 +1,18 @@
 import json
 import os
-
-import numpy as np
-import pandas as pd
-from pathlib import Path
-import pytest
-import time
 import shutil
 import signal
 import subprocess
 import sys
+import time
+from pathlib import Path
 
-from ray.tune.result_grid import ResultGrid
+import numpy as np
+import pandas as pd
+import pytest
+
 from ray.tune.analysis import ExperimentAnalysis
-
+from ray.tune.result_grid import ResultGrid
 
 _RUN_SCRIPT_FILENAME = "_test_experiment_restore_run.py"
 

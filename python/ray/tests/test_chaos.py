@@ -12,7 +12,7 @@ from ray.tests.conftest import _ray_start_chaos_cluster
 from ray.data._internal.progress_bar import ProgressBar
 from ray.util.placement_group import placement_group
 from ray._private.test_utils import (
-    NodeKillerActor,
+    RayletKiller,
     get_log_message,
     get_and_run_resource_killer,
     WorkerKillerActor,
@@ -89,7 +89,7 @@ def test_chaos_task_retry(set_kill_interval):
     # 50MB of return values.
     TOTAL_TASKS = 100
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS)
+    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS, "task")
     results = [invoke_nested_task.remote() for _ in range(TOTAL_TASKS)]
     start = time.time()
     pb.block_until_complete(results)
@@ -120,7 +120,7 @@ def test_chaos_actor_retry(set_kill_interval):
     NUM_CPUS = 16
     TOTAL_TASKS = 300
 
-    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS)
+    pb = ProgressBar("Chaos test sanity check", TOTAL_TASKS * NUM_CPUS, "task")
     actors = [Actor.remote() for _ in range(NUM_CPUS)]
     results = []
     for a in actors:
@@ -337,15 +337,14 @@ def test_node_killer_filter(autoscaler_v2):
         worker_nodes = [node for node in list_nodes() if not node["is_head_node"]]
         node_to_kill = random.choice(worker_nodes)
         node_killer = get_and_run_resource_killer(
-            NodeKillerActor,
+            RayletKiller,
             1,
             max_to_kill=1,
             kill_filter_fn=lambda: lambda node: node["NodeID"] == node_to_kill.node_id,
         )
 
         def check_killed():
-            # Check that killed node is consistent across list_nodes() and
-            # NodeKillerActor
+            # Check that killed node is consistent across list_nodes()
             killed = list(ray.get(node_killer.get_total_killed.remote()))
             dead = [node.node_id for node in list_nodes() if node.state == "DEAD"]
             if len(killed) != 1 or len(dead) != 1:

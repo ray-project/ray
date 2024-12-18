@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.usage;
 
@@ -75,7 +74,7 @@ enum TagKey {
   // Whether the `to_object_ref` or any of its variants were used in the
   // `DeploymentHandle` API.
   SERVE_DEPLOYMENT_HANDLE_TO_OBJECT_REF_API_USED = 21;
-  // Whether multuplexed API is was used.
+  // Whether multiplexed API is was used.
   SERVE_MULTIPLEXED_API_USED = 22;
   // Whether or not an HTTP proxy was used ("1" if used).
   SERVE_HTTP_PROXY_USED = 23;
@@ -95,6 +94,10 @@ enum TagKey {
   // Whether the container runtime env feature was used at the
   // individual deployment level ("1" if used)
   SERVE_DEPLOYMENT_CONTAINER_RUNTIME_ENV_USED = 29;
+  // The number of nodes actively compacted by Serve
+  SERVE_NUM_NODE_COMPACTIONS = 30;
+  // Whether the num_replicas="auto" API was used ("1" if used)
+  SERVE_AUTO_NUM_REPLICAS_USED = 31;
 
   // Ray Core State API
   // NOTE(rickyxx): Currently only setting "1" for tracking existence of

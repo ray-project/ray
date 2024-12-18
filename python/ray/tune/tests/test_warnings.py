@@ -3,8 +3,8 @@ import pytest
 import ray
 from ray import tune
 from ray.data.context import DataContext
-from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 from ray.tune.error import TuneError
+from ray.util.scheduling_strategies import PlacementGroupSchedulingStrategy
 
 
 def test_nowarn_zero_cpu():

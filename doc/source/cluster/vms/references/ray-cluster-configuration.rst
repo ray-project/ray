@@ -133,6 +133,7 @@ Provider
             :ref:`msi_resource_group <cluster-configuration-msi-resource-group>`: str
             :ref:`cache_stopped_nodes <cluster-configuration-cache-stopped-nodes>`: bool
             :ref:`use_internal_ips <cluster-configuration-use-internal-ips>`: bool
+            :ref:`use_external_head_ip <cluster-configuration-use-external-head-ip>`: bool
 
     .. tab-item:: GCP
 
@@ -1157,7 +1158,7 @@ If enabled, Ray will use private IP addresses for communication between nodes.
 This should be omitted if your network interfaces use public IP addresses.
 
 If enabled, Ray CLI commands (e.g. ``ray up``) will have to be run from a machine
-that is part of the same VPC as the cluster. 
+that is part of the same VPC as the cluster.
 
 This option does not affect the existence of public IP addresses for the nodes, it only
 affects which IP addresses are used by Ray. The existence of public IP addresses is
@@ -1168,6 +1169,38 @@ controlled by your cloud provider's configuration.
 * **Importance:** Low
 * **Type:** Boolean
 * **Default:** ``False``
+
+.. _cluster-configuration-use-external-head-ip:
+
+``provider.use_external_head_ip``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. tab-set::
+
+    .. tab-item:: AWS
+
+        Not available.
+
+    .. tab-item:: Azure
+
+        If enabled, Ray will provision and use a public IP address for communication with the head node,
+        regardless of the value of ``use_internal_ips``. This option can be used in combination with
+        ``use_internal_ips`` to avoid provisioning excess public IPs for worker nodes (i.e., communicate
+        among nodes using private IPs, but provision a public IP for head node communication only). If
+        ``use_internal_ips`` is ``False``, then this option has no effect.
+
+        * **Required:** No
+        * **Importance:** Low
+        * **Type:** Boolean
+        * **Default:** ``False``
+
+    .. tab-item:: GCP
+
+        Not available.
+
+    .. tab-item:: vSphere
+
+        Not available.
 
 .. _cluster-configuration-security-group:
 

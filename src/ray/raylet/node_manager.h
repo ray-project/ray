@@ -15,16 +15,13 @@
 #pragma once
 
 // clang-format off
-#include "ray/rpc/grpc_client.h"
 #include "ray/rpc/node_manager/node_manager_server.h"
-#include "ray/rpc/node_manager/node_manager_client.h"
 #include "ray/common/id.h"
 #include "ray/common/memory_monitor.h"
 #include "ray/common/task/task.h"
 #include "ray/common/ray_object.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
 #include "ray/common/client_connection.h"
-#include "ray/common/task/task_common.h"
 #include "ray/common/task/task_util.h"
 #include "ray/common/scheduling/resource_set.h"
 #include "ray/pubsub/subscriber.h"
@@ -33,25 +30,22 @@
 #include "ray/raylet/runtime_env_agent_client.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/raylet/local_object_manager.h"
-#include "ray/common/scheduling/scheduling_ids.h"
 #include "ray/raylet/scheduling/cluster_resource_scheduler.h"
-#include "ray/raylet/scheduling/cluster_task_manager.h"
 #include "ray/raylet/scheduling/cluster_task_manager_interface.h"
 #include "ray/raylet/dependency_manager.h"
 #include "ray/raylet/local_task_manager.h"
 #include "ray/raylet/wait_manager.h"
 #include "ray/raylet/worker_pool.h"
 #include "ray/rpc/worker/core_worker_client_pool.h"
-#include "ray/util/ordered_set.h"
 #include "ray/util/throttler.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
+#include "ray/core_worker/experimental_mutable_object_provider.h"
 // clang-format on
 
 namespace ray {
-
 namespace raylet {
 
 using rpc::ErrorType;
@@ -128,14 +122,16 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
  public:
   /// Create a node manager.
   ///
-  /// \param resource_config The initial set of node resources.
-  /// \param object_manager A reference to the local object manager.
+  /// \param config Configuration of node manager, e.g. initial resources, ports, etc.
+  /// \param object_manager_config Configuration of object manager, e.g. initial memory
+  /// allocation.
   NodeManager(instrumented_io_context &io_service,
               const NodeID &self_node_id,
               const std::string &self_node_name,
               const NodeManagerConfig &config,
               const ObjectManagerConfig &object_manager_config,
-              std::shared_ptr<gcs::GcsClient> gcs_client);
+              std::shared_ptr<gcs::GcsClient> gcs_client,
+              std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully);
 
   /// Process a new client connection.
   ///
@@ -196,7 +192,7 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \param object_ids The object ids to store error messages into.
   /// \param job_id The optional job to push errors to if the writes fail.
   void MarkObjectsAsFailed(const ErrorType &error_type,
-                           const std::vector<rpc::ObjectReference> object_ids,
+                           const std::vector<rpc::ObjectReference> &object_ids,
                            const JobID &job_id);
 
   /// Stop this node manager.
@@ -223,16 +219,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
       int64_t limit,
       const std::function<void()> &on_all_replied);
 
- private:
-  void ReleaseWorker(const WorkerID &worker_id) {
-    leased_workers_.erase(worker_id);
-    SetIdleIfLeaseEmpty();
+  std::unique_ptr<core::experimental::MutableObjectProvider> &mutable_object_provider() {
+    return mutable_object_provider_;
   }
 
-  void ReleaseWorkers(const std::vector<WorkerID> &worker_ids) {
-    for (auto &it : worker_ids) {
-      leased_workers_.erase(it);
-    }
+  /// Get the local drain request.
+  std::optional<rpc::DrainRayletRequest> GetLocalDrainRequest() const {
+    return cluster_resource_scheduler_->GetLocalResourceManager().GetLocalDrainRequest();
+  }
+
+ private:
+  // Removes the worker from node_manager's leased_workers_ map.
+  // Warning: this does NOT release the worker's resources, or put the leased worker
+  // back to the worker pool, or destroy the worker. The caller must handle the worker's
+  // resources well.
+  void ReleaseWorker(const WorkerID &worker_id) {
+    leased_workers_.erase(worker_id);
     SetIdleIfLeaseEmpty();
   }
 
@@ -521,6 +523,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                             rpc::PrestartWorkersReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReportWorkerBacklog` request.
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
@@ -531,10 +537,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                           rpc::ReturnWorkerReply *reply,
                           rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Handle a `ReleaseUnusedWorkers` request.
-  void HandleReleaseUnusedWorkers(rpc::ReleaseUnusedWorkersRequest request,
-                                  rpc::ReleaseUnusedWorkersReply *reply,
-                                  rpc::SendReplyCallback send_reply_callback) override;
+  /// Handle a `ReleaseUnusedActorWorkers` request.
+  // On GCS restart, there's a pruning effort. GCS sends raylet a list of actor workers it
+  // still wants (that it keeps tracks of); and the raylet destroys all other actor
+  // workers.
+  void HandleReleaseUnusedActorWorkers(
+      rpc::ReleaseUnusedActorWorkersRequest request,
+      rpc::ReleaseUnusedActorWorkersReply *reply,
+      rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `ShutdownRaylet` request.
   void HandleShutdownRaylet(rpc::ShutdownRayletRequest request,
@@ -545,6 +555,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
@@ -590,6 +604,14 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleGetTaskFailureCause(rpc::GetTaskFailureCauseRequest request,
                                  rpc::GetTaskFailureCauseReply *reply,
                                  rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleRegisterMutableObject(rpc::RegisterMutableObjectRequest request,
+                                   rpc::RegisterMutableObjectReply *reply,
+                                   rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandlePushMutableObject(rpc::PushMutableObjectRequest request,
+                               rpc::PushMutableObjectReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `GetObjectsInfo` request.
   void HandleGetObjectsInfo(rpc::GetObjectsInfoRequest request,
@@ -694,6 +716,11 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// Otherwise returns false.
   bool IsWorkerDead(const WorkerID &worker_id, const NodeID &node_id) const;
 
+  /// Creates a Raylet client. Used by `mutable_object_provider_` when a new writer
+  /// channel is registered.
+  std::shared_ptr<raylet::RayletClient> CreateRayletClient(
+      const NodeID &node_id, rpc::ClientCallManager &client_call_manager);
+
   /// ID of this node.
   NodeID self_node_id_;
   /// The user-given identifier or name of this node.
@@ -701,6 +728,8 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   instrumented_io_context &io_service_;
   /// A client connection to the GCS.
   std::shared_ptr<gcs::GcsClient> gcs_client_;
+  /// The function to shutdown raylet gracefully.
+  std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully_;
   /// A pool of workers.
   WorkerPool worker_pool_;
   /// The `ClientCallManager` object that is shared by all `NodeManagerClient`s
@@ -719,9 +748,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  plasma::PlasmaClient store_client_;
+  std::unique_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -755,9 +784,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// Wrapper client for RuntimeEnvManager. Always non-null.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.
@@ -866,8 +892,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// Monitors and reports node memory usage and whether it is above threshold.
   std::unique_ptr<MemoryMonitor> memory_monitor_;
+
+  std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
 };
 
 }  // namespace raylet
-
 }  // namespace ray

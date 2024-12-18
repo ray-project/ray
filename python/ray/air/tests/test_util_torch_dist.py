@@ -5,9 +5,9 @@ import torch.distributed as dist
 
 import ray
 from ray.air.util.torch_dist import (
+    TorchDistributedWorker,
     init_torch_dist_process_group,
     shutdown_torch_dist_process_group,
-    TorchDistributedWorker,
 )
 
 

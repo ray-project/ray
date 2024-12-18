@@ -11,17 +11,18 @@ from ray._private.resource_spec import HEAD_NODE_RESOURCE_NAME
 from ray._private.utils import run_background_task
 from ray._raylet import GcsClient
 from ray.actor import ActorHandle
-from ray.serve._private.application_state import ApplicationStateManager
+from ray.serve._private.application_state import ApplicationStateManager, StatusOverview
+from ray.serve._private.autoscaling_state import AutoscalingStateManager
 from ray.serve._private.common import (
+    DeploymentHandleSource,
     DeploymentID,
     MultiplexedReplicaInfo,
     NodeId,
     RunningReplicaInfo,
-    StatusOverview,
     TargetCapacityDirection,
 )
 from ray.serve._private.constants import (
-    CONTROL_LOOP_PERIOD_S,
+    CONTROL_LOOP_INTERVAL_S,
     CONTROLLER_MAX_CONCURRENCY,
     RAY_SERVE_CONTROLLER_CALLBACK_IMPORT_PATH,
     RAY_SERVE_ENABLE_TASK_EVENTS,
@@ -47,7 +48,6 @@ from ray.serve._private.proxy_state import ProxyStateManager
 from ray.serve._private.storage.kv_store import RayInternalKVStore
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
-    DEFAULT,
     call_function_from_import_path,
     get_all_live_placement_group_names,
     get_head_node_id,
@@ -153,11 +153,11 @@ class ServeController:
         self.cluster_node_info_cache.update()
 
         self.proxy_state_manager = ProxyStateManager(
-            http_config,
-            self._controller_node_id,
-            self.cluster_node_info_cache,
-            self.global_logging_config,
-            grpc_options,
+            config=http_config,
+            head_node_id=self._controller_node_id,
+            cluster_node_info_cache=self.cluster_node_info_cache,
+            logging_config=self.global_logging_config,
+            grpc_options=grpc_options,
         )
 
         self.endpoint_state = EndpointState(self.kv_store, self.long_poll_host)
@@ -171,17 +171,22 @@ class ServeController:
             if actor["namespace"] == SERVE_NAMESPACE
         ]
 
+        self.autoscaling_state_manager = AutoscalingStateManager()
         self.deployment_state_manager = DeploymentStateManager(
             self.kv_store,
             self.long_poll_host,
             all_serve_actor_names,
             get_all_live_placement_group_names(),
             self.cluster_node_info_cache,
+            self.autoscaling_state_manager,
         )
 
         # Manage all applications' state
         self.application_state_manager = ApplicationStateManager(
-            self.deployment_state_manager, self.endpoint_state, self.kv_store
+            self.deployment_state_manager,
+            self.endpoint_state,
+            self.kv_store,
+            self.global_logging_config,
         )
 
         # Controller actor details
@@ -221,8 +226,7 @@ class ServeController:
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
-            global_logging_config,
+            {LongPollNamespace.GLOBAL_LOGGING_CONFIG: global_logging_config}
         )
         configure_component_logger(
             component_name="controller",
@@ -247,12 +251,12 @@ class ServeController:
         return os.getpid()
 
     def record_autoscaling_metrics(
-        self, replica_id: str, window_avg: float, send_timestamp: float
+        self, replica_id: str, window_avg: Optional[float], send_timestamp: float
     ):
         logger.debug(
             f"Received metrics from replica {replica_id}: {window_avg} running requests"
         )
-        self.deployment_state_manager.record_autoscaling_metrics(
+        self.autoscaling_state_manager.record_request_metrics_for_replica(
             replica_id, window_avg, send_timestamp
         )
 
@@ -260,6 +264,8 @@ class ServeController:
         self,
         deployment_id: str,
         handle_id: str,
+        actor_id: Optional[str],
+        handle_source: DeploymentHandleSource,
         queued_requests: float,
         running_requests: Dict[str, float],
         send_timestamp: float,
@@ -268,19 +274,25 @@ class ServeController:
             f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
             f"{queued_requests} queued requests and {running_requests} running requests"
         )
-        self.deployment_state_manager.record_handle_metrics(
-            deployment_id, handle_id, queued_requests, running_requests, send_timestamp
+        self.autoscaling_state_manager.record_request_metrics_for_handle(
+            deployment_id=deployment_id,
+            handle_id=handle_id,
+            actor_id=actor_id,
+            handle_source=handle_source,
+            queued_requests=queued_requests,
+            running_requests=running_requests,
+            send_timestamp=send_timestamp,
         )
 
     def _dump_autoscaling_metrics_for_testing(self):
-        return self.deployment_state_manager.get_autoscaling_metrics()
+        return self.autoscaling_state_manager.get_metrics()
 
     def _dump_replica_states_for_testing(self, deployment_id: DeploymentID):
         return self.deployment_state_manager._deployment_states[deployment_id]._replicas
 
-    def _stop_one_running_replica_for_testing(self, deployment_name):
+    def _stop_one_running_replica_for_testing(self, deployment_id):
         self.deployment_state_manager._deployment_states[
-            deployment_name
+            deployment_id
         ]._stop_one_running_replica_for_testing()
 
     async def listen_for_change(self, keys_to_snapshot_ids: Dict[str, int]):
@@ -320,8 +332,8 @@ class ServeController:
         # NOTE(zcin): Java only supports 1.x deployments, so only return
         # a dictionary of deployment name -> endpoint info
         data = {
-            endpoint_tag.name: EndpointInfoProto(route=endppint_dict["route"])
-            for endpoint_tag, endppint_dict in endpoints.items()
+            endpoint_tag.name: EndpointInfoProto(route=endpoint_dict["route"])
+            for endpoint_tag, endpoint_dict in endpoints.items()
         }
         return EndpointSet(endpoints=data).SerializeToString()
 
@@ -431,6 +443,14 @@ class ServeController:
                 except Exception:
                     logger.exception("Exception updating proxy state.")
 
+            # When the controller is done recovering, drop invalid handle metrics
+            # that may be stale for autoscaling
+            if not any_recovering:
+                self.autoscaling_state_manager.drop_stale_handle_metrics(
+                    self.deployment_state_manager.get_alive_replica_actor_ids()
+                    | self.proxy_state_manager.get_alive_proxy_actor_ids()
+                )
+
             loop_duration = time.time() - loop_start_time
             if loop_duration > 10:
                 logger.warning(
@@ -446,7 +466,7 @@ class ServeController:
             self.num_control_loops_gauge.set(num_loops)
 
             sleep_start_time = time.time()
-            await asyncio.sleep(CONTROL_LOOP_PERIOD_S)
+            await asyncio.sleep(CONTROL_LOOP_INTERVAL_S)
             self.sleep_duration_gauge_s.set(time.time() - sleep_start_time)
 
     def _create_control_loop_metrics(self):
@@ -497,7 +517,7 @@ class ServeController:
             logger.info(
                 "Recovered config from checkpoint.", extra={"log_to_stderr": False}
             )
-            self.deploy_config(serve_config, deployment_time=deployment_time)
+            self.apply_config(serve_config, deployment_time=deployment_time)
 
     def _read_config_checkpoint(
         self,
@@ -717,20 +737,22 @@ class ServeController:
                     "deployment_config_proto_bytes": deployment_args.deployment_config,
                     "replica_config_proto_bytes": deployment_args.replica_config,
                     "deployer_job_id": deployment_args.deployer_job_id,
-                    "route_prefix": deployment_args.route_prefix
-                    if deployment_args.HasField("route_prefix")
-                    else None,
                     "ingress": deployment_args.ingress,
-                    "docs_path": deployment_args.docs_path
-                    if deployment_args.HasField("docs_path")
-                    else None,
+                    "route_prefix": (
+                        deployment_args.route_prefix
+                        if deployment_args.HasField("route_prefix")
+                        else None
+                    ),
+                    "docs_path": (
+                        deployment_args.docs_path
+                        if deployment_args.HasField("docs_path")
+                        else None
+                    ),
                 }
             )
-        self.application_state_manager.apply_deployment_args(
-            name, deployment_args_deserialized
-        )
+        self.application_state_manager.deploy_app(name, deployment_args_deserialized)
 
-    def deploy_config(
+    def apply_config(
         self,
         config: ServeDeploySchema,
         deployment_time: float = 0.0,
@@ -763,14 +785,6 @@ class ServeController:
         self._target_capacity = config.target_capacity
 
         for app_config in config.applications:
-            for deployments in app_config.deployments:
-                if deployments.route_prefix != DEFAULT.VALUE:
-                    logger.warning(
-                        "Specifying route prefix for a deployment is deprecated. "
-                        "Please specify route prefix at an application level in the "
-                        "Serve config instead."
-                    )
-
             # If the application logging config is not set, use the global logging
             # config.
             if app_config.logging_config is None and config.logging_config:
@@ -778,14 +792,6 @@ class ServeController:
 
             app_config_dict = app_config.dict(exclude_unset=True)
             new_config_checkpoint[app_config.name] = app_config_dict
-
-            self.application_state_manager.deploy_config(
-                app_config.name,
-                app_config,
-                deployment_time=deployment_time,
-                target_capacity=self._target_capacity,
-                target_capacity_direction=self._target_capacity_direction,
-            )
 
         self.kv_store.put(
             CONFIG_CHECKPOINT_KEY,
@@ -799,12 +805,15 @@ class ServeController:
             ),
         )
 
-        # Delete live applications not listed in the config.
-        existing_applications = set(
-            self.application_state_manager._application_states.keys()
+        # Declaratively apply the new set of applications.
+        # This will delete any applications no longer in the config that were
+        # previously deployed via the REST API.
+        self.application_state_manager.apply_app_configs(
+            config.applications,
+            deployment_time=deployment_time,
+            target_capacity=self._target_capacity,
+            target_capacity_direction=self._target_capacity_direction,
         )
-        new_applications = {app_config.name for app_config in config.applications}
-        self.delete_apps(existing_applications.difference(new_applications))
 
     def get_deployment_info(self, name: str, app_name: str = "") -> bytes:
         """Get the current information about a deployment.
@@ -855,19 +864,25 @@ class ServeController:
         error messages, etc.
 
         Returns:
-            Dict that follows the format of the schema ServeInstanceDetails. Currently,
-            there is a value set for every field at all schema levels, except for the
-            route_prefix in the deployment_config for each deployment.
+            Dict that follows the format of the schema ServeInstanceDetails.
         """
 
         http_config = self.get_http_config()
         grpc_config = self.get_grpc_config()
         applications = {}
 
+        app_statuses = self.application_state_manager.list_app_statuses()
+
+        # If there are no app statuses, there's no point getting the app configs.
+        # Moreover, there might be no app statuses because the GCS is down,
+        # in which case getting the app configs would fail anyway,
+        # since they're stored in the checkpoint in the GCS.
+        app_configs = self.get_app_configs() if app_statuses else {}
+
         for (
             app_name,
             app_status_info,
-        ) in self.application_state_manager.list_app_statuses().items():
+        ) in app_statuses.items():
             applications[app_name] = ApplicationDetails(
                 name=app_name,
                 route_prefix=self.application_state_manager.get_route_prefix(app_name),
@@ -876,18 +891,17 @@ class ServeController:
                 message=app_status_info.message,
                 last_deployed_time_s=app_status_info.deployment_timestamp,
                 # This can be none if the app was deployed through
-                # serve.run, or if the app is in deleting state
-                deployed_app_config=self.get_app_config(app_name),
+                # serve.run, the app is in deleting state,
+                # or a checkpoint hasn't been set yet
+                deployed_app_config=app_configs.get(app_name),
+                source=self.application_state_manager.get_app_source(app_name),
                 deployments=self.application_state_manager.list_deployment_details(
                     app_name
                 ),
             )
 
         # NOTE(zcin): We use exclude_unset here because we explicitly and intentionally
-        # fill in all info that should be shown to users. Currently, every field is set
-        # except for the route_prefix in the deployment_config of each deployment, since
-        # route_prefix is set instead in each application.
-        # Eventually we want to remove route_prefix from DeploymentSchema.
+        # fill in all info that should be shown to users.
         http_options = HTTPOptionsSchema.parse_obj(http_config.dict(exclude_unset=True))
         grpc_options = gRPCOptionsSchema.parse_obj(grpc_config.dict(exclude_unset=True))
         return ServeInstanceDetails(
@@ -896,9 +910,11 @@ class ServeController:
             proxy_location=ProxyLocation._from_deployment_mode(http_config.location),
             http_options=http_options,
             grpc_options=grpc_options,
-            proxies=self.proxy_state_manager.get_proxy_details()
-            if self.proxy_state_manager
-            else None,
+            proxies=(
+                self.proxy_state_manager.get_proxy_details()
+                if self.proxy_state_manager
+                else None
+            ),
             applications=applications,
         )._get_user_facing_json_serializable_dict(exclude_unset=True)
 
@@ -932,13 +948,16 @@ class ServeController:
             statuses.append(self.get_serve_status(name))
         return statuses
 
-    def get_app_config(self, name: str = SERVE_DEFAULT_APP_NAME) -> Optional[Dict]:
+    def get_app_configs(self) -> Dict[str, ServeApplicationSchema]:
         checkpoint = self.kv_store.get(CONFIG_CHECKPOINT_KEY)
-        if checkpoint is not None:
-            _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
-            if name in config_checkpoints_dict:
-                config = config_checkpoints_dict[name]
-                return ServeApplicationSchema.parse_obj(config).dict(exclude_unset=True)
+        if checkpoint is None:
+            return {}
+
+        _, _, _, config_checkpoints_dict = pickle.loads(checkpoint)
+        return {
+            app: ServeApplicationSchema.parse_obj(config)
+            for app, config in config_checkpoints_dict.items()
+        }
 
     def get_all_deployment_statuses(self) -> List[bytes]:
         """Gets deployment status bytes for all live deployments."""
@@ -983,7 +1002,7 @@ class ServeController:
         During deletion, the application status is DELETING
         """
         for name in names:
-            self.application_state_manager.delete_application(name)
+            self.application_state_manager.delete_app(name)
 
     def record_multiplexed_replica_info(self, info: MultiplexedReplicaInfo):
         """Record multiplexed model ids for a replica of deployment

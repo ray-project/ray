@@ -1,14 +1,13 @@
 import time
 from collections import defaultdict
-from typing import Dict, List, Optional, Set
-
 from dataclasses import dataclass
+from typing import Dict, List, Optional, Set
 
 import ray
 from ray.air.execution.resources.request import (
-    ResourceRequest,
     AcquiredResources,
     RemoteRayEntity,
+    ResourceRequest,
 )
 from ray.air.execution.resources.resource_manager import ResourceManager
 from ray.util.annotations import DeveloperAPI

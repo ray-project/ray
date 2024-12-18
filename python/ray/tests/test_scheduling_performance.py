@@ -45,7 +45,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray._private.worker.global_worker.node.unique_id, self.start]
+            return [ray.get_runtime_context().get_node_id(), self.start]
 
         def create(self, num):
             ret_list = []
@@ -60,7 +60,7 @@ def test_actor_scheduling_latency(ray_start_cluster, args):
             self.start = time.time()
 
         def info(self):
-            return [ray._private.worker.global_worker.node.unique_id, self.start]
+            return [ray.get_runtime_context().get_node_id(), self.start]
 
     actor_distribution = {}
     actor_list = []

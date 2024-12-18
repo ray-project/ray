@@ -7,14 +7,16 @@ Requires the HyperOpt library to be installed (`pip install hyperopt`).
 For an example of using a Tune search space, see
 :doc:`/tune/examples/hyperopt_example`.
 """
+
 import time
+
+from hyperopt import hp
 
 import ray
 from ray import train, tune
-from ray.tune.search import ConcurrencyLimiter
 from ray.tune.schedulers import AsyncHyperBandScheduler
+from ray.tune.search import ConcurrencyLimiter
 from ray.tune.search.hyperopt import HyperOptSearch
-from hyperopt import hp
 
 
 def f_unpack_dict(dct):
@@ -35,7 +37,7 @@ def f_unpack_dict(dct):
     """
 
     res = {}
-    for (k, v) in dct.items():
+    for k, v in dct.items():
         if isinstance(v, dict):
             res = {**res, **f_unpack_dict(v)}
         else:

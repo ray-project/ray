@@ -8,6 +8,9 @@ from typing import TYPE_CHECKING, Any, List, Optional
 import numpy as np
 
 import ray
+from ray.data._internal.execution.interfaces.ref_bundle import (
+    _ref_bundles_iterator_to_block_refs_list,
+)
 from ray.data._internal.remote_fn import cached_remote_fn
 from ray.data.block import BlockAccessor
 from ray.data.context import DataContext
@@ -51,7 +54,8 @@ class RandomAccessDataset:
         logger.info("[setup] Indexing dataset by sort key.")
         sorted_ds = ds.sort(key)
         get_bounds = cached_remote_fn(_get_bounds)
-        blocks = sorted_ds.get_internal_block_refs()
+        bundles = sorted_ds.iter_internal_ref_bundles()
+        blocks = _ref_bundles_iterator_to_block_refs_list(bundles)
 
         logger.info("[setup] Computing block range bounds.")
         bounds = ray.get([get_bounds.remote(b, key) for b in blocks])

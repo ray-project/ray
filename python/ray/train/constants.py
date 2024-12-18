@@ -1,4 +1,3 @@
-import os
 from pathlib import Path
 
 import ray
@@ -18,20 +17,6 @@ def _get_ray_train_session_dir() -> str:
     ).as_posix()
 
 
-def _get_defaults_results_dir() -> str:
-    return (
-        # This can be overwritten by our libraries
-        os.environ.get("RAY_AIR_LOCAL_CACHE_DIR")
-        # This is a directory provided by Bazel automatically
-        or os.environ.get("TEST_TMPDIR")
-        # This is the old way to specify the results dir
-        # Deprecate: Remove in 2.6
-        or os.environ.get("TUNE_RESULT_DIR")
-        # Default
-        or Path("~/ray_results").expanduser().as_posix()
-    )
-
-
 DEFAULT_STORAGE_PATH = Path("~/ray_results").expanduser().as_posix()
 
 # Autofilled ray.train.report() metrics. Keys should be consistent with Tune.
@@ -47,9 +32,6 @@ DETAILED_AUTOFILLED_KEYS = {WORKER_HOSTNAME, WORKER_NODE_IP, WORKER_PID, TIME_TO
 
 # Default filename for JSON logger
 RESULT_FILE_JSON = "results.json"
-
-# Default directory where all Train logs, checkpoints, etc. will be stored.
-DEFAULT_RESULTS_DIR = Path("~/ray_results").expanduser()
 
 # The name of the subdirectory inside the trainer run_dir to store checkpoints.
 TRAIN_CHECKPOINT_SUBDIR = "checkpoints"
@@ -80,6 +62,10 @@ ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV = (
     "TRAIN_ENABLE_SHARE_NEURON_CORES_ACCELERATOR"
 )
 
+# Integer value which if set will not share npu visible devices
+# across workers. 1 for True (default), 0 for False.
+ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV = "TRAIN_ENABLE_SHARE_ASCEND_RT_VISIBLE_DEVICES"
+
 # Integer value which indicates the number of seconds to wait when creating
 # the worker placement group before timing out.
 TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV = "TRAIN_PLACEMENT_GROUP_TIMEOUT_S"
@@ -96,6 +82,10 @@ RAY_CHDIR_TO_TRIAL_DIR = "RAY_CHDIR_TO_TRIAL_DIR"
 # Defaults to 0, which always retries on node preemption failures.
 RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE = "RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE"
 
+# Set this to 1 to start a StateActor and collect information Train Runs
+# Defaults to 0
+RAY_TRAIN_ENABLE_STATE_TRACKING = "RAY_TRAIN_ENABLE_STATE_TRACKING"
+
 # NOTE: When adding a new environment variable, please track it in this list.
 TRAIN_ENV_VARS = {
     ENABLE_DETAILED_AUTOFILLED_METRICS_ENV,
@@ -105,6 +95,7 @@ TRAIN_ENV_VARS = {
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     RAY_CHDIR_TO_TRIAL_DIR,
     RAY_TRAIN_COUNT_PREEMPTION_AS_FAILURE,
+    RAY_TRAIN_ENABLE_STATE_TRACKING,
 }
 
 # Key for AIR Checkpoint metadata in TrainingResult metadata

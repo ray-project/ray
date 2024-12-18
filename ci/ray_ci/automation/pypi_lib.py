@@ -33,17 +33,14 @@ def _get_pypi_token(pypi_env: str) -> str:
 
 
 def _call_subprocess(command: List[str]):
-    subprocess.run(
-        command,
-        check=True,
-    )
+    subprocess.run(command, check=True)
 
 
 def upload_wheels_to_pypi(pypi_env: str, directory_path: str) -> None:
     directory_path = os.path.join(bazel_workspace_dir, directory_path)
     pypi_url = _get_pypi_url(pypi_env)
     pypi_token = _get_pypi_token(pypi_env)
-    wheels = os.listdir(directory_path)
+    wheels = sorted(os.listdir(directory_path))
     for wheel in wheels:
         wheel_path = os.path.join(directory_path, wheel)
         cmd = [

@@ -97,6 +97,12 @@ class NodeManagerWorkerClient
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
+  /// Request a prestart worker.
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PrestartWorkers,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
   /// Report task backlog information
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          ReportWorkerBacklog,
@@ -111,7 +117,7 @@ class NodeManagerWorkerClient
 
   /// Release unused workers.
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
-                         ReleaseUnusedWorkers,
+                         ReleaseUnusedActorWorkers,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -123,6 +129,11 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          DrainRaylet,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         IsLocalWorkerDead,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 
@@ -188,6 +199,16 @@ class NodeManagerWorkerClient
 
   VOID_RPC_CLIENT_METHOD(NodeManagerService,
                          GetTaskFailureCause,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         RegisterMutableObject,
+                         grpc_client_,
+                         /*method_timeout_ms*/ -1, )
+
+  VOID_RPC_CLIENT_METHOD(NodeManagerService,
+                         PushMutableObject,
                          grpc_client_,
                          /*method_timeout_ms*/ -1, )
 

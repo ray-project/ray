@@ -1,18 +1,16 @@
 import collections
 import json
 import os
-from pathlib import Path
 import random
 import time
+from pathlib import Path
 from typing import Dict, List, Optional
 
 import ray
 from ray import train, tune
 from ray.train.data_parallel_trainer import DataParallelTrainer
-from ray.tune.experiment import Trial
-
 from ray.train.tests.util import create_dict_checkpoint, load_dict_checkpoint
-
+from ray.tune.experiment import Trial
 
 RUNNER_TYPE = os.environ.get("RUNNER_TYPE", "trainer")
 STORAGE_PATH = os.environ.get("STORAGE_PATH", "/tmp/ray_results")

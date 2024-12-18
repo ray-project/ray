@@ -1,4 +1,5 @@
 # flake8: noqa
+# isort: skip_file
 # TODO(rliaw): Include this in the docs.
 
 # fmt: off

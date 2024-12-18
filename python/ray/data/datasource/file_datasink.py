@@ -1,15 +1,15 @@
+import logging
 import posixpath
 from typing import TYPE_CHECKING, Any, Dict, Iterable, List, Optional
+from urllib.parse import urlparse
 
 from ray._private.utils import _add_creatable_buckets_param_if_s3_uri
-from ray.data._internal.dataset_logger import DatasetLogger
 from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.execution.interfaces import TaskContext
 from ray.data._internal.util import _is_local_scheme, call_with_retry
 from ray.data.block import Block, BlockAccessor
 from ray.data.context import DataContext
-from ray.data.datasource.block_path_provider import BlockWritePathProvider
-from ray.data.datasource.datasink import Datasink
+from ray.data.datasource.datasink import Datasink, WriteResult
 from ray.data.datasource.filename_provider import (
     FilenameProvider,
     _DefaultFilenameProvider,
@@ -20,7 +20,7 @@ from ray.util.annotations import DeveloperAPI
 if TYPE_CHECKING:
     import pyarrow
 
-logger = DatasetLogger(__name__)
+logger = logging.getLogger(__name__)
 
 
 WRITE_FILE_MAX_ATTEMPTS = 10
@@ -36,7 +36,6 @@ class _FileDatasink(Datasink):
         try_create_dir: bool = True,
         open_stream_args: Optional[Dict[str, Any]] = None,
         filename_provider: Optional[FilenameProvider] = None,
-        block_path_provider: Optional[BlockWritePathProvider] = None,
         dataset_uuid: Optional[str] = None,
         file_format: Optional[str] = None,
     ):
@@ -58,13 +57,6 @@ class _FileDatasink(Datasink):
         if open_stream_args is None:
             open_stream_args = {}
 
-        if block_path_provider is not None:
-            raise DeprecationWarning(
-                "`block_path_provider` has been deprecated in favor of "
-                "`filename_provider`. For more information, see "
-                "https://docs.ray.io/en/master/data/api/doc/ray.data.datasource.FilenameProvider.html",  # noqa: E501
-            )
-
         if filename_provider is None:
             filename_provider = _DefaultFilenameProvider(
                 dataset_uuid=dataset_uuid, file_format=file_format
@@ -78,7 +70,6 @@ class _FileDatasink(Datasink):
         self.try_create_dir = try_create_dir
         self.open_stream_args = open_stream_args
         self.filename_provider = filename_provider
-        self.block_path_provider = block_path_provider
         self.dataset_uuid = dataset_uuid
         self.file_format = file_format
 
@@ -94,7 +85,24 @@ class _FileDatasink(Datasink):
         """
         from pyarrow.fs import FileType
 
-        if self.try_create_dir:
+        # We should skip creating directories in s3 unless the user specifically
+        # overrides this behavior. PyArrow's s3fs implementation for create_dir
+        # will attempt to check if the parent directory exists before trying to
+        # create the directory (with recursive=True it will try to do this to
+        # all of the directories until the root of the bucket). An IAM Policy that
+        # restricts access to a subset of prefixes within the bucket might cause
+        # the creation of the directory to fail even if the permissions should
+        # allow the data can be written to the specified path. For example if a
+        # a policy only allows users to write blobs prefixed with s3://bucket/foo
+        # a call to create_dir for s3://bucket/foo/bar will fail even though it
+        # should not.
+        parsed_uri = urlparse(self.path)
+        is_s3_uri = parsed_uri.scheme == "s3"
+        skip_create_dir_for_s3 = (
+            is_s3_uri and not DataContext.get_current().s3_try_create_dir
+        )
+
+        if self.try_create_dir and not skip_create_dir_for_s3:
             if self.filesystem.get_file_info(self.path).type is FileType.NotFound:
                 # Arrow's S3FileSystem doesn't allow creating buckets by default, so we
                 # add a query arg enabling bucket creation if an S3 URI is provided.
@@ -106,7 +114,7 @@ class _FileDatasink(Datasink):
         self,
         blocks: Iterable[Block],
         ctx: TaskContext,
-    ) -> Any:
+    ) -> None:
         builder = DelegatingBlockBuilder()
         for block in blocks:
             builder.add_block(block)
@@ -114,23 +122,21 @@ class _FileDatasink(Datasink):
         block_accessor = BlockAccessor.for_block(block)
 
         if block_accessor.num_rows() == 0:
-            logger.get_logger().warning(f"Skipped writing empty block to {self.path}")
-            return "skip"
+            logger.warning(f"Skipped writing empty block to {self.path}")
+            return
 
         self.write_block(block_accessor, 0, ctx)
-        # TODO: decide if we want to return richer object when the task
-        # succeeds.
-        return "ok"
 
     def write_block(self, block: BlockAccessor, block_index: int, ctx: TaskContext):
         raise NotImplementedError
 
-    def on_write_complete(self, write_results: List[Any]) -> None:
-        if not self.has_created_dir:
-            return
+    def on_write_complete(self, write_result_blocks: List[Block]) -> WriteResult:
+        aggregated_results = super().on_write_complete(write_result_blocks)
 
-        if all(write_results == "skip" for write_results in write_results):
+        # If no rows were written, we can delete the directory.
+        if self.has_created_dir and aggregated_results.num_rows == 0:
             self.filesystem.delete_dir(self.path)
+        return aggregated_results
 
     @property
     def supports_distributed_writes(self) -> bool:
@@ -187,11 +193,11 @@ class RowBasedFileDatasink(_FileDatasink):
                 with self.open_output_stream(write_path) as file:
                     self.write_row_to_file(row, file)
 
-            logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
+            logger.debug(f"Writing {write_path} file.")
             call_with_retry(
                 write_row_to_path,
                 description=f"write '{write_path}'",
-                match=DataContext.get_current().write_file_retry_on_errors,
+                match=DataContext.get_current().retried_io_errors,
                 max_attempts=WRITE_FILE_MAX_ATTEMPTS,
                 max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
             )
@@ -242,11 +248,11 @@ class BlockBasedFileDatasink(_FileDatasink):
             with self.open_output_stream(write_path) as file:
                 self.write_block_to_file(block, file)
 
-        logger.get_logger(log_to_stdout=False).debug(f"Writing {write_path} file.")
+        logger.debug(f"Writing {write_path} file.")
         call_with_retry(
             write_block_to_path,
             description=f"write '{write_path}'",
-            match=DataContext.get_current().write_file_retry_on_errors,
+            match=DataContext.get_current().retried_io_errors,
             max_attempts=WRITE_FILE_MAX_ATTEMPTS,
             max_backoff_s=WRITE_FILE_RETRY_MAX_BACKOFF_SECONDS,
         )

@@ -21,7 +21,7 @@ py_library(
 py_test_module_list(
     files = glob(["tests/block_batching/test_*.py"]),
     size = "medium",
-    tags = ["team:ml", "exclusive"],
+    tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
 
@@ -99,7 +99,7 @@ py_test(
 
 py_test(
     name = "test_arrow_block",
-    size = "small",
+    size = "medium",
     srcs = ["tests/test_arrow_block.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
@@ -141,6 +141,14 @@ py_test(
     name = "test_context_propagation",
     size = "small",
     srcs = ["tests/test_context_propagation.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_avro",
+    size = "small",
+    srcs = ["tests/test_avro.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -218,6 +226,14 @@ py_test(
 )
 
 py_test(
+    name = "test_hudi",
+    size = "small",
+    srcs = ["tests/test_hudi.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
     name = "test_image",
     size = "small",
     srcs = ["tests/test_image.py"],
@@ -242,9 +258,9 @@ py_test(
 )
 
 py_test(
-    name = "test_logger",
+    name = "test_logging",
     size = "small",
-    srcs = ["tests/test_logger.py"],
+    srcs = ["tests/test_logging.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -346,6 +362,15 @@ py_test(
 )
 
 py_test(
+    name = "test_exceptions",
+    size = "small",
+    srcs = ["tests/test_exceptions.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+
+py_test(
     name = "test_execution_optimizer",
     size = "medium",
     srcs = ["tests/test_execution_optimizer.py"],
@@ -365,6 +390,14 @@ py_test(
     name = "test_huggingface",
     size = "medium",
     srcs = ["tests/test_huggingface.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_iceberg",
+    size = "medium",
+    srcs = ["tests/test_iceberg.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )
@@ -558,6 +591,70 @@ py_test(
     name = "test_backpressure_e2e",
     size = "large",
     srcs = ["tests/test_backpressure_e2e.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_bundle_queue",
+    size = "small",
+    srcs = ["tests/test_bundle_queue.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_autoscaler",
+    size = "small",
+    srcs = ["tests/test_autoscaler.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_clickhouse",
+    size = "small",
+    srcs = ["tests/test_clickhouse.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_lance",
+    size = "small",
+    srcs = ["tests/test_lance.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_logical_plan",
+    size = "small",
+    srcs = ["tests/test_logical_plan.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_delta_sharing",
+    size = "small",
+    srcs = ["tests/test_delta_sharing.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_context",
+    size = "small",
+    srcs = ["tests/test_context.py"],
+    tags = ["team:data", "exclusive"],
+    deps = ["//:ray_lib", ":conftest"],
+)
+
+py_test(
+    name = "test_expression_evaluator",
+    size = "small",
+    srcs = ["tests/test_expression_evaluator.py"],
     tags = ["team:data", "exclusive"],
     deps = ["//:ray_lib", ":conftest"],
 )

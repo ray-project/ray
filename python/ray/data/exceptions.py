@@ -1,10 +1,14 @@
+import logging
 from typing import Callable
 
-from ray.data._internal.dataset_logger import DatasetLogger
+from ray.data._internal.logging import get_log_directory
 from ray.data.context import DataContext
 from ray.exceptions import UserCodeException
 from ray.util import log_once
 from ray.util.annotations import DeveloperAPI
+from ray.util.rpdb import _is_ray_debugger_post_mortem_enabled
+
+logger = logging.getLogger(__name__)
 
 
 @DeveloperAPI
@@ -30,10 +34,6 @@ class SystemException(Exception):
     pass
 
 
-# Logger used by Ray Data to log Exceptions while skip internal stack frames.
-data_exception_logger = DatasetLogger(__name__)
-
-
 @DeveloperAPI
 def omit_traceback_stdout(fn: Callable) -> Callable:
     """Decorator which runs the function, and if there is an exception raised,
@@ -48,35 +48,41 @@ def omit_traceback_stdout(fn: Callable) -> Callable:
         try:
             return fn(*args, **kwargs)
         except Exception as e:
-            # Only log the full internal stack trace to stdout when configured.
+            # Only log the full internal stack trace to stdout when configured
+            # via DataContext, or when the Ray Debugger is enabled.
             # The full stack trace will always be emitted to the Ray Data log file.
             log_to_stdout = DataContext.get_current().log_internal_stack_trace_to_stdout
+            if _is_ray_debugger_post_mortem_enabled():
+                logger.exception("Full stack trace:")
+                raise e
 
             is_user_code_exception = isinstance(e, UserCodeException)
             if is_user_code_exception:
                 # Exception has occurred in user code.
                 if not log_to_stdout and log_once("ray_data_exception_internal_hidden"):
-                    data_exception_logger.get_logger().error(
+                    logger.error(
                         "Exception occurred in user code, with the abbreviated stack "
                         "trace below. By default, the Ray Data internal stack trace "
                         "is omitted from stdout, and only written to the Ray Data log "
-                        f"file at {data_exception_logger._datasets_log_path}. To "
+                        f"files at {get_log_directory()}. To "
                         "output the full stack trace to stdout, set "
                         "`DataContext.log_internal_stack_trace_to_stdout` to True."
                     )
             else:
                 # Exception has occurred in internal Ray Data / Ray Core code.
-                data_exception_logger.get_logger().error(
+                logger.error(
                     "Exception occurred in Ray Data or Ray Core internal code. "
                     "If you continue to see this error, please open an issue on "
                     "the Ray project GitHub page with the full stack trace below: "
                     "https://github.com/ray-project/ray/issues/new/choose"
                 )
 
-            data_exception_logger.get_logger(log_to_stdout=log_to_stdout).exception(
-                "Full stack trace:"
+            should_hide_traceback = is_user_code_exception and not log_to_stdout
+            logger.exception(
+                "Full stack trace:",
+                exc_info=True,
+                extra={"hide": should_hide_traceback},
             )
-
             if is_user_code_exception:
                 raise e.with_traceback(None)
             else:

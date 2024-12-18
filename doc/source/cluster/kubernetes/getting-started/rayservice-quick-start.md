@@ -5,7 +5,7 @@
 ## Prerequisites
 
 This guide focuses solely on the Ray Serve multi-application API, which is available starting from Ray version 2.4.0.
-This guide mainly focuses on the behavior of KubeRay v1.1.0 and Ray 2.9.0.
+This guide mainly focuses on the behavior of KubeRay v1.1.1 and Ray 2.9.0.
 
 * Ray 2.4.0 or newer.
 * KubeRay 0.6.0, KubeRay nightly, or newer.
@@ -29,7 +29,7 @@ A RayService manages these components:
 ## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ## Step 2: Install the KubeRay operator
@@ -40,14 +40,10 @@ Please note that the YAML file in this example uses `serveConfigV2` to specify a
 ## Step 3: Install a RayService
 
 ```sh
-# Step 3.1: Download `ray-service.sample.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/release-1.1.0/ray-operator/config/samples/ray-service.sample.yaml
-
-# Step 3.2: Create a RayService
-kubectl apply -f ray-service.sample.yaml
+kubectl apply -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.sample.yaml
 ```
 
-## Step 4: Verify the Kubernetes cluster status 
+## Step 4: Verify the Kubernetes cluster status
 
 ```sh
 # Step 4.1: List all RayService custom resources in the `default` namespace.
@@ -87,7 +83,7 @@ When the Ray Serve applications are healthy and ready, KubeRay creates a head se
 ```sh
 # (1) Forward the dashboard port to localhost.
 # (2) Check the Serve page in the Ray dashboard at http://localhost:8265/#/serve.
-kubectl port-forward svc/rayservice-sample-head-svc --address 0.0.0.0 8265:8265
+kubectl port-forward svc/rayservice-sample-head-svc 8265:8265
 ```
 
 * Refer to [rayservice-troubleshooting.md](kuberay-raysvc-troubleshoot) for more details on RayService observability.
@@ -114,7 +110,7 @@ curl -X POST -H 'Content-Type: application/json' rayservice-sample-serve-svc:800
 
 ```sh
 # Delete the RayService.
-kubectl delete -f ray-service.sample.yaml
+kubectl delete -f https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.sample.yaml
 
 # Uninstall the KubeRay operator.
 helm uninstall kuberay-operator

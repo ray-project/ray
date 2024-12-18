@@ -1,17 +1,14 @@
 import logging
-import numpy as np
-
 from typing import TYPE_CHECKING, Dict
+
+import numpy as np
 
 from ray.air.constants import TRAINING_ITERATION
 from ray.tune.logger.logger import _LOGGER_DEPRECATION_WARNING, Logger, LoggerCallback
-from ray.util.debug import log_once
-from ray.tune.result import (
-    TIME_TOTAL_S,
-    TIMESTEPS_TOTAL,
-)
+from ray.tune.result import TIME_TOTAL_S, TIMESTEPS_TOTAL
 from ray.tune.utils import flatten_dict
 from ray.util.annotations import Deprecated, PublicAPI
+from ray.util.debug import log_once
 
 if TYPE_CHECKING:
     from ray.tune.experiment.trial import Trial  # noqa: F401

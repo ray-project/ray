@@ -10,28 +10,30 @@ from fastapi import APIRouter, FastAPI
 import ray
 from ray import cloudpickle
 from ray._private.serialization import pickle_dumps
-from ray.dag import DAGNode
+from ray.serve._private.build_app import build_app
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
 )
-from ray.serve._private.constants import SERVE_DEFAULT_APP_NAME, SERVE_LOGGER_NAME
-from ray.serve._private.deployment_graph_build import build as pipeline_build
-from ray.serve._private.deployment_graph_build import (
-    get_and_validate_ingress_deployment,
+from ray.serve._private.constants import (
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    SERVE_DEFAULT_APP_NAME,
+    SERVE_LOGGER_NAME,
 )
 from ray.serve._private.http_util import (
     ASGIAppReplicaWrapper,
     make_fastapi_class_based_view,
 )
+from ray.serve._private.local_testing_mode import make_local_deployment_handle
+from ray.serve._private.logging_utils import configure_component_logger
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     DEFAULT,
     Default,
     ensure_serialization_context,
     extract_self_if_method_call,
-    get_random_string,
+    validate_route_prefix,
 )
 from ray.serve.config import (
     AutoscalingConfig,
@@ -197,7 +199,7 @@ def ingress(app: Union["FastAPI", "APIRouter", Callable]) -> Callable:
 
         if issubclass(cls, collections.abc.Callable):
             raise ValueError(
-                "Class passed to @serve.ingress may not have __call__ method."
+                "Classes passed to @serve.ingress may not have __call__ method."
             )
 
         # Sometimes there are decorators on the methods. We want to fix
@@ -252,7 +254,6 @@ def deployment(
     placement_group_strategy: Default[str] = DEFAULT.VALUE,
     max_replicas_per_node: Default[int] = DEFAULT.VALUE,
     user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-    max_concurrent_queries: Default[int] = DEFAULT.VALUE,
     max_ongoing_requests: Default[int] = DEFAULT.VALUE,
     max_queued_requests: Default[int] = DEFAULT.VALUE,
     autoscaling_config: Default[Union[Dict, AutoscalingConfig, None]] = DEFAULT.VALUE,
@@ -283,12 +284,9 @@ def deployment(
             this deployment. Defaults to 1.
         autoscaling_config: Parameters to configure autoscaling behavior. If this
             is set, `num_replicas` cannot be set.
-        route_prefix: [DEPRECATED] Route prefix should be set per-application
-            through `serve.run()` or the config file.
         ray_actor_options: Options to pass to the Ray Actor decorator, such as
             resource requirements. Valid options are: `accelerator_type`, `memory`,
-            `num_cpus`, `num_gpus`, `object_store_memory`, `resources`,
-            and `runtime_env`.
+            `num_cpus`, `num_gpus`, `resources`, and `runtime_env`.
         placement_group_bundles: Defines a set of placement group bundles to be
             scheduled *for each replica* of this deployment. The replica actor will
             be scheduled in the first bundle provided, so the resources specified in
@@ -302,10 +300,8 @@ def deployment(
         user_config: Config to pass to the reconfigure method of the deployment. This
             can be updated dynamically without restarting the replicas of the
             deployment. The user_config must be fully JSON-serializable.
-        max_concurrent_queries: [DEPRECATED] Maximum number of queries that are sent to
-            a replica of this deployment without receiving a response. Defaults to 100.
         max_ongoing_requests: Maximum number of requests that are sent to a
-            replica of this deployment without receiving a response. Defaults to 100.
+            replica of this deployment without receiving a response. Defaults to 5.
         max_queued_requests: [EXPERIMENTAL] Maximum number of requests to this
             deployment that will be queued at each *caller* (proxy or DeploymentHandle).
             Once this limit is reached, subsequent requests will raise a
@@ -329,34 +325,22 @@ def deployment(
     Returns:
         `Deployment`
     """
+    if route_prefix is not DEFAULT.VALUE:
+        raise ValueError(
+            "`route_prefix` can no longer be specified at the deployment level. "
+            "Pass it to `serve.run` or in the application config instead."
+        )
 
-    if autoscaling_config not in [DEFAULT.VALUE, None]:
-        if (
-            isinstance(autoscaling_config, dict)
-            and "target_num_ongoing_requests_per_replica" in autoscaling_config
-        ) or (
-            isinstance(autoscaling_config, AutoscalingConfig)
-            and "target_num_ongoing_requests_per_replica"
-            in autoscaling_config.dict(exclude_unset=True)
-        ):
-            logger.warning(
-                "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
-                "`autoscaling_config` has been deprecated and replaced by "
-                "`target_ongoing_requests`. "
-                "`target_num_ongoing_requests_per_replica` will be removed in a future "
-                "version."
-            )
+    if max_ongoing_requests is None:
+        raise ValueError("`max_ongoing_requests` must be non-null, got None.")
 
-    max_ongoing_requests = (
-        max_ongoing_requests
-        if max_ongoing_requests is not DEFAULT.VALUE
-        else max_concurrent_queries
-    )
     if num_replicas == "auto":
         num_replicas = None
         max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
             max_ongoing_requests, autoscaling_config
         )
+
+        ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
     # NOTE: The user_configured_option_names should be the first thing that's
     # defined in this function. It depends on the locals() dictionary storing
@@ -386,19 +370,6 @@ def deployment(
         logger.warning(
             "DeprecationWarning: `version` in `@serve.deployment` has been deprecated. "
             "Explicitly specifying version will raise an error in the future!"
-        )
-
-    if route_prefix is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
-            "deprecated. To specify a route prefix for an application, pass it into "
-            "`serve.run` instead."
-        )
-
-    if max_concurrent_queries is not DEFAULT.VALUE:
-        logger.warning(
-            "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` has "
-            "been deprecated and replaced by `max_ongoing_requests`."
         )
 
     if isinstance(logging_config, LoggingConfig):
@@ -448,7 +419,6 @@ def deployment(
             deployment_config,
             replica_config,
             version=(version if version is not DEFAULT.VALUE else None),
-            route_prefix=route_prefix,
             _internal=True,
         )
 
@@ -460,10 +430,12 @@ def deployment(
 @PublicAPI(stability="stable")
 def _run(
     target: Application,
+    *,
     _blocking: bool = True,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -473,64 +445,47 @@ def _run(
     if len(name) == 0:
         raise RayServeException("Application name must a non-empty string.")
 
-    client = _private_api.serve_start(
-        http_options={"location": "EveryNode"},
-    )
+    if not isinstance(target, Application):
+        raise TypeError(
+            "`serve.run` expects an `Application` returned by `Deployment.bind()`."
+        )
 
-    # Record after Ray has been started.
-    ServeUsageTag.API_VERSION.record("v2")
+    if RAY_SERVE_FORCE_LOCAL_TESTING_MODE:
+        if not _local_testing_mode:
+            logger.info("Overriding local_testing_mode=True from environment variable.")
 
-    if isinstance(target, Application):
-        deployments = pipeline_build(target._get_internal_dag_node(), name)
-        ingress = get_and_validate_ingress_deployment(deployments)
+        _local_testing_mode = True
+
+    validate_route_prefix(route_prefix)
+
+    if _local_testing_mode:
+        configure_component_logger(
+            component_name="local_test",
+            component_id="-",
+            logging_config=logging_config or LoggingConfig(),
+            stream_handler_only=True,
+        )
+        built_app = build_app(
+            target,
+            name=name,
+            make_deployment_handle=make_local_deployment_handle,
+        )
+        handle = built_app.deployment_handles[built_app.ingress_deployment_name]
     else:
-        msg = "`serve.run` expects an `Application` returned by `Deployment.bind()`."
-        if isinstance(target, DAGNode):
-            msg += (
-                " If you are using the DAG API, you must bind the DAG node to a "
-                "deployment like: `app = Deployment.bind(my_dag_output)`. "
-            )
-        raise TypeError(msg)
+        client = _private_api.serve_start(
+            http_options={"location": "EveryNode"},
+            global_logging_config=logging_config,
+        )
+        # Record after Ray has been started.
+        ServeUsageTag.API_VERSION.record("v2")
+        handle = client.deploy_application(
+            build_app(target, name=name),
+            blocking=_blocking,
+            route_prefix=route_prefix,
+            logging_config=logging_config,
+        )
 
-    parameter_group = []
-
-    for deployment in deployments:
-        # Overwrite route prefix
-        if route_prefix is not DEFAULT.VALUE and deployment._route_prefix is not None:
-            if route_prefix is not None and not route_prefix.startswith("/"):
-                raise ValueError(
-                    "The route_prefix must start with a forward slash ('/')"
-                )
-
-            deployment._route_prefix = route_prefix
-        if deployment.logging_config is None and logging_config:
-            if isinstance(logging_config, dict):
-                logging_config = LoggingConfig(**logging_config)
-            deployment.set_logging_config(logging_config.dict())
-        deployment_parameters = {
-            "name": deployment._name,
-            "replica_config": deployment._replica_config,
-            "deployment_config": deployment._deployment_config,
-            "version": deployment._version or get_random_string(),
-            "route_prefix": deployment.route_prefix,
-            "url": deployment.url,
-            "docs_path": deployment._docs_path,
-            "ingress": deployment._name == ingress._name,
-        }
-        parameter_group.append(deployment_parameters)
-    client.deploy_application(
-        name,
-        parameter_group,
-        _blocking=_blocking,
-    )
-
-    if ingress is not None:
-        # The deployment state is not guaranteed to be created after
-        # deploy_application returns; the application state manager will
-        # need another reconcile iteration to create it.
-        client._wait_for_deployment_created(ingress.name, name)
-        handle = client.get_handle(ingress.name, name, missing_ok=True)
-        return handle
+    return handle
 
 
 @PublicAPI(stability="stable")
@@ -538,8 +493,9 @@ def run(
     target: Application,
     blocking: bool = False,
     name: str = SERVE_DEFAULT_APP_NAME,
-    route_prefix: str = DEFAULT.VALUE,
+    route_prefix: Optional[str] = "/",
     logging_config: Optional[Union[Dict, LoggingConfig]] = None,
+    _local_testing_mode: bool = False,
 ) -> DeploymentHandle:
     """Run an application and return a handle to its ingress deployment.
 
@@ -557,9 +513,10 @@ def run(
             will loop and log status until Ctrl-C'd.
         name: Application name. If not provided, this will be the only
             application running on the cluster (it will delete all others).
-        route_prefix: Route prefix for HTTP requests. If not provided, it will use
-            route_prefix of the ingress deployment. If specified neither as an argument
-            nor in the ingress deployment, the route prefix will default to '/'.
+        route_prefix: Route prefix for HTTP requests. Defaults to '/'.
+            If `None` is passed, the application will not be exposed over HTTP
+            (this may be useful if you only want the application to be exposed via
+            gRPC or a `DeploymentHandle`).
         logging_config: Application logging config. If provided, the config will
             be applied to all deployments which doesn't have logging config.
 
@@ -571,6 +528,7 @@ def run(
         name=name,
         route_prefix=route_prefix,
         logging_config=logging_config,
+        _local_testing_mode=_local_testing_mode,
     )
     logger.info(f"Deployed app '{name}' successfully.")
 
@@ -581,6 +539,9 @@ def run(
                 time.sleep(10)
         except KeyboardInterrupt:
             logger.warning("Got KeyboardInterrupt, exiting...")
+            # We need to re-raise KeyboardInterrupt, so serve components can be shutdown
+            # from the main script.
+            raise
     return handle
 
 
@@ -823,13 +784,17 @@ def get_app_handle(name: str) -> DeploymentHandle:
         raise RayServeException(f"Application '{name}' does not exist.")
 
     ServeUsageTag.SERVE_GET_APP_HANDLE_API_USED.record("1")
-    return client.get_handle(ingress, name)
+    # There is no need to check if the deployment exists since the
+    # deployment name was just fetched from the controller
+    return client.get_handle(ingress, name, check_exists=False)
 
 
 @DeveloperAPI
 def get_deployment_handle(
     deployment_name: str,
     app_name: Optional[str] = None,
+    _check_exists: bool = True,
+    _record_telemetry: bool = True,
 ) -> DeploymentHandle:
     """Get a handle to a deployment by name.
 
@@ -916,5 +881,7 @@ def get_deployment_handle(
         else:
             app_name = internal_replica_context.app_name
 
-    ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
-    return client.get_handle(deployment_name, app_name)
+    if _record_telemetry:
+        ServeUsageTag.SERVE_GET_DEPLOYMENT_HANDLE_API_USED.record("1")
+
+    return client.get_handle(deployment_name, app_name, check_exists=_check_exists)

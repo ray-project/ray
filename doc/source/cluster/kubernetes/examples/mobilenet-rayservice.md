@@ -7,7 +7,7 @@
 ## Step 1: Create a Kubernetes cluster with Kind
 
 ```sh
-kind create cluster --image=kindest/node:v1.23.0
+kind create cluster --image=kindest/node:v1.26.0
 ```
 
 ## Step 2: Install KubeRay operator
@@ -19,7 +19,7 @@ Note that the YAML file in this example uses `serveConfigV2`, which is supported
 
 ```sh
 # Download `ray-service.mobilenet.yaml`
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-service.mobilenet.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-service.mobilenet.yaml
 
 # Create a RayService
 kubectl apply -f ray-service.mobilenet.yaml

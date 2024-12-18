@@ -48,6 +48,7 @@ Acessing variables
 
     ~modelv2.ModelV2.variables
     ~modelv2.ModelV2.trainable_variables
+    ~distributions.Distribution
 
 Customization
 --------------

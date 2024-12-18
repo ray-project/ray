@@ -1,28 +1,32 @@
-import os
-
 import click
+import os
+from typing import Optional
 
 from ci.ray_ci.automation.update_version_lib import (
     get_current_version,
     update_file_version,
 )
 
-bazel_workspace_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY", "")
-
 
 @click.command()
 @click.option("--new_version", required=True, type=str)
-def main(new_version: str):
+@click.option("--root_dir", required=False, type=str)
+def main(new_version: str, root_dir: Optional[str] = None):
     """
     Update the version in the files to the specified version.
     """
-    main_version, java_version = get_current_version(bazel_workspace_dir)
+    if not root_dir:
+        root_dir = os.environ.get("BUILD_WORKSPACE_DIRECTORY")
+        if not root_dir:
+            raise Exception("Please specify --root_dir when not running with Bazel.")
+
+    main_version, java_version = get_current_version(root_dir)
 
     update_file_version(
         main_version,
         java_version,
         new_version,
-        bazel_workspace_dir,
+        root_dir,
     )
 
 

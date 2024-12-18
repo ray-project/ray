@@ -3,18 +3,15 @@ import logging
 from copy import deepcopy
 from typing import Any, Callable, Dict, List, Optional, Tuple, Union
 
-from ray.dag.class_node import ClassNode
-from ray.dag.dag_node import DAGNodeBase
-from ray.dag.function_node import FunctionNode
 from ray.serve._private.config import (
     DeploymentConfig,
     ReplicaConfig,
     handle_num_replicas_auto,
 )
 from ray.serve._private.constants import SERVE_LOGGER_NAME
+from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import DEFAULT, Default
 from ray.serve.config import AutoscalingConfig
-from ray.serve.context import _get_global_client
 from ray.serve.schema import DeploymentSchema, LoggingConfig, RayActorOptionsSchema
 from ray.util.annotations import PublicAPI
 
@@ -22,7 +19,7 @@ logger = logging.getLogger(SERVE_LOGGER_NAME)
 
 
 @PublicAPI(stability="stable")
-class Application(DAGNodeBase):
+class Application:
     """One or more deployments bound with arguments that can be deployed together.
 
     Can be passed into another `Deployment.bind()` to compose multiple deployments in a
@@ -58,28 +55,9 @@ class Application(DAGNodeBase):
 
     """
 
-    def __init__(
-        self, *, _internal_dag_node: Optional[Union[ClassNode, FunctionNode]] = None
-    ):
-        if _internal_dag_node is None:
-            raise RuntimeError("This class should not be constructed directly.")
-
-        self._internal_dag_node = _internal_dag_node
-
-    def _get_internal_dag_node(self) -> Union[ClassNode, FunctionNode]:
-        if self._internal_dag_node is None:
-            raise RuntimeError("Application object should not be constructed directly.")
-
-        return self._internal_dag_node
-
-    @classmethod
-    def _from_internal_dag_node(cls, dag_node: Union[ClassNode, FunctionNode]):
-        return cls(_internal_dag_node=dag_node)
-
-    # Proxy all method calls to the underlying DAG node. This allows this class to be
-    # passed in place of the ClassNode or FunctionNode in the DAG building code.
-    def __getattr__(self, name: str) -> Any:
-        return getattr(self._get_internal_dag_node(), name)
+    def __init__(self, bound_deployment: "Deployment"):
+        # This is used by `build_app`, but made private so users don't use it.
+        self._bound_deployment = bound_deployment
 
 
 @PublicAPI(stability="stable")
@@ -116,7 +94,6 @@ class Deployment:
         deployment_config: DeploymentConfig,
         replica_config: ReplicaConfig,
         version: Optional[str] = None,
-        route_prefix: Union[str, None, DEFAULT] = DEFAULT.VALUE,
         _internal=False,
     ) -> None:
         if not _internal:
@@ -128,18 +105,6 @@ class Deployment:
             raise TypeError("name must be a string.")
         if not (version is None or isinstance(version, str)):
             raise TypeError("version must be a string.")
-        if route_prefix is not DEFAULT.VALUE and route_prefix is not None:
-            if not isinstance(route_prefix, str):
-                raise TypeError("route_prefix must be a string.")
-            if not route_prefix.startswith("/"):
-                raise ValueError("route_prefix must start with '/'.")
-            if route_prefix != "/" and route_prefix.endswith("/"):
-                raise ValueError(
-                    "route_prefix must not end with '/' unless it's the root."
-                )
-            if "{" in route_prefix or "}" in route_prefix:
-                raise ValueError("route_prefix may not contain wildcards.")
-
         docs_path = None
         if (
             inspect.isclass(replica_config.deployment_def)
@@ -153,7 +118,6 @@ class Deployment:
         self._version = version
         self._deployment_config = deployment_config
         self._replica_config = replica_config
-        self._route_prefix = route_prefix
         self._docs_path = docs_path
 
     @property
@@ -181,16 +145,6 @@ class Deployment:
         return self._deployment_config.user_config
 
     @property
-    def max_concurrent_queries(self) -> int:
-        """[DEPRECATED] Max number of requests a replica can handle at once."""
-
-        logger.warning(
-            "DeprecationWarning: `max_concurrent_queries` is deprecated, please use "
-            "`max_ongoing_requests` instead."
-        )
-        return self._deployment_config.max_ongoing_requests
-
-    @property
     def max_ongoing_requests(self) -> int:
         """Max number of requests a replica can handle at once."""
         return self._deployment_config.max_ongoing_requests
@@ -201,11 +155,11 @@ class Deployment:
         return self._deployment_config.max_queued_requests
 
     @property
-    def route_prefix(self) -> Optional[str]:
-        """HTTP route prefix that this deployment is exposed under."""
-        if self._route_prefix is DEFAULT.VALUE:
-            return f"/{self._name}"
-        return self._route_prefix
+    def route_prefix(self):
+        raise ValueError(
+            "`route_prefix` can no longer be specified at the deployment level. "
+            "Pass it to `serve.run` or in the application config instead."
+        )
 
     @property
     def ray_actor_options(self) -> Optional[Dict]:
@@ -222,11 +176,11 @@ class Deployment:
 
     @property
     def url(self) -> Optional[str]:
-        if self._route_prefix is None:
-            # this deployment is not exposed over HTTP
-            return None
-
-        return _get_global_client().root_url + self.route_prefix
+        logger.warning(
+            "DeprecationWarning: `Deployment.url` is deprecated "
+            "and will be removed in the future."
+        )
+        return None
 
     @property
     def logging_config(self) -> Dict:
@@ -247,71 +201,7 @@ class Deployment:
         The returned Application can be deployed using `serve.run` (or via
         config file) or bound to another deployment for composition.
         """
-
-        schema_shell = deployment_to_schema(self)
-        if inspect.isfunction(self.func_or_class):
-            dag_node = FunctionNode(
-                self.func_or_class,
-                args,  # Used to bind and resolve DAG only, can take user input
-                kwargs,  # Used to bind and resolve DAG only, can take user input
-                self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-        else:
-            dag_node = ClassNode(
-                self.func_or_class,
-                args,
-                kwargs,
-                cls_options=self._replica_config.ray_actor_options or dict(),
-                other_args_to_resolve={
-                    "deployment_schema": schema_shell,
-                    "is_from_serve_deployment": True,
-                },
-            )
-
-        return Application._from_internal_dag_node(dag_node)
-
-    def _deploy(self, *init_args, _blocking=True, **init_kwargs):
-        """Deploy or update this deployment.
-
-        Args:
-            init_args: args to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-            init_kwargs: kwargs to pass to the class __init__
-                method. Not valid if this deployment wraps a function.
-        """
-        if len(init_args) == 0 and self._replica_config.init_args is not None:
-            init_args = self._replica_config.init_args
-        if len(init_kwargs) == 0 and self._replica_config.init_kwargs is not None:
-            init_kwargs = self._replica_config.init_kwargs
-
-        replica_config = ReplicaConfig.create(
-            self._replica_config.deployment_def,
-            init_args=init_args,
-            init_kwargs=init_kwargs,
-            ray_actor_options=self._replica_config.ray_actor_options,
-            placement_group_bundles=self._replica_config.placement_group_bundles,
-            placement_group_strategy=self._replica_config.placement_group_strategy,
-            max_replicas_per_node=self._replica_config.max_replicas_per_node,
-        )
-
-        return _get_global_client().deploy(
-            self._name,
-            replica_config=replica_config,
-            deployment_config=self._deployment_config,
-            version=self._version,
-            route_prefix=self.route_prefix,
-            url=self.url,
-            _blocking=_blocking,
-        )
-
-    def _delete(self):
-        """Delete this deployment."""
-
-        return _get_global_client().delete_deployments([self._name])
+        return Application(self.options(_init_args=args, _init_kwargs=kwargs))
 
     def options(
         self,
@@ -325,7 +215,6 @@ class Deployment:
         placement_group_strategy: Default[str] = DEFAULT.VALUE,
         max_replicas_per_node: Default[int] = DEFAULT.VALUE,
         user_config: Default[Optional[Any]] = DEFAULT.VALUE,
-        max_concurrent_queries: Default[int] = DEFAULT.VALUE,
         max_ongoing_requests: Default[int] = DEFAULT.VALUE,
         max_queued_requests: Default[int] = DEFAULT.VALUE,
         autoscaling_config: Default[
@@ -347,19 +236,23 @@ class Deployment:
 
         Refer to the `@serve.deployment` decorator docs for available arguments.
         """
+        if route_prefix is not DEFAULT.VALUE:
+            raise ValueError(
+                "`route_prefix` can no longer be specified at the deployment level. "
+                "Pass it to `serve.run` or in the application config instead."
+            )
 
         # Modify max_ongoing_requests and autoscaling_config if
         # `num_replicas="auto"`
-        max_ongoing_requests = (
-            max_ongoing_requests
-            if max_ongoing_requests is not DEFAULT.VALUE
-            else max_concurrent_queries
-        )
+        if max_ongoing_requests is None:
+            raise ValueError("`max_ongoing_requests` must be non-null, got None.")
         if num_replicas == "auto":
             num_replicas = None
             max_ongoing_requests, autoscaling_config = handle_num_replicas_auto(
                 max_ongoing_requests, autoscaling_config
             )
+
+            ServeUsageTag.AUTO_NUM_REPLICAS_USED.record("1")
 
         # NOTE: The user_configured_option_names should be the first thing that's
         # defined in this method. It depends on the locals() dictionary storing
@@ -401,19 +294,6 @@ class Deployment:
                 "future!"
             )
 
-        if not _internal and route_prefix is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `route_prefix` in `@serve.deployment` has been "
-                "deprecated. To specify a route prefix for an application, pass it "
-                "into `serve.run` instead."
-            )
-
-        if not _internal and max_concurrent_queries is not DEFAULT.VALUE:
-            logger.warning(
-                "DeprecationWarning: `max_concurrent_queries` in `@serve.deployment` "
-                "has been deprecated and replaced by `max_ongoing_requests`."
-            )
-
         elif num_replicas not in [DEFAULT.VALUE, None]:
             new_deployment_config.num_replicas = num_replicas
 
@@ -441,10 +321,6 @@ class Deployment:
         if _init_kwargs is DEFAULT.VALUE:
             _init_kwargs = self._replica_config.init_kwargs
 
-        if route_prefix is DEFAULT.VALUE:
-            # Default is to keep the previous value
-            route_prefix = self._route_prefix
-
         if ray_actor_options is DEFAULT.VALUE:
             ray_actor_options = self._replica_config.ray_actor_options
 
@@ -459,18 +335,6 @@ class Deployment:
 
         if autoscaling_config is not DEFAULT.VALUE:
             new_deployment_config.autoscaling_config = autoscaling_config
-            if (
-                new_deployment_config.autoscaling_config
-                and "target_num_ongoing_requests_per_replica"
-                in new_deployment_config.autoscaling_config.dict(exclude_unset=True)
-            ):
-                logger.warning(
-                    "DeprecationWarning: `target_num_ongoing_requests_per_replica` in "
-                    "`autoscaling_config` has been deprecated and replaced by "
-                    "`target_ongoing_requests`. Note that "
-                    "`target_num_ongoing_requests_per_replica` will be removed in a "
-                    "future version."
-                )
 
         if graceful_shutdown_wait_loop_s is not DEFAULT.VALUE:
             new_deployment_config.graceful_shutdown_wait_loop_s = (
@@ -508,7 +372,6 @@ class Deployment:
             new_deployment_config,
             new_replica_config,
             version=version,
-            route_prefix=route_prefix,
             _internal=True,
         )
 
@@ -520,35 +383,23 @@ class Deployment:
                 self._deployment_config == other._deployment_config,
                 self._replica_config.init_args == other._replica_config.init_args,
                 self._replica_config.init_kwargs == other._replica_config.init_kwargs,
-                # compare route prefix with default value resolved
-                self.route_prefix == other.route_prefix,
                 self._replica_config.ray_actor_options
                 == self._replica_config.ray_actor_options,
             ]
         )
 
     def __str__(self):
-        return (
-            f"Deployment(name={self._name},"
-            f"version={self._version},"
-            f"route_prefix={self.route_prefix})"
-        )
+        return f"Deployment(name={self._name})"
 
     def __repr__(self):
         return str(self)
 
 
-def deployment_to_schema(
-    d: Deployment, include_route_prefix: bool = True
-) -> DeploymentSchema:
+def deployment_to_schema(d: Deployment) -> DeploymentSchema:
     """Converts a live deployment object to a corresponding structured schema.
 
     Args:
         d: Deployment object to convert
-        include_route_prefix: Whether to include the route_prefix in the returned
-            schema. This should be set to False if the schema will be included in a
-            higher-level object describing an application, and you want to place
-            route_prefix at the application level.
     """
 
     if d.ray_actor_options is not None:
@@ -561,7 +412,6 @@ def deployment_to_schema(
         "num_replicas": None
         if d._deployment_config.autoscaling_config
         else d.num_replicas,
-        "max_concurrent_queries": d.max_ongoing_requests,
         "max_ongoing_requests": d.max_ongoing_requests,
         "max_queued_requests": d.max_queued_requests,
         "user_config": d.user_config,
@@ -576,9 +426,6 @@ def deployment_to_schema(
         "max_replicas_per_node": d._replica_config.max_replicas_per_node,
         "logging_config": d._deployment_config.logging_config,
     }
-
-    if include_route_prefix:
-        deployment_options["route_prefix"] = d.route_prefix
 
     # Let non-user-configured options be set to defaults. If the schema
     # is converted back to a deployment, this lets Serve continue tracking
@@ -630,7 +477,7 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
     deployment_config = DeploymentConfig.from_default(
         num_replicas=s.num_replicas,
         user_config=s.user_config,
-        max_ongoing_requests=s.max_ongoing_requests or s.max_concurrent_queries,
+        max_ongoing_requests=s.max_ongoing_requests,
         max_queued_requests=s.max_queued_requests,
         autoscaling_config=s.autoscaling_config,
         graceful_shutdown_wait_loop_s=s.graceful_shutdown_wait_loop_s,
@@ -657,6 +504,5 @@ def schema_to_deployment(s: DeploymentSchema) -> Deployment:
         name=s.name,
         deployment_config=deployment_config,
         replica_config=replica_config,
-        route_prefix=s.route_prefix,
         _internal=True,
     )

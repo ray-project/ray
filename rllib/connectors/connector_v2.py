@@ -1,6 +1,17 @@
 import abc
 from collections import defaultdict
-from typing import Any, Callable, Dict, Iterator, List, Optional, Tuple, Union
+import inspect
+from typing import (
+    Any,
+    Callable,
+    Collection,
+    Dict,
+    Iterator,
+    List,
+    Optional,
+    Tuple,
+    Union,
+)
 
 import gymnasium as gym
 import tree
@@ -8,19 +19,20 @@ import tree
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
 from ray.rllib.utils import force_list
-from ray.rllib.utils.annotations import OverrideToImplementCustomLogic
+from ray.rllib.utils.annotations import override, OverrideToImplementCustomLogic
+from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.spaces.space_utils import BatchedNdArray
-from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID
+from ray.rllib.utils.typing import AgentID, EpisodeType, ModuleID, StateDict
 from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class ConnectorV2(abc.ABC):
+class ConnectorV2(Checkpointable, abc.ABC):
     """Base class defining the API for an individual "connector piece".
 
     A ConnectorV2 ("connector piece") is usually part of a whole series of connector
     pieces within a so-called connector pipeline, which in itself also abides to this
-    very API..
+    very API.
     For example, you might have a connector pipeline consisting of two connector pieces,
     A and B, both instances of subclasses of ConnectorV2 and each one performing a
     particular transformation on their input data. The resulting connector pipeline
@@ -84,12 +96,36 @@ class ConnectorV2(abc.ABC):
         self._action_space = None
         self._input_observation_space = None
         self._input_action_space = None
-        self.input_observation_space = input_observation_space
+
         self.input_action_space = input_action_space
+        self.input_observation_space = input_observation_space
+
+        # Store child's constructor args and kwargs for the default
+        # `get_ctor_args_and_kwargs` implementation (to be able to restore from a
+        # checkpoint).
+        if self.__class__.__dict__.get("__init__") is not None:
+            caller_frame = inspect.stack()[1].frame
+            arg_info = inspect.getargvalues(caller_frame)
+            # Separate positional arguments and keyword arguments.
+            caller_locals = (
+                arg_info.locals
+            )  # Dictionary of all local variables in the caller
+            self._ctor_kwargs = {
+                arg: caller_locals[arg] for arg in arg_info.args if arg != "self"
+            }
+        else:
+            self._ctor_kwargs = {
+                "input_observation_space": self.input_observation_space,
+                "input_action_space": self.input_action_space,
+            }
 
     @OverrideToImplementCustomLogic
-    def recompute_observation_space_from_input_spaces(self) -> gym.Space:
-        """Re-computes a new (output) observation space based on the input space.
+    def recompute_output_observation_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
+        """Re-computes a new (output) observation space based on the input spaces.
 
         This method should be overridden by users to make sure a ConnectorPipelineV2
         knows how the input spaces through its individual ConnectorV2 pieces are being
@@ -105,31 +141,43 @@ class ConnectorV2(abc.ABC):
             from ray.rllib.utils.test_utils import check
 
             class OneHotConnector(ConnectorV2):
-                def recompute_observation_space_from_input_spaces(self):
-                    return Box(0.0, 1.0, (self.input_observation_space.n,), np.float32)
+                def recompute_output_observation_space(
+                    self,
+                    input_observation_space,
+                    input_action_space,
+                ):
+                    return Box(0.0, 1.0, (input_observation_space.n,), np.float32)
 
                 def __call__(
                     self,
                     *,
                     rl_module,
-                    data,
+                    batch,
                     episodes,
                     explore=None,
                     shared_data=None,
                     **kwargs,
                 ):
-                    assert "obs" in data
-                    data["obs"] = one_hot(data["obs"])
-                    return data
+                    assert "obs" in batch
+                    batch["obs"] = one_hot(batch["obs"])
+                    return batch
 
             connector = OneHotConnector(input_observation_space=Discrete(2))
-            data = {"obs": np.array([1, 0, 0], np.int32)}
-            output = connector(rl_module=None, data=data, episodes=None)
+            batch = {"obs": np.array([1, 0, 0], np.int32)}
+            output = connector(rl_module=None, batch=batch, episodes=None)
 
             check(output, {"obs": np.array([[0.0, 1.0], [1.0, 0.0], [1.0, 0.0]])})
 
         If this ConnectorV2 does not change the observation space in any way, leave
         this parent method implementation untouched.
+
+        Args:
+            input_observation_space: The input observation space (either coming from the
+                environment if `self` is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
+            input_action_space: The input action space (either coming from the
+                environment if `self is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
 
         Returns:
             The new observation space (after data has passed through this ConnectorV2
@@ -138,7 +186,11 @@ class ConnectorV2(abc.ABC):
         return self.input_observation_space
 
     @OverrideToImplementCustomLogic
-    def recompute_action_space_from_input_spaces(self) -> gym.Space:
+    def recompute_output_action_space(
+        self,
+        input_observation_space: gym.Space,
+        input_action_space: gym.Space,
+    ) -> gym.Space:
         """Re-computes a new (output) action space based on the input space.
 
         This method should be overridden by users to make sure a ConnectorPipelineV2
@@ -147,6 +199,14 @@ class ConnectorV2(abc.ABC):
 
         If this ConnectorV2 does not change the action space in any way, leave
         this parent method implementation untouched.
+
+        Args:
+            input_observation_space: The input observation space (either coming from the
+                environment if `self` is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
+            input_action_space: The input action space (either coming from the
+                environment if `self is the first connector piece in the pipeline or
+                from the previous connector piece in the pipeline).
 
         Returns:
             The new action space (after data has passed through this ConenctorV2
@@ -159,35 +219,36 @@ class ConnectorV2(abc.ABC):
         self,
         *,
         rl_module: RLModule,
-        data: Any,
+        batch: Dict[str, Any],
         episodes: List[EpisodeType],
         explore: Optional[bool] = None,
         shared_data: Optional[dict] = None,
         **kwargs,
     ) -> Any:
-        """Method for transforming input data into output data.
+        """Method for transforming an input `batch` into an output `batch`.
 
         Args:
             rl_module: The RLModule object that the connector connects to or from.
-            data: The input data to be transformed by this connector. Transformations
+            batch: The input data to be transformed by this connector. Transformations
                 might either be done in-place or a new structure may be returned.
-                Note that the information in `data` will eventually either become the
+                Note that the information in `batch` will eventually either become the
                 forward batch for the RLModule (env-to-module and learner connectors)
-                or the input to the `env.step()` call (module-to-env connectors). In
-                the former case (`data` is a forward batch for RLModule), the
-                information in `data` will be discarded after the RLModule forward pass.
-                Any transformation of information (e.g. observation preprocessing) that
-                you have only done inside `data` will be lost, unless you have written
-                it back into the corresponding `episodes` during the connector pass.
+                or the input to the `env.step()` call (module-to-env connectors). Note
+                that in the first case (`batch` is a forward batch for RLModule), the
+                information in `batch` will be discarded after that RLModule forward
+                pass. Any transformation of information (e.g. observation preprocessing)
+                that you have only done inside `batch` will be lost, unless you have
+                written it back into the corresponding `episodes` during the connector
+                pass.
             episodes: The list of SingleAgentEpisode or MultiAgentEpisode objects,
                 each corresponding to one slot in the vector env. Note that episodes
-                can be read from (e.g. to place information into `data`), but also
+                can be read from (e.g. to place information into `batch`), but also
                 written to. You should only write back (changed, transformed)
                 information into the episodes, if you want these changes to be
                 "permanent". For example if you sample from an environment, pick up
-                observations from the episodes and place them into `data`, then
+                observations from the episodes and place them into `batch`, then
                 transform these observations, and would like to make these
-                transformations permanent (note that `data` gets discarded after the
+                transformations permanent (note that `batch` gets discarded after the
                 RLModule forward pass), then you have to write the transformed
                 observations back into the episode to make sure you do not have to
                 perform the same transformation again on the learner (or replay buffer)
@@ -197,7 +258,8 @@ class ConnectorV2(abc.ABC):
                 RLModule's `forward_exploration` method should be called, if False, the
                 EnvRunner should call `forward_inference` instead.
             shared_data: Optional additional context data that needs to be exchanged
-                between different Connector pieces and -pipelines.
+                between different ConnectorV2 pieces (in the same pipeline) or across
+                ConnectorV2 pipelines (meaning between env-to-module and module-to-env).
             kwargs: Forward API-compatibility kwargs.
 
         Returns:
@@ -242,7 +304,7 @@ class ConnectorV2(abc.ABC):
         list_indices = defaultdict(int)
 
         # Single-agent case.
-        if isinstance(episodes[0], SingleAgentEpisode):
+        if episodes and isinstance(episodes[0], SingleAgentEpisode):
             if zip_with_batch_column is not None:
                 if len(zip_with_batch_column) != len(episodes):
                     raise ValueError(
@@ -308,10 +370,21 @@ class ConnectorV2(abc.ABC):
     ) -> None:
         """Adds a data item under `column` to the given `batch`.
 
-        If `single_agent_episode` is provided and contains `agent_id` and `module_id`
-        information, will store `item_to_add` in a list under a
-        `([eps id], [AgentID],[ModuleID])` key within `column`. In all other
-        cases, will store the item in a list directly under `column`.
+        The `item_to_add` is stored in the `batch` in the following manner:
+        1) If `single_agent_episode` is not provided (None), will store the item in a
+        list directly under `column`:
+        `column` -> [item, item, ...]
+        2) If `single_agent_episode`'s `agent_id` and `module_id` properties are None
+        (`single_agent_episode` is not part of a multi-agent episode), will append
+        `item_to_add` to a list under a `(<episodeID>,)` key under `column`:
+        `column` -> `(<episodeID>,)` -> [item, item, ...]
+        3) If `single_agent_episode`'s `agent_id` and `module_id` are NOT None
+        (`single_agent_episode` is part of a multi-agent episode), will append
+        `item_to_add` to a list under a `(<episodeID>,<AgentID>,<ModuleID>)` key
+        under `column`:
+        `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [item, item, ...]
+
+        See the these examples here for clarification of these three cases:
 
         .. testcode::
 
@@ -320,8 +393,8 @@ class ConnectorV2(abc.ABC):
             from ray.rllib.env.single_agent_episode import SingleAgentEpisode
             from ray.rllib.utils.test_utils import check
 
-            # Simple case (no episodes provided) -> Store data in a list directly under
-            # `column`:
+            # 1) Simple case (no episodes provided) -> Store data in a list directly
+            # under `column`:
             batch = {}
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=5)
             ConnectorV2.add_batch_item(batch, "test_col", item_to_add=6)
@@ -332,8 +405,8 @@ class ConnectorV2(abc.ABC):
                 "test_col_2": [-10],
             })
 
-            # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # 2) Single-agent case (SingleAgentEpisode provided) -> Store data in a list
+            # under the keys: `column` -> `(<eps_id>,)` -> [...]:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -349,9 +422,9 @@ class ConnectorV2(abc.ABC):
                 "test_col_2": {("SA-EPS0",): [-10]},
             })
 
-            # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
+            # 3) Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)` -> [...]:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -394,26 +467,44 @@ class ConnectorV2(abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             item_to_add: The data item to store in the batch.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                `agent_id` and `module_id` properties are not None, will create a
-                further sub dictionary under `column`, mapping from
-                `([eps id], [agent_id], [module_id])` to a list of
-                data items (to which `item_to_add` will be appended in this call).
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `item_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `item_to_add` will be appended in this call).
                 If not provided, will append `item_to_add` to a list directly under
                 `column`.
         """
         sub_key = None
-        if (
-            single_agent_episode is not None
-            and single_agent_episode.agent_id is not None
-        ):
-            sub_key = (
-                single_agent_episode.multi_agent_episode_id,
-                single_agent_episode.agent_id,
-                single_agent_episode.module_id,
-            )
-        elif single_agent_episode is not None:
-            sub_key = (single_agent_episode.id_,)
+        # SAEpisode is provided ...
+        if single_agent_episode is not None:
+            module_id = single_agent_episode.module_id
+            # ... and has `module_id` AND that `module_id` is already a top-level key in
+            # `batch` (`batch` is already in module-major form, mapping ModuleID to
+            # columns mapping to data).
+            if module_id is not None and module_id in batch:
+                raise ValueError(
+                    "Can't call `add_batch_item` on a `batch` that is already "
+                    "module-major (meaning ModuleID is top-level with column names on "
+                    "the level thereunder)! Make sure to only call `add_batch_items` "
+                    "before the `AgentToModuleMapping` ConnectorV2 piece is applied."
+                )
+
+            # ... and has `agent_id` -> Use `single_agent_episode`'s agent ID and
+            # module ID.
+            elif single_agent_episode.agent_id is not None:
+                sub_key = (
+                    single_agent_episode.multi_agent_episode_id,
+                    single_agent_episode.agent_id,
+                    single_agent_episode.module_id,
+                )
+            # Otherwise, just use episode's ID.
+            else:
+                sub_key = (single_agent_episode.id_,)
 
         if column not in batch:
             batch[column] = [] if sub_key is None else {sub_key: []}
@@ -434,14 +525,23 @@ class ConnectorV2(abc.ABC):
     ) -> None:
         """Adds a list of items (or batched item) under `column` to the given `batch`.
 
-        If items_to_add is not a list, but an already batched struct (of np.ndarray
-        leafs), will unbatch first into a list of individual batch items and add
-        each individually.
+        If `items_to_add` is not a list, but an already batched struct (of np.ndarray
+        leafs), the `items_to_add` will be appended to possibly existing data under the
+        same `column` as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+        recognize this and batch the data properly into a single (batched) item.
+        This is much faster than first splitting up `items_to_add` and then adding each
+        item individually.
 
-        If `single_agent_episode` is provided and it contains agent ID and module ID
-        information, will store the individual items in a list under a
-        `([agent_id],[module_id])` key within `column`. In all other cases, will store
-        the individual items in a list directly under `column`.
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are None, creates a further sub dictionary under `column`, mapping
+        from `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+        be appended in this call).
+        If `single_agent_episode` is provided and its `agent_id` and `module_id`
+        properties are NOT None, creates a further sub dictionary under `column`,
+        mapping from `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to
+        which `items_to_add` will be appended in this call).
+        If `single_agent_episode` is not provided, will append `items_to_add` to a list
+        directly under `column`.
 
         .. testcode::
 
@@ -495,7 +595,7 @@ class ConnectorV2(abc.ABC):
             )
 
             # Single-agent case (SingleAgentEpisode provided) -> Store data in a list
-            # under the keys: `column` -> `(eps_id,)`:
+            # under the keys: `column` -> `(<eps_id>,)`:
             batch = {}
             episode = SingleAgentEpisode(
                 id_="SA-EPS0",
@@ -516,7 +616,7 @@ class ConnectorV2(abc.ABC):
 
             # Multi-agent case (SingleAgentEpisode provided that has `agent_id` and
             # `module_id` information) -> Store data in a list under the keys:
-            # `column` -> `([eps_id], [agent_id], [module_id])`:
+            # `column` -> `(<episodeID>,<AgentID>,<ModuleID>)`:
             batch = {}
             ma_episode = MultiAgentEpisode(
                 id_="MA-EPS1",
@@ -559,24 +659,33 @@ class ConnectorV2(abc.ABC):
             column: The column name (str) within the `batch` to store `item_to_add`
                 under.
             items_to_add: The list of data items to store in the batch OR an already
-                batched (possibly nested) struct, which will first be split up into
-                a list of individual items, then these individual items will be added
-                to the given `column` in the batch.
+                batched (possibly nested) struct. In the latter case, the `items_to_add`
+                will be appended to possibly existing data under the same `column`
+                as-is. A subsequent `BatchIndividualItems` ConnectorV2 piece will
+                recognize this and batch the data properly into a single (batched) item.
+                This is much faster than first splitting up `items_to_add` and then
+                adding each item individually.
             num_items: The number of items in `items_to_add`. This arg is mostly for
                 asserting the correct usage of this method by checking, whether the
                 given data in `items_to_add` really has the right amount of individual
                 items.
-            single_agent_episode: An optional SingleAgentEpisode. If provided and its
-                agent_id and module_id properties are not None, will create a further
-                sub dictionary under `column`, mapping from `([agent_id],[module_id])`
-                (str) to a list of data items. Otherwise, will store `item_to_add`
-                in a list directly under `column`.
+            single_agent_episode: An optional SingleAgentEpisode.
+                If provided and its `agent_id` and `module_id` properties are None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,)` to a list of data items (to which `items_to_add` will
+                be appended in this call).
+                If provided and its `agent_id` and `module_id` properties are NOT None,
+                creates a further sub dictionary under `column`, mapping from
+                `(<episodeID>,,<AgentID>,<ModuleID>)` to a list of data items (to which
+                `items_to_add` will be appended in this call).
+                If not provided, will append `items_to_add` to a list directly under
+                `column`.
         """
         # Process n list items by calling `add_batch_item` on each of them individually.
         if isinstance(items_to_add, list):
             if len(items_to_add) != num_items:
                 raise ValueError(
-                    f"Mismatch breteen `num_items` ({num_items}) and the length "
+                    f"Mismatch between `num_items` ({num_items}) and the length "
                     f"of the provided list ({len(items_to_add)}) in "
                     f"{ConnectorV2.__name__}.add_n_batch_items()!"
                 )
@@ -612,9 +721,112 @@ class ConnectorV2(abc.ABC):
     def foreach_batch_item_change_in_place(
         batch: Dict[str, Any],
         column: Union[str, List[str], Tuple[str]],
-        func: Callable[[Any, int, AgentID, ModuleID], Any],
+        func: Callable[
+            [Any, Optional[int], Optional[AgentID], Optional[ModuleID]], Any
+        ],
     ) -> None:
+        """Runs the provided `func` on all items under one or more columns in the batch.
+
+        Use this method to conveniently loop through all items in a batch
+        and transform them in place.
+
+        `func` takes the following as arguments:
+        - The item itself. If column is a list of column names, this argument is a tuple
+        of items.
+        - The EpisodeID. This value might be None.
+        - The AgentID. This value might be None in the single-agent case.
+        - The ModuleID. This value might be None in the single-agent case.
+
+        The return value(s) of `func` are used to directly override the values in the
+        given `batch`.
+
+        Args:
+            batch: The batch to process in-place.
+            column: A single column name (str) or a list thereof. If a list is provided,
+                the first argument to `func` is a tuple of items. If a single
+                str is provided, the first argument to `func` is an individual
+                item.
+            func: The function to call on each item or tuple of item(s).
+
+        .. testcode::
+
+            from ray.rllib.connectors.connector_v2 import ConnectorV2
+            from ray.rllib.utils.test_utils import check
+
+            # Simple case: Batch items are in lists directly under their column names.
+            batch = {
+                "col1": [0, 1, 2, 3],
+                "col2": [0, -1, -2, -3],
+            }
+            # Increase all ints by 1.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, *args: item + 1,
+            )
+            check(batch["col1"], [1, 2, 3, 4])
+
+            # Further increase all ints by 1 in col1 and flip sign in col2.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column=["col1", "col2"],
+                func=(lambda items, *args: (items[0] + 1, -items[1])),
+            )
+            check(batch["col1"], [2, 3, 4, 5])
+            check(batch["col2"], [0, 1, 2, 3])
+
+            # Single-agent case: Batch items are in lists under (eps_id,)-keys in a dict
+            # under their column names.
+            batch = {
+                "col1": {
+                    ("eps1",): [0, 1, 2, 3],
+                    ("eps2",): [400, 500, 600],
+                },
+            }
+            # Increase all ints of eps1 by 1 and divide all ints of eps2 by 100.
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, eps_id, *args: (
+                    item + 1 if eps_id == "eps1" else item / 100
+                ),
+            )
+            check(batch["col1"], {
+                ("eps1",): [1, 2, 3, 4],
+                ("eps2",): [4, 5, 6],
+            })
+
+            # Multi-agent case: Batch items are in lists under
+            # (eps_id, agent_id, module_id)-keys in a dict
+            # under their column names.
+            batch = {
+                "col1": {
+                    ("eps1", "ag1", "mod1"): [1, 2, 3, 4],
+                    ("eps2", "ag1", "mod2"): [400, 500, 600],
+                    ("eps2", "ag2", "mod3"): [-1, -2, -3, -4, -5],
+                },
+            }
+            # Decrease all ints of "eps1" by 1, divide all ints of "mod2" by 100, and
+            # flip sign of all ints of "ag2".
+            ConnectorV2.foreach_batch_item_change_in_place(
+                batch=batch,
+                column="col1",
+                func=lambda item, eps_id, ag_id, mod_id: (
+                    item - 1
+                    if eps_id == "eps1"
+                    else item / 100
+                    if mod_id == "mod2"
+                    else -item
+                ),
+            )
+            check(batch["col1"], {
+                ("eps1", "ag1", "mod1"): [0, 1, 2, 3],
+                ("eps2", "ag1", "mod2"): [4, 5, 6],
+                ("eps2", "ag2", "mod3"): [1, 2, 3, 4, 5],
+            })
+        """
         data_to_process = [batch.get(c) for c in force_list(column)]
+        single_col = isinstance(column, str)
         if any(d is None for d in data_to_process):
             raise ValueError(
                 f"Invalid column name(s) ({column})! One or more not found in "
@@ -626,11 +838,13 @@ class ConnectorV2(abc.ABC):
         if isinstance(data_to_process[0], list):
             for list_pos, data_tuple in enumerate(zip(*data_to_process)):
                 results = func(
-                    data_tuple[0] if isinstance(column, str) else data_tuple,
+                    data_tuple[0] if single_col else data_tuple,
                     None,  # episode_id
                     None,  # agent_id
                     None,  # module_id
                 )
+                # Tuple'ize results if single_col.
+                results = (results,) if single_col else results
                 for col_slot, result in enumerate(force_list(results)):
                     data_to_process[col_slot][list_pos] = result
         # Single-agent/multi-agent cases.
@@ -649,19 +863,21 @@ class ConnectorV2(abc.ABC):
                 other_lists = [d[key] for d in data_to_process[1:]]
                 for list_pos, data_tuple in enumerate(zip(d0_list, *other_lists)):
                     results = func(
-                        data_tuple[0] if isinstance(column, str) else data_tuple,
+                        data_tuple[0] if single_col else data_tuple,
                         eps_id,
                         agent_id,
                         module_id,
                     )
-                    for col_slot, result in enumerate(force_list(results)):
+                    # Tuple'ize results if single_col.
+                    results = (results,) if single_col else results
+                    for col_slot, result in enumerate(results):
                         data_to_process[col_slot][key][list_pos] = result
 
     @staticmethod
     def switch_batch_from_column_to_module_ids(
         batch: Dict[str, Dict[ModuleID, Any]]
     ) -> Dict[ModuleID, Dict[str, Any]]:
-        """Switches the first two levels of a `col -> ModuleID -> data` type batch.
+        """Switches the first two levels of a `col_name -> ModuleID -> data` type batch.
 
         Assuming that the top level consists of column names as keys and the second
         level (under these columns) consists of ModuleID keys, the resulting batch
@@ -699,21 +915,26 @@ class ConnectorV2(abc.ABC):
                 module_data[module_id][column] = data
         return dict(module_data)
 
-    def get_state(self) -> Dict[str, Any]:
-        """Returns the current state of this ConnectorV2 as a state dict.
-
-        Returns:
-            A state dict mapping any string keys to their (state-defining) values.
-        """
+    @override(Checkpointable)
+    def get_state(
+        self,
+        components: Optional[Union[str, Collection[str]]] = None,
+        *,
+        not_components: Optional[Union[str, Collection[str]]] = None,
+        **kwargs,
+    ) -> StateDict:
         return {}
 
-    def set_state(self, state: Dict[str, Any]) -> None:
-        """Sets the state of this ConnectorV2 to the given value.
-
-        Args:
-            state: The state dict to define this ConnectorV2's new state.
-        """
+    @override(Checkpointable)
+    def set_state(self, state: StateDict) -> None:
         pass
+
+    @override(Checkpointable)
+    def get_ctor_args_and_kwargs(self) -> Tuple[Tuple, Dict[str, Any]]:
+        return (
+            (),  # *args
+            self._ctor_kwargs,  # **kwargs
+        )
 
     def reset_state(self) -> None:
         """Resets the state of this ConnectorV2 to some initial value.
@@ -721,18 +942,23 @@ class ConnectorV2(abc.ABC):
         Note that this may NOT be the exact state that this ConnectorV2 was originally
         constructed with.
         """
-        pass
+        return
 
-    @staticmethod
-    def merge_states(states: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Computes a resulting state given a list of other state dicts.
+    def merge_states(self, states: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """Computes a resulting state given self's state and a list of other states.
 
-        Algorithms should use this method for synchronizing states between connectors
-        running on workers (of the same type, e.g. EnvRunner workers).
+        Algorithms should use this method for merging states between connectors
+        running on parallel EnvRunner workers. For example, to synchronize the connector
+        states of n remote workers and a local worker, one could:
+        - Gather all remote worker connector states in a list.
+        - Call `self.merge_states()` on the local worker passing it the states list.
+        - Broadcast the resulting local worker's connector state back to all remote
+        workers. After this, all workers (including the local one) hold a
+        merged/synchronized new connecto state.
 
         Args:
-            states: The list of n other ConnectorV2 states to merge into a single
-                resulting state.
+            states: The list of n other ConnectorV2 states to merge with self's state
+                into a single resulting state.
 
         Returns:
             The resulting state dict.
@@ -767,8 +993,8 @@ class ConnectorV2(abc.ABC):
     def input_observation_space(self, value):
         self._input_observation_space = value
         if value is not None:
-            self._observation_space = (
-                self.recompute_observation_space_from_input_spaces()
+            self._observation_space = self.recompute_output_observation_space(
+                value, self.input_action_space
             )
 
     @property
@@ -779,7 +1005,9 @@ class ConnectorV2(abc.ABC):
     def input_action_space(self, value):
         self._input_action_space = value
         if value is not None:
-            self._action_space = self.recompute_action_space_from_input_spaces()
+            self._action_space = self.recompute_output_action_space(
+                self.input_observation_space, value
+            )
 
     def __str__(self, indentation: int = 0):
         return " " * indentation + self.__class__.__name__

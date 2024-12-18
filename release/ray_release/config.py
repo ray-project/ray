@@ -38,18 +38,33 @@ RELEASE_PACKAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".
 
 RELEASE_TEST_SCHEMA_FILE = bazel_runfile("release/ray_release/schema.json")
 
+RELEASE_TEST_CONFIG_FILES = [
+    "release/release_tests.yaml",
+    "release/release_data_tests.yaml",
+]
+
 
 def read_and_validate_release_test_collection(
     config_files: List[str],
+    test_definition_root: str = None,
     schema_file: Optional[str] = None,
 ) -> List[Test]:
     """Read and validate test collection from config file"""
     tests = []
     for config_file in config_files:
-        with open(bazel_runfile(config_file), "rt") as fp:
+        path = (
+            os.path.join(test_definition_root, config_file)
+            if test_definition_root
+            else bazel_runfile(config_file)
+        )
+        with open(path, "rt") as fp:
             tests += parse_test_definition(yaml.safe_load(fp))
 
-    validate_release_test_collection(tests, schema_file=schema_file)
+    validate_release_test_collection(
+        tests,
+        schema_file=schema_file,
+        test_definition_root=test_definition_root,
+    )
     return tests
 
 
@@ -66,11 +81,22 @@ def _test_definition_invariant(
 
 
 def parse_test_definition(test_definitions: List[TestDefinition]) -> List[Test]:
+    default_definition = {}
     tests = []
     for test_definition in test_definitions:
+        if test_definition["name"] == "DEFAULTS":
+            default_definition = copy.deepcopy(test_definition)
+            continue
+
+        # Add default values to the test definition.
+        test_definition = deep_update(
+            copy.deepcopy(default_definition), test_definition
+        )
+
         if "variations" not in test_definition:
             tests.append(Test(test_definition))
             continue
+
         variations = test_definition.pop("variations")
         _test_definition_invariant(
             test_definition,
@@ -97,7 +123,9 @@ def load_schema_file(path: Optional[str] = None) -> Dict:
 
 
 def validate_release_test_collection(
-    test_collection: List[Test], schema_file: Optional[str] = None
+    test_collection: List[Test],
+    schema_file: Optional[str] = None,
+    test_definition_root: Optional[str] = None,
 ):
     try:
         schema = load_schema_file(schema_file)
@@ -115,14 +143,7 @@ def validate_release_test_collection(
             )
             num_errors += 1
 
-        error = validate_test_cluster_compute(test)
-        if error:
-            logger.error(
-                f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
-            )
-            num_errors += 1
-
-        error = validate_test_cluster_env(test)
+        error = validate_test_cluster_compute(test, test_definition_root)
         if error:
             logger.error(
                 f"Failed to validate test {test.get('name', '(unnamed)')}: {error}"
@@ -147,10 +168,12 @@ def validate_test(test: Test, schema: Optional[Dict] = None) -> Optional[str]:
         return str(e)
 
 
-def validate_test_cluster_compute(test: Test) -> Optional[str]:
+def validate_test_cluster_compute(
+    test: Test, test_definition_root: Optional[str] = None
+) -> Optional[str]:
     from ray_release.template import load_test_cluster_compute
 
-    cluster_compute = load_test_cluster_compute(test)
+    cluster_compute = load_test_cluster_compute(test, test_definition_root)
     return validate_cluster_compute(cluster_compute)
 
 
@@ -170,25 +193,6 @@ def validate_cluster_compute(cluster_compute: Dict[str, Any]) -> Optional[str]:
         error = validate_aws_config(config)
         if error:
             return error
-
-    return None
-
-
-def validate_test_cluster_env(test: Test) -> Optional[str]:
-    if test.is_byod_cluster():
-        """
-        BYOD clusters are not validated because they do not need cluster environment
-        """
-        return None
-
-    from ray_release.template import get_cluster_env_path
-
-    cluster_env_path = get_cluster_env_path(test)
-
-    if not os.path.exists(cluster_env_path):
-        raise ReleaseTestConfigError(
-            f"Cannot load yaml template from {cluster_env_path}: Path not found."
-        )
 
     return None
 

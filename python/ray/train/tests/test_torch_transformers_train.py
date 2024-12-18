@@ -34,7 +34,7 @@ def ray_start_8_cpus():
 
 
 # We are only testing Causal Language Modeling here
-MODEL_NAME = "hf-internal-testing/tiny-random-gpt2"
+MODEL_NAME = "hf-internal-testing/tiny-random-BloomForCausalLM"
 
 # Training Loop Configurations
 NUM_WORKERS = 2

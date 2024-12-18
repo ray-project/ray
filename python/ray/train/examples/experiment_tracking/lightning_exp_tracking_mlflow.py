@@ -6,7 +6,11 @@ import tempfile
 tempdir = tempfile.TemporaryDirectory()
 os.environ["SHARED_STORAGE_PATH"] = tempdir.name
 
-from lightning_exp_tracking_model_dl import DummyModel, dataloader
+from ray.train.examples.experiment_tracking.lightning_exp_tracking_model_dl import (
+    DummyModel,
+    dataloader,
+)
+
 
 # __lightning_experiment_tracking_mlflow_start__
 import os

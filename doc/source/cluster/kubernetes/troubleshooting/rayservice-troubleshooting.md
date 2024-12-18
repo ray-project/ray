@@ -36,7 +36,7 @@ kubectl exec -it $RAY_POD -n $YOUR_NAMESPACE -- bash
 ### Method 4: Check Dashboard
 
 ```bash
-kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE --address 0.0.0.0 8265:8265
+kubectl port-forward $RAY_POD -n $YOUR_NAMESPACE 8265:8265
 # Check $YOUR_IP:8265 in your browser
 ```
 

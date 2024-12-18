@@ -23,6 +23,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "src/ray/protobuf/gcs.pb.h"
 #include "src/ray/protobuf/runtime_env_common.pb.h"
 
 namespace ray {
@@ -44,34 +45,31 @@ class RuntimeEnvAgentClient {
  public:
   // Creates a concrete Client that can make HTTP requests to address:port.
   // Retries all requests every `agent_manager_retry_interval_ms` on NotFound.
-  static std::shared_ptr<RuntimeEnvAgentClient> Create(
+  static std::unique_ptr<RuntimeEnvAgentClient> Create(
       instrumented_io_context &io_context,
       const std::string &address,
       int port,
       // Not using typedef to avoid conflict with agent_manager.h
       std::function<std::shared_ptr<boost::asio::deadline_timer>(
           std::function<void()>, uint32_t delay_ms)> delay_executor,
+      std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
       uint32_t agent_register_timeout_ms =
           RayConfig::instance().agent_register_timeout_ms(),
       uint32_t agent_manager_retry_interval_ms =
           RayConfig::instance().agent_manager_retry_interval_ms());
 
-  virtual ~RuntimeEnvAgentClient() {}
+  virtual ~RuntimeEnvAgentClient() = default;
 
   /// Request agent to increase the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.
   /// \param[in] job_id The job id which the runtime env belongs to.
   /// \param[in] serialized_runtime_env The runtime
   /// environment serialized in JSON as from `RuntimeEnv::Serialize` method.
-  /// \param[in] serialized_allocated_resource_instances The serialized allocated resource
-  /// instances.
   /// \param[in] callback The callback function.
-  virtual void GetOrCreateRuntimeEnv(
-      const JobID &job_id,
-      const std::string &serialized_runtime_env,
-      const rpc::RuntimeEnvConfig &runtime_env_config,
-      const std::string &serialized_allocated_resource_instances,
-      GetOrCreateRuntimeEnvCallback callback) = 0;
+  virtual void GetOrCreateRuntimeEnv(const JobID &job_id,
+                                     const std::string &serialized_runtime_env,
+                                     const rpc::RuntimeEnvConfig &runtime_env_config,
+                                     GetOrCreateRuntimeEnvCallback callback) = 0;
 
   /// Request agent to decrease the runtime env reference. This API is not idempotent. The
   /// client automatically retries on network errors.

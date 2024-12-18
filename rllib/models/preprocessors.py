@@ -38,7 +38,7 @@ class Preprocessor:
         else:
             self._options = options
         self.shape = self._init_shape(obs_space, self._options)
-        self._size = int(np.product(self.shape))
+        self._size = int(np.prod(self.shape))
         self._i = 0
         self._obs_for_type_matching = self._obs_space.sample()
 
@@ -276,7 +276,7 @@ class TupleFlatteningPreprocessor(Preprocessor):
                 size += preprocessor.size
             else:
                 preprocessor = None
-                size += int(np.product(space.shape))
+                size += int(np.prod(space.shape))
             self.preprocessors.append(preprocessor)
         return (size,)
 
@@ -315,7 +315,7 @@ class DictFlatteningPreprocessor(Preprocessor):
                 size += preprocessor.size
             else:
                 preprocessor = None
-                size += int(np.product(space.shape))
+                size += int(np.prod(space.shape))
             self.preprocessors.append(preprocessor)
         return (size,)
 

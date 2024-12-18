@@ -18,7 +18,8 @@
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
 #include "absl/synchronization/mutex.h"
-#include "ray/gcs/gcs_client/usage_stats_client.h"
+#include "ray/common/asio/periodical_runner.h"
+#include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pb_util.h"
 #include "ray/rpc/gcs_server/gcs_rpc_server.h"
 #include "ray/util/counter_map.h"
@@ -85,22 +86,17 @@ class FinishedTaskActorTaskGcPolicy : public TaskEventsGcPolicyInterface {
 class GcsTaskManager : public rpc::TaskInfoHandler {
  public:
   /// Create a GcsTaskManager.
-  GcsTaskManager()
-      : stats_counter_(),
+  explicit GcsTaskManager(instrumented_io_context &io_service)
+      : io_service_(io_service),
+        stats_counter_(),
         task_event_storage_(std::make_unique<GcsTaskManagerStorage>(
             RayConfig::instance().task_events_max_num_task_in_gcs(),
             stats_counter_,
             std::make_unique<FinishedTaskActorTaskGcPolicy>())),
-        io_service_thread_(std::make_unique<std::thread>([this] {
-          SetThreadName("task_events");
-          // Keep io_service_ alive.
-          boost::asio::io_service::work io_service_work_(io_service_);
-          io_service_.run();
-        })),
-        periodical_runner_(io_service_) {
-    periodical_runner_.RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
-                                         5 * 1000,
-                                         "GcsTaskManager.GcJobSummary");
+        periodical_runner_(PeriodicalRunner::Create(io_service_)) {
+    periodical_runner_->RunFnPeriodically([this] { task_event_storage_->GcJobSummary(); },
+                                          5 * 1000,
+                                          "GcsTaskManager.GcJobSummary");
   }
 
   /// Handles a AddTaskEventData request.
@@ -121,12 +117,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
                            rpc::GetTaskEventsReply *reply,
                            rpc::SendReplyCallback send_reply_callback) override;
 
-  /// Stops the event loop and the thread of the task event handler.
-  ///
-  /// After this is called, no more requests will be handled.
-  /// This function returns when the io thread is joined.
-  void Stop();
-
   /// Handler to be called when a job finishes. This marks all non-terminated tasks
   /// of the job as failed.
   ///
@@ -141,11 +131,6 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// \param worker_failure_data Worker failure data.
   void OnWorkerDead(const WorkerID &worker_id,
                     const std::shared_ptr<rpc::WorkerTableData> &worker_failure_data);
-
-  /// Returns the io_service.
-  ///
-  /// \return Reference to its io_service.
-  instrumented_io_context &GetIoContext() { return io_service_; }
 
   /// Return string of debug state.
   ///
@@ -513,6 +498,9 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   /// Test only
   size_t GetNumTaskEventsStored() { return stats_counter_.Get(kNumTaskEventsStored); }
 
+  /// Dedicated IO service separated from the main service.
+  instrumented_io_context &io_service_;
+
   // Mutex guarding the usage stats client
   absl::Mutex mutex_;
 
@@ -525,14 +513,8 @@ class GcsTaskManager : public rpc::TaskInfoHandler {
   // the io_service_thread_. Access to it is *not* thread safe.
   std::unique_ptr<GcsTaskManagerStorage> task_event_storage_;
 
-  /// Its own separate IO service separated from the main service.
-  instrumented_io_context io_service_;
-
-  /// Its own IO thread from the main thread.
-  std::unique_ptr<std::thread> io_service_thread_;
-
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   FRIEND_TEST(GcsTaskManagerTest, TestHandleAddTaskEventBasic);
   FRIEND_TEST(GcsTaskManagerTest, TestMergeTaskEventsSameTaskAttempt);

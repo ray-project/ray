@@ -23,36 +23,23 @@ def test_visible_amd_gpu_ids(mock_get_num_accelerators, monkeypatch, shutdown_on
 
 
 @patch(
-    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_pci_ids",
-    return_value={
-        "card0": {"GPU ID": "0x74a1"},
-        "card1": {"GPU ID": "0x74a1"},
-        "card2": {"GPU ID": "0x74a1"},
-        "card3": {"GPU ID": "0x74a1"},
-    },
+    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_device_ids",
+    return_value=["0x74a1", "0x74a1", "0x74a1", "0x74a1"],
 )
-def test_visible_amd_gpu_type(mock_get_amd_pci_ids, shutdown_only):
+def test_visible_amd_gpu_type(mock_get_amd_device_ids, shutdown_only):
     ray.init()
-    mock_get_amd_pci_ids.called
-    if sys.platform.startswith("linux"):
-        assert (
-            AMDGPUAcceleratorManager.get_current_node_accelerator_type()
-            == "AMD-Instinct-MI300X-OAM"
-        )
-    else:
-        assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None
+    mock_get_amd_device_ids.called
+    assert (
+        AMDGPUAcceleratorManager.get_current_node_accelerator_type()
+        == "AMD-Instinct-MI300X-OAM"
+    )
 
 
 @patch(
-    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_pci_ids",
-    return_value={
-        "card0": {"GPU ID": "0x640f"},
-        "card1": {"GPU ID": "0x640f"},
-        "card2": {"GPU ID": "0x640f"},
-        "card3": {"GPU ID": "0x640f"},
-    },
+    "ray._private.accelerators.AMDGPUAcceleratorManager._get_amd_device_ids",
+    return_value=["0x640f", "0x640f", "0x640f", "0x640f"],
 )
-def test_visible_amd_gpu_type_bad_pci_id(mock_get_num_accelerators, shutdown_only):
+def test_visible_amd_gpu_type_bad_device_id(mock_get_num_accelerators, shutdown_only):
     ray.init()
     mock_get_num_accelerators.called
     assert AMDGPUAcceleratorManager.get_current_node_accelerator_type() is None

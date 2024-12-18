@@ -1,6 +1,8 @@
 ARG DOCKER_IMAGE_BASE_BUILD=cr.ray.io/rayproject/oss-ci-base_build
 FROM $DOCKER_IMAGE_BASE_BUILD
 
+ARG RAYCI_IS_GPU_BUILD=false
+
 # Unset dind settings; we are using the host's docker daemon.
 ENV DOCKER_TLS_CERTDIR=
 ENV DOCKER_HOST=
@@ -11,8 +13,15 @@ SHELL ["/bin/bash", "-ice"]
 
 COPY . .
 
-RUN pip install -U --ignore-installed  \
-  -c python/requirements_compiled.txt \
-  -r python/requirements.txt \
-  -r python/requirements/test-requirements.txt \
-  -r python/requirements/ml/dl-cpu-requirements.txt
+RUN <<EOF
+#!/bin/bash
+
+set -euo pipefail
+
+DL=1 ./ci/env/install-dependencies.sh
+
+if [[ "$RAYCI_IS_GPU_BUILD" == "true" ]]; then
+  pip install -Ur ./python/requirements/ml/dl-gpu-requirements.txt
+fi
+
+EOF

@@ -9,7 +9,6 @@ import requests
 import starlette.requests
 
 from ray import serve
-from ray.serve._private.deployment_graph_build import build as pipeline_build
 from ray.serve.handle import DeploymentHandle
 
 NESTED_HANDLE_KEY = "nested_handle"
@@ -183,20 +182,6 @@ def test_single_node_deploy_success(serve_instance):
     assert handle.remote(41).result() == 42
 
 
-def test_options_and_names(serve_instance):
-    m1 = Adder.bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.name == "Adder"
-
-    m1 = Adder.options(name="Adder2").bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.name == "Adder2"
-
-    m1 = Adder.options(num_replicas=2).bind(1)
-    m1_built = pipeline_build(m1)[-1]
-    assert m1_built.num_replicas == 2
-
-
 @serve.deployment
 class TakeHandle:
     def __init__(self, handle) -> None:
@@ -312,40 +297,24 @@ def test_single_functional_node_base_case(serve_instance):
     assert requests.get("http://127.0.0.1:8000/").text == "1"
 
 
-def test_unsupported_bind():
-    @serve.deployment
-    class Actor:
-        def ping(self):
-            return "hello"
-
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        _ = Actor.bind().bind()
-
-    with pytest.raises(AttributeError, match=r"\.bind\(\) cannot be used again on"):
-        _ = Actor.bind().ping.bind().bind()
-
-    with pytest.raises(
-        AttributeError,
-        match=r"\.remote\(\) cannot be used on ClassMethodNodes",
-    ):
-        actor = Actor.bind()
-        _ = actor.ping.remote()
-
-
 def test_unsupported_remote():
     @serve.deployment
     class Actor:
         def ping(self):
             return "hello"
 
-    with pytest.raises(AttributeError, match=r"\'Actor\' has no attribute \'remote\'"):
+    with pytest.raises(
+        AttributeError, match=r"\'Application\' object has no attribute \'remote\'"
+    ):
         _ = Actor.bind().remote()
 
     @serve.deployment
     def func():
         return 1
 
-    with pytest.raises(AttributeError, match=r"\.remote\(\) cannot be used on"):
+    with pytest.raises(
+        AttributeError, match=r"\'Application\' object has no attribute \'remote\'"
+    ):
         _ = func.bind().remote()
 
 

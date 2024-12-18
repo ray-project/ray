@@ -1,27 +1,25 @@
 from typing import List, Tuple
 
-from ray.data._internal.block_list import BlockList
+from ray.data._internal.execution.interfaces import RefBundle
 from ray.data._internal.split import _calculate_blocks_rows, _split_at_indices
 from ray.data.block import Block, BlockMetadata, BlockPartition
 from ray.types import ObjectRef
 
 
 def _equalize(
-    per_split_block_lists: List[BlockList],
+    per_split_bundles: List[RefBundle],
     owned_by_consumer: bool,
-) -> List[BlockList]:
-    """Equalize split block lists into equal number of rows.
+) -> List[RefBundle]:
+    """Equalize split ref bundles into equal number of rows.
 
     Args:
-        per_split_block_lists: block lists to equalize.
+        per_split_bundles: ref bundles to equalize.
     Returns:
-        the equalized block lists.
+        the equalized ref bundles.
     """
-    if len(per_split_block_lists) == 0:
-        return per_split_block_lists
-    per_split_blocks_with_metadata = [
-        block_list.get_blocks_with_metadata() for block_list in per_split_block_lists
-    ]
+    if len(per_split_bundles) == 0:
+        return per_split_bundles
+    per_split_blocks_with_metadata = [bundle.blocks for bundle in per_split_bundles]
     per_split_num_rows: List[List[int]] = [
         _calculate_blocks_rows(split) for split in per_split_blocks_with_metadata
     ]
@@ -42,15 +40,8 @@ def _equalize(
 
     # phase 2: based on the num rows needed for each shaved split, split the leftovers
     # in the shape that exactly matches the rows needed.
-    leftover_refs = []
-    leftover_meta = []
-    for (ref, meta) in leftovers:
-        leftover_refs.append(ref)
-        leftover_meta.append(meta)
-    leftover_splits = _split_leftovers(
-        BlockList(leftover_refs, leftover_meta, owned_by_consumer=owned_by_consumer),
-        per_split_needed_rows,
-    )
+    leftover_bundle = RefBundle(leftovers, owns_blocks=owned_by_consumer)
+    leftover_splits = _split_leftovers(leftover_bundle, per_split_needed_rows)
 
     # phase 3: merge the shaved_splits and leftoever splits and return.
     for i, leftover_split in enumerate(leftover_splits):
@@ -60,18 +51,11 @@ def _equalize(
         num_shaved_rows = sum([meta.num_rows for _, meta in shaved_splits[i]])
         assert num_shaved_rows == target_split_size
 
-    # Compose the result back to blocklists
-    equalized_block_lists: List[BlockList] = []
+    # Compose the result back to RefBundle
+    equalized_ref_bundles: List[RefBundle] = []
     for split in shaved_splits:
-        block_refs: List[ObjectRef[Block]] = []
-        meta: List[BlockMetadata] = []
-        for (block_ref, m) in split:
-            block_refs.append(block_ref)
-            meta.append(m)
-        equalized_block_lists.append(
-            BlockList(block_refs, meta, owned_by_consumer=owned_by_consumer)
-        )
-    return equalized_block_lists
+        equalized_ref_bundles.append(RefBundle(split, owns_blocks=owned_by_consumer))
+    return equalized_ref_bundles
 
 
 def _shave_one_split(
@@ -137,7 +121,7 @@ def _shave_all_splits(
 
 
 def _split_leftovers(
-    leftovers: BlockList, per_split_needed_rows: List[int]
+    leftovers: RefBundle, per_split_needed_rows: List[int]
 ) -> List[BlockPartition]:
     """Split leftover blocks by the num of rows needed."""
     num_splits = len(per_split_needed_rows)
@@ -149,9 +133,9 @@ def _split_leftovers(
     split_result: Tuple[
         List[List[ObjectRef[Block]]], List[List[BlockMetadata]]
     ] = _split_at_indices(
-        leftovers.get_blocks_with_metadata(),
+        leftovers.blocks,
         split_indices,
-        leftovers._owned_by_consumer,
+        leftovers.owns_blocks,
     )
     return [list(zip(block_refs, meta)) for block_refs, meta in zip(*split_result)][
         :num_splits

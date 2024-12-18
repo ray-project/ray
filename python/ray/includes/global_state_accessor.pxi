@@ -15,7 +15,7 @@ from ray.includes.unique_ids cimport (
 
 from ray.includes.global_state_accessor cimport (
     CGlobalStateAccessor,
-    RedisDelKeySync,
+    RedisDelKeyPrefixSync,
 )
 
 from ray.includes.optional cimport (
@@ -48,10 +48,16 @@ cdef class GlobalStateAccessor:
         with nogil:
             self.inner.get().Disconnect()
 
-    def get_job_table(self):
+    def get_job_table(
+        self, *, skip_submission_job_info_field=False, skip_is_running_tasks_field=False
+    ):
         cdef c_vector[c_string] result
+        cdef c_bool c_skip_submission_job_info_field = skip_submission_job_info_field
+        cdef c_bool c_skip_is_running_tasks_field = skip_is_running_tasks_field
+
         with nogil:
-            result = self.inner.get().GetAllJobInfo()
+            result = self.inner.get().GetAllJobInfo(
+                c_skip_submission_job_info_field, c_skip_is_running_tasks_field)
         return result
 
     def get_next_job_id(self):
@@ -84,6 +90,9 @@ cdef class GlobalStateAccessor:
                 "MetricsExportPort": c_node_info.metrics_export_port(),
                 "NodeName": c_node_info.node_name().decode(),
                 "RuntimeEnvAgentPort": c_node_info.runtime_env_agent_port(),
+                "DeathReason": c_node_info.death_info().reason(),
+                "DeathReasonMessage":
+                    c_node_info.death_info().reason_message().decode(),
             }
             node_info["alive"] = node_info["Alive"]
             c_resources = PythonGetResourcesTotal(c_node_info)
@@ -119,6 +128,12 @@ cdef class GlobalStateAccessor:
         cdef c_vector[c_string] result
         with nogil:
             result = self.inner.get().GetAllAvailableResources()
+        return result
+
+    def get_all_total_resources(self):
+        cdef c_vector[c_string] result
+        with nogil:
+            result = self.inner.get().GetAllTotalResources()
         return result
 
     def get_task_events(self):
@@ -256,4 +271,22 @@ cdef class GlobalStateAccessor:
             "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
             "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
             "node_manager_port": c_node_info.node_manager_port(),
+            "node_id": c_node_info.node_id().hex(),
+        }
+
+    def get_node(self, node_id):
+        cdef CRayStatus status
+        cdef c_string cnode_id = node_id
+        cdef c_string cnode_info_str
+        cdef CGcsNodeInfo c_node_info
+        with nogil:
+            status = self.inner.get().GetNode(cnode_id, &cnode_info_str)
+        if not status.ok():
+            raise RuntimeError(status.message())
+        c_node_info.ParseFromString(cnode_info_str)
+        return {
+            "object_store_socket_name": c_node_info.object_store_socket_name().decode(),
+            "raylet_socket_name": c_node_info.raylet_socket_name().decode(),
+            "node_manager_port": c_node_info.node_manager_port(),
+            "node_id": c_node_info.node_id().hex(),
         }

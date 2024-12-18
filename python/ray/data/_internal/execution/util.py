@@ -25,7 +25,7 @@ def make_ref_bundles(simple_data: List[List[Any]]) -> List["RefBundle"]:
                 [
                     (
                         ray.put(block),
-                        BlockAccessor.for_block(block).get_metadata([], None),
+                        BlockAccessor.for_block(block).get_metadata(),
                     )
                 ],
                 owns_blocks=True,

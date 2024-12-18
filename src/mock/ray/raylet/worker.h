@@ -46,6 +46,8 @@ class MockWorkerInterface : public WorkerInterface {
               (),
               (const, override));
   MOCK_METHOD(const JobID &, GetAssignedJobId, (), (const, override));
+  MOCK_METHOD(std::optional<bool>, GetIsGpu, (), (const, override));
+  MOCK_METHOD(std::optional<bool>, GetIsActorWorker, (), (const, override));
   MOCK_METHOD(int, GetRuntimeEnvHash, (), (const, override));
   MOCK_METHOD(void, AssignActorId, (const ActorID &actor_id), (override));
   MOCK_METHOD(const ActorID &, GetActorId, (), (const, override));
@@ -80,6 +82,7 @@ class MockWorkerInterface : public WorkerInterface {
   MOCK_METHOD(bool, IsRegistered, (), (override));
   MOCK_METHOD(rpc::CoreWorkerClientInterface *, rpc_client, (), (override));
   MOCK_METHOD(bool, SetJobId, (const JobID &job_id), (override));
+  MOCK_METHOD(const ActorID &, GetRootDetachedActorId, (), (override));
 };
 
 }  // namespace raylet

@@ -4,6 +4,7 @@ import os
 import uuid
 from functools import wraps
 from threading import Lock
+from typing import Optional
 
 import ray._private.signature
 from ray import Language, cross_language
@@ -75,7 +76,7 @@ class RemoteFunction:
             return the resulting ObjectRefs. For an example, see
             "test_decorated_function" in "python/ray/tests/test_basic.py".
         _function_signature: The function signature.
-        _last_export_session_and_job: A pair of the last exported session
+        _last_export_cluster_and_job: A pair of the last exported cluster
             and job to help us to know whether this function was exported.
             This is an imperfect mechanism used to determine if we need to
             export the remote function again. It is imperfect in the sense that
@@ -120,6 +121,22 @@ class RemoteFunction:
         if "runtime_env" in self._default_options:
             self._default_options["runtime_env"] = self._runtime_env
 
+        # Pre-calculate runtime env info, to avoid re-calculation at `remote`
+        # invocation. When `remote` call has specified extra `option` field,
+        # runtime env will be overwritten and re-serialized.
+        #
+        # Caveat: To support dynamic runtime envs in
+        # `func.option(runtime_env={...}).remote()`, we recalculate the serialized
+        # runtime env info in the `option` call. But it's acceptable since
+        # pre-calculation here only happens once at `RemoteFunction` initialization.
+        self._serialized_base_runtime_env_info = ""
+        if self._runtime_env:
+            self._serialized_base_runtime_env_info = get_runtime_env_info(
+                self._runtime_env,
+                is_job_runtime_env=False,
+                serialize=True,
+            )
+
         self._language = language
         self._is_generator = inspect.isgeneratorfunction(function)
         self._function = function
@@ -130,13 +147,18 @@ class RemoteFunction:
         self._function_descriptor = function_descriptor
         self._is_cross_language = language != Language.PYTHON
         self._decorator = getattr(function, "__ray_invocation_decorator__", None)
-        self._last_export_session_and_job = None
+        self._last_export_cluster_and_job = None
         self._uuid = uuid.uuid4()
 
         # Override task.remote's signature and docstring
         @wraps(function)
         def _remote_proxy(*args, **kwargs):
-            return self._remote(args=args, kwargs=kwargs, **self._default_options)
+            return self._remote(
+                serialized_runtime_env_info=self._serialized_base_runtime_env_info,
+                args=args,
+                kwargs=kwargs,
+                **self._default_options,
+            )
 
         self.remote = _remote_proxy
 
@@ -217,6 +239,7 @@ class RemoteFunction:
             _metadata: Extended options for Ray libraries. For example,
                 _metadata={"workflows.io/options": <workflow options>} for
                 Ray workflows.
+            _labels: The key-value labels of a task.
 
         Examples:
 
@@ -239,15 +262,29 @@ class RemoteFunction:
         updated_options = ray_option_utils.update_options(default_options, task_options)
         ray_option_utils.validate_task_options(updated_options, in_options=True)
 
-        # only update runtime_env when ".options()" specifies new runtime_env
+        # Only update runtime_env and re-calculate serialized runtime env info when
+        # ".options()" specifies new runtime_env.
+        serialized_runtime_env_info = self._serialized_base_runtime_env_info
         if "runtime_env" in task_options:
             updated_options["runtime_env"] = parse_runtime_env(
                 updated_options["runtime_env"]
             )
+            # Re-calculate runtime env info based on updated runtime env.
+            if updated_options["runtime_env"]:
+                serialized_runtime_env_info = get_runtime_env_info(
+                    updated_options["runtime_env"],
+                    is_job_runtime_env=False,
+                    serialize=True,
+                )
 
         class FuncWrapper:
             def remote(self, *args, **kwargs):
-                return func_cls._remote(args=args, kwargs=kwargs, **updated_options)
+                return func_cls._remote(
+                    args=args,
+                    kwargs=kwargs,
+                    serialized_runtime_env_info=serialized_runtime_env_info,
+                    **updated_options,
+                )
 
             @DeveloperAPI
             def bind(self, *args, **kwargs):
@@ -263,7 +300,13 @@ class RemoteFunction:
 
     @wrap_auto_init
     @_tracing_task_invocation
-    def _remote(self, args=None, kwargs=None, **task_options):
+    def _remote(
+        self,
+        args=None,
+        kwargs=None,
+        serialized_runtime_env_info: Optional[str] = None,
+        **task_options,
+    ):
         """Submit the remote function for execution."""
         # We pop the "max_calls" coming from "@ray.remote" here. We no longer need
         # it in "_remote()".
@@ -283,11 +326,11 @@ class RemoteFunction:
                     self._function
                 )
 
-        # If this function was not exported in this session and job, we need to
+        # If this function was not exported in this cluster and job, we need to
         # export this function again, because the current GCS doesn't have it.
         if (
             not self._is_cross_language
-            and self._last_export_session_and_job != worker.current_session_and_job
+            and self._last_export_cluster_and_job != worker.current_cluster_and_job
         ):
             self._function_descriptor = PythonFunctionDescriptor.from_function(
                 self._function, self._uuid
@@ -306,7 +349,7 @@ class RemoteFunction:
                 f"Could not serialize the function {self._function_descriptor.repr}",
             )
 
-            self._last_export_session_and_job = worker.current_session_and_job
+            self._last_export_cluster_and_job = worker.current_cluster_and_job
             worker.function_actor_manager.export(self)
 
         kwargs = {} if kwargs is None else kwargs
@@ -329,7 +372,6 @@ class RemoteFunction:
 
         # TODO(suquark): cleanup these fields
         name = task_options["name"]
-        runtime_env = parse_runtime_env(task_options["runtime_env"])
         placement_group = task_options["placement_group"]
         placement_group_bundle_index = task_options["placement_group_bundle_index"]
         placement_group_capture_child_tasks = task_options[
@@ -404,19 +446,12 @@ class RemoteFunction:
             else:
                 scheduling_strategy = "DEFAULT"
 
-        serialized_runtime_env_info = None
-        if runtime_env is not None:
-            serialized_runtime_env_info = get_runtime_env_info(
-                runtime_env,
-                is_job_runtime_env=False,
-                serialize=True,
-            )
-
         if _task_launch_hook:
             _task_launch_hook(self._function_descriptor, resources, scheduling_strategy)
 
         # Override enable_task_events to default for actor if not specified (i.e. None)
         enable_task_events = task_options.get("enable_task_events")
+        labels = task_options.get("_labels")
 
         def invocation(args, kwargs):
             if self._is_cross_language:
@@ -447,6 +482,7 @@ class RemoteFunction:
                 serialized_runtime_env_info or "{}",
                 generator_backpressure_num_objects,
                 enable_task_events,
+                labels,
             )
             # Reset worker's debug context from the last "remote" command
             # (which applies only to this .remote call).

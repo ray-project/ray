@@ -4,7 +4,7 @@ ARG BASE_IMAGE
 FROM "$BASE_IMAGE"
 
 ARG BUILD_TYPE
-ARG BUILDKITE_PIPELINE_ID
+ARG BUILDKITE_CACHE_READONLY
 
 ENV CC=clang
 ENV CXX=clang++-12
@@ -18,13 +18,18 @@ RUN <<EOF
 
 set -euo pipefail
 
-if [[ "$BUILDKITE_PIPELINE_ID" == "0189942e-0876-4b8f-80a4-617f988ec59b" ]]; then
-  # Do not upload cache results for premerge pipeline
+if [[ "$BUILDKITE_CACHE_READONLY" == "true" ]]; then
+  # Disables uploading cache when it is read-only.
   echo "build --remote_upload_local_results=false" >> ~/.bazelrc
 fi
 
+if [[ "$BUILD_TYPE" == "skip" ]]; then
+  echo "Skipping build"
+  exit 0
+fi
+
 (
-  cd dashboard/client
+  cd python/ray/dashboard/client
   npm ci
   npm run build
 )
