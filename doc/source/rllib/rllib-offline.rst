@@ -132,7 +132,7 @@ example to record expert data to disk, which is later utilized for offline train
 
 Example: Record Expert Data to Local Disk
 -----------------------------------------
-After you train an expert policy to play ``CartPole-v1`` you load its policy here to record expert data during evaluation. You use ``5``
+After you train an expert policy to play `CartPole-v1` you load its policy here to record expert data during evaluation. You use ``5``
 :py:class:`~ray.rllib.offline.offline_env_runner.OfflineSingleAgentEnvRunner` instances to collect ``50`` complete episodes per `sample()` call. In this
 example you store experiences directly in RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects with no more than 
 ``25`` episode objects per Parquet file. Altogether you run 10 evaluation runs, which should result in ``500`` recorded episodes from the expert policy. 
@@ -802,8 +802,8 @@ provision are CPUs and object store memory. Insufficient object store memory, es
 Bandwidth is a crucial factor influencing the throughput within your cluster. In some cases, scaling the number of nodes can increase bandwidth, thereby enhancing the flow of data from storage to consuming processes. Scenarios where this approach is beneficial 
 include:
 
-- Independent connections to the network backbone: Nodes utilize dedicated bandwidth, avoiding shared up-links and potential bottlenecks (see for ex. `here <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html>`_ for AWS and `here <https://cloud.google.com/compute/docs/network-bandwidth?hl=en>`_ for GCP network bandwidth documentations).
-- Optimized cloud access: Employing features like `S3 Transfer Acceleration <https://aws.amazon.com/s3/transfer-acceleration/>`_, `Google Cloud Storage FUSE <https://cloud.google.com/storage/docs/cloud-storage-fuse/file-caching#configure-parallel-downloads>`_ , or parallel and accelerated data transfer methods to enhance performance.
+- Independent connections to the network backbone: Nodes utilize dedicated bandwidth, avoiding shared up-links and potential bottlenecks (see for ex. `here <https://docs.aws.amazon.com/AWSEC2/latest/UserGuide/ec2-instance-network-bandwidth.html>`__ for AWS and `here <https://cloud.google.com/compute/docs/network-bandwidth?hl=en>`__ for GCP network bandwidth documentations).
+- Optimized cloud access: Employing features like `S3 Transfer Acceleration <https://aws.amazon.com/s3/transfer-acceleration/>`__, `Google Cloud Storage FUSE <https://cloud.google.com/storage/docs/cloud-storage-fuse/file-caching#configure-parallel-downloads>`__ , or parallel and accelerated data transfer methods to enhance performance.
 
 Data Locality
 ~~~~~~~~~~~~~
@@ -932,7 +932,7 @@ Other than the number of post-processing actors you can tune performance on the 
 or in the ``ray_remote_args``. 
 
 .. note:: Typically, increasing the number of CPUs is sufficient for performance tuning in the post-processing stage of your pipeline. GPUs are only needed in specialized cases, such as in customized pipelines. For example, RLlib’s :py:class:`~ray.rllib.algorithms.marwil.marwil.MARWIL` implementation uses the 
-    :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`_ on experience batches. In these calculations, the value model of the algorithm's 
+    :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector in its :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2` to apply `General Advantage Estimation <https://arxiv.org/abs/1506.02438>`__ on experience batches. In these calculations, the value model of the algorithm's
     :py:class:`~ray.rllib.core.rl_module.RLModule` is applied, which you can accelerate by running on a GPU.
 
 As an example, to provide each of your ``4`` :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` in the **Post-Processing (PreLearner)** ``2`` CPUs you can use the following syntax:
@@ -1241,10 +1241,10 @@ Customization of the Offline RL components in RLlib, such as the :py:class:`~ray
 Connector Level
 ***************
 Small data transformations on instances of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` can be easily implemented by modifying the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`, which is part of the :py:class:`~ray.rllib.offline.offline_prelearner.OfflinePreLearner` and prepares episodes for training. You can leverage any connector from 
-RLlib's library (see `RLlib's default connectors <https://github.com/ray-project/ray/blob/master/rllib/connectors>`_) or create a custom connector (see `RLlib's ConnectorV2 examples <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors>`_) to integrate into the :py:class:`~ray.rllib.core.learner.learner.Learner`'s :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. 
-Careful consideration must be given to the order in which :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances are applied, as demonstrated in the implementation of `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ (see the MARWIL paper `here <https://www.nematilab.info/bmijc/assets/012819_paper.pdf>`_).
+RLlib's library (see `RLlib's default connectors <https://github.com/ray-project/ray/blob/master/rllib/connectors>`__) or create a custom connector (see `RLlib's ConnectorV2 examples <https://github.com/ray-project/ray/blob/master/rllib/examples/connectors>`__) to integrate into the :py:class:`~ray.rllib.core.learner.learner.Learner`'s :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`.
+Careful consideration must be given to the order in which :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` instances are applied, as demonstrated in the implementation of `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`__ (see the `MARWIL paper <https://www.nematilab.info/bmijc/assets/012819_paper.pdf>`__).
 
-The `MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ computes a loss that extends beyond behavior cloning by improving the expert's strategy during training using advantages. These advantages are calculated through `General Advantage Estimation (GAE) <https://arxiv.org/abs/1506.02438>`_ using a value model. GAE is computed on-the-fly through the
+The `MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`__ computes a loss that extends beyond behavior cloning by improving the expert's strategy during training using advantages. These advantages are calculated through `General Advantage Estimation (GAE) <https://arxiv.org/abs/1506.02438>`__ using a value model. GAE is computed on-the-fly through the
 :py:class:`~ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector. This connector has specific requirements: it processes a list of :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances and must be one of the final components in the :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`. This is because 
 it relies on fully prepared batches containing `OBS`, `REWARDS`, `NEXT_OBS`, `TERMINATED`, and `TRUNCATED` fields. Additionally, the incoming :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` instances must already include one artificially elongated timestep.
 
@@ -1255,7 +1255,7 @@ To meet these requirements, the pipeline must include the following sequence of 
 3. :py:class:`ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_batch.AddNextObservationsFromEpisodesToTrainBatch` adds the next observations (`NEXT_OBS`).
 4. Finally, the :py:class:`ray.rllib.connectors.learner.general_advantage_estimation.GeneralAdvantageEstimation` connector piece is applied.
 
-Below is the example code snippet from `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`_ demonstrating this setup:
+Below is the example code snippet from `RLlib's MARWIL algorithm <https://github.com/ray-project/ray/blob/master/rllib/algorithms/marwil>`__ demonstrating this setup:
 
 .. code-block:: python
 
