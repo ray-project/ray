@@ -19,15 +19,16 @@
   run:
     timeout: 3600
     script: >
-      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB
-      --format parquet --iterate
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet 
+      --iter-bundles
 
 - name: read_images
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 - name: read_from_uris
   run:
@@ -67,7 +68,9 @@
 - name: write_parquet
   run:
     timeout: 3600
-    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/1TiB --format parquet --write
+    script: > 
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data/tpch/parquet/sf1000/lineitem --format parquet --write
 
 ###################
 # Aggregation tests
@@ -76,7 +79,9 @@
 - name: count_parquet
   run:
     timeout: 600
-    script: python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB --format parquet --count
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet --count
 
 ###############
 # Groupby tests
@@ -256,97 +261,58 @@
           python setup_chaos.py --kill-interval 200 --max-to-kill 1 --task-names
           "_RayTrainWorker__execute.get_next"
 
-#########################
-# Map and iteration tests
-#########################
+#################
+# Iteration tests
+#################
+
+- name: iter_batches
+
+  run:
+    timeout: 2400
+
+  variations:
+    - __suffix__: numpy
+      run:
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --iter-batches numpy
+    - __suffix__: pandas
+      run:
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --iter-batches pandas
+    - __suffix__: pyarrow
+      run:
+        script: >
+          python read_and_consume_benchmark.py 
+          s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
+          --iter-batches pyarrow
+
+- name: to_tf
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      --to-tf image image
+
+- name: iter_torch_batches
+
+  run:
+    timeout: 2400
+    script: >
+      python read_and_consume_benchmark.py 
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      --iter-torch-batches
+
+###########
+# Map tests
+###########
 
 - name: map_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python map_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2400
-    script: python iter_tensor_batches_benchmark.py
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
-
-- name: iter_tensor_batches_benchmark_multi_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: multi_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish within 90 minutes.
-    timeout: 5400
-    script: python iter_tensor_batches_benchmark.py --data-size-gb=10
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: multi_node_benchmark_compute_gce.yaml
-
-- name: iter_batches_benchmark_single_node
-  group: data-tests
-  working_dir: nightly_tests/dataset
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      type: gpu
-    cluster_compute: single_node_benchmark_compute.yaml
-
   run:
     # Expect the benchmark to finish around 12 minutes.
     timeout: 1080
