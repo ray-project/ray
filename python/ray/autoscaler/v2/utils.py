@@ -9,13 +9,19 @@ import ray
 from ray._private.ray_constants import AUTOSCALER_NAMESPACE, AUTOSCALER_V2_ENABLED_KEY
 from ray._private.utils import binary_to_hex
 from ray._raylet import GcsClient
+from ray.autoscaler._private import constants
 from ray.autoscaler._private.autoscaler import AutoscalerSummary
 from ray.autoscaler._private.node_provider_availability_tracker import (
     NodeAvailabilityRecord,
     NodeAvailabilitySummary,
     UnavailableNodeInformation,
 )
-from ray.autoscaler._private.util import LoadMetricsSummary, format_info_string
+from ray.autoscaler._private.util import (
+    LoadMetricsSummary,
+    get_demand_report,
+    get_per_node_breakdown,
+    get_usage_report,
+)
 from ray.autoscaler.v2.schema import (
     NODE_DEATH_CAUSE_RAYLET_DIED,
     ClusterConstraintDemand,
@@ -320,15 +326,133 @@ class ClusterStatusFormatter:
         lm_summary = cls._parse_lm_summary(data)
         autoscaler_summary = cls._parse_autoscaler_summary(data)
 
-        return format_info_string(
-            lm_summary,
-            autoscaler_summary,
-            time=datetime.fromtimestamp(data.stats.request_ts_s),
-            gcs_request_time=data.stats.gcs_request_time_s,
-            non_terminated_nodes_time=data.stats.none_terminated_node_request_time_s,
-            autoscaler_update_time=data.stats.autoscaler_iteration_time_s,
-            verbose=verbose,
-        )
+        time = datetime.fromtimestamp(data.stats.request_ts_s)
+        gcs_request_time = data.stats.gcs_request_time_s
+        non_terminated_nodes_time = data.stats.none_terminated_node_request_time_s
+        autoscaler_update_time = data.stats.autoscaler_iteration_time_s
+
+        header = "=" * 8 + f" Autoscaler status: {time} " + "=" * 8
+        separator = "-" * len(header)
+        if verbose:
+            header += "\n"
+            if gcs_request_time:
+                header += f"GCS request time: {gcs_request_time:3f}s\n"
+            if non_terminated_nodes_time:
+                header += (
+                    "Node Provider non_terminated_nodes time: "
+                    f"{non_terminated_nodes_time:3f}s\n"
+                )
+            if autoscaler_update_time:
+                header += (
+                    "Autoscaler iteration time: " f"{autoscaler_update_time:3f}s\n"
+                )
+
+        available_node_report_lines = []
+        if not autoscaler_summary.active_nodes:
+            available_node_report = " (no active nodes)"
+        else:
+            for node_type, count in autoscaler_summary.active_nodes.items():
+                line = f" {count} {node_type}"
+                available_node_report_lines.append(line)
+            available_node_report = "\n".join(available_node_report_lines)
+
+        if not autoscaler_summary.idle_nodes:
+            idle_node_report = " (no idle nodes)"
+        else:
+            idle_node_report_lines = []
+            for node_type, count in autoscaler_summary.idle_nodes.items():
+                line = f" {count} {node_type}"
+                idle_node_report_lines.append(line)
+            idle_node_report = "\n".join(idle_node_report_lines)
+
+        pending_lines = []
+        for node_type, count in autoscaler_summary.pending_launches.items():
+            line = f" {node_type}, {count} launching"
+            pending_lines.append(line)
+        for ip, node_type, status in autoscaler_summary.pending_nodes:
+            line = f" {ip}: {node_type}, {status.lower()}"
+            pending_lines.append(line)
+        if pending_lines:
+            pending_report = "\n".join(pending_lines)
+        else:
+            pending_report = " (no pending nodes)"
+
+        failure_lines = []
+        for ip, node_type in autoscaler_summary.failed_nodes:
+            line = f" {node_type}: NodeTerminated (ip: {ip})"
+            failure_lines.append(line)
+        auto_node_avail_summary = autoscaler_summary.node_availability_summary
+        if auto_node_avail_summary:
+            records = sorted(
+                auto_node_avail_summary.node_availabilities.values(),
+                key=lambda record: record.last_checked_timestamp,
+            )
+            for record in records:
+                if record.is_available:
+                    continue
+                assert record.unavailable_node_information is not None
+                node_type = record.node_type
+                category = record.unavailable_node_information.category
+                description = record.unavailable_node_information.description
+                attempted_time = datetime.fromtimestamp(record.last_checked_timestamp)
+                formatted_time = (
+                    # This `:02d` funny business is python syntax for printing a 2
+                    # digit number with a leading zero as padding if needed.
+                    f"{attempted_time.hour:02d}:"
+                    f"{attempted_time.minute:02d}:"
+                    f"{attempted_time.second:02d}"
+                )
+                line = f" {node_type}: {category} (latest_attempt: {formatted_time})"
+                if verbose:
+                    line += f" - {description}"
+                failure_lines.append(line)
+
+        failure_lines = failure_lines[
+            : -constants.AUTOSCALER_MAX_FAILURES_DISPLAYED : -1
+        ]
+        failure_report = "Recent failures:\n"
+        if failure_lines:
+            failure_report += "\n".join(failure_lines)
+        else:
+            failure_report += " (no failures)"
+
+        usage_report = get_usage_report(lm_summary, verbose)
+        demand_report = get_demand_report(lm_summary)
+        formatted_output = f"""{header}
+    Node status
+    {separator}
+    Active:
+    {available_node_report}"""
+
+        if not autoscaler_summary.legacy:
+            formatted_output += f"""
+    Idle:
+    {idle_node_report}"""
+
+        formatted_output += f"""
+    Pending:
+    {pending_report}
+    {failure_report}
+
+    Resources
+    {separator}
+    {"Total " if verbose else ""}Usage:
+    {usage_report}
+    {"Total " if verbose else ""}Demands:
+    {demand_report}"""
+
+        if verbose:
+            if lm_summary.usage_by_node:
+                formatted_output += get_per_node_breakdown(
+                    lm_summary,
+                    autoscaler_summary.node_type_mapping,
+                    autoscaler_summary.node_activities,
+                    verbose,
+                )
+            else:
+                formatted_output += "\n"
+
+        return formatted_output.strip()
 
     @classmethod
     def _parse_autoscaler_summary(cls, data: ClusterStatus) -> AutoscalerSummary:
@@ -338,22 +462,18 @@ class ClusterStatusFormatter:
         pending_nodes = []
         for node in data.pending_nodes:
             # We are using details for the pending node's status.
-            # TODO(rickyx): we should probably use instance id rather than ip address
-            # here.
             pending_nodes.append(
-                (node.ip_address, node.ray_node_type_name, node.details)
+                (node.instance_id, node.ray_node_type_name, node.details)
             )
 
         failed_nodes = []
         for node in data.failed_nodes:
-            # TODO(rickyx): we should probably use instance id/node id rather
-            # than node ip here since node ip is not unique among failed nodes.
-            failed_nodes.append((node.ip_address, node.ray_node_type_name))
+            failed_nodes.append((node.instance_id, node.ray_node_type_name))
 
         # From IP to node type name.
         node_type_mapping = {}
         for node in chain(data.active_nodes, data.idle_nodes):
-            node_type_mapping[node.ip_address] = node.ray_node_type_name
+            node_type_mapping[node.instance_id] = node.ray_node_type_name
 
         # Transform failed launches to node_availability_summary
         node_availabilities = {}
@@ -375,7 +495,7 @@ class ClusterStatusFormatter:
         )
 
         node_activities = {
-            node.node_id: (node.ip_address, node.node_activity)
+            node.node_id: (node.instance_id, node.node_activity)
             for node in data.active_nodes
         }
 
