@@ -682,6 +682,7 @@ async def download_and_unpack_package(
     pkg_uri: str,
     base_directory: str,
     gcs_aio_client: Optional["GcsAioClient"] = None,  # noqa: F821
+    runtime_env: Optional["RuntimeEnv"] = None,  # noqa: F821
     logger: Optional[logging.Logger] = default_logger,
 ) -> str:
     """Download the package corresponding to this URI and unpack it if zipped.
@@ -784,7 +785,20 @@ async def download_and_unpack_package(
                             "`pip install boto3` to fetch URIs in s3 "
                             "bucket. " + install_warning
                         )
-                    tp = {"client": boto3.client("s3")}
+                    s3_kwargs = {}
+                    if runtime_env:
+                        env_vars = runtime_env.env_vars()
+                        if "AWS_ENDPOINT_URL" in env_vars:
+                            s3_kwargs["endpoint_url"] = env_vars["AWS_ENDPOINT_URL"]
+                        if "AWS_ACCESS_KEY_ID" in env_vars:
+                            s3_kwargs["aws_access_key_id"] = env_vars[
+                                "AWS_ACCESS_KEY_ID"
+                            ]
+                        if "AWS_SECRET_ACCESS_KEY" in env_vars:
+                            s3_kwargs["aws_secret_access_key"] = env_vars[
+                                "AWS_SECRET_ACCESS_KEY"
+                            ]
+                    tp = {"client": boto3.client("s3", **s3_kwargs)}
                 elif protocol == Protocol.GS:
                     try:
                         from google.cloud import storage  # noqa: F401

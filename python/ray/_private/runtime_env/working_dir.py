@@ -118,7 +118,6 @@ def set_pythonpath_in_context(python_path: str, context: RuntimeEnvContext):
 
 
 class WorkingDirPlugin(RuntimeEnvPlugin):
-
     name = "working_dir"
 
     # Note working_dir is not following the priority order of other plugins. Instead
@@ -161,7 +160,11 @@ class WorkingDirPlugin(RuntimeEnvPlugin):
         logger: logging.Logger = default_logger,
     ) -> int:
         local_dir = await download_and_unpack_package(
-            uri, self._resources_dir, self._gcs_aio_client, logger=logger
+            uri,
+            self._resources_dir,
+            self._gcs_aio_client,
+            runtime_env=runtime_env,
+            logger=logger,
         )
         return get_directory_size_bytes(local_dir)
 
