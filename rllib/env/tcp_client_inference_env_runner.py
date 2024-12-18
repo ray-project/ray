@@ -286,7 +286,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         time.sleep(sleep)
 
         # Start listening on the configured port.
-        self.server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self.server_socket = net._get_sock_stream_from_host(host)
         # Allow reuse of the address.
         self.server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         self.server_socket.bind((self.host, self.port))
@@ -467,7 +467,7 @@ def _dummy_client(port: int = 5556):
     while True:
         try:
             print(f"Trying to connect to localhost:{port} ...")
-            sock_ = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock_ = net._get_sock_stream_from_host("localhost")
             sock_.connect(("localhost", port))
             break
         except ConnectionRefusedError:

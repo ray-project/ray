@@ -11,6 +11,7 @@ from fairseq import options
 from fairseq_cli.train import main
 
 import ray
+from ray._private import net
 
 _original_save_checkpoint = fairseq.checkpoint_utils.save_checkpoint
 
@@ -78,7 +79,7 @@ class RayDistributedActor:
 
     def find_free_port(self):
         """Finds a free port on the current node."""
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        with closing(net._get_socket_dualstack_fallback_single_stack_laddr()) as s:
             s.bind(("", 0))
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
             return s.getsockname()[1]
