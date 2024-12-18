@@ -21,7 +21,7 @@ def check_ray_core_inclusion(fname: str):
         match = pattern.search(content)
         if match:
             print(f"{fname} has invalid header file inclusion: {match.group(0)}")
-            exit(1)
+            sys.exit(1)
 
 
 def main():
