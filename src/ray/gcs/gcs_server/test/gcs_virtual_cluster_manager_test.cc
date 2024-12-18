@@ -146,7 +146,7 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
   {
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_0");
-    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 5});
     request.mutable_replica_sets()->insert({template_id_1, 10});
@@ -198,7 +198,7 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_1 and check that the status is ok.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_1");
-    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, node_count_per_template - 5});
     request.mutable_replica_sets()->insert({template_id_1, node_count_per_template - 10});
@@ -246,7 +246,7 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_2 and check that the status is succeed.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_2");
-    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 0});
     request.mutable_replica_sets()->insert({template_id_1, 0});
@@ -272,7 +272,7 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     // Create virtual_cluster_id_3 and check that the status is failed.
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id("virtual_cluster_id_3");
-    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 1});
     request.mutable_replica_sets()->insert({template_id_1, 0});
@@ -539,7 +539,7 @@ TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
   {
     rpc::CreateOrUpdateVirtualClusterRequest request;
     request.set_virtual_cluster_id(virtual_cluster_id_0);
-    request.set_mode(rpc::AllocationMode::Exclusive);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
     request.set_revision(0);
     request.mutable_replica_sets()->insert({template_id_0, 5});
     request.mutable_replica_sets()->insert({template_id_1, 10});

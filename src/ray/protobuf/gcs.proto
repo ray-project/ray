@@ -711,10 +711,11 @@ message JobTableData {
 ///////////////////////////////////////////////////////////////////////////////
 
 enum AllocationMode {
+  UNKNOWN = 0;
   // A single node can carray tasks for multiple jobs.
-  Mixed = 0;
+  MIXED = 1;
   // A single node can only carray tasks for one job.
-  Exclusive = 1;
+  EXCLUSIVE = 2;
 }
 
 message NodeInstance {
