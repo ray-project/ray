@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -50,6 +50,7 @@ class TrainWorkerInfo(BaseModel):
     status: Optional[ActorStatusEnum] = Field(
         description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
+    required_resources: Dict[str, float] = Field(description="Required resources to schedule this worker.")
 
 
 @DeveloperAPI
