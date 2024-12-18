@@ -8,7 +8,7 @@
 Hierarchical Environments
 =========================
 
-Hierarchical training can be implemented as a special case of multi-agent RL. For example, consider a two-level hierarchy of policies,
+You can implement hierarchical training as a special case of multi-agent RL. For example, consider a two-level hierarchy of policies,
 where a top-level policy issues high level tasks that are executed at a finer timescale by one or more low-level policies.
 The following timeline shows one step of the top-level policy, which corresponds to four low-level actions:
 
@@ -27,12 +27,12 @@ back control to the high-level agent:
    low-level: ---------> action_0 -> action_1 -> action_2 ------------>
 
 
-Any of these hierarchical action patterns can be implemented as a multi-agent environment with various
+You can implement any of these hierarchical action patterns as a multi-agent environment with various
 types of agents, for example a high-level agent and a low-level agent. When set up using the correct
-agent to module mapping functions, from RLlib's perspective, the problem boils down to a simple independent
+agent to module mapping functions, from RLlib's perspective, the problem becomes a simple independent
 multi-agent problem with different types of policies.
 
-Your configuration might look something like this:
+Your configuration might look something like the following:
 
 .. testcode::
 
@@ -54,4 +54,4 @@ In this setup, the appropriate rewards at any hierarchy level should be provided
 The environment class is also responsible for routing between agents, for example conveying `goals <https://arxiv.org/pdf/1703.01161.pdf>`__ from higher-level
 agents to lower-level agents as part of the lower-level agent observation.
 
-See `here for a runnable example of a hierarchical env <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.
+See `this runnable example of a hierarchical env <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__.

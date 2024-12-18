@@ -8,13 +8,13 @@
 External Environments and Applications
 --------------------------------------
 
-In many situations, it does not make sense for an RL environment to be "stepped" by RLlib.
-For example, if we train one or more policies inside a complex simulator, for example, a game engine
-or a robotics simulation, it would be more natural and user friendly to flip this setup around
+In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib.
+For example, if you train one or more policies inside a complex simulator, like a game engine
+or a robotics simulation. A natural and user friendly approach is to flip this setup around
 and - instead of RLlib "stepping" the env - allow the simulations and the agents to fully control
 their own stepping. An external RLlib-powered service would be available for either querying for
 individual actions or for accepting batched sample data. The service would cover the task
-of training the policies, but would not pose any restrictions on when and how often
+of training the policies, but wouldn't pose any restrictions on when and how often
 per second the simulation should step.
 
 .. figure:: images/envs/external_env_setup_client_inference.svg
@@ -46,13 +46,13 @@ together with a dummy (CartPole) client providing a template for any external ap
 
 
 
-At any point, agents on that thread can query the current policy for decisions via
-``self.get_action()`` and reports rewards, done-dicts, and infos via ``self.log_returns()``.
-This can be done for multiple concurrent episodes as well.
+At any point, agents on that thread can query the current policy for decisions with
+``self.get_action()`` and reports rewards, done-dicts, and infos with ``self.log_returns()``.
+You can do this query for multiple concurrent episodes as well.
 
 See these examples for a `simple "CartPole-v1" server <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_server.py>`__
 and `n client(s) <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/external_envs/cartpole_client.py>`__
-scripts, in which we setup an RLlib policy server that listens on one or more ports for
+scripts, which sets up an RLlib policy server that listens on one or more ports for
 client connections and connect several clients to this server to learn the env.
 
 
