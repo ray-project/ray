@@ -364,7 +364,9 @@ class Checkpointable(abc.ABC):
 
         # Restore components of `self` that themselves are `Checkpointable`.
         orig_comp_names = {c[0] for c in self.get_checkpointable_components()}
-        self._restore_all_subcomponents_from_path(path, filesystem, component, **kwargs)
+        self._restore_all_subcomponents_from_path(
+            path, filesystem, component=component, **kwargs
+        )
 
         # Restore the "base" state (not individual subcomponents).
         if component is None:
