@@ -2016,7 +2016,7 @@ class CompiledDAG:
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
-        timeout = ctx.retrieval_timeout
+        timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             self.increment_max_finished_execution_index()
@@ -2045,7 +2045,7 @@ class CompiledDAG:
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
-                None means using default timeout (DAGContext.retrieval_timeout),
+                None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
@@ -2060,7 +2060,7 @@ class CompiledDAG:
 
             ctx = DAGContext.get_current()
             if timeout is None:
-                timeout = ctx.retrieval_timeout
+                timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             if len(self._result_buffer) >= self._max_buffered_results:
