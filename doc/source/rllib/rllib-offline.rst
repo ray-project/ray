@@ -138,7 +138,7 @@ example you store experiences directly in RLlib's :py:class:`~ray.rllib.env.sing
 ``25`` episode objects per Parquet file. Altogether you run 10 evaluation runs, which should result in ``500`` recorded episodes from the expert policy. 
 You use these data in the next example to train a new policy through Offline RL that should reach a return of ``450.0`` when playing ``CartPole-v1``.
 
-.. testcode::
+.. code-block:: python
 
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.core import (
@@ -247,7 +247,7 @@ Example: Training on Previously Saved Experiences
 In this example you are using behavior cloning with the previously recorded Parquet data from your expert policy playing ``CartPole-v1``. The 
 data needs to be linked in the configuration of the algorithm (through the ``input_`` attribute).
 
-.. testcode:: python
+.. code-block:: python
     
     from ray import train, tune
     from ray.rllib.algorithms.bc import BCConfig
@@ -396,7 +396,7 @@ If you require full trajectories you can transform your tabular data into :py:cl
 how to do this. 
 First, you store experiences of the preceding trained expert policy in tabular format (note the `output_write_episodes=False` setting below to activate tabular data output):
 
-.. testcode:: python
+.. code-block:: python
 
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.core import (
@@ -473,7 +473,7 @@ First, you store experiences of the preceding trained expert policy in tabular f
 You may have noticed that recording data in tabular format takes significantly longer than recording in episode format. This slower performance is due to the additional post-processing 
 required to convert episode data into a columnar format. To confirm that the recorded data is now in columnar format, you can print its schema:
 
-.. testcode:: python
+.. code-block:: python
 
     from ray import data
     
@@ -504,7 +504,7 @@ required to convert episode data into a columnar format. To confirm that the rec
 If your expert data is given in columnar format and you need to train on full expert trajectories you can follow the code in the following example to convert 
 your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects:
 
-.. testcode:: python
+.. code-block:: python
     import gymnasium as gym
     import msgpack
     import msgpack_numpy as mnp
