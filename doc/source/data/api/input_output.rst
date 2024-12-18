@@ -324,8 +324,6 @@ Datasink API
    datasource.RowBasedFileDatasink
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
-   datasource.WriteResult
-   datasource.WriteReturnType
 
 Partitioning API
 ----------------
