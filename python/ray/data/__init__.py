@@ -20,6 +20,8 @@ from ray.data.datasource import (
     Datasource,
     ReadTask,
     RowBasedFileDatasink,
+    WriteResult,
+    WriteReturnType,
 )
 from ray.data.iterator import DataIterator, DatasetIterator
 from ray.data.preprocessor import Preprocessor
@@ -156,4 +158,6 @@ __all__ = [
     "read_webdataset",
     "Preprocessor",
     "TFXReadOptions",
+    "WriteResult",
+    "WriteReturnType",
 ]

@@ -2,7 +2,7 @@ from ray.data._internal.datasource.sql_datasource import Connection
 from ray.data.datasource.datasink import (
     Datasink,
     DummyOutputDatasink,
-    WriteReturn,
+    WriteResult,
     WriteReturnType,
 )
 from ray.data.datasource.datasource import (
@@ -60,6 +60,6 @@ __all__ = [
     "Reader",
     "RowBasedFileDatasink",
     "_S3FileSystemWrapper",
-    "WriteReturn",
+    "WriteResult",
     "WriteReturnType",
 ]
