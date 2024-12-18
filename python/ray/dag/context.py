@@ -8,7 +8,7 @@ from ray.util.annotations import DeveloperAPI
 _default_context: "Optional[DAGContext]" = None
 _context_lock = threading.Lock()
 
-DEFAULT_EXECUTION_TIMEOUT_S = int(os.environ.get("RAY_DAG_execution_timeout", 10))
+DEFAULT_SUBMIT_TIMEOUT_S = int(os.environ.get("RAY_DAG_submit_timeout", 10))
 DEFAULT_RETRIEVAL_TIMEOUT_S = int(os.environ.get("RAY_DAG_retrieval_timeout", 10))
 DEFAULT_TEARDOWN_TIMEOUT_S = int(os.environ.get("RAY_DAG_teardown_timeout", 30))
 # Default buffer size is 1MB.
@@ -48,7 +48,7 @@ class DAGContext:
         500
 
     Args:
-        execution_timeout: The maximum time in seconds to wait for execute()
+        submit_timeout: The maximum time in seconds to wait for execute()
             calls.
         retrieval_timeout: The maximum time in seconds to wait to retrieve
             a result from the DAG.
@@ -73,7 +73,7 @@ class DAGContext:
             performance of the DAG execution.
     """
 
-    execution_timeout: int = DEFAULT_EXECUTION_TIMEOUT_S
+    submit_timeout: int = DEFAULT_SUBMIT_TIMEOUT_S
     retrieval_timeout: int = DEFAULT_RETRIEVAL_TIMEOUT_S
     teardown_timeout: int = DEFAULT_TEARDOWN_TIMEOUT_S
     buffer_size_bytes: int = DEFAULT_BUFFER_SIZE_BYTES
