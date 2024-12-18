@@ -95,7 +95,7 @@ A few notes on the above config:
   in the Fluent Bit container's stdout sooner.
 - The [Kubernetes downward API][KubernetesDownwardAPI] populates the `POD_LABELS` variable used in the `FILTER` section. It pulls the label from the pod's metadata label `ray.io/cluster`, which is defined in the Fluent Bit sidecar container's environment.
 - The `tenant_id` field allows you to assign logs to different tenants. In this example, Fluent Bit sidecar sends the logs to the `test` tenant. You can adjust this configuration to match the tenant ID set up in your Grafana Loki instance, enabling multi-tenancy support in Grafana.
-- The `Host` field specifies the endpoint of the Loki gateway. If Loki and the RayCluster are in different namespaces, you need to append `.namespace` to the host name, for example, `loki-gateway.monitoring` (replace `monitoring` with the namespace where Loki resides).
+- The `Host` field specifies the endpoint of the Loki gateway. If Loki and the RayCluster are in different namespaces, you need to append `.namespace` to the hostname, for example, `loki-gateway.monitoring` (replacing `monitoring` with the namespace where Loki resides).
 
 ### Adding logging sidecars to RayCluster Custom Resource (CR)
 
