@@ -1181,25 +1181,13 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-           If you use the `expr` parameter with a Python expression string, Ray Data optimizes your filter with native Arrow interfaces.
-
-        .. tip::
-            If you can represent your predicate with NumPy or pandas operations,
-            :meth:`Dataset.map_batches` might be faster. You can implement filter by
-            dropping rows.
-
-        .. tip::
-            If you're reading parquet files with :meth:`ray.data.read_parquet`,
-            and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown; see
-            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
+           If you use the `expr` parameter with a Python expression string, Ray Data optimizes
+           your filter with native Arrow interfaces.
 
         Examples:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.filter(lambda row: row["id"] % 2 == 0).take_all()
-            [{'id': 0}, {'id': 2}, {'id': 4}, ...]
             >> ds.filter(expr="id <= 4").take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
