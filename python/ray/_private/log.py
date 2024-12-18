@@ -3,6 +3,8 @@ import threading
 from typing import Union
 import time
 
+LOG_KEY_TIMESTAMP_NS = "timestamp_ns"
+
 
 def _print_loggers():
     """Print a formatted list of loggers and their handlers for debugging."""
@@ -103,9 +105,7 @@ def generate_logging_config():
             ct = time.time_ns()
             record.created = ct / 1e9
 
-            from ray._private.ray_logging.constants import LogKey
-
-            record.__dict__[LogKey.TIMESTAMP_NS.value] = ct
+            record.__dict__[LOG_KEY_TIMESTAMP_NS] = ct
 
             return record
 
