@@ -78,8 +78,8 @@ class ActorPoolMapOperator(MapOperator):
                 prior to initializing the worker. Args returned from this dict will
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
-            ray_remote_args: Customize the ray.remote args for this op's tasks.
-                See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+            ray_remote_args: Customize the ray remote args for this op's tasks.
+                See :func:`~ray.remote` for details.
         """
         super().__init__(
             map_transformer,

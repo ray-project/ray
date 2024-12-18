@@ -346,8 +346,7 @@ def read_datasource(
     Args:
         datasource: The :class:`~ray.data.Datasource` to read data from.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -483,8 +482,7 @@ def read_mongo(
         schema: The schema used to read the collection. If None, it'll be inferred from
             the results of pipeline.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -573,8 +571,7 @@ def read_bigquery(
         dataset: The name of the dataset hosted in BigQuery in the format of ``dataset_id.table_id``.
             Both the dataset_id and table_id must exist otherwise an exception will be raised.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to ray.remote in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -702,8 +699,7 @@ def read_parquet(
         columns: A list of column names to read. Only the specified columns are
             read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         tensor_column_schema: A dict of column name to PyArrow dtype and shape
             mappings for converting a Parquet column containing serialized
             tensors (ndarrays) as their elements to PyArrow tensors. This function
@@ -858,8 +854,7 @@ def read_images(
             Custom metadata providers may be able to resolve file metadata more quickly
             and/or accurately. In most cases, you do not need to set this. If ``None``,
             this function uses a system-chosen implementation.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -990,8 +985,7 @@ def read_parquet_bulk(
         columns: A list of column names to read. Only the
             specified columns are read during the file scan.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_file_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1144,8 +1138,7 @@ def read_json(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1314,8 +1307,7 @@ def read_csv(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1432,9 +1424,8 @@ def read_text(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
-            in the subsequent text decoding map task. See
-            :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
+            in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -1544,9 +1535,8 @@ def read_avro(
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks and
-            in the subsequent text decoding map task. See
-            :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks and
+            in the subsequent text decoding map task.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
                 python/generated/pyarrow.fs.FileSystem.html\
@@ -2019,8 +2009,7 @@ def read_binary_files(
             you need to provide specific configurations to the filesystem. By default,
             the filesystem is automatically selected based on the scheme of the paths.
             For example, if the path begins with ``s3://``, the `S3FileSystem` is used.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
         arrow_open_stream_args: kwargs passed to
             `pyarrow.fs.FileSystem.open_input_file <https://arrow.apache.org/docs/\
@@ -2156,8 +2145,7 @@ def read_sql(
             Python DB API2
             `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2239,8 +2227,7 @@ def read_databricks_tables(
         catalog: (Optional) The default catalog name used by the query.
         schema: (Optional) The default schema used by the query.
         parallelism: This argument is deprecated. Use ``override_num_blocks`` argument.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2352,8 +2339,7 @@ def read_hudi(
             connection. This is used to store connection parameters like credentials,
             endpoint, etc. See more explanation
             `here <https://github.com/apache/hudi-rs?tab=readme-ov-file#work-with-cloud-storage>`_.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -2788,8 +2774,7 @@ def read_delta_sharing_tables(
         json_predicate_hints: Predicate hints to be applied to the table. For more
             details, see:
             https://github.com/delta-io/delta-sharing/blob/main/PROTOCOL.md#json-predicates-for-filtering.
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control the number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3160,8 +3145,7 @@ def read_iceberg(
              `pyiceberg catalog
              <https://py.iceberg.apache.org/reference/pyiceberg/catalog/\
              #pyiceberg.catalog.load_catalog>`_.
-        ray_remote_args: Optional arguments to pass to `ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: Optional arguments to pass to :func:`ray.remote` in the read tasks
         override_num_blocks: Override the number of output blocks from all read tasks.
             By default, the number of output blocks is dynamically decided based on
             input data size and available resources, and capped at the number of
@@ -3230,8 +3214,7 @@ def read_lance(
             method, such as `batch_size`. For more information,
             see `LanceDB API doc <https://lancedb.github.io\
             /lance/api/python/lance.html#lance.dataset.LanceDataset.scanner>`_
-        ray_remote_args: kwargs passed to :meth:`~ray.remote` in the read tasks.
-            See :meth:`~ray.runtime_env.RuntimeEnv` for details.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
         concurrency: The maximum number of Ray tasks to run concurrently. Set this
             to control number of tasks to run concurrently. This doesn't change the
             total number of tasks run or the total number of output blocks. By default,
@@ -3250,6 +3233,79 @@ def read_lance(
         filter=filter,
         storage_options=storage_options,
         scanner_options=scanner_options,
+    )
+
+    return read_datasource(
+        datasource=datasource,
+        ray_remote_args=ray_remote_args,
+        concurrency=concurrency,
+        override_num_blocks=override_num_blocks,
+    )
+
+
+@PublicAPI(stability="alpha")
+def read_clickhouse(
+    *,
+    table: str,
+    dsn: str,
+    columns: Optional[List[str]] = None,
+    order_by: Optional[Tuple[List[str], bool]] = None,
+    client_settings: Optional[Dict[str, Any]] = None,
+    client_kwargs: Optional[Dict[str, Any]] = None,
+    ray_remote_args: Optional[Dict[str, Any]] = None,
+    concurrency: Optional[int] = None,
+    override_num_blocks: Optional[int] = None,
+) -> Dataset:
+    """
+    Create a :class:`~ray.data.Dataset` from a ClickHouse table or view.
+
+    Examples:
+        >>> import ray
+        >>> ds = ray.data.read_clickhouse( # doctest: +SKIP
+        ...     table="default.table",
+        ...     dsn="clickhouse+http://username:password@host:8124/default",
+        ...     columns=["timestamp", "age", "status", "text", "label"],
+        ...     order_by=(["timestamp"], False),
+        ... )
+
+    Args:
+        table: Fully qualified table or view identifier (e.g.,
+            "default.table_name").
+        dsn: A string in standard DSN (Data Source Name) HTTP format (e.g.,
+            "clickhouse+http://username:password@host:8124/default").
+            For more information, see `ClickHouse Connection String doc
+            <https://clickhouse.com/docs/en/integrations/sql-clients/cli#connection_string>`_.
+        columns: Optional list of columns to select from the data source.
+            If no columns are specified, all columns will be selected by default.
+        order_by: Optional tuple containing a list of columns to order by and a boolean indicating whether the order
+            should be descending (True for DESC, False for ASC). Please Note: order_by is required to support
+            parallelism. If not provided, the data will be read in a single task. This is to ensure
+            that the data is read in a consistent order across all tasks.
+        client_settings: Optional ClickHouse server settings to be used with the session/every request.
+            For more information, see `ClickHouse Client Settings
+            <https://clickhouse.com/docs/en/integrations/python#settings-argument>`_.
+        client_kwargs: Optional additional arguments to pass to the ClickHouse client. For more information,
+            see `ClickHouse Core Settings <https://clickhouse.com/docs/en/integrations/python#additional-options>`_.
+        ray_remote_args: kwargs passed to :func:`ray.remote` in the read tasks.
+        concurrency: The maximum number of Ray tasks to run concurrently. Set this
+            to control number of tasks to run concurrently. This doesn't change the
+            total number of tasks run or the total number of output blocks. By default,
+            concurrency is dynamically decided based on the available resources.
+        override_num_blocks: Override the number of output blocks from all read tasks.
+            By default, the number of output blocks is dynamically decided based on
+            input data size and available resources. You shouldn't manually set this
+            value in most cases.
+
+    Returns:
+        A :class:`~ray.data.Dataset` producing records read from the ClickHouse table or view.
+    """  # noqa: E501
+    datasource = ClickHouseDatasource(
+        table=table,
+        dsn=dsn,
+        columns=columns,
+        order_by=order_by,
+        client_settings=client_settings,
+        client_kwargs=client_kwargs,
     )
 
     return read_datasource(
