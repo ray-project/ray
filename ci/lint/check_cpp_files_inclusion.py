@@ -29,7 +29,6 @@ def main():
     changed_files = sys.argv[1:]
     for cur_file in changed_files:
         check_ray_core_inclusion(cur_file)
-    exit(0)
 
 
 if __name__ == "__main__":
