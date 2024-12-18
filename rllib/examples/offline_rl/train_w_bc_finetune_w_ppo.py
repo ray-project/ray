@@ -144,7 +144,7 @@ class MyPPOModel(MyBCModel, ValueFunctionAPI):
     """Subclass of our simple BC model, but implementing the ValueFunctionAPI.
 
     Implementing the `compute_values` method makes this RLModule usable by algos
-    like PPO, which require this.
+    like PPO.
     """
 
     @override(MyBCModel)
@@ -199,10 +199,6 @@ if __name__ == "__main__":
     # Define the BC config.
     base_config = (
         BCConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         # Note, the `input_` argument is the major argument for the
         # new offline API. Via the `input_read_method_kwargs` the
         # arguments for the `ray.data.Dataset` read method can be
@@ -228,7 +224,7 @@ if __name__ == "__main__":
             # The number of iterations to be run per learner when in multi-learner
             # mode in a single RLlib training iteration. Leave this to `None` to
             # run an entire epoch on the dataset during a single RLlib training
-            # iteration. For single-learner mode 1 is the only option.
+            # iteration. For single-learner mode, 1 is the only option.
             dataset_num_iters_per_learner=1 if not args.num_learners else None,
         )
         .training(

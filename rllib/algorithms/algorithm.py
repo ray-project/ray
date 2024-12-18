@@ -774,23 +774,25 @@ class Algorithm(Checkpointable, Trainable, AlgorithmBase):
             method_config["type"] = method_type
 
         if self.config.enable_rl_module_and_learner:
-            if self.env_runner_group:
-                spaces = self.env_runner_group.get_spaces()
-            elif self.eval_env_runner_group:
-                spaces = self.eval_env_runner_group.get_spaces()
-            else:
-                from ray.rllib.env import INPUT_ENV_SPACES
+            from ray.rllib.env import INPUT_ENV_SPACES
 
-                spaces = {
-                    INPUT_ENV_SPACES: (
-                        self.config.observation_space,
-                        self.config.action_space,
-                    ),
+            spaces = {
+                INPUT_ENV_SPACES: (
+                    self.config.observation_space,
+                    self.config.action_space,
+                )
+            }
+            if self.env_runner_group:
+                spaces.update(self.env_runner_group.get_spaces())
+            elif self.eval_env_runner_group:
+                spaces.update(self.eval_env_runner_group.get_spaces())
+            else:
+                spaces.update({
                     DEFAULT_MODULE_ID: (
                         self.config.observation_space,
                         self.config.action_space,
                     ),
-                }
+                })
 
             module_spec: MultiRLModuleSpec = self.config.get_multi_rl_module_spec(
                 spaces=spaces,
