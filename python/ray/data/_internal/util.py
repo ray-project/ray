@@ -529,23 +529,6 @@ def AllToAllAPI(*args, **kwargs):
     return _all_to_all_api()(args[0])
 
 
-def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
-    """Split the list into `num_splits` lists.
-
-    The splits will be even if the `num_splits` divides the length of list, otherwise
-    the remainder (suppose it's R) will be allocated to the first R splits (one for
-    each).
-    This is the same as numpy.array_split(). The reason we make this a separate
-    implementation is to allow the heterogeneity in the elements in the list.
-    """
-    assert num_splits > 0
-    q, r = divmod(len(arr), num_splits)
-    splits = [
-        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
-    ]
-    return splits
-
-
 def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,

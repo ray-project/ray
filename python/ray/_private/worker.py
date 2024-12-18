@@ -853,6 +853,7 @@ class Worker:
         object_refs: list,
         timeout: Optional[float] = None,
         return_exceptions: bool = False,
+        skip_deserialization: bool = False,
     ):
         """Get the values in the object store associated with the IDs.
 
@@ -869,8 +870,10 @@ class Worker:
                 Exception object, whether to return them as values in the
                 returned list. If False, then the first found exception will be
                 raised.
+            skip_deserialization: If true, only the buffer will be released and
+                the object associated with the buffer will not be deserailized.
         Returns:
-            list: List of deserialized objects
+            list: List of deserialized objects or None if skip_deserialization is True.
             bytes: UUID of the debugger breakpoint we should drop
                 into or b"" if there is no breakpoint.
         """
@@ -903,6 +906,9 @@ class Worker:
                     debugger_breakpoint = metadata_fields[1][
                         len(ray_constants.OBJECT_METADATA_DEBUG_PREFIX) :
                     ]
+        if skip_deserialization:
+            return None, debugger_breakpoint
+
         values = self.deserialize_objects(data_metadata_pairs, object_refs)
         if not return_exceptions:
             # Raise exceptions instead of returning them to the user.
