@@ -248,7 +248,7 @@ In this example you are using behavior cloning with the previously recorded Parq
 data needs to be linked in the configuration of the algorithm (through the ``input_`` attribute).
 
 .. code-block:: python
-    
+
     from ray import train, tune
     from ray.rllib.algorithms.bc import BCConfig
 
@@ -505,6 +505,7 @@ If your expert data is given in columnar format and you need to train on full ex
 your own data into RLlib's :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` objects:
 
 .. code-block:: python
+    
     import gymnasium as gym
     import msgpack
     import msgpack_numpy as mnp
