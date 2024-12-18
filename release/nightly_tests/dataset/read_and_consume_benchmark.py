@@ -18,7 +18,6 @@ def parse_args() -> argparse.Namespace:
         choices=["image", "parquet"],
         required=True,
     )
-    parser.add_argument("--materialize-read", action="store_true")
 
     consume_group = parser.add_mutually_exclusive_group()
     consume_group.add_argument("--count", action="store_true")
@@ -55,14 +54,6 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
         read_fn = ray.data.read_parquet
     else:
         assert False, f"Invalid data format argument: {args}"
-
-    if args.materialize_read:
-        # Materialize dataset outside of the benchmark to avoid including the time to
-        # read the data.
-        materialized_ds = read_fn(args.path).materialize()
-
-        def read_fn(_):
-            return materialized_ds
 
     return read_fn
 

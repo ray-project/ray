@@ -435,52 +435,43 @@
   run:
     timeout: 2400
 
-  cluster:
-    cluster_compute: fixed_size_cpu_compute.yaml
-
   variations:
     - __suffix__: numpy
       run:
         script: >
           python read_and_consume_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
-          --materialize-read --iter-batches numpy
+          --iter-batches numpy
     - __suffix__: pandas
       run:
         script: >
           python read_and_consume_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
-          --materialize-read --iter-batches pandas
+          --iter-batches pandas
     - __suffix__: pyarrow
       run:
         script: >
           python read_and_consume_benchmark.py 
           s3://ray-benchmark-data/tpch/parquet/sf100/lineitem --format parquet 
-          --materialize-read --iter-batches pyarrow
+          --iter-batches pyarrow
 
 - name: to_tf
 
-  cluster:
-    cluster_compute: fixed_size_cpu_compute.yaml
-
   run:
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://air-example-data-2/10G-image-data-synthetic-raw/ --format image 
-      --materialize-read --to-tf image image
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      --to-tf image image
 
 - name: iter_torch_batches
 
-  cluster:
-    cluster_compute: fixed_size_cpu_compute.yaml
-
   run:
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://air-example-data-2/10G-image-data-synthetic-raw/ --format image 
-      --materialize-read --iter-torch-batches
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      --iter-torch-batches
 
 ###########
 # Map tests
