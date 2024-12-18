@@ -358,6 +358,7 @@
 ########################
 
 - name: random_shuffle
+  working_dir: nightly_tests
   stable: False
 
   cluster:
@@ -371,9 +372,18 @@
   run:
     timeout: 7200
     script: >
-      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9 
+      --shuffle
 
+  variations:
+    - __suffix__: chaos
+      run:
+        prepare: > 
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600 
+          --max-to-kill 2 
+          
 - name: sort
+  working_dir: nightly_tests
   stable: False
 
   cluster:
@@ -386,7 +396,15 @@
 
   run:
     timeout: 7200
-    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+  variations:
+    - __suffix__: chaos
+      run:
+        prepare: > 
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900 
+          --max-to-kill 3
+
 
 #######################
 # Batch inference tests
