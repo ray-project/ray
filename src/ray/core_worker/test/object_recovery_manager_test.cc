@@ -136,9 +136,9 @@ class ObjectRecoveryManagerTestBase : public ::testing::Test {
               object_directory_->AsyncGetLocations(object_id, callback);
               return Status::OK();
             },
-            task_resubmitter_,
-            ref_counter_,
-            memory_store_,
+            *task_resubmitter_,
+            *ref_counter_,
+            *memory_store_,
             [&](const ObjectID &object_id, rpc::ErrorType reason, bool pin_object) {
               RAY_CHECK(failed_reconstructions_.count(object_id) == 0);
               failed_reconstructions_[object_id] = reason;
