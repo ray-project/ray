@@ -115,7 +115,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         c_bool EnableTaskEvents() const
 
     cdef cppclass CCoreWorker "ray::core::CoreWorker":
-        void ConnectToRaylet()
         CWorkerType GetWorkerType()
         CLanguage GetLanguage()
 
@@ -195,6 +194,8 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
 
         CJobID GetCurrentJobId()
         CTaskID GetCurrentTaskId()
+        const c_string GetCurrentTaskName()
+        const c_string GetCurrentTaskFunctionName()
         void UpdateTaskIsDebuggerPaused(
             const CTaskID &task_id,
             const c_bool is_debugger_paused)
@@ -434,7 +435,6 @@ cdef extern from "ray/core_worker/core_worker.h" nogil:
         (void() nogil) terminate_asyncio_thread
         c_string serialized_job_config
         int metrics_agent_port
-        c_bool connect_on_start
         int runtime_env_hash
         int startup_token
         CClusterID cluster_id

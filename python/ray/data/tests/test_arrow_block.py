@@ -91,7 +91,7 @@ def binary_dataset_single_file_gt_2gb():
     ],
 )
 def test_single_row_gt_2gb(
-    ray_start_regular_shared,
+    ray_start_regular,
     restore_data_context,
     binary_dataset_single_file_gt_2gb,
     col_name,
@@ -124,7 +124,7 @@ def test_single_row_gt_2gb(
     ],
 )
 def test_arrow_batch_gt_2gb(
-    ray_start_regular_shared,
+    ray_start_regular,
     parquet_dataset_single_column_gt_2gb,
     restore_data_context,
     op,
@@ -158,10 +158,10 @@ def test_arrow_batch_gt_2gb(
     print(
         f">>> Batch:\n"
         f"------\n"
-        "Column: 'id'"
+        "Column: 'id'\n"
         f"Values: {batch['id']}\n"
         f"------\n"
-        "Column: 'bin'"
+        "Column: 'bin'\n"
         f"Total: {total_binary_column_size / GiB} GiB\n"
         f"Values: {[str(v)[:3] + ' x ' + str(len(v)) for v in batch['bin']]}\n"
     )

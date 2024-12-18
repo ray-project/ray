@@ -69,7 +69,7 @@ class Worker:
         self.tensor_chan = typ.create_channel(
             ray.get_runtime_context().current_actor,
             reader_and_node_list,
-            read_by_adag_driver=False,
+            driver_actor_id=None,
             _cpu_data_channel=cpu_data_channel,
             _tensor_metadata_channel=tensor_metadata_channel,
         )
@@ -341,12 +341,10 @@ def test_direct_return(ray_start_cluster):
     chan_typ.set_nccl_group_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
-    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         receiver_to_node,
         "tensor_metadata",
-        "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -369,8 +367,6 @@ def test_direct_return(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 3
-    num_cpu_data_ops = ray.get(sender.get_num_channel_ops.remote("cpu_data"))
-    assert num_cpu_data_ops == 0
 
     # Attempting to write a different number of tensors will error.
     with pytest.raises(ValueError):
@@ -429,12 +425,10 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     chan_typ.set_nccl_group_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("tensor_metadata", receiver_to_node)
-    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(
         chan_typ,
         receiver_to_node,
         "tensor_metadata",
-        "cpu_data",
     )
     receiver_ready = receiver.set_nccl_channel.remote(chan_typ, chan_ref)
     ray.get([chan_ref, receiver_ready])
@@ -454,9 +448,6 @@ def test_static_shape_and_direct_return(ray_start_cluster):
         sender.get_num_channel_ops.remote("tensor_metadata")
     )
     assert num_tensor_metadata_ops == 1
-    # When direct_return=True, we never send non-tensor data.
-    num_cpu_data_ops = ray.get(sender.get_num_channel_ops.remote("cpu_data"))
-    assert num_cpu_data_ops == 0
 
     # Attempting to write tensors of the wrong shape or dtype will error.
     with pytest.raises(ValueError):
@@ -480,6 +471,54 @@ def test_static_shape_and_direct_return(ray_start_cluster):
     # The channel is still usable for valid tensors after errors occur.
     sender.send.remote(4, shape, dtype)
     ray.get(receiver.receive.remote()) == (4, shape, dtype)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 2,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_direct_return_with_cpu_data_channel(ray_start_cluster):
+    """
+    Test that when _direct_return=True is passed, cpu_data_channel must be None.
+    If it is not None, an exception should be raised.
+    """
+    barrier = Barrier.options(name="barrier-0-1").remote()  # noqa
+
+    sender = Worker.remote()
+    receiver = Worker.remote()
+
+    ray.get(
+        [
+            sender.start_mock.remote(),
+            receiver.start_mock.remote(),
+        ]
+    )
+
+    nccl_id = _init_nccl_group([sender, receiver])
+    chan_typ = TorchTensorType(
+        transport="nccl",
+        _direct_return=True,
+    )
+    chan_typ.set_nccl_group_id(nccl_id)
+    receiver_to_node = [(receiver, get_actor_node_id(receiver))]
+    sender.create_traced_channel.remote("cpu_data", receiver_to_node)
+    chan_ref = sender.create_nccl_channel.remote(
+        chan_typ,
+        receiver_to_node,
+        None,
+        "cpu_data",
+    )
+    with pytest.raises(
+        AssertionError, match="CPU channel should be None if direct return is enabled"
+    ):
+        ray.get(chan_ref)
 
 
 if __name__ == "__main__":

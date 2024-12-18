@@ -572,9 +572,9 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
 
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
-  ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_FALSE(*out_of_scope);
   rc->RemoveLocalReference(id, &out);
   ASSERT_TRUE(*out_of_scope);
@@ -582,9 +582,9 @@ TEST_F(ReferenceCountTest, TestUnreconstructableObjectOutOfScope) {
   // Unreconstructable objects go out of scope even if they have a nonzero
   // lineage ref count.
   *out_of_scope = false;
-  ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateSubmittedTaskReferences({}, {id});
   ASSERT_FALSE(*out_of_scope);
   rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
@@ -828,7 +828,7 @@ TEST(MemoryStoreIntegrationTest, TestSimple) {
         return true;
       }));
   InstrumentedIOContextWithThread io_context("TestSimple");
-  CoreWorkerMemoryStore store(io_context.GetIoService(), rc);
+  CoreWorkerMemoryStore store(io_context.GetIoService(), rc.get());
 
   // Tests putting an object with no references is ignored.
   RAY_CHECK(store.Put(buffer, id2));
@@ -2437,9 +2437,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
 
   // The object goes out of scope once it has no more refs.
   std::vector<ObjectID> out;
-  ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_FALSE(*out_of_scope);
   ASSERT_FALSE(*out_of_scope);
   rc->RemoveLocalReference(id, &out);
@@ -2450,9 +2450,9 @@ TEST_F(ReferenceCountLineageEnabledTest, TestUnreconstructableObjectOutOfScope) 
   // Unreconstructable objects stay in scope if they have a nonzero lineage ref
   // count.
   *out_of_scope = false;
-  ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->AddOwnedObject(id, {}, address, "", 0, false, /*add_local_ref=*/false);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateSubmittedTaskReferences({return_id}, {id});
   ASSERT_TRUE(rc->IsObjectPendingCreation(return_id));
   ASSERT_FALSE(*out_of_scope);
@@ -2541,7 +2541,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPinLineageRecursive) {
     rc->UpdateFinishedTaskReferences({}, {id}, false, empty_borrower, empty_refs, &out);
     // We should fail to set the deletion callback because the object has
     // already gone out of scope.
-    ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(
+    ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(
         id, [&](const ObjectID &object_id) { ASSERT_FALSE(true); }));
 
     ASSERT_EQ(out.size(), 1);
@@ -2658,7 +2658,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ObjectID id = ObjectID::FromRandom();
   NodeID node_id = NodeID::FromRandom();
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
@@ -2674,7 +2674,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   deleted->clear();
 
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   rc->ResetObjectsOnRemovedNode(node_id);
   auto objects = rc->FlushObjectsToRecover();
@@ -2683,7 +2683,7 @@ TEST_F(ReferenceCountLineageEnabledTest, TestPlasmaLocation) {
   ASSERT_TRUE(rc->IsPlasmaObjectPinnedOrSpilled(id, &owned_by_us, &pinned_at, &spilled));
   ASSERT_TRUE(owned_by_us);
   ASSERT_TRUE(pinned_at.IsNil());
-  ASSERT_TRUE(deleted->count(id) > 0);
+  ASSERT_TRUE(deleted->empty());
   deleted->clear();
 }
 
@@ -2699,7 +2699,7 @@ TEST_F(ReferenceCountTest, TestFree) {
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});
   ASSERT_TRUE(rc->IsPlasmaObjectFreed(id));
-  ASSERT_FALSE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_FALSE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   ASSERT_EQ(deleted->count(id), 0);
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   bool owned_by_us;
@@ -2714,7 +2714,7 @@ TEST_F(ReferenceCountTest, TestFree) {
 
   // Test free after receiving information about where the object is pinned.
   rc->AddOwnedObject(id, {}, rpc::Address(), "", 0, true, /*add_local_ref=*/true);
-  ASSERT_TRUE(rc->AddObjectPrimaryCopyDeleteCallback(id, callback));
+  ASSERT_TRUE(rc->AddObjectOutOfScopeOrFreedCallback(id, callback));
   rc->UpdateObjectPinnedAtRaylet(id, node_id);
   ASSERT_FALSE(rc->IsPlasmaObjectFreed(id));
   rc->FreePlasmaObjects({id});

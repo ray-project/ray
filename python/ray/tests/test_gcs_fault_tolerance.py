@@ -435,15 +435,9 @@ def test_detached_actor_restarts(ray_start_regular_with_external_redis):
             continue
 
 
-@pytest.mark.parametrize("auto_reconnect", [True, False])
-def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconnect):
-    if os.environ.get("RAY_USE_OLD_GCS_CLIENT") != "1" and not auto_reconnect:
-        pytest.skip("New GCS client always reconnects.")
-
+def test_gcs_client_reconnect(ray_start_regular_with_external_redis):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
-    gcs_client = ray._raylet.GcsClient(
-        address=gcs_address, nums_reconnect_retry=20 if auto_reconnect else 0
-    )
+    gcs_client = ray._raylet.GcsClient(address=gcs_address, nums_reconnect_retry=20)
 
     gcs_client.internal_kv_put(b"a", b"b", True, None)
     assert gcs_client.internal_kv_get(b"a", None) == b"b"
@@ -451,11 +445,7 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     passed = [False]
 
     def kv_get():
-        if not auto_reconnect:
-            with pytest.raises(Exception):
-                gcs_client.internal_kv_get(b"a", None)
-        else:
-            assert gcs_client.internal_kv_get(b"a", None) == b"b"
+        assert gcs_client.internal_kv_get(b"a", None) == b"b"
         passed[0] = True
 
     ray._private.worker._global_node.kill_gcs_server()
@@ -467,13 +457,7 @@ def test_gcs_client_reconnect(ray_start_regular_with_external_redis, auto_reconn
     assert passed[0]
 
 
-@pytest.mark.parametrize("auto_reconnect", [True, False])
-def test_gcs_aio_client_reconnect(
-    ray_start_regular_with_external_redis, auto_reconnect
-):
-    if os.environ.get("RAY_USE_OLD_GCS_CLIENT") != "1" and not auto_reconnect:
-        pytest.skip("New GCS client always reconnects.")
-
+def test_gcs_aio_client_reconnect(ray_start_regular_with_external_redis):
     gcs_address = ray._private.worker.global_worker.gcs_client.address
     gcs_client = ray._raylet.GcsClient(address=gcs_address)
 
@@ -483,17 +467,10 @@ def test_gcs_aio_client_reconnect(
     passed = [False]
 
     async def async_kv_get():
-        if not auto_reconnect:
-            with pytest.raises(Exception):
-                gcs_aio_client = gcs_utils.GcsAioClient(
-                    address=gcs_address, nums_reconnect_retry=0
-                )
-                await gcs_aio_client.internal_kv_get(b"a", None)
-        else:
-            gcs_aio_client = gcs_utils.GcsAioClient(
-                address=gcs_address, nums_reconnect_retry=20
-            )
-            assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
+        gcs_aio_client = gcs_utils.GcsAioClient(
+            address=gcs_address, nums_reconnect_retry=20
+        )
+        assert await gcs_aio_client.internal_kv_get(b"a", None) == b"b"
         return True
 
     def kv_get():

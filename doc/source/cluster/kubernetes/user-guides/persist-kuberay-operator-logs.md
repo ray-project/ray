@@ -8,6 +8,7 @@ The KubeRay Operator plays a vital role in managing Ray clusters on Kubernetes. 
 
 [Grafana Loki][GrafanaLoki] is a log aggregation system optimized for Kubernetes, providing efficient log storage and querying. The following steps set up [Fluent Bit][FluentBit] as a DaemonSet to collect logs from Kubernetes containers and send them to Loki for centralized storage and analysis.
 
+(deploy-loki-monolithic-mode)=
 ### Deploy Loki monolithic mode
 
 Loki’s Helm chart supports three deployment methods to fit different scalability and performance needs: Monolithic, Simple Scalable, and Microservices. This guide demonstrates the monolithic method. For details on each deployment mode, see the [Loki deployment](https://grafana.com/docs/loki/latest/get-started/deployment-modes/) modes documentation.
@@ -19,7 +20,7 @@ helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
 # Install Loki with single replica mode
-helm install loki grafana/loki -f https://raw.githubusercontent.com/grafana/loki/refs/heads/main/production/helm/loki/single-binary-values.yaml
+helm install loki grafana/loki --version 6.21.0 -f https://raw.githubusercontent.com/grafana/loki/refs/heads/main/production/helm/loki/single-binary-values.yaml
 ```
 
 ### Configure log processing
@@ -48,7 +49,7 @@ Deploy the Fluent Bit deployment with the [Helm chart repository](https://github
 helm repo add fluent https://fluent.github.io/helm-charts
 helm repo update
 
-helm install fluent-bit fluent/fluent-bit -f fluent-bit-config.yaml
+helm install fluent-bit fluent/fluent-bit --version 0.48.2 -f fluent-bit-config.yaml
 ```
 
 ### Install the KubeRay Operator
@@ -60,7 +61,7 @@ Follow [Deploy a KubeRay operator](kuberay-operator-deploy) to install the KubeR
 
 Follow [Deploy a RayCluster custom resource](raycluster-deploy) to deploy a RayCluster.
 
-
+(deploy-grafana)=
 ### Deploy Grafana
 
 Create a `datasource-config.yaml` file with the following configuration to set up Grafana's Loki datasource:
@@ -75,7 +76,7 @@ Deploy the Grafana deployment with the [Helm chart repository](https://github.co
 helm repo add grafana https://grafana.github.io/helm-charts
 helm repo update
 
-helm install grafana grafana/grafana -f datasource-config.yaml
+helm install grafana grafana/grafana --version 8.6.2 -f datasource-config.yaml
 ```
 
 ### Check the Grafana Dashboard

@@ -213,6 +213,15 @@ Lance
 
    read_lance
 
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
+
 Dask
 ----
 
@@ -342,3 +351,12 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

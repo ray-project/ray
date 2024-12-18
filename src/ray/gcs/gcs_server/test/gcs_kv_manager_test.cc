@@ -32,7 +32,7 @@ class GcsKVManagerTest : public ::testing::TestWithParam<std::string> {
       io_service.run();
     });
     ray::gcs::RedisClientOptions redis_client_options(
-        "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", false);
+        "127.0.0.1", ray::TEST_REDIS_SERVER_PORTS.front(), "", "", false);
     if (GetParam() == "redis") {
       auto client = std::make_shared<ray::gcs::RedisClient>(redis_client_options);
       RAY_CHECK_OK(client->Connect(io_service));
