@@ -13,6 +13,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 import warnings
+from datetime import datetime
 from enum import Enum
 from itertools import chain
 
@@ -79,6 +80,7 @@ class BuildType(Enum):
     DEBUG = 2
     ASAN = 3
     TSAN = 4
+    NIGHTLY = 5
 
 
 class SetupSpec:
@@ -95,6 +97,10 @@ class SetupSpec:
             self.version: str = f"{version}+asan"
         elif build_type == BuildType.TSAN:
             self.version: str = f"{version}+tsan"
+        elif build_type == BuildType.NIGHTLY:
+            version_postfix = datetime.today().strftime("b%Y%m%d")
+            self.version: str = f"{version}{version_postfix}"
+            self.name = f"{self.name}-nightly"
         else:
             self.version = version
         self.description: str = description
@@ -117,6 +123,8 @@ elif build_type == "asan":
     BUILD_TYPE = BuildType.ASAN
 elif build_type == "tsan":
     BUILD_TYPE = BuildType.TSAN
+elif build_type == "nightly":
+    BUILD_TYPE = BuildType.NIGHTLY
 else:
     BUILD_TYPE = BuildType.DEFAULT
 
