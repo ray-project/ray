@@ -1555,7 +1555,6 @@ def start_raylet(
     use_profiler: bool = False,
     ray_log_filepath: Optional[str] = None,
     stderr_file: Optional[IO[AnyStr]] = None,
-    config: Optional[dict] = None,
     huge_pages: bool = False,
     fate_share: Optional[bool] = None,
     socket_to_use: Optional[int] = None,
@@ -1613,8 +1612,6 @@ def start_raylet(
         stderr_file: A file handle opened for writing to redirect stderr to. If
             no redirection should happen, then this should be None.
         tracing_startup_hook: Tracing startup hook.
-        config: Optional Raylet configuration that will
-            override defaults in RayConfig.
         max_bytes: Log rotation parameter. Corresponding to
             RotatingFileHandler's maxBytes.
         backup_count: Log rotation parameter. Corresponding to

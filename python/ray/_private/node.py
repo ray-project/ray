@@ -1282,7 +1282,6 @@ class Node:
             use_profiler=use_profiler,
             ray_log_filepath=stdout_log_fname,
             stderr_file=stderr_file,
-            config=self._config,
             huge_pages=self._ray_params.huge_pages,
             fate_share=self.kernel_fate_share,
             socket_to_use=None,
