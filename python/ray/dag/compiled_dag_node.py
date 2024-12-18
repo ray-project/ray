@@ -734,9 +734,10 @@ class CompiledDAG:
                 None means using default timeout (DAGContext.submit_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
-            buffer_size_bytes: The number of bytes to allocate for object data and
-                metadata. Each argument passed to a task in the DAG must be
-                less than or equal to this value when serialized.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio. If enabled, caller must
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to

@@ -55,8 +55,10 @@ class DAGContext:
             value higher than the expected time to execute the entire DAG.
         teardown_timeout: The maximum time in seconds to wait for the DAG to
             cleanly shut down.
-        buffer_size_bytes: The maximum size of messages that can be passed
-            between tasks in the DAG.
+        buffer_size_bytes: The initial buffer size in bytes for messages
+            that can be passed between tasks in the DAG. The buffers will
+            be automatically resized if larger messages are written to the
+            channel.
         asyncio_max_queue_size: The max queue size for the async execution.
             It is only used when enable_asyncio=True.
         max_buffered_results: The maximum number of execution results that

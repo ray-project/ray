@@ -198,8 +198,10 @@ class DAGNode(DAGNodeBase):
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
-            _buffer_size_bytes: The maximum size of messages that can be passed
-                between tasks in the DAG.
+            _buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
             _asyncio_max_queue_size: The max queue size for the async execution.
                 It is only used when enable_asyncio=True.
