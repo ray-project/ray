@@ -63,6 +63,10 @@ class ObjectRecoveryManager {
   /// storing a new value for the object in the direct memory/plasma store) or failure (by
   /// calling the given reconstruction failure callback).
   ///
+  /// This function is asynchronous, which means if tasks re-submission and re-execution
+  /// are involved, we don't wait for their completion, related objects are blockingly
+  /// resolved when they're used later.
+  ///
   /// Algorithm:
   /// 1. Check that the object is missing from the direct memory store and that
   /// we own the object. If either is false, then fail the recovery operation.
