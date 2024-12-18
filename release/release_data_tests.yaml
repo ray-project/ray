@@ -467,7 +467,7 @@
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      s3://air-example-data-2/10G-image-data-synthetic-raw/ --format image 
       --materialize-read --to-tf image image
 
 - name: iter_torch_batches
@@ -479,7 +479,7 @@
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
+      s3://air-example-data-2/10G-image-data-synthetic-raw/ --format image 
       --materialize-read --iter-torch-batches
 
 ###########
