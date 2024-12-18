@@ -220,11 +220,11 @@ def check_nccl_group_init(
 ) -> "ray.dag.CompiledDAG":
     mock_nccl_group_set = MockNcclGroupSet()
     monkeypatch.setattr(
-        "ray.dag.compiled_dag_node._init_nccl_group",
+        "ray.dag.compiled_dag_node._init_communicator",
         mock_nccl_group_set,
     )
     monkeypatch.setattr(
-        "ray.dag.collective_node._init_nccl_group",
+        "ray.dag.collective_node._init_communicator",
         mock_nccl_group_set,
     )
 

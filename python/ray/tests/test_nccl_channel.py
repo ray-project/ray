@@ -501,7 +501,7 @@ def test_direct_return_with_cpu_data_channel(ray_start_cluster):
         ]
     )
 
-    nccl_id = _init_nccl_group([sender, receiver])
+    nccl_id = _init_communicator([sender, receiver])
     chan_typ = TorchTensorType(
         transport="nccl",
         _direct_return=True,
