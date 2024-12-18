@@ -8,13 +8,13 @@
 External Environments and Applications
 ======================================
 
-In many situations, it does not make sense for an RL environment to be "stepped" by RLlib.
-For example, if you train one or more policies inside a complex simulator, for example a game engine
-or a robotics simulation, it would be more natural and user friendly to flip this setup around
+In many situations, it doesn't make sense for an RL environment to be "stepped" by RLlib.
+For example, if you train one or more policies inside a complex simulator, like a game engine
+or a robotics simulation. A natural and user friendly approach is to flip this setup around
 and - instead of RLlib "stepping" the env - allow the simulations and the agents to fully control
 their own stepping. An external RLlib-powered service would be available for either querying for
 individual actions or for accepting batched sample data. The service would cover the task
-of training the policies, but would not pose any restrictions on when and how often
+of training the policies, but wouldn't pose any restrictions on when and how often
 per second the simulation should step.
 
 .. figure:: images/envs/external_env_setup_client_inference.svg

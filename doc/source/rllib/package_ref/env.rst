@@ -24,9 +24,9 @@ beyond 1 env copy.
 
 .. note::
 
-    Unlike for single-agent environments, multi-agent setups are not vectorizable yet.
-    The Ray team is working on a solution for this restriction by utilizing
-    `gymnasium >= 1.x` custom vectorization feature.
+    Unlike single-agent environments, multi-agent setups aren't vectorizable yet.
+    The Ray team is working on a solution for this restriction by using
+    the `gymnasium >= 1.x` custom vectorization feature.
 
 
 External Envs
@@ -34,14 +34,14 @@ External Envs
 
 .. note::
 
-    External Env support is still work in progress on the new API stack. The recommended
-    way to implement your own external env connection logic (for example through TCP or
-    shared memory), it's recommended to write your own :py:class:`~ray.rllib.env.env_runner.EnvRunner`
+    External Env support is under development on the new API stack. The recommended
+    way to implement your own external env connection logic, for example through TCP or
+    shared memory, is to write your own :py:class:`~ray.rllib.env.env_runner.EnvRunner`
     subclass.
 
-`See here for an end-to-end example of an external CartPole (client) env <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__
+See this an end-to-end example of an `external CartPole (client) env <https://github.com/ray-project/ray/blob/master/rllib/examples/envs/env_connecting_to_rllib_w_tcp_client.py>`__
 connecting to RLlib through a custom, TCP-capable
-:py:class:`~ray.rllib.env.env_runner.EnvRunner` (server).
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` server.
 
 
 Environment API Reference
