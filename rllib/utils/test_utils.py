@@ -981,6 +981,7 @@ def run_rllib_example_script_experiment(
     trainable: Optional[Type] = None,
     tune_callbacks: Optional[List] = None,
     keep_config: bool = False,
+    keep_ray_up: bool = False,
     scheduler=None,
     progress_reporter=None,
 ) -> Union[ResultDict, tune.result_grid.ResultGrid]:
@@ -1194,10 +1195,12 @@ def run_rllib_example_script_experiment(
                         break
                 if val is not None and not np.isnan(val) and val >= threshold:
                     print(f"Stop criterium ({key}={threshold}) fulfilled!")
-                    ray.shutdown()
+                    if not keep_ray_up:
+                        ray.shutdown()
                     return results
 
-        ray.shutdown()
+        if not keep_ray_up:
+            ray.shutdown()
         return results
 
     # Run the experiment using Ray Tune.
@@ -1267,7 +1270,8 @@ def run_rllib_example_script_experiment(
     ).fit()
     time_taken = time.time() - start_time
 
-    ray.shutdown()
+    if not keep_ray_up:
+        ray.shutdown()
 
     # Error out, if Tuner.fit() failed to run. Otherwise, erroneous examples might pass
     # the CI tests w/o us knowing that they are broken (b/c some examples do not have

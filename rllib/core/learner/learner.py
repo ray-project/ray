@@ -254,6 +254,7 @@ class Learner(Checkpointable):
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        self._optimizer_name_to_module: Dict[str, ModuleID] = {}
 
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
@@ -354,6 +355,7 @@ class Learner(Checkpointable):
 
         # Store the given optimizer under the given `module_id`.
         self._module_optimizers[module_id].append(full_registration_name)
+        self._optimizer_name_to_module[full_registration_name] = module_id
 
         # Store the optimizer instance under its full `module_id`_`optimizer_name`
         # key.

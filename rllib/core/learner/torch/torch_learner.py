@@ -317,21 +317,24 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
-        return {
-            name: copy_torch_tensors(optim.state_dict(), device="cpu")
-            for name, optim in self._named_optimizers.items()
-        }
+        ret = {}
+        for name, optim in self._named_optimizers.items():
+            ret[name] = {
+                "module_id": self._optimizer_name_to_module[name],
+                "state": copy_torch_tensors(optim.state_dict(), device="cpu"),
+            }
+        return ret
 
     @override(Learner)
     def _set_optimizer_state(self, state: StateDict) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
-                raise ValueError(
-                    f"Optimizer {name} in `state` is not known."
-                    f"Known optimizers are {self._named_optimizers.keys()}"
+                self.configure_optimizers_for_module(
+                    state_dict["module_id"],
+                    config=self.config.get_config_for_module(state_dict["module_id"]),
                 )
             self._named_optimizers[name].load_state_dict(
-                copy_torch_tensors(state_dict, device=self._device)
+                copy_torch_tensors(state_dict["state"], device=self._device)
             )
 
     @override(Learner)
