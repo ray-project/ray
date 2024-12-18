@@ -43,6 +43,7 @@
     script: python read_tfrecords_benchmark.py
 
 - name: read_images_comparison_microbenchmark_single_node
+  frequency: manual
 
   cluster:
     byod:
