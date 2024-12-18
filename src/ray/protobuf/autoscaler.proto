@@ -79,7 +79,8 @@ message GangResourceRequest {
 message ClusterResourceConstraint {
   // Commands the autoscaler to accommodate the specified requests.
   //
-  // For more context, please check out py-doc for `ray.autoscaler.sdk.request_resources` method
+  // For more context, please check out py-doc for `ray.autoscaler.sdk.request_resources`
+  // method
   //
   // NOTE: This call is only a hint to the autoscaler. The actual resulting cluster
   //       size may be slightly larger or smaller than expected depending on the
