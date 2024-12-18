@@ -745,7 +745,7 @@ def find_partition_index(
             col_vals[null_mask] = NULL_SENTINEL
 
         prevleft = left
-        if descending is True:
+        if descending[i] is True:
             left = prevleft + (
                 len(col_vals)
                 - np.searchsorted(
@@ -767,7 +767,7 @@ def find_partition_index(
         else:
             left = prevleft + np.searchsorted(col_vals, desired_val, side="left")
             right = prevleft + np.searchsorted(col_vals, desired_val, side="right")
-    return right if descending is True else left
+    return right if descending[i] is True else left
 
 
 def find_partitions(table, boundaries, sort_key):
