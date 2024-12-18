@@ -1181,9 +1181,7 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-           If you can represent your filter as an expression that leverages Arrow
-           Dataset Expression, we will be do highly optimized filtering using native
-           Arrow interfaces.
+           If you use the `expr` parameter with a Python expression string, Ray Data optimizes your filter with native Arrow interfaces.
 
         .. tip::
             If you can represent your predicate with NumPy or pandas operations,
