@@ -15,7 +15,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("path", type=str)
     parser.add_argument(
         "--format",
-        choices=["image", "parquet"],
+        choices=["image", "parquet", "tfrecords"],
         required=True,
     )
 
@@ -45,6 +45,8 @@ def get_read_fn(args: argparse.Namespace) -> Callable[[str], ray.data.Dataset]:
         read_fn = ray.data.read_images
     elif args.format == "parquet":
         read_fn = ray.data.read_parquet
+    elif args.format == "tfrecords":
+        read_fn = ray.data.read_tfrecords
     else:
         assert False, f"Invalid data format argument: {args}"
 

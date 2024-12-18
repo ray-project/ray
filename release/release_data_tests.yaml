@@ -19,28 +19,22 @@
   run:
     timeout: 3600
     script: >
-      python read_and_consume_benchmark.py s3://ray-benchmark-data/parquet/10TiB
-      --format parquet --iterate
+      python read_and_consume_benchmark.py 
+      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet --iterate
 
 - name: read_images
   run:
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iterate
 
-# TODO: Rewrite this as a multi-node test
-- name: read_tfrecords_benchmark_single_node
-
-  cluster:
-    byod:
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
+- name: read_tfrecords
   run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2700
-    script: python read_tfrecords_benchmark.py
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords --iterate
 
 - name: read_images_comparison_microbenchmark_single_node
 
