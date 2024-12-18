@@ -83,16 +83,22 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 }
 
 void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
-  auto iter = health_check_contexts_.find(node_id);
+  io_service_.dispatch(
+      [this, node_id]() {
+        thread_checker_.IsOnSameThread();
 
-  // A small chance other components (i.e. ray syncer) are initialized before health
-  // manager.
-  if (iter == health_check_contexts_.end()) {
-    return;
-  }
+        auto iter = health_check_contexts_.find(node_id);
 
-  auto *ctx = iter->second;
-  ctx->SetLatestHealthTimestamp(absl::Now());
+        // A small chance other components (i.e. ray syncer) are initialized before health
+        // manager.
+        if (iter == health_check_contexts_.end()) {
+          return;
+        }
+
+        auto *ctx = iter->second;
+        ctx->SetLatestHealthTimestamp(absl::Now());
+      },
+      "GcsHealthCheckManager::MarkNodeHealthy");
 }
 
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
