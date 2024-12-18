@@ -1,7 +1,8 @@
 import functools
-import unittest
+import gymnasium as gym
 import ray
 import shutil
+import unittest
 
 from pathlib import Path
 
@@ -18,9 +19,17 @@ class TestOfflinePreLearner(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        # Get the observation and action spaces.
+        env = gym.make("CartPole-v1")
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+        # Set up the configuration.
         self.config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -65,7 +74,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         algo = self.config.build()
         # Build the `OfflinePreLearner` and add the learner.
         oplr = OfflinePreLearner(
-            self.config,
+            config=self.config,
             learner=algo.offline_data.learner_handles[0],
         )
 
@@ -155,7 +164,6 @@ class TestOfflinePreLearner(unittest.TestCase):
         ).iter_batches(
             batch_size=10,
             prefetch_batches=1,
-            local_shuffle_buffer_size=100,
         )
 
         # Now sample a single batch.
@@ -184,7 +192,7 @@ class TestOfflinePreLearner(unittest.TestCase):
         algo = self.config.build()
         # Build the `OfflinePreLearner` and add the learner.
         oplr = OfflinePreLearner(
-            self.config,
+            config=self.config,
             learner=algo.offline_data.learner_handles[0],
         )
         # Now, pull a batch of defined size formt he dataset.

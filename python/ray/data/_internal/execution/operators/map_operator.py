@@ -63,6 +63,7 @@ class MapOperator(OneToOneOperator, ABC):
         self,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         name: str,
         target_max_block_size: Optional[int],
         min_rows_per_bundle: Optional[int],
@@ -95,13 +96,32 @@ class MapOperator(OneToOneOperator, ABC):
         self._metadata_tasks: Dict[int, MetadataOpTask] = {}
         self._next_metadata_task_idx = 0
         # Keep track of all finished streaming generators.
-        super().__init__(name, input_op, target_max_block_size)
+        super().__init__(name, input_op, data_context, target_max_block_size)
 
         # If set, then all output blocks will be split into
         # this many sub-blocks. This is to avoid having
         # too-large blocks, which may reduce parallelism for
         # the subsequent operator.
         self._additional_split_factor = None
+        # Callback functions that generate additional task kwargs
+        # for the map task.
+        self._map_task_kwargs_fns: List[Callable[[], Dict[str, Any]]] = []
+
+    def add_map_task_kwargs_fn(self, map_task_kwargs_fn: Callable[[], Dict[str, Any]]):
+        """Add a callback function that generates additional kwargs for the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        self._map_task_kwargs_fns.append(map_task_kwargs_fn)
+
+    def get_map_task_kwargs(self) -> Dict[str, Any]:
+        """Get the kwargs for the map task.
+        Subclasses should pass the returned kwargs to the map tasks.
+        In the map tasks, the kwargs can be accessible via `TaskContext.kwargs`.
+        """
+        kwargs = {}
+        for fn in self._map_task_kwargs_fns:
+            kwargs.update(fn())
+        return kwargs
 
     def get_additional_split_factor(self) -> int:
         if self._additional_split_factor is None:
@@ -123,6 +143,7 @@ class MapOperator(OneToOneOperator, ABC):
         cls,
         map_transformer: MapTransformer,
         input_op: PhysicalOperator,
+        data_context: DataContext,
         target_max_block_size: Optional[int] = None,
         name: str = "Map",
         # TODO(ekl): slim down ComputeStrategy to only specify the compute
@@ -172,6 +193,7 @@ class MapOperator(OneToOneOperator, ABC):
             return TaskPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 name=name,
                 target_max_block_size=target_max_block_size,
                 min_rows_per_bundle=min_rows_per_bundle,
@@ -188,6 +210,7 @@ class MapOperator(OneToOneOperator, ABC):
             return ActorPoolMapOperator(
                 map_transformer,
                 input_op,
+                data_context,
                 target_max_block_size=target_max_block_size,
                 compute_strategy=compute_strategy,
                 name=name,
@@ -275,7 +298,7 @@ class MapOperator(OneToOneOperator, ABC):
         # compute load-balancing. For tasks with large args, we will use DEFAULT to
         # allow the Ray locality scheduler a chance to optimize task placement.
         if "scheduling_strategy" not in ray_remote_args:
-            ctx = DataContext.get_current()
+            ctx = self.data_context
             if input_bundle and input_bundle.size_bytes() > ctx.large_args_threshold:
                 ray_remote_args[
                     "scheduling_strategy"
@@ -464,6 +487,7 @@ def _map_task(
     data_context: DataContext,
     ctx: TaskContext,
     *blocks: Block,
+    **kwargs: Dict[str, Any],
 ) -> Iterator[Union[Block, List[BlockMetadata]]]:
     """Remote function for a single operator task.
 
@@ -477,6 +501,7 @@ def _map_task(
         as the last generator return.
     """
     DataContext._set_current(data_context)
+    ctx.kwargs.update(kwargs)
     stats = BlockExecStats.builder()
     map_transformer.set_target_max_block_size(ctx.target_max_block_size)
     for b_out in map_transformer.apply_transform(iter(blocks), ctx):

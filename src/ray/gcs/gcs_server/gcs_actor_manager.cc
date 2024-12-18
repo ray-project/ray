@@ -323,18 +323,19 @@ const ray::rpc::ActorDeathCause GcsActorManager::GenNodeDiedCause(
 
 /////////////////////////////////////////////////////////////////////////////////////////
 GcsActorManager::GcsActorManager(
-    std::shared_ptr<GcsActorSchedulerInterface> scheduler,
-    std::shared_ptr<GcsTableStorage> gcs_table_storage,
-    std::shared_ptr<GcsPublisher> gcs_publisher,
+    std::unique_ptr<GcsActorSchedulerInterface> scheduler,
+    GcsTableStorage *gcs_table_storage,
+    GcsPublisher *gcs_publisher,
     RuntimeEnvManager &runtime_env_manager,
     GcsFunctionManager &function_manager,
     std::function<void(const ActorID &)> destroy_owned_placement_group_if_needed,
     const rpc::CoreWorkerClientFactoryFn &worker_client_factory)
     : gcs_actor_scheduler_(std::move(scheduler)),
-      gcs_table_storage_(std::move(gcs_table_storage)),
-      gcs_publisher_(std::move(gcs_publisher)),
+      gcs_table_storage_(gcs_table_storage),
+      gcs_publisher_(gcs_publisher),
       worker_client_factory_(worker_client_factory),
-      destroy_owned_placement_group_if_needed_(destroy_owned_placement_group_if_needed),
+      destroy_owned_placement_group_if_needed_(
+          std::move(destroy_owned_placement_group_if_needed)),
       runtime_env_manager_(runtime_env_manager),
       function_manager_(function_manager),
       actor_gc_delay_(RayConfig::instance().gcs_actor_table_min_duration_ms()) {

@@ -5,7 +5,6 @@ import itertools
 import logging
 import time
 import warnings
-from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -766,20 +765,9 @@ class Dataset:
                 f"got: {batch_format}"
             )
 
-        def _raise_duplicate_column_error(col: str):
-            raise ValueError(f"Trying to add an existing column with name {col!r}")
-
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
-                import pandas as pd
-
-                assert isinstance(column, (pd.Series, Sequence)), (
-                    f"For pandas batch format, the function must return a pandas "
-                    f"Series or sequence, got: {type(column)}"
-                )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
@@ -798,10 +786,9 @@ class Dataset:
                 # which case we'll want to append it
                 column_idx = batch.schema.get_field_index(col)
                 if column_idx == -1:
-                    # Append the column to the table
                     return batch.append_column(col, column)
                 else:
-                    _raise_duplicate_column_error(col)
+                    return batch.set_column(column_idx, col, column)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -810,8 +797,6 @@ class Dataset:
                     f"For numpy batch format, the function must return a "
                     f"numpy.ndarray, got: {type(column)}"
                 )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch[col] = column
                 return batch
 
@@ -1183,7 +1168,8 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def filter(
         self,
-        fn: UserDefinedFunction[Dict[str, Any], bool],
+        fn: Optional[UserDefinedFunction[Dict[str, Any], bool]] = None,
+        expr: Optional[str] = None,
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -1192,7 +1178,8 @@ class Dataset:
     ) -> "Dataset":
         """Filter out rows that don't satisfy the given predicate.
 
-        You can use either a function or a callable class to perform the transformation.
+        You can use either a function or a callable class or an expression string to
+        perform the transformation.
         For functions, Ray Data uses stateless Ray tasks. For classes, Ray Data uses
         stateful Ray actors. For more information, see
         :ref:`Stateful Transforms <stateful_transforms>`.
@@ -1220,6 +1207,8 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
+            expr: An expression string that will be
+                converted to pyarrow.dataset.Expression type.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1269,6 +1258,7 @@ class Dataset:
         op = Filter(
             input_op=self._logical_plan.dag,
             fn=fn,
+            filter_expr=resolved_expr,
             compute=compute,
             ray_remote_args_fn=ray_remote_args_fn,
             ray_remote_args=ray_remote_args,
@@ -2435,11 +2425,12 @@ class Dataset:
     @PublicAPI(api_group=SSR_API_GROUP)
     def sort(
         self,
-        key: Union[str, List[str], None] = None,
+        key: Union[str, List[str]],
         descending: Union[bool, List[bool]] = False,
         boundaries: List[Union[int, float]] = None,
     ) -> "Dataset":
         """Sort the dataset by the specified key column or key function.
+        The `key` parameter must be specified (i.e., it cannot be `None`).
 
         .. note::
             The `descending` parameter must be a boolean, or a list of booleans.
@@ -2488,7 +2479,12 @@ class Dataset:
 
         Returns:
             A new, sorted :class:`Dataset`.
+
+        Raises:
+            ``ValueError``: if the sort key is None.
         """
+        if key is None:
+            raise ValueError("The 'key' parameter cannot be None for sorting.")
         sort_key = SortKey(key, descending, boundaries)
         plan = self._plan.copy()
         op = Sort(
