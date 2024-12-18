@@ -389,7 +389,6 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // is reached.
   {
     std::signal(SIGINT, SignalHandler);
-    std::signal(SIGTERM, SignalHandler);
     while (!timed_out && signal_status.ok() &&
            !(done = get_request->Wait(iteration_timeout))) {
       if (remaining_timeout >= 0) {
