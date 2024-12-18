@@ -666,7 +666,9 @@ def node_ip_address_from_perspective(address: str):
             try:
                 # try get node ip address from host name
                 host_name = socket.getfqdn(socket.gethostname())
-                node_ip_address = net._get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(host_name, socket.SOCK_DGRAM)[0][1]
+                node_ip_address = net._get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(
+                    host_name, socket.SOCK_DGRAM
+                )[0][1]
             except Exception:
                 pass
     finally:

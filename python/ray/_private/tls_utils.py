@@ -45,15 +45,14 @@ def generate_self_signed_tls_certs():
         )
     except Exception as ignored:  # noqa: F841
         # fall back to friendly name of the host
-        private_dns_addresses.append(
-            x509.DNSName(os.uname()[1])
-        )
+        private_dns_addresses.append(x509.DNSName(os.uname()[1]))
     altnames = x509.SubjectAlternativeName(
         [
             x509.DNSName("127.0.0.1"),
             x509.DNSName("::1"),
             x509.DNSName("localhost"),
-        ] + private_dns_addresses
+        ]
+        + private_dns_addresses
     )
     now = datetime.datetime.utcnow()
     cert = (

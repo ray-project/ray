@@ -202,7 +202,9 @@ class ProxyManager:
                 self.servers.get(client_id) is None
             ), f"Server already created for Client: {client_id}"
             port = self._get_unused_port()
-            local_ip = net._get_addrinfo_from_sock_kind_ipv4_fallback_ipv6("localhost", socket.SOCK_STREAM)[0][1]
+            local_ip = net._get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(
+                "localhost", socket.SOCK_STREAM
+            )[0][1]
             server = SpecificServer(
                 port=port,
                 process_handle_future=futures.Future(),

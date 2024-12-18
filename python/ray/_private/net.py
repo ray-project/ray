@@ -23,7 +23,8 @@ def _get_addrinfo_from_sock_kind(address, kind, family=0):
         [(socket.AF_INET6, "::1"), (socket.AF_INET, "127.0.0.1")]
     """
     return [
-        (x[0], x[-1][0]) for x in socket.getaddrinfo(address, None, family)
+        (x[0], x[-1][0])
+        for x in socket.getaddrinfo(address, None, family)
         if x[1] == kind
     ]
 
@@ -58,10 +59,7 @@ def _get_sock_from_host(address, kind):
         inet_address = _get_addrinfo_from_sock_kind_ipv4_fallback_ipv6(address, kind)[0]
     except socket.gaierror as e:
         # This is an undesirable workaround for some existing tests.
-        raise ValueError(
-            f"Address invalid or not reachable: {address}\n\n" +
-            repr(e)
-        )
+        raise ValueError(f"Address invalid or not reachable: {address}\n\n" + repr(e))
     return socket.socket(inet_address[0], kind)
 
 
@@ -134,13 +132,13 @@ def _parse_ip_port(address):
     """
     # dashboard passes bytes instead of str so coerce
     if isinstance(address, bytes):
-        address = address.decode('ascii')
+        address = address.decode("ascii")
 
     if not isinstance(address, str):
         raise ValueError(
-            "address type not str or bytes:\n\n" +
-            f"    type: {repr(type(address))}\n" +
-            f"   value: {repr(address)}"
+            "address type not str or bytes:\n\n"
+            + f"    type: {repr(type(address))}\n"
+            + f"   value: {repr(address)}"
         )
 
     # If no colon is in the address then assume a List with the original value
@@ -161,17 +159,17 @@ def _parse_ip_port(address):
     pattern = re.compile("^(.*/)?.*[^:]:[0-9]+(/.*)?$")
     if not pattern.match(address):
         raise ValueError(
-            "Malformed address (expected address to " +
-            "include IP or DNS host and port " +
-            f"e.g. ip:port): {address}"
+            "Malformed address (expected address to "
+            + "include IP or DNS host and port "
+            + f"e.g. ip:port): {address}"
         )
     # use rsplit for IPv6 or IPv4
     ip, port = address.rsplit(":", 1)
     # check for url-ish
     if "/" in address:
         if "/" in ip:
-            ip = re.sub(r'^.*/', r'', ip)
+            ip = re.sub(r"^.*/", r"", ip)
         if "/" in port:
-            port = re.sub(r'^([^/]+)/.*', r'\g<1>', port)
-    ip = re.sub(r'^\[?([^\]]*)\]?$', r'\g<1>', ip)
+            port = re.sub(r"^([^/]+)/.*", r"\g<1>", port)
+    ip = re.sub(r"^\[?([^\]]*)\]?$", r"\g<1>", ip)
     return [ip, port]

@@ -22,7 +22,7 @@ import ray.dashboard.consts as dashboard_consts
 import ray.dashboard.modules
 import ray.dashboard.utils as dashboard_utils
 import ray.scripts.scripts as scripts
-from ray._private import ray_constants
+from ray._private import net, ray_constants
 from ray._private.ray_constants import (
     DEBUG_AUTOSCALING_ERROR,
     DEBUG_AUTOSCALING_STATUS_LEGACY,
@@ -37,7 +37,6 @@ from ray._private.test_utils import (
     wait_until_server_available,
     wait_until_succeeded_without_exception,
 )
-from ray._private import net
 from ray._private.utils import get_or_create_event_loop
 from ray.core.generated import common_pb2
 from ray.dashboard import dashboard
