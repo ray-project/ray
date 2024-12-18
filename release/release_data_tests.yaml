@@ -36,7 +36,13 @@
       python read_and_consume_benchmark.py
       s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords --iterate
 
+- name: read_from_uris
+  run:
+    timeout: 5400
+    script: python read_from_uris_benchmark.py
+
 - name: read_images_comparison_microbenchmark_single_node
+  frequency: manual
 
   cluster:
     byod:
@@ -411,6 +417,20 @@
   run:
     timeout: 1800
     prepare: python setup_chaos.py --chaos TerminateEC2Instance --batch-size-to-kill 2 --max-to-kill 6 --kill-delay 30
+    script: >
+      python dataset/gpu_batch_inference.py
+      --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
+
+- name: batch_inference_chaos_no_scale_back
+  stable: False
+  working_dir: nightly_tests
+
+  cluster:
+    cluster_compute: dataset/autoscaling_gpu_compute.yaml
+
+  run:
+    timeout: 1800
+    prepare: python setup_cluster_compute_config_updater.py --updates worker_nodes.0.max_nodes:5:240
     script: >
       python dataset/gpu_batch_inference.py
       --data-directory 300G-image-data-synthetic-raw-parquet --data-format parquet --chaos-test
