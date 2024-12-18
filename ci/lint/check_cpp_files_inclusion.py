@@ -14,7 +14,7 @@ def check_ray_core_inclusion(fname: str):
     non-zero code directly.
     """
     # Exclude protobuf, which requires absolution path for compilation.
-    pattern = re.compile(r"^(?=.*src/ray)(?!.*pb).*$", re.MULTILINE)
+    pattern = re.compile(r'^#include\s+"src/ray.*(?!pb).*$', re.MULTILINE)
 
     with open(fname, "r") as file:
         content = file.read()
