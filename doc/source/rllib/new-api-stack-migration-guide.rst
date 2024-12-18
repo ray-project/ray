@@ -17,7 +17,7 @@ RLlib classes and code to RLlib's new API stack.
 .. note::
 
     Even though the new API stack still provides rudimentary support for `TensorFlow <https://tensorflow.org>`__,
-    RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__ 
+    RLlib supports a single deep learning framework, the `PyTorch <https://pytorch.org>`__
     framework, dropping TensorFlow support entirely.
     Note, though, that the Ray team continues to  design RLlib to be framework-agnostic.
 
@@ -25,7 +25,7 @@ RLlib classes and code to RLlib's new API stack.
 Change your AlgorithmConfig
 ---------------------------
 
-RLlib turns off the new API stack by default for all RLlib algorithms. To activate it, use the `api_stack()` method
+RLlib turns on the new API stack by default for all RLlib algorithms. To deactivate it, use the `api_stack()` method
 in your `AlgorithmConfig` object like so:
 
 .. testcode::
@@ -34,14 +34,14 @@ in your `AlgorithmConfig` object like so:
 
     config = (
         PPOConfig()
-        # Switch both the new API stack flags to True (both False by default).
-        # This action enables the use of
+        # Switch both the new API stack flags to False (both True by default).
+        # This action disables the use of
         # a) RLModule (replaces ModelV2) and Learner (replaces Policy).
         # b) the correct EnvRunner, which replaces RolloutWorker, and
         #    ConnectorV2 pipelines, which replaces the old stack Connectors.
         .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
         )
     )
 
@@ -330,7 +330,7 @@ The following is a one-to-one translation guide for these types of Callbacks met
             **kwargs,
         ):
             # The `SingleAgentEpisode` or `MultiAgentEpisode` that RLlib has just started.
-            # See https://docs.ray.io/en/latest/rllib/single-agent-episode.html for more details: 
+            # See https://docs.ray.io/en/latest/rllib/single-agent-episode.html for more details:
             print(episode)
 
             # The `EnvRunner` class that collects the episode in question.
@@ -418,7 +418,7 @@ It also provides superior scalability, allowing training in a multi-GPU setup in
 and multi-node with multi-GPU training on the `Anyscale <https://anyscale.com>`__ platform.
 
 
-Custom connectors (old-stack) 
+Custom connectors (old-stack)
 -----------------------------
 
 If you're using custom connectors from the old API stack, move your logic into the

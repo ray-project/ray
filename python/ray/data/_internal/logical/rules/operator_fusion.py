@@ -1,3 +1,4 @@
+import itertools
 from typing import List, Optional, Tuple
 
 # TODO(Clark): Remove compute dependency once we delete the legacy compute.
@@ -216,7 +217,9 @@ class OperatorFusionRule(Rule):
             return False
 
         if not self._can_merge_target_max_block_size(
-            up_op.target_max_block_size, down_op.target_max_block_size
+            up_op.target_max_block_size,
+            down_op.target_max_block_size,
+            up_op.data_context,
         ):
             return False
 
@@ -227,14 +230,13 @@ class OperatorFusionRule(Rule):
         self,
         up_target_max_block_size: Optional[int],
         down_target_max_block_size: Optional[int],
+        data_context: DataContext,
     ):
         # If the upstream op overrode the target max block size, only fuse if
         # they are equal.
         if up_target_max_block_size is not None:
             if down_target_max_block_size is None:
-                down_target_max_block_size = (
-                    DataContext.get_current().target_max_block_size
-                )
+                down_target_max_block_size = data_context.target_max_block_size
             if up_target_max_block_size != down_target_max_block_size:
                 return False
         return True
@@ -316,9 +318,11 @@ class OperatorFusionRule(Rule):
         input_op = input_deps[0]
 
         # Fused physical map operator.
+        assert up_op.data_context is down_op.data_context
         op = MapOperator.create(
             up_op.get_map_transformer().fuse(down_op.get_map_transformer()),
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             name=name,
             compute_strategy=compute,
@@ -327,6 +331,10 @@ class OperatorFusionRule(Rule):
             ray_remote_args_fn=ray_remote_args_fn,
         )
         op.set_logical_operators(*up_op._logical_operators, *down_op._logical_operators)
+        for map_task_kwargs_fn in itertools.chain(
+            up_op._map_task_kwargs_fns, down_op._map_task_kwargs_fns
+        ):
+            op.add_map_task_kwargs_fn(map_task_kwargs_fn)
 
         # Build a map logical operator to be used as a reference for further fusion.
         # TODO(Scott): This is hacky, remove this once we push fusion to be purely based
@@ -403,9 +411,11 @@ class OperatorFusionRule(Rule):
             up_op.target_max_block_size, down_op.target_max_block_size
         )
 
+        assert up_op.data_context is down_op.data_context
         op = AllToAllOperator(
             fused_all_to_all_transform_fn,
             input_op,
+            up_op.data_context,
             target_max_block_size=target_max_block_size,
             num_outputs=down_op._num_outputs,
             # Transfer over the existing sub-progress bars from

@@ -117,8 +117,7 @@ class MockWorkerClient : public rpc::CoreWorkerClientInterface {
 
 class GcsActorManagerTest : public ::testing::Test {
  public:
-  GcsActorManagerTest()
-      : mock_actor_scheduler_(new MockActorScheduler()), periodical_runner_(io_service_) {
+  GcsActorManagerTest() : periodical_runner_(PeriodicalRunner::Create(io_service_)) {
     RayConfig::instance().initialize(
         R"(
 {
@@ -142,7 +141,7 @@ class GcsActorManagerTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/&periodical_runner_,
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
@@ -152,8 +151,10 @@ class GcsActorManagerTest : public ::testing::Test {
     gcs_table_storage_ = std::make_unique<gcs::InMemoryGcsTableStorage>(io_service_);
     kv_ = std::make_unique<gcs::MockInternalKVInterface>();
     function_manager_ = std::make_unique<gcs::GcsFunctionManager>(*kv_);
+    auto actor_scheduler = std::make_unique<MockActorScheduler>();
+    mock_actor_scheduler_ = actor_scheduler.get();
     gcs_actor_manager_ = std::make_unique<gcs::GcsActorManager>(
-        mock_actor_scheduler_,
+        std::move(actor_scheduler),
         gcs_table_storage_.get(),
         gcs_publisher_.get(),
         *runtime_env_mgr_,
@@ -240,7 +241,8 @@ class GcsActorManagerTest : public ::testing::Test {
   std::unique_ptr<std::thread> thread_io_service_;
   std::shared_ptr<gcs::StoreClient> store_client_;
   std::shared_ptr<gcs::GcsTableStorage> gcs_table_storage_;
-  std::shared_ptr<MockActorScheduler> mock_actor_scheduler_;
+  // Actor scheduler's ownership lies in actor manager.
+  MockActorScheduler *mock_actor_scheduler_ = nullptr;
   std::shared_ptr<MockWorkerClient> worker_client_;
   absl::flat_hash_map<JobID, std::string> job_namespace_table_;
   std::unique_ptr<gcs::GcsActorManager> gcs_actor_manager_;
@@ -250,7 +252,7 @@ class GcsActorManagerTest : public ::testing::Test {
   absl::Mutex mutex_;
   std::unique_ptr<gcs::GcsFunctionManager> function_manager_;
   std::unique_ptr<gcs::MockInternalKVInterface> kv_;
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::string log_dir_;
 };
 

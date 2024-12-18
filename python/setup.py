@@ -232,7 +232,7 @@ if setup_spec.type == SetupType.RAY:
         "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     setup_spec.extras = {
-        "adag": [
+        "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
         "client": [
@@ -264,12 +264,12 @@ if setup_spec.type == SetupType.RAY:
             "prometheus_client >= 0.7.1",
             "smart_open",
             "virtualenv >=20.0.24, !=20.21.1",  # For pip runtime env.
-            "memray; sys_platform != 'win32'",
         ],
         "observability": [
             "opentelemetry-api",
             "opentelemetry-sdk",
             "opentelemetry-exporter-otlp",
+            "memray; sys_platform != 'win32'",
         ],
         "serve": [
             "uvicorn[standard]",
@@ -286,6 +286,10 @@ if setup_spec.type == SetupType.RAY:
             "fsspec",
         ],
     }
+
+    # Both "adag" and "cgraph" are for Compiled Graphs.
+    # "adag" is deprecated and will be removed in the future.
+    setup_spec.extras["adag"] = list(setup_spec.extras["cgraph"])
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(
