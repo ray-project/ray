@@ -145,7 +145,8 @@ class IOContextProvider {
   instrumented_io_context &GetIOContext() const {
     constexpr int index = Policy::template GetDedicatedIOContextIndex<T>();
     static_assert(
-        index >= -1 && index < Policy::kAllDedicatedIOContextNames.size(),
+        index >= -1 &&
+            index < static_cast<int>(Policy::kAllDedicatedIOContextNames.size()),
         "index out of bound, invalid GetDedicatedIOContextIndex implementation! Index "
         "can only be -1 or within range of kAllDedicatedIOContextNames");
 
