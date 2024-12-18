@@ -29,19 +29,6 @@
       python read_and_consume_benchmark.py
       s3://air-example-data-2/300G-image-data-synthetic-raw --format image --iterate
 
-# TODO: Rewrite this as a multi-node test
-- name: read_tfrecords_benchmark_single_node
-
-  cluster:
-    byod:
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2700
-    script: python read_tfrecords_benchmark.py
-
 - name: read_images_comparison_microbenchmark_single_node
 
   cluster:
