@@ -1,6 +1,6 @@
 import logging
 import uuid
-from typing import Any, Callable, Dict, List, Optional, Type, Union
+from typing import Any, Callable, Dict, List, Mapping, Optional, Type, Union
 
 import ray
 from ray._private.ray_constants import env_integer
@@ -232,7 +232,7 @@ class DataParallelTrainer(BaseTrainer):
         scaling_config: Optional[ScalingConfig] = None,
         dataset_config: Optional[DataConfig] = None,
         run_config: Optional[RunConfig] = None,
-        datasets: Optional[Dict[str, GenDataset]] = None,
+        datasets: Optional[Mapping[str, GenDataset]] = None,
         metadata: Optional[Dict[str, Any]] = None,
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
