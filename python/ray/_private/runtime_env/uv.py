@@ -166,19 +166,23 @@ class UvProcessor:
         #
         # Difference with pip:
         # 1. `--disable-pip-version-check` has no effect for uv.
-        # 2. `--no-cache-dir` for `pip` maps to `--no-cache` for uv.
-        pip_install_cmd = [
+        # 2. Allow user to specify their own options to install packages via `uv`.
+        uv_install_cmd = [
             python,
             "-m",
             "uv",
             "pip",
             "install",
-            "--no-cache",
             "-r",
             requirements_file,
         ]
+
+        uv_opt_list = self._uv_config.get("uv_pip_install_options", ["--no-cache"])
+        if uv_opt_list:
+            uv_install_cmd += uv_opt_list
+
         logger.info("Installing python requirements to %s", virtualenv_path)
-        await check_output_cmd(pip_install_cmd, logger=logger, cwd=cwd, env=pip_env)
+        await check_output_cmd(uv_install_cmd, logger=logger, cwd=cwd, env=pip_env)
 
         # Check python environment for conflicts.
         if self._uv_config.get("uv_check", False):
