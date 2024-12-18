@@ -1208,8 +1208,8 @@ class Dataset:
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            expr: An expression string needs to be a valid python expression that
-                will be converted to pyarrow.dataset.Expression type.
+            expr: An expression string needs to be a valid Python expression that
+                will be converted to ``pyarrow.dataset.Expression`` type.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1243,7 +1243,7 @@ class Dataset:
             compute = TaskPoolStrategy(size=concurrency)
         else:
             warnings.warn(
-                "Use expr instead of fn when possible for performant filters."
+                "Use 'expr' instead of 'fn' when possible for performant filters."
             )
 
             if callable(fn):
