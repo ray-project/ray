@@ -506,7 +506,7 @@ def test_direct_return_with_cpu_data_channel(ray_start_cluster):
         transport="nccl",
         _direct_return=True,
     )
-    chan_typ.set_nccl_group_id(nccl_id)
+    chan_typ.set_communicator_id(nccl_id)
     receiver_to_node = [(receiver, get_actor_node_id(receiver))]
     sender.create_traced_channel.remote("cpu_data", receiver_to_node)
     chan_ref = sender.create_nccl_channel.remote(

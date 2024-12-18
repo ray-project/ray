@@ -153,7 +153,7 @@ class MockNcclGroupSet:
             set(self.ids_to_actors_and_custom_comms.values()) == actors_and_custom_comms
         )
 
-        nccl_group_id_p2p = compiled_dag.nccl_group_id_p2p
+        nccl_group_id_p2p = compiled_dag.communicator_id_p2p
         if p2p_actors_and_custom_comm is None:
             assert nccl_group_id_p2p is None
         else:
@@ -244,10 +244,10 @@ def check_nccl_group_teardown(
     mock_nccl_group_set: MockNcclGroupSet,
 ):
     monkeypatch.setattr(
-        "ray.dag.compiled_dag_node._destroy_nccl_group",
+        "ray.dag.compiled_dag_node._destroy_communicator",
         mock_nccl_group_set.mock_destroy_nccl_group,
     )
 
-    nccl_group_ids = copy.deepcopy(compiled_dag.nccl_group_ids)
+    nccl_group_ids = copy.deepcopy(compiled_dag.communicator_ids)
     compiled_dag.teardown()
     mock_nccl_group_set.check_teardown(nccl_group_ids)
