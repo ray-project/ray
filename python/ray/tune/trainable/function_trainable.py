@@ -2,6 +2,7 @@ import inspect
 import logging
 import os
 import queue
+import uuid
 from functools import partial
 from numbers import Number
 from typing import Any, Callable, Dict, Optional, Type
@@ -50,6 +51,9 @@ class FunctionTrainable(Trainable):
                 driver_ip=None,
                 driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
+                # This run_id is used for train observability and logging,
+                # and will not be used for general tune use case.
+                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
             synchronous_result_reporting=True,
@@ -180,6 +184,8 @@ class FunctionTrainable(Trainable):
                 driver_ip=None,
                 driver_node_id=None,
                 experiment_name=self._storage.experiment_dir_name,
+                # Reset run_id for the trial if the config changes, since a brand new trial is being slotted to run.
+                run_id=uuid.uuid4().hex,
             ),
             storage=self._storage,
         )
