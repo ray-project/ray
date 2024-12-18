@@ -20,7 +20,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py 
-      s3://ray-benchmark-data/tpch/parquet/sf10000/lineitem --format parquet 
+      s3://ray-benchmark-data-internal/imagenet/parquet --format parquet 
       --iter-bundles
 
 - name: read_images
@@ -28,7 +28,7 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://anyscale-imagenet/ILSVRC/Data --format image --iter-bundles
+      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
 # TODO: Rewrite this as a multi-node test
 - name: read_tfrecords_benchmark_single_node
@@ -467,7 +467,7 @@
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/test --format image 
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
       --materialize-read --to-tf image image
 
 - name: iter_torch_batches
@@ -479,7 +479,7 @@
     timeout: 2400
     script: >
       python read_and_consume_benchmark.py 
-      s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/test --format image 
+      s3://air-example-data-2/100G-image-data-synthetic-raw/ --format image 
       --materialize-read --iter-torch-batches
 
 ###########
