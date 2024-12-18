@@ -35,7 +35,8 @@
     timeout: 3600
     script: >
       python read_and_consume_benchmark.py
-      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords --iterate
+      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords 
+      --iter-bundles
   
 - name: read_from_uris
   run:
