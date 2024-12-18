@@ -1080,11 +1080,11 @@ def run_rllib_example_script_experiment(
         if args.env is not None and config.env is None:
             config.environment(args.env)
 
-        # Enable the new API stack?
-        if args.enable_new_api_stack:
+        # Disable the new API stack?
+        if not args.enable_new_api_stack:
             config.api_stack(
-                enable_rl_module_and_learner=True,
-                enable_env_runner_and_connector_v2=True,
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
             )
 
         # Define EnvRunner/RolloutWorker scaling and behavior.
