@@ -211,8 +211,8 @@ class ObjectRefStream {
 
 class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterface {
  public:
-  TaskManager(std::shared_ptr<CoreWorkerMemoryStore> in_memory_store,
-              std::shared_ptr<ReferenceCounter> reference_counter,
+  TaskManager(CoreWorkerMemoryStore &in_memory_store,
+              ReferenceCounter &reference_counter,
               PutInLocalPlasmaCallback put_in_local_plasma_callback,
               RetryTaskCallback retry_task_callback,
               PushErrorCallback push_error_callback,
@@ -235,7 +235,7 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
                    {"IsRetry", std::get<2>(key) ? "1" : "0"},
                    {"Source", "owner"}});
             });
-    reference_counter_->SetReleaseLineageCallback(
+    reference_counter_.SetReleaseLineageCallback(
         [this](const ObjectID &object_id, std::vector<ObjectID> *ids_to_release) {
           return RemoveLineageReference(object_id, ids_to_release);
           ShutdownIfNeeded();
@@ -268,8 +268,9 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
   /// responsible for making sure that these dependencies become available, so
   /// that the resubmitted task can run. This is only populated if the task was
   /// not already pending and was successfully resubmitted.
-  /// \return OK if the task was successfully resubmitted or was
-  /// already pending, Invalid if the task spec is no longer present.
+  /// \return true if the task was successfully resubmitted (task or actor being
+  /// scheduled, but no guarantee on completion), or was already pending, Invalid if the
+  /// task spec is no longer present.
   bool ResubmitTask(const TaskID &task_id, std::vector<ObjectID> *task_deps) override;
 
   /// Wait for all pending tasks to finish, and then shutdown.
@@ -817,12 +818,12 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
       ABSL_EXCLUSIVE_LOCKS_REQUIRED(object_ref_stream_ops_mu_) ABSL_LOCKS_EXCLUDED(mu_);
 
   /// Used to store task results.
-  std::shared_ptr<CoreWorkerMemoryStore> in_memory_store_;
+  CoreWorkerMemoryStore &in_memory_store_;
 
   /// Used for reference counting objects.
   /// The task manager is responsible for managing all references related to
   /// submitted tasks (dependencies and return objects).
-  std::shared_ptr<ReferenceCounter> reference_counter_;
+  ReferenceCounter &reference_counter_;
 
   /// Mapping from a streaming generator task id -> object ref stream.
   absl::flat_hash_map<ObjectID, ObjectRefStream> object_ref_streams_

@@ -579,8 +579,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     return PushError(job_id, type, error_message, timestamp);
   };
   task_manager_.reset(new TaskManager(
-      memory_store_,
-      reference_counter_,
+      *memory_store_,
+      *reference_counter_,
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
