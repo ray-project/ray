@@ -18,6 +18,7 @@ from ray.util.check_open_ports import check_open_ports
 import requests
 
 import click
+import colorama
 import psutil
 import yaml
 
@@ -232,6 +233,15 @@ def debug(address: str, verbose: bool):
     address = services.canonicalize_bootstrap_address_or_die(address)
     logger.info(f"Connecting to Ray instance at {address}.")
     ray.init(address=address, log_to_driver=False)
+    if os.environ.get("RAY_DEBUG", "1") != "legacy":
+        print(
+            f"{colorama.Fore.YELLOW}NOTE: The distributed debugger "
+            "https://docs.ray.io/en/latest/ray-observability"
+            "/ray-distributed-debugger.html is now the default "
+            "due to better interactive debugging support. If you want "
+            "to keep using 'ray debug' please set RAY_DEBUG=legacy "
+            f"in your cluster (e.g. via runtime environment).{colorama.Fore.RESET}"
+        )
     while True:
         # Used to filter out and clean up entries from dead jobs.
         live_jobs = {

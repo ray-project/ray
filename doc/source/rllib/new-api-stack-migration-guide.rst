@@ -25,7 +25,7 @@ RLlib classes and code to RLlib's new API stack.
 Change your AlgorithmConfig
 ---------------------------
 
-RLlib turns off the new API stack by default for all RLlib algorithms. To activate it, use the `api_stack()` method
+RLlib turns on the new API stack by default for all RLlib algorithms. To deactivate it, use the `api_stack()` method
 in your `AlgorithmConfig` object like so:
 
 .. testcode::
@@ -34,14 +34,14 @@ in your `AlgorithmConfig` object like so:
 
     config = (
         PPOConfig()
-        # Switch both the new API stack flags to True (both False by default).
-        # This action enables the use of
+        # Switch both the new API stack flags to False (both True by default).
+        # This action disables the use of
         # a) RLModule (replaces ModelV2) and Learner (replaces Policy).
         # b) the correct EnvRunner, which replaces RolloutWorker, and
         #    ConnectorV2 pipelines, which replaces the old stack Connectors.
         .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
+            enable_rl_module_and_learner=False,
+            enable_env_runner_and_connector_v2=False,
         )
     )
 
