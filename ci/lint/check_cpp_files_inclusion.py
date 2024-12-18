@@ -10,8 +10,8 @@ def check_ray_core_inclusion(fname: str):
     """Check whether ray core file has incorrect inclusion `src/ray/...`, which doesn't
     build on windows env.
 
-    raise:
-        ImportError: if incorrect inclusion is detected.
+    If invalid inclusion is detected, error message will be printed, and exit with
+    non-zero code directly.
     """
     # Exclude protobuf, which requires absolution path for compilation.
     pattern = re.compile(r"^(?=.*src/ray)(?!.*pb)")
