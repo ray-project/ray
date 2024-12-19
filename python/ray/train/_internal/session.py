@@ -35,6 +35,7 @@ from ray.train.constants import (
     _v2_migration_warnings_enabled,
 )
 from ray.train.error import SessionMisuseError
+from ray.train.utils import log_deprecation_warning
 from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -750,14 +751,10 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         import ray.tune
 
         if _v2_migration_warnings_enabled():
-            warnings.warn(
-                (
-                    "`ray.train.report` should be switched to "
-                    "`ray.tune.report` when running in a function "
-                    "passed to Ray Tune. This will be an error in the future."
-                ),
-                RayDeprecationWarning,
-                stacklevel=2,
+            log_deprecation_warning(
+                "`ray.train.report` should be switched to "
+                "`ray.tune.report` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
             )
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
@@ -811,15 +808,12 @@ def get_checkpoint() -> Optional[Checkpoint]:
     if get_session() and get_session().world_rank is None:
         import ray.tune
 
-        warnings.warn(
-            (
+        if _v2_migration_warnings_enabled():
+            log_deprecation_warning(
                 "`ray.train.get_checkpoint` should be switched to "
                 "`ray.tune.get_checkpoint` when running in a function "
                 "passed to Ray Tune. This will be an error in the future."
-            ),
-            RayDeprecationWarning,
-            stacklevel=2,
-        )
+            )
         return ray.tune.get_checkpoint()
 
     return get_session().loaded_checkpoint
