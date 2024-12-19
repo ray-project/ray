@@ -2,7 +2,8 @@ from typing import Dict, Optional
 
 from ray.train._checkpoint import Checkpoint as TrainCheckpoint
 from ray.train._internal.session import _warn_session_misuse, get_session
-from ray.train.context import _copy_doc
+from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.utils import _copy_doc, log_deprecation_warning
 from ray.util.annotations import PublicAPI
 
 
@@ -33,7 +34,12 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         checkpoint: The optional checkpoint you want to report.
     """
     if checkpoint and not isinstance(checkpoint, Checkpoint):
-        pass
+        if _v2_migration_warnings_enabled():
+            log_deprecation_warning(
+                "The `Checkpoint` class should be imported from `ray.tune` "
+                "when passing it to `ray.tune.report` in a Tune function."
+                "Please update your imports."
+            )
 
     get_session().report(metrics, checkpoint=checkpoint)
 
