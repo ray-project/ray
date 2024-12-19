@@ -948,11 +948,27 @@ class Worker:
             # probably will not be able to consume the log messages as rapidly
             # as they are coming in.
             # This is meaningful only for GCS subscriber.
-            last_polling_batch_size = 0
+            last_polling_batch_size = -1
+            consecutive_zero_batch_cnt_after_thread_stopped = 0
             job_id_hex = self.current_job_id.hex()
             while True:
-                # Exit if we received a signal that we should stop.
-                if self.threads_stopped.is_set():
+                thread_stopped = (
+                    self.threads_stopped.is_set()
+                    or not threading.main_thread().is_alive()
+                )
+                if thread_stopped and last_polling_batch_size == 0:
+                    consecutive_zero_batch_cnt_after_thread_stopped += 1
+                    time.sleep(0.5)
+                else:
+                    consecutive_zero_batch_cnt_after_thread_stopped = 0
+                # Exit if we received a signal that we should stop or if main thread
+                # is dead. But wait until the polling batch size decreases to 0 and
+                # remains so for a while before returning; this ensures that there
+                # are no pending logs.
+                if (
+                    thread_stopped
+                    and consecutive_zero_batch_cnt_after_thread_stopped >= 3
+                ):
                     return
 
                 data = subscriber.poll()
@@ -961,11 +977,7 @@ class Worker:
                     last_polling_batch_size = 0
                     continue
 
-                if (
-                    self._filter_logs_by_job
-                    and data["job"]
-                    and data["job"] != job_id_hex
-                ):
+                if self._filter_logs_by_job and data["job"] != job_id_hex:
                     last_polling_batch_size = 0
                     continue
 
@@ -2529,7 +2541,6 @@ def connect(
             worker.logger_thread = threading.Thread(
                 target=worker.print_logs, name="ray_print_logs"
             )
-            worker.logger_thread.daemon = True
             worker.logger_thread.start()
 
     # Setup tracing here
