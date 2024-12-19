@@ -133,6 +133,7 @@ class TaskSpecBuilder {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const TaskID &submitter_task_id,
+      const std::string &call_site,
       const std::shared_ptr<rpc::RuntimeEnvInfo> runtime_env_info = nullptr,
       const std::string &concurrency_group_name = "",
       bool enable_task_events = true,
@@ -161,6 +162,7 @@ class TaskSpecBuilder {
         required_placement_resources.begin(), required_placement_resources.end());
     message_->set_debugger_breakpoint(debugger_breakpoint);
     message_->set_depth(depth);
+    message_->set_call_site(call_site);
     if (runtime_env_info) {
       message_->mutable_runtime_env_info()->CopyFrom(*runtime_env_info);
     }

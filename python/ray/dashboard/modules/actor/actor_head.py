@@ -73,6 +73,7 @@ def actor_table_data_to_dict(message):
         "endTime",
         "reprName",
         "placementGroupId",
+        "callSite",
     }
     light_message = {k: v for (k, v) in orig_message.items() if k in fields}
     light_message["actorClass"] = orig_message["className"]
