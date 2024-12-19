@@ -32,6 +32,8 @@ namespace ray {
 namespace {
 // TODO(hjiang): Use `absl::NoDestructor` to avoid non-trivially destructible global
 // objects. Cgroup path for ray system components.
+//
+// System cgroup related constants.
 const std::string kSystemCgroupFolder = []() {
   // Append UUID to system cgroup path to avoid conflict.
   // Chances are that multiple ray cluster runs on the same filesystem.
@@ -40,6 +42,17 @@ const std::string kSystemCgroupFolder = []() {
 // Cgroup PID path for ray system components.
 const std::string kSystemCgroupProcs =
     ray::JoinPaths(kSystemCgroupFolder, "cgroup.procs");
+
+// Application cgroup related constants.
+const std::string kApplicationCgroupFolder = []() {
+  // Append UUID to application cgroup path to avoid conflict.
+  // Chances are that multiple ray cluster runs on the same filesystem.
+  return absl::StrFormat("/sys/fs/cgroup/ray_application_%s", GenerateUUIDV4());
+}();
+const std::string kApplicationCgroupSubtreeControl = []() {
+  return absl::StrFormat("%s/cgroup.subtree_control", kApplicationCgroupFolder);
+}();
+
 // Parent cgroup path.
 constexpr std::string_view kRtootCgroupProcs = "/sys/fs/cgroup/cgroup.procs";
 // Cgroup subtree control path.
@@ -59,8 +72,8 @@ void MoveProcsInSystemCgroup() {
   }
 }
 
-void EnableCgroupSubtreeControl() {
-  std::ofstream out_file(kRootCgroupSubtreeControl.data());
+void EnableCgroupSubtreeControl(const char *subtree_control_path) {
+  std::ofstream out_file(subtree_control_path);
   // Able to add new PIDs and memory constraint to the system cgroup.
   out_file << "+memory +pids";
 }
@@ -81,10 +94,15 @@ bool SetupCgroupsPreparation() {
   }
 
   MoveProcsInSystemCgroup();
-  EnableCgroupSubtreeControl();
+  EnableCgroupSubtreeControl(kRootCgroupSubtreeControl.data());
 
-  // Setup application cgroup.  
-  
+  // Setup application cgroup.
+  ret_code = mkdir(kApplicationCgroupFolder.data(), kCgroupFilePerm);
+  if (ret_code != 0) {
+    RAY_LOG(ERROR) << "Failed to create application cgroup: " << strerror(errno);
+    return false;
+  }
+  EnableCgroupSubtreeControl(kApplicationCgroupSubtreeControl.data());
 
   return true;
 }
