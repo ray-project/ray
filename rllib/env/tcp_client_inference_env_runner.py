@@ -23,7 +23,7 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils.external_env_protocol import MessageTypes
+from ray.rllib.env.utils.external_env_protocol import RLlink as rllink
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
@@ -256,22 +256,22 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
 
                 # Process the message received based on its type.
                 # Initial handshake.
-                if msg_type == MessageTypes.PING:
+                if msg_type == rllink.PING:
                     self._send_pong_message()
 
                 # Episode data from the client.
                 elif msg_type in [
-                    MessageTypes.EPISODES,
-                    MessageTypes.EPISODES_AND_GET_STATE,
+                    rllink.EPISODES,
+                    rllink.EPISODES_AND_GET_STATE,
                 ]:
                     self._process_episodes_message(msg_type, msg_body)
 
                 # Client requests the state (model weights).
-                elif msg_type == MessageTypes.GET_STATE:
+                elif msg_type == rllink.GET_STATE:
                     self._send_set_state_message()
 
                 # Clients requests some (relevant) config information.
-                elif msg_type == MessageTypes.GET_CONFIG:
+                elif msg_type == rllink.GET_CONFIG:
                     self._send_set_config_message()
 
             except ConnectionError as e:
@@ -304,13 +304,13 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
             self.server_socket.close()
 
     def _send_pong_message(self):
-        _send_message(self.client_socket, {"type": MessageTypes.PONG.name})
+        _send_message(self.client_socket, {"type": rllink.PONG.name})
 
     def _process_episodes_message(self, msg_type, msg_body):
         # On-policy training -> we have to block until we get a new `set_state` call
         # (b/c the learning step is done and we can sent new weights back to all
         # clients).
-        if msg_type == MessageTypes.EPISODES_AND_GET_STATE:
+        if msg_type == rllink.EPISODES_AND_GET_STATE:
             self._blocked_on_state = True
 
         episodes = []
@@ -327,8 +327,8 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                     ],
                     Columns.ACTION_LOGP: episode_data[Columns.ACTION_LOGP],
                 },
-                terminated=episode_data[Columns.TERMINATEDS],
-                truncated=episode_data[Columns.TRUNCATEDS],
+                terminated=episode_data["is_terminated"],
+                truncated=episode_data["is_truncated"],
                 len_lookback_buffer=0,
             )
             episodes.append(episode.finalize())
@@ -359,7 +359,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         _send_message(
             self.client_socket,
             {
-                "type": MessageTypes.SET_STATE.name,
+                "type": rllink.SET_STATE.name,
                 "onnx_file": onnx_binary,
                 WEIGHTS_SEQ_NO: self._weights_seq_no,
             },
@@ -369,7 +369,7 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
         _send_message(
             self.client_socket,
             {
-                "type": MessageTypes.SET_CONFIG.name,
+                "type": rllink.SET_CONFIG.name,
                 "env_steps_per_sample": self.config.get_rollout_fragment_length(
                     worker_index=self.worker_index
                 ),
@@ -429,7 +429,7 @@ def _get_message(sock_):
             raise ConnectionError(
                 "Protocol Error! Message from peer does not contain `type` " "field."
             )
-        return MessageTypes(message.pop("type")), message
+        return rllink(message.pop("type")), message
     except Exception as e:
         raise ConnectionError(
             f"Error receiving message from peer on socket {sock_}! "
@@ -474,21 +474,21 @@ def _dummy_client(port: int = 5556):
             time.sleep(5)
 
     # Send ping-pong.
-    _send_message(sock_, {"type": MessageTypes.PING.name})
+    _send_message(sock_, {"type": rllink.PING.name})
     msg_type, msg_body = _get_message(sock_)
-    assert msg_type == MessageTypes.PONG
+    assert msg_type == rllink.PONG
 
     # Request config.
-    _send_message(sock_, {"type": MessageTypes.GET_CONFIG.name})
+    _send_message(sock_, {"type": rllink.GET_CONFIG.name})
     msg_type, msg_body = _get_message(sock_)
-    assert msg_type == MessageTypes.SET_CONFIG
+    assert msg_type == rllink.SET_CONFIG
     env_steps_per_sample = msg_body["env_steps_per_sample"]
     force_on_policy = msg_body["force_on_policy"]
 
     # Request ONNX weights.
-    _send_message(sock_, {"type": MessageTypes.GET_STATE.name})
+    _send_message(sock_, {"type": rllink.GET_STATE.name})
     msg_type, msg_body = _get_message(sock_)
-    assert msg_type == MessageTypes.SET_STATE
+    assert msg_type == rllink.SET_STATE
     onnx_session, output_names = _set_state(msg_body)
 
     # Episode collection buckets.
@@ -542,8 +542,8 @@ def _dummy_client(port: int = 5556):
                     Columns.ACTION_DIST_INPUTS: action_dist_inputs,
                     Columns.ACTION_LOGP: action_logps,
                     Columns.REWARDS: rewards,
-                    Columns.TERMINATEDS: terminated,
-                    Columns.TRUNCATEDS: truncated,
+                    "is_terminated": terminated,
+                    "is_truncated": truncated,
                 }
             )
             # We collected enough samples -> Send them to server.
@@ -556,7 +556,7 @@ def _dummy_client(port: int = 5556):
                     _send_message(
                         sock_,
                         {
-                            "type": MessageTypes.EPISODES_AND_GET_STATE.name,
+                            "type": rllink.EPISODES_AND_GET_STATE.name,
                             "episodes": episodes,
                             "timesteps": timesteps,
                         },
@@ -564,7 +564,7 @@ def _dummy_client(port: int = 5556):
                     # We are forced to sample on-policy. Have to wait for a response
                     # with the state (weights) in it.
                     msg_type, msg_body = _get_message(sock_)
-                    assert msg_type == MessageTypes.SET_STATE
+                    assert msg_type == rllink.SET_STATE
                     onnx_session, output_names = _set_state(msg_body)
 
                 # Sampling doesn't have to be on-policy -> continue collecting
