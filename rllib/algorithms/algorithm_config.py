@@ -397,6 +397,9 @@ class AlgorithmConfig(_Config):
         self.learner_config_dict = {}
         self.optimizer = {}  # @OldAPIStack
         self._learner_class = None
+        # New API stack's aggregator actors.
+        self.num_aggregator_actors_per_learner = 0
+        self.max_requests_in_flight_per_aggregator_actor = 100
 
         # `self.callbacks()`
         self.callbacks_class = DefaultCallbacks
@@ -515,13 +518,6 @@ class AlgorithmConfig(_Config):
         self.log_sys_usage = True
         self.fake_sampler = False
         self.seed = None
-        # TODO (sven): Remove these settings again in the future. We only need them
-        #  to debug a quite complex, production memory leak, possibly related to
-        #  evaluation in parallel (when `training_step` is getting called inside a
-        #  thread). It's also possible that the leak is not caused by RLlib itself,
-        #  but by Ray core, but we need more data to narrow this down.
-        self._run_training_always_in_thread = False
-        self._evaluation_parallel_to_training_wo_thread = False
 
         # `self.fault_tolerance()`
         self.restart_failed_env_runners = True
@@ -558,6 +554,7 @@ class AlgorithmConfig(_Config):
         self._disable_action_flattening = False
         self._disable_initialize_loss_from_dummy_batch = False
         self._dont_auto_sync_env_runner_states = False
+        self._dont_build_learner_connector_on_learner = False
 
         # Has this config object been frozen (cannot alter its attributes anymore).
         self._is_frozen = False
@@ -2182,6 +2179,8 @@ class AlgorithmConfig(_Config):
         ] = NotProvided,
         add_default_connectors_to_learner_pipeline: Optional[bool] = NotProvided,
         learner_config_dict: Optional[Dict[str, Any]] = NotProvided,
+        num_aggregator_actors_per_learner: Optional[int] = NotProvided,
+        max_requests_in_flight_per_aggregator_actor: Optional[float] = NotProvided,
         # Deprecated args.
         num_sgd_iter=DEPRECATED_VALUE,
         max_requests_in_flight_per_sampler_worker=DEPRECATED_VALUE,
@@ -2273,6 +2272,14 @@ class AlgorithmConfig(_Config):
                 Learner subclasses and in case the user doesn't want to write an extra
                 `AlgorithmConfig` subclass just to add a few settings to the base Algo's
                 own config class.
+            num_aggregator_actors_per_learner: The number of aggregator actors per
+                Learner (if num_learners=0, one local learner is created). Must be at
+                least 1. Aggregator actors perform the task of a) converting episodes
+                into a train batch and b) move that train batch to the same GPU that
+                the corresponding learner is located on. Good values are 1 or 2, but
+                this strongly depends on your setup and `EnvRunner` throughput.
+            max_requests_in_flight_per_aggregator_actor: How many in-flight requests
+                are allowed per aggregator actor before new requests are dropped?
 
         Returns:
             This updated AlgorithmConfig object.
@@ -2350,6 +2357,12 @@ class AlgorithmConfig(_Config):
             )
         if learner_config_dict is not NotProvided:
             self.learner_config_dict.update(learner_config_dict)
+        if num_aggregator_actors_per_learner is not NotProvided:
+            self.num_aggregator_actors_per_learner = num_aggregator_actors_per_learner
+        if max_requests_in_flight_per_aggregator_actor is not NotProvided:
+            self.max_requests_in_flight_per_aggregator_actor = (
+                max_requests_in_flight_per_aggregator_actor
+            )
 
         return self
 
@@ -3195,8 +3208,6 @@ class AlgorithmConfig(_Config):
         log_sys_usage: Optional[bool] = NotProvided,
         fake_sampler: Optional[bool] = NotProvided,
         seed: Optional[int] = NotProvided,
-        _run_training_always_in_thread: Optional[bool] = NotProvided,
-        _evaluation_parallel_to_training_wo_thread: Optional[bool] = NotProvided,
     ) -> "AlgorithmConfig":
         """Sets the config's debugging settings.
 
@@ -3215,15 +3226,6 @@ class AlgorithmConfig(_Config):
             seed: This argument, in conjunction with worker_index, sets the random
                 seed of each worker, so that identically configured trials have
                 identical results. This makes experiments reproducible.
-            _run_training_always_in_thread: Runs the n `training_step()` calls per
-                iteration always in a separate thread (just as we would do with
-                `evaluation_parallel_to_training=True`, but even without evaluation
-                going on and even without evaluation workers being created in the
-                Algorithm).
-            _evaluation_parallel_to_training_wo_thread: Only relevant if
-                `evaluation_parallel_to_training` is True. Then, in order to achieve
-                parallelism, RLlib doesn't use a thread pool (as it usually does in
-                this situation).
 
         Returns:
             This updated AlgorithmConfig object.
@@ -3240,12 +3242,6 @@ class AlgorithmConfig(_Config):
             self.fake_sampler = fake_sampler
         if seed is not NotProvided:
             self.seed = seed
-        if _run_training_always_in_thread is not NotProvided:
-            self._run_training_always_in_thread = _run_training_always_in_thread
-        if _evaluation_parallel_to_training_wo_thread is not NotProvided:
-            self._evaluation_parallel_to_training_wo_thread = (
-                _evaluation_parallel_to_training_wo_thread
-            )
 
         return self
 
