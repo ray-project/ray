@@ -68,6 +68,26 @@ logger_initialized = False
 logging_config_lock = threading.Lock()
 
 
+def _setup_log_record_factory():
+    """Setup log record factory to add timestamp_ns to LogRecord."""
+    old_factory = logging.getLogRecordFactory()
+
+    def record_factory(*args, **kwargs):
+        record = old_factory(*args, **kwargs)
+        # Python logging module starts to use `time.time_ns()` to generate `created`
+        # from Python 3.13 to avoid the precision loss caused by the float type.
+        # Here, we generate the `created` for the LogRecord to support older Python
+        # versions.
+        ct = time.time_ns()
+        record.created = ct / 1e9
+
+        record.__dict__[LOG_KEY_TIMESTAMP_NS] = ct
+
+        return record
+
+    logging.setLogRecordFactory(record_factory)
+
+
 def generate_logging_config():
     """Generate the default Ray logging configuration."""
     with logging_config_lock:
@@ -94,19 +114,4 @@ def generate_logging_config():
         rllib_logger.setLevel(logging.WARN)
 
         # Set up the LogRecord factory.
-        old_factory = logging.getLogRecordFactory()
-
-        def record_factory(*args, **kwargs):
-            record = old_factory(*args, **kwargs)
-            # Python logging module starts to use `time.time_ns()` to generate `created`
-            # from Python 3.13 to avoid the precision loss caused by the float type.
-            # Here, we generate the `created` for the LogRecord to support older Python
-            # versions.
-            ct = time.time_ns()
-            record.created = ct / 1e9
-
-            record.__dict__[LOG_KEY_TIMESTAMP_NS] = ct
-
-            return record
-
-        logging.setLogRecordFactory(record_factory)
+        _setup_log_record_factory()
