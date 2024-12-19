@@ -532,7 +532,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       io_service_,
       reference_counter_.get(),
       local_raylet_client_,
-      options_.check_signals,
       [this](const RayObject &obj) {
         rpc::ErrorType error_type;
         if (obj.IsException(&error_type) &&
