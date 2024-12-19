@@ -12,11 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
-
-#ifdef __linux__
-#include <stdlib.h>
-#endif
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "nlohmann/json.hpp"
@@ -73,6 +71,10 @@ DEFINE_string(native_library_path,
 DEFINE_string(temp_dir, "", "Temporary directory.");
 DEFINE_string(session_dir, "", "The path of this ray session directory.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(
+    ray_log_filepath,
+    "",
+    "The filename to dump raylet log on stdout, which is written via `RAY_LOG`.");
 DEFINE_string(resource_dir, "", "The path of this ray resource directory.");
 DEFINE_int32(ray_debugger_external, 0, "Make Ray debugger externally accessible.");
 // store options
@@ -121,15 +123,47 @@ absl::flat_hash_map<std::string, std::string> parse_node_labels(
 }
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
+  const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+  // The callchain for java workload is,
+  // - Java runtime creates cluster and runs C++ binaries (i.e. gcs, raylet, etc)
+  // directly;
+  // - For all Java tasks/tasks, they are executed as subprocess in C++ core worker;
+  // - So there's interdepenency for env variables between C++ and Java runtime;
+  // - To keep the logging related env work, use a special env variable
+  // `JAVA_MANAGED_LOGGING` so raylet C++ side knows don't update any logging related
+  // params themselves.
+  const char *java_use_direction = std::getenv("JAVA_MANAGED_LOGGING");
+  if (rotation_max_bytes == nullptr && java_use_direction != nullptr &&
+      strcmp(java_use_direction, "true") == 0) {
+    const long max_rotation_size = std::numeric_limits<long>::max();
+    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
+    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
+  }
+
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*ray_log_filepath=*/FLAGS_ray_log_filepath);
+
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 #ifdef __linux__
   // Reset LD_PRELOAD if it's loaded with ray jemalloc
   auto ray_ld_preload = std::getenv("RAY_LD_PRELOAD");
