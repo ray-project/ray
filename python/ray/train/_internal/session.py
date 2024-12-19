@@ -32,6 +32,7 @@ from ray.train.constants import (
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.error import SessionMisuseError
 from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
@@ -748,15 +749,16 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     if get_session() and get_session().world_rank is None:
         import ray.tune
 
-        warnings.warn(
-            (
-                "`ray.train.report` should be switched to "
-                "`ray.tune.report` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
-            ),
-            RayDeprecationWarning,
-            stacklevel=2,
-        )
+        if _v2_migration_warnings_enabled():
+            warnings.warn(
+                (
+                    "`ray.train.report` should be switched to "
+                    "`ray.tune.report` when running in a function "
+                    "passed to Ray Tune. This will be an error in the future."
+                ),
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
         return ray.tune.report(metrics, checkpoint=checkpoint)
 
     get_session().report(metrics, checkpoint=checkpoint)

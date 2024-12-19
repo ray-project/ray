@@ -4,6 +4,7 @@ from typing import Any, Dict, Optional
 from ray.train._internal import session
 from ray.train.context import TrainContext as TrainV1Context, _copy_doc
 from ray.train.constants import _v2_migration_warnings_enabled
+from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import Deprecated, PublicAPI
 
 
@@ -21,7 +22,30 @@ _TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
 
 @PublicAPI(stability="stable")
 class TuneContext(TrainV1Context):
-    """Context for Ray Tune training executions."""
+    """Context to access metadata within Ray Tune functions."""
+
+    # NOTE: These methods are deprecated on the TrainContext, but are still
+    # available on the TuneContext. Re-defining them here to avoid the
+    # deprecation warnings.
+
+    @_copy_doc(session.get_trial_name)
+    def get_trial_name(self) -> str:
+        return session.get_trial_name()
+
+    @Deprecated(warning=_v2_migration_warnings_enabled())
+    @_copy_doc(session.get_trial_id)
+    def get_trial_id(self) -> str:
+        return session.get_trial_id()
+
+    @_copy_doc(session.get_trial_resources)
+    def get_trial_resources(self) -> PlacementGroupFactory:
+        return session.get_trial_resources()
+
+    @_copy_doc(session.get_trial_dir)
+    def get_trial_dir(self) -> str:
+        return session.get_trial_dir()
+
+    # Deprecated APIs
 
     @Deprecated
     def get_metadata(self) -> Dict[str, Any]:

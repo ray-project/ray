@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
+from ray.train.constants import _v2_migration_warnings_enabled
 from ray.util.annotations import (
     Deprecated,
     DeveloperAPI,
@@ -19,6 +20,14 @@ if TYPE_CHECKING:
 _default_context: "Optional[TrainContext]" = None
 _context_lock = threading.Lock()
 
+_TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
+    "`{}` is deprecated because the concept of a `Trial` will "
+    "soon be removed in Ray Train (see here: "
+    "https://github.com/ray-project/enhancements/pull/57). "
+    "Ray Train will no longer assume that it's running within a Ray Tune `Trial` "
+    "in the future."
+)
+
 
 def _copy_doc(copy_func):
     def wrapped(func):
@@ -30,32 +39,11 @@ def _copy_doc(copy_func):
 
 @PublicAPI(stability="stable")
 class TrainContext:
-    """Context for Ray training executions."""
-
-    @Deprecated(warning=True)
-    @_copy_doc(session.get_metadata)
-    def get_metadata(self) -> Dict[str, Any]:
-        return session.get_metadata()
+    """Context containing metadata that can be accessed within Ray Train workers."""
 
     @_copy_doc(session.get_experiment_name)
     def get_experiment_name(self) -> str:
         return session.get_experiment_name()
-
-    @_copy_doc(session.get_trial_name)
-    def get_trial_name(self) -> str:
-        return session.get_trial_name()
-
-    @_copy_doc(session.get_trial_id)
-    def get_trial_id(self) -> str:
-        return session.get_trial_id()
-
-    @_copy_doc(session.get_trial_resources)
-    def get_trial_resources(self) -> "PlacementGroupFactory":
-        return session.get_trial_resources()
-
-    @_copy_doc(session.get_trial_dir)
-    def get_trial_dir(self) -> str:
-        return session.get_trial_dir()
 
     @_copy_doc(session.get_world_size)
     def get_world_size(self) -> int:
@@ -82,29 +70,72 @@ class TrainContext:
     def get_storage(self) -> StorageContext:
         return session.get_storage()
 
+    # Deprecated APIs
+
+    @Deprecated(warning=_v2_migration_warnings_enabled())
+    @_copy_doc(session.get_metadata)
+    def get_metadata(self) -> Dict[str, Any]:
+        return session.get_metadata()
+
+    @Deprecated(
+        message=_TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_name"),
+        warning=_v2_migration_warnings_enabled(),
+    )
+    @_copy_doc(session.get_trial_name)
+    def get_trial_name(self) -> str:
+        return session.get_trial_name()
+
+    @Deprecated(
+        message=_TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_id"),
+        warning=_v2_migration_warnings_enabled(),
+    )
+    @_copy_doc(session.get_trial_id)
+    def get_trial_id(self) -> str:
+        return session.get_trial_id()
+
+    @Deprecated(
+        message=_TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format(
+            "get_trial_resources"
+        ),
+        warning=_v2_migration_warnings_enabled(),
+    )
+    @_copy_doc(session.get_trial_resources)
+    def get_trial_resources(self) -> "PlacementGroupFactory":
+        return session.get_trial_resources()
+
+    @Deprecated(
+        message=_TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_trial_dir"),
+        warning=_v2_migration_warnings_enabled(),
+    )
+    @_copy_doc(session.get_trial_dir)
+    def get_trial_dir(self) -> str:
+        return session.get_trial_dir()
+
 
 @PublicAPI(stability="stable")
 def get_context() -> TrainContext:
     """Get or create a singleton training context.
 
-    The context is only available in a training or tuning loop.
+    The context is only available within a function passed to Ray Train.
 
     See the :class:`~ray.train.TrainContext` API reference to see available methods.
     """
     from ray.train._internal.session import get_session
-    from ray.tune import get_context as get_tune_context
 
     # If we are running in a Tune function, switch to Tune context.
     if get_session() and get_session().world_rank is None:
-        warnings.warn(
-            (
-                "`ray.train.get_context()` should be switched to "
-                "`ray.tune.get_context()` when running in a function "
-                "passed to Ray Tune. This will be an error in the future."
-            ),
-            RayDeprecationWarning,
-            stacklevel=2,
-        )
+        from ray.tune import get_context as get_tune_context
+
+        if _v2_migration_warnings_enabled():
+            warnings.warn(
+                (
+                    "`ray.train.get_context()` should be switched to "
+                    "`ray.tune.get_context()` when running in a function "
+                    "passed to Ray Tune. This will be an error in the future."
+                ),
+                RayDeprecationWarning,
+                stacklevel=2,
+            )
         return get_tune_context()
 
     global _default_context
