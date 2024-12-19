@@ -183,7 +183,7 @@ class DAGNode(DAGNodeBase):
 
     def experimental_compile(
         self,
-        _execution_timeout: Optional[float] = None,
+        _submit_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
@@ -194,12 +194,14 @@ class DAGNode(DAGNodeBase):
         """Compile an accelerated execution path for this DAG.
 
         Args:
-            _execution_timeout: The maximum time in seconds to wait for execute() calls.
+            _submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
-            _buffer_size_bytes: The maximum size of messages that can be passed
-                between tasks in the DAG.
+            _buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
             _asyncio_max_queue_size: The max queue size for the async execution.
                 It is only used when enable_asyncio=True.
@@ -246,7 +248,7 @@ class DAGNode(DAGNodeBase):
         self.is_adag_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
-            _execution_timeout,
+            _submit_timeout,
             _buffer_size_bytes,
             enable_asyncio,
             _asyncio_max_queue_size,

@@ -39,15 +39,20 @@ For logging to your WandB account, use:
 Results to expect
 -----------------
 You should expect a reward of -400.0 eventually being achieved by a simple
-single PPO policy (no tuning, just using RLlib's default settings). In the
-second run of the experiment, the MultiRLModule weights for policy 0 are
-restored from the checkpoint of the first run. The reward for a single agent
-should be -400.0 again, but the training time should be shorter (around 30
-iterations instead of 190).
+single PPO policy. In the second run of the experiment, the MultiRLModule weights
+for policy 0 are restored from the checkpoint of the first run. The reward for a
+single agent should be -400.0 again, but the training time should be shorter
+(around 30 iterations instead of 190) due to the fact that one policy is already
+an expert from the get go.
 """
 
 import os
 from ray.air.constants import TRAINING_ITERATION
+from ray.rllib.core import (
+    COMPONENT_LEARNER,
+    COMPONENT_LEARNER_GROUP,
+    COMPONENT_RL_MODULE,
+)
 from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
 from ray.rllib.core.rl_module.multi_rl_module import MultiRLModuleSpec
 from ray.rllib.examples.envs.classes.multi_agent import MultiAgentPendulum
@@ -65,7 +70,8 @@ from ray.tune.registry import get_trainable_cls, register_env
 parser = add_rllib_example_script_args(
     default_iters=200,
     default_timesteps=100000,
-    default_reward=-400.0,
+    # Pendulum-v1 sum of 2 agents (each agent reaches -250).
+    default_reward=-500.0,
 )
 parser.set_defaults(
     checkpoint_freq=1,
@@ -120,7 +126,7 @@ if __name__ == "__main__":
         )
 
     # Augment the base config with further settings and train the agents.
-    results = run_rllib_example_script_experiment(base_config, args)
+    results = run_rllib_example_script_experiment(base_config, args, keep_ray_up=True)
 
     # Create an env instance to get the observation and action spaces.
     env = MultiAgentPendulum(config={"num_agents": args.num_agents})
@@ -136,7 +142,13 @@ if __name__ == "__main__":
 
     # Now swap in the RLModule weights for policy 0.
     chkpt_path = results.get_best_result().checkpoint.path
-    p_0_module_state_path = os.path.join(chkpt_path, "learner", "module_state", "p0")
+    p_0_module_state_path = os.path.join(
+        chkpt_path,  # <- algorithm's checkpoint dir
+        COMPONENT_LEARNER_GROUP,  # <- learner group
+        COMPONENT_LEARNER,  # <- learner
+        COMPONENT_RL_MODULE,  # <- MultiRLModule
+        "p0",  # <- (single) RLModule
+    )
     module_spec.load_state_path = p_0_module_state_path
     module_specs["p0"] = module_spec
 
@@ -151,8 +163,8 @@ if __name__ == "__main__":
     )
     # Define stopping criteria.
     stop = {
-        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800,
-        f"{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 20000,
+        f"{ENV_RUNNER_RESULTS}/{EPISODE_RETURN_MEAN}": -800.0,
+        f"{ENV_RUNNER_RESULTS}/{NUM_ENV_STEPS_SAMPLED_LIFETIME}": 20000,
         TRAINING_ITERATION: 30,
     }
 
