@@ -693,7 +693,7 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
   auto lease_policy = RayConfig::instance().locality_aware_leasing_enabled()
                           ? std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalityAwareLeasePolicy>(
-                                    reference_counter_, node_addr_factory, rpc_address_))
+                                    *reference_counter_, node_addr_factory, rpc_address_))
                           : std::shared_ptr<LeasePolicyInterface>(
                                 std::make_shared<LocalLeasePolicy>(rpc_address_));
 

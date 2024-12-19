@@ -14,6 +14,8 @@
 
 #pragma once
 
+#include <utility>
+
 #include "absl/base/thread_annotations.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/container/flat_hash_set.h"
@@ -55,11 +57,10 @@ using NodeAddrFactory =
 /// picking a worker node for a lease request. This class is not thread-safe.
 class LocalityAwareLeasePolicy : public LeasePolicyInterface {
  public:
-  LocalityAwareLeasePolicy(
-      std::shared_ptr<LocalityDataProviderInterface> locality_data_provider,
-      NodeAddrFactory node_addr_factory,
-      rpc::Address fallback_rpc_address)
-      : locality_data_provider_(std::move(locality_data_provider)),
+  LocalityAwareLeasePolicy(LocalityDataProviderInterface &locality_data_provider,
+                           NodeAddrFactory node_addr_factory,
+                           rpc::Address fallback_rpc_address)
+      : locality_data_provider_(locality_data_provider),
         node_addr_factory_(std::move(node_addr_factory)),
         fallback_rpc_address_(std::move(fallback_rpc_address)) {}
 
@@ -74,7 +75,7 @@ class LocalityAwareLeasePolicy : public LeasePolicyInterface {
   absl::optional<NodeID> GetBestNodeIdForTask(const TaskSpecification &spec);
 
   /// Provider of locality data that will be used in choosing the best lessor.
-  std::shared_ptr<LocalityDataProviderInterface> locality_data_provider_;
+  LocalityDataProviderInterface &locality_data_provider_;
 
   /// Factory for building node RPC addresses given a NodeID.
   NodeAddrFactory node_addr_factory_;
