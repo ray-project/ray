@@ -80,6 +80,7 @@ class ActorPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
+                See :func:`ray.remote` for details.
         """
         super().__init__(
             map_transformer,

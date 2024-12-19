@@ -232,7 +232,7 @@ if setup_spec.type == SetupType.RAY:
         "pyarrow <18; sys_platform == 'darwin' and platform_machine == 'x86_64'",
     ]
     setup_spec.extras = {
-        "cg": [
+        "cgraph": [
             "cupy-cuda12x; sys_platform != 'darwin'",
         ],
         "client": [
@@ -287,9 +287,9 @@ if setup_spec.type == SetupType.RAY:
         ],
     }
 
-    # Both "adag" and "cg" are for Compiled Graphs.
+    # Both "adag" and "cgraph" are for Compiled Graphs.
     # "adag" is deprecated and will be removed in the future.
-    setup_spec.extras["adag"] = list(setup_spec.extras["cg"])
+    setup_spec.extras["adag"] = list(setup_spec.extras["cgraph"])
 
     # Ray Serve depends on the Ray dashboard components.
     setup_spec.extras["serve"] = list(

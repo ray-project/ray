@@ -152,6 +152,7 @@ repos:
     hooks:
       - id: check_cpp_files_inclusion
         name: Check ray core C++ files inclusion violations
-        entry: python ci/lint/check_cpp_files_inclusion.py
+        entry: ci/lint/check_cpp_files_inclusion.py
         language: python
-        types: [python]
+        files: '^src/ray/'
+        types: [c++]
