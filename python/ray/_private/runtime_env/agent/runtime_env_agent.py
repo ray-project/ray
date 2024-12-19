@@ -297,6 +297,13 @@ class RuntimeEnvAgent:
         return self._per_job_logger_cache[job_id]
 
     async def GetOrCreateRuntimeEnv(self, request):
+        # Directly return result and shortcut.
+        return runtime_env_agent_pb2.GetOrCreateRuntimeEnvReply(
+            status=agent_manager_pb2.AGENT_RPC_STATUS_OK,
+            serialized_runtime_env_context="{}",
+            error_message="",
+        )
+
         self._logger.debug(
             f"Got request from {request.source_process} to increase "
             "reference for runtime env: "
@@ -305,7 +312,6 @@ class RuntimeEnvAgent:
 
         async def _setup_runtime_env(
             runtime_env: RuntimeEnv,
-            serialized_runtime_env,
         ):
             runtime_env_config = RuntimeEnvConfig.from_proto(request.runtime_env_config)
             log_files = runtime_env_config.get("log_files", [])
@@ -355,7 +361,6 @@ class RuntimeEnvAgent:
 
         async def _create_runtime_env_with_retry(
             runtime_env,
-            serialized_runtime_env,
             setup_timeout_seconds,
         ) -> Tuple[bool, str, str]:
             """
@@ -363,7 +368,6 @@ class RuntimeEnvAgent:
 
             Args:
                 runtime_env: The instance of RuntimeEnv class.
-                serialized_runtime_env: The serialized runtime env.
                 setup_timeout_seconds: The timeout of runtime environment creation for
                 each attempt.
 
@@ -525,6 +529,11 @@ class RuntimeEnvAgent:
             )
 
     async def DeleteRuntimeEnvIfPossible(self, request):
+        # Directly bypass logic and directly returns.
+        return runtime_env_agent_pb2.DeleteRuntimeEnvIfPossibleReply(
+            status=agent_manager_pb2.AGENT_RPC_STATUS_OK
+        )
+
         self._logger.info(
             f"Got request from {request.source_process} to decrease "
             "reference for runtime env: "
