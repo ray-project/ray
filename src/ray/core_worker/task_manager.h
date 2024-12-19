@@ -218,8 +218,8 @@ class TaskManager : public TaskFinisherInterface, public TaskResubmissionInterfa
               PushErrorCallback push_error_callback,
               int64_t max_lineage_bytes,
               worker::TaskEventBuffer &task_event_buffer)
-      : in_memory_store_(std::move(in_memory_store)),
-        reference_counter_(std::move(reference_counter)),
+      : in_memory_store_(in_memory_store),
+        reference_counter_(reference_counter),
         put_in_local_plasma_callback_(std::move(put_in_local_plasma_callback)),
         retry_task_callback_(std::move(retry_task_callback)),
         push_error_callback_(std::move(push_error_callback)),
