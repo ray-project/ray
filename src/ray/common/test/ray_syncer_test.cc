@@ -977,7 +977,8 @@ int main(int argc, char **argv) {
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*log_filepath=*/"");
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
 
