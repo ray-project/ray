@@ -444,6 +444,7 @@ int RedisStoreClient::GetNextJobID() {
 
   auto cxt = redis_client_->GetPrimaryContext();
   auto reply = cxt->RunArgvSync(command.ToRedisArgs());
+  RAY_CHECK(reply && !reply->IsNil()) << "Failed to get next job";
   return static_cast<int>(reply->ReadAsInteger());
 }
 
@@ -511,6 +512,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   std::vector<std::string> cmd{"KEYS",
                                RedisMatchPattern::Prefix(redis_key.ToString()).escaped};
   auto reply = context->RunArgvSync(cmd);
+  RAY_CHECK(reply && !reply->IsNil()) << "Failed to delete keys";
   const auto &keys = reply->ReadAsStringArray();
   if (keys.empty()) {
     RAY_LOG(INFO) << "No keys found for external storage namespace "
@@ -520,6 +522,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   auto delete_one_sync = [context](const std::string &key) {
     auto del_cmd = std::vector<std::string>{"DEL", key};
     auto del_reply = context->RunArgvSync(del_cmd);
+    RAY_CHECK(del_reply && !del_reply->IsNil()) << "Failed to delete key";
     return del_reply->ReadAsInteger() > 0;
   };
   size_t num_deleted = 0;
