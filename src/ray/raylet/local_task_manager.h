@@ -75,7 +75,7 @@ class LocalTaskManager : public ILocalTaskManager {
   ///                                   scheduling class. If set to 0, there is no
   ///                                   cap. If it's a large number, the cap is hard.
   LocalTaskManager(
-      const NodeID &self_node_id,
+      NodeID self_node_id,
       ClusterResourceScheduler &cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
