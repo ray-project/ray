@@ -325,6 +325,8 @@ Datasink API
    datasource.BlockBasedFileDatasink
    datasource.FileBasedDatasource
 
+.. automodule:: ray.data.datasource.datasink.WriteReturnType
+
 Partitioning API
 ----------------
 
