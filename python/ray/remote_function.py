@@ -130,12 +130,17 @@ class RemoteFunction:
         # runtime env info in the `option` call. But it's acceptable since
         # pre-calculation here only happens once at `RemoteFunction` initialization.
         self._serialized_base_runtime_env_info = ""
-        if self._runtime_env:
-            self._serialized_base_runtime_env_info = get_runtime_env_info(
-                self._runtime_env,
-                is_job_runtime_env=False,
-                serialize=True,
-            )
+
+        # Blank out runtime env serialization at python side, to check whether anything
+        # happens between task submission and python side serialization could be
+        # bottleneck.
+        #
+        # if self._runtime_env:
+        #     self._serialized_base_runtime_env_info = get_runtime_env_info(
+        #         self._runtime_env,
+        #         is_job_runtime_env=False,
+        #         serialize=True,
+        #     )
 
         self._language = language
         self._is_generator = inspect.isgeneratorfunction(function)
