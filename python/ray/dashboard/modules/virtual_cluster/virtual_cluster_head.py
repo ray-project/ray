@@ -8,7 +8,7 @@ from ray.core.generated import gcs_service_pb2_grpc
 from ray.core.generated.gcs_pb2 import AllocationMode
 from ray.core.generated.gcs_service_pb2 import (
     CreateOrUpdateVirtualClusterRequest,
-    GetAllVirtualClustersRequest,
+    GetVirtualClustersRequest,
     RemoveVirtualClusterRequest,
 )
 
@@ -30,7 +30,7 @@ class VirtualClusterHead(dashboard_utils.DashboardHeadModule):
     @dashboard_optional_utils.aiohttp_cache(10)
     async def get_all_virtual_clusters(self, req) -> aiohttp.web.Response:
         reply = await self._gcs_virtual_cluster_info_stub.GetAllVirtualClusters(
-            GetAllVirtualClustersRequest()
+            GetVirtualClustersRequest()
         )
 
         if reply.status.code == 0:

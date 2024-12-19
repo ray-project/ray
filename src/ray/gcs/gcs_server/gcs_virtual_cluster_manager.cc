@@ -31,6 +31,18 @@ void GcsVirtualClusterManager::OnNodeDead(const rpc::GcsNodeInfo &node) {
   primary_cluster_->OnNodeDead(node);
 }
 
+std::shared_ptr<VirtualCluster> GcsVirtualClusterManager::GetVirtualCluster(
+    const std::string &virtual_cluster_id) {
+  if (virtual_cluster_id.empty()) {
+    return nullptr;
+  }
+  // check if it is the primary cluster
+  if (virtual_cluster_id == kPrimaryClusterID) {
+    return primary_cluster_;
+  }
+  return primary_cluster_->GetVirtualCluster(virtual_cluster_id);
+}
+
 void GcsVirtualClusterManager::HandleCreateOrUpdateVirtualCluster(
     rpc::CreateOrUpdateVirtualClusterRequest request,
     rpc::CreateOrUpdateVirtualClusterReply *reply,

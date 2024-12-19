@@ -150,6 +150,12 @@ class VirtualCluster {
   bool MarkNodeInstanceAsDead(const std::string &template_id,
                               const std::string &node_instance_id);
 
+  /// Check the virtual cluster contains node instance
+  ///
+  /// \param node_instance_id The id of the node instance to check
+  /// \return True if the node instance is in this virtual cluster, false otherwise.
+  bool ContainsNodeInstance(const std::string &node_instance_id);
+
   /// Check if the virtual cluster is in use.
   ///
   /// \return True if the virtual cluster is in use, false otherwise.
@@ -290,6 +296,13 @@ class PrimaryCluster : public ExclusiveCluster {
   /// \return The logical cluster if it exists, otherwise return nullptr.
   std::shared_ptr<VirtualCluster> GetLogicalCluster(
       const std::string &logical_cluster_id) const;
+
+  /// Get virtual cluster by virtual cluster id
+  ///
+  /// \param virtual_cluster_id The id of virtual cluster
+  /// \return the virtual cluster
+  std::shared_ptr<VirtualCluster> GetVirtualCluster(
+      const std::string &virtual_cluster_id);
 
   /// Remove logical cluster by the logical cluster id.
   ///

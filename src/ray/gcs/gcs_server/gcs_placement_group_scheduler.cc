@@ -68,6 +68,9 @@ void GcsPlacementGroupScheduler::ScheduleUnplacedBundles(
                               strategy,
                               placement_group->GetMaxCpuFractionPerNode(),
                               placement_group->GetSoftTargetNodeID());
+  scheduling_options.scheduling_context->virtual_cluster_id =
+      placement_group->GetVirtualClusterId();
+
   auto scheduling_result =
       cluster_resource_scheduler_.Schedule(resource_request_list, scheduling_options);
 

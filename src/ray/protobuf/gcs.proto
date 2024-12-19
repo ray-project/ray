@@ -375,9 +375,6 @@ message GcsNodeInfo {
 
   // The death info of this node.
   NodeDeathInfo death_info = 29;
-
-  // The template_id of this node.
-  string template_id = 30;
 }
 
 // Please keep this in sync with the definition of JobInfo in
@@ -678,6 +675,8 @@ message PlacementGroupTableData {
   // The time that the last bundle of a placement group is committed at,
   // effectively when the placement group has been "scheduled".
   int64 placement_group_final_bundle_placement_timestamp_ms = 16;
+  // The virtual cluster this placement group belongs to.
+  string virtual_cluster_id = 17;
 }
 
 message JobTableData {
@@ -707,8 +706,6 @@ message JobTableData {
   optional bool is_running_tasks = 11;
   // Address of the driver that started this job.
   Address driver_address = 12;
-  // The virtual cluster this job belongs to
-  string virtual_cluster_id = 13;
 }
 ///////////////////////////////////////////////////////////////////////////////
 

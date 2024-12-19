@@ -121,6 +121,8 @@ message SchedulingStrategy {
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
     NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
+  // Hold virtual cluster-related information, enabling its use in scheduling logic.
+  string virtual_cluster_id = 11;
 }
 
 // Address of a worker or node manager.
@@ -630,6 +632,8 @@ message PlacementGroupSpec {
   // Otherwise, the bundles can be placed elsewhere.
   // This only applies to STRICT_PACK pg.
   bytes soft_target_node_id = 11;
+  // virtual cluster this placement group belongs to.
+  string virtual_cluster_id = 12;
 }
 
 message ObjectReference {

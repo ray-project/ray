@@ -69,7 +69,7 @@ struct SchedulingOptions {
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
                              /*max_cpu_fraction_per_node*/ 1.0,
-                             /*scheduling_context*/ nullptr,
+                             /*scheduling_context*/ std::make_shared<SchedulingContext>(),
                              preferred_node_id);
   }
 
@@ -209,7 +209,8 @@ struct SchedulingOptions {
       bool require_node_available,
       bool avoid_gpu_nodes,
       double max_cpu_fraction_per_node = 1.0,
-      std::shared_ptr<SchedulingContext> scheduling_context = nullptr,
+      std::shared_ptr<SchedulingContext> scheduling_context =
+          std::make_shared<SchedulingContext>(),
       const std::string &preferred_node_id = std::string(),
       int32_t schedule_top_k_absolute = RayConfig::instance().scheduler_top_k_absolute(),
       float scheduler_top_k_fraction = RayConfig::instance().scheduler_top_k_fraction())

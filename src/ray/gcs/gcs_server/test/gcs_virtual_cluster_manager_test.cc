@@ -41,65 +41,24 @@ class GcsVirtualClusterManagerTest : public ::testing::Test {
   std::unique_ptr<gcs::GcsVirtualClusterManager> gcs_virtual_cluster_manager_;
 };
 
-class VirtualClusterTest : public ::testing::Test {
- public:
-  std::shared_ptr<ray::gcs::PrimaryCluster> InitPrimaryCluster(
-      size_t node_count,
-      size_t template_count,
-      absl::flat_hash_map<std::string,
-                          absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>>
-          *template_id_to_nodes = nullptr) {
-    auto primary_cluster =
-        std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
-          callback(Status::OK(), data);
-          return Status::OK();
-        });
-
-    for (size_t i = 0; i < node_count; ++i) {
-      auto node = Mocker::GenNodeInfo();
-      auto template_id = std::to_string(i % template_count);
-      node->set_template_id(template_id);
-      primary_cluster->OnNodeAdd(*node);
-      if (template_id_to_nodes != nullptr) {
-        (*template_id_to_nodes)[template_id].emplace(NodeID::FromBinary(node->node_id()),
-                                                     node);
-      }
-    }
-    return primary_cluster;
-  }
-
-  Status CreateVirtualCluster(
-      std::shared_ptr<ray::gcs::PrimaryCluster> primary_cluster,
-      const std::string &virtual_cluster_id,
-      const absl::flat_hash_map<std::string, size_t> &replica_sets,
-      rpc::AllocationMode allocation_mode = rpc::AllocationMode::EXCLUSIVE) {
-    rpc::CreateOrUpdateVirtualClusterRequest request;
-    request.set_virtual_cluster_id(virtual_cluster_id);
-    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
-    request.set_revision(0);
-    request.mutable_replica_sets()->insert(replica_sets.begin(), replica_sets.end());
-    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
-        request,
-        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
-          ASSERT_TRUE(status.ok());
-        });
-    return status;
-  }
-};
-
-class PrimaryClusterTest : public VirtualClusterTest {
- public:
-  using VirtualClusterTest::VirtualClusterTest;
-};
+class PrimaryClusterTest : public ::testing::Test {};
 
 TEST_F(PrimaryClusterTest, NodeAddAndRemove) {
+  auto primary_cluster = std::make_shared<ray::gcs::PrimaryCluster>(
+      [](auto data, auto callback) { return Status::OK(); });
+
+  size_t node_count = 200;
+  size_t template_count = 10;
   absl::flat_hash_map<std::string,
                       absl::flat_hash_map<NodeID, std::shared_ptr<rpc::GcsNodeInfo>>>
       template_id_to_nodes;
-  size_t node_count = 200;
-  size_t template_count = 10;
-  auto primary_cluster =
-      InitPrimaryCluster(node_count, template_count, &template_id_to_nodes);
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_node_type_name(template_id);
+    primary_cluster->OnNodeAdd(*node);
+    template_id_to_nodes[template_id].emplace(NodeID::FromBinary(node->node_id()), node);
+  }
 
   const auto &visiable_node_instances = primary_cluster->GetVisibleNodeInstances();
   EXPECT_EQ(visiable_node_instances.size(), template_count);
@@ -165,19 +124,39 @@ TEST_F(PrimaryClusterTest, NodeAddAndRemove) {
 }
 
 TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
+  auto primary_cluster =
+      std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
+        callback(Status::OK(), data);
+        return Status::OK();
+      });
+
   size_t node_count = 200;
   size_t template_count = 10;
-  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_node_type_name(template_id);
+    primary_cluster->OnNodeAdd(*node);
+  }
 
   std::string template_id_0 = "0";
   std::string template_id_1 = "1";
   size_t node_count_per_template = node_count / template_count;
 
-  std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_0,
-                                   {{template_id_0, 5}, {template_id_1, 10}})
-                  .ok());
+  {
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id("virtual_cluster_id_0");
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 5});
+    request.mutable_replica_sets()->insert({template_id_1, 10});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
 
   {
     // Check the logical cluster virtual_cluster_id_0 visible node instances.
@@ -215,13 +194,21 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     EXPECT_NE(primary_cluster->GetRevision(), 0);
   }
 
-  // Create virtual_cluster_id_1 and check that the status is ok.
-  std::string virtual_cluster_id_1 = "virtual_cluster_id_1";
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_1,
-                                   {{template_id_0, node_count_per_template - 5},
-                                    {template_id_1, node_count_per_template - 10}})
-                  .ok());
+  {
+    // Create virtual_cluster_id_1 and check that the status is ok.
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id("virtual_cluster_id_1");
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, node_count_per_template - 5});
+    request.mutable_replica_sets()->insert({template_id_1, node_count_per_template - 10});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
 
   {
     // Check the logical cluster virtual_cluster_id_1 visible node instances.
@@ -255,14 +242,21 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
     EXPECT_NE(primary_cluster->GetRevision(), 0);
   }
 
-  // Create virtual_cluster_id_2 and check that the status is succeed.
-  std::string virtual_cluster_id_2 = "virtual_cluster_id_2";
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_2,
-                                   {{template_id_0, 0}, {template_id_1, 0}})
-                  .ok());
-
   {
+    // Create virtual_cluster_id_2 and check that the status is succeed.
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id("virtual_cluster_id_2");
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 0});
+    request.mutable_replica_sets()->insert({template_id_1, 0});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+
     auto logical_cluster = primary_cluster->GetLogicalCluster("virtual_cluster_id_2");
     ASSERT_NE(logical_cluster, nullptr);
     ASSERT_EQ(logical_cluster->GetVisibleNodeInstances().size(), 2);
@@ -276,19 +270,37 @@ TEST_F(PrimaryClusterTest, CreateOrUpdateVirtualCluster) {
 
   {
     // Create virtual_cluster_id_3 and check that the status is failed.
-    std::string virtual_cluster_id_3 = "virtual_cluster_id_3";
-    ASSERT_FALSE(CreateVirtualCluster(primary_cluster,
-                                      virtual_cluster_id_3,
-                                      {{template_id_0, 5}, {template_id_1, 10}})
-                     .ok());
-    ASSERT_EQ(primary_cluster->GetLogicalCluster(virtual_cluster_id_3), nullptr);
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id("virtual_cluster_id_3");
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 1});
+    request.mutable_replica_sets()->insert({template_id_1, 0});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_FALSE(status.ok());
+    ASSERT_EQ(primary_cluster->GetLogicalCluster("virtual_cluster_id_3"), nullptr);
   }
 }
 
 TEST_F(PrimaryClusterTest, CreateJobCluster) {
+  auto primary_cluster =
+      std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
+        callback(Status::OK(), data);
+        return Status::OK();
+      });
+
   size_t node_count = 200;
   size_t template_count = 10;
-  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_node_type_name(template_id);
+    primary_cluster->OnNodeAdd(*node);
+  }
 
   std::string template_id_0 = "0";
   std::string template_id_1 = "1";
@@ -310,6 +322,7 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
   auto job_cluster_0 = primary_cluster->GetJobCluster(job_id_0);
   ASSERT_NE(job_cluster_0, nullptr);
   auto job_cluster_id_0 = job_cluster_0->GetID();
+  ASSERT_EQ(job_cluster_id_0, kPrimaryClusterID + "##" + job_id_0);
   {
     // Check the job cluster job_cluster_id_0 visible node instances.
     const auto &visiable_node_instances = job_cluster_0->GetVisibleNodeInstances();
@@ -395,12 +408,53 @@ TEST_F(PrimaryClusterTest, CreateJobCluster) {
               node_count_per_template - 10);
     ASSERT_FALSE(visiable_node_instances.at(template_id_0).contains(kEmptyJobClusterId));
   }
+
+  {
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id("virtual_cluster_id_0");
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 2});
+    request.mutable_replica_sets()->insert({template_id_1, 2});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+
+    std::string job_id_1 = "job_1";
+    auto logical_cluster = primary_cluster->GetLogicalCluster(virtual_cluster_id_0);
+    ExclusiveCluster *exclusive_cluster =
+        dynamic_cast<ExclusiveCluster *>(logical_cluster.get());
+    // Create job_cluster_id_1 and check that the status is ok.
+    auto status = exclusive_cluster->CreateJobCluster(
+        job_id_1,
+        {{template_id_0, 1}, {template_id_1, 1}},
+        [this, job_id_1](const Status &status,
+                         std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_EQ(data->id(), std::string("virtual_cluster_id_0") + "##" + job_id_1);
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
 }
 
 TEST_F(PrimaryClusterTest, RemoveJobCluster) {
+  auto primary_cluster =
+      std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
+        callback(Status::OK(), data);
+        return Status::OK();
+      });
+
   size_t node_count = 200;
   size_t template_count = 10;
-  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_node_type_name(template_id);
+    primary_cluster->OnNodeAdd(*node);
+  }
 
   std::string template_id_0 = "0";
   std::string template_id_1 = "1";
@@ -492,20 +546,41 @@ TEST_F(PrimaryClusterTest, RemoveJobCluster) {
 }
 
 TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
+  auto primary_cluster =
+      std::make_shared<ray::gcs::PrimaryCluster>([](auto data, auto callback) {
+        callback(Status::OK(), data);
+        return Status::OK();
+      });
+
   size_t node_count = 200;
   size_t template_count = 10;
-  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
+  for (size_t i = 0; i < node_count; ++i) {
+    auto node = Mocker::GenNodeInfo();
+    auto template_id = std::to_string(i % template_count);
+    node->set_node_type_name(template_id);
+    primary_cluster->OnNodeAdd(*node);
+  }
 
   std::string template_id_0 = "0";
   std::string template_id_1 = "1";
   size_t node_count_per_template = node_count / template_count;
 
-  // Create virtual_cluster_id_0 and check that the status is succeed.
   std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_0,
-                                   {{template_id_0, 5}, {template_id_1, 10}})
-                  .ok());
+
+  {
+    rpc::CreateOrUpdateVirtualClusterRequest request;
+    request.set_virtual_cluster_id(virtual_cluster_id_0);
+    request.set_mode(rpc::AllocationMode::EXCLUSIVE);
+    request.set_revision(0);
+    request.mutable_replica_sets()->insert({template_id_0, 5});
+    request.mutable_replica_sets()->insert({template_id_1, 10});
+    auto status = primary_cluster->CreateOrUpdateVirtualCluster(
+        request,
+        [this](const Status &status, std::shared_ptr<rpc::VirtualClusterTableData> data) {
+          ASSERT_TRUE(status.ok());
+        });
+    ASSERT_TRUE(status.ok());
+  }
 
   {
     // Check the logical cluster virtual_cluster_id_0 visible node instances.
@@ -577,75 +652,6 @@ TEST_F(PrimaryClusterTest, RemoveLogicalCluster) {
           ASSERT_FALSE(true);
         });
     ASSERT_TRUE(status.IsNotFound());
-  }
-}
-
-TEST_F(PrimaryClusterTest, GetVirtualClusters) {
-  size_t node_count = 200;
-  size_t template_count = 10;
-  auto primary_cluster = InitPrimaryCluster(node_count, template_count);
-
-  std::string template_id_0 = "0";
-  std::string template_id_1 = "1";
-
-  std::string virtual_cluster_id_0 = "virtual_cluster_id_0";
-  std::string virtual_cluster_id_1 = "virtual_cluster_id_1";
-
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_0,
-                                   {{template_id_0, 5}, {template_id_1, 5}})
-                  .ok());
-
-  ASSERT_TRUE(CreateVirtualCluster(primary_cluster,
-                                   virtual_cluster_id_1,
-                                   {{template_id_0, 5}, {template_id_1, 5}})
-                  .ok());
-
-  ASSERT_TRUE(primary_cluster
-                  ->CreateJobCluster("job_0",
-                                     {{template_id_0, 10}, {template_id_1, 10}},
-                                     [this](const Status &status, auto data) {
-                                       ASSERT_TRUE(status.ok());
-                                     })
-                  .ok());
-
-  auto virtual_cluster_0 = std::dynamic_pointer_cast<ExclusiveCluster>(
-      primary_cluster->GetLogicalCluster(virtual_cluster_id_0));
-  ASSERT_TRUE(virtual_cluster_0 != nullptr);
-  ASSERT_TRUE(virtual_cluster_0
-                  ->CreateJobCluster("job_1",
-                                     {{template_id_0, 2}, {template_id_1, 2}},
-                                     [this](const Status &status, auto data) {
-                                       ASSERT_TRUE(status.ok());
-                                     })
-                  .ok());
-
-  {
-    rpc::GetVirtualClustersRequest request;
-    request.set_virtual_cluster_id(virtual_cluster_id_0);
-    request.set_include_job_clusters(false);
-    absl::flat_hash_map<std::string, std::shared_ptr<rpc::VirtualClusterTableData>>
-        virtual_clusters_data_map;
-    primary_cluster->GetVirtualClustersData(
-        request, [this, &virtual_clusters_data_map](auto data) {
-          RAY_LOG(INFO) << "xxx: " << data->id();
-          virtual_clusters_data_map.emplace(data->id(), data);
-        });
-    ASSERT_EQ(virtual_clusters_data_map.size(), 1);
-    ASSERT_TRUE(virtual_clusters_data_map.contains(virtual_cluster_id_0));
-
-    virtual_clusters_data_map.clear();
-    request.set_include_job_clusters(true);
-    primary_cluster->GetVirtualClustersData(
-        request, [this, &virtual_clusters_data_map](auto data) {
-          virtual_clusters_data_map.emplace(data->id(), data);
-        });
-    ASSERT_EQ(virtual_clusters_data_map.size(), 2);
-    ASSERT_TRUE(virtual_clusters_data_map.contains(virtual_cluster_id_0));
-
-    auto job_cluster = virtual_cluster_0->GetJobCluster("job_1");
-    ASSERT_TRUE(job_cluster != nullptr);
-    ASSERT_TRUE(virtual_clusters_data_map.contains(job_cluster->GetID()));
   }
 }
 

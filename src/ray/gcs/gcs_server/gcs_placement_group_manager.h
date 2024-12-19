@@ -85,6 +85,8 @@ class GcsPlacementGroup {
     placement_group_table_data_.set_ray_namespace(ray_namespace);
     placement_group_table_data_.set_placement_group_creation_timestamp_ms(
         current_sys_time_ms());
+    placement_group_table_data_.set_virtual_cluster_id(
+        placement_group_spec.virtual_cluster_id());
     SetupStates();
   }
 
@@ -131,6 +133,9 @@ class GcsPlacementGroup {
 
   /// Get the Strategy
   rpc::PlacementStrategy GetStrategy() const;
+
+  /// Get the Virtual Cluster ID associated with this PlacementGroup
+  const std::string &GetVirtualClusterId() const;
 
   /// Get debug string for the placement group.
   std::string DebugString() const;

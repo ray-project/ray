@@ -376,7 +376,20 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
-      /*is_local_node_with_raylet=*/false);
+      /*is_local_node_with_raylet=*/false,
+      /*is_node_schedulable_fn=*/
+      [this](scheduling::NodeID node_id, const SchedulingContext *context) {
+        // Check if the virtual cluster manager exists.
+        if (gcs_virtual_cluster_manager_ == nullptr) {
+          return true;
+        }
+        auto node_instance_id = NodeID::FromBinary(node_id.Binary()).Hex();
+        auto virtual_cluster =
+            gcs_virtual_cluster_manager_->GetVirtualCluster(context->virtual_cluster_id);
+        RAY_CHECK(virtual_cluster->GetMode() == rpc::AllocationMode::MIXED);
+        // Check if the node is contained within the specified virtual cluster.
+        return virtual_cluster->ContainsNodeInstance(node_instance_id);
+      });
 }
 
 void GcsServer::InitClusterTaskManager() {

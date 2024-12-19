@@ -320,7 +320,9 @@ NodeManager::NodeManager(
       [this]() { return object_manager_.PullManagerHasPullsQueued(); },
       shutdown_raylet_gracefully,
       /*labels*/
-      config.labels);
+      config.labels,
+      /*is_node_schedulable_fn=*/
+      [](scheduling::NodeID node_id, const SchedulingContext *context) { return true; });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);
@@ -1424,9 +1426,6 @@ void NodeManager::ProcessAnnounceWorkerPortMessage(
                                 worker->GetProcess().GetId(),
                                 string_from_flatbuf(*message->entrypoint()),
                                 *job_config);
-
-    job_data_ptr->set_virtual_cluster_id(
-        string_from_flatbuf(*message->virtual_cluster_id()));
 
     RAY_CHECK_OK(
         gcs_client_->Jobs().AsyncAdd(job_data_ptr, [this, client](Status status) {
