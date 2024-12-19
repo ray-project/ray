@@ -8,7 +8,9 @@ import gymnasium as gym
 import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+    DefaultPPORLModule,
+)
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
 from ray.rllib.examples.envs.classes.random_env import RandomEnv
@@ -19,8 +21,8 @@ from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
 from ray.rllib.core.models.configs import ActorCriticEncoderConfig
 
 
-class MobileNetTorchPPORLModule(PPOTorchRLModule):
-    """A PPORLModules with mobilenet v2 as an encoder.
+class MobileNetTorchPPORLModule(DefaultPPORLModule):
+    """A DefaultPPORLModule with mobilenet v2 as an encoder.
 
     The idea behind this model is to demonstrate how we can bypass catalog to
     take full control over what models and action distribution are being built.

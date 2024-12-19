@@ -1,7 +1,7 @@
 import abc
 from typing import Any, Dict, List, Tuple
 
-from ray.rllib.algorithms.ppo.ppo_rl_module import PPORLModule
+from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule
 from ray.rllib.algorithms.appo.appo import OLD_ACTION_DIST_LOGITS_KEY
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import ACTOR
@@ -15,7 +15,7 @@ from ray.rllib.utils.annotations import (
 )
 
 
-class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
+class APPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     @override(TargetNetworkAPI)
     def make_target_networks(self):
         self._old_encoder = make_target_network(self.encoder)
@@ -35,7 +35,7 @@ class APPORLModule(PPORLModule, TargetNetworkAPI, abc.ABC):
         return {OLD_ACTION_DIST_LOGITS_KEY: old_action_dist_logits}
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
-    @override(PPORLModule)
+    @override(DefaultPPORLModule)
     def get_non_inference_attributes(self) -> List[str]:
         # Get the NON inference-only attributes from the parent class
         # `PPOTorchRLModule`.

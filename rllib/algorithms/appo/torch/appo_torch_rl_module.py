@@ -1,6 +1,8 @@
-from ray.rllib.algorithms.appo.appo_rl_module import APPORLModule
-from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
+from ray.rllib.algorithms.appo.default_appo_rl_module import DefaultAPPORLModule
+from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+    DefaultPPOTorchRLModule,
+)
 
 
-class APPOTorchRLModule(PPOTorchRLModule, APPORLModule):
+class DefaultAPPOTorchRLModule(DefaultPPOTorchRLModule, DefaultAPPORLModule):
     pass

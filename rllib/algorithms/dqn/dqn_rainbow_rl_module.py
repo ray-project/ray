@@ -67,18 +67,18 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
             # If in a dueling setting setup the value function head.
             self.vf = self.catalog.build_vf_head(framework=self.framework)
 
+    @override(InferenceOnlyAPI)
+    def get_non_inference_attributes(self) -> List[str]:
+        return ["_target_encoder", "_target_af"] + (
+            ["_target_vf"] if self.uses_dueling else []
+        )
+
     @override(TargetNetworkAPI)
     def make_target_networks(self) -> None:
         self._target_encoder = make_target_network(self.encoder)
         self._target_af = make_target_network(self.af)
         if self.uses_dueling:
             self._target_vf = make_target_network(self.vf)
-
-    @override(InferenceOnlyAPI)
-    def get_non_inference_attributes(self) -> List[str]:
-        return ["_target_encoder", "_target_af"] + (
-            ["_target_vf"] if self.uses_dueling else []
-        )
 
     @override(TargetNetworkAPI)
     def get_target_network_pairs(self) -> List[Tuple[NetworkType, NetworkType]]:
@@ -118,11 +118,6 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
                 else self._target_af
             ),
         )
-
-    # TODO (simon): DQN Rainbow does not support RNNs, yet.
-    @override(RLModule)
-    def get_initial_state(self) -> Any:
-        return {}
 
     @override(RLModule)
     def input_specs_exploration(self) -> SpecType:
