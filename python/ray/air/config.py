@@ -176,6 +176,13 @@ class ScalingConfig:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker."
                 )
+            
+            accepted_resource_arguments: List[str] = ["GPU", "CPU", "memory", "custom"]
+            if len([key for key in self.resources_per_worker if key not in accepted_resource_arguments]) >= 1:
+                raise ValueError(
+                    f"The resources_per_worker argument expects keys from the list"
+                    f"in {accepted_resource_arguments}. You have provided invalid resource names {[key for key in self.resources_per_worker.keys() if key not in accepted_resource_arguments]}"
+                )
 
     def __repr__(self):
         return _repr_dataclass(self)
