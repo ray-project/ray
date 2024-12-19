@@ -14,6 +14,8 @@
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
 
+#include <csignal>
+
 #include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
 
@@ -35,6 +37,10 @@ std::string GetSemaphoreHeaderName(const std::string &name) {
   RAY_CHECK_LE(name.size(), PSEMNAMLEN);
   return ret;
 }
+
+std::atomic<int> signal_received = -1;
+
+void SignalHandler(int signal) { signal_received = signal; }
 
 }  // namespace
 
@@ -294,7 +300,6 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
                                          std::shared_ptr<RayObject> &result,
                                          int64_t timeout_ms)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
-  RAY_LOG(DEBUG) << "ReadAcquire " << object_id;
   absl::ReaderMutexLock guard(&destructor_lock_);
 
   Channel *channel = GetChannel(object_id);
@@ -315,13 +320,20 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   auto timeout_point = ToTimeoutPoint(timeout_ms);
   bool locked = false;
   bool expired = false;
-  do {
-    RAY_RETURN_NOT_OK(object->header->CheckHasError());
-    // The channel is still open. This lock ensures that there is only one reader
-    // at a time. The lock is released in `ReadRelease()`.
-    locked = channel->lock->try_lock();
-    expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
-  } while (!locked && !expired);
+  {
+    std::signal(SIGINT, SignalHandler);
+    do {
+      RAY_RETURN_NOT_OK(object->header->CheckHasError());
+      // The channel is still open. This lock ensures that there is only one reader
+      // at a time. The lock is released in `ReadRelease()`.
+      locked = channel->lock->try_lock();
+      expired = timeout_point && std::chrono::steady_clock::now() >= *timeout_point;
+    } while (!locked && !expired && signal_received != -1);
+  }
+  if (signal_received != -1) {
+    RAY_LOG(ERROR) << "Interrupted by signal";
+    return Status::Interrupted("Interrupted by signal");
+  }
   if (!locked) {
     // If timeout_ms == 0, we want to try once to get the lock,
     // therefore we check locked rather than expired.
@@ -333,7 +345,6 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   Status s = object->header->ReadAcquire(
       object_id, sem, channel->next_version_to_read, version_read, timeout_point);
   if (!s.ok()) {
-    RAY_LOG(DEBUG) << "ReadAcquire error was set, returning " << object_id;
     // Failed because the error bit was set on the mutable object.
     channel->reading = false;
     channel->lock->unlock();
@@ -461,15 +472,14 @@ Status MutableObjectManager::SetErrorAll() {
   return ret;
 }
 
-std::unique_ptr<std::chrono::steady_clock::time_point>
-MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
-  if (timeout_ms == -1) {
-    return nullptr;
+std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
+    int64_t timeout_ms) {
+  std::optional<std::chrono::steady_clock::time_point> timeout_point;
+  if (timeout_ms != -1) {
+    auto now = std::chrono::steady_clock::now();
+    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+    timeout_point.emplace(now + timeout_duration);
   }
-  auto now = std::chrono::steady_clock::now();
-  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-  auto timeout_point =
-      std::make_unique<std::chrono::steady_clock::time_point>(now + timeout_duration);
   return timeout_point;
 }
 
@@ -565,9 +575,9 @@ Status MutableObjectManager::SetErrorAll() {
   return Status::NotImplemented("Not supported on Windows.");
 }
 
-std::unique_ptr<std::chrono::steady_clock::time_point>
-MutableObjectManager::ToTimeoutPoint(int64_t timeout_ms) {
-  return nullptr;
+std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
+    int64_t timeout_ms) {
+  return std::nullopt;
 }
 
 Status MutableObjectManager::GetChannelStatus(const ObjectID &object_id, bool is_reader) {
