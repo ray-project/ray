@@ -175,11 +175,11 @@ Workflow Examples
 
 
 .. note::
-    This protocol is an initial draft of the attempt to unify communication between an external client and a remote RL-service.
-    It will undergo many changes and upgrades in the future.
-    For now, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL
-    frameworks, emphasizing simplicity, extensibility, and compatibility with on-policy workflows (off-policy workflow are under
-    development).
+    This protocol is an initial draft of the attempt to develop a wiedly adapted protocol for communication between an external
+    client and a remote RL-service. It will undergo many changes and upgrades as it moves toward maturity, including safety, compression,
+    and other important aspects.
+    For now, however, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL
+    frameworks.
 
 
 Example: External client connecting to tcp-based EnvRunner
