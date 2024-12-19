@@ -44,7 +44,7 @@ void ReferenceCounter::DrainAndShutdown(std::function<void()> shutdown) {
     RAY_LOG(WARNING)
         << "This worker is still managing " << object_id_refs_.size()
         << " objects, waiting for them to go out of scope before shutting down.";
-    shutdown_hook_ = shutdown;
+    shutdown_hook_ = std::move(shutdown);
   }
 }
 
@@ -59,6 +59,7 @@ void ReferenceCounter::ShutdownIfNeeded() {
 ReferenceCounter::ReferenceTable ReferenceCounter::ReferenceTableFromProto(
     const ReferenceTableProto &proto) {
   ReferenceTable refs;
+  refs.reserve(proto.size());
   for (const auto &ref : proto) {
     refs.emplace(ObjectID::FromBinary(ref.reference().object_id()),
                  Reference::FromProto(ref));

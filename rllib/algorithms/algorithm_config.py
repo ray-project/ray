@@ -949,7 +949,7 @@ class AlgorithmConfig(_Config):
             logger_creator=self.logger_creator,
         )
 
-    def build_env_to_module_connector(self, env):
+    def build_env_to_module_connector(self, env, device=None):
         from ray.rllib.connectors.env_to_module import (
             AddObservationsFromEpisodesToBatch,
             AddStatesFromEpisodesToBatch,
@@ -1023,7 +1023,7 @@ class AlgorithmConfig(_Config):
             # Batch all data.
             pipeline.append(BatchIndividualItems(multi_agent=self.is_multi_agent()))
             # Convert to Tensors.
-            pipeline.append(NumpyToTensor())
+            pipeline.append(NumpyToTensor(device=device))
 
         return pipeline
 
@@ -4478,6 +4478,16 @@ class AlgorithmConfig(_Config):
             # Early out. The rest of this method is only for
             # `enable_rl_module_and_learner=True`.
             return
+
+        # Warn about new API stack on by default.
+        logger.warning(
+            f"You are running {self.algo_class.__name__} on the new API stack! "
+            "This is the new default behavior for this algorithm. If you don't "
+            "want to use the new API stack, set `config.api_stack("
+            "enable_rl_module_and_learner=False,"
+            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+        )
 
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
