@@ -85,6 +85,12 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
+  // If current context is requested to stop, directly destruct itself and exit.
+  if (stopped_) {
+    delete this;
+    return;
+  }
+
   // Reset the context/request/response for the next request.
   context_.~ClientContext();
   new (&context_) grpc::ClientContext();
