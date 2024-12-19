@@ -60,6 +60,7 @@ class TrainRunStateManager:
                 node_ip=ray.util.get_node_ip_address(),
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
+                required_resources_bundles=train_context.get_trial_resources().bundles,
             )
 
         futures = [
