@@ -59,7 +59,7 @@ void MoveProcsInSystemCgroup() {
   }
 }
 
-void EnableControllersInCgroup() {
+void EnableCgroupSubtreeControl() {
   std::ofstream out_file(kRootCgroupSubtreeControl.data());
   // Able to add new PIDs and memory constraint to the system cgroup.
   out_file << "+memory +pids";
@@ -81,7 +81,10 @@ bool SetupCgroupsPreparation() {
   }
 
   MoveProcsInSystemCgroup();
-  EnableControllersInCgroup();
+  EnableCgroupSubtreeControl();
+
+  // Setup application cgroup.  
+  
 
   return true;
 }
