@@ -262,9 +262,11 @@ class _NcclGroup(GPUCommunicator):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
-        assert (
-            send_buf.dtype == recv_buf.dtype
-        ), "send_buf and recv_buf must have the same dtype"
+        assert send_buf.dtype == recv_buf.dtype, (
+            "Ray Compiled Graph derived the dtype of recv_buf from send_buf, "
+            "so send_buf and recv_buf must have the same dtype. "
+            "If you see this error, please file an issue at Ray repository."
+        )
         self._comm.allReduce(
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
@@ -282,8 +284,9 @@ class _NcclGroup(GPUCommunicator):
         self._cuda_stream.synchronize()
         if self._closed:
             raise RayChannelError(
-                "NCCL group has been destroyed. There may be a dtype mismatch "
-                "between different ranks."
+                "NCCL group has been destroyed during allreduce operation. "
+                "There may be a dtype mismatch between input tensors from "
+                "different ranks."
             )
 
     @property
