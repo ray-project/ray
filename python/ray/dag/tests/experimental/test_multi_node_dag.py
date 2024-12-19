@@ -323,7 +323,7 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
                 )
 
             self._adag = dag.experimental_compile(
-                _execution_timeout=120,
+                _submit_timeout=120,
             )
 
         def call(self, prompt: str) -> bytes:
