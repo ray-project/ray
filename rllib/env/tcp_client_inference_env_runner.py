@@ -23,7 +23,7 @@ from ray.rllib.env import INPUT_ENV_SPACES
 from ray.rllib.env.env_runner import EnvRunner
 from ray.rllib.env.single_agent_env_runner import SingleAgentEnvRunner
 from ray.rllib.env.single_agent_episode import SingleAgentEpisode
-from ray.rllib.env.utils.external_env_protocol import RLlinkProtocol as rllink
+from ray.rllib.env.utils.external_env_protocol import RLlink as rllink
 from ray.rllib.utils.annotations import ExperimentalAPI, override
 from ray.rllib.utils.checkpoints import Checkpointable
 from ray.rllib.utils.framework import try_import_torch
