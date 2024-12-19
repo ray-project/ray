@@ -407,6 +407,9 @@ Status CoreWorkerPlasmaStoreProvider::Wait(
     if (check_signals_) {
       RAY_RETURN_NOT_OK(check_signals_());
     }
+
+    // Adjust num_objects to request based on the number of objects already found.
+    num_objects -= static_cast<int>(ready->size());
   }
   if (ctx.CurrentTaskIsDirectCall() && ctx.ShouldReleaseResourcesOnBlockingCalls()) {
     RAY_RETURN_NOT_OK(raylet_client_->NotifyDirectCallTaskUnblocked());
