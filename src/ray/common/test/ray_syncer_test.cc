@@ -12,21 +12,25 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// clang-format off
-#include "gmock/gmock.h"
-#include "gtest/gtest.h"
-#include <chrono>
-#include <sstream>
+#include <gmock/gmock.h>
+#include <google/protobuf/util/json_util.h>
+#include <google/protobuf/util/message_differencer.h>
 #include <grpc/grpc.h>
 #include <grpcpp/create_channel.h>
-#include <google/protobuf/util/message_differencer.h>
-#include <google/protobuf/util/json_util.h>
 #include <grpcpp/security/credentials.h>
 #include <grpcpp/security/server_credentials.h>
 #include <grpcpp/server.h>
 #include <grpcpp/server_builder.h>
+#include <gtest/gtest.h>
 
+#include <chrono>
+#include <sstream>
+
+// clang-format off
+#include "ray/common/ray_syncer/node_state.h"
 #include "ray/common/ray_syncer/ray_syncer.h"
+#include "ray/common/ray_syncer/ray_syncer_client.h"
+#include "ray/common/ray_syncer/ray_syncer_server.h"
 #include "ray/rpc/grpc_server.h"
 #include "mock/ray/common/ray_syncer/ray_syncer.h"
 // clang-format on
@@ -200,15 +204,23 @@ TEST_F(RaySyncerTest, RaySyncerBidiReactorBase) {
 }
 
 struct SyncerServerTest {
-  SyncerServerTest(std::string port) : work_guard(io_context.get_executor()) {
+  SyncerServerTest(std::string port)
+      : SyncerServerTest(
+            std::move(port), /*node_id=*/NodeID::FromRandom(), /*ray_sync_observer=*/{}) {
+  }
+
+  SyncerServerTest(std::string port,
+                   NodeID node_id,
+                   RpcCompletionCallback ray_sync_observer)
+      : work_guard(io_context.get_executor()) {
     this->server_port = port;
     // Setup io context
-    auto node_id = NodeID::FromRandom();
     for (auto &v : local_versions) {
       v = 0;
     }
     // Setup syncer and grpc server
-    syncer = std::make_unique<RaySyncer>(io_context, node_id.Binary());
+    syncer = std::make_unique<RaySyncer>(
+        io_context, node_id.Binary(), std::move(ray_sync_observer));
     thread = std::make_unique<std::thread>([this] { io_context.run(); });
 
     auto server_address = std::string("0.0.0.0:") + port;
@@ -418,6 +430,14 @@ class SyncerTest : public ::testing::Test {
     return *servers.back();
   }
 
+  SyncerServerTest &MakeServer(std::string port,
+                               NodeID node_id,
+                               RpcCompletionCallback on_rpc_completion) {
+    servers.emplace_back(std::make_unique<SyncerServerTest>(
+        port, std::move(node_id), std::move(on_rpc_completion)));
+    return *servers.back();
+  }
+
  protected:
   void TearDown() override {
     // Drain all grpc requests.
@@ -431,9 +451,25 @@ class SyncerTest : public ::testing::Test {
 };
 
 TEST_F(SyncerTest, Test1To1) {
-  auto &s1 = MakeServer("19990");
+  // Generate node ids for checking.
+  NodeID node_id1 = NodeID::FromRandom();
+  NodeID node_id2 = NodeID::FromRandom();
 
-  auto &s2 = MakeServer("19991");
+  // Used to check the number of messages consumed for two servers.
+  int s1_observer_cb_call_cnt = 0;
+  int s2_observer_cb_call_cnt = 0;
+
+  // Register observer callback for syncers.
+  auto syncer_observer_cb = [&](const NodeID &node_id) {
+    if (node_id == node_id1) {
+      ++s1_observer_cb_call_cnt;
+    } else if (node_id == node_id2) {
+      ++s2_observer_cb_call_cnt;
+    }
+  };
+
+  auto &s1 = MakeServer("19990", node_id1, syncer_observer_cb);
+  auto &s2 = MakeServer("19991", node_id2, syncer_observer_cb);
 
   // Make sure the setup is correct
   ASSERT_NE(nullptr, s1.receivers[MessageType::RESOURCE_VIEW]);
@@ -535,6 +571,10 @@ TEST_F(SyncerTest, Test1To1) {
   ASSERT_LE(s1.GetNumConsumedMessages(s2.syncer->GetLocalNodeID()), max_sends * 2 + 3);
   // s1 has one reporter + 1 for the one send before the measure
   ASSERT_LE(s2.GetNumConsumedMessages(s1.syncer->GetLocalNodeID()), max_sends + 3);
+
+  // Make sure registered callbacks have been called.
+  ASSERT_GT(s1_observer_cb_call_cnt, 0);
+  ASSERT_GT(s2_observer_cb_call_cnt, 0);
 }
 
 TEST_F(SyncerTest, Reconnect) {

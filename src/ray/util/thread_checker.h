@@ -34,10 +34,10 @@ class ThreadChecker {
  public:
   // Return true at initialization, or current invocation happens on the same thread as
   // initialization.
-  bool IsOnSameThread();
+  bool IsOnSameThread() const;
 
  private:
-  std::atomic<std::thread::id> thread_id_{};
+  mutable std::atomic<std::thread::id> thread_id_{};
 };
 
 }  // namespace ray

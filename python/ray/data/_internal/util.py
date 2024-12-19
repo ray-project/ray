@@ -26,7 +26,6 @@ import numpy as np
 
 import ray
 from ray._private.utils import _get_pyarrow_version
-from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 from ray.data.context import DEFAULT_READ_OP_MIN_NUM_BLOCKS, WARN_PREFIX, DataContext
 
 if TYPE_CHECKING:
@@ -40,6 +39,12 @@ if TYPE_CHECKING:
     from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
+
+
+KiB = 1024  # bytes
+MiB = 1024 * KiB
+GiB = 1024 * MiB
+
 
 # NOTE: Make sure that these lower and upper bounds stay in sync with version
 # constraints given in python/setup.py.
@@ -524,23 +529,6 @@ def AllToAllAPI(*args, **kwargs):
     return _all_to_all_api()(args[0])
 
 
-def _split_list(arr: List[Any], num_splits: int) -> List[List[Any]]:
-    """Split the list into `num_splits` lists.
-
-    The splits will be even if the `num_splits` divides the length of list, otherwise
-    the remainder (suppose it's R) will be allocated to the first R splits (one for
-    each).
-    This is the same as numpy.array_split(). The reason we make this a separate
-    implementation is to allow the heterogeneity in the elements in the list.
-    """
-    assert num_splits > 0
-    q, r = divmod(len(arr), num_splits)
-    splits = [
-        arr[i * q + min(i, r) : (i + 1) * q + min(i + 1, r)] for i in range(num_splits)
-    ]
-    return splits
-
-
 def get_compute_strategy(
     fn: "UserDefinedFunction",
     fn_constructor_args: Optional[Iterable[Any]] = None,
@@ -707,6 +695,7 @@ def unify_block_metadata_schema(
     """
     # Some blocks could be empty, in which case we cannot get their schema.
     # TODO(ekl) validate schema is the same across different blocks.
+    from ray.data._internal.arrow_ops.transform_pyarrow import unify_schemas
 
     # First check if there are blocks with computed schemas, then unify
     # valid schemas from all such blocks.

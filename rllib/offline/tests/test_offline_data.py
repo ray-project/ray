@@ -18,6 +18,11 @@ class TestOfflineData(unittest.TestCase):
         data_path = "tests/data/cartpole/cartpole-v1_large"
         self.base_path = Path(__file__).parents[2]
         self.data_path = "local://" + self.base_path.joinpath(data_path).as_posix()
+        # Assign the observation and action spaces.
+        env = gym.make("CartPole-v1")
+        self.observation_space = env.observation_space
+        self.action_space = env.action_space
+        # Start ray.
         ray.init()
 
     def tearDown(self) -> None:
@@ -27,7 +32,14 @@ class TestOfflineData(unittest.TestCase):
         """Tests loading the data in `OfflineData`."""
 
         # Create a simple config.
-        config = AlgorithmConfig().offline_data(input_=[self.data_path])
+        config = (
+            AlgorithmConfig()
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
+            .offline_data(input_=[self.data_path])
+        )
         # Generate an `OfflineData` instance.
         offline_data = OfflineData(config)
 
@@ -41,7 +53,10 @@ class TestOfflineData(unittest.TestCase):
         # Create a simple config.
         config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -85,7 +100,10 @@ class TestOfflineData(unittest.TestCase):
         # Create a simple config.
         config = (
             BCConfig()
-            .environment("CartPole-v1")
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
             .api_stack(
                 enable_env_runner_and_connector_v2=True,
                 enable_rl_module_and_learner=True,
@@ -124,7 +142,7 @@ class TestOfflineData(unittest.TestCase):
             num_samples=10, return_iterator=2, num_shards=2
         )
         self.assertIsInstance(batch, list)
-        # Ensure we have indeed two such `SStreamSplitDataIterator` instances.
+        # Ensure we have indeed two such `StreamSplitDataIterator` instances.
         self.assertEqual(len(batch), 2)
         from ray.data._internal.iterator.stream_split_iterator import (
             StreamSplitDataIterator,
@@ -200,6 +218,43 @@ class TestOfflineData(unittest.TestCase):
         self.assertEqual(len(episodes["episodes"]), batch["o_t"].shape[0])
         # Finally, remove the files and folders.
         shutil.rmtree(dir_path)
+
+    def test_custom_data_class(self):
+
+        # Define a simple customized `OfflineData` class.
+        class TestOfflineData(OfflineData):
+            def __init__(self, config: AlgorithmConfig):
+                # Simply call super.
+                super().__init__(config=config)
+
+        # Configure a `BC` algorithm.
+        config = (
+            BCConfig()
+            .environment(
+                observation_space=self.observation_space,
+                action_space=self.action_space,
+            )
+            .offline_data(
+                input_=[self.data_path],
+                offline_data_class=TestOfflineData,
+                dataset_num_iters_per_learner=1,
+            )
+        )
+
+        # Build the `BC` instance.
+        algo = config.build()
+
+        # Assert, we use now the customized class.
+        self.assertIsInstance(algo.offline_data, TestOfflineData)
+
+        try:
+            # Run a training iteration.
+            res = algo.train()
+            # Ensure, we indeed got a dictionary with the results.
+            self.assertIsInstance(res, dict)
+        finally:
+            # Stop the algorithm gracefully.
+            algo.stop()
 
 
 if __name__ == "__main__":

@@ -306,6 +306,8 @@ class TfLearner(Learner):
             postprocessed_gradients = self.postprocess_gradients(gradients)
             self.apply_gradients(postprocessed_gradients)
 
+            # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
+            # results.
             return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
         return self._strategy.run(helper, args=(batch,))

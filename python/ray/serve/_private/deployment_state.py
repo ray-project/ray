@@ -972,6 +972,11 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def actor_pid(self) -> Optional[int]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.pid
+
+    @property
     def initialization_latency_s(self) -> Optional[float]:
         """Returns how long the replica took to initialize."""
 
@@ -1384,6 +1389,13 @@ class DeploymentState:
     def app_name(self) -> str:
         return self._id.app_name
 
+    @property
+    def _failed_to_start_threshold(self) -> int:
+        return min(
+            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
+            self._target_state.target_num_replicas * 3,
+        )
+
     def get_alive_replica_actor_ids(self) -> Set[str]:
         return {replica.actor_id for replica in self._replicas.get()}
 
@@ -1448,16 +1460,17 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id),
-            running_replica_infos,
-        )
-        # NOTE(zcin): notify changed for Java routers. Since Java only
-        # supports 1.x API, there is no concept of applications in Java,
-        # so the key should remain a string describing the deployment
-        # name. If there are no Java routers, this is a no-op.
-        self._long_poll_host.notify_changed(
-            (LongPollNamespace.RUNNING_REPLICAS, self._id.name),
-            running_replica_infos,
+            {
+                (LongPollNamespace.RUNNING_REPLICAS, self._id): running_replica_infos,
+                # NOTE(zcin): notify changed for Java routers. Since Java only
+                # supports 1.x API, there is no concept of applications in Java,
+                # so the key should remain a string describing the deployment
+                # name. If there are no Java routers, this is a no-op.
+                (
+                    LongPollNamespace.RUNNING_REPLICAS,
+                    self._id.name,
+                ): running_replica_infos,
+            }
         )
         self._last_broadcasted_running_replica_infos = running_replica_infos
         self._multiplexed_model_ids_updated = False
@@ -1473,8 +1486,7 @@ class DeploymentState:
             return
 
         self._long_poll_host.notify_changed(
-            (LongPollNamespace.DEPLOYMENT_CONFIG, self._id),
-            current_deployment_config,
+            {(LongPollNamespace.DEPLOYMENT_CONFIG, self._id): current_deployment_config}
         )
 
         self._last_broadcasted_deployment_config = current_deployment_config
@@ -1845,11 +1857,10 @@ class DeploymentState:
 
             if to_add > 0:
                 # Exponential backoff
-                failed_to_start_threshold = min(
-                    MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-                    self._target_state.target_num_replicas * 3,
-                )
-                if self._replica_constructor_retry_counter >= failed_to_start_threshold:
+                if (
+                    self._replica_constructor_retry_counter
+                    >= self._failed_to_start_threshold
+                ):
                     # Wait 1, 2, 4, ... seconds before consecutive retries, with random
                     # offset added to avoid synchronization
                     if (
@@ -1909,17 +1920,13 @@ class DeploymentState:
         )
 
         failed_to_start_count = self._replica_constructor_retry_counter
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
 
         # Got to make a call to complete current deploy() goal after
         # start failure threshold reached, while we might still have
         # pending replicas in current goal.
         if (
-            failed_to_start_count >= failed_to_start_threshold
-            and failed_to_start_threshold != 0
+            failed_to_start_count >= self._failed_to_start_threshold
+            and self._failed_to_start_threshold != 0
         ):
             if running_at_target_version_replica_cnt > 0:
                 # At least one RUNNING replica at target state, partial
@@ -1998,7 +2005,7 @@ class DeploymentState:
                 replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s."
+                    f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
                 )
                 if replica.initialization_latency_s is not None:
                     # This condition should always be True. The initialization
@@ -2043,17 +2050,27 @@ class DeploymentState:
             self._replica_constructor_retry_counter += 1
             self._replica_constructor_error_msg = error_msg
 
+            retrying_msg = "Retrying"
+            if self._failed_to_start_threshold != 0:
+                remaining_retries = (
+                    self._failed_to_start_threshold
+                    - self._replica_constructor_retry_counter
+                )
+                retrying_msg += f" {remaining_retries} more time(s)"
+
+            message = (
+                f"A replica failed to start with exception. {retrying_msg}. Error:\n"
+                f"{error_msg}"
+            )
+            self._curr_status_info = self._curr_status_info.update_message(message)
+
     def update_replica_startup_backoff_time(self):
         """Updates the replica startup backoff time."""
 
         # If replicas have failed enough times, execute exponential backoff
         # Wait 1, 2, 4, ... seconds before consecutive retries (or use a custom
         # backoff factor by setting EXPONENTIAL_BACKOFF_FACTOR)
-        failed_to_start_threshold = min(
-            MAX_DEPLOYMENT_CONSTRUCTOR_RETRY_COUNT,
-            self._target_state.target_num_replicas * 3,
-        )
-        if self._replica_constructor_retry_counter > failed_to_start_threshold:
+        if self._replica_constructor_retry_counter > self._failed_to_start_threshold:
             self._backoff_time_s = min(
                 EXPONENTIAL_BACKOFF_FACTOR * self._backoff_time_s, MAX_BACKOFF_TIME_S
             )
@@ -2172,7 +2189,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
@@ -2189,7 +2209,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )

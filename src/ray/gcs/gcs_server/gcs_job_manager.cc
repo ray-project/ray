@@ -102,7 +102,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
       RAY_LOG(ERROR) << "Failed to add job, job id = " << job_id
                      << ", driver pid = " << job_table_data.driver_pid();
     } else {
-      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, /*done=*/nullptr));
+      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, /*done=*/nullptr));
       if (job_table_data.config().has_runtime_env_info()) {
         runtime_env_manager_.AddURIReference(job_id.Hex(),
                                              job_table_data.config().runtime_env_info());
@@ -122,7 +122,7 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   };
 
   Status status =
-      gcs_table_storage_->JobTable().Put(job_id, mutable_job_table_data, on_done);
+      gcs_table_storage_.JobTable().Put(job_id, mutable_job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -143,7 +143,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     if (!status.ok()) {
       RAY_LOG(ERROR) << "Failed to mark job state, job id = " << job_id;
     } else {
-      RAY_CHECK_OK(gcs_publisher_->PublishJob(job_id, job_table_data, nullptr));
+      RAY_CHECK_OK(gcs_publisher_.PublishJob(job_id, job_table_data, nullptr));
       runtime_env_manager_.RemoveURIReference(job_id.Hex());
       ClearJobInfos(job_table_data);
       RAY_LOG(INFO) << "Finished marking job state, job id = " << job_id;
@@ -160,7 +160,7 @@ void GcsJobManager::MarkJobAsFinished(rpc::JobTableData job_table_data,
     done_callback(status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Put(job_id, job_table_data, on_done);
+  Status status = gcs_table_storage_.JobTable().Put(job_id, job_table_data, on_done);
   if (!status.ok()) {
     on_done(status);
   }
@@ -176,7 +176,7 @@ void GcsJobManager::HandleMarkJobFinished(rpc::MarkJobFinishedRequest request,
     GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
-  Status status = gcs_table_storage_->JobTable().Get(
+  Status status = gcs_table_storage_.JobTable().Get(
       job_id,
       [this, job_id, send_reply](const Status &status,
                                  const std::optional<rpc::JobTableData> &result) {
@@ -423,7 +423,7 @@ void GcsJobManager::HandleGetAllJobInfo(rpc::GetAllJobInfoRequest request,
       internal_kv_.MultiGet("job", job_api_data_keys, kv_multi_get_callback);
     }
   };
-  Status status = gcs_table_storage_->JobTable().GetAll(on_done);
+  Status status = gcs_table_storage_.JobTable().GetAll(on_done);
   if (!status.ok()) {
     on_done(absl::flat_hash_map<JobID, JobTableData>());
   }
@@ -433,14 +433,14 @@ void GcsJobManager::HandleReportJobError(rpc::ReportJobErrorRequest request,
                                          rpc::ReportJobErrorReply *reply,
                                          rpc::SendReplyCallback send_reply_callback) {
   auto job_id = JobID::FromBinary(request.job_error().job_id());
-  RAY_CHECK_OK(gcs_publisher_->PublishError(job_id.Hex(), request.job_error(), nullptr));
+  RAY_CHECK_OK(gcs_publisher_.PublishError(job_id.Hex(), request.job_error(), nullptr));
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
 void GcsJobManager::HandleGetNextJobID(rpc::GetNextJobIDRequest request,
                                        rpc::GetNextJobIDReply *reply,
                                        rpc::SendReplyCallback send_reply_callback) {
-  reply->set_job_id(gcs_table_storage_->GetNextJobID());
+  reply->set_job_id(gcs_table_storage_.GetNextJobID());
   GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
 }
 
@@ -472,7 +472,7 @@ void GcsJobManager::OnNodeDead(const NodeID &node_id) {
   };
 
   // make all jobs in current node to finished
-  RAY_CHECK_OK(gcs_table_storage_->JobTable().GetAll(on_done));
+  RAY_CHECK_OK(gcs_table_storage_.JobTable().GetAll(on_done));
 }
 
 void GcsJobManager::RecordMetrics() {

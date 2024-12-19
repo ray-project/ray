@@ -80,7 +80,9 @@ class _MapActorContext:
 
 
 def plan_project_op(
-    op: Project, physical_children: List[PhysicalOperator]
+    op: Project,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     assert len(physical_children) == 1
     input_physical_dag = physical_children[0]
@@ -105,14 +107,61 @@ def plan_project_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name=op.name,
         compute_strategy=compute,
         ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
+    )
+
+
+def plan_filter_op(
+    op: Filter,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
+) -> MapOperator:
+    assert len(physical_children) == 1
+    input_physical_dag = physical_children[0]
+
+    expression = op._filter_expr
+    compute = get_compute(op._compute)
+    if expression is not None:
+
+        def filter_batch_fn(block: "pa.Table") -> "pa.Table":
+            try:
+                return block.filter(expression)
+            except Exception as e:
+                _handle_debugger_exception(e)
+
+        transform_fn = _generate_transform_fn_for_map_batches(filter_batch_fn)
+        map_transformer = _create_map_transformer_for_map_batches_op(
+            transform_fn,
+            batch_size=None,
+            batch_format="pyarrow",
+            zero_copy_batch=True,
+        )
+    else:
+        filter_fn, init_fn = _parse_op_fn(op)
+        transform_fn = _generate_transform_fn_for_filter(filter_fn)
+        map_transformer = _create_map_transformer_for_row_based_map_op(
+            transform_fn, init_fn
+        )
+
+    return MapOperator.create(
+        map_transformer,
+        input_physical_dag,
+        data_context,
+        name=op.name,
+        compute_strategy=compute,
+        ray_remote_args=op._ray_remote_args,
+        ray_remote_args_fn=op._ray_remote_args_fn,
     )
 
 
 def plan_udf_map_op(
-    op: AbstractUDFMap, physical_children: List[PhysicalOperator]
+    op: AbstractUDFMap,
+    physical_children: List[PhysicalOperator],
+    data_context: DataContext,
 ) -> MapOperator:
     """Get the corresponding physical operators DAG for AbstractUDFMap operators.
 
@@ -139,8 +188,6 @@ def plan_udf_map_op(
             transform_fn = _generate_transform_fn_for_map_rows(fn)
         elif isinstance(op, FlatMap):
             transform_fn = _generate_transform_fn_for_flat_map(fn)
-        elif isinstance(op, Filter):
-            transform_fn = _generate_transform_fn_for_filter(fn)
         else:
             raise ValueError(f"Found unknown logical operator during planning: {op}")
 
@@ -151,6 +198,7 @@ def plan_udf_map_op(
     return MapOperator.create(
         map_transformer,
         input_physical_dag,
+        data_context,
         name=op.name,
         target_max_block_size=None,
         compute_strategy=compute,
@@ -352,6 +400,8 @@ def _generate_transform_fn_for_async_map_batches(
         # generators, and in the main event loop, yield them from
         # the queue as they become available.
         output_batch_queue = queue.Queue()
+        # Sentinel object to signal the end of the async generator.
+        sentinel = object()
 
         async def process_batch(batch: DataBatch):
             try:
@@ -366,29 +416,33 @@ def _generate_transform_fn_for_async_map_batches(
                 )  # Put the exception into the queue to signal an error
 
         async def process_all_batches():
-            loop = ray.data._map_actor_context.udf_map_asyncio_loop
-            tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
+            try:
+                loop = ray.data._map_actor_context.udf_map_asyncio_loop
+                tasks = [loop.create_task(process_batch(x)) for x in input_iterable]
 
-            ctx = ray.data.DataContext.get_current()
-            if ctx.execution_options.preserve_order:
-                for task in tasks:
-                    await task()
-            else:
-                for task in asyncio.as_completed(tasks):
-                    await task
+                ctx = ray.data.DataContext.get_current()
+                if ctx.execution_options.preserve_order:
+                    for task in tasks:
+                        await task()
+                else:
+                    for task in asyncio.as_completed(tasks):
+                        await task
+            finally:
+                output_batch_queue.put(sentinel)
 
         # Use the existing event loop to create and run Tasks to process each batch
         loop = ray.data._map_actor_context.udf_map_asyncio_loop
-        future = asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
+        asyncio.run_coroutine_threadsafe(process_all_batches(), loop)
 
         # Yield results as they become available.
-        # After all futures are completed, drain the queue to
-        # yield any remaining results.
-        while not future.done() or not output_batch_queue.empty():
+        while True:
             # Here, `out_batch` is a one-row output batch
             # from the async generator, corresponding to a
             # single row from the input batch.
             out_batch = output_batch_queue.get()
+            if out_batch is sentinel:
+                # Break out of the loop when the sentinel is received.
+                break
             if isinstance(out_batch, Exception):
                 raise out_batch
             _validate_batch_output(out_batch)
@@ -493,14 +547,12 @@ def generate_map_rows_fn(
     target_max_block_size: int,
 ) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the UDF to each record of blocks."""
-    context = DataContext.get_current()
 
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
         row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_map_rows(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
         map_transformer.set_target_max_block_size(target_max_block_size)
@@ -516,38 +568,12 @@ def generate_flat_map_fn(
     and then flatten results.
     """
 
-    context = DataContext.get_current()
-
     def fn(
         blocks: Iterator[Block],
         ctx: TaskContext,
         row_fn: UserDefinedFunction,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
         transform_fn = _generate_transform_fn_for_flat_map(row_fn)
-        map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
-        map_transformer.set_target_max_block_size(target_max_block_size)
-        yield from map_transformer.apply_transform(blocks, ctx)
-
-    return fn
-
-
-def generate_filter_fn(
-    target_max_block_size: int,
-) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
-    """Generate function to apply the UDF to each record of blocks,
-    and filter out records that do not satisfy the given predicate.
-    """
-
-    context = DataContext.get_current()
-
-    def fn(
-        blocks: Iterator[Block],
-        ctx: TaskContext,
-        row_fn: UserDefinedFunction,
-    ) -> Iterator[Block]:
-        DataContext._set_current(context)
-        transform_fn = _generate_transform_fn_for_filter(row_fn)
         map_transformer = _create_map_transformer_for_row_based_map_op(transform_fn)
         map_transformer.set_target_max_block_size(target_max_block_size)
         yield from map_transformer.apply_transform(blocks, ctx)
@@ -562,7 +588,6 @@ def generate_map_batches_fn(
     zero_copy_batch: bool = False,
 ) -> Callable[[Iterator[Block], TaskContext, UserDefinedFunction], Iterator[Block]]:
     """Generate function to apply the batch UDF to blocks."""
-    context = DataContext.get_current()
 
     def fn(
         blocks: Iterable[Block],
@@ -571,8 +596,6 @@ def generate_map_batches_fn(
         *fn_args,
         **fn_kwargs,
     ) -> Iterator[Block]:
-        DataContext._set_current(context)
-
         def _batch_fn(batch):
             return batch_fn(batch, *fn_args, **fn_kwargs)
 
