@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import ray
+from ray._private.ray_constants import env_bool
 from ray.air.constants import (  # noqa: F401
     COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV,
     EVALUATION_DATASET_KEY,
@@ -8,7 +9,6 @@ from ray.air.constants import (  # noqa: F401
     PREPROCESSOR_KEY,
     TRAIN_DATASET_KEY,
 )
-from ray._private.ray_constants import env_bool
 
 
 def _get_ray_train_session_dir() -> str:

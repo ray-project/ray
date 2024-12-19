@@ -1,12 +1,9 @@
 from dataclasses import dataclass
 
-from ray.air.config import (
-    CheckpointConfig as _CheckpointConfig,
-    FailureConfig as _FailureConfig,
-    RunConfig as _RunConfig,
-)
+from ray.air.config import CheckpointConfig as _CheckpointConfig
+from ray.air.config import FailureConfig as _FailureConfig
+from ray.air.config import RunConfig as _RunConfig
 from ray.train.context import _copy_doc
-
 
 # NOTE: This is just a pass-through wrapper around `ray.train.RunConfig`
 # in order to detect whether the import module was correct (e.g. `ray.tune.RunConfig`).

@@ -12,7 +12,6 @@ from ray.train._internal.checkpoint_manager import _TrainingResult
 from ray.train._internal.session import (
     TrialInfo,
     _TrainSession,
-    _warn_session_misuse,
     get_session,
     init_session,
     shutdown_session,
@@ -21,7 +20,7 @@ from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.result import DEFAULT_METRIC, RESULT_DUPLICATE, SHOULD_CHECKPOINT
 from ray.tune.trainable.trainable import Trainable
 from ray.tune.utils import _detect_config_single
-from ray.util.annotations import DeveloperAPI, PublicAPI
+from ray.util.annotations import DeveloperAPI
 
 logger = logging.getLogger(__name__)
 

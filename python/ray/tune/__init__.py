@@ -46,7 +46,7 @@ from ray.tune.search.sample import (
 from ray.tune.stopper import Stopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
-from ray.tune.trainable.trainable_fn_utils import get_checkpoint, report, Checkpoint
+from ray.tune.trainable.trainable_fn_utils import Checkpoint, get_checkpoint, report
 from ray.tune.trainable.util import with_parameters, with_resources
 from ray.tune.tune import run, run_experiments
 from ray.tune.tune_config import ResumeConfig, TuneConfig
