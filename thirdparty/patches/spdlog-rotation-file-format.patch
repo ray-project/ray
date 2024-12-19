@@ -1,4 +1,4 @@
-commit cce4e59224c22e80ba86e2882355b3718e51a75e
+commit 2d6bc609769eaa4a70a6dd384351f54c6633f3a9
 Author: dentiny <dentinyhao@gmail.com>
 Date:   Thu Dec 19 17:17:56 2024 +0000
 
@@ -7,7 +7,7 @@ Date:   Thu Dec 19 17:17:56 2024 +0000
     Signed-off-by: dentiny <dentinyhao@gmail.com>
 
 diff --git a/include/spdlog/sinks/rotating_file_sink-inl.h b/include/spdlog/sinks/rotating_file_sink-inl.h
-index cf8b9d5c..0efcc258 100644
+index cf8b9d5c..7580c06f 100644
 --- a/include/spdlog/sinks/rotating_file_sink-inl.h
 +++ b/include/spdlog/sinks/rotating_file_sink-inl.h
 @@ -50,7 +50,7 @@ SPDLOG_INLINE rotating_file_sink<Mutex>::rotating_file_sink(
@@ -15,7 +15,7 @@ index cf8b9d5c..0efcc258 100644
 
  // calc filename according to index and file extension if exists.
 -// e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.3.txt".
-+// e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.txt.1".
++// e.g. calc_filename("logs/mylog.txt, 3) => "logs/mylog.txt.3".
  template<typename Mutex>
  SPDLOG_INLINE filename_t rotating_file_sink<Mutex>::calc_filename(const filename_t &filename, std::size_t index)
  {
