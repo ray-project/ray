@@ -383,18 +383,21 @@ multi-agent environments, directly compatible with RLlib through the built-in
 
 .. testcode::
 
-    from pettingzoo.butterfly import prison_v3
+    from pettingzoo.butterfly import pistonball_v6
 
     from ray.rllib.algorithms.ppo import PPOConfig
     from ray.rllib.env.wrappers.pettingzoo_env import PettingZooEnv
     from ray.tune.registry import register_env
 
     register_env(
-        "prison",
-        lambda cfg: PettingZooEnv(prison_v3.env(num_floors=cfg.get("num_floors", 4))),
+        "pistonball",
+        lambda cfg: PettingZooEnv(pistonball_v6.env(num_floors=cfg.get("n_pistons", 20))),
     )
 
-    config = PPOConfig.environment("prison", env_config={"num_floors": 5})
+    config = (
+        PPOConfig()
+        .environment("pistonball", env_config={"n_pistons": 30})
+    )
 
 See `this example script here <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__
 for an end-to-env example with the `water world env <https://pettingzoo.farama.org/environments/sisl/waterworld/>`__
@@ -426,7 +429,7 @@ The API is directly compatible with RLlib through the built-in
         lambda cfg: OpenSpielEnv(pyspiel.load_game("connect_four")),
     )
 
-    config = PPOConfig.environment("open_spiel_env")
+    config = PPOConfig().environment("open_spiel_env")
 
 
 See here for an `end-to-end example with the Connect-4 env <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/self_play_with_open_spiel.py>`__
@@ -435,9 +438,6 @@ of OpenSpiel trained by an RLlib algorithm, using a self-play strategy.
 
 Running actual Training Experiments with a MultiAgentEnv
 --------------------------------------------------------
-
-
-
 
 If all agents use the same algorithm class to train their policies, configure
 multi-agent training as follows:
@@ -525,9 +525,3 @@ Variable-Sharing Between Policies
 RLlib supports variable-sharing across policies.
 
 See the `PettingZoo parameter sharing example <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/pettingzoo_parameter_sharing.py>`__ for details.
-
-
-Implementing a Centralized Critic
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-TODO!!!
