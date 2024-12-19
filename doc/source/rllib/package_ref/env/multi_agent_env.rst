@@ -22,8 +22,8 @@ rllib.env.multi_agent_env.MultiAgentEnv
     .. automethod:: render
 
 
-Convert gym.Env into MultiAgentEnv
-----------------------------------
+Convert gymnasium.Env into MultiAgentEnv
+----------------------------------------
 
 .. automodule:: ray.rllib.env.multi_agent_env
     :members: make_multi_agent
