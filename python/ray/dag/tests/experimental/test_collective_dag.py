@@ -160,7 +160,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -178,7 +177,6 @@ def test_comm_deduplicate_p2p_and_collective(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), None)},
-        (frozenset(workers), None),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -210,7 +208,6 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -225,11 +222,12 @@ def test_custom_comm_deduplicate(ray_start_regular, monkeypatch):
         )
         dag = MultiOutputNode([dag, collectives[0]])
 
+    # The only P2P send/recv has a type hint with a custom NCCL group
+    # as its transport, so no default P2P NCCL group is created.
     compiled_dag, mock_nccl_group_set = check_nccl_group_init(
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -264,7 +262,6 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
         monkeypatch,
         dag,
         {(frozenset(workers), comm)},
-        (frozenset(workers), comm),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
@@ -290,10 +287,103 @@ def test_custom_comm_init_teardown(ray_start_regular, monkeypatch):
             (frozenset(workers), comm_2),
             (frozenset(workers), comm_3),
         },
-        (frozenset(workers), comm_3),
     )
 
     check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
+def test_custom_comm_compile(ray_start_regular, monkeypatch):
+    """
+    Test `dag.experimental_compile(_default_nccl_group=comm)`.
+    """
+
+    actor_cls = CPUTorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    comm = AbstractNcclGroup(workers)
+
+    with InputNode() as inp:
+        tensors = [worker.return_tensor.bind(inp) for worker in workers]
+        allreduce = collective.allreduce.bind(tensors)
+        recv = workers[0].recv.bind(
+            allreduce[1].with_type_hint(TorchTensorType(transport="nccl"))
+        )
+        dag = MultiOutputNode([recv, allreduce[0]])
+    compiled_dag, mock_nccl_group_set = check_nccl_group_init(
+        monkeypatch,
+        dag,
+        {(frozenset(workers), comm)},
+        (frozenset(workers), comm),
+    )
+
+    check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
+
+    comm_1 = AbstractNcclGroup(workers)
+    comm_2 = AbstractNcclGroup(workers)
+    comm_3 = AbstractNcclGroup(workers)
+
+    with InputNode() as inp:
+        tensors = [worker.return_tensor.bind(inp) for worker in workers]
+        allreduce1 = collective.allreduce.bind(tensors, transport=comm_1)
+        allreduce2 = collective.allreduce.bind(allreduce1, transport=comm_2)
+        recv1 = workers[0].recv.bind(
+            allreduce2[1].with_type_hint(TorchTensorType(transport=comm_3))
+        )
+        recv2 = workers[1].recv.bind(
+            allreduce2[0].with_type_hint(TorchTensorType(transport="nccl"))
+        )
+        dag = MultiOutputNode([recv1, recv2])
+
+    compiled_dag, mock_nccl_group_set = check_nccl_group_init(
+        monkeypatch,
+        dag,
+        {
+            (frozenset(workers), comm_1),
+            (frozenset(workers), comm_2),
+            (frozenset(workers), comm_3),
+        },
+        (frozenset(workers), comm_1),
+    )
+
+    check_nccl_group_teardown(monkeypatch, compiled_dag, mock_nccl_group_set)
+
+
+@pytest.mark.parametrize(
+    "ray_start_regular", [{"num_cpus": 4, "num_gpus": 4}], indirect=True
+)
+def test_custom_comm_compile_error(ray_start_regular):
+    """
+    Test `dag.experimental_compile(_default_nccl_group=comm)` throws appropriate
+    errors when the user specifies a custom NCCL group that does not include the
+    sender and receiver of a P2P communication.
+    """
+    actor_cls = CPUTorchTensorWorker.options()
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    comm = AbstractNcclGroup([workers[0]])
+
+    with InputNode() as inp:
+        send = workers[0].return_tensor.bind(inp)
+        send.with_type_hint(TorchTensorType(transport=comm))
+        dag = workers[1].recv.bind(send)
+
+    with pytest.raises(ValueError):
+        dag.experimental_compile()
+
+    with InputNode() as inp:
+        send = workers[0].return_tensor.bind(inp)
+        send.with_type_hint(TorchTensorType(transport="nccl"))
+        dag = workers[1].recv.bind(send)
+
+    with pytest.raises(ValueError):
+        dag.experimental_compile(_default_nccl_group=comm)
 
 
 if __name__ == "__main__":
