@@ -32,7 +32,8 @@ class instrumented_io_context : public boost::asio::io_context {
   /// \param enable_lag_probe If true, and if related Ray configs are set, schedule a
   /// probe to measure the event loop lag. After a probe is done, it schedules another one
   /// so a io_context.run() call will never return.
-  explicit instrumented_io_context(bool enable_lag_probe = false);
+  explicit instrumented_io_context(bool enable_lag_probe = false,
+                                   bool single_thread_run_stop = false);
 
   /// A proxy post function that collects count, queueing, and execution statistics for
   /// the given handler.
