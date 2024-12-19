@@ -37,7 +37,7 @@ TaskStatusEvent::TaskStatusEvent(
       task_status_(task_status),
       timestamp_(timestamp),
       task_spec_(task_spec),
-      state_update_(std::move(std::move(state_update))) {}
+      state_update_(std::move(state_update)) {}
 
 TaskProfileEvent::TaskProfileEvent(TaskID task_id,
                                    JobID job_id,

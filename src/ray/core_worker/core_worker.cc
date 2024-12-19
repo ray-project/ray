@@ -3522,8 +3522,8 @@ void CoreWorker::HandleReportGeneratorItemReturns(
       request,
       /*execution_signal_callback*/
       [reply,
-       worker_id,
-       generator_id,
+       worker_id = std::move(worker_id),
+       generator_id = std::move(generator_id),
        send_reply_callback = std::move(send_reply_callback)](
           const Status &status, int64_t total_num_object_consumed) {
         RAY_LOG(DEBUG) << "Reply HandleReportGeneratorItemReturns to signal "
