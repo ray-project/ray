@@ -49,7 +49,7 @@ utilize the :ref:`RLlink <rllink-protocol-docs>` protocol.
 The RLlink Protocol
 -------------------
 
-RLLink is a simple, stateful protocol designed for communication between a reinforcement learning (RL) server (ex., RLlib) and an
+RLlink is a simple, stateful protocol designed for communication between a reinforcement learning (RL) server (ex., RLlib) and an
 external client acting as an environment simulator. The protocol enables seamless exchange of RL-specific data such as episodes,
 configuration, and model weights, while also facilitating on-policy training workflows.
 
@@ -60,7 +60,7 @@ Key Features
 - **Strict Request-Response Design**: The protocol is strictly (client) request -> (server) response based. Due to the necessity to let the client simulation run in its own execution loop, the server side refrains from sending any unsolicited messages to the clients.
 - **RL-Specific Capabilities**: Tailored for RL workflows, including episode handling, model weight updates, and configuration management.
 - **Flexible Sampling**: Supports both on-policy and off-policy data collection modes.
-- **JSON**: For reasons of better debuggability and faster iterations, the first versions of RLlink are entirely JSON-based, non-encrypted, and non-secure.
+- **JSON**: For reasons of better debugging and faster iterations, the first versions of RLlink are entirely JSON-based, non-encrypted, and non-secure.
 
 Message Structure
 ~~~~~~~~~~~~~~~~~
@@ -125,7 +125,7 @@ Requests: Client → Server
 
 - **`GET_CONFIG`**
   - Example: `{"type": "GET_CONFIG"}`
-  - Purpose: Request the relevant configuration (e.g., how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message; see below).
+  - Purpose: Request the relevant configuration (for example, how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message; see below).
   - Expected Response: `{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}`.
 
 - **`EPISODES_AND_GET_STATE`**
@@ -146,7 +146,7 @@ Responses: Server → Client
 
 - **`SET_STATE`**
   - Example: `{"type": "PONG"}`
-  - Purpose: Provide the client with the current state (e.g., model weights).
+  - Purpose: Provide the client with the current state (for example, model weights).
   - Body:
     - `onnx_file`: Base64-encoded, compressed ONNX model file.
     - `weights_seq_no`: Sequence number for the model weights, ensuring synchronization.
@@ -175,9 +175,9 @@ Workflow Examples
 
 
 .. note::
-    This protocol is an initial draft of the attempt to develop a wiedly adapted protocol for communication between an external
-    client and a remote RL-service. It will undergo many changes and upgrades as it moves toward maturity, including safety, compression,
-    and other important aspects.
+    This protocol is an initial draft of the attempt to develop a widely adapted protocol for communication between an external
+    client and a remote RL-service. Expect many changes, enhancements, and upgrades as it moves toward maturity, including
+    adding a safety layer and compression.
     For now, however, it offers a lightweight, simple, yet powerful interface for integrating external environments with RL
     frameworks.
 

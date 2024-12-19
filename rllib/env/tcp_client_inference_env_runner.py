@@ -327,8 +327,8 @@ class TcpClientInferenceEnvRunner(EnvRunner, Checkpointable):
                     ],
                     Columns.ACTION_LOGP: episode_data[Columns.ACTION_LOGP],
                 },
-                terminated=episode_data[Columns.TERMINATEDS],
-                truncated=episode_data[Columns.TRUNCATEDS],
+                terminated=episode_data["is_terminated"],
+                truncated=episode_data["is_truncated"],
                 len_lookback_buffer=0,
             )
             episodes.append(episode.finalize())
@@ -542,8 +542,8 @@ def _dummy_client(port: int = 5556):
                     Columns.ACTION_DIST_INPUTS: action_dist_inputs,
                     Columns.ACTION_LOGP: action_logps,
                     Columns.REWARDS: rewards,
-                    Columns.TERMINATEDS: terminated,
-                    Columns.TRUNCATEDS: truncated,
+                    "is_terminated": terminated,
+                    "is_truncated": truncated,
                 }
             )
             # We collected enough samples -> Send them to server.
