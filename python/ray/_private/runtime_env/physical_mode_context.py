@@ -10,10 +10,14 @@ from typing import Optional
 class PhysicalModeExecutionContext:
     """Specs for physical mode execution."""
 
+    # Cgroup for physical mode is organized as tree structure, all application cgroups
+    # are placed under the given application cgroup node.
+    application_cgroup_path: str = None
+    # UUID to indicate current task / actor.
+    uuid: str = None
+
     # Memory related spec.
-    # UUID here is to indicate cgroup path, it's necessary to enable cgroup-based
-    # memory control.
-    memory_cgroup_uuid: str = None
+    #
     # Unit: bytes. Corresponds to cgroup V2 `memory.max`, which enforces hard cap on
     # max memory consumption.
     max_memory: Optional[int] = None
