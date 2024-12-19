@@ -32,6 +32,9 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
     """
+    if checkpoint and not isinstance(checkpoint, Checkpoint):
+        pass
+
     get_session().report(metrics, checkpoint=checkpoint)
 
 

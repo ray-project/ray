@@ -20,14 +20,20 @@ import pyarrow.fs
 import ray.cloudpickle as pickle
 from ray.air._internal.uri_utils import URI
 from ray.air._internal.usage import AirEntrypoint
-from ray.air.config import RunConfig, ScalingConfig
+from ray.train import ScalingConfig
 from ray.train._internal.storage import StorageContext, get_fs_and_path
-from ray.tune import Experiment, ExperimentAnalysis, ResumeConfig, TuneError
+from ray.tune import (
+    Experiment,
+    ExperimentAnalysis,
+    ResumeConfig,
+    TuneError,
+    RunConfig,
+    TuneConfig,
+)
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
 from ray.tune.trainable import Trainable
 from ray.tune.tune import _Config, run
-from ray.tune.tune_config import TuneConfig
 from ray.tune.utils import flatten_dict
 from ray.util import inspect_serializability
 
@@ -92,6 +98,7 @@ class TunerInternal:
         from ray.train.trainer import BaseTrainer
 
         if isinstance(trainable, BaseTrainer):
+            # TODO: warning
             run_config = self._choose_run_config(
                 tuner_run_config=run_config,
                 trainer=trainable,
@@ -100,6 +107,11 @@ class TunerInternal:
 
         self._tune_config = tune_config or TuneConfig()
         self._run_config = copy.copy(run_config) or RunConfig()
+
+        if not isinstance(self._run_config, RunConfig):
+            # TODO: deprecation warning
+            pass
+
         self._entrypoint = _entrypoint
 
         # Restore from Tuner checkpoint.
