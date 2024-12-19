@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import List, Optional
+from typing import Dict, List, Optional
 
 from ray._private.pydantic_compat import BaseModel, Field
 from ray.dashboard.modules.job.pydantic_models import JobDetails
@@ -139,6 +139,7 @@ class TrainRunInfo(BaseModel):
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
     )
+    required_resources_bundles: List[Dict[str, float]] = Field(description="Required resources bundles to schedule all the workers of this run.")
 
 
 @DeveloperAPI
