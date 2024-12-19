@@ -256,6 +256,8 @@ class RayletClientInterface : public PinObjectsInterface,
 
 namespace raylet {
 
+/// Raylet client is responsible for communication with raylet. It implements
+/// [RayletClientInterface] and works on worker registration, lease management, etc.
 class RayletClient : public RayletClientInterface {
  public:
   /// Connect to the raylet.
