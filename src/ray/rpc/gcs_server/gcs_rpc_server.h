@@ -730,9 +730,9 @@ class VirtualClusterInfoGcsServiceHandler {
                                           RemoveVirtualClusterReply *reply,
                                           SendReplyCallback send_reply_callback) = 0;
 
-  virtual void HandleGetAllVirtualClusters(GetAllVirtualClustersRequest request,
-                                           GetAllVirtualClustersReply *reply,
-                                           SendReplyCallback send_reply_callback) = 0;
+  virtual void HandleGetVirtualClusters(GetVirtualClustersRequest request,
+                                        GetVirtualClustersReply *reply,
+                                        SendReplyCallback send_reply_callback) = 0;
 };
 
 class VirtualClusterInfoGrpcService : public GrpcService {
@@ -753,7 +753,7 @@ class VirtualClusterInfoGrpcService : public GrpcService {
       const ClusterID &cluster_id) override {
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(CreateOrUpdateVirtualCluster);
     VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(RemoveVirtualCluster);
-    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetAllVirtualClusters);
+    VIRTUAL_CLUSTER_SERVICE_RPC_HANDLER(GetVirtualClusters);
   }
 
  private:

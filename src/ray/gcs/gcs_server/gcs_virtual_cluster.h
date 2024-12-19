@@ -61,6 +61,8 @@ using CreateOrUpdateVirtualClusterCallback =
     std::function<void(const Status &, std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
 using RemoveVirtualClusterCallback = CreateOrUpdateVirtualClusterCallback;
+using GetVirtualClustersDataCallback =
+    std::function<void(std::shared_ptr<rpc::VirtualClusterTableData>)>;
 
 /// <template_id, _>
 ///               |
@@ -222,6 +224,11 @@ class ExclusiveCluster : public VirtualCluster {
   /// \return The job cluster if it exists, otherwise return nullptr.
   std::shared_ptr<JobCluster> GetJobCluster(const std::string &job_name) const;
 
+  /// Iterate all job clusters.
+  void ForeachJobCluster(
+      const std::function<void(const std::string &, const std::shared_ptr<JobCluster> &)>
+          &fn) const;
+
   /// Check if the virtual cluster is in use.
   ///
   /// \return True if the virtual cluster is in use, false otherwise.
@@ -231,8 +238,6 @@ class ExclusiveCluster : public VirtualCluster {
   bool IsIdleNodeInstance(const std::string &job_cluster_id,
                           const gcs::NodeInstance &node_instance) const override;
 
-  /// The id of the virtual cluster.
-  std::string id_;
   // The mapping from job cluster id to `JobCluster` instance.
   absl::flat_hash_map<std::string, std::shared_ptr<JobCluster>> job_clusters_;
   // The async data flusher.
@@ -294,6 +299,10 @@ class PrimaryCluster : public ExclusiveCluster {
   /// \return Status The status of the removal.
   Status RemoveLogicalCluster(const std::string &logical_cluster_id,
                               RemoveVirtualClusterCallback callback);
+
+  /// Get virtual cluster's proto data.
+  void GetVirtualClustersData(rpc::GetVirtualClustersRequest request,
+                              GetVirtualClustersDataCallback callback);
 
   /// Handle the node added event.
   ///

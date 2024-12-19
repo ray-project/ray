@@ -846,10 +846,15 @@ message RemoveVirtualClusterReply {
   GcsStatus status = 1;
 }
 
-message GetAllVirtualClustersRequest {
+message GetVirtualClustersRequest {
+  // ID of the virtual cluster to get.
+  // It will reply all clusters data if virtual_cluster_id is empty.
+  string virtual_cluster_id = 1;
+  // Wether include job clusters.
+  bool include_job_clusters = 2;
 }
 
-message GetAllVirtualClustersReply {
+message GetVirtualClustersReply {
   GcsStatus status = 1;
   repeated VirtualClusterTableData virtual_cluster_data_list = 2;
 }
@@ -861,5 +866,5 @@ service VirtualClusterInfoGcsService {
   // Remove a virtual cluster.
   rpc RemoveVirtualCluster(RemoveVirtualClusterRequest) returns (RemoveVirtualClusterReply);
   // Get all the virtual clusters.
-  rpc GetAllVirtualClusters(GetAllVirtualClustersRequest) returns (GetAllVirtualClustersReply);
+  rpc GetVirtualClusters(GetVirtualClustersRequest) returns (GetVirtualClustersReply);
 }

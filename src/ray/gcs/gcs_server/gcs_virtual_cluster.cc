@@ -302,6 +302,17 @@ bool ExclusiveCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
   return job_cluster_id == kEmptyJobClusterId;
 }
 
+void ExclusiveCluster::ForeachJobCluster(
+    const std::function<void(const std::string &, const std::shared_ptr<JobCluster> &)>
+        &fn) const {
+  if (fn == nullptr) {
+    return;
+  }
+  for (const auto &[job_cluster_id, job_cluster] : job_clusters_) {
+    fn(job_cluster_id, job_cluster);
+  }
+}
+
 ///////////////////////// MixedCluster /////////////////////////
 bool MixedCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
                                       const gcs::NodeInstance &node_instance) const {
@@ -462,6 +473,46 @@ Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_i
   auto data = logical_cluster->ToProto();
   data->set_is_removed(true);
   return async_data_flusher_(std::move(data), std::move(callback));
+}
+
+void PrimaryCluster::GetVirtualClustersData(rpc::GetVirtualClustersRequest request,
+                                            GetVirtualClustersDataCallback callback) {
+  std::vector<std::shared_ptr<rpc::VirtualClusterTableData>> virtual_cluster_data_list;
+  auto virtual_cluster_id = request.virtual_cluster_id();
+  bool include_job_clusters = request.include_job_clusters();
+
+  auto visit_proto_data = [&](const VirtualCluster *cluster) {
+    if (include_job_clusters && cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
+      auto exclusive_cluster = dynamic_cast<const ExclusiveCluster *>(cluster);
+      exclusive_cluster->ForeachJobCluster(
+          [&](const std::string &_, const auto &job_cluster) {
+            callback(job_cluster->ToProto());
+          });
+    }
+    if (cluster->GetID() != kPrimaryClusterID) {
+      // Skip the primary cluster's proto data.
+      callback(cluster->ToProto());
+    }
+  };
+
+  if (virtual_cluster_id.empty()) {
+    // Get all virtual clusters data.
+    for (const auto &[_, logical_cluster] : logical_clusters_) {
+      visit_proto_data(logical_cluster.get());
+    }
+    visit_proto_data(this);
+    return;
+  }
+
+  if (virtual_cluster_id == kPrimaryClusterID) {
+    visit_proto_data(this);
+    return;
+  }
+
+  auto logical_cluster = GetLogicalCluster(virtual_cluster_id);
+  if (logical_cluster != nullptr) {
+    visit_proto_data(logical_cluster.get());
+  }
 }
 
 }  // namespace gcs

@@ -61,9 +61,9 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
                                   rpc::RemoveVirtualClusterReply *reply,
                                   rpc::SendReplyCallback send_reply_callback) override;
 
-  void HandleGetAllVirtualClusters(rpc::GetAllVirtualClustersRequest request,
-                                   rpc::GetAllVirtualClustersReply *reply,
-                                   rpc::SendReplyCallback send_reply_callback) override;
+  void HandleGetVirtualClusters(rpc::GetVirtualClustersRequest request,
+                                rpc::GetVirtualClustersReply *reply,
+                                rpc::SendReplyCallback send_reply_callback) override;
 
   Status VerifyRequest(const rpc::CreateOrUpdateVirtualClusterRequest &request);
 
