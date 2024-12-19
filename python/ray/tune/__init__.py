@@ -12,15 +12,14 @@ except ImportError as exc:
     ) from exc
 # isort: on
 
-from ray.air.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.air.result import Result
-from ray.train._checkpoint import Checkpoint
 from ray.tune.analysis import ExperimentAnalysis
 from ray.tune.callback import Callback
 from ray.tune.context import TuneContext, get_context
 from ray.tune.error import TuneError
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.tune.experiment import Experiment
+from ray.tune.impl.config import CheckpointConfig, FailureConfig, RunConfig
 from ray.tune.progress_reporter import (
     CLIReporter,
     JupyterNotebookReporter,
@@ -47,7 +46,7 @@ from ray.tune.search.sample import (
 from ray.tune.stopper import Stopper
 from ray.tune.syncer import SyncConfig
 from ray.tune.trainable import Trainable
-from ray.tune.trainable.function_trainable import get_checkpoint, report
+from ray.tune.trainable.trainable_fn_utils import get_checkpoint, report, Checkpoint
 from ray.tune.trainable.util import with_parameters, with_resources
 from ray.tune.tune import run, run_experiments
 from ray.tune.tune_config import ResumeConfig, TuneConfig
