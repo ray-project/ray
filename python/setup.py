@@ -659,19 +659,6 @@ def copy_file(target_dir, filename, rootdir):
     return 0
 
 
-def add_system_dlls(dlls, target_dir):
-    """
-    Copy any required dlls required by the c-extension module and not already
-    provided by python. They will end up in the wheel next to the c-extension
-    module which will guarentee they are available at runtime.
-    """
-    for dll in dlls:
-        # Installing Visual Studio will copy the runtime dlls to system32
-        src = os.path.join(r"c:\Windows\system32", dll)
-        assert os.path.exists(src)
-        shutil.copy(src, target_dir)
-
-
 def pip_run(build_ext):
     if SKIP_BAZEL_BUILD:
         build(False, False, False)
@@ -702,13 +689,6 @@ def pip_run(build_ext):
     copied_files = 0
     for filename in setup_spec.files_to_include:
         copied_files += copy_file(build_ext.build_lib, filename, ROOT_DIR)
-    if sys.platform == "win32":
-        # _raylet.pyd links to some MSVC runtime DLLS, this one may not be
-        # present on a user's machine. While vcruntime140.dll and
-        # vcruntime140_1.dll are also required, they are provided by CPython.
-        runtime_dlls = ["msvcp140.dll"]
-        add_system_dlls(runtime_dlls, os.path.join(build_ext.build_lib, "ray"))
-        copied_files += len(runtime_dlls)
     print("# of files copied to {}: {}".format(build_ext.build_lib, copied_files))
 
 
