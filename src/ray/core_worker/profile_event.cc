@@ -36,14 +36,15 @@ ProfileEvent::ProfileEvent(TaskEventBuffer &task_event_buffer,
       RayConfig::instance().task_events_skip_driver_for_test()) {
     return;
   }
-  event_.reset(new TaskProfileEvent(worker_context.GetCurrentTaskID(),
-                                    worker_context.GetCurrentJobID(),
-                                    task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
-                                    WorkerTypeString(worker_context.GetWorkerType()),
-                                    worker_context.GetWorkerID().Binary(),
-                                    node_ip_address,
-                                    event_name,
-                                    absl::GetCurrentTimeNanos()));
+  event_ = std::make_unique<TaskProfileEvent>(
+      worker_context.GetCurrentTaskID(),
+      worker_context.GetCurrentJobID(),
+      task_spec == nullptr ? 0 : task_spec->AttemptNumber(),
+      WorkerTypeString(worker_context.GetWorkerType()),
+      worker_context.GetWorkerID().Binary(),
+      node_ip_address,
+      event_name,
+      absl::GetCurrentTimeNanos());
 }
 
 ProfileEvent::~ProfileEvent() {
