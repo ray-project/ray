@@ -1,4 +1,5 @@
 from enum import Enum
+from ray._private.log import LOG_KEY_TIMESTAMP_NS
 
 # A set containing the standard attributes of a LogRecord. This is used to
 # help us determine which attributes constitute Ray or user-provided context.
@@ -54,4 +55,4 @@ class LogKey(str, Enum):
     EXC_TEXT = "exc_text"
 
     # Ray logging context
-    TIMESTAMP_NS = "timestamp_ns"
+    TIMESTAMP_NS = LOG_KEY_TIMESTAMP_NS
