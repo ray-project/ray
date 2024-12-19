@@ -22,6 +22,7 @@
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
 #include "ray/util/array.h"
+#include "ray/util/type_traits.h"
 
 namespace ray {
 namespace gcs {
@@ -40,20 +41,25 @@ struct GcsServerIOContextPolicy {
       return IndexOf("pubsub_io_context");
     } else if constexpr (std::is_same_v<T, syncer::RaySyncer>) {
       return IndexOf("ray_syncer_io_context");
+    } else if constexpr (std::is_same_v<T, GcsInternalKVManager>) {
+      return IndexOf("internal_kv_io_context");
     } else {
       // Due to if-constexpr limitations, this have to be in an else block.
-      // Using this tuple_size_v to put T into compile error message.
-      static_assert(std::tuple_size_v<std::tuple<T>> == 0, "unknown type");
+      // Using this template to put T into compile error message.
+      static_assert(AlwaysFalse<T>, "unknown type");
     }
   }
 
   // This list must be unique and complete set of names returned from
   // GetDedicatedIOContextIndex. Or you can get runtime crashes when accessing a missing
   // name, or get leaks by creating unused threads.
-  constexpr static std::array<std::string_view, 3> kAllDedicatedIOContextNames{
-      "task_io_context", "pubsub_io_context", "ray_syncer_io_context"};
-  constexpr static std::array<bool, 3> kAllDedicatedIOContextEnableLagProbe{
-      true, true, true};
+  constexpr static std::array<std::string_view, 4> kAllDedicatedIOContextNames{
+      "task_io_context",
+      "pubsub_io_context",
+      "ray_syncer_io_context",
+      "internal_kv_io_context"};
+  constexpr static std::array<bool, 4> kAllDedicatedIOContextEnableLagProbe{
+      true, true, true, true};
 
   constexpr static size_t IndexOf(std::string_view name) {
     return ray::IndexOf(kAllDedicatedIOContextNames, name);
