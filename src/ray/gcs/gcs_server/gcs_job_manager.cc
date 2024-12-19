@@ -87,7 +87,8 @@ void GcsJobManager::HandleAddJob(rpc::AddJobRequest request,
   mutable_job_table_data.set_start_time(time);
   mutable_job_table_data.set_timestamp(time);
   const JobID job_id = JobID::FromBinary(mutable_job_table_data.job_id());
-  RAY_LOG(INFO) << "Adding job, job id = " << job_id
+  RAY_LOG(INFO) << "Adding job, job id = " << job_id << ", virtual cluster id = "
+                << mutable_job_table_data.virtual_cluster_id()
                 << ", driver pid = " << mutable_job_table_data.driver_pid();
 
   auto on_done = [this,

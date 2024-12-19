@@ -102,10 +102,6 @@ bool NodeResources::IsAvailable(const ResourceRequest &resource_request,
 }
 
 bool NodeResources::IsFeasible(const ResourceRequest &resource_request) const {
-  // This ensures that resource allocation considers the virtual cluster constraints.
-  if (!resource_request.is_virtual_cluster_feasible(this->node_id)) {
-    return false;
-  }
   return this->total >= resource_request.GetResourceSet();
 }
 

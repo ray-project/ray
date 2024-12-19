@@ -376,11 +376,7 @@ void GcsServer::InitClusterResourceScheduler() {
       NodeResources(),
       /*is_node_available_fn=*/
       [](auto) { return true; },
-      /*is_local_node_with_raylet=*/false,
-      /*is_node_in_virtual_cluster_fn=*/
-      [](scheduling::NodeID node_id, const std::string &virtual_cluster_id) {
-        return true;
-      });
+      /*is_local_node_with_raylet=*/false);
 }
 
 void GcsServer::InitClusterTaskManager() {

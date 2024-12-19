@@ -121,8 +121,6 @@ message SchedulingStrategy {
     NodeAffinitySchedulingStrategy node_affinity_scheduling_strategy = 4;
     NodeLabelSchedulingStrategy node_label_scheduling_strategy = 5;
   }
-  // Hold virtual cluster-related information, enabling its use in scheduling logic.
-  string virtual_cluster_id = 11;
 }
 
 // Address of a worker or node manager.

@@ -54,9 +54,7 @@ class ClusterResourceScheduler {
                            scheduling::NodeID local_node_id,
                            const NodeResources &local_node_resources,
                            std::function<bool(scheduling::NodeID)> is_node_available_fn,
-                           bool is_local_node_with_raylet = true,
-                           std::function<bool(scheduling::NodeID, const std::string &)>
-                               is_node_in_virtual_cluster_fn = nullptr);
+                           bool is_local_node_with_raylet = true);
 
   ClusterResourceScheduler(
       instrumented_io_context &io_service,
@@ -67,9 +65,7 @@ class ClusterResourceScheduler {
       std::function<bool(void)> get_pull_manager_at_capacity = nullptr,
       std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully =
           nullptr,
-      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {},
-      std::function<bool(scheduling::NodeID, const std::string &)>
-          is_node_in_virtual_cluster_fn = nullptr);
+      const absl::flat_hash_map<std::string, std::string> &local_node_labels = {});
 
   /// Schedule the specified resources to the cluster nodes.
   ///
@@ -223,9 +219,6 @@ class ClusterResourceScheduler {
       bundle_scheduling_policy_;
   /// Whether there is a raylet on the local node.
   bool is_local_node_with_raylet_ = true;
-  /// Callback to check if node is in virtual cluster.
-  std::function<bool(scheduling::NodeID, const std::string &)>
-      is_node_in_virtual_cluster_fn_;
 
   friend class ClusterResourceSchedulerTest;
   FRIEND_TEST(ClusterResourceSchedulerTest, PopulatePredefinedResources);
@@ -250,7 +243,6 @@ class ClusterResourceScheduler {
   FRIEND_TEST(ClusterTaskManagerTestWithGPUsAtHead, RleaseAndReturnWorkerCpuResources);
   FRIEND_TEST(ClusterResourceSchedulerTest, TestForceSpillback);
   FRIEND_TEST(ClusterResourceSchedulerTest, AffinityWithBundleScheduleTest);
-  FRIEND_TEST(ClusterResourceSchedulerTest, VirtualClusterScheduleTest);
 };
 
 }  // end namespace ray
