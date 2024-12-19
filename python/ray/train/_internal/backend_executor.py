@@ -289,7 +289,7 @@ class BackendExecutor:
             CUDA_VISIBLE_DEVICES:
             - Worker1: "0,1,2,3"
             - Worker2: "0,1,2,3"
-            - Worker2: "0,1"
+            - Worker3: "0,1"
 
         """
         self._share_resource_ids(
