@@ -13,7 +13,6 @@ from ray.train._internal.state.schema import (
 )
 from ray.train._internal.utils import check_for_failure
 from ray.train._internal.worker_group import WorkerGroup
-from ray.util.placement_group import PlacementGroup
 
 logger = logging.getLogger(__name__)
 
@@ -38,7 +37,6 @@ class TrainRunStateManager:
         datasets: Dict[str, Dataset],
         worker_group: WorkerGroup,
         start_time_ms: float,
-        placement_group: PlacementGroup,
         status_detail: str = "",
     ) -> None:
         """Collect Train Run Info and report to StateActor."""
@@ -62,6 +60,7 @@ class TrainRunStateManager:
                 node_ip=ray.util.get_node_ip_address(),
                 gpu_ids=ray.get_gpu_ids(),
                 pid=os.getpid(),
+                required_resources_bundles=train_context.get_trial_resources().bundles,
             )
 
         futures = [
@@ -89,7 +88,6 @@ class TrainRunStateManager:
             for ds_name, ds in datasets.items()
         ]
 
-        train_context = ray.train.get_context()
         updates = dict(
             id=run_id,
             job_id=job_id,
@@ -100,7 +98,6 @@ class TrainRunStateManager:
             start_time_ms=start_time_ms,
             run_status=run_status,
             status_detail=status_detail,
-            required_resources_bundles=placement_group.bundle_specs,
         )
 
         # Clear the cached info to avoid registering the same run twice

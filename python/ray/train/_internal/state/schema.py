@@ -50,6 +50,7 @@ class TrainWorkerInfo(BaseModel):
     status: Optional[ActorStatusEnum] = Field(
         description="The status of the train worker actor. It can be ALIVE or DEAD."
     )
+    required_resources_bundles: List[Dict[str, float]] = Field(description="Required resources bundles to schedule all the workers of this run.")
 
 
 @DeveloperAPI
@@ -139,7 +140,6 @@ class TrainRunInfo(BaseModel):
         description="The UNIX timestamp of the end time of this Train run. "
         "If null, the Train run has not ended yet."
     )
-    required_resources_bundles: List[Dict[str, float]] = Field(description="Required resources bundles to schedule all the workers of this run.")
 
 
 @DeveloperAPI

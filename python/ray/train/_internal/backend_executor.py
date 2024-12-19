@@ -565,7 +565,6 @@ class BackendExecutor:
                 datasets=datasets,
                 worker_group=self.worker_group,
                 start_time_ms=self._start_time_ms,
-                placement_group=self._placement_group,
                 run_status=RunStatusEnum.RUNNING,
             )
 
