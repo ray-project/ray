@@ -1,3 +1,6 @@
+from ray.rllib.core import ALL_MODULES  # noqa
+
+
 # Algorithm ResultDict keys.
 EVALUATION_RESULTS = "evaluation"
 ENV_RUNNER_RESULTS = "env_runners"
@@ -111,5 +114,4 @@ TARGET_NET_UPDATE_TIMER = "target_net_update"
 
 # Learner.
 LEARNER_STATS_KEY = "learner_stats"
-ALL_MODULES = "__all_modules__"
 TD_ERROR_KEY = "td_error"
