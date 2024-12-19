@@ -2,15 +2,11 @@
 from enum import Enum
 from dataclasses import dataclass
 from datetime import timedelta
+import importlib.util
 
 _NUMPY_AVAILABLE = True
-_TORCH_AVAILABLE = True
+_TORCH_AVAILABLE = importlib.util.find_spec("torch") is not None
 _CUPY_AVAILABLE = True
-
-try:
-    import torch as th  # noqa: F401
-except ImportError:
-    _TORCH_AVAILABLE = False
 
 try:
     import cupy as cp  # noqa: F401
