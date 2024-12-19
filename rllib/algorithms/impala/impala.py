@@ -595,7 +595,12 @@ class IMPALA(Algorithm):
                         self._aggregator_actor_to_learner[agg_idx] = learner_idx
                         break
                 if agg_idx not in self._aggregator_actor_to_learner:
-                    raise ValueError("CANT BE!!")
+                    raise RuntimeError(
+                        "No Learner worker found that matches aggregation worker "
+                        f"#{agg_idx}'s node ({aggregator_location[0]}) and device "
+                        f"({aggregator_location[1]})! The Learner workers' locations "
+                        f"are {learner_locations}."
+                    )
 
         # Create our local mixin buffer if the num of aggregation workers is 0.
         else:
