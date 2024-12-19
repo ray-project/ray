@@ -383,6 +383,7 @@
       --shuffle
 
   variations:
+    - __suffix__: regular
     - __suffix__: chaos
       run:
         prepare: > 
@@ -406,6 +407,7 @@
     script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
   variations:
+    - __suffix__: regular
     - __suffix__: chaos
       run:
         prepare: > 
