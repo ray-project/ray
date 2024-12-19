@@ -16,7 +16,7 @@ TorchTensorAllocator = Callable[[Tuple[int], "torch.dtype"], "torch.Tensor"]
 
 
 @DeveloperAPI
-class GPUCommunicator(ABC):
+class Communicator(ABC):
     """
     Communicator for a group of aDAG actors on Nvidia GPU.
 
@@ -147,5 +147,12 @@ class GPUCommunicator(ABC):
 
         Any destruction and cleanup for the GPU communicator should be
         done here. Implement as a noop is nothing is needed.
+        """
+        raise NotImplementedError
+
+    @abstractmethod
+    def get_transport_name() -> str:
+        """
+        Return the type of the communicator (gpu or cpu).
         """
         raise NotImplementedError
