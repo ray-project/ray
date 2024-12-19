@@ -175,8 +175,8 @@ class DQNRainbowRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
 
         Results:
             A dictionary containing the Q-value predictions ("qf_preds")
-            and in case of distributional Q-learning in addition to the Q-value
-            predictions ("qf_preds") the support atoms ("atoms"), the Q-logits
+            and in case of distributional Q-learning - in addition to the Q-value
+            predictions ("qf_preds") - the support atoms ("atoms"), the Q-logits
             ("qf_logits"), and the probabilities ("qf_probs").
         """
         # If we have a dueling architecture we have to add the value stream.

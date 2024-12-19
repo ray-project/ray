@@ -1,8 +1,13 @@
-from ray.rllib.algorithms.appo.default_appo_rl_module import DefaultAPPORLModule
-from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-    DefaultPPOTorchRLModule
+# Backward compat import.
+from ray.rllib.algorithms.appo.torch.default_appo_torch_rl_module import (  # noqa
+    DefaultAPPOTorchRLModule as APPOTorchRLModule,
 )
+from ray.rllib.utils.deprecation import deprecation_warning
 
 
-class DefaultAPPOTorchRLModule(DefaultPPOTorchRLModule, DefaultAPPORLModule):
-    pass
+deprecation_warning(
+    old="ray.rllib.algorithms.appo.torch.appo_torch_rl_module.APPOTorchRLModule",
+    new="ray.rllib.algorithms.appo.torch.default_appo_torch_rl_module."
+    "DefaultAPPOTorchRLModule",
+    error=False,
+)
