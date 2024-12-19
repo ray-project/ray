@@ -4,7 +4,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class RLlinkProtocol(Enum):
+class RLlink(Enum):
     # Requests: Client (external env) -> Server (RLlib).
     # ----
     # Ping command (initial handshake).
