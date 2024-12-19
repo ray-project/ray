@@ -85,7 +85,7 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
 void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
   io_service_.dispatch(
       [this, node_id]() {
-        thread_checker_.IsOnSameThread();
+        RAY_CHECK(thread_checker_.IsOnSameThread());
 
         auto iter = health_check_contexts_.find(node_id);
 
@@ -103,6 +103,8 @@ void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
 
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
+
+  RAY_CHECK(thread_checker_.IsOnSameThread());
 
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
