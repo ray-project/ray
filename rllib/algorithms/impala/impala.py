@@ -381,6 +381,12 @@ class IMPALAConfig(AlgorithmConfig):
                     "does NOT support a mixin replay buffer yet for "
                     f"{self} (set `config.replay_proportion` to 0.0)!"
                 )
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
+                raise ValueError(
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
+                )
             # Entropy coeff schedule checking.
             if self.entropy_coeff_schedule is not None:
                 raise ValueError(

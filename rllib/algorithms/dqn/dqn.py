@@ -413,30 +413,31 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Warn about new API stack on by default.
         if self.enable_rl_module_and_learner:
-            logger.warning(
-                f"You are running {self.algo_class.__name__} on the new API stack! "
-                "This is the new default behavior for this algorithm. If you don't "
-                "want to use the new API stack, set `config.api_stack("
-                "enable_rl_module_and_learner=False,"
-                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-            )
-
-        if (
-            not self.enable_rl_module_and_learner
-            and self.exploration_config["type"] == "ParameterNoise"
-        ):
-            if self.batch_mode != "complete_episodes":
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
                 raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.env_runners("
-                    "batch_mode='complete_episodes')`."
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
                 )
+        else:
+            if not self.in_evaluation:
+                validate_buffer_config(self)
 
-        if not self.enable_env_runner_and_connector_v2 and not self.in_evaluation:
-            validate_buffer_config(self)
+            # TODO (simon): Find a clean solution to deal with configuration configs
+            #  when using the new API stack.
+            if self.exploration_config["type"] == "ParameterNoise":
+                if self.batch_mode != "complete_episodes":
+                    raise ValueError(
+                        "ParameterNoise Exploration requires `batch_mode` to be "
+                        "'complete_episodes'. Try setting `config.env_runners("
+                        "batch_mode='complete_episodes')`."
+                    )
+                if self.noisy:
+                    raise ValueError(
+                        "ParameterNoise Exploration and `noisy` network cannot be"
+                        " used at the same time!"
+                    )
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
             raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
@@ -453,24 +454,6 @@ class DQNConfig(AlgorithmConfig):
                 "Try setting config.env_runners(rollout_fragment_length="
                 f"{self.n_step})."
             )
-
-        # TODO (simon): Find a clean solution to deal with
-        # configuration configs when using the new API stack.
-        if (
-            not self.enable_rl_module_and_learner
-            and self.exploration_config["type"] == "ParameterNoise"
-        ):
-            if self.batch_mode != "complete_episodes":
-                raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.env_runners("
-                    "batch_mode='complete_episodes')`."
-                )
-            if self.noisy:
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!"
-                )
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
