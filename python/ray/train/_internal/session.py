@@ -36,7 +36,7 @@ from ray.train.constants import (
 )
 from ray.train.error import SessionMisuseError
 from ray.train.utils import log_deprecation_warning
-from ray.util.annotations import DeveloperAPI, PublicAPI, RayDeprecationWarning
+from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
 from ray.util.scheduling_strategies import (

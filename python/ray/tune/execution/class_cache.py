@@ -3,8 +3,8 @@ import os
 import ray
 from ray.air.constants import COPY_DIRECTORY_CHECKPOINTS_INSTEAD_OF_MOVING_ENV
 from ray.train.constants import (
-    RAY_CHDIR_TO_TRIAL_DIR,
     ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR,
+    RAY_CHDIR_TO_TRIAL_DIR,
 )
 
 DEFAULT_ENV_VARS = {
