@@ -3,7 +3,7 @@ import threading
 from typing import Union
 import time
 
-LOG_KEY_TIMESTAMP_NS = "timestamp_ns"
+INTERNAL_TIMESTAMP_LOG_KEY = "_ray_timestamp_ns"
 
 
 def _print_loggers():
@@ -81,7 +81,7 @@ def _setup_log_record_factory():
         ct = time.time_ns()
         record.created = ct / 1e9
 
-        record.__dict__[LOG_KEY_TIMESTAMP_NS] = ct
+        record.__dict__[INTERNAL_TIMESTAMP_LOG_KEY] = ct
 
         return record
 

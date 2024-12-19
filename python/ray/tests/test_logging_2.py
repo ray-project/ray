@@ -21,7 +21,7 @@ class TestCoreContextFilter:
         # Ray is not initialized so no context
         for attr in log_context:
             assert not hasattr(record, attr)
-        assert hasattr(record, "timestamp_ns")
+        assert hasattr(record, "_ray_timestamp_ns")
 
         ray.init()
         record = logging.makeLogRecord({})
@@ -38,7 +38,7 @@ class TestCoreContextFilter:
         # This is not a worker process, so actor_id and task_id should not exist.
         for attr in ["actor_id", "task_id"]:
             assert not hasattr(record, attr)
-        assert hasattr(record, "timestamp_ns")
+        assert hasattr(record, "_ray_timestamp_ns")
 
     def test_task_process(self, shutdown_only):
         @ray.remote
@@ -61,7 +61,7 @@ class TestCoreContextFilter:
                 assert getattr(record, attr) == expected_values[attr]
             assert not hasattr(record, "actor_id")
             assert not hasattr(record, "actor_name")
-            assert hasattr(record, "timestamp_ns")
+            assert hasattr(record, "_ray_timestamp_ns")
 
         obj_ref = f.remote()
         ray.get(obj_ref)
@@ -88,7 +88,7 @@ class TestCoreContextFilter:
                 for attr in should_exist:
                     assert hasattr(record, attr)
                     assert getattr(record, attr) == expected_values[attr]
-                assert hasattr(record, "timestamp_ns")
+                assert hasattr(record, "_ray_timestamp_ns")
 
         actor = A.remote()
         ray.get(actor.f.remote())

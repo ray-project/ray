@@ -1066,8 +1066,8 @@ class TestSetupLogRecordFactory:
         ray.log._setup_log_record_factory()
         record_new = logging.makeLogRecord({})
 
-        assert "timestamp_ns" not in record_old.__dict__
-        assert "timestamp_ns" in record_new.__dict__
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
 
     def test_setup_log_record_factory_in_generate_logging_config(self):
         # Reset the log record factory to the default.
@@ -1079,8 +1079,8 @@ class TestSetupLogRecordFactory:
         ray.log.generate_logging_config()
         record_new = logging.makeLogRecord({})
 
-        assert "timestamp_ns" not in record_old.__dict__
-        assert "timestamp_ns" in record_new.__dict__
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
 
 
 if __name__ == "__main__":
