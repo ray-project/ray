@@ -53,10 +53,9 @@ def generate_sort_fn(
             )
         else:
             boundaries = [(b,) for b in sort_key.boundaries]
+            if sort_key.get_descending()[0]:
+                boundaries = boundaries[::-1]
             num_outputs = len(boundaries) + 1
-        _, ascending = sort_key.to_pandas_sort_args()
-        if not ascending:
-            boundaries.reverse()
         sort_spec = SortTaskSpec(
             boundaries=boundaries, sort_key=sort_key, batch_format=batch_format
         )
