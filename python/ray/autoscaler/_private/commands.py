@@ -1153,16 +1153,15 @@ def exec_cluster(
         },
         docker_config=config.get("docker"),
     )
-    shutdown_after_run = False
     if cmd and stop:
         cmd = "; ".join(
             [
                 cmd,
                 "ray stop",
                 "ray teardown ~/ray_bootstrap_config.yaml --yes --workers-only",
+                "sudo shutdown -h now",
             ]
         )
-        shutdown_after_run = True
 
     result = _exec(
         updater,
@@ -1172,7 +1171,7 @@ def exec_cluster(
         port_forward=port_forward,
         with_output=with_output,
         run_env=run_env,
-        shutdown_after_run=shutdown_after_run,
+        shutdown_after_run=False,
         extra_screen_args=extra_screen_args,
     )
     if tmux or screen:

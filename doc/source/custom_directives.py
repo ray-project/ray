@@ -481,6 +481,7 @@ class SkillLevel(ExampleEnum):
 class Framework(ExampleEnum):
     """Framework type for example metadata."""
 
+    AWSNEURON = "AWS Neuron"
     PYTORCH = "PyTorch"
     LIGHTNING = "Lightning"
     TRANSFORMERS = "Transformers"

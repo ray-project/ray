@@ -3,6 +3,7 @@ import platform
 
 import ray
 from ray.cluster_utils import AutoscalingCluster
+import time
 
 
 @pytest.mark.skipif(platform.system() == "Windows", reason="Failing on Windows.")
@@ -168,6 +169,54 @@ def test_autoscaler_cpu_task_gpu_node_up(autoscaler_v2):
 
     finally:
         cluster.shutdown()
+
+
+@pytest.fixture
+def setup_cluster(request):
+    autoscaler_v2 = request.param
+    cluster = AutoscalingCluster(
+        head_resources={"CPU": 0},
+        worker_node_types={
+            "type-1": {
+                "resources": {"CPU": 1},
+                "node_config": {},
+                "min_workers": 0,
+                "max_workers": 5,
+            },
+        },
+        idle_timeout_minutes=0.1,
+        autoscaler_v2=autoscaler_v2,
+    )
+    try:
+        cluster.start()
+        ray.init("auto")
+        yield cluster
+    finally:
+        ray.shutdown()
+        cluster.shutdown()
+
+
+@pytest.mark.parametrize(
+    "setup_cluster", [False, True], ids=["v1", "v2"], indirect=True
+)
+def test_autoscaler_not_kill_blocking_node(setup_cluster):
+    """Tests that the autoscaler does not kill a node that
+    has worker in blocking state."""
+
+    @ray.remote(num_cpus=1)
+    def short_task():
+        time.sleep(5)
+
+    @ray.remote(num_cpus=1)
+    def long_task():
+        time.sleep(20)
+
+    @ray.remote(num_cpus=1)
+    def f():
+        future_list = [short_task.remote(), long_task.remote()]
+        ray.get(future_list)
+
+    ray.get(f.remote(), timeout=30)
 
 
 if __name__ == "__main__":

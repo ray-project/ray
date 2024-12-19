@@ -72,6 +72,12 @@ class BlockType(Enum):
 # returned from batch UDFs.
 DataBatch = Union["pyarrow.Table", "pandas.DataFrame", Dict[str, np.ndarray]]
 
+# User-facing data column type. This is the data type for data that is supplied to and
+# returned from column UDFs.
+DataBatchColumn = Union[
+    "pyarrow.ChunkedArray", "pyarrow.Array", "pandas.Series", np.ndarray
+]
+
 
 # A class type that implements __call__.
 CallableClass = type
