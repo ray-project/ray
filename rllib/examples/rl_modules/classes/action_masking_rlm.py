@@ -144,7 +144,7 @@ class ActionMaskingTorchRLModule(ActionMaskingRLModule, PPOTorchRLModule):
         # Extract the available actions tensor from the observation.
         action_mask = batch[Columns.OBS].pop("action_mask")
 
-        # Modify the batch for the `PPORLModule`'s `forward` method, i.e.
+        # Modify the batch for the `DefaultPPORLModule`'s `forward` method, i.e.
         # pass only `"obs"` into the `forward` method.
         batch[Columns.OBS] = batch[Columns.OBS].pop("observations")
 

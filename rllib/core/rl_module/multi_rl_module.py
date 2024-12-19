@@ -650,21 +650,14 @@ class MultiRLModuleSpec:
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
-        """Builds either the multi-agent module or the single-agent module.
-
-        If module_id is None, it builds the multi-agent module. Otherwise, it builds
-        the single-agent module with the given module_id.
-
-        Note: If when build is called the module_specs is not a dictionary, it will
-        raise an error, since it should have been updated by the caller to inform us
-        about the module_ids.
+        """Builds either the MultiRLModule or a (single) sub-RLModule under `module_id`.
 
         Args:
             module_id: Optional ModuleID of a single RLModule to be built. If None
                 (default), builds the MultiRLModule.
 
         Returns:
-            The built RLModule if module_id is provided, otherwise the built
+            The built RLModule if `module_id` is provided, otherwise the built
             MultiRLModule.
         """
         self._check_before_build()

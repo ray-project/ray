@@ -157,11 +157,13 @@ class PPOConfig(AlgorithmConfig):
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-                PPOTorchRLModule,
+            from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+                DefaultPPOTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=PPOTorchRLModule, catalog_class=PPOCatalog)
+            return RLModuleSpec(
+                module_class=DefaultPPOTorchRLModule, catalog_class=PPOCatalog
+            )
         elif self.framework_str == "tf2":
             from ray.rllib.algorithms.ppo.tf.ppo_tf_rl_module import PPOTfRLModule
 

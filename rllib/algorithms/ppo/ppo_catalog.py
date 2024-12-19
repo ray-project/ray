@@ -48,7 +48,7 @@ class PPOCatalog(Catalog):
         - Value Function Head: The head used to compute the value function.
 
     The ActorCriticEncoder is a wrapper around Encoders to produce separate outputs
-    for the policy and value function. See implementations of PPORLModule for
+    for the policy and value function. See implementations of DefaultPPORLModule for
     more details.
 
     Any custom ActorCriticEncoder can be built by overriding the
