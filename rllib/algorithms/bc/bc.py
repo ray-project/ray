@@ -71,7 +71,7 @@ class BCConfig(MARWILConfig):
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
             from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
-                DefaultBCTorchRLModule,
+                DefaultBCTorchRLModule
             )
 
             return RLModuleSpec(

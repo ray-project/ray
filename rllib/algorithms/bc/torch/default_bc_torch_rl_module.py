@@ -19,7 +19,6 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     Passes observations from the input batch through the encoder, then the pi head to
     compute action logits.
     """
-
     @override(RLModule)
     def setup(self):
         # Build model components (encoder and pi head) from catalog.
