@@ -24,6 +24,7 @@ class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     and the `TargetNetworkAPI` (see
     ray.rllib.core.rl_module.apis.target_network_api.py).
     """
+
     @override(TargetNetworkAPI)
     def make_target_networks(self):
         self._old_encoder = make_target_network(self.encoder)

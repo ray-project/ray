@@ -1,5 +1,7 @@
 # Backward compat import.
-from ray.rllib.algorithms.ppo.default_ppo_rl_module import DefaultPPORLModule as PPORLModule  # noqa
+from ray.rllib.algorithms.ppo.default_ppo_rl_module import (  # noqa
+    DefaultPPORLModule as PPORLModule,
+)
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(

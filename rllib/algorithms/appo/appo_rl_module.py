@@ -1,5 +1,7 @@
 # Backward compat import.
-from ray.rllib.algorithms.appo.default_appo_rl_module import DefaultAPPORLModule as APPORLModule  # noqa
+from ray.rllib.algorithms.appo.default_appo_rl_module import (  # noqa
+    DefaultAPPORLModule as APPORLModule,
+)
 from ray.rllib.utils.deprecation import deprecation_warning
 
 deprecation_warning(

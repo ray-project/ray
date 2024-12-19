@@ -1,5 +1,7 @@
 # Backward compat import.
-from ray.rllib.algorithms.appo.torch.default_appo_torch_rl_module import DefaultAPPOTorchRLModule as APPOTorchRLModule  # noqa
+from ray.rllib.algorithms.appo.torch.default_appo_torch_rl_module import (  # noqa
+    DefaultAPPOTorchRLModule as APPOTorchRLModule,
+)
 from ray.rllib.utils.deprecation import deprecation_warning
 
 

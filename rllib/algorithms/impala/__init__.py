@@ -17,7 +17,6 @@ __all__ = [
     "IMPALAConfig",
     "IMPALALearner",
     "IMPALATorchLearner",
-
     # @OldAPIStack
     "ImpalaTF1Policy",
     "ImpalaTF2Policy",

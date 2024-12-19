@@ -15,7 +15,6 @@ __all__ = [
     "MARWILConfig",
     "MARWILLearner",
     "MARWILTorchLearner",
-
     # @OldAPIStack
     "MARWILTF1Policy",
     "MARWILTF2Policy",

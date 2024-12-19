@@ -19,6 +19,7 @@ class DefaultPPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     (or TorchRLModule) subclass as long as the custom class also implements the
     `ValueFunctionAPI` (see ray.rllib.core.rl_module.apis.value_function_api.py)
     """
+
     @override(RLModule)
     def setup(self):
         if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
