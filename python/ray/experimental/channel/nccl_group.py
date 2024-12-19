@@ -4,10 +4,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-    TorchTensorAllocator,
-)
+from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
@@ -21,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _NcclGroup(GPUCommunicator):
+class _NcclGroup(Communicator):
     """
     Represents an actor's NCCL communicator. This is the default NCCL communicator
     to be used in aDAG if a custom communicator is not provided.
@@ -316,3 +313,6 @@ class _NcclGroup(GPUCommunicator):
             # flag is True when they exit from the abort.
             self._comm.abort()
             self._comm.destroy()
+
+    def get_transport_name(self) -> str:
+        return "nccl"
