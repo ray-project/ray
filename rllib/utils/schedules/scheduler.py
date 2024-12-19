@@ -87,7 +87,10 @@ class Scheduler:
             ValueError: In case, errors are found in the schedule's format.
         """
         # Fixed (single) value.
-        if isinstance(fixed_value_or_schedule, (int, float)):
+        if (
+            isinstance(fixed_value_or_schedule, (int, float))
+            or fixed_value_or_schedule is None
+        ):
             return
 
         if not isinstance(fixed_value_or_schedule, (list, tuple)) or (
