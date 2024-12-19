@@ -54,7 +54,7 @@ absl::optional<NodeID> LocalityAwareLeasePolicy::GetBestNodeIdForTask(
   absl::optional<NodeID> max_bytes_node;
   // Finds the node with the maximum number of object bytes local.
   for (const ObjectID &object_id : object_ids) {
-    if (auto locality_data = locality_data_provider_->GetLocalityData(object_id)) {
+    if (auto locality_data = locality_data_provider_.GetLocalityData(object_id)) {
       for (const NodeID &node_id : locality_data->nodes_containing_object) {
         auto &bytes = bytes_local_table[node_id];
         bytes += locality_data->object_size;
