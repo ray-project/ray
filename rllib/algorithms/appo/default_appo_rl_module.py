@@ -8,13 +8,14 @@ from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.apis import TargetNetworkAPI
 from ray.rllib.utils.typing import NetworkType
-
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     """Default RLModule used by APPO, if user does not specify a custom RLModule.
 

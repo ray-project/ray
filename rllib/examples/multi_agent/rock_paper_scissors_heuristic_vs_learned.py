@@ -112,9 +112,13 @@ if __name__ == "__main__":
                 rl_module_specs={
                     "always_same": RLModuleSpec(
                         module_class=AlwaysSameHeuristicRLM,
+                        observation_space=gym.spaces.Discrete(4),
+                        action_space=gym.spaces.Discrete(3),
                     ),
                     "beat_last": RLModuleSpec(
                         module_class=BeatLastHeuristicRLM,
+                        observation_space=gym.spaces.Discrete(4),
+                        action_space=gym.spaces.Discrete(3),
                     ),
                     "learned": RLModuleSpec(
                         model_config=DefaultModelConfig(

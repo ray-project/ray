@@ -9,7 +9,7 @@ from ray.rllib.algorithms.sac.sac_learner import (
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -20,8 +20,8 @@ from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
-class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
+@DeveloperAPI
+class DefaultSACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
     It consists of several architectures, each in turn composed of

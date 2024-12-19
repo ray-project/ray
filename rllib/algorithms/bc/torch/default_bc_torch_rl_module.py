@@ -9,7 +9,7 @@ from ray.rllib.utils.annotations import override
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     """The default TorchRLModule used, if no custom RLModule is provided.
 
@@ -19,6 +19,7 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     Passes observations from the input batch through the encoder, then the pi head to
     compute action logits.
     """
+
     @override(RLModule)
     def setup(self):
         # Build model components (encoder and pi head) from catalog.

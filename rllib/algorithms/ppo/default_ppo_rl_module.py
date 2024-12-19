@@ -11,7 +11,7 @@ from ray.rllib.utils.annotations import (
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DefaultPPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     """Default RLModule used by PPO, if user does not specify a custom RLModule.
 
