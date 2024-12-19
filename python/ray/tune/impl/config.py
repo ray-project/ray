@@ -26,6 +26,9 @@ class FailureConfig(_FailureConfig):
 @_copy_doc(_RunConfig)
 class RunConfig(_RunConfig):
     def __post_init__(self):
+        self.checkpoint_config = self.checkpoint_config or CheckpointConfig()
+        self.failure_config = self.failure_config or FailureConfig()
+
         super().__post_init__()
 
         if not isinstance(self.checkpoint_config, CheckpointConfig):
