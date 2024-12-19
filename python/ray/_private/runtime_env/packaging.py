@@ -698,7 +698,7 @@ async def download_and_unpack_package(
         if local_dir.exists():
             assert local_dir.is_dir(), f"{local_dir} is not a directory"
         else:
-            protocol, pkg_name = parse_uri(pkg_uri)
+            protocol, _ = parse_uri(pkg_uri)
             if protocol == Protocol.GCS:
                 if gcs_aio_client is None:
                     raise ValueError(
@@ -739,21 +739,7 @@ async def download_and_unpack_package(
                 else:
                     return str(pkg_file)
             elif protocol in Protocol.remote_protocols():
-                # Download package from remote URI
-                tp = None
-                if protocol == Protocol.FILE:
-                    pkg_uri = pkg_uri[len("file://") :]
-
-                    def open_file(uri, mode, *, transport_params=None):
-                        return open(uri, mode)
-
-                else:
-                    tp = protocol.get_smart_open_transport_params()
-                    from smart_open import open as open_file
-
-                with open_file(pkg_uri, "rb", transport_params=tp) as package_zip:
-                    with open_file(pkg_file, "wb") as fin:
-                        fin.write(package_zip.read())
+                protocol.download_remote_uri(source_uri=pkg_uri, dest_file=pkg_file)
 
                 if pkg_file.suffix in [".zip", ".jar"]:
                     unzip_package(

@@ -29,44 +29,56 @@ class ProtocolsProvider:
         return {"https", "s3", "gs", "file"}
 
     @classmethod
-    def get_smart_open_transport_params(cls, protocol):
+    def download_remote_uri(cls, protocol: str, source_uri: str, dest_file: str):
+        """Download file from remote URI to dest file"""
+        assert protocol in cls.get_remote_protocols()
+
+        tp = None
         install_warning = (
             "Note that these must be preinstalled "
             "on all nodes in the Ray cluster; it is not "
             "sufficient to install them in the runtime_env."
         )
 
-        if protocol == "s3":
+        if protocol == "file":
+            source_uri = source_uri[len("file://") :]
+
+            def open_file(uri, mode, *, transport_params=None):
+                return open(uri, mode)
+
+        elif protocol == "s3":
             try:
                 import boto3
-                from smart_open import open as open_file  # noqa: F401
+                from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
                     "You must `pip install smart_open` and "
                     "`pip install boto3` to fetch URIs in s3 "
                     "bucket. " + install_warning
                 )
-            return {"client": boto3.client("s3")}
+            tp = {"client": boto3.client("s3")}
         elif protocol == "gs":
             try:
                 from google.cloud import storage  # noqa: F401
-                from smart_open import open as open_file  # noqa: F401
+                from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
                     "You must `pip install smart_open` and "
                     "`pip install google-cloud-storage` "
                     "to fetch URIs in Google Cloud Storage bucket." + install_warning
                 )
-            return None
         else:
             try:
-                from smart_open import open as open_file  # noqa: F401
+                from smart_open import open as open_file
             except ImportError:
                 raise ImportError(
                     "You must `pip install smart_open` "
                     f"to fetch {protocol.upper()} URIs. " + install_warning
                 )
-            return None
+
+        with open_file(source_uri, "rb", transport_params=tp) as fin:
+            with open_file(dest_file, "wb") as fout:
+                fout.write(fin.read())
 
 
 _protocols_provider = get_protocols_provider()
@@ -89,8 +101,8 @@ def _remote_protocols(cls):
 Protocol.remote_protocols = _remote_protocols
 
 
-def _get_smart_open_transport_params(self):
-    return _protocols_provider.get_smart_open_transport_params(self.value)
+def _download_remote_uri(self, source_uri, dest_file):
+    return _protocols_provider.download_remote_uri(self.value, source_uri, dest_file)
 
 
-Protocol.get_smart_open_transport_params = _get_smart_open_transport_params
+Protocol.download_remote_uri = _download_remote_uri
