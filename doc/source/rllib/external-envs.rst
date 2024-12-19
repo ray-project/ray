@@ -19,6 +19,7 @@ should step.
 
 .. figure:: images/envs/external_env_setup_client_inference.svg
     :width: 600
+
     **External application with client-side inference**: An external simulator (for example a game engine)
     connects to RLlib, which runs as a server through a tcp-cabable, custom EnvRunner.
     The simulator sends batches of data from time to time to the server and in turn receives weights updates.
@@ -118,60 +119,73 @@ Overview of all Message Types
 Requests: Client → Server
 +++++++++++++++++++++++++
 
-- **`PING`**
-  - Example: `{"type": "PING"}`
+- **``PING``**
+
+  - Example: ``{"type": "PING"}``
   - Purpose: Initial handshake to establish communication.
-  - Expected Response: `{"type": "PONG"}`.
+  - Expected Response: ``{"type": "PONG"}``.
 
-- **`GET_CONFIG`**
-  - Example: `{"type": "GET_CONFIG"}`
+- **``GET_CONFIG``**
+
+  - Example: ``{"type": "GET_CONFIG"}``
   - Purpose: Request the relevant configuration (for example, how many timesteps to collect for a single `EPISODES_AND_GET_STATE` message; see below).
-  - Expected Response: `{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}`.
+  - Expected Response: ``{"type": "SET_CONFIG", "env_steps_per_sample": 500, "force_on_policy": true}``.
 
-- **`EPISODES_AND_GET_STATE`**
+- **``EPISODES_AND_GET_STATE``**
+
   - Example: :ref:`See here for an example message <example-rllink-episode-and-get-state-msg>`
-  - Purpose: Combine `EPISODES` and `GET_STATE` into a single request. This is useful for workflows requiring on-policy (synchronous) updates to model weights after data collection.
+  - Purpose: Combine ``EPISODES`` and ``GET_STATE`` into a single request. This is useful for workflows requiring on-policy (synchronous) updates to model weights after data collection.
   - Body:
-    - `episodes`: A list of JSON objects (dicts), each with mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). Note that the "obs" list has one item more than the lists for "actions" and "rewards" due to the initial "reset" observation.
-    - `weights_seq_no`: Sequence number for the model weights version, ensuring synchronization.
-  - Expected Response: `{"type": "SET_STATE", "weights_seq_no": 123, "mlir_file": ".. [b64 encoded string of the binary .mlir file with the model in it] .."}`.
+
+    - ``episodes``: A list of JSON objects (dicts), each with mandatory keys "obs" (list of observations in the episode), "actions" (list of actions in the episode), "rewards" (list of rewards in the episode), "is_terminated" (bool), and "is_truncated" (bool). Note that the "obs" list has one item more than the lists for "actions" and "rewards" due to the initial "reset" observation.
+    - ``weights_seq_no``: Sequence number for the model weights version, ensuring synchronization.
+
+  - Expected Response: ``{"type": "SET_STATE", "weights_seq_no": 123, "mlir_file": ".. [b64 encoded string of the binary .mlir file with the model in it] .."}``.
 
 
 Responses: Server → Client
 ++++++++++++++++++++++++++
 
-- **`PONG`**
-  - Example: `{"type": "PONG"}`
-  - Purpose: Acknowledgment of the `PING` request to confirm connectivity.
+- **``PONG``**
 
-- **`SET_STATE`**
-  - Example: `{"type": "PONG"}`
+  - Example: ``{"type": "PONG"}``
+  - Purpose: Acknowledgment of the ``PING`` request to confirm connectivity.
+
+- **``SET_STATE``**
+
+  - Example: ``{"type": "PONG"}``
   - Purpose: Provide the client with the current state (for example, model weights).
   - Body:
-    - `onnx_file`: Base64-encoded, compressed ONNX model file.
-    - `weights_seq_no`: Sequence number for the model weights, ensuring synchronization.
 
-- **`SET_CONFIG`**
+    - ``onnx_file``: Base64-encoded, compressed ONNX model file.
+    - ``weights_seq_no``: Sequence number for the model weights, ensuring synchronization.
+
+- **``SET_CONFIG``**
+
   - Purpose: Send relevant configuration details to the client.
   - Body:
-    - `env_steps_per_sample`: Number of total env steps collected for one `EPISODES_AND_GET_STATE` message.
-    - `force_on_policy`: Whether on-policy sampling is enforced. If true, the client should wait after sending the `EPISODES_AND_GET_STATE` message for the `SET_STATE` response before continuing to collect the next round of samples.
+
+    - ``env_steps_per_sample``: Number of total env steps collected for one ``EPISODES_AND_GET_STATE`` message.
+    - ``force_on_policy``: Whether on-policy sampling is enforced. If true, the client should wait after sending the ``EPISODES_AND_GET_STATE`` message for the ``SET_STATE`` response before continuing to collect the next round of samples.
 
 
 Workflow Examples
 +++++++++++++++++
 
 **Initial Handshake**
-1. Client sends `PING`.
-1. Server responds with `PONG`.
+
+1. Client sends ``PING``.
+2. Server responds with ``PONG``.
 
 **Configuration Request**
-1. Client sends `GET_CONFIG`.
-1. Server responds with `SET_CONFIG`.
+
+1. Client sends ``GET_CONFIG``.
+2. Server responds with ``SET_CONFIG``.
 
 **Training (on-policy)**
-1. Client collects on-policy data and sends `EPISODES_AND_GET_STATE`.
-1. Server processes the episodes and responds with `SET_STATE`.
+
+1. Client collects on-policy data and sends ``EPISODES_AND_GET_STATE``.
+2. Server processes the episodes and responds with ``SET_STATE``.
 
 
 .. note::
