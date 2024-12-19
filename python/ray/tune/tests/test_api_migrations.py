@@ -4,8 +4,8 @@ import warnings
 import pytest
 
 import ray.train
-from ray.train.constants import ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR
 import ray.tune
+from ray.train.constants import ENABLE_V2_MIGRATION_WARNINGS_ENV_VAR
 from ray.util.annotations import RayDeprecationWarning
 
 
