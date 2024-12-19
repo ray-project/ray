@@ -17,7 +17,6 @@
 #include <string_view>
 
 #include "absl/strings/match.h"
-#include "absl/strings/str_split.h"
 
 namespace ray {
 namespace gcs {
@@ -150,7 +149,7 @@ void GcsInternalKVManager::HandleGetInternalConfig(
 }
 
 Status GcsInternalKVManager::ValidateKey(const std::string &key) const {
-  constexpr std::string_view kNamespacePrefix = "@namespace_";
+  static constexpr std::string_view kNamespacePrefix = "@namespace_";
   if (absl::StartsWith(key, kNamespacePrefix)) {
     return Status::KeyError(absl::StrCat("Key can't start with ", kNamespacePrefix));
   }
