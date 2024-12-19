@@ -6,8 +6,7 @@ import pickle
 import socket
 import time
 from abc import ABC, abstractmethod
-from functools import partial
-from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple, Type
+from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
 
 import grpc
 import starlette
@@ -19,7 +18,6 @@ from starlette.middleware import Middleware
 from starlette.types import Receive
 
 import ray
-from ray import serve
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
@@ -41,7 +39,7 @@ from ray.serve._private.constants import (
     SERVE_MULTIPLEXED_MODEL_ID,
     SERVE_NAMESPACE,
 )
-from ray.serve._private.default_impl import add_grpc_address
+from ray.serve._private.default_impl import add_grpc_address, get_proxy_handle
 from ray.serve._private.grpc_util import DummyServicer, create_serve_grpc_server
 from ray.serve._private.http_util import (
     MessageQueue,
@@ -68,11 +66,7 @@ from ray.serve._private.proxy_request_response import (
     gRPCProxyRequest,
 )
 from ray.serve._private.proxy_response_generator import ProxyResponseGenerator
-from ray.serve._private.proxy_router import (
-    EndpointRouter,
-    LongestPrefixRouter,
-    ProxyRouter,
-)
+from ray.serve._private.proxy_router import ProxyRouter
 from ray.serve._private.usage import ServeUsageTag
 from ray.serve._private.utils import (
     call_function_from_import_path,
@@ -151,9 +145,8 @@ class GenericProxy(ABC):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         self.request_timeout_s = request_timeout_s
         if self.request_timeout_s is not None and self.request_timeout_s < 0:
@@ -162,14 +155,7 @@ class GenericProxy(ABC):
         self._node_id = node_id
         self._is_head = is_head
 
-        # Used only for displaying the route table.
-        self.route_info: Dict[str, DeploymentID] = dict()
-
-        self.proxy_router = proxy_router_class(
-            get_handle_override
-            or partial(serve.get_deployment_handle, _record_telemetry=False),
-            self.protocol,
-        )
+        self.proxy_router = proxy_router
         self.request_counter = metrics.Counter(
             f"serve_num_{self.protocol.lower()}_requests",
             description=f"The number of {self.protocol} requests processed.",
@@ -249,14 +235,6 @@ class GenericProxy(ABC):
     def _is_draining(self) -> bool:
         """Whether is proxy actor is in the draining status or not."""
         return self._draining_start_time is not None
-
-    def update_routes(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.route_info: Dict[str, DeploymentID] = dict()
-        for deployment_id, info in endpoints.items():
-            route = info.route
-            self.route_info[route] = deployment_id
-
-        self.proxy_router.update_routes(endpoints)
 
     def is_drained(self):
         """Check whether the proxy actor is drained or not.
@@ -476,9 +454,11 @@ class GenericProxy(ABC):
 
         latency_ms = (time.time() - start_time) * 1000.0
         if response_handler_info.should_record_access_log:
+            request_context = ray.serve.context._serve_request_context.get()
             logger.info(
                 access_log_msg(
                     method=proxy_request.method,
+                    route=request_context.route,
                     status=str(status.code),
                     latency_ms=latency_ms,
                 ),
@@ -590,7 +570,7 @@ class gRPCProxy(GenericProxy):
     ) -> ResponseGenerator:
         yield ListApplicationsResponse(
             application_names=[
-                endpoint.app_name for endpoint in self.route_info.values()
+                endpoint.app_name for endpoint in self.proxy_router.endpoints
             ],
         ).SerializeToString()
 
@@ -784,18 +764,16 @@ class HTTPProxy(GenericProxy):
         node_id: NodeId,
         node_ip_address: str,
         is_head: bool,
-        proxy_router_class: Type[ProxyRouter],
+        proxy_router: ProxyRouter,
         request_timeout_s: Optional[float] = None,
         proxy_actor: Optional[ActorHandle] = None,
-        get_handle_override: Optional[Callable] = None,
     ):
         super().__init__(
             node_id,
             node_ip_address,
             is_head,
-            proxy_router_class,
+            proxy_router,
             request_timeout_s=request_timeout_s,
-            get_handle_override=get_handle_override,
         )
         self.self_actor_handle = proxy_actor or ray.get_runtime_context().current_actor
         self.asgi_receive_queues: Dict[str, MessageQueue] = dict()
@@ -823,13 +801,13 @@ class HTTPProxy(GenericProxy):
         status_code = 200 if healthy else 503
         if healthy:
             response = dict()
-            for route, endpoint in self.route_info.items():
+            for endpoint, info in self.proxy_router.endpoints.items():
                 # For 2.x deployments, return {route -> app name}
                 if endpoint.app_name:
-                    response[route] = endpoint.app_name
+                    response[info.route] = endpoint.app_name
                 # Keep compatibility with 1.x deployments.
                 else:
-                    response[route] = endpoint.name
+                    response[info.route] = endpoint.name
         else:
             response = message
 
@@ -1012,8 +990,7 @@ class HTTPProxy(GenericProxy):
                         status_code = str(asgi_message["status"])
                         status = ResponseStatus(
                             code=status_code,
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=status_code != "200",
+                            is_error=not status_code.startswith("2"),
                         )
                         expecting_trailers = asgi_message.get("trailers", False)
                     elif asgi_message["type"] == "websocket.accept":
@@ -1034,11 +1011,16 @@ class HTTPProxy(GenericProxy):
                         # the trailers message has been sent.
                         if not asgi_message.get("more_trailers", False):
                             response_generator.stop_checking_for_disconnect()
-                    elif asgi_message["type"] == "websocket.disconnect":
+                    elif asgi_message["type"] in [
+                        "websocket.close",
+                        "websocket.disconnect",
+                    ]:
+                        status_code = str(asgi_message["code"])
                         status = ResponseStatus(
-                            code=str(asgi_message["code"]),
-                            # TODO(edoakes): we need a more nuanced check than this.
-                            is_error=False,
+                            code=status_code,
+                            # All status codes are considered errors aside from:
+                            # 1000 (CLOSE_NORMAL), 1001 (CLOSE_GOING_AWAY).
+                            is_error=status_code not in ["1000", "1001"],
                         )
                         response_generator.stop_checking_for_disconnect()
 
@@ -1231,11 +1213,12 @@ class ProxyActor:
             http_middlewares.extend(middlewares)
 
         is_head = node_id == get_head_node_id()
+        self.proxy_router = ProxyRouter(get_proxy_handle)
         self.http_proxy = HTTPProxy(
             node_id=node_id,
             node_ip_address=node_ip_address,
             is_head=is_head,
-            proxy_router_class=LongestPrefixRouter,
+            proxy_router=self.proxy_router,
             request_timeout_s=(
                 request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
             ),
@@ -1245,7 +1228,7 @@ class ProxyActor:
                 node_id=node_id,
                 node_ip_address=node_ip_address,
                 is_head=is_head,
-                proxy_router_class=EndpointRouter,
+                proxy_router=self.proxy_router,
                 request_timeout_s=(
                     request_timeout_s or RAY_SERVE_REQUEST_PROCESSING_TIMEOUT_S
                 ),
@@ -1283,9 +1266,7 @@ class ProxyActor:
         )
 
     def _update_routes_in_proxies(self, endpoints: Dict[DeploymentID, EndpointInfo]):
-        self.http_proxy.update_routes(endpoints)
-        if self.grpc_proxy is not None:
-            self.grpc_proxy.update_routes(endpoints)
+        self.proxy_router.update_routes(endpoints)
 
     def _update_logging_config(self, logging_config: LoggingConfig):
         configure_component_logger(

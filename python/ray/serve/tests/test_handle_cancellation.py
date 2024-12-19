@@ -1,5 +1,3 @@
-import asyncio
-import concurrent.futures
 import sys
 
 import pytest
@@ -11,6 +9,7 @@ from ray._private.test_utils import (
     async_wait_for_condition,
     wait_for_condition,
 )
+from ray.serve._private.constants import RAY_SERVE_FORCE_LOCAL_TESTING_MODE
 from ray.serve._private.test_utils import send_signal_on_cancellation, tlog
 from ray.serve.exceptions import RequestCancelledError
 
@@ -23,8 +22,8 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
     @serve.deployment
     class Ingress:
         async def __call__(self, *args):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
     h = serve.run(Ingress.bind())
 
@@ -40,6 +39,10 @@ def test_cancel_sync_handle_call_during_execution(serve_instance):
         r.result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't have assignment/execution split",
+)
 def test_cancel_sync_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (sync context)."""
     signal_actor = SignalActor.remote()
@@ -65,7 +68,7 @@ def test_cancel_sync_handle_call_during_assignment(serve_instance):
     # Make a second request, cancel it, and verify that it is cancelled.
     second_response = h.remote()
     second_response.cancel()
-    with pytest.raises(concurrent.futures.CancelledError):
+    with pytest.raises(RequestCancelledError):
         second_response.result()
 
     # Now signal the initial request to finish and check that the second request
@@ -84,8 +87,8 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     @serve.deployment
     class Downstream:
         async def __call__(self, *args):
-            await running_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await running_signal_actor.send.remote()
 
     @serve.deployment
     class Ingress:
@@ -108,6 +111,10 @@ def test_cancel_async_handle_call_during_execution(serve_instance):
     h.remote().result()  # Would raise if test failed.
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't have assignment/execution split",
+)
 def test_cancel_async_handle_call_during_assignment(serve_instance):
     """Test cancelling handle request during assignment (async context)."""
     signal_actor = SignalActor.remote()
@@ -141,7 +148,7 @@ def test_cancel_async_handle_call_during_assignment(serve_instance):
             # Make a second request, cancel it, and verify that it is cancelled.
             second_response = self._h.remote()
             second_response.cancel()
-            with pytest.raises(asyncio.CancelledError):
+            with pytest.raises(RequestCancelledError):
                 await second_response
 
             # Now signal the initial request to finish and check that the second request
@@ -163,7 +170,8 @@ def test_cancel_generator_sync(serve_instance):
     class Ingress:
         async def __call__(self, *args):
             yield "hi"
-            await send_signal_on_cancellation(signal_actor)
+            async with send_signal_on_cancellation(signal_actor):
+                pass
 
     h = serve.run(Ingress.bind()).options(stream=True)
 
@@ -189,7 +197,8 @@ def test_cancel_generator_async(serve_instance):
     class Downstream:
         async def __call__(self, *args):
             yield "hi"
-            await send_signal_on_cancellation(signal_actor)
+            async with send_signal_on_cancellation(signal_actor):
+                pass
 
     @serve.deployment
     class Ingress:
@@ -281,13 +290,18 @@ def test_out_of_band_task_is_not_cancelled(serve_instance):
     assert h.get_out_of_band_response.remote().result() == "ok"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't implement recursive cancellation",
+)
 def test_recursive_cancellation_during_execution(serve_instance):
     inner_signal_actor = SignalActor.remote()
     outer_signal_actor = SignalActor.remote()
 
     @serve.deployment
     async def inner():
-        await send_signal_on_cancellation(inner_signal_actor)
+        async with send_signal_on_cancellation(inner_signal_actor):
+            pass
 
     @serve.deployment
     class Ingress:
@@ -296,7 +310,8 @@ def test_recursive_cancellation_during_execution(serve_instance):
 
         async def __call__(self):
             _ = self._handle.remote()
-            await send_signal_on_cancellation(outer_signal_actor)
+            async with send_signal_on_cancellation(outer_signal_actor):
+                pass
 
     h = serve.run(Ingress.bind(inner.bind()))
 
@@ -309,6 +324,10 @@ def test_recursive_cancellation_during_execution(serve_instance):
     ray.get(outer_signal_actor.wait.remote(), timeout=10)
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't implement recursive cancellation",
+)
 def test_recursive_cancellation_during_assignment(serve_instance):
     signal = SignalActor.remote()
 

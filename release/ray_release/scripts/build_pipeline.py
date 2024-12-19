@@ -14,7 +14,10 @@ from ray_release.byod.build import (
     build_anyscale_base_byod_images,
     build_anyscale_custom_byod_image,
 )
-from ray_release.config import read_and_validate_release_test_collection
+from ray_release.config import (
+    read_and_validate_release_test_collection,
+    RELEASE_TEST_CONFIG_FILES,
+)
 from ray_release.configs.global_config import init_global_config
 from ray_release.exception import ReleaseTestCLIError, ReleaseTestConfigError
 from ray_release.logger import logger
@@ -92,7 +95,7 @@ def main(
 
     try:
         test_collection = read_and_validate_release_test_collection(
-            test_collection_file or ["release/release_tests.yaml"]
+            test_collection_file or RELEASE_TEST_CONFIG_FILES
         )
     except ReleaseTestConfigError as e:
         raise ReleaseTestConfigError(

@@ -92,11 +92,6 @@ if __name__ == "__main__":
 
     base_config = (
         PPOConfig()
-        .api_stack(
-            # This example runs only under the new pai stack.
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(
             env=ActionMaskEnv,
             env_config={

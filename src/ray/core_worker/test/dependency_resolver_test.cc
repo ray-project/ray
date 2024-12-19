@@ -51,7 +51,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
+                            TaskID::Nil(),
+                            "");
   return builder.Build();
 }
 TaskSpecification BuildEmptyTaskSpec() {
@@ -113,6 +114,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkTaskWaitingForExecution(const TaskID &task_id,
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
+
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;

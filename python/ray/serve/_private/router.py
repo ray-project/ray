@@ -8,7 +8,7 @@ from abc import ABC, abstractmethod
 from collections import defaultdict
 from contextlib import contextmanager
 from functools import partial
-from typing import Any, Coroutine, DefaultDict, List, Optional, Tuple, Union
+from typing import Any, Coroutine, DefaultDict, Dict, List, Optional, Tuple, Union
 
 import ray
 from ray.actor import ActorHandle
@@ -31,7 +31,7 @@ from ray.serve._private.long_poll import LongPollClient, LongPollNamespace
 from ray.serve._private.metrics_utils import InMemoryMetricsStore, MetricsPusher
 from ray.serve._private.replica_result import ReplicaResult
 from ray.serve._private.replica_scheduler import PendingRequest, ReplicaScheduler
-from ray.serve._private.utils import resolve_request_args
+from ray.serve._private.utils import resolve_deployment_response
 from ray.serve.config import AutoscalingConfig
 from ray.serve.exceptions import BackPressureError
 from ray.util import metrics
@@ -327,7 +327,7 @@ class Router(ABC):
         pass
 
     @abstractmethod
-    def shutdown(self):
+    def shutdown(self) -> concurrent.futures.Future:
         pass
 
 
@@ -342,7 +342,7 @@ class AsyncioRouter:
         event_loop: asyncio.BaseEventLoop,
         replica_scheduler: Optional[ReplicaScheduler],
         enable_strict_max_ongoing_requests: bool,
-        resolve_request_args_func: Coroutine = resolve_request_args,
+        resolve_request_arg_func: Coroutine = resolve_deployment_response,
     ):
         """Used to assign requests to downstream replicas for a deployment.
 
@@ -355,7 +355,7 @@ class AsyncioRouter:
         self._enable_strict_max_ongoing_requests = enable_strict_max_ongoing_requests
 
         self._replica_scheduler: ReplicaScheduler = replica_scheduler
-        self._resolve_request_args = resolve_request_args_func
+        self._resolve_request_arg_func = resolve_request_arg_func
 
         # Flipped to `True` once the router has received a non-empty
         # replica set at least once.
@@ -428,6 +428,43 @@ class AsyncioRouter:
             deployment_config,
             curr_num_replicas=len(self._replica_scheduler.curr_replicas),
         )
+
+    async def _resolve_request_arguments(
+        self, request_args: Tuple[Any], request_kwargs: Dict[str, Any]
+    ) -> Tuple[Tuple[Any], Dict[str, Any]]:
+        """Asynchronously resolve and replace top-level request args and kwargs."""
+        new_args = list(request_args)
+        new_kwargs = request_kwargs.copy()
+
+        # Map from index -> task for resolving positional arg
+        resolve_arg_tasks = {}
+        for i, obj in enumerate(request_args):
+            task = await self._resolve_request_arg_func(obj)
+            if task is not None:
+                resolve_arg_tasks[i] = task
+
+        # Map from key -> task for resolving key-word arg
+        resolve_kwarg_tasks = {}
+        for k, obj in request_kwargs.items():
+            task = await self._resolve_request_arg_func(obj)
+            if task is not None:
+                resolve_kwarg_tasks[k] = task
+
+        # Gather all argument resolution tasks concurrently.
+        if resolve_arg_tasks or resolve_kwarg_tasks:
+            all_tasks = list(resolve_arg_tasks.values()) + list(
+                resolve_kwarg_tasks.values()
+            )
+            await asyncio.wait(all_tasks)
+
+        # Update new args and new kwargs with resolved arguments
+        for index, task in resolve_arg_tasks.items():
+            new_args[index] = task.result()
+        for key, task in resolve_kwarg_tasks.items():
+            new_kwargs[key] = task.result()
+
+        # Return new args and new kwargs
+        return new_args, new_kwargs
 
     def _process_finished_request(
         self,
@@ -548,7 +585,7 @@ class AsyncioRouter:
 
             replica_result = None
             try:
-                request_args, request_kwargs = await self._resolve_request_args(
+                request_args, request_kwargs = await self._resolve_request_arguments(
                     request_args, request_kwargs
                 )
                 replica_result, replica_id = await self.schedule_and_send_request(
@@ -643,7 +680,7 @@ class SingletonThreadRouter(Router):
             loop=self._asyncio_loop,
         )
 
-    def shutdown(self):
-        asyncio.run_coroutine_threadsafe(
+    def shutdown(self) -> concurrent.futures.Future:
+        return asyncio.run_coroutine_threadsafe(
             self._asyncio_router.shutdown(), loop=self._asyncio_loop
-        ).result()
+        )

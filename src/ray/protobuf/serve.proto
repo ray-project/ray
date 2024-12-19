@@ -13,7 +13,6 @@
 // limitations under the License.
 
 syntax = "proto3";
-option cc_enable_arenas = true;
 
 package ray.serve;
 
@@ -246,8 +245,9 @@ enum DeploymentStatus {
   DEPLOYMENT_STATUS_UPDATING = 0;
   DEPLOYMENT_STATUS_HEALTHY = 1;
   DEPLOYMENT_STATUS_UNHEALTHY = 2;
-  DEPLOYMENT_STATUS_UPSCALING = 3;
-  DEPLOYMENT_STATUS_DOWNSCALING = 4;
+  DEPLOYMENT_STATUS_DEPLOY_FAILED = 3;
+  DEPLOYMENT_STATUS_UPSCALING = 4;
+  DEPLOYMENT_STATUS_DOWNSCALING = 5;
 }
 
 enum DeploymentStatusTrigger {

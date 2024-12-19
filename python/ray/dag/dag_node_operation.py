@@ -66,11 +66,11 @@ class _DAGNodeOperation:
             f" type: {self.type})"
         )
 
-    def vis_str(self):
+    def viz_str(self):
         """
         A string representation of the node to be used in visualization.
         """
-        return f"([{self.exec_task_idx}] {self.method_name} {self.type.viz_str()})"
+        return f"[{self.exec_task_idx}] {self.method_name} {self.type.viz_str()}"
 
     def __hash__(self):
         return hash((self.exec_task_idx, self.type))
@@ -223,17 +223,7 @@ class _DAGOperationGraphNode:
         """
         A string representation of the node to be used in visualization.
         """
-        class_name = (
-            self.actor_handle._ray_actor_creation_function_descriptor.class_name
-        )
-        actor_id_abbv = self._actor_id[:4] + "..."
-        return (
-            class_name
-            + "_"
-            + actor_id_abbv
-            + f" [{self.operation.exec_task_idx}] "
-            + f"{self.operation.method_name} {self.operation.type.viz_str()}"
-        )
+        return self.operation.viz_str()
 
     @property
     def _actor_id(self):
@@ -445,7 +435,8 @@ def _build_dag_node_operation_graph(
             isinstance(task.dag_node, ClassMethodNode)
             and task.dag_node.is_class_method_output
         ):
-            # TODO(wxdeng): Handle the case where the task is a class method output.
+            # Class method output node dependencies are handled at its upstream:
+            # i.e., class method node
             continue
         for downstream_task_idx in task.downstream_task_idxs:
             downstream_dag_node = idx_to_task[downstream_task_idx].dag_node
@@ -455,8 +446,18 @@ def _build_dag_node_operation_graph(
                 isinstance(downstream_dag_node, ClassMethodNode)
                 and downstream_dag_node.is_class_method_output
             ):
-                # TODO(wxdeng): Handle the case where the downstream task is
-                # a class method output.
+                consumer_idxs = idx_to_task[downstream_task_idx].downstream_task_idxs
+                for consumer_idx in consumer_idxs:
+                    if consumer_idx in graph:
+                        _add_edge(
+                            graph[task_idx][_DAGNodeOperationType.WRITE],
+                            graph[consumer_idx][_DAGNodeOperationType.READ],
+                            "nccl"
+                            if graph[task_idx][
+                                _DAGNodeOperationType.WRITE
+                            ].requires_nccl
+                            else "shm",
+                        )
                 continue
             _add_edge(
                 graph[task_idx][_DAGNodeOperationType.WRITE],
@@ -469,16 +470,33 @@ def _build_dag_node_operation_graph(
     return graph
 
 
-def _node_viz_str(node: _DAGOperationGraphNode, idx: int, optimized_index: int):
+def _actor_viz_label(actor: "ray.actor.ActorHandle"):
     """
-    A string representation of a node in the visualization of the execution schedule.
+    Returns the label of an actor in the visualization of the execution schedule.
+
+    Args:
+        actor: The actor to be represented.
+    """
+    class_name = actor._ray_actor_creation_function_descriptor.class_name
+    actor_id = actor._ray_actor_id.hex()
+    return f"Actor class name: {class_name}\nActor ID: {actor_id}"
+
+
+def _node_viz_id_and_label(
+    node: _DAGOperationGraphNode, idx: int, optimized_index: int
+):
+    """
+    Returns the visualization id and label of a node. The visualization id is unique
+    across all nodes.
 
     Args:
         node: The node to be represented.
         idx: The index of the node in the execution schedule.
         optimized_index: The index of the node in the optimized execution schedule.
     """
-    return node.viz_str() + f" {idx},{optimized_index}"
+    node_viz_label = node.viz_str() + f" {idx},{optimized_index}"
+    node_viz_id = f"{node._actor_id}_{node_viz_label}"
+    return node_viz_id, node_viz_label
 
 
 def _visualize_execution_schedule(
@@ -497,10 +515,9 @@ def _visualize_execution_schedule(
     Details of the visualization: # noqa
 
         Node description format:
-            <actor_name>_<actor_id> [<task_index>] <method_name> <operation> <orig_index>, <overlap_index>
+            [<task_index>] <method_name> <operation> <orig_index>, <overlap_index>
 
         Node description fields:
-            actor_id: is abbreviated, only the first 4 characters are shown
             operation: is R(READ), C(COMPUTE), or W(WRITE)
             orig_index: the index in the original execution schedule
             overlap_index: the index in the overlap-communication optimized execution schedule
@@ -508,6 +525,7 @@ def _visualize_execution_schedule(
 
         Node grouping:
             The nodes belonging to the same actor are grouped in the same rectangle
+            The actor class name and the actor id are shown in the rectangle
 
         Edges:
             black color (without label): data dependency
@@ -535,7 +553,8 @@ def _visualize_execution_schedule(
         )
 
     dot = graphviz.Digraph(comment="DAG")
-    node_to_viz: Dict[_DAGOperationGraphNode, str] = {}
+    # A dictionary that maps a node to its visualization id
+    node_to_viz_id: Dict[_DAGOperationGraphNode, str] = {}
 
     if actor_to_overlapped_schedule is None:
         # TODO(rui): make the visualization more concise by only displaying
@@ -547,47 +566,52 @@ def _visualize_execution_schedule(
             node: i for i, node in enumerate(overlapped_schedule)
         }
 
-        with dot.subgraph(name=f"cluster_{execution_nodes[0]._actor_id}") as subgraph:
-            subgraph.attr(rank=execution_nodes[0]._actor_id)
+        actor_id = actor._ray_actor_id.hex()
+        with dot.subgraph(name=f"cluster_{actor_id}") as subgraph:
+            subgraph.attr(rank=actor_id, label=_actor_viz_label(actor))
             for i, node in enumerate(execution_nodes):
                 optimized_index = node_to_optimized_index.get(node)
-                node_viz = _node_viz_str(node, i, optimized_index)
+                node_viz_id, node_viz_label = _node_viz_id_and_label(
+                    node, i, optimized_index
+                )
                 color = "red" if optimized_index != i else "black"
-                subgraph.node(node_viz, node_viz, color=color)
-                node_to_viz[node] = node_viz
+                subgraph.node(node_viz_id, node_viz_label, color=color)
+                node_to_viz_id[node] = node_viz_id
 
     for actor, execution_nodes in actor_to_execution_schedule.items():
         for i, node in enumerate(execution_nodes):
-            node_viz = node_to_viz[node]
+            node_viz_id = node_to_viz_id[node]
             for out_edge, viz_info in node.out_edges.items():
                 label, control_dependency = viz_info
                 out_task_idx, out_op_type = out_edge
                 out_node = graph[out_task_idx][out_op_type]
-                out_node_repr = node_to_viz[out_node]
+                out_node_viz_id = node_to_viz_id[out_node]
                 color = "blue" if label == "nccl" else "black"
                 style = "dashed" if control_dependency else "solid"
-                dot.edge(node_viz, out_node_repr, label=label, color=color, style=style)
+                dot.edge(
+                    node_viz_id, out_node_viz_id, label=label, color=color, style=style
+                )
 
     # Add legend
     with dot.subgraph(name="cluster_legend") as legend:
         legend.attr(label="Legend", labelloc="t", fontsize="20", bgcolor="lightgrey")
 
         # Single node and its explanation
-        legend.node("example_node", "Worker_3c6a... [0] bwd C 10,10\n")
+        legend.node("example_node", "[0] bwd C 10,10\n")
         explanation = (
             '<<TABLE BORDER="0" CELLBORDER="0" CELLSPACING="0">'  # noqa
             '<TR><TD ALIGN="LEFT"><B>Node description format:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">&lt;actor_name&gt;_&lt;actor_id&gt; [&lt;task_index&gt;] &lt;method_name&gt; &lt;operation&gt; &lt;orig_index&gt;, &lt;overlap_index&gt;</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">[&lt;task_index&gt;] &lt;method_name&gt; &lt;operation&gt; &lt;orig_index&gt;, &lt;overlap_index&gt;</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Node description fields:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">actor_id: is abbreviated, only the first 4 characters are shown</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">operation: is R(READ), C(COMPUTE), or W(WRITE)</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">orig_index: the index in the original execution schedule</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">overlap_index: the index in the overlap-communication optimized execution schedule</TD></TR>'  # noqa
             '<TR><TD ALIGN="LEFT">If this is different from orig_index, the node is highlighted in <FONT COLOR="red">red color</FONT></TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Node grouping:</B></TD></TR>'
-            '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangular</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">The nodes belonging to the same actor are grouped in the same rectangle</TD></TR>'  # noqa
+            '<TR><TD ALIGN="LEFT">The actor class name and the actor id are shown in the rectangle</TD></TR>'  # noqa
             "<TR><TD></TD></TR>"
             '<TR><TD ALIGN="LEFT"><B>Edges:</B></TD></TR>'
             '<TR><TD ALIGN="LEFT">black color (without label): data dependency</TD></TR>'  # noqa

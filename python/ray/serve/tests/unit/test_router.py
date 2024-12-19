@@ -7,6 +7,7 @@ from unittest.mock import Mock, patch
 
 import pytest
 
+import ray
 from ray._private.test_utils import async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
 from ray.exceptions import ActorDiedError, ActorUnavailableError
@@ -59,6 +60,15 @@ class FakeReplicaResult(ReplicaResult):
         pass
 
     def cancel(self):
+        raise NotImplementedError
+
+    def to_object_ref(self, timeout_s: Optional[float]) -> ray.ObjectRef:
+        raise NotImplementedError
+
+    async def to_object_ref_async(self) -> ray.ObjectRef:
+        raise NotImplementedError
+
+    def to_object_ref_gen(self) -> ray.ObjectRefGenerator:
         raise NotImplementedError
 
 

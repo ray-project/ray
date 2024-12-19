@@ -18,6 +18,7 @@ from ray._private.runtime_env.default_impl import get_image_uri_plugin
 from ray._private.runtime_env.java_jars import JavaJarsPlugin
 from ray._private.runtime_env.image_uri import ContainerPlugin
 from ray._private.runtime_env.pip import PipPlugin
+from ray._private.runtime_env.uv import UvPlugin
 from ray._private.gcs_utils import GcsAioClient
 from ray._private.runtime_env.plugin import (
     RuntimeEnvPlugin,
@@ -206,6 +207,7 @@ class RuntimeEnvAgent:
         )
 
         self._pip_plugin = PipPlugin(self._runtime_env_dir)
+        self._uv_plugin = UvPlugin(self._runtime_env_dir)
         self._conda_plugin = CondaPlugin(self._runtime_env_dir)
         self._py_modules_plugin = PyModulesPlugin(
             self._runtime_env_dir, self._gcs_aio_client
@@ -228,6 +230,7 @@ class RuntimeEnvAgent:
         # self._xxx_plugin, we should just iterate through self._plugins.
         self._base_plugins: List[RuntimeEnvPlugin] = [
             self._working_dir_plugin,
+            self._uv_plugin,
             self._pip_plugin,
             self._conda_plugin,
             self._py_modules_plugin,
@@ -361,7 +364,8 @@ class RuntimeEnvAgent:
             Args:
                 runtime_env: The instance of RuntimeEnv class.
                 serialized_runtime_env: The serialized runtime env.
-                setup_timeout_seconds: The timeout of runtime environment creation.
+                setup_timeout_seconds: The timeout of runtime environment creation for
+                each attempt.
 
             Returns:
                 a tuple which contains result (bool), runtime env context (str), error

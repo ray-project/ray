@@ -63,11 +63,18 @@ class DAGNode(DAGNodeBase):
 
         # The list of nodes that use this DAG node as an argument.
         self._downstream_nodes: List["DAGNode"] = []
-        # The list of nodes that this DAG node uses as an argument.
-        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
 
         # UUID that is not changed over copies of this node.
         self._stable_uuid = uuid.uuid4().hex
+
+        # Indicates whether this DAG node contains nested DAG nodes.
+        # Nested DAG nodes are allowed in traditional DAGs but not
+        # in Ray Compiled Graphs, except for MultiOutputNode.
+        self._args_contain_nested_dag_node = False
+
+        # The list of nodes that this DAG node uses as an argument.
+        self._upstream_nodes: List["DAGNode"] = self._collect_upstream_nodes()
+
         # Cached values from last call to execute()
         self.cache_from_last_execute = {}
 
@@ -79,19 +86,43 @@ class DAGNode(DAGNodeBase):
         """
         Retrieve upstream nodes and update their downstream dependencies.
 
+        Currently, the DAG assumes that all DAGNodes in `args`, `kwargs`, and
+        `other_args_to_resolve` are upstream nodes. However, Ray Compiled Graphs
+        builds the upstream/downstream relationship based only on args. Be cautious
+        when persisting DAGNodes in `other_args_to_resolve` and kwargs in the future.
+
         TODO (kevin85421): Currently, the upstream nodes and downstream nodes have
         circular references. Therefore, it relies on the garbage collector to clean
         them up instead of reference counting. We should consider using weak references
         to avoid circular references.
         """
+        upstream_nodes: List["DAGNode"] = []
+
+        # Ray Compiled Graphs do not allow nested DAG nodes in arguments.
+        # Specifically, a DAGNode should not be placed inside any type of
+        # container. However, we only know if this is a compiled graph
+        # when calling `experimental_compile`. Therefore, we need to check
+        # in advance if the arguments contain nested DAG nodes and raise
+        # an error after compilation.
+        assert hasattr(self._bound_args, "__iter__")
+        for arg in self._bound_args:
+            if isinstance(arg, DAGNode):
+                upstream_nodes.append(arg)
+            else:
+                scanner = _PyObjScanner()
+                dag_nodes = scanner.find_nodes(arg)
+                upstream_nodes.extend(dag_nodes)
+                scanner.clear()
+                self._args_contain_nested_dag_node = len(dag_nodes) > 0
+
         scanner = _PyObjScanner()
-        upstream_nodes: List["DAGNode"] = scanner.find_nodes(
+        other_upstream_nodes: List["DAGNode"] = scanner.find_nodes(
             [
-                self._bound_args,
                 self._bound_kwargs,
                 self._bound_other_args_to_resolve,
             ]
         )
+        upstream_nodes.extend(other_upstream_nodes)
         scanner.clear()
         # Update dependencies.
         for upstream_node in upstream_nodes:
@@ -152,7 +183,7 @@ class DAGNode(DAGNodeBase):
 
     def experimental_compile(
         self,
-        _execution_timeout: Optional[float] = None,
+        _submit_timeout: Optional[float] = None,
         _buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         _asyncio_max_queue_size: Optional[int] = None,
@@ -163,12 +194,14 @@ class DAGNode(DAGNodeBase):
         """Compile an accelerated execution path for this DAG.
 
         Args:
-            _execution_timeout: The maximum time in seconds to wait for execute() calls.
+            _submit_timeout: The maximum time in seconds to wait for execute() calls.
                 None means using default timeout, 0 means immediate timeout
                 (immediate success or timeout without blocking), -1 means
                 infinite timeout (block indefinitely).
-            _buffer_size_bytes: The maximum size of messages that can be passed
-                between tasks in the DAG.
+            _buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio for this DAG.
             _asyncio_max_queue_size: The max queue size for the async execution.
                 It is only used when enable_asyncio=True.
@@ -215,7 +248,7 @@ class DAGNode(DAGNodeBase):
         self.is_adag_output_node = True
         return build_compiled_dag_from_ray_dag(
             self,
-            _execution_timeout,
+            _submit_timeout,
             _buffer_size_bytes,
             enable_asyncio,
             _asyncio_max_queue_size,
@@ -396,6 +429,9 @@ class DAGNode(DAGNodeBase):
 
         while queue:
             node = queue.pop(0)
+            if node._args_contain_nested_dag_node:
+                self._raise_nested_dag_node_error(node._bound_args)
+
             if node not in visited:
                 if node.is_adag_output_node:
                     # Validate whether there are multiple nodes that call
@@ -431,6 +467,33 @@ class DAGNode(DAGNodeBase):
                 ):
                     if neighbor not in visited:
                         queue.append(neighbor)
+
+    def _raise_nested_dag_node_error(self, args):
+        """
+        Raise an error for nested DAGNodes in Ray Compiled Graphs.
+
+        Args:
+            args: The arguments of the DAGNode.
+        """
+        for arg in args:
+            if isinstance(arg, DAGNode):
+                continue
+            else:
+                scanner = _PyObjScanner()
+                dag_nodes = scanner.find_nodes([arg])
+                scanner.clear()
+                if len(dag_nodes) > 0:
+                    raise ValueError(
+                        f"Found {len(dag_nodes)} DAGNodes from the arg {arg} "
+                        f"in {self}. Please ensure that the argument is a "
+                        "single DAGNode and that a DAGNode is not allowed to "
+                        "be placed inside any type of container."
+                    )
+        raise AssertionError(
+            "A DAGNode's args should contain nested DAGNodes as args, "
+            "but none were found during the compilation process. This is a "
+            "Ray internal error. Please report this issue to the Ray team."
+        )
 
     def _find_root(self) -> "DAGNode":
         """

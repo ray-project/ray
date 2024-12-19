@@ -62,22 +62,13 @@
 #endif
 
 // Boost forward-declarations (to avoid forcing slow header inclusions)
-namespace boost {
-
-namespace asio {
-
-namespace generic {
+namespace boost::asio::generic {
 
 template <class Protocol>
 class basic_endpoint;
-
 class stream_protocol;
 
-}  // namespace generic
-
-}  // namespace asio
-
-}  // namespace boost
+}  // namespace boost::asio::generic
 
 enum class CommandLineSyntax { System, POSIX, Windows };
 
@@ -157,10 +148,10 @@ inline int64_t current_sys_time_us() {
 }
 
 inline std::string GenerateUUIDV4() {
-  static std::random_device rd;
-  static std::mt19937 gen(rd());
-  static std::uniform_int_distribution<> dis(0, 15);
-  static std::uniform_int_distribution<> dis2(8, 11);
+  thread_local std::random_device rd;
+  thread_local std::mt19937 gen(rd());
+  std::uniform_int_distribution<> dis(0, 15);
+  std::uniform_int_distribution<> dis2(8, 11);
 
   std::stringstream ss;
   int i;
@@ -302,12 +293,19 @@ inline void unsetEnv(const std::string &name) {
   RAY_CHECK_EQ(ret, 0) << "Failed to unset env var " << name;
 }
 
+// Set [thread_name] to current thread; if it fails, error will be logged.
+// NOTICE: It only works for macos and linux.
 inline void SetThreadName(const std::string &thread_name) {
+  int ret = 0;
 #if defined(__APPLE__)
-  pthread_setname_np(thread_name.c_str());
+  ret = pthread_setname_np(thread_name.c_str());
 #elif defined(__linux__)
-  pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
+  ret = pthread_setname_np(pthread_self(), thread_name.substr(0, 15).c_str());
 #endif
+  if (ret < 0) {
+    RAY_LOG(ERROR) << "Fails to set thread name to " << thread_name << " since "
+                   << strerror(errno);
+  }
 }
 
 inline std::string GetThreadName() {

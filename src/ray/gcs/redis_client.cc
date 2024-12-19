@@ -22,9 +22,7 @@ extern "C" {
 }
 
 namespace ray {
-
 namespace gcs {
-
 RedisClient::RedisClient(const RedisClientOptions &options) : options_(options) {}
 
 Status RedisClient::Connect(instrumented_io_context &io_service) {
@@ -39,10 +37,9 @@ Status RedisClient::Connect(instrumented_io_context &io_service) {
 
   RAY_CHECK_OK(primary_context_->Connect(options_.server_ip_,
                                          options_.server_port_,
+                                         /*username=*/options_.username_,
                                          /*password=*/options_.password_,
                                          /*enable_ssl=*/options_.enable_ssl_));
-
-  Attach();
 
   is_connected_ = true;
   RAY_LOG(DEBUG) << "RedisClient connected.";
@@ -50,20 +47,10 @@ Status RedisClient::Connect(instrumented_io_context &io_service) {
   return Status::OK();
 }
 
-void RedisClient::Attach() {
-  // Take care of sharding contexts.
-  RAY_CHECK(!asio_async_auxiliary_client_) << "Attach shall be called only once";
-  instrumented_io_context &io_service = primary_context_->io_service();
-  asio_async_auxiliary_client_.reset(
-      new RedisAsioClient(io_service, primary_context_->async_context()));
-}
-
 void RedisClient::Disconnect() {
   RAY_CHECK(is_connected_);
   is_connected_ = false;
   RAY_LOG(DEBUG) << "RedisClient disconnected.";
 }
-
 }  // namespace gcs
-
 }  // namespace ray

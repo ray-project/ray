@@ -226,8 +226,7 @@ class ServeController:
         self.global_logging_config = global_logging_config
 
         self.long_poll_host.notify_changed(
-            LongPollNamespace.GLOBAL_LOGGING_CONFIG,
-            global_logging_config,
+            {LongPollNamespace.GLOBAL_LOGGING_CONFIG: global_logging_config}
         )
         configure_component_logger(
             component_name="controller",

@@ -8,7 +8,10 @@ import ray
 from ray import serve
 from ray._private.test_utils import SignalActor, async_wait_for_condition
 from ray._private.utils import get_or_create_event_loop
-from ray.serve._private.constants import RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS
+from ray.serve._private.constants import (
+    RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+)
 from ray.serve.exceptions import RayServeException
 from ray.serve.handle import (
     DeploymentHandle,
@@ -68,6 +71,10 @@ def test_result_timeout(serve_instance):
     assert ref.result() == "hi"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support getting dynamic handles",
+)
 def test_get_app_and_deployment_handle(serve_instance):
     """Test the `get_app_handle` and `get_deployment_handle` APIs."""
 
@@ -132,6 +139,10 @@ def test_compose_deployments_in_app(serve_instance, arg_type: str):
     assert handle.remote().result() == "driver|downstream1|downstream2|hi"
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode only supports single apps",
+)
 @pytest.mark.parametrize("arg_type", ["args", "kwargs"])
 def test_compose_apps(serve_instance, arg_type):
     """Test composing deployment handle refs outside of a deployment."""
@@ -211,19 +222,32 @@ def test_nested_deployment_response_error(serve_instance):
     handle call errors, and with an informative error message."""
 
     @serve.deployment
-    class Deployment:
-        def __call__(self, inp: str):
-            return inp
+    class Downstream:
+        def __call__(self, *args):
+            pass
 
-    handle1 = serve.run(Deployment.bind(), name="app1", route_prefix="/app1")
-    handle2 = serve.run(Deployment.bind(), name="app2", route_prefix="/app2")
+    @serve.deployment
+    class Upstream:
+        def __init__(self, h1: DeploymentHandle, h2: DeploymentHandle):
+            self._h1 = h1
+            self._h2 = h2
 
-    with pytest.raises(
-        RayServeException, match="`DeploymentResponse` is not serializable"
-    ):
-        handle1.remote([handle2.remote("hi")]).result()
+        async def __call__(self):
+            with pytest.raises(
+                RayServeException, match="`DeploymentResponse` is not serializable"
+            ):
+                await self._h2.remote([self._h2.remote()])
+
+    h = serve.run(
+        Upstream.bind(Downstream.bind(), Downstream.bind()),
+    )
+    h.remote().result()
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
 def test_convert_to_object_ref(serve_instance):
     """Test converting deployment handle refs to Ray object refs."""
 
@@ -276,6 +300,10 @@ def test_generators(serve_instance):
     assert list(gen) == list(range(10))
 
 
+@pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't support _to_object_ref",
+)
 def test_convert_to_object_ref_gen(serve_instance):
     """Test converting generators to obj ref gens inside and outside a deployment."""
 
@@ -381,8 +409,12 @@ def test_handle_eager_execution(serve_instance):
 
 
 @pytest.mark.skipif(
+    RAY_SERVE_FORCE_LOCAL_TESTING_MODE,
+    reason="local_testing_mode doesn't respect max_ongoing_requests",
+)
+@pytest.mark.skipif(
     not RAY_SERVE_ENABLE_STRICT_MAX_ONGOING_REQUESTS,
-    reason="Strict enforcement must be enabled.",
+    reason="Strict enforcement must be enabled",
 )
 @pytest.mark.asyncio
 async def test_max_ongoing_requests_enforced(serve_instance):
@@ -438,6 +470,31 @@ async def test_max_ongoing_requests_enforced(serve_instance):
         assert len(done) == 1
         assert len(pending) == len(tasks) - 1
         tasks = pending
+
+
+def test_shutdown(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert h.remote().result() == "hi"
+
+    h.shutdown()
+
+
+@pytest.mark.asyncio
+async def test_shutdown_async(serve_instance):
+    @serve.deployment
+    class Hi:
+        def __call__(self):
+            return "hi"
+
+    h = serve.run(Hi.bind())
+    assert await h.remote() == "hi"
+
+    await h.shutdown_async()
 
 
 if __name__ == "__main__":

@@ -181,6 +181,7 @@ ray_cc_library(
         "@com_google_absl//absl/container:flat_hash_map",
         "@com_google_absl//absl/container:flat_hash_set",
         "@com_google_absl//absl/strings",
+        "@com_google_absl//absl/strings:str_format",
         "@com_google_absl//absl/synchronization",
     ],
 )
@@ -247,10 +248,18 @@ ray_cc_library(
     name = "ray_syncer",
     srcs = [
         "ray_syncer/ray_syncer.cc",
+        "ray_syncer/node_state.cc",
+        "ray_syncer/ray_syncer_client.cc",
+        "ray_syncer/ray_syncer_server.cc",
     ],
     hdrs = [
         "ray_syncer/ray_syncer.h",
-        "ray_syncer/ray_syncer-inl.h",
+        "ray_syncer/node_state.h",
+        "ray_syncer/common.h",
+        "ray_syncer/ray_syncer_bidi_reactor.h",
+        "ray_syncer/ray_syncer_bidi_reactor_base.h",
+        "ray_syncer/ray_syncer_client.h",
+        "ray_syncer/ray_syncer_server.h",
     ],
     deps = [
         ":asio",
@@ -267,8 +276,8 @@ ray_cc_library(
     srcs = ["status.cc"],
     hdrs = ["status.h"],
     deps = [
-        "//src/ray/util",
         ":source_location",
+        "//src/ray/util",
     ],
 )
 

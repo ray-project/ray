@@ -10,6 +10,8 @@ from ray.rllib.utils.annotations import override
 class BCTorchRLModule(TorchRLModule):
     @override(RLModule)
     def setup(self):
+        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
+            raise self._catalog_ctor_error
         # __sphinx_doc_begin__
         # Build models from catalog.
         self.encoder = self.catalog.build_encoder(framework=self.framework)

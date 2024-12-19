@@ -47,8 +47,8 @@ class GcsPlacementGroupManagerMockTest : public Test {
 
     gcs_placement_group_manager_ =
         std::make_unique<GcsPlacementGroupManager>(io_context_,
-                                                   gcs_placement_group_scheduler_,
-                                                   gcs_table_storage_,
+                                                   gcs_placement_group_scheduler_.get(),
+                                                   gcs_table_storage_.get(),
                                                    *resource_manager_,
                                                    [](auto &) { return ""; });
     counter_.reset(new CounterMap<rpc::PlacementGroupTableData::PlacementGroupState>());

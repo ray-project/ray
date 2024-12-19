@@ -6,6 +6,8 @@ from ray.data._internal.delegating_block_builder import DelegatingBlockBuilder
 from ray.data._internal.planner.exchange.interfaces import ExchangeTaskSpec
 from ray.data._internal.progress_bar import ProgressBar
 from ray.data._internal.remote_fn import cached_remote_fn
+from ray.data._internal.table_block import TableBlockAccessor
+from ray.data._internal.util import NULL_SENTINEL
 from ray.data.block import Block, BlockAccessor, BlockExecStats, BlockMetadata
 from ray.types import ObjectRef
 
@@ -22,7 +24,7 @@ class SortKey:
         self,
         key: Optional[Union[str, List[str]]] = None,
         descending: Union[bool, List[bool]] = False,
-        boundaries: Optional[list] = None,
+        boundaries: Optional[List[T]] = None,
     ):
         if key is None:
             key = []
@@ -79,8 +81,9 @@ class SortKey:
             for column in self._columns:
                 if column not in schema_names_set:
                     raise ValueError(
-                        "The column '{}' does not exist in the "
-                        "schema '{}'.".format(column, schema)
+                        f"You specified the column '{column}', but there's no such "
+                        "column in the dataset. The dataset has columns: "
+                        f"{schema_names_set}"
                     )
 
     @property
@@ -116,10 +119,11 @@ class SortTaskSpec(ExchangeTaskSpec):
         self,
         boundaries: List[T],
         sort_key: SortKey,
+        batch_format: str,
     ):
         super().__init__(
             map_args=[boundaries, sort_key],
-            reduce_args=[sort_key],
+            reduce_args=[sort_key, batch_format],
         )
 
     @staticmethod
@@ -138,11 +142,15 @@ class SortTaskSpec(ExchangeTaskSpec):
     @staticmethod
     def reduce(
         sort_key: SortKey,
+        batch_format: str,
         *mapper_outputs: List[Block],
         partial_reduce: bool = False,
     ) -> Tuple[Block, BlockMetadata]:
-        return BlockAccessor.for_block(mapper_outputs[0]).merge_sorted_blocks(
-            mapper_outputs, sort_key
+        normalized_blocks = TableBlockAccessor.normalize_block_types(
+            mapper_outputs, normalize_type=batch_format
+        )
+        return BlockAccessor.for_block(normalized_blocks[0]).merge_sorted_blocks(
+            normalized_blocks, sort_key
         )
 
     @staticmethod
@@ -189,7 +197,23 @@ class SortTaskSpec(ExchangeTaskSpec):
         samples_table = builder.build()
         samples_dict = BlockAccessor.for_block(samples_table).to_numpy(columns=columns)
         # This zip does the transposition from list of column values to list of tuples.
-        samples_list = sorted(zip(*samples_dict.values()))
+        samples_list = list(zip(*samples_dict.values()))
+
+        def is_na(x):
+            # Check if x is None or NaN. Type casting to np.array first to avoid
+            # isnan failing on strings and other types.
+            if x is None:
+                return True
+            x = np.asarray(x)
+            if np.issubdtype(x.dtype, np.number):
+                return np.isnan(x)
+            return False
+
+        def key_fn_with_nones(sample):
+            return tuple(NULL_SENTINEL if is_na(x) else x for x in sample)
+
+        # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
+        samples_list = sorted(samples_list, key=key_fn_with_nones)
 
         # Each boundary corresponds to a quantile of the data.
         quantile_indices = [

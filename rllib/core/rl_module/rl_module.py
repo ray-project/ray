@@ -1,6 +1,7 @@
 import abc
 import dataclasses
 from dataclasses import dataclass, field
+import logging
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
@@ -35,6 +36,8 @@ if TYPE_CHECKING:
         MultiRLModuleSpec,
     )
     from ray.rllib.core.models.catalog import Catalog
+
+logger = logging.getLogger("ray.rllib")
 
 
 @PublicAPI(stability="alpha")
@@ -395,6 +398,7 @@ class RLModule(Checkpointable, abc.ABC):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
         self.catalog = None
+        self._catalog_ctor_error = None
 
         # Deprecated
         self.config = config
@@ -403,17 +407,10 @@ class RLModule(Checkpointable, abc.ABC):
                 old="RLModule(config=[RLModuleConfig])",
                 new="RLModule(observation_space=.., action_space=.., inference_only=..,"
                 " learner_only=.., model_config=..)",
-                error=False,
+                help="See https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/custom_cnn_rl_module.py "  # noqa
+                "for how to write a custom RLModule.",
+                error=True,
             )
-            self.observation_space = self.config.observation_space
-            self.action_space = self.config.action_space
-            self.inference_only = self.config.inference_only
-            self.learner_only = self.config.learner_only
-            self.model_config = self.config.model_config_dict
-            try:
-                self.catalog = self.config.get_catalog()
-            except Exception:
-                pass
         else:
             self.observation_space = observation_space
             self.action_space = action_space
@@ -426,8 +423,16 @@ class RLModule(Checkpointable, abc.ABC):
                     action_space=self.action_space,
                     model_config_dict=self.model_config,
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(
+                    "Could not create a Catalog object for your RLModule! If you are "
+                    "not using the new API stack yet, make sure to switch it off in "
+                    "your config: `config.api_stack(enable_rl_module_and_learner=False"
+                    ", enable_env_runner_and_connector_v2=False)`. Some algos already "
+                    "use the new stack by default. Ignore this message, if your "
+                    "RLModule does not use a Catalog to build its sub-components."
+                )
+                self._catalog_ctor_error = e
 
         # TODO (sven): Deprecate this. We keep it here for now in case users
         #  still have custom models (or subclasses of RLlib default models)
@@ -677,12 +682,6 @@ class RLModule(Checkpointable, abc.ABC):
         Returns:
             This RLModule's state dict.
         """
-        if components is not None or not_components is not None:
-            raise ValueError(
-                "`component` arg and `not_component` arg not supported in "
-                "`RLModule.get_state()` base implementation! Override this method in "
-                "your custom RLModule subclass."
-            )
         return {}
 
     @OverrideToImplementCustomLogic
@@ -693,7 +692,7 @@ class RLModule(Checkpointable, abc.ABC):
     @override(Checkpointable)
     def get_ctor_args_and_kwargs(self):
         return (
-            (self.config,),  # *args
+            (),  # *args
             {
                 "observation_space": self.observation_space,
                 "action_space": self.action_space,

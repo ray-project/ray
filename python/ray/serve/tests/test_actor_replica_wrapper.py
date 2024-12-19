@@ -66,9 +66,8 @@ class FakeReplicaActor:
         cancelled_signal_actor = kwargs.pop("cancelled_signal_actor", None)
         if cancelled_signal_actor is not None:
             executing_signal_actor = kwargs.pop("executing_signal_actor")
-            await executing_signal_actor.send.remote()
-            await send_signal_on_cancellation(cancelled_signal_actor)
-            return
+            async with send_signal_on_cancellation(cancelled_signal_actor):
+                await executing_signal_actor.send.remote()
 
         yield pickle.dumps(self._replica_queue_length_info)
         if not self._replica_queue_length_info.accepted:
@@ -121,11 +120,12 @@ async def test_send_request(setup_fake_replica, is_streaming: bool):
     )
     replica_result = replica.send_request(pr)
     if is_streaming:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(replica_result.obj_ref, ObjectRef)
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
         assert await replica_result.get_async() == "Hello"
 
 
@@ -157,12 +157,13 @@ async def test_send_request_with_rejection(
     if not accepted:
         assert replica_result is None
     elif is_streaming:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
+        assert isinstance(replica_result.to_object_ref_gen(), ObjectRefGenerator)
         for i in range(5):
             assert await replica_result.__anext__() == f"Hello-{i}"
     else:
-        assert isinstance(replica_result.obj_ref_gen, ObjectRefGenerator)
-        assert await replica_result.__anext__() == "Hello"
+        assert isinstance(replica_result.to_object_ref(), ObjectRef)
+        assert isinstance(await replica_result.to_object_ref_async(), ObjectRef)
+        assert await replica_result.get_async() == "Hello"
 
 
 @pytest.mark.asyncio

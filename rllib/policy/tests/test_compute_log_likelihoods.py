@@ -129,20 +129,30 @@ class TestComputeLogLikelihood(unittest.TestCase):
 
     def test_ppo_cont(self):
         """Tests PPO's (cont. actions) compute_log_likelihoods method."""
-        config = ppo.PPOConfig()
-        config.training(
-            model={
-                "fcnet_hiddens": [10],
-                "fcnet_activation": "linear",
-            }
+        config = (
+            ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
+            .training(
+                model={
+                    "fcnet_hiddens": [10],
+                    "fcnet_activation": "linear",
+                }
+            )
+            .debugging(seed=42)
         )
-        config.debugging(seed=42)
         prev_a = np.array([0.0])
         do_test_log_likelihood(ppo.PPO, config, prev_a, continuous=True)
 
     def test_ppo_discr(self):
         """Tests PPO's (discr. actions) compute_log_likelihoods method."""
         config = ppo.PPOConfig()
+        config.api_stack(
+            enable_env_runner_and_connector_v2=False,
+            enable_rl_module_and_learner=False,
+        )
         config.debugging(seed=42)
         prev_a = np.array(0)
         do_test_log_likelihood(ppo.PPO, config, prev_a)

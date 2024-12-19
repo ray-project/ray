@@ -6,9 +6,12 @@ import pyarrow as pa
 import pytest
 
 import ray
+from ray.air.util.tensor_extensions.arrow import (
+    get_arrow_extension_fixed_shape_tensor_types,
+)
 from ray.data._internal.execution.interfaces.ref_bundle import RefBundle
 from ray.data.block import Block
-from ray.data.extensions import ArrowTensorArray, ArrowTensorType, TensorDtype
+from ray.data.extensions import ArrowTensorArray, TensorDtype
 from ray.data.tests.conftest import *  # noqa
 from ray.data.tests.mock_http_server import *  # noqa
 from ray.tests.conftest import *  # noqa
@@ -120,6 +123,20 @@ def test_to_pandas(ray_start_regular_shared):
     assert df.equals(dfds)
 
 
+def test_to_pandas_different_block_types(ray_start_regular_shared):
+    # Test for https://github.com/ray-project/ray/issues/48575.
+    df = pd.DataFrame({"a": [0]})
+    ds1 = ray.data.from_pandas(df)
+
+    table = pa.Table.from_pandas(df)
+    ds2 = ray.data.from_arrow(table)
+
+    actual_df = ds1.union(ds2).to_pandas()
+
+    expected_df = pd.DataFrame({"a": [0, 0]})
+    pd.testing.assert_frame_equal(actual_df, expected_df)
+
+
 def test_to_pandas_refs(ray_start_regular_shared):
     n = 5
     df = pd.DataFrame({"id": list(range(n))})
@@ -172,7 +189,7 @@ def test_to_pandas_tensor_column_cast_arrow(ray_start_regular_shared):
         in_table = pa.table({"a": ArrowTensorArray.from_numpy(data)})
         ds = ray.data.from_arrow(in_table)
         dtype = ds.schema().base_schema.field(0).type
-        assert isinstance(dtype, ArrowTensorType)
+        assert isinstance(dtype, get_arrow_extension_fixed_shape_tensor_types())
         out_df = ds.to_pandas()
         assert out_df["a"].dtype.type is np.object_
         expected_df = pd.DataFrame({"a": list(data)})

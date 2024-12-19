@@ -147,7 +147,7 @@ if __name__ == "__main__":
             train_batch_size_per_learner=512,
             gamma=0.95,
             # Linearly adjust learning rate based on number of GPUs.
-            lr=0.0003 * (args.num_gpus or 1),
+            lr=0.0003 * (args.num_learners or 1),
             vf_loss_coeff=0.01,
         )
         .rl_module(

@@ -321,7 +321,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //... core
         --run-flaky-tests  --build-type clang
-        --parallelism-per-worker 2 --gpus 2
+        --gpus 4
         --build-name coregpubuild
         --only-tags multi_gpu
     depends_on: coregpubuild

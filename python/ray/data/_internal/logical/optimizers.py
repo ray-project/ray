@@ -6,6 +6,7 @@ from ray.data._internal.logical.interfaces import (
     PhysicalPlan,
     Rule,
 )
+from ray.data._internal.logical.rules.inherit_batch_format import InheritBatchFormatRule
 from ray.data._internal.logical.rules.inherit_target_max_block_size import (
     InheritTargetMaxBlockSizeRule,
 )
@@ -20,6 +21,7 @@ from ray.util.annotations import DeveloperAPI
 
 _LOGICAL_RULES = [
     ReorderRandomizeBlocksRule,
+    InheritBatchFormatRule,
 ]
 
 _PHYSICAL_RULES = [

@@ -37,14 +37,13 @@ class _CollectiveOperation:
         op: _CollectiveOp,
         transport: Optional[Union[str, GPUCommunicator]] = None,
     ):
-        self._input_nodes: List[DAGNode] = input_nodes
-        if len(self._input_nodes) == 0:
+        if len(input_nodes) == 0:
             raise ValueError("Expected input nodes for a collective operation")
-        if len(set(self._input_nodes)) != len(self._input_nodes):
+        if len(set(input_nodes)) != len(input_nodes):
             raise ValueError("Expected unique input nodes for a collective operation")
 
         self._actor_handles: List["ray.actor.ActorHandle"] = []
-        for input_node in self._input_nodes:
+        for input_node in input_nodes:
             actor_handle = input_node._get_actor_handle()
             if actor_handle is None:
                 raise ValueError("Expected an actor handle from the input node")
@@ -52,7 +51,7 @@ class _CollectiveOperation:
         if len(set(self._actor_handles)) != len(self._actor_handles):
             invalid_input_nodes = [
                 input_node
-                for input_node in self._input_nodes
+                for input_node in input_nodes
                 if self._actor_handles.count(input_node._get_actor_handle()) > 1
             ]
             raise ValueError(
@@ -76,7 +75,6 @@ class _CollectiveOperation:
     def __str__(self) -> str:
         return (
             f"CollectiveGroup("
-            f"_input_nodes={self._input_nodes}, "
             f"_actor_handles={self._actor_handles}, "
             f"_op={self._op}, "
             f"_type_hint={self._type_hint})"

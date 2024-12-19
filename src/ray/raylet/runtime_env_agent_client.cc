@@ -91,7 +91,7 @@ class Session : public std::enable_shared_from_this<Session> {
   //
   // This method should only be called once.
   void run(FinishedCallback finished_callback) {
-    finished_callback_ = finished_callback;
+    finished_callback_ = std::move(finished_callback);
     // Starts the state machine by looking up the domain name.
     resolver_.async_resolve(
         host_,
@@ -151,7 +151,7 @@ class Session : public std::enable_shared_from_this<Session> {
 
   void on_connect(beast::error_code ec, tcp::resolver::results_type::endpoint_type) {
     if (ec) {
-      Failed(ray::Status::NotFound("on_connect " + ec.message()));
+      Failed(ray::Status::NotFound(absl::StrCat("on_connect ", ec.message())));
       return;
     }
 
@@ -163,9 +163,8 @@ class Session : public std::enable_shared_from_this<Session> {
 
   void on_write(beast::error_code ec, std::size_t bytes_transferred) {
     if (ec) {
-      Failed(ray::Status::Disconnected("on_write " + ec.message() +
-                                       ", bytes_transferred " +
-                                       std::to_string(bytes_transferred)));
+      Failed(ray::Status::Disconnected(absl::StrCat(
+          "on_write ", ec.message(), ", bytes_transferred ", bytes_transferred)));
       return;
     }
     stream_.expires_never();
@@ -178,9 +177,8 @@ class Session : public std::enable_shared_from_this<Session> {
 
   void on_read(beast::error_code ec, std::size_t bytes_transferred) {
     if (ec) {
-      Failed(ray::Status::Disconnected("on_read " + ec.message() +
-                                       ", bytes_transferred " +
-                                       std::to_string(bytes_transferred)));
+      Failed(ray::Status::Disconnected(absl::StrCat(
+          "on_read ", ec.message(), ", bytes_transferred ", bytes_transferred)));
       return;
     }
 
@@ -235,7 +233,7 @@ class SessionPool {
         this->remove_session_from_running(session);
       });
     } else {
-      pending_sessions_.push(session);
+      pending_sessions_.emplace(std::move(session));
     }
   }
 
@@ -244,10 +242,10 @@ class SessionPool {
   // enqueue one.
   void remove_session_from_running(std::shared_ptr<Session> session) {
     running_sessions_.erase(session);
-    if (pending_sessions_.size() > 0) {
-      auto pending = pending_sessions_.front();
+    if (!pending_sessions_.empty()) {
+      auto pending = std::move(pending_sessions_.front());
       pending_sessions_.pop();
-      enqueue(pending);
+      enqueue(std::move(pending));
     }
   }
 
@@ -276,12 +274,12 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
       : io_context_(io_context),
         session_pool_(session_pool_size),
         address_(address),
-        port_str_(std::to_string(port)),
+        port_str_(absl::StrFormat("%d", port)),
         delay_executor_(delay_executor),
         shutdown_raylet_gracefully_(shutdown_raylet_gracefully),
         agent_register_timeout_ms_(agent_register_timeout_ms),
         agent_manager_retry_interval_ms_(agent_manager_retry_interval_ms) {}
-  ~HttpRuntimeEnvAgentClient() = default;
+  ~HttpRuntimeEnvAgentClient() override = default;
 
   template <typename T>
   using SuccCallback = std::function<void(T)>;
@@ -436,7 +434,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session_pool_.enqueue(session);
+    session_pool_.enqueue(std::move(session));
   }
 
   // Making HTTP call.
@@ -448,7 +446,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
         [=](SuccCallback<rpc::DeleteRuntimeEnvIfPossibleReply> succ_callback,
             FailCallback fail_callback) {
           return TryDeleteRuntimeEnvIfPossible(
-              serialized_runtime_env, succ_callback, fail_callback);
+              serialized_runtime_env, std::move(succ_callback), std::move(fail_callback));
         },
         /*succ_callback=*/
         [=](rpc::DeleteRuntimeEnvIfPossibleReply reply) {
@@ -503,7 +501,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
           }
         },
         fail_callback);
-    session_pool_.enqueue(session);
+    session_pool_.enqueue(std::move(session));
   }
 
  private:
@@ -521,7 +519,7 @@ class HttpRuntimeEnvAgentClient : public RuntimeEnvAgentClient {
 };
 }  // namespace
 
-std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
+std::unique_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     instrumented_io_context &io_context,
     const std::string &address,
     int port,
@@ -530,7 +528,7 @@ std::shared_ptr<RuntimeEnvAgentClient> RuntimeEnvAgentClient::Create(
     std::function<void(const rpc::NodeDeathInfo &)> shutdown_raylet_gracefully,
     uint32_t agent_register_timeout_ms,
     uint32_t agent_manager_retry_interval_ms) {
-  return std::make_shared<HttpRuntimeEnvAgentClient>(io_context,
+  return std::make_unique<HttpRuntimeEnvAgentClient>(io_context,
                                                      address,
                                                      port,
                                                      delay_executor,

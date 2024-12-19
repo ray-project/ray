@@ -125,6 +125,10 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .training(
                 num_epochs=2,
                 # Setup lr schedule for testing.
@@ -190,6 +194,10 @@ class TestPPO(unittest.TestCase):
         # Build a PPOConfig object.
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .training(
                 # Setup lr schedule for testing.
                 lr_schedule=[[0, 5e-5], [256, 0.0]],
@@ -255,6 +263,10 @@ class TestPPO(unittest.TestCase):
         """Tests, whether PPO runs with different exploration setups."""
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment(
                 "FrozenLake-v1",
                 env_config={"is_slippery": False, "map_name": "4x4"},
@@ -303,6 +315,10 @@ class TestPPO(unittest.TestCase):
 
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,
@@ -353,6 +369,10 @@ class TestPPO(unittest.TestCase):
         """
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_rl_module_and_learner=False,
+                enable_env_runner_and_connector_v2=False,
+            )
             .environment("CartPole-v1")
             .env_runners(
                 num_env_runners=0,

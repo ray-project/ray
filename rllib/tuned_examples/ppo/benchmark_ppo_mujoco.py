@@ -85,11 +85,6 @@ class BenchmarkStopper(Stopper):
 config = (
     PPOConfig()
     .environment(env=tune.grid_search(list(benchmark_envs.keys())))
-    # Enable new API stack and use EnvRunner.
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
     .env_runners(
         # Following the paper.
         num_env_runners=32,

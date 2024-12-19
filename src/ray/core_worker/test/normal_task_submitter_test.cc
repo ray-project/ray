@@ -80,7 +80,8 @@ TaskSpecification BuildTaskSpec(const std::unordered_map<std::string, double> &r
                             resources,
                             serialized_runtime_env,
                             depth,
-                            TaskID::Nil());
+                            TaskID::Nil(),
+                            "");
   return builder.Build();
 }
 // Calls BuildTaskSpec with empty resources map and empty function descriptor
@@ -147,6 +148,7 @@ class MockTaskFinisher : public TaskFinisherInterface {
                        const Status *status,
                        const rpc::RayErrorInfo *ray_error_info = nullptr) override {
     num_fail_pending_task_calls++;
+    num_tasks_failed++;
   }
 
   bool FailOrRetryPendingTask(const TaskID &task_id,
@@ -177,6 +179,8 @@ class MockTaskFinisher : public TaskFinisherInterface {
   void MarkTaskWaitingForExecution(const TaskID &task_id,
                                    const NodeID &node_id,
                                    const WorkerID &worker_id) override {}
+
+  bool IsTaskPending(const TaskID &task_id) const override { return true; }
 
   int num_tasks_complete = 0;
   int num_tasks_failed = 0;
@@ -244,6 +248,11 @@ class MockRayletClient : public WorkerLeaseInterface {
       num_is_selected_based_on_locality_leases_requested += 1;
     }
     callbacks.push_back(callback);
+  }
+  void PrestartWorkers(
+      const rpc::PrestartWorkersRequest &request,
+      const rpc::ClientCallback<ray::rpc::PrestartWorkersReply> &callback) override {
+    RAY_LOG(FATAL) << "Not implemented";
   }
 
   void ReleaseUnusedActorWorkers(
@@ -2093,7 +2102,7 @@ TEST(NormalTaskSubmitterTest, TestKillPendingTask) {
   ASSERT_EQ(raylet_client->num_workers_returned, 0);
   ASSERT_EQ(raylet_client->num_workers_disconnected, 0);
   ASSERT_EQ(task_finisher->num_tasks_complete, 0);
-  ASSERT_EQ(task_finisher->num_tasks_failed, 0);
+  ASSERT_EQ(task_finisher->num_tasks_failed, 1);
   ASSERT_EQ(task_finisher->num_fail_pending_task_calls, 1);
   ASSERT_EQ(raylet_client->num_leases_canceled, 1);
   ASSERT_TRUE(raylet_client->ReplyCancelWorkerLease());

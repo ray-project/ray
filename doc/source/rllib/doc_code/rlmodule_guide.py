@@ -8,15 +8,7 @@ from pprint import pprint
 
 from ray.rllib.algorithms.ppo import PPOConfig
 
-config = (
-    PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    )
-    .framework("torch")
-    .environment("CartPole-v1")
-)
+config = PPOConfig().framework("torch").environment("CartPole-v1")
 
 algorithm = config.build()
 
@@ -235,21 +227,15 @@ import torch.nn as nn
 class BCTorchRLModuleWithSharedGlobalEncoder(TorchRLModule):
     """An RLModule with a shared encoder between agents for global observation."""
 
-    def __init__(
-        self,
-        encoder: nn.Module,
-        local_dim: int,
-        hidden_dim: int,
-        action_dim: int,
-        config=None,
-    ) -> None:
-        super().__init__(config=config)
-
-        self.encoder = encoder
+    def setup(self):
+        self.encoder = self.model_config["encoder"]
         self.policy_head = nn.Sequential(
-            nn.Linear(hidden_dim + local_dim, hidden_dim),
+            nn.Linear(
+                self.model_config["hidden_dim"] + self.model_config["local_dim"],
+                self.model_config["hidden_dim"],
+            ),
             nn.ReLU(),
-            nn.Linear(hidden_dim, action_dim),
+            nn.Linear(self.model_config["hidden_dim"], self.model_config["action_dim"]),
         )
 
     def _forward_inference(self, batch: Dict[str, Any]) -> Dict[str, Any]:
@@ -288,11 +274,14 @@ class BCTorchMultiAgentModuleWithSharedEncoder(MultiRLModule):
         rl_modules = {}
         for module_id, module_spec in module_specs.items():
             rl_modules[module_id] = BCTorchRLModuleWithSharedGlobalEncoder(
-                config=module_specs[module_id].get_rl_module_config(),
-                encoder=shared_encoder,
-                local_dim=module_spec.observation_space["local"].shape[0],
-                hidden_dim=hidden_dim,
-                action_dim=module_spec.action_space.n,
+                observation_space=module_spec.observation_space,
+                action_space=module_spec.action_space,
+                model_config={
+                    "local_dim": module_spec.observation_space["local"].shape[0],
+                    "hidden_dim": hidden_dim,
+                    "action_dim": module_spec.action_space.n,
+                    "encoder": shared_encoder,
+                },
             )
 
         self._rl_modules = rl_modules
@@ -345,14 +334,7 @@ from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 
-config = (
-    PPOConfig()
-    # Enable the new API stack (RLModule and Learner APIs).
-    .api_stack(
-        enable_rl_module_and_learner=True,
-        enable_env_runner_and_connector_v2=True,
-    ).environment("CartPole-v1")
-)
+config = PPOConfig().environment("CartPole-v1")
 env = gym.make("CartPole-v1")
 # Create an RL Module that we would like to checkpoint
 module_spec = RLModuleSpec(

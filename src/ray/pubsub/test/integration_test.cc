@@ -141,7 +141,7 @@ class IntegrationTest : public ::testing::Test {
     address_proto_.set_port(7928);
     address_proto_.set_worker_id(UniqueID::FromRandom().Binary());
     io_service_.Run();
-    periodic_runner_ = std::make_unique<PeriodicalRunner>(*io_service_.Get());
+    periodical_runner_ = PeriodicalRunner::Create(*io_service_.Get());
 
     SetupServer();
   }
@@ -166,7 +166,7 @@ class IntegrationTest : public ::testing::Test {
         std::vector<rpc::ChannelType>{
             rpc::ChannelType::GCS_ACTOR_CHANNEL,
         },
-        /*periodic_runner=*/periodic_runner_.get(),
+        /*periodical_runner=*/*periodical_runner_,
         /*get_time_ms=*/[]() -> double { return absl::ToUnixMicros(absl::Now()); },
         /*subscriber_timeout_ms=*/absl::ToInt64Microseconds(absl::Seconds(30)),
         /*batch_size=*/100);
@@ -200,7 +200,7 @@ class IntegrationTest : public ::testing::Test {
   std::string address_;
   rpc::Address address_proto_;
   IOServicePool io_service_ = IOServicePool(3);
-  std::unique_ptr<PeriodicalRunner> periodic_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   std::unique_ptr<SubscriberServiceImpl> subscriber_service_;
   std::unique_ptr<grpc::Server> server_;
 };

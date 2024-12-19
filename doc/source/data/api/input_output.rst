@@ -186,6 +186,15 @@ Delta Sharing
 
    read_delta_sharing_tables
 
+Hudi
+----
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_hudi
+
 Iceberg
 -------
 
@@ -203,6 +212,15 @@ Lance
    :toctree: doc/
 
    read_lance
+
+ClickHouse
+----------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   read_clickhouse
 
 Dask
 ----
@@ -333,3 +351,12 @@ MetadataProvider API
    datasource.DefaultFileMetadataProvider
    datasource.ParquetMetadataProvider
    datasource.FastFileMetadataProvider
+
+Shuffling API
+-------------
+
+.. autosummary::
+   :nosignatures:
+   :toctree: doc/
+
+   FileShuffleConfig

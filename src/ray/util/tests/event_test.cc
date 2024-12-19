@@ -26,6 +26,8 @@
 #include "ray/util/event_label.h"
 #include "src/ray/protobuf/gcs.pb.h"
 
+using json = nlohmann::json;
+
 namespace ray {
 
 class TestEventReporter : public BaseEventReporter {
