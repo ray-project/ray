@@ -121,6 +121,8 @@ def create_map_operator(
         input_op,
         data_context,
         name="ListFiles",
+        # This will push the blocks to the next operator faster.
+        target_max_block_size=data_context.target_min_block_size,
         ray_remote_args={
             # This is operator is extremely fast. If we don't unblock backpressure, this
             # operator gets bottlenecked by the Ray Data scheduler. This can prevent Ray
@@ -153,24 +155,33 @@ def _get_file_infos(
 
 
 def _expand_directory(
-    path: str,
+    base_path: str,
     filesystem: "pyarrow.fs.FileSystem",
     ignore_missing_path: bool,
 ) -> Iterable[Tuple[str, Optional[int]]]:
+    from pyarrow.fs import FileSelector, FileType
+
     exclude_prefixes = [".", "_"]
-
-    from pyarrow.fs import FileSelector
-
-    selector = FileSelector(path, recursive=True, allow_not_found=ignore_missing_path)
+    selector = FileSelector(
+        base_path, recursive=False, allow_not_found=ignore_missing_path
+    )
     files = filesystem.get_file_info(selector)
-    base_path = selector.base_dir
+
     for file_ in files:
-        if not file_.is_file:
+        if not file_.path.startswith(base_path):
             continue
-        file_path = file_.path
-        if not file_path.startswith(base_path):
-            continue
-        relative = file_path[len(base_path) :]
+
+        relative = file_.path[len(base_path) :]
         if any(relative.startswith(prefix) for prefix in exclude_prefixes):
             continue
-        yield (file_path, file_.size)
+
+        if file_.type == FileType.File:
+            yield (file_.path, file_.size)
+        elif file_.type == FileType.Directory:
+            yield from _expand_directory(file_.path, filesystem, ignore_missing_path)
+        elif file_.type == FileType.UNKNOWN:
+            logger.warning(f"Discovered file with unknown type: '{file_.path}'")
+            continue
+        else:
+            assert file_.type == FileType.NotFound
+            raise FileNotFoundError(file_.path)
