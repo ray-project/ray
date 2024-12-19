@@ -86,10 +86,8 @@ class Scheduler:
         Raises:
             ValueError: In case, errors are found in the schedule's format.
         """
-        if (
-            isinstance(fixed_value_or_schedule, (int, float))
-            or fixed_value_or_schedule is None
-        ):
+        # Fixed (single) value.
+        if isinstance(fixed_value_or_schedule, (int, float)):
             return
 
         if not isinstance(fixed_value_or_schedule, (list, tuple)) or (
@@ -97,16 +95,23 @@ class Scheduler:
         ):
             raise ValueError(
                 f"Invalid `{setting_name}` ({fixed_value_or_schedule}) specified! "
-                f"Must be a list of at least 2 tuples, each of the form "
-                f"(`timestep`, `{description} to reach`), e.g. "
+                f"Must be a list of 2 or more tuples, each of the form "
+                f"(`timestep`, `{description} to reach`), for example "
                 "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
             )
         elif fixed_value_or_schedule[0][0] != 0:
             raise ValueError(
-                f"When providing a `{setting_name}`, the first timestep must be 0 "
-                f"and the corresponding lr value is the initial {description}! You "
-                f"provided ts={fixed_value_or_schedule[0][0]} {description}="
+                f"When providing a `{setting_name}` schedule, the first timestep must "
+                f"be 0 and the corresponding lr value is the initial {description}! "
+                f"You provided ts={fixed_value_or_schedule[0][0]} {description}="
                 f"{fixed_value_or_schedule[0][1]}."
+            )
+        elif any(len(pair) != 2 for pair in fixed_value_or_schedule):
+            raise ValueError(
+                f"When providing a `{setting_name}` schedule, each tuple in the "
+                f"schedule list must have exctly 2 items of the form "
+                f"(`timestep`, `{description} to reach`), for example "
+                "`[(0, 0.001), (1e6, 0.0001), (2e6, 0.00005)]`."
             )
 
     def get_current_value(self) -> TensorType:
