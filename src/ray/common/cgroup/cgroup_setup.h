@@ -14,11 +14,11 @@
 
 #pragma once
 
-#include <fstream>
-
 namespace ray {
 
 // Util function to setup cgroups preparation for resource constraints.
+// It's expected to call from raylet to setup node level cgroup configurations.
+//
 // If error happens, error will be logged and return false.
 // Cgroup is not supported on non-linux platforms.
 bool SetupCgroupsPreparation();
