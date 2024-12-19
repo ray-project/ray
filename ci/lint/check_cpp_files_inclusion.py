@@ -2,53 +2,31 @@
 """This script checks whether header file inclusion for ray core C++ code is correct.
 """
 
-import subprocess
-
-# All ray core C++ code is under certain folder.
-_RAY_CORE_CPP_DIR = "src/ray"
-
-
-def get_merge_base_develop() -> str:
-    """Return merge-base develop commit of current HEAD"""
-    current_branch = subprocess.check_output(
-        ["git", "rev-parse", "--abbrev-ref", "HEAD"]
-    ).strip()
-    return subprocess.check_output(
-        ["git", "merge-base", current_branch, "origin/master"]
-    ).strip()
-
-
-def diff_files_with_develop() -> str:
-    """Return files that are changed between merge-base develop and HEAD."""
-    return (
-        subprocess.check_output(
-            ["git", "diff", "--name-only", "HEAD", get_merge_base_develop()]
-        )
-        .strip()
-        .decode()
-        .split("\n")
-    )
+import sys
+import re
 
 
 def check_ray_core_inclusion(fname: str):
     """Check whether ray core file has incorrect inclusion `src/ray/...`, which doesn't
     build on windows env.
 
-    raise:
-        ImportError: if incorrect inclusion is detected.
+    If invalid inclusion is detected, error message will be printed, and exit with
+    non-zero code directly.
     """
     # Exclude protobuf, which requires absolution path for compilation.
-    cmd = f"grep 'src/ray' {fname} | grep -v 'pb'"
-    grep_res = subprocess.check_output(cmd, shell=True, text=True)
-    if grep_res:
-        raise ImportError(f"{fname} has invalid header file inclusion: {grep_res}")
+    pattern = re.compile(r"^#include(?=.*src/ray)(?!.*pb).*$", re.MULTILINE)
+
+    with open(fname, "r") as file:
+        content = file.read()
+        match = pattern.search(content)
+        if match:
+            print(f"{fname} has invalid header file inclusion: {match.group(0)}")
+            sys.exit(1)
 
 
 def main():
-    changed_files = diff_files_with_develop()
+    changed_files = sys.argv[1:]
     for cur_file in changed_files:
-        if not cur_file.startswith(_RAY_CORE_CPP_DIR):
-            continue
         check_ray_core_inclusion(cur_file)
 
 
