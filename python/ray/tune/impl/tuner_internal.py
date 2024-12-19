@@ -28,9 +28,9 @@ from ray.tune import (
     Experiment,
     ExperimentAnalysis,
     ResumeConfig,
-    TuneError,
     RunConfig,
     TuneConfig,
+    TuneError,
 )
 from ray.tune.registry import is_function_trainable
 from ray.tune.result_grid import ResultGrid
