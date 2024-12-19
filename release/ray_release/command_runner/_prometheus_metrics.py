@@ -13,6 +13,8 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_PROMETHEUS_HOST = "http://localhost:9090"
 PROMETHEUS_HOST_ENV_VAR = "RAY_PROMETHEUS_HOST"
+DEFAULT_PROMETHEUS_HEADERS = "{}"
+PROMETHEUS_HEADERS_ENV_VAR = "RAY_PROMETHEUS_HEADERS"
 RETRIES = 3
 
 
@@ -31,13 +33,19 @@ class PrometheusClient:
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
         )
+        self.prometheus_headers = os.environ.get(
+            PROMETHEUS_HEADERS_ENV_VAR,
+            DEFAULT_PROMETHEUS_HEADERS,
+        )
 
     async def query_prometheus(self, query_type, **kwargs):
         url = f"{self.prometheus_host}/api/v1/{query_type}?" + "&".join(
             [f"{k}={quote(str(v), safe='')}" for k, v in kwargs.items()]
         )
         logger.debug(f"Running Prometheus query {url}")
-        async with self.http_session.get(url) as resp:
+        async with self.http_session.get(
+            url, json.loads(self.prometheus_headers)
+        ) as resp:
             for _ in range(RETRIES):
                 if resp.status == 200:
                     prom_data = await resp.json()

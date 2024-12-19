@@ -10,7 +10,9 @@ from aiohttp.web import Request, Response
 import ray.dashboard.optional_utils as optional_utils
 import ray.dashboard.utils as dashboard_utils
 from ray.dashboard.modules.metrics.metrics_head import (
+    DEFAULT_PROMETHEUS_HEADERS,
     DEFAULT_PROMETHEUS_HOST,
+    PROMETHEUS_HEADERS_ENV_VAR,
     PROMETHEUS_HOST_ENV_VAR,
     PrometheusQueryError,
 )
@@ -51,6 +53,10 @@ class DataHead(dashboard_utils.DashboardHeadModule):
         self._session_name = dashboard_head.session_name
         self.prometheus_host = os.environ.get(
             PROMETHEUS_HOST_ENV_VAR, DEFAULT_PROMETHEUS_HOST
+        )
+        self.prometheus_headers = os.environ.get(
+            PROMETHEUS_HEADERS_ENV_VAR,
+            DEFAULT_PROMETHEUS_HEADERS,
         )
 
     @optional_utils.DashboardHeadRouteTable.get("/api/data/datasets/{job_id}")
@@ -148,7 +154,8 @@ class DataHead(dashboard_utils.DashboardHeadModule):
 
     async def _query_prometheus(self, query):
         async with self.http_session.get(
-            f"{self.prometheus_host}/api/v1/query?query={quote(query)}"
+            f"{self.prometheus_host}/api/v1/query?query={quote(query)}",
+            headers=json.loads(self.prometheus_headers),
         ) as resp:
             if resp.status == 200:
                 prom_data = await resp.json()
