@@ -69,7 +69,7 @@ logging_config_lock = threading.Lock()
 
 
 def _setup_log_record_factory():
-    """Setup log record factory to add timestamp_ns to LogRecord."""
+    """Setup log record factory to add _ray_timestamp_ns to LogRecord."""
     old_factory = logging.getLogRecordFactory()
 
     def record_factory(*args, **kwargs):
