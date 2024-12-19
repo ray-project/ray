@@ -4483,6 +4483,16 @@ class AlgorithmConfig(_Config):
             # `enable_rl_module_and_learner=True`.
             return
 
+        # Warn about new API stack on by default.
+        logger.warning(
+            f"You are running {self.algo_class.__name__} on the new API stack! "
+            "This is the new default behavior for this algorithm. If you don't "
+            "want to use the new API stack, set `config.api_stack("
+            "enable_rl_module_and_learner=False,"
+            "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
+            "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
+        )
+
         # Disabled hybrid API stack. Now, both `enable_rl_module_and_learner` and
         # `enable_env_runner_and_connector_v2` must be True or both False.
         if not self.enable_env_runner_and_connector_v2:
