@@ -32,7 +32,7 @@ def _copy_doc(copy_func):
 class TrainContext:
     """Context for Ray training executions."""
 
-    @Deprecated(warn=True)
+    @Deprecated(warning=True)
     @_copy_doc(session.get_metadata)
     def get_metadata(self) -> Dict[str, Any]:
         return session.get_metadata()

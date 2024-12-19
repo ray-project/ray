@@ -2,9 +2,10 @@ import threading
 from typing import Any, Dict, Optional
 
 from ray.train._internal import session
-from ray.train.context import TrainContext as TrainV1Context
-from ray.train.context import _copy_doc
+from ray.train.context import TrainContext as TrainV1Context, _copy_doc
+from ray.train.constants import _v2_migration_warnings_enabled
 from ray.util.annotations import Deprecated, PublicAPI
+
 
 # The context singleton on this process.
 _tune_context: Optional["TuneContext"] = None
@@ -30,7 +31,7 @@ class TuneContext(TrainV1Context):
 
     @Deprecated(
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_world_size"),
-        warning=True,
+        warning=_v2_migration_warnings_enabled(),
     )
     @_copy_doc(TrainV1Context.get_world_size)
     def get_world_size(self) -> int:
@@ -38,7 +39,7 @@ class TuneContext(TrainV1Context):
 
     @Deprecated(
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_world_rank"),
-        warning=True,
+        warning=_v2_migration_warnings_enabled(),
     )
     @_copy_doc(TrainV1Context.get_world_rank)
     def get_world_rank(self) -> int:
@@ -46,7 +47,7 @@ class TuneContext(TrainV1Context):
 
     @Deprecated(
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_local_rank"),
-        warning=True,
+        warning=_v2_migration_warnings_enabled(),
     )
     @_copy_doc(TrainV1Context.get_local_rank)
     def get_local_rank(self) -> int:
@@ -56,7 +57,7 @@ class TuneContext(TrainV1Context):
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format(
             "get_local_world_size"
         ),
-        warning=True,
+        warning=_v2_migration_warnings_enabled(),
     )
     @_copy_doc(TrainV1Context.get_local_world_size)
     def get_local_world_size(self) -> int:
@@ -64,7 +65,7 @@ class TuneContext(TrainV1Context):
 
     @Deprecated(
         message=_TRAIN_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE.format("get_node_rank"),
-        warning=True,
+        warning=_v2_migration_warnings_enabled(),
     )
     @_copy_doc(TrainV1Context.get_node_rank)
     def get_node_rank(self) -> int:
