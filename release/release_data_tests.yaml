@@ -30,24 +30,18 @@
       python read_and_consume_benchmark.py
       s3://anyscale-imagenet/ILSVRC/Data/CLS-LOC/ --format image --iter-bundles
 
+- name: read_tfrecords
+  run:
+    timeout: 3600
+    script: >
+      python read_and_consume_benchmark.py
+      s3://ray-benchmark-data-internal/imagenet/tfrecords --format tfrecords 
+      --iter-bundles
+  
 - name: read_from_uris
   run:
     timeout: 5400
-    script: >
-      python read_from_uris_benchmark.py
-
-# TODO: Rewrite this as a multi-node test
-- name: read_tfrecords_benchmark_single_node
-
-  cluster:
-    byod:
-      post_build_script: byod_install_mosaicml.sh
-    cluster_compute: single_node_benchmark_compute.yaml
-
-  run:
-    # Expect the benchmark to finish around 30 minutes.
-    timeout: 2700
-    script: python read_tfrecords_benchmark.py
+    script: python read_from_uris_benchmark.py
 
 - name: read_images_comparison_microbenchmark_single_node
   frequency: manual
