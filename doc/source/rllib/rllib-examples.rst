@@ -185,6 +185,10 @@ GPU (for Training and Sampling)
    Uses mixed precision (float32 and float16) for training, while switching to float16 precision for inference, balancing stability during training
    with performance improvements during evaluation.
 
+- `Using GPUs on EnvRunners <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/gpus_on_env_runners.py>`__:
+   Demos how GPUs can be required by :py:class:`~ray.rllib.env.env_runner.EnvRunner` instances as well (single- or multi-agent) through
+   the `config.env_runners(num_gpus_per_env_runner=..)` setting.
+
 
 Hierarchical Training
 +++++++++++++++++++++

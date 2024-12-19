@@ -101,6 +101,11 @@ if __name__ == "__main__":
         )
         .offline_data(
             input_=offline_file,
+            # The number of iterations to be run per learner when in multi-learner
+            # mode in a single RLlib training iteration. Leave this to `None` to
+            # run an entire epoch on the dataset during a single RLlib training
+            # iteration. For single-learner mode, 1 is the only option.
+            dataset_num_iters_per_learner=1 if not args.num_learners else None,
         )
         .multi_agent(
             policies={"main"},

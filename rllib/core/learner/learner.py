@@ -237,12 +237,7 @@ class Learner(Checkpointable):
         if self.config.seed is not None:
             update_global_seed_if_necessary(self.framework, self.config.seed)
 
-        self._distributed = self.config.num_learners > 1
-        self._use_gpu = self.config.num_gpus_per_learner > 0
-        # If we are using gpu but we are not distributed, use this gpu for training.
-        self._local_gpu_idx = self.config.local_gpu_idx
-
-        # whether self.build has already been called
+        # Whether self.build has already been called.
         self._is_built = False
 
         # These are the attributes that are set during build.
@@ -259,6 +254,7 @@ class Learner(Checkpointable):
         # Dict mapping ModuleID to a list of optimizer names. Note that the optimizer
         # name includes the ModuleID as a prefix: optimizer_name=`[ModuleID]_[.. rest]`.
         self._module_optimizers: Dict[ModuleID, List[str]] = defaultdict(list)
+        self._optimizer_name_to_module: Dict[str, ModuleID] = {}
 
         # Only manage optimizer's learning rate if user has NOT overridden
         # the `configure_optimizers_for_module` method. Otherwise, leave responsibility
@@ -314,7 +310,7 @@ class Learner(Checkpointable):
     @property
     def distributed(self) -> bool:
         """Whether the learner is running in distributed mode."""
-        return self._distributed
+        return self.config.num_learners > 1
 
     @property
     def module(self) -> MultiRLModule:
@@ -359,6 +355,7 @@ class Learner(Checkpointable):
 
         # Store the given optimizer under the given `module_id`.
         self._module_optimizers[module_id].append(full_registration_name)
+        self._optimizer_name_to_module[full_registration_name] = module_id
 
         # Store the optimizer instance under its full `module_id`_`optimizer_name`
         # key.
