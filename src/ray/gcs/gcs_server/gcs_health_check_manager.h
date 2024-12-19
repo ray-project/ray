@@ -83,7 +83,7 @@ class GcsHealthCheckManager {
   std::vector<NodeID> GetAllNodes() const;
 
   /// Mark the given node as healthy, so health check manager could save some checking
-  /// rpcs. Notice: have to invoke from io-context thread.
+  /// rpcs. Safe to call from non-io-context threads.
   ///
   /// \param node_id The id of the node.
   void MarkNodeHealthy(const NodeID &node_id);
