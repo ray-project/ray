@@ -21,7 +21,7 @@ Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
                                      std::string data,
                                      bool overwrite,
                                      std::function<void(bool)> callback) {
-  auto &table = CreateOrGetMutableTable(table_name);
+  auto &table = GetOrCreateMutableTable(table_name);
   absl::WriterMutexLock lock(&(table.mutex_));
   auto it = table.records_.find(key);
   bool inserted = false;
@@ -45,13 +45,12 @@ Status InMemoryStoreClient::AsyncGet(const std::string &table_name,
                                      const std::string &key,
                                      OptionalItemCallback<std::string> callback) {
   RAY_CHECK(callback);
-  auto tableOpt = GetTable(table_name);
+  auto table = GetTable(table_name);
   std::optional<std::string> data;
-  if (tableOpt) {
-    const auto &table = **tableOpt;
-    absl::ReaderMutexLock lock(&(table.mutex_));
-    auto iter = table.records_.find(key);
-    if (iter != table.records_.end()) {
+  if (table != nullptr) {
+    absl::ReaderMutexLock lock(&(table->mutex_));
+    auto iter = table->records_.find(key);
+    if (iter != table->records_.end()) {
       data = iter->second;
     }
   }
@@ -67,11 +66,10 @@ Status InMemoryStoreClient::AsyncGetAll(const std::string &table_name,
                                         MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   auto result = absl::flat_hash_map<std::string, std::string>();
-  auto tableOpt = GetTable(table_name);
-  if (tableOpt) {
-    const auto &table = **tableOpt;
-    absl::ReaderMutexLock lock(&(table.mutex_));
-    result = table.records_;
+  auto table = GetTable(table_name);
+  if (table != nullptr) {
+    absl::ReaderMutexLock lock(&(table->mutex_));
+    result = table->records_;
   }
   main_io_service_.post(
       [result = std::move(result), callback = std::move(callback)]() mutable {
@@ -87,13 +85,12 @@ Status InMemoryStoreClient::AsyncMultiGet(
     MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   auto result = absl::flat_hash_map<std::string, std::string>();
-  auto tableOpt = GetTable(table_name);
-  if (tableOpt) {
-    const auto &table = **tableOpt;
-    absl::MutexLock lock(&(table.mutex_));
+  auto table = GetTable(table_name);
+  if (table != nullptr) {
+    absl::MutexLock lock(&(table->mutex_));
     for (const auto &key : keys) {
-      auto it = table.records_.find(key);
-      if (it == table.records_.end()) {
+      auto it = table->records_.find(key);
+      if (it == table->records_.end()) {
         continue;
       }
       result.emplace(key, it->second);
@@ -110,7 +107,7 @@ Status InMemoryStoreClient::AsyncMultiGet(
 Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
                                         const std::string &key,
                                         std::function<void(bool)> callback) {
-  auto &table = CreateOrGetMutableTable(table_name);
+  auto &table = GetOrCreateMutableTable(table_name);
   absl::WriterMutexLock lock(&(table.mutex_));
   auto num = table.records_.erase(key);
   if (callback != nullptr) {
@@ -123,7 +120,7 @@ Status InMemoryStoreClient::AsyncDelete(const std::string &table_name,
 Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
                                              const std::vector<std::string> &keys,
                                              std::function<void(int64_t)> callback) {
-  auto &table = CreateOrGetMutableTable(table_name);
+  auto &table = GetOrCreateMutableTable(table_name);
   absl::WriterMutexLock lock(&(table.mutex_));
   int64_t num = 0;
   for (auto &key : keys) {
@@ -140,7 +137,7 @@ int InMemoryStoreClient::GetNextJobID() {
   return job_id_.fetch_add(1, std::memory_order_acq_rel);
 }
 
-InMemoryStoreClient::InMemoryTable &InMemoryStoreClient::CreateOrGetMutableTable(
+InMemoryStoreClient::InMemoryTable &InMemoryStoreClient::GetOrCreateMutableTable(
     const std::string &table_name) {
   absl::WriterMutexLock lock(&mutex_);
   auto iter = tables_.find(table_name);
@@ -150,15 +147,14 @@ InMemoryStoreClient::InMemoryTable &InMemoryStoreClient::CreateOrGetMutableTable
   return tables_[table_name];
 }
 
-std::optional<const InMemoryStoreClient::InMemoryTable *> InMemoryStoreClient::GetTable(
+const InMemoryStoreClient::InMemoryTable *InMemoryStoreClient::GetTable(
     const std::string &table_name) {
-  std::optional<const InMemoryTable *> result;
   absl::ReaderMutexLock lock(&mutex_);
   auto iter = tables_.find(table_name);
   if (iter != tables_.end()) {
-    result.emplace(&iter->second);
+    return &iter->second;
   }
-  return result;
+  return nullptr;
 }
 
 Status InMemoryStoreClient::AsyncGetKeys(
@@ -167,11 +163,10 @@ Status InMemoryStoreClient::AsyncGetKeys(
     std::function<void(std::vector<std::string>)> callback) {
   RAY_CHECK(callback);
   std::vector<std::string> result;
-  auto tableOpt = GetTable(table_name);
-  if (tableOpt) {
-    const auto &table = **tableOpt;
-    absl::ReaderMutexLock lock(&(table.mutex_));
-    for (const auto &[key, value] : table.records_) {
+  auto table = GetTable(table_name);
+  if (table != nullptr) {
+    absl::ReaderMutexLock lock(&(table->mutex_));
+    for (const auto &[key, value] : table->records_) {
       if (absl::StartsWith(key, prefix)) {
         result.push_back(value);
       }
@@ -190,11 +185,10 @@ Status InMemoryStoreClient::AsyncExists(const std::string &table_name,
                                         std::function<void(bool)> callback) {
   RAY_CHECK(callback);
   bool result = false;
-  auto tableOpt = GetTable(table_name);
-  if (tableOpt) {
-    const auto &table = **tableOpt;
-    absl::ReaderMutexLock lock(&(table.mutex_));
-    result = table.records_.contains(key);
+  auto table = GetTable(table_name);
+  if (table != nullptr) {
+    absl::ReaderMutexLock lock(&(table->mutex_));
+    result = table->records_.contains(key);
   }
   main_io_service_.post([result, callback = std::move(callback)]() { callback(result); },
                         "GcsInMemoryStore.Exists");

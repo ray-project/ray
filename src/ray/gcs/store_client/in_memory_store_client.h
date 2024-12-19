@@ -80,12 +80,19 @@ class InMemoryStoreClient : public StoreClient {
     absl::flat_hash_map<std::string, std::string> records_ ABSL_GUARDED_BY(mutex_);
   };
 
-  InMemoryTable &CreateOrGetMutableTable(const std::string &table_name);
+  InMemoryTable &GetOrCreateMutableTable(const std::string &table_name);
 
-  std::optional<const InMemoryTable *> GetTable(const std::string &table_name);
+  // 1) Will return nullptr if the table does not exist.
+  // 2) The returned pointer is valid as long as the InMemoryStoreClient is alive and
+  //    as long as no other thread erases the InMemoryTable from tables_.
+  const InMemoryTable *GetTable(const std::string &table_name);
 
   /// Mutex to protect the tables_ field.
   absl::Mutex mutex_;
+  // node_hash_map to keep pointer validity and allow for InMemoryTable which holds a
+  // mutex to be held without extra heap alloation, most operations done on this are just
+  // find, for which performance is almost identical to flat_hash_map.
+  // Note: Do not erase from this as it will invalidate pointer from GetTable.
   absl::node_hash_map<std::string, InMemoryTable> tables_ ABSL_GUARDED_BY(mutex_);
 
   /// Async API Callback needs to post to main_io_service_ to ensure the orderly execution
