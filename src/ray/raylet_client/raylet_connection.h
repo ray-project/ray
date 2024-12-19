@@ -25,6 +25,8 @@
 
 namespace ray::raylet {
 
+/// `RayletConnection` is a wrapper around a connection with raylet, which is responsible
+/// for sending request to raylet.
 class RayletConnection {
  public:
   /// Connect to the raylet.
@@ -41,9 +43,11 @@ class RayletConnection {
                    int num_retries,
                    int64_t timeout);
 
+  /// Send request to raylet without waiting for response.
   ray::Status WriteMessage(ray::protocol::MessageType type,
                            flatbuffers::FlatBufferBuilder *fbb = nullptr);
 
+  /// Send request to raylet and blockingly wait for response.
   ray::Status AtomicRequestReply(ray::protocol::MessageType request_type,
                                  ray::protocol::MessageType reply_type,
                                  std::vector<uint8_t> *reply_message,
