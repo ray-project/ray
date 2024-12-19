@@ -42,7 +42,7 @@ bool IsCPUOrPlacementGroupCPUResource(ResourceID resource_id) {
 }
 
 LocalTaskManager::LocalTaskManager(
-    const NodeID &self_node_id,
+    NodeID self_node_id,
     ClusterResourceScheduler &cluster_resource_scheduler,
     TaskDependencyManagerInterface &task_dependency_manager,
     std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
@@ -55,18 +55,18 @@ LocalTaskManager::LocalTaskManager(
     size_t max_pinned_task_arguments_bytes,
     std::function<int64_t(void)> get_time_ms,
     int64_t sched_cls_cap_interval_ms)
-    : self_node_id_(self_node_id),
+    : self_node_id_(std::move(self_node_id)),
       cluster_resource_scheduler_(cluster_resource_scheduler),
       task_dependency_manager_(task_dependency_manager),
       is_owner_alive_(is_owner_alive),
-      get_node_info_(get_node_info),
+      get_node_info_(std::move(get_node_info)),
       max_resource_shapes_per_load_report_(
           RayConfig::instance().max_resource_shapes_per_load_report()),
       worker_pool_(worker_pool),
       leased_workers_(leased_workers),
-      get_task_arguments_(get_task_arguments),
+      get_task_arguments_(std::move(get_task_arguments)),
       max_pinned_task_arguments_bytes_(max_pinned_task_arguments_bytes),
-      get_time_ms_(get_time_ms),
+      get_time_ms_(std::move(get_time_ms)),
       sched_cls_cap_enabled_(RayConfig::instance().worker_cap_enabled()),
       sched_cls_cap_interval_ms_(sched_cls_cap_interval_ms),
       sched_cls_cap_max_ms_(RayConfig::instance().worker_cap_max_backoff_delay_ms()) {}
@@ -74,8 +74,7 @@ LocalTaskManager::LocalTaskManager(
 void LocalTaskManager::QueueAndScheduleTask(std::shared_ptr<internal::Work> work) {
   // If the local node is draining, the cluster task manager will
   // guarantee that the local node is not selected for scheduling.
-  ASSERT_FALSE(
-      cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
+  RAY_CHECK(!cluster_resource_scheduler_.GetLocalResourceManager().IsLocalNodeDraining());
   WaitForTaskArgsRequests(std::move(work));
   ScheduleAndDispatchTasks();
 }
