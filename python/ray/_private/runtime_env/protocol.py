@@ -28,6 +28,46 @@ class ProtocolsProvider:
     def get_remote_protocols(cls):
         return {"https", "s3", "gs", "file"}
 
+    @classmethod
+    def get_smart_open_transport_params(cls, protocol):
+        install_warning = (
+            "Note that these must be preinstalled "
+            "on all nodes in the Ray cluster; it is not "
+            "sufficient to install them in the runtime_env."
+        )
+
+        if protocol == "s3":
+            try:
+                import boto3
+                from smart_open import open as open_file  # noqa: F401
+            except ImportError:
+                raise ImportError(
+                    "You must `pip install smart_open` and "
+                    "`pip install boto3` to fetch URIs in s3 "
+                    "bucket. " + install_warning
+                )
+            return {"client": boto3.client("s3")}
+        elif protocol == "gs":
+            try:
+                from google.cloud import storage  # noqa: F401
+                from smart_open import open as open_file  # noqa: F401
+            except ImportError:
+                raise ImportError(
+                    "You must `pip install smart_open` and "
+                    "`pip install google-cloud-storage` "
+                    "to fetch URIs in Google Cloud Storage bucket." + install_warning
+                )
+            return None
+        else:
+            try:
+                from smart_open import open as open_file  # noqa: F401
+            except ImportError:
+                raise ImportError(
+                    "You must `pip install smart_open` "
+                    f"to fetch {protocol.upper()} URIs. " + install_warning
+                )
+            return None
+
 
 _protocols_provider = get_protocols_provider()
 
@@ -38,7 +78,7 @@ Protocol = enum.Enum(
 
 
 @classmethod
-def remote_protocols(cls):
+def _remote_protocols(cls):
     # Returns a list of protocols that support remote storage
     # These protocols should only be used with paths that end in ".zip" or ".whl"
     return [
@@ -46,4 +86,11 @@ def remote_protocols(cls):
     ]
 
 
-Protocol.remote_protocols = remote_protocols
+Protocol.remote_protocols = _remote_protocols
+
+
+def _get_smart_open_transport_params(self):
+    return _protocols_provider.get_smart_open_transport_params(self.value)
+
+
+Protocol.get_smart_open_transport_params = _get_smart_open_transport_params
