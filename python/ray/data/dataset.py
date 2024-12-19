@@ -5,7 +5,6 @@ import itertools
 import logging
 import time
 import warnings
-from collections.abc import Sequence
 from typing import (
     TYPE_CHECKING,
     Any,
@@ -340,7 +339,7 @@ class Dataset:
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                Ray for each map worker.
+                Ray for each map worker. See :func:`ray.remote` for details.
 
         .. seealso::
 
@@ -565,7 +564,7 @@ class Dataset:
                 override the args in ``ray_remote_args``. Note: this is an advanced,
                 experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker. See :func:`ray.remote` for details.
 
         .. note::
 
@@ -755,7 +754,8 @@ class Dataset:
                 an autoscaling worker pool from ``m`` to ``n`` workers, specify
                 ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
         """
         # Check that batch_format
         accepted_batch_formats = ["pandas", "pyarrow", "numpy"]
@@ -765,20 +765,9 @@ class Dataset:
                 f"got: {batch_format}"
             )
 
-        def _raise_duplicate_column_error(col: str):
-            raise ValueError(f"Trying to add an existing column with name {col!r}")
-
         def add_column(batch: DataBatch) -> DataBatch:
             column = fn(batch)
             if batch_format == "pandas":
-                import pandas as pd
-
-                assert isinstance(column, (pd.Series, Sequence)), (
-                    f"For pandas batch format, the function must return a pandas "
-                    f"Series or sequence, got: {type(column)}"
-                )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch.loc[:, col] = column
                 return batch
             elif batch_format == "pyarrow":
@@ -797,10 +786,9 @@ class Dataset:
                 # which case we'll want to append it
                 column_idx = batch.schema.get_field_index(col)
                 if column_idx == -1:
-                    # Append the column to the table
                     return batch.append_column(col, column)
                 else:
-                    _raise_duplicate_column_error(col)
+                    return batch.set_column(column_idx, col, column)
 
             else:
                 # batch format is assumed to be numpy since we checked at the
@@ -809,8 +797,6 @@ class Dataset:
                     f"For numpy batch format, the function must return a "
                     f"numpy.ndarray, got: {type(column)}"
                 )
-                if col in batch:
-                    _raise_duplicate_column_error(col)
                 batch[col] = column
                 return batch
 
@@ -867,7 +853,8 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
         """  # noqa: E501
 
         if len(cols) != len(set(cols)):
@@ -931,7 +918,8 @@ class Dataset:
                 worker pool of size ``n``, specify ``concurrency=n``. For an autoscaling
                 worker pool from ``m`` to ``n`` workers, specify ``concurrency=(m, n)``.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
         """  # noqa: E501
 
         if not isinstance(cols, list):
@@ -1022,7 +1010,8 @@ class Dataset:
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
         """  # noqa: E501
         if concurrency is not None and not isinstance(concurrency, int):
             raise ValueError(
@@ -1138,7 +1127,7 @@ class Dataset:
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray for each map worker.
+                Ray for each map worker. See :func:`ray.remote` for details.
 
         .. seealso::
 
@@ -1232,7 +1221,8 @@ class Dataset:
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Additional resource requirements to request from
-                ray (e.g., num_gpus=1 to request GPUs for the map tasks).
+                Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
+                :func:`ray.remote` for details.
         """
         # Ensure exactly one of fn or expr is provided
         resolved_expr = None
@@ -3010,7 +3000,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: Kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3123,7 +3113,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3205,7 +3195,7 @@ class Dataset:
             filename_provider: A :class:`~ray.data.datasource.FilenameProvider`
                 implementation. Use this parameter to customize what your filenames
                 look like.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3309,7 +3299,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3414,7 +3404,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3501,7 +3491,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3591,7 +3581,7 @@ class Dataset:
                 might write more or fewer rows to each file. In specific, if the number
                 of rows per block is larger than the specified value, Ray Data writes
                 the number of rows per block to each file.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3668,7 +3658,7 @@ class Dataset:
             connection_factory: A function that takes no arguments and returns a
                 Python DB API2
                 `Connection object <https://peps.python.org/pep-0249/#connection-objects>`_.
-            ray_remote_args: Keyword arguments passed to :meth:`~ray.remote` in the
+            ray_remote_args: Keyword arguments passed to :func:`ray.remote` in the
                 write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
@@ -3736,7 +3726,7 @@ class Dataset:
                 a ValueError is raised.
             collection: The name of the collection in the database. This collection
                 must exist otherwise a ValueError is raised.
-            ray_remote_args: kwargs passed to :meth:`~ray.remote` in the write tasks.
+            ray_remote_args: kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3800,7 +3790,7 @@ class Dataset:
             overwrite_table: Whether the write will overwrite the table if it already
                 exists. The default behavior is to overwrite the table.
                 ``overwrite_table=False`` will append to the table if it exists.
-            ray_remote_args: Kwargs passed to ray.remote in the write tasks.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically
@@ -3845,7 +3835,7 @@ class Dataset:
 
         Args:
             datasink: The :class:`~ray.data.Datasink` to write to.
-            ray_remote_args: Kwargs passed to ``ray.remote`` in the write tasks.
+            ray_remote_args: Kwargs passed to :func:`ray.remote` in the write tasks.
             concurrency: The maximum number of Ray tasks to run concurrently. Set this
                 to control number of tasks to run concurrently. This doesn't change the
                 total number of tasks run. By default, concurrency is dynamically

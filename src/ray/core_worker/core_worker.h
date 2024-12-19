@@ -1011,7 +1011,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
+  ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
@@ -1450,7 +1450,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 worker. If nullopt, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
   /// to the caller.
@@ -1470,7 +1470,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -1811,14 +1811,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_ ABSL_GUARDED_BY(mutex_);
+  ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
 
   /// Used to notify the task receiver when the arguments of a queued
   /// actor task are ready.
-  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
