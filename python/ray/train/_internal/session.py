@@ -12,7 +12,6 @@ from datetime import datetime
 from typing import TYPE_CHECKING, Any, Callable, Dict, Optional, Set, Type
 
 import ray
-from ray.air._internal.session import _get_session
 from ray.air._internal.util import RunnerThread, StartTraceback
 from ray.air.constants import (
     _ERROR_FETCH_TIMEOUT,
@@ -33,8 +32,10 @@ from ray.train.constants import (
     WORKER_HOSTNAME,
     WORKER_NODE_IP,
     WORKER_PID,
+    _v2_migration_warnings_enabled,
 )
 from ray.train.error import SessionMisuseError
+from ray.train.utils import log_deprecation_warning
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -646,7 +647,7 @@ def _warn_session_misuse(default_value: Any = None):
 
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
-            session = _get_session()
+            session = get_session()
             if not session:
                 if log_once(f"{SESSION_MISUSE_LOG_ONCE_KEY}-{fn_name}"):
                     warnings.warn(
@@ -745,14 +746,25 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         metrics: The metrics you want to report.
         checkpoint: The optional checkpoint you want to report.
     """
+    # If we are running in a Tune function, switch to `ray.tune.report`.
+    if get_session() and get_session().world_rank is None:
+        import ray.tune
 
-    _get_session().report(metrics, checkpoint=checkpoint)
+        if _v2_migration_warnings_enabled():
+            log_deprecation_warning(
+                "`ray.train.report` should be switched to "
+                "`ray.tune.report` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
+            )
+        return ray.tune.report(metrics, checkpoint=checkpoint)
+
+    get_session().report(metrics, checkpoint=checkpoint)
 
 
 @PublicAPI(stability="stable")
 @_warn_session_misuse()
 def get_checkpoint() -> Optional[Checkpoint]:
-    """Access the session's last checkpoint to resume from if applicable.
+    """Access the latest reported checkpoint to resume from if one exists.
 
     Example:
 
@@ -792,50 +804,61 @@ def get_checkpoint() -> Optional[Checkpoint]:
         Checkpoint object if the session is currently being resumed.
             Otherwise, return None.
     """
+    # If we are running in a Tune function, switch to `ray.tune.get_checkpoint`.
+    if get_session() and get_session().world_rank is None:
+        import ray.tune
 
-    return _get_session().loaded_checkpoint
+        if _v2_migration_warnings_enabled():
+            log_deprecation_warning(
+                "`ray.train.get_checkpoint` should be switched to "
+                "`ray.tune.get_checkpoint` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
+            )
+        return ray.tune.get_checkpoint()
+
+    return get_session().loaded_checkpoint
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_metadata() -> Dict[str, Any]:
     """User metadata dict passed to the Trainer constructor."""
-    return _get_session().metadata
+    return get_session().metadata
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_experiment_name() -> str:
     """Experiment name for the corresponding trial."""
-    return _get_session().experiment_name
+    return get_session().experiment_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_name() -> str:
     """Trial name for the corresponding trial."""
-    return _get_session().trial_name
+    return get_session().trial_name
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_id() -> str:
     """Trial id for the corresponding trial."""
-    return _get_session().trial_id
+    return get_session().trial_id
 
 
 @PublicAPI(stability="alpha")
 @_warn_session_misuse()
 def get_run_id() -> str:
     """Unique Train Run id for the corresponding trial."""
-    return _get_session().run_id
+    return get_session().run_id
 
 
 @PublicAPI(stability="beta")
 @_warn_session_misuse()
 def get_trial_resources() -> "PlacementGroupFactory":
     """Trial resources for the corresponding trial."""
-    return _get_session().trial_resources
+    return get_session().trial_resources
 
 
 @PublicAPI(stability="beta")
@@ -860,7 +883,7 @@ def get_trial_dir() -> str:
 
         /Users/root/ray_results/train_func_2023-07-19_15-01-37/train_func_d620c_00000_0_2023-07-19_15-01-40
     """
-    return _get_session().trial_dir
+    return get_session().trial_dir
 
 
 @PublicAPI(stability="beta")
@@ -893,7 +916,7 @@ def get_world_size() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "world_size"):
         raise RuntimeError(
             "`get_world_size` can only be called for TrainSession! "
@@ -932,7 +955,7 @@ def get_world_rank() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "world_rank"):
         raise RuntimeError(
             "`get_world_rank` can only be called for TrainSession! "
@@ -974,7 +997,7 @@ def get_local_rank() -> int:
 
         ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "local_rank"):
         raise RuntimeError(
             "`get_local_rank` can only be called for TrainSession! "
@@ -1013,7 +1036,7 @@ def get_local_world_size() -> int:
 
             ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "local_world_size"):
         raise RuntimeError(
             "`get_local_world_size` can only be called for TrainSession! "
@@ -1052,7 +1075,7 @@ def get_node_rank() -> int:
 
             ...
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "node_rank"):
         raise RuntimeError(
             "`get_node_rank` can only be called for TrainSession! "
@@ -1109,7 +1132,7 @@ def get_dataset_shard(
         The ``DataIterator`` shard to use for this worker.
         If no dataset is passed into Trainer, then return None.
     """
-    session = _get_session()
+    session = get_session()
     if not hasattr(session, "get_dataset_shard"):
         raise RuntimeError(
             "`get_dataset_shard` can only be called for TrainSession! "
