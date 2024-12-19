@@ -34,14 +34,14 @@ namespace ray {
 namespace raylet {
 
 /// The default number of retries when spilled object deletion failed.
-const int64_t kDefaultSpilledObjectDeleteRetries = 3;
+inline constexpr int64_t kDefaultSpilledObjectDeleteRetries = 3;
 
 /// This class implements memory management for primary objects, objects that
 /// have been freed, and objects that have been spilled.
 class LocalObjectManager {
  public:
   LocalObjectManager(
-      const NodeID &node_id,
+      NodeID node_id,
       std::string self_node_address,
       int self_node_port,
       instrumented_io_context &io_service,
