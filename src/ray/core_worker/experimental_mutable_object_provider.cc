@@ -14,8 +14,6 @@
 
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 
-#include "absl/strings/str_format.h"
-
 namespace ray {
 namespace core {
 namespace experimental {
@@ -24,7 +22,7 @@ MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plas
                                              RayletFactory factory)
     : plasma_(plasma),
       object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
-      raylet_client_factory_(factory) {}
+      raylet_client_factory_(std::move(factory)) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
   for (std::unique_ptr<boost::asio::executor_work_guard<
@@ -49,7 +47,7 @@ void MutableObjectProvider::RegisterWriterChannel(
     // `object` is now a nullptr.
   }
 
-  if (remote_reader_node_ids.size() == 0) {
+  if (remote_reader_node_ids.empty()) {
     return;
   }
 
@@ -144,7 +142,7 @@ void MutableObjectProvider::HandlePushMutableObject(
   }
 
   std::shared_ptr<Buffer> object_backing_store;
-  if (!tmp_written_so_far) {
+  if (tmp_written_so_far == 0u) {
     // We set `metadata` to nullptr since the metadata is at the end of the object, which
     // we will not have until the last chunk is received (or until the two last chunks are
     // received, if the metadata happens to span both). The metadata will end up being
@@ -216,8 +214,8 @@ Status MutableObjectProvider::GetChannelStatus(const ObjectID &object_id,
 void MutableObjectProvider::PollWriterClosure(
     instrumented_io_context &io_context,
     const ObjectID &writer_object_id,
-    std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
-        remote_readers) {
+    const std::shared_ptr<std::vector<std::shared_ptr<MutableObjectReaderInterface>>>
+        &remote_readers) {
   // NOTE: There's only 1 PollWriterClosure at any time in a single thread.
   std::shared_ptr<RayObject> object;
   // The corresponding ReadRelease() will be automatically called when
@@ -269,7 +267,7 @@ void MutableObjectProvider::RunIOContext(instrumented_io_context &io_context) {
   sigemptyset(&mask);
   sigaddset(&mask, SIGINT);
   sigaddset(&mask, SIGTERM);
-  pthread_sigmask(SIG_BLOCK, &mask, NULL);
+  pthread_sigmask(SIG_BLOCK, &mask, nullptr);
 #endif
 
   SetThreadName("worker.channel_io");
