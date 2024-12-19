@@ -51,7 +51,7 @@ GcsHealthCheckManager::~GcsHealthCheckManager() = default;
 void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
   io_service_.dispatch(
       [this, node_id]() {
-        thread_checker_.IsOnSameThread();
+        RAY_CHECK(thread_checker_.IsOnSameThread());
         auto iter = health_check_contexts_.find(node_id);
         if (iter == health_check_contexts_.end()) {
           return;
@@ -64,7 +64,7 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
 
 void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_LOG(WARNING).WithField(node_id) << "Node is dead because the health check failed.";
-  thread_checker_.IsOnSameThread();
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto iter = health_check_contexts_.find(node_id);
   if (iter != health_check_contexts_.end()) {
     on_node_death_callback_(node_id);
@@ -73,7 +73,7 @@ void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
 }
 
 std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
-  thread_checker_.IsOnSameThread();
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   std::vector<NodeID> nodes;
   nodes.reserve(health_check_contexts_.size());
   for (const auto &[node_id, _] : health_check_contexts_) {
@@ -104,7 +104,7 @@ void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
 
-  RAY_CHECK(thread_checker_.IsOnSameThread());
+  RAY_CHECK(manager_->thread_checker_.IsOnSameThread());
 
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
@@ -176,7 +176,7 @@ void GcsHealthCheckManager::AddNode(const NodeID &node_id,
                                     std::shared_ptr<grpc::Channel> channel) {
   io_service_.dispatch(
       [this, channel = std::move(channel), node_id]() {
-        thread_checker_.IsOnSameThread();
+        RAY_CHECK(thread_checker_.IsOnSameThread());
         auto context = new HealthCheckContext(this, channel, node_id);
         auto [_, is_new] = health_check_contexts_.emplace(node_id, context);
         RAY_CHECK(is_new);
