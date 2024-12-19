@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 import ray.exceptions
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -105,7 +105,7 @@ class ChannelOutputType:
         # By default, channels do not require NCCL.
         return False
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator(self) -> Optional[Communicator]:
         """
         Return the custom NCCL group if one is specified.
         """
@@ -113,7 +113,7 @@ class ChannelOutputType:
             return self._contains_type.get_custom_nccl_group()
         return None
 
-    def set_nccl_group_id(self, group_id: str) -> None:
+    def set_communicator_id(self, group_id: str) -> None:
         raise NotImplementedError
 
 
@@ -127,7 +127,7 @@ class ChannelContext:
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
+        self.communicators: Dict[str, "Communicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
