@@ -1440,7 +1440,7 @@ Status AutoscalerStateAccessor::RequestClusterResourceConstraint(
     auto count = count_array[i];
 
     auto new_resource_requests_by_count =
-        request.mutable_cluster_resource_constraint()->add_min_bundles();
+        request.mutable_cluster_resource_constraint()->add_resource_requests();
 
     new_resource_requests_by_count->mutable_request()->mutable_resources_bundle()->insert(
         bundle.begin(), bundle.end());

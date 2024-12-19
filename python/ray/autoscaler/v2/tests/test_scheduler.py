@@ -70,7 +70,7 @@ def sched_request(
         cluster_resource_constraints=(
             [
                 ClusterResourceConstraint(
-                    min_bundles=ResourceRequestUtil.group_by_count(
+                    resource_requests=ResourceRequestUtil.group_by_count(
                         cluster_resource_constraints
                     )
                 )
