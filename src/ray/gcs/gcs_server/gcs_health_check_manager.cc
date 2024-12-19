@@ -106,6 +106,12 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
 
   RAY_CHECK(manager_->thread_checker_.IsOnSameThread());
 
+  // If current context is requested to stop, directly destruct itself and exit.
+  if (stopped_) {
+    delete this;
+    return;
+  }
+
   // Check latest health status, see whether a new rpc message is needed.
   const auto now = absl::Now();
   absl::Time next_check_time =

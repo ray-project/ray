@@ -688,7 +688,8 @@ TEST_F(TaskManagerLineageTest, TestActorLineagePinned) {
       {},
       "",
       0,
-      TaskID::Nil());
+      TaskID::Nil(),
+      "");
   builder.SetActorTaskSpec(
       actor_id, actor_creation_dummy_object_id, num_retries, false, "", 0);
   TaskSpecification spec = builder.Build();
