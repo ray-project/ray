@@ -74,6 +74,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
         super().__init__(config=config)
 
         self.worker_index: int = kwargs.get("worker_index")
+        self.num_workers: int = kwargs.get("num_workers", self.config.num_env_runners)
         self.tune_trial_id: str = kwargs.get("tune_trial_id")
 
         # Create a MetricsLogger object for logging custom stats.
@@ -594,7 +595,7 @@ class SingleAgentEnvRunner(EnvRunner, Checkpointable):
             env_ctx = EnvContext(
                 env_ctx,
                 worker_index=self.worker_index,
-                num_workers=self.config.num_env_runners,
+                num_workers=self.num_workers,
                 remote=self.config.remote_worker_envs,
             )
 
