@@ -95,7 +95,7 @@ a batch of sampling data. With the same message, the client asks the server to s
 
 .. _example-rllink-episode-and-get-state-msg:
 
-.. code-block:: json
+.. code-block:: javascript
 
     {
       "type": "EPISODES_AND_GET_STATE",
