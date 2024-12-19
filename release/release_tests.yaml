@@ -3885,69 +3885,6 @@
       cluster:
         cluster_compute: dask_on_ray/dask_on_ray_stress_compute_gce.yaml
 
-- name: chaos_dataset_shuffle_sort_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: 'python setup_chaos.py --kill-interval 900 --max-to-kill 3'
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
-- name: chaos_dataset_shuffle_random_shuffle_1tb
-  group: data-tests
-  working_dir: nightly_tests
-
-  stable: false
-
-  frequency: nightly
-  team: data
-
-  cluster:
-    # leave oom disabled as test is marked unstable at the moment.
-    byod:
-      runtime_env:
-        - RAY_memory_monitor_refresh_ms=0
-      pip:
-        - ray[default]
-    cluster_compute: shuffle/datasets_large_scale_compute_small_instances.yaml
-
-  run:
-    timeout: 7200
-    prepare: ' python setup_chaos.py --kill-interval 600 --max-to-kill 2'
-    script: python dataset/sort.py --num-partitions=1000 --partition-size=1e9 --shuffle
-    wait_for_nodes:
-      num_nodes: 20
-
-  variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: shuffle/datasets_large_scale_compute_small_instances_gce.yaml
-
 #####################
 # Observability tests
 #####################

@@ -325,6 +325,7 @@
 ########################
 
 - name: random_shuffle
+  working_dir: nightly_tests
   stable: False
 
   cluster:
@@ -333,14 +334,24 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: all_to_all_compute.yaml
+    cluster_compute: dataset/all_to_all_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 10800
     script: >
-      python sort_benchmark.py --num-partitions=1000 --partition-size=1e9 --shuffle
+      python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9 
+      --shuffle
 
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: > 
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 600 
+          --max-to-kill 2 
+          
 - name: sort
+  working_dir: nightly_tests
   stable: False
 
   cluster:
@@ -349,11 +360,20 @@
         - RAY_worker_killing_policy=retriable_lifo
       pip:
         - ray[default]
-    cluster_compute: all_to_all_compute.yaml
+    cluster_compute: dataset/all_to_all_compute.yaml
 
   run:
-    timeout: 7200
-    script: python sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+    timeout: 10800
+    script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
+
+  variations:
+    - __suffix__: regular
+    - __suffix__: chaos
+      run:
+        prepare: > 
+          python setup_chaos.py --chaos TerminateEC2Instance --kill-interval 900 
+          --max-to-kill 3
+
 
 #######################
 # Batch inference tests
