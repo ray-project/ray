@@ -42,11 +42,6 @@ static_assert(!array_unique_sv_false,
 static constexpr bool index_of_int = IndexOf(std::array<int, 3>{1, 2, 3}, 2) == 1;
 static_assert(index_of_int, "Index of int should be 1");
 
-// can't test the index of not found because it's a compile error
-
-// Trivial gtest
-TEST(ArrayTest, ItRuns) {
-  // Nothing to really run because we are testing compile time behavior.
-}
+// can't test IndexOf not found because it's a compile error
 
 }  // namespace ray
