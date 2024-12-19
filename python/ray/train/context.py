@@ -1,15 +1,14 @@
 import threading
-import warnings
 from typing import TYPE_CHECKING, Any, Dict, Optional
 
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import _v2_migration_warnings_enabled
+from ray.train.util.utils import _copy_doc, log_deprecation_warning
 from ray.util.annotations import (
     Deprecated,
     DeveloperAPI,
     PublicAPI,
-    RayDeprecationWarning,
 )
 
 if TYPE_CHECKING:
@@ -27,14 +26,6 @@ _TUNE_SPECIFIC_CONTEXT_DEPRECATION_MESSAGE = (
     "Ray Train will no longer assume that it's running within a Ray Tune `Trial` "
     "in the future."
 )
-
-
-def _copy_doc(copy_func):
-    def wrapped(func):
-        func.__doc__ = copy_func.__doc__
-        return func
-
-    return wrapped
 
 
 @PublicAPI(stability="stable")
@@ -127,14 +118,10 @@ def get_context() -> TrainContext:
         from ray.tune import get_context as get_tune_context
 
         if _v2_migration_warnings_enabled():
-            warnings.warn(
-                (
-                    "`ray.train.get_context()` should be switched to "
-                    "`ray.tune.get_context()` when running in a function "
-                    "passed to Ray Tune. This will be an error in the future."
-                ),
-                RayDeprecationWarning,
-                stacklevel=2,
+            log_deprecation_warning(
+                "`ray.train.get_context()` should be switched to "
+                "`ray.tune.get_context()` when running in a function "
+                "passed to Ray Tune. This will be an error in the future."
             )
         return get_tune_context()
 

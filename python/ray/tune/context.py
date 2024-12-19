@@ -4,7 +4,7 @@ from typing import Any, Dict, Optional
 from ray.train._internal import session
 from ray.train.constants import _v2_migration_warnings_enabled
 from ray.train.context import TrainContext as TrainV1Context
-from ray.train.context import _copy_doc
+from ray.train.util.utils import _copy_doc
 from ray.tune.execution.placement_groups import PlacementGroupFactory
 from ray.util.annotations import Deprecated, PublicAPI
 
