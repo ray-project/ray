@@ -252,17 +252,17 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
   }
 }
 
-Status CoreWorker::RegisterWorkerToWorkerPool(raylet::RayletConnection &conn,
-                                              const WorkerID &worker_id,
-                                              rpc::WorkerType worker_type,
-                                              const JobID &job_id,
-                                              int runtime_env_hash,
-                                              const Language &language,
-                                              const std::string &ip_address,
-                                              const std::string &serialized_job_config,
-                                              const StartupToken &startup_token,
-                                              NodeID *raylet_id,
-                                              int *port) {
+Status CoreWorker::RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+                                          const WorkerID &worker_id,
+                                          rpc::WorkerType worker_type,
+                                          const JobID &job_id,
+                                          int runtime_env_hash,
+                                          const Language &language,
+                                          const std::string &ip_address,
+                                          const std::string &serialized_job_config,
+                                          const StartupToken &startup_token,
+                                          NodeID *raylet_id,
+                                          int *port) {
   flatbuffers::FlatBufferBuilder fbb;
   // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
   auto message =
@@ -410,18 +410,17 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
       io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
   NodeID local_raylet_id;
   int assigned_port = 0;
-  Status raylet_client_status =
-      RegisterWorkerToWorkerPool(*raylet_conn,
-                                 GetWorkerID(),
-                                 options_.worker_type,
-                                 worker_context_.GetCurrentJobID(),
-                                 options_.runtime_env_hash,
-                                 options_.language,
-                                 options_.node_ip_address,
-                                 options_.serialized_job_config,
-                                 options_.startup_token,
-                                 &local_raylet_id,
-                                 &assigned_port);
+  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
+                                                       GetWorkerID(),
+                                                       options_.worker_type,
+                                                       worker_context_.GetCurrentJobID(),
+                                                       options_.runtime_env_hash,
+                                                       options_.language,
+                                                       options_.node_ip_address,
+                                                       options_.serialized_job_config,
+                                                       options_.startup_token,
+                                                       &local_raylet_id,
+                                                       &assigned_port);
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
