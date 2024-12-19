@@ -4,7 +4,7 @@ from ray.util.annotations import PublicAPI
 
 
 @PublicAPI(stability="alpha")
-class MessageTypes(Enum):
+class RLlinkProtocol(Enum):
     # Requests: Client (external env) -> Server (RLlib).
     # ----
     # Ping command (initial handshake).
@@ -29,7 +29,7 @@ class MessageTypes(Enum):
     # Set (relevant) config.
     SET_CONFIG = "SET_CONFIG"
 
-    # @OldAPIStack
+    # @OldAPIStack (to be deprecated soon).
     ACTION_SPACE = "ACTION_SPACE"
     OBSERVATION_SPACE = "OBSERVATION_SPACE"
     GET_WORKER_ARGS = "GET_WORKER_ARGS"
