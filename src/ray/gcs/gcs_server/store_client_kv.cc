@@ -91,14 +91,14 @@ void StoreClientInternalKV::MultiGet(
 
 void StoreClientInternalKV::Put(const std::string &ns,
                                 const std::string &key,
-                                const std::string &value,
+                                std::string value,
                                 bool overwrite,
                                 std::function<void(bool)> callback) {
   if (!callback) {
     callback = [](auto) {};
   }
-  RAY_CHECK_OK(
-      delegate_->AsyncPut(table_name_, MakeKey(ns, key), value, overwrite, callback));
+  RAY_CHECK_OK(delegate_->AsyncPut(
+      table_name_, MakeKey(ns, key), std::move(value), overwrite, callback));
 }
 
 void StoreClientInternalKV::Del(const std::string &ns,
