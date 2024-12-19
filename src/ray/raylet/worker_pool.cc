@@ -1697,10 +1697,31 @@ WorkerPool::IOWorkerState &WorkerPool::GetIOWorkerStateFromWorkerType(
   UNREACHABLE;
 }
 
+static std::mutex runtime_env_setup_mutex;
+static std::optional<std::string> serialized_runtime_env_context_cache;
+
 void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env,
                                        const rpc::RuntimeEnvConfig &runtime_env_config,
                                        const JobID &job_id,
                                        const GetOrCreateRuntimeEnvCallback &callback) {
+  bool directly_call_callback = false;
+  std::string serialized_result = "";
+  {
+    const std::lock_guard lck(runtime_env_setup_mutex);
+    if (serialized_runtime_env_context_cache.has_value()) {
+      directly_call_callback = true;
+      serialized_result = *serialized_runtime_env_context_cache;
+    }
+  }
+  if (directly_call_callback) {
+    io_service_->post(
+        [callback, serialized_result = std::move(serialized_result)]() {
+          callback(true, serialized_result, "");
+        },
+        "WorkerPool.GetOrCreateRuntimeEnvCallback");
+    return;
+  }
+
   RAY_LOG(DEBUG) << "GetOrCreateRuntimeEnv for job " << job_id << " with runtime_env "
                  << serialized_runtime_env;
   runtime_env_agent_client_->GetOrCreateRuntimeEnv(
@@ -1712,6 +1733,11 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
           const std::string &serialized_runtime_env_context,
           const std::string &setup_error_message) {
         if (successful) {
+          {
+            const std::lock_guard lck(runtime_env_setup_mutex);
+            serialized_runtime_env_context_cache = serialized_runtime_env_context;
+          }
+
           callback(true, serialized_runtime_env_context, "");
         } else {
           RAY_LOG(WARNING) << "Couldn't create a runtime environment for job " << job_id
@@ -1726,6 +1752,8 @@ void WorkerPool::GetOrCreateRuntimeEnv(const std::string &serialized_runtime_env
 }
 
 void WorkerPool::DeleteRuntimeEnvIfPossible(const std::string &serialized_runtime_env) {
+  return;
+
   RAY_LOG(DEBUG) << "DeleteRuntimeEnvIfPossible " << serialized_runtime_env;
   if (!IsRuntimeEnvEmpty(serialized_runtime_env)) {
     runtime_env_agent_client_->DeleteRuntimeEnvIfPossible(
