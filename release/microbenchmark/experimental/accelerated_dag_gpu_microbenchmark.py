@@ -375,7 +375,7 @@ def main(distributed):
     # NCCL takes a while to warm up on multi node so increase the default
     # timeout.
     ctx = DAGContext.get_current()
-    ctx.retrieval_timeout = 120
+    ctx.get_timeout = 120
 
     sender_hint, receiver_hint = None, None
     if distributed:

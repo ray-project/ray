@@ -720,7 +720,7 @@ class CompiledDAG:
 
     def __init__(
         self,
-        execution_timeout: Optional[float] = None,
+        submit_timeout: Optional[float] = None,
         buffer_size_bytes: Optional[int] = None,
         enable_asyncio: bool = False,
         asyncio_max_queue_size: Optional[int] = None,
@@ -730,13 +730,14 @@ class CompiledDAG:
     ):
         """
         Args:
-            execution_timeout: The maximum time in seconds to wait for execute() calls.
-                None means using default timeout (DAGContext.execution_timeout),
+            submit_timeout: The maximum time in seconds to wait for execute() calls.
+                None means using default timeout (DAGContext.submit_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
-            buffer_size_bytes: The number of bytes to allocate for object data and
-                metadata. Each argument passed to a task in the DAG must be
-                less than or equal to this value when serialized.
+            buffer_size_bytes: The initial buffer size in bytes for messages
+                that can be passed between tasks in the DAG. The buffers will
+                be automatically resized if larger messages are written to the
+                channel.
             enable_asyncio: Whether to enable asyncio. If enabled, caller must
                 be running in an event loop and must use `execute_async` to
                 invoke the DAG. Otherwise, the caller should use `execute` to
@@ -783,9 +784,9 @@ class CompiledDAG:
         if self._max_inflight_executions is None:
             self._max_inflight_executions = ctx.max_inflight_executions
         self._dag_id = uuid.uuid4().hex
-        self._execution_timeout: Optional[float] = execution_timeout
-        if self._execution_timeout is None:
-            self._execution_timeout = ctx.execution_timeout
+        self._submit_timeout: Optional[float] = submit_timeout
+        if self._submit_timeout is None:
+            self._submit_timeout = ctx.submit_timeout
         self._buffer_size_bytes: Optional[int] = buffer_size_bytes
         if self._buffer_size_bytes is None:
             self._buffer_size_bytes = ctx.buffer_size_bytes
@@ -2016,7 +2017,7 @@ class CompiledDAG:
         from ray.dag import DAGContext
 
         ctx = DAGContext.get_current()
-        timeout = ctx.retrieval_timeout
+        timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             self.increment_max_finished_execution_index()
@@ -2045,7 +2046,7 @@ class CompiledDAG:
                 self.dag_output_channels. None means wrapping results from all output
                 channels into a single list.
             timeout: The maximum time in seconds to wait for the result.
-                None means using default timeout (DAGContext.retrieval_timeout),
+                None means using default timeout (DAGContext.get_timeout),
                 0 means immediate timeout (immediate success or timeout without
                 blocking), -1 means infinite timeout (block indefinitely).
 
@@ -2060,7 +2061,7 @@ class CompiledDAG:
 
             ctx = DAGContext.get_current()
             if timeout is None:
-                timeout = ctx.retrieval_timeout
+                timeout = ctx.get_timeout
 
         while self._max_finished_execution_index < execution_index:
             if len(self._result_buffer) >= self._max_buffered_results:
@@ -2102,7 +2103,7 @@ class CompiledDAG:
 
         Raises:
             RayChannelTimeoutError: If the execution does not complete within
-                self._execution_timeout seconds.
+                self._submit_timeout seconds.
 
         NOTE: Not thread-safe due to _execution_index etc.
         """
@@ -2123,7 +2124,7 @@ class CompiledDAG:
             inp = RayDAGArgs(args=args, kwargs=kwargs)
 
         self.raise_if_too_many_inflight_requests()
-        self._dag_submitter.write(inp, self._execution_timeout)
+        self._dag_submitter.write(inp, self._submit_timeout)
 
         if self._returns_list:
             ref = [
@@ -2797,7 +2798,7 @@ class CompiledDAG:
 @DeveloperAPI
 def build_compiled_dag_from_ray_dag(
     dag: "ray.dag.DAGNode",
-    execution_timeout: Optional[float] = None,
+    submit_timeout: Optional[float] = None,
     buffer_size_bytes: Optional[int] = None,
     enable_asyncio: bool = False,
     asyncio_max_queue_size: Optional[int] = None,
@@ -2806,7 +2807,7 @@ def build_compiled_dag_from_ray_dag(
     overlap_gpu_communication: Optional[bool] = None,
 ) -> "CompiledDAG":
     compiled_dag = CompiledDAG(
-        execution_timeout,
+        submit_timeout,
         buffer_size_bytes,
         enable_asyncio,
         asyncio_max_queue_size,
