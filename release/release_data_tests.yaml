@@ -377,7 +377,7 @@
     cluster_compute: dataset/all_to_all_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 10800
     script: >
       python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9 
       --shuffle
@@ -402,7 +402,7 @@
     cluster_compute: dataset/all_to_all_compute.yaml
 
   run:
-    timeout: 7200
+    timeout: 10800
     script: python dataset/sort_benchmark.py --num-partitions=1000 --partition-size=1e9
 
   variations:
