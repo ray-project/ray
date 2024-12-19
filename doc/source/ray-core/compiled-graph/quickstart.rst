@@ -31,7 +31,7 @@ Create a very simple actor that directly returns a given input using classic Ray
     for _ in range(5):
         msg_ref = a.echo.remote("hello")
         ray.get(msg_ref)
-    
+
     start = time.perf_counter()
     msg_ref = a.echo.remote("hello")
     ray.get(msg_ref)
@@ -68,7 +68,7 @@ Next, execute the DAG and measure the performance.
     for _ in range(5):
         msg_ref = dag.execute("hello")
         ray.get(msg_ref)
-    
+
     start = time.perf_counter()
     # `dag.execute` runs the DAG and returns a future. You can use `ray.get` API.
     msg_ref = dag.execute("hello")
@@ -81,7 +81,7 @@ Next, execute the DAG and measure the performance.
     Execution takes 86.72196418046951 us
 
 The performance of the same DAG improved by 10X. The explanation for this improvement is because the function ``echo`` is cheap and thus highly affected by
-the system overhead. Due to various bookeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead. 
+the system overhead. Due to various bookeeping and distributed protocols, the classic Ray Core APIs usually have 1ms+ system overhead.
 Because the DAG is known ahead of time, Compiled Graph can pre-allocate all necessary
 resources ahead of time and greatly reduce the system overhead.
 
