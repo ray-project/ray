@@ -2052,9 +2052,10 @@ class DeploymentState:
 
             retrying_msg = "Retrying"
             if self._failed_to_start_threshold != 0:
-                remaining_retries = (
+                remaining_retries = max(
                     self._failed_to_start_threshold
-                    - self._replica_constructor_retry_counter
+                    - self._replica_constructor_retry_counter,
+                    0,
                 )
                 retrying_msg += f" {remaining_retries} more time(s)"
 
