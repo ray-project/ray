@@ -171,9 +171,8 @@ See here for a compete list of all supported ``conv2d_..`` options:
 Other default model settings
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-For LSTM configurations and specific settings for continuous action output layers, see the
-class docstring of :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
-
+For LSTM-based configurations and specific settings for continuous action output layers,
+see :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
 
 
 Constructing RLModule instances
@@ -203,7 +202,7 @@ The most direct way to construct your :py:class:`~ray.rllib.core.rl_module.rl_mo
     rl_module = DefaultBCTorchRLModule(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        # A custom dict that will be accessible inside your class as `self.model_config`.
+        # A custom dict that is accessible inside your class as `self.model_config`.
         model_config={"fcnet_hiddens": [64]},
     )
 
@@ -244,7 +243,7 @@ and analogous to creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLMo
                 module_class=DefaultBCTorchRLModule,
                 observation_space=env.observation_space,
                 action_space=env.action_space,
-                # A custom dict that will be accessible inside your class as `self.model_config`.
+                # A custom dict that is accessible inside your class as `self.model_config`.
                 model_config={"fcnet_hiddens": [64]},
             )
 
@@ -293,8 +292,8 @@ and analogous to creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLMo
 
 
 You can now pass the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` instances to your
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` of choice in order to
-tell RLlib to use the particular module class and c'tor arguments:
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` of choice to
+tell RLlib to use the particular module class and constructor arguments:
 
 .. tab-set::
 
@@ -315,8 +314,8 @@ tell RLlib to use the particular module class and c'tor arguments:
                     ),
                 )
             )
-            algo = config.build()
-            print(algo.get_module())
+            ppo = config.build()
+            print(ppo.get_module())
 
         .. note::
             Often when creating an `RLModuleSpec`, attributes like `observation_space` or `action_space`
@@ -345,8 +344,8 @@ tell RLlib to use the particular module class and c'tor arguments:
                     ),
                 )
             )
-            algo = config.build()
-            print(algo.get_module())
+            ppo = config.build()
+            print(ppo.get_module())
 
     .. tab-item:: Multi-Agent (two or more policy nets)
 
@@ -384,8 +383,8 @@ tell RLlib to use the particular module class and c'tor arguments:
                     ),
                 )
             )
-            algo = config.build()
-            print(algo.get_module())
+            ppo = config.build()
+            print(ppo.get_module())
 
 
 .. _rllib-implementing-custom-rl-modules:
@@ -480,7 +479,7 @@ If you return the ``actions`` key from your forward methods:
 - RLlib uses the actions provided thereunder as-is.
 - If you also return the ``action_dist_inputs`` key: RLlib also creates a :py:class:`~ray.rllib.models.distributions.Distribution`
   instance from the parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` -
-  compute action probs and logp values for the given actions automatically.
+  compute action probabilities and log-probabilities for the given actions automatically.
   See :ref:`here for more information on custom action distribution classes <rllib-rl-module-w-custom-action-dists>`.
 
 If you don't return the ``actions`` key from your forward methods:
@@ -495,7 +494,7 @@ If you don't return the ``actions`` key from your forward methods:
 .. note::
 
     In case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`,
-    the generated distributions (from returned key ``action_dist_inputs``) are always made deterministic first via
+    the generated distributions (from returned key ``action_dist_inputs``) are always made deterministic first through
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
     For example, sampling from a Categorical distribution will be reduced to selecting the argmax actions from the distribution's logits/probs.
     If you already return the "actions" key yourself, RLlib skips that sampling step.
@@ -582,23 +581,23 @@ To find out, what APIs your Algorithms requires, do this:
 
 .. testcode::
 
-    # Import the config of the algo of your choice:
-    from ray.rllib.algorithms.sac import SACConfig
+    # Import the config of the algorithm of your choice:
+    from ray.rllib.algorithms.sac import PPOConfig
 
     # Print out the (abstract) APIs, you need to subclass from and whose
     # abstract methods we need to implement (besides `setup()` and the `_forward_..()`
     # methods):
     print(
-        SACConfig()
+        PPOConfig()
         .get_default_learner_class()
         .rl_module_required_apis()
     )
 
 
 .. note::
-    Your VPG example RLModule here is not required to implement any APIs yet. This is because
-    you haven't considered training it with any particular algorithm yet.
-    However, you can find examples of PPO-ready custom RLModules
+    The preceding VPG example module isn't required to implement any APIs yet. This is because
+    you still haven't considered training it with any particular algorithm.
+    However, you can find examples of algorithm-ready (:py:class:`~ray.rllib.algorithms.ppo.PPO`) custom RLModules
     `here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
     and `here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__.
 
@@ -707,9 +706,9 @@ model hyper-parameters:
     In order to learn with the preceding setup properly, a specific, multi-agent
     :py:class:`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder
     must be written and used. This Learner should only have a single optimizer, used to train all
-    three submodules (encoder and the two policy nets) in order to stabilize learning.
+    three submodules (encoder and the two policy nets) to stabilize learning.
     If the standard "one-optimizer-per-module" Learners are used, the two optimizers for policy 1 and 2
-    alternatingly update the same shared encoder subnetwork, potentially leading to learning instabilities.
+    take turns updating the same shared encoder, which potentially leads to learning instabilities.
 
 
 .. _rllib-checkpointing-rl-modules-docs:
@@ -778,16 +777,16 @@ Loading an RLModule checkpoint into a running Algorithm
         .environment("CartPole-v1")
         .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[32]))
     )
-    algo = config.build()
+    ppo = config.build()
 
 
-Now, let's load the saved RLModule state (from the preceding `module.save_to_path()`) directly
-into the running Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
+Now you can load the saved RLModule state (from the preceding `module.save_to_path()`) directly
+into the running Algorithm's RLModule(s). Note that all RLModules within the algorithm get updated, the ones
 in the Learner workers and the ones in the EnvRunners.
 
 .. testcode::
 
-    algo.restore_from_path(
+    ppo.restore_from_path(
         module_ckpt_path,  # <- NOT an Algorithm checkpoint, but single-agent RLModule one.
 
         # Therefore, we have to provide the exact path (of RLlib components) down
@@ -798,5 +797,5 @@ in the Learner workers and the ones in the EnvRunners.
 .. testcode::
     :hide:
 
-    algo.stop()
+    ppo.stop()
     shutil.rmtree(module_ckpt_path)
