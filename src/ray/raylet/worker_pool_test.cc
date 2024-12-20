@@ -2231,8 +2231,8 @@ int main(int argc, char **argv) {
       ray::RayLogLevel::INFO,
       /*log_dir=*/"",
       /*log_filepath=*/"",
-      ray::kDefaultLogRotationMaxSize,
-      ray::kDefaultLogRotationFileNum);
+      ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+      ray::RayLog::GetRayLogRotationBackupCountOrDefault());
   ::testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
