@@ -558,8 +558,6 @@ you get a working end-to-end example:
 
 .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_rlm.py
         :language: python
-        :start-after: __sphinx_doc_begin__
-        :end-before: __sphinx_doc_end__
 
 
 Custom action distribution
@@ -590,132 +588,68 @@ use cases that need to define independent neural networks . However, for any com
 you should inherit from this class and override the default implementation.
 
 The following code snippets create a custom multi-agent RL module with two simple "policy head" modules, which
-share an encoder (the third network in the MultiRLModule). The encoder receives the observations from the env
-and outputs feature vectors that then serve as input for the two policy heads to compute the agents' actions.
+share the same encoder (the third network in the MultiRLModule). The encoder receives the raw observations from the env
+and outputs embedding vectors that then serve as input for the two policy heads to compute the agents' actions.
+
 
 
 .. tab-set::
 
-    .. tab-item:: Policy head module
+    .. tab-item:: MultiRLModule (w/ two policy nets and one encoder)
 
-        .. testcode::
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_mrlm_begin__
+            :end-before: __sphinx_doc_mrlm_end__
 
-            import torch
-            from ray.rllib.core import Columns
-            from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-            from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_mrlm_2_begin__
+            :end-before: __sphinx_doc_mrlm_2_end__
 
-            class PGPolicyUsingSharedEncoder(TorchRLModule):
-                """A PG-style RLModule using the inputs (features) of a shared encoder.
+    .. tab-item:: Policy RLModule
 
-                Note that the shared encoder is a separate RLModule handled separately by the
-                top level MultiRLModule that holds this RLModule.
-                """
-                def setup(self):
-                    feature_dim = self.model_config["feature_dim"]
-                    hidden_dim = self.model_config["hidden_dim"]
+        Within your MultiRLModule, you need to have two policy sub-RLModules. They may be of the same
+        class, which can be implemented as follows:
 
-                    self._pi_head = nn.Sequential(
-                        torch.nn.Linear(feature_dim, hidden_dim),
-                        torch.nn.ReLU(),
-                        torch.nn.Linear(hidden_dim, self.action_space.n),
-                    )
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_policy_begin__
+            :end-before: __sphinx_doc_policy_end__
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_policy_2_begin__
+            :end-before: __sphinx_doc_policy_2_end__
 
-                def _forward(self, batch):
-                    features = batch["encoder_features"]
-                    logits = self._pi_head(features)
+    .. tab-item:: Shared encoder RLModule
 
-                    return {Columns.ACTION_DIST_INPUTS: logits}
+        Finally, your shared encoder RLModule should look similar to this:
 
-    .. tab-item:: MultiRLModule with shared encoder
-
-        .. testcode::
-
-            import torch
-            from ray.rllib.core import Columns
-            from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-
-            class MultiAgentPGWithSharedEncoder(MultiRLModule):
-                def setup(self):
-                    # Call the super constructor to create all submodules (the policies)
-                    # first.
-                    super().setup()
-
-                    # Then construct the shared encoder
-                    obs_dim = self.observation_space.shape[0]
-                    hidden_dim = self.model_config["encoder_hidden_dim"]
-                    feature_dim = self.model_config["feature_dim"]
-                    self._shared_encoder = nn.Sequential(
-                        torch.nn.Linear(obs_dim, hidden_dim),
-                        torch.nn.ReLU(),
-                        torch.nn.Linear(hidden_dim, feature_dim),
-                    )
-
-                def _forward(self, batch):
-                    # Pass observations through the shared encoder.
-                    features = self._shared_encoder(batch[Columns.OBS])
-                    # Pass computed features through all submodules (policies).
-                    ret = {
-                        mid: {
-                            Columns.ACTION_DIST_INPUTS: self[mid].forward_inference(
-                                batch[mid]
-                            )
-                        } mid for mid, logits in self.items()
-                    }
-                    return ret
+        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+            :language: python
+            :start-after: __sphinx_doc_encoder_begin__
+            :end-before: __sphinx_doc_encoder_end__
 
 
-To plug in this custom multi-agent RL module into your algorithm's config, create a
+To plug in the custom MultiRLModule (from the first tab) into your algorithm's config, create a
 :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` with the new class and its constructor
-settings.
-Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent
-because RLlib requires the observation, action spaces, and model hyper-parameters per agent:
+settings. Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent
+and the shared encoder RLModule, because RLlib requires their observation- and action spaces and their
+model hyper-parameters:
+
+.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_using_shared_encoder_rlm.py
+    :language: python
+    :start-after: __sphinx_doc_how_to_run_begin__
+    :end-before: __sphinx_doc_how_to_run_end__
 
 
-.. testcode::
-
-    from ray.rllib.algorithms.ppo import PPOConfig
-    from ray.rllib.core import MultiRLModuleSpec, RLModuleSpec
-    from ray.rllib.examples.envs.classes.multi_agent import MultiAgentCartPole
-
-    FEATURE_DIM = 128
-    ENCODER_HIDDEN_DIM = 256
-
-    config = (
-        PPOConfig()
-        .environment(MultiAgentCartPole, env_config={"num_agents": 2})
-        .multi_agent(
-            policies={"p0", "p1"},
-            # Agent IDs of `MultiAgentCartPole` are 0 and 1, mapping to
-            # "p0" and "p1", respectively.
-            policy_mapping_fn=lambda agent_id, episode, **kw: f"p{agent_id}"
-        )
-        .rl_module(
-            rl_module_spec=MultiRLModuleSpec(
-                # Speficy our custom MultiRLModule class.
-                multi_rl_module_class=MultiAgentPGWithSharedEncoder,
-                model_config={
-                    "feature_dim": FEATURE_DIM,
-                    "encoder_hidden_dim": ENCODER_HIDDEN_DIM,
-                }.
-                # Specify the individual policy RLModules (with different hidden dims).
-                rl_module_specs={
-                    "p0": RLModuleSpec(
-                        module_class=PGPolicyUsingSharedEncoder,
-                        # Large policy net.
-                        model_config={"feature_dim": FEATURE_DIM, "hidden_dim": 1024},
-                    ),
-                    "p1": RLModuleSpec(
-                        module_class=PGPolicyUsingSharedEncoder,
-                        # Small policy net.
-                        model_config={"feature_dim": FEATURE_DIM, "hidden_dim": 64},
-                    ),
-                },
-            ),
-        )
-    )
-    algo = config.build()
-    print(algo.get_module())
+.. note::
+    In order to learn with the preceding setup properly, a custom multi-agent
+    :py:class:`~ray.rllib.core.learner.learner.Learner` accounting for the shared encoder
+    must be written. This Learner should only have one optimizer (used to train all
+    submodules, encoder and the two policy nets) in order to stabilize learning.
+    Learning instabilities might occur, if more than one optimizer try
+    to alternatingly update the same shared encoder subnetwork.
 
 
 Extending existing RLlib RLModules

@@ -1,4 +1,3 @@
-# __sphinx_doc_begin__
 import torch
 
 from ray.rllib.core.columns import Columns
@@ -48,4 +47,3 @@ class VPGTorchRLModule(TorchRLModule):
         # def _forward_exploration(self, batch):
         #    with torch.no_grad():
         #        return self._forward_train(batch)
-# __sphinx_doc_end__

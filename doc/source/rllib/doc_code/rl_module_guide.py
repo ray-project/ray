@@ -1,7 +1,6 @@
 # flake8: noqa
 
 
-
 # __pass-custom-multirlmodule-shared-enc-begin__
 import gymnasium as gym
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -35,4 +34,3 @@ spec = MultiRLModuleSpec(
 
 module = spec.build()
 # __pass-custom-multirlmodule-shared-enc-end__
-

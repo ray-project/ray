@@ -20,6 +20,7 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     Passes observations from the input batch through the encoder, then the pi head to
     compute action logits.
     """
+
     def __init__(self, *args, **kwargs):
         catalog_class = kwargs.pop("catalog_class", BCCatalog)
         super().__init__(*args, **kwargs, catalog_class=catalog_class)
