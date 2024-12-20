@@ -14,6 +14,8 @@
 
 #include "ray/gcs/store_client/in_memory_store_client.h"
 
+#include "absl/strings/match.h"
+
 namespace ray::gcs {
 
 Status InMemoryStoreClient::AsyncPut(const std::string &table_name,
@@ -127,9 +129,7 @@ Status InMemoryStoreClient::AsyncBatchDelete(const std::string &table_name,
 }
 
 int InMemoryStoreClient::GetNextJobID() {
-  absl::MutexLock lock(&mutex_);
-  job_id_ += 1;
-  return job_id_;
+  return job_id_.fetch_add(1, std::memory_order_acq_rel);
 }
 
 std::shared_ptr<InMemoryStoreClient::InMemoryTable> InMemoryStoreClient::GetOrCreateTable(
@@ -153,7 +153,7 @@ Status InMemoryStoreClient::AsyncGetKeys(
   auto table = GetOrCreateTable(table_name);
   absl::MutexLock lock(&(table->mutex_));
   for (const auto &[key, _] : table->records_) {
-    if (key.find(prefix) == 0) {
+    if (absl::StartsWith(key, prefix)) {
       result.emplace_back(key);
     }
   }

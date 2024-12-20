@@ -91,7 +91,7 @@ class InMemoryStoreClient : public StoreClient {
   instrumented_io_context &main_io_service_;
 
   /// Current job id, auto-increment when request next-id.
-  int job_id_ ABSL_GUARDED_BY(mutex_) = 0;
+  std::atomic<int> job_id_ = 1;
 };
 
 }  // namespace ray::gcs
