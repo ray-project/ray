@@ -697,11 +697,8 @@ class AlgorithmConfig(_Config):
         # inside `self.experimental()` before potentially overwriting it in the
         # following.
         enable_new_api_stack = config_dict.get(
-            "_enable_new_api_stack",
-            config_dict.get(
-                "enable_rl_module_and_learner",
-                config_dict.get("enable_env_runner_and_connector_v2"),
-            ),
+            "enable_rl_module_and_learner",
+            config_dict.get("enable_env_runner_and_connector_v2"),
         )
         if enable_new_api_stack is not None:
             self.api_stack(
@@ -3518,7 +3515,8 @@ class AlgorithmConfig(_Config):
         if _enable_new_api_stack != DEPRECATED_VALUE:
             deprecation_warning(
                 old="config.experimental(_enable_new_api_stack=...)",
-                new="config.api_stack(enable_rl_module_and_learner=...)",
+                new="config.api_stack(enable_rl_module_and_learner=...,"
+                "enable_env_runner_and_connector_v2=...)",
                 error=True,
             )
 
