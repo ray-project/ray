@@ -81,7 +81,7 @@ RLlib Feature Guides
 
         .. button-ref:: rllib-offline
 
-            Working With Offline Data
+            Offline RL with Offline Datasets
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg
