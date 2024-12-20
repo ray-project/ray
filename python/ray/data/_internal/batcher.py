@@ -133,7 +133,7 @@ class Batcher(BatcherInterface):
                 # subsequent slicing operation)
                 if isinstance(accessor, ArrowBlockAccessor):
                     accessor = BlockAccessor.for_block(
-                        transform_pyarrow.try_combine_chunks(block)
+                        transform_pyarrow.try_combine_chunked_columns(block)
                     )
 
                 # We only need part of the block to fill out a batch.

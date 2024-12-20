@@ -78,7 +78,8 @@ DEFAULT_OBJECT_STORE_MAX_MEMORY_BYTES = env_integer(
 )
 # The default proportion of available memory allocated to the object store
 DEFAULT_OBJECT_STORE_MEMORY_PROPORTION = env_float(
-    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION", 0.3
+    "RAY_DEFAULT_OBJECT_STORE_MEMORY_PROPORTION",
+    0.3,
 )
 # The smallest cap on the memory used by the object store that we allow.
 # This must be greater than MEMORY_RESOURCE_UNIT_BYTES

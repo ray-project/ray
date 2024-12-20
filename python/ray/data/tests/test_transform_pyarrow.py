@@ -13,7 +13,7 @@ from ray.data import DataContext
 from ray.data._internal.arrow_ops.transform_pyarrow import (
     concat,
     hash_partition,
-    try_combine_chunks,
+    try_combine_chunked_columns,
     unify_schemas,
 )
 from ray.data.block import BlockAccessor
@@ -39,7 +39,7 @@ def test_try_defragment_table():
 
     assert len(t["id"].chunks) == 10
 
-    dt = try_combine_chunks(t)
+    dt = try_combine_chunked_columns(t)
 
     assert len(dt["id"].chunks) == 1
     assert dt == t

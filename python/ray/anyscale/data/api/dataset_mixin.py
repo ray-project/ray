@@ -1,5 +1,5 @@
 import functools
-from typing import Any, Dict, List, Optional, Protocol, Union
+from typing import Any, Dict, List, Optional, Protocol, Sequence, Tuple
 
 from ray.anyscale.data._internal.logical.operators.join_operator import Join
 from ray.anyscale.data._internal.logical.operators.list_files_operator import (
@@ -14,7 +14,7 @@ from ray.anyscale.data._internal.logical.operators.streaming_aggregate import (
 )
 from ray.anyscale.data.api.streaming_aggregate import StreamingAggFn
 from ray.anyscale.data.datasource.snowflake_datasink import SnowflakeDatasink
-from ray.data import Dataset
+from ray.data import Dataset, Schema
 from ray.data._internal.logical.interfaces.logical_plan import LogicalPlan
 from ray.data._internal.plan import ExecutionPlan
 from ray.data._internal.stats import DatasetStats
@@ -93,33 +93,56 @@ class DatasetMixin:
         return Dataset(plan, logical_plan)
 
     def join(
-        self,
-        right: "Dataset",
+        self: DatasetProtocol,
+        ds: "Dataset",
         join_type: str,
-        keys: Union[str, List[str]],
+        num_outputs: int,
+        key_column_names: Tuple[str] = ("id",),
+        right_key_column_names: Optional[Tuple[str]] = None,
+        *,
+        aggregator_ray_remote_args: Optional[Dict[str, Any]] = None,
     ) -> "Dataset":
         """Join :class:`Datasets <ray.data.Dataset>` on join keys
 
         Args:
-            left_input_op: The input operator at left hand side.
-            right_input_op: The input operator at right hand side.
-            keys: The columns from the left and right Datasets that should be used as
-              keys of the join operation.
+            ds: Other dataset to join against
             join_type: The kind of join that should be performed, one of (“inner”,
               “left_outer”, “right_outer”, “full_outer”)
+            num_outputs: Total number of blocks to be produced by this operation (see
+              py-doc for `Dataset.repartition` operation for more context)
+            key_column_names: The columns from the left operand that will be used as
+              keys for the join operation.
+            right_key_column_names: The columns from the right operand that will be
+              used as keys for the join operation. When none, `key_column_names` will
+              be assumed to be a list of columns to be used for the right dataset
+              as well.
+
 
         Returns:
             A :class:`Dataset` that holds join of input left Dataset with the right
               Dataset based on join type and keys.
         """
 
-        keys = keys if isinstance(keys, list) else [keys]
+        left_op_schema: Optional["Schema"] = self.schema()
+        right_op_schema: Optional["Schema"] = ds.schema()
+
+        # NOTE: If no separate keys provided for the right side, assume just the left
+        #       side ones
+        right_key_column_names = right_key_column_names or key_column_names
+
+        _validate_join_op(
+            left_op_schema, right_op_schema, key_column_names, right_key_column_names
+        )
+
         plan = self._plan.copy()
         op = Join(
             left_input_op=self._logical_plan.dag,
-            right_input_op=right._logical_plan.dag,
-            keys=keys,
+            right_input_op=ds._logical_plan.dag,
+            left_key_columns=key_column_names,
+            right_key_columns=right_key_column_names,
             join_type=join_type,
+            num_outputs=num_outputs,
+            aggregator_ray_remote_args=aggregator_ray_remote_args,
         )
         logical_plan = LogicalPlan(op, self.context)
         return Dataset(plan, logical_plan)
@@ -175,4 +198,45 @@ class DatasetMixin:
             SnowflakeDatasink(table, connection_parameters),
             ray_remote_args=ray_remote_args,
             concurrency=concurrency,
+        )
+
+
+def _validate_join_op(
+    left_op_schema: "Schema",
+    right_op_schema: "Schema",
+    left_key_column_names: Tuple[str],
+    right_key_column_names: Tuple[str],
+):
+    def _col_names_as_str(keys: Sequence[str]):
+        keys_joined = ", ".join(map(lambda k: f"'{k}'", keys))
+        return f"[{keys_joined}]"
+
+    if len(left_key_column_names) < 1:
+        raise ValueError(
+            f"At least 1 column name to join on has to be provided (got "
+            f"{_col_names_as_str(left_key_column_names)})"
+        )
+
+    if len(left_key_column_names) != len(right_key_column_names):
+        raise ValueError(
+            f"Number of columns provided for left and right datasets has to match "
+            f"(got {_col_names_as_str(left_key_column_names)} and "
+            f"{_col_names_as_str(right_key_column_names)})"
+        )
+
+    def _get_key_column_types(schema: "Schema", keys: Tuple[str]):
+        return (
+            [_type for name, _type in zip(schema.names, schema.types) if name in keys]
+            if schema
+            else None
+        )
+
+    right_op_key_cols = _get_key_column_types(right_op_schema, left_key_column_names)
+    left_op_key_cols = _get_key_column_types(left_op_schema, right_key_column_names)
+
+    if left_op_key_cols != right_op_key_cols:
+        raise ValueError(
+            f"Key columns are expected to be present and have the same types "
+            "in both left and right operands of the join operation: "
+            f"left has {left_op_schema}, but right has {right_op_schema}"
         )

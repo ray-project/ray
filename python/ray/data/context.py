@@ -56,6 +56,8 @@ DEFAULT_USE_PUSH_BASED_SHUFFLE = bool(
     os.environ.get("RAY_DATA_PUSH_BASED_SHUFFLE", None)
 )
 
+DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS = 256
+
 DEFAULT_SCHEDULING_STRATEGY = "SPREAD"
 
 # This default enables locality-based scheduling in Ray for tasks where arg data
@@ -285,8 +287,14 @@ class DataContext:
     streaming_read_buffer_size: int = DEFAULT_STREAMING_READ_BUFFER_SIZE
     enable_pandas_block: bool = DEFAULT_ENABLE_PANDAS_BLOCK
     actor_prefetcher_enabled: bool = DEFAULT_ACTOR_PREFETCHER_ENABLED
+
+    # Sort-based shuffling configuration
     use_push_based_shuffle: bool = DEFAULT_USE_PUSH_BASED_SHUFFLE
     pipeline_push_based_shuffle_reduce_tasks: bool = True
+
+    # Hash-based shuffling configuration
+    max_hash_shuffle_aggregators: int = DEFAULT_MAX_HASH_SHUFFLE_AGGREGATORS
+
     scheduling_strategy: SchedulingStrategyT = DEFAULT_SCHEDULING_STRATEGY
     scheduling_strategy_large_args: SchedulingStrategyT = (
         DEFAULT_SCHEDULING_STRATEGY_LARGE_ARGS

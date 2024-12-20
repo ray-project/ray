@@ -28,7 +28,7 @@ class Zip(NAry):
     ):
         """
         Args:
-            left_input_ops: The input operator at left hand side.
+            left_input_op: The input operator at left hand side.
             right_input_op: The input operator at right hand side.
         """
         super().__init__(left_input_op, right_input_op)

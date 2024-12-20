@@ -35,6 +35,16 @@ def sort(table: "pyarrow.Table", sort_key: "SortKey") -> "pyarrow.Table":
     return take_table(table, indices)
 
 
+def create_empty_table(schema: "pyarrow.Schema"):
+    """TODO add pydoc"""
+
+    import pyarrow as pa
+
+    arrays = [pa.array([], type=t) for t in schema.types]
+
+    return pa.table(arrays, schema=schema)
+
+
 def hash_partition(
     table: "pyarrow.Table",
     *,
@@ -75,7 +85,7 @@ def hash_partition(
     #       chunks w/in the individual columns, and therefore to improve performance
     #       we attempt to defragment the table to potentially combine some of those
     #       chunks into contiguous arrays.
-    table = try_combine_chunks(table)
+    table = try_combine_chunked_columns(table)
 
     return {
         p: table.take(idx)
@@ -417,7 +427,7 @@ def to_numpy(
         )
 
 
-def try_combine_chunks(table: "pyarrow.Table") -> "pyarrow.Table":
+def try_combine_chunked_columns(table: "pyarrow.Table") -> "pyarrow.Table":
     """This method attempts to coalesce table by combining any of its
     columns exceeding threshold of `MIN_NUM_CHUNKS_TO_TRIGGER_COMBINE_CHUNKS`
     chunks in its `ChunkedArray`.

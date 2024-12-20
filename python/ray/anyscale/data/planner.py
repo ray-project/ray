@@ -1,6 +1,6 @@
 from typing import List
 
-from ray.anyscale.data._internal.execution.operators.join_operator import JoinOperator
+from ray.anyscale.data._internal.execution.operators.join import JoinOperator
 from ray.anyscale.data._internal.execution.operators.streaming_hash_aggregate import (
     StreamingHashAggregate,
 )
@@ -44,14 +44,22 @@ def _register_anyscale_plan_logical_op_fns():
     register_plan_logical_op_fn(ReadFiles, plan_read_files_op)
 
     def plan_join_op(
-        logical_op: Join, physical_children: List[PhysicalOperator]
+        logical_op: Join,
+        physical_children: List[PhysicalOperator],
+        data_context: DataContext,
     ) -> PhysicalOperator:
         assert len(physical_children) == 2
+        assert logical_op._num_outputs is not None
+
         return JoinOperator(
+            data_context=data_context,
             left_input_op=physical_children[0],
             right_input_op=physical_children[1],
             join_type=logical_op._join_type,
-            keys=logical_op._keys,
+            left_key_columns=logical_op._left_key_columns,
+            right_key_columns=logical_op._right_key_columns,
+            num_partitions=logical_op._num_outputs,
+            aggregator_ray_remote_args_override=logical_op._aggregator_ray_remote_args,
         )
 
     register_plan_logical_op_fn(Join, plan_join_op)
