@@ -476,6 +476,7 @@ class MARWIL(Algorithm):
                 batch=batch_or_iterator,
                 minibatch_size=self.config.train_batch_size_per_learner,
                 num_iters=self.config.dataset_num_iters_per_learner,
+                **self.offline_data.iter_batches_kwargs,
             )
 
             # Log training results.
@@ -494,7 +495,7 @@ class MARWIL(Algorithm):
                 self.eval_env_runner_group.sync_weights(
                     # Sync weights from learner_group to all EnvRunners.
                     from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
+                    policies=list(modules_to_update),
                     inference_only=True,
                 )
 

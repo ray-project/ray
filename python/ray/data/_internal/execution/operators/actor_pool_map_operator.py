@@ -80,6 +80,7 @@ class ActorPoolMapOperator(MapOperator):
                 always override the args in ``ray_remote_args``. Note: this is an
                 advanced, experimental feature.
             ray_remote_args: Customize the ray remote args for this op's tasks.
+                See :func:`ray.remote` for details.
         """
         super().__init__(
             map_transformer,
@@ -213,7 +214,12 @@ class ActorPoolMapOperator(MapOperator):
                 num_returns="streaming",
                 name=self.name,
                 **self._ray_actor_task_remote_args,
-            ).remote(self.data_context, ctx, *input_blocks)
+            ).remote(
+                self.data_context,
+                ctx,
+                *input_blocks,
+                **self.get_map_task_kwargs(),
+            )
 
             def _task_done_callback(actor_to_return):
                 # Return the actor that was running the task to the pool.
@@ -391,12 +397,14 @@ class _MapWorker:
         data_context: DataContext,
         ctx: TaskContext,
         *blocks: Block,
+        **kwargs: Dict[str, Any],
     ) -> Iterator[Union[Block, List[BlockMetadata]]]:
         yield from _map_task(
             self._map_transformer,
             data_context,
             ctx,
             *blocks,
+            **kwargs,
         )
 
     def __repr__(self):
