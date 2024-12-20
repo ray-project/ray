@@ -23,25 +23,28 @@ def parse_args() -> argparse.Namespace:
 
 def main(args: argparse.Namespace) -> None:
     benchmark = Benchmark("map")
-
     path = f"s3://ray-benchmark-data/tpch/parquet/sf{args.sf}/lineitem"
-    ds = ray.data.read_parquet(path)
-
-    if args.api == "map":
-        ds = ds.map(increment_row)
-    elif args.api == "map_batches":
-        if not args.compute or args.compute == "tasks":
-            ds = ds.map_batches(increment_batch, batch_format=args.batch_format)
-        else:
-            ds = ds.map_batches(
-                IncrementBatch, batch_format=args.batch_format, concurrency=(1, 1024)
-            )
-    elif args.api == "flat_map":
-        ds = ds.flat_map(flat_increment_row)
-    else:
-        assert False, f"Invalid API argument: {args}"
 
     def benchmark_fn():
+        # Load the dataset.
+        ds = ray.data.read_parquet(path)
+
+        # Apply the map transformation.
+        if args.api == "map":
+            ds = ds.map(increment_row)
+        elif args.api == "map_batches":
+            if not args.compute or args.compute == "tasks":
+                ds = ds.map_batches(increment_batch, batch_format=args.batch_format)
+            else:
+                ds = ds.map_batches(
+                    IncrementBatch,
+                    batch_format=args.batch_format,
+                    concurrency=(1, 1024),
+                )
+        elif args.api == "flat_map":
+            ds = ds.flat_map(flat_increment_row)
+
+        # Iterate over the results.
         for _ in ds.iter_internal_ref_bundles():
             pass
 
