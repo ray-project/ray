@@ -753,7 +753,7 @@ int64_t ReferenceCounter::EvictLineage(int64_t min_bytes_to_evict) {
   int64_t lineage_bytes_evicted = 0;
   while (!reconstructable_owned_objects_.empty() &&
          lineage_bytes_evicted < min_bytes_to_evict) {
-    ObjectID object_id = reconstructable_owned_objects_.front();
+    ObjectID object_id = std::move(reconstructable_owned_objects_.front());
     reconstructable_owned_objects_.pop_front();
     reconstructable_owned_objects_index_.erase(object_id);
 
