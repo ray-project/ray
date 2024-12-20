@@ -815,7 +815,7 @@ class Node:
         Returns:
             A string of file name. If there existing a file having
                 the same name, the returned name will look like
-                "{directory_name}/{prefix}-{unique_index}{suffix}"
+                "{directory_name}/{prefix}.{unique_index}{suffix}"
         """
         if directory_name is None:
             directory_name = ray._private.utils.get_ray_temp_dir()
