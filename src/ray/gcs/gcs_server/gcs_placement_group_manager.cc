@@ -715,6 +715,10 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     auto on_done = [this, placement_group_id, callback](
                        const Status &status,
                        const std::optional<PlacementGroupTableData> &result) {
+      if (!status.ok()) {
+        callback(status);
+        return;
+      }
       if (result) {
         RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
                        << placement_group_id;
