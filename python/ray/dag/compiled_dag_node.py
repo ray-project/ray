@@ -24,7 +24,11 @@ import ray.exceptions
 from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, ResolvedFuture
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
-from ray.dag.constants import RAY_CGRAPH_VISUALIZE_SCHEDULE
+from ray.dag.constants import (
+    RAY_CGRAPH_ENABLE_PROFILING,
+    RAY_CGRAPH_ENABLE_NVTX_PROFILING,
+    RAY_CGRAPH_VISUALIZE_SCHEDULE,
+)
 import ray
 from ray.exceptions import RayTaskError, RayChannelError
 from ray.experimental.compiled_dag_ref import (
@@ -153,6 +157,17 @@ def do_exec_tasks(
         for task in tasks:
             task.prepare(overlap_gpu_communication=overlap_gpu_communication)
 
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            try:
+                import nvtx
+            except ImportError:
+                raise ImportError(
+                    "Please install nvtx to enable nsight profiling. "
+                    "You can install it by running `pip install nvtx`."
+                )
+            nvtx_profile = nvtx.Profile()
+            nvtx_profile.enable()
+
         done = False
         while True:
             if done:
@@ -163,6 +178,9 @@ def do_exec_tasks(
                 )
                 if done:
                     break
+
+        if RAY_CGRAPH_ENABLE_NVTX_PROFILING:
+            nvtx_profile.disable()
     except Exception:
         logging.exception("Compiled DAG task exited with exception")
         raise
@@ -1577,14 +1595,12 @@ class CompiledDAG:
             executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
 
-        # Build an execution schedule for each actor
-        from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
-
         if RAY_CGRAPH_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
         else:
             exec_task_func = do_exec_tasks
 
+        # Build an execution schedule for each actor
         self.actor_to_execution_schedule = self._build_execution_schedule()
         for actor_handle, executable_tasks in self.actor_to_executable_tasks.items():
             self.worker_task_refs[actor_handle] = actor_handle.__ray_call__.options(
