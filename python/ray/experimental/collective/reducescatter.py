@@ -8,7 +8,7 @@ from ray.dag.constants import (
     COLLECTIVE_OPERATION_KEY,
     PARENT_CLASS_NODE_KEY,
 )
-from ray.experimental.channel.torch_tensor_type import GPUCommunicator, TorchTensorType
+from ray.experimental.channel.torch_tensor_type import Communicator, TorchTensorType
 from ray.experimental.util.types import ReduceOp
 from ray.util.collective.types import ReduceOp as RayReduceOp
 
@@ -25,7 +25,7 @@ class ReduceScatterWrapper:
         self,
         input_nodes: List["ray.dag.DAGNode"],
         op: ReduceOp = ReduceOp.SUM,
-        transport: Optional[Union[str, GPUCommunicator]] = None,
+        transport: Optional[Union[str, Communicator]] = None,
     ) -> List[CollectiveOutputNode]:
         """
         Bind input nodes with a collective operation. The collective operation is
