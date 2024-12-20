@@ -55,6 +55,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -281,6 +282,14 @@ class RayLog {
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
+
+  /// Get max bytes value from env variable.
+  /// Return std::nullopt if env not set or parse failure.
+  std::optional<size_t> GetRayLogRotationMaxBytes();
+
+  /// Get log rotation backup count.
+  /// Return std::nullopt if env not set or parse failure.
+  std::optional<size_t> GetRayLogRotationBackupCount();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();

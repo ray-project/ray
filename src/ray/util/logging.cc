@@ -327,6 +327,30 @@ void RayLog::InitLogFormat() {
   return "";
 }
 
+std::optional<size_t> RayLog::GetRayLogRotationMaxBytes() {
+  if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
+      ray_rotation_max_bytes != nullptr) {
+    size_t max_size = 0;
+    if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
+      // 0 means no log rotation in python, but not in spdlog. We just use the default
+      // value here.
+      return max_size;
+    }
+  }
+  return std::nullopt;
+}
+
+std::optional<size_t> RayLog::GetRayLogRotationBackupCount() {
+  if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
+      ray_rotation_backup_count != nullptr) {
+    size_t file_num = 0;
+    if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
+      return file_num;
+    }
+  }
+  return std::nullopt;
+}
+
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir,
@@ -366,25 +390,6 @@ void RayLog::StartRayLog(const std::string &app_name,
   // 10 files in max size 512M by default.
   const auto log_fname =
       GetLogOutputFilename(log_dir, log_filepath, app_name_without_path);
-  if (!log_fname.empty()) {
-    if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
-        ray_rotation_max_bytes != nullptr) {
-      size_t max_size = 0;
-      if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
-        // 0 means no log rotation in python, but not in spdlog. We just use the default
-        // value here.
-        log_rotation_max_size_ = max_size;
-      }
-    }
-
-    if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
-        ray_rotation_backup_count != nullptr) {
-      size_t file_num = 0;
-      if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
-        log_rotation_file_num_ = file_num;
-      }
-    }
-  }
 
   // Set sink for stdout.
   if (!log_fname.empty()) {
