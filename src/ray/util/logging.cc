@@ -369,6 +369,8 @@ void RayLog::StartRayLog(const std::string &app_name,
   InitLogFormat();
 
   app_name_ = app_name;
+  log_rotation_max_size_ = log_rotation_max_size;
+  log_rotation_file_num_ = log_rotation_file_num;
 
   // All the logging sinks to add.
   // One for file/stdout, another for stderr.
