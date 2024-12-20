@@ -31,9 +31,13 @@ class _CollectiveOperation:
     3. Actor handles match the custom NCCL group if specified.
     """
 
+    ALLREDUCE = "ar"
+    REDUCESCATTER = "rs"
+
     def __init__(
         self,
         input_nodes: List[DAGNode],
+        comm_op: str,
         op: _CollectiveOp,
         transport: Optional[Union[str, Communicator]] = None,
     ):
@@ -59,6 +63,10 @@ class _CollectiveOperation:
                 "but found duplicate actor handles from input nodes: "
                 f"{invalid_input_nodes}"
             )
+        
+        self.comm_op = comm_op
+        if self.comm_op not in [self.ALLREDUCE, self.REDUCESCATTER]:
+            raise NotImplementedError("Only all-reduce and reduce-scatter are implemented")
 
         self._op = op
         if not isinstance(self._op, ReduceOp):
@@ -124,8 +132,12 @@ class _CollectiveOperation:
         if not isinstance(send_buf, torch.Tensor):
             raise ValueError("Expected a torch tensor")
         communicator = self.get_communicator()
-        recv_buf = torch.empty_like(send_buf)
-        communicator.allreduce(send_buf, recv_buf, self._op)
+        if self.comm_op == self.ALLREDUCE:
+            recv_buf = torch.empty_like(send_buf)
+            communicator.allreduce(send_buf, recv_buf, self._op)
+        elif self.comm_op == self.REDUCESCATTER:
+            # TODO: check input size of 
+            communicator.reducescatter(send_buf, recv_buf, self._op)
         return recv_buf
 
 

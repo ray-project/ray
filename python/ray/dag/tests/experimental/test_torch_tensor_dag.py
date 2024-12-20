@@ -984,6 +984,51 @@ def test_torch_tensor_nccl_all_reduce(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter(ray_start_regular):
+    """
+    Test basic reduce-scatter.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        recvs = [
+            worker.recv.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (num_workers,)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        reduced_val = sum(i + idx for idx in range(num_workers))
+        print(f'\n@@@@@@@@@@@@@@@@@@@@@@@@@@@\n{[(shape, dtype, i + idx) for idx in range(num_workers)]}\n')
+        print(f'\n!!!!!!!!!!!!!!!!!!!!!!!!!!!\n{result}\n')
+        assert result == [(reduced_val, shape, dtype) for _ in workers]
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_all_reduce_get_partial(ray_start_regular):
     """
     Test getting partial results from an all-reduce does not hang.

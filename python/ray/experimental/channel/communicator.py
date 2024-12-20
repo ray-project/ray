@@ -139,6 +139,24 @@ class Communicator(ABC):
             op: The reduce operation.
         """
         raise NotImplementedError
+    
+    @abstractmethod
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp,
+    ) -> None:
+        """
+        Collectively reducescatter the tensor across the group.
+
+        Args:
+            send_buf: The input torch.tensor to reducescatter. It should already be
+                on this actor's default device.
+            recv_buf: The output torch.tensor to store the reducescatter result.
+            op: The reduce operation.
+        """
+        raise NotImplementedError
 
     @abstractmethod
     def destroy() -> None:
