@@ -682,12 +682,6 @@ class RLModule(Checkpointable, abc.ABC):
         Returns:
             This RLModule's state dict.
         """
-        if components is not None or not_components is not None:
-            raise ValueError(
-                "`component` arg and `not_component` arg not supported in "
-                "`RLModule.get_state()` base implementation! Override this method in "
-                "your custom RLModule subclass."
-            )
         return {}
 
     @OverrideToImplementCustomLogic
