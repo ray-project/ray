@@ -562,7 +562,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad:
+        with torch.no_grad():
             return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
@@ -592,7 +592,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        with torch.no_grad:
+        with torch.no_grad():
             return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
