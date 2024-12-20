@@ -173,11 +173,11 @@ void GcsServer::DoStart(const GcsInitData &gcs_init_data) {
   // Init gcs resource manager.
   InitGcsResourceManager(gcs_init_data);
 
-  // Init synchronization service
-  InitRaySyncer(gcs_init_data);
-
   // Init gcs health check manager.
   InitGcsHealthCheckManager(gcs_init_data);
+
+  // Init synchronization service
+  InitRaySyncer(gcs_init_data);
 
   // Init KV service.
   InitKVService();
@@ -522,7 +522,11 @@ GcsServer::StorageType GcsServer::GetStorageType() const {
 
 void GcsServer::InitRaySyncer(const GcsInitData &gcs_init_data) {
   ray_syncer_ = std::make_unique<syncer::RaySyncer>(
-      io_context_provider_.GetIOContext<syncer::RaySyncer>(), kGCSNodeID.Binary());
+      io_context_provider_.GetIOContext<syncer::RaySyncer>(),
+      kGCSNodeID.Binary(),
+      [this](const NodeID &node_id) {
+        gcs_healthcheck_manager_->MarkNodeHealthy(node_id);
+      });
   ray_syncer_->Register(
       syncer::MessageType::RESOURCE_VIEW, nullptr, gcs_resource_manager_.get());
   ray_syncer_->Register(
