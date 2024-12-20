@@ -15,6 +15,9 @@ __all__ = [
     "create_scaling_policy",
 ]
 
+
+# DO NOT ADD ANYTHING AFTER THIS LINE.
+
 # Anyscale patches
 from ray.anyscale.train._internal.execution.scaling_policy.factory import (  # noqa: E402, E501, F811, isort:skip
     create_scaling_policy,

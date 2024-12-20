@@ -19,16 +19,6 @@ class DefaultFailurePolicy(FailurePolicy):
         if not worker_group_status.errors:
             return FailureDecision.NOOP
 
-        # Try restarting in the case any worker failed due to preemption.
-        # TODO: Set systematic rule for different types of errors and their handling.
-        if worker_group_status.has_preemption_error:
-            logger.info(
-                "Deciding to RESTART, since at least one of the worker failures "
-                "was caused by node preemption. Ray Train will not increment the "
-                "total failure count and will restart the worker group."
-            )
-            return FailureDecision.RESTART
-
         self._total_failures += 1
 
         if self.failure_config.max_failures == -1:

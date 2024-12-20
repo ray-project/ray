@@ -80,21 +80,6 @@ class WorkerGroupStatus:
             not status.running for status in self.worker_statuses.values()
         )
 
-    @property
-    def has_preemption_error(self) -> bool:
-        if not self.errors:
-            return False
-
-        for error in self.errors.values():
-            if isinstance(error, WorkerHealthCheckFailedError):
-                health_check_failure = error.health_check_failure
-                if (
-                    isinstance(health_check_failure, RayActorError)
-                    and health_check_failure.preempted
-                ):
-                    return True
-        return False
-
 
 @dataclass(frozen=True)
 class PollTask:
