@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Any, Dict, List, Tuple
 
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
@@ -52,11 +53,12 @@ class DefaultSACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
     -> [q-target-twin-value]
     """
 
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", SACCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def setup(self):
-        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
-            raise self._catalog_ctor_error
-
         # If a twin Q architecture should be used.
         self.twin_q = self.model_config["twin_q"]
 

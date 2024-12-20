@@ -24,6 +24,10 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
         catalog_class = kwargs.pop("catalog_class", BCCatalog)
         super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", BCCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def setup(self):
         # Build model components (encoder and pi head) from catalog.
