@@ -25,17 +25,6 @@ Single Agent
     RLModuleSpec.build
     RLModuleSpec.get_rl_module_config
 
-RLModule Configuration
-+++++++++++++++++++++++
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    RLModuleConfig
-    RLModuleConfig.to_dict
-    RLModuleConfig.from_dict
-    RLModuleConfig.get_catalog
 
 Multi RLModule (multi-agent)
 ++++++++++++++++++++++++++++
