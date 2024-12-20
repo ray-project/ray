@@ -42,43 +42,60 @@ enum class SchedulingType {
 
 // Options that controls the scheduling behavior.
 struct SchedulingOptions {
-  static SchedulingOptions Random() {
+  static SchedulingOptions Random(const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::RANDOM,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
-                             /*avoid_gpu_nodes*/ false);
+                             /*avoid_gpu_nodes*/ false,
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             std::move(scheduling_context));
   }
 
   // construct option for spread scheduling policy.
-  static SchedulingOptions Spread(bool avoid_local_node, bool require_node_available) {
+  static SchedulingOptions Spread(bool avoid_local_node,
+                                  bool require_node_available,
+                                  const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::SPREAD,
                              /*spread_threshold*/ 0,
                              avoid_local_node,
                              require_node_available,
-                             RayConfig::instance().scheduler_avoid_gpu_nodes());
+                             RayConfig::instance().scheduler_avoid_gpu_nodes(),
+                             /*max_cpu_fraction_per_node*/ 1.0,
+                             std::move(scheduling_context));
   }
 
   // construct option for hybrid scheduling policy.
   static SchedulingOptions Hybrid(bool avoid_local_node,
                                   bool require_node_available,
-                                  const std::string &preferred_node_id = std::string()) {
+                                  const std::string &preferred_node_id = std::string(),
+                                  const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::HYBRID,
                              RayConfig::instance().scheduler_spread_threshold(),
                              avoid_local_node,
                              require_node_available,
                              RayConfig::instance().scheduler_avoid_gpu_nodes(),
                              /*max_cpu_fraction_per_node*/ 1.0,
-                             /*scheduling_context*/ nullptr,
+                             /*scheduling_context*/ std::move(scheduling_context),
                              preferred_node_id);
   }
 
-  static SchedulingOptions NodeAffinity(bool avoid_local_node,
-                                        bool require_node_available,
-                                        std::string node_id,
-                                        bool soft,
-                                        bool spill_on_unavailable = false,
-                                        bool fail_on_unavailable = false) {
+  static SchedulingOptions NodeAffinity(
+      bool avoid_local_node,
+      bool require_node_available,
+      std::string node_id,
+      bool soft,
+      bool spill_on_unavailable = false,
+      bool fail_on_unavailable = false,
+      const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     if (spill_on_unavailable) {
       RAY_CHECK(soft) << "spill_on_unavailable only works with soft == true";
     }
@@ -92,13 +109,16 @@ struct SchedulingOptions {
     scheduling_options.node_affinity_soft = soft;
     scheduling_options.node_affinity_spill_on_unavailable = spill_on_unavailable;
     scheduling_options.node_affinity_fail_on_unavailable = fail_on_unavailable;
+    scheduling_options.scheduling_context = std::move(scheduling_context);
     return scheduling_options;
   }
 
   // construct option for affinity with bundle scheduling policy.
-  static SchedulingOptions AffinityWithBundle(const BundleID &bundle_id) {
+  static SchedulingOptions AffinityWithBundle(
+      const BundleID &bundle_id, const std::string &virtual_cluster_id = std::string()) {
     auto scheduling_context =
         std::make_unique<AffinityWithBundleSchedulingContext>(bundle_id);
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(
         SchedulingType::AFFINITY_WITH_BUNDLE,
         /*spread_threshold*/ 0,
@@ -110,9 +130,11 @@ struct SchedulingOptions {
   }
 
   static SchedulingOptions NodeLabelScheduling(
-      const rpc::SchedulingStrategy &scheduling_strategy) {
+      const rpc::SchedulingStrategy &scheduling_strategy,
+      const std::string &virtual_cluster_id = std::string()) {
     auto scheduling_context =
         std::make_unique<NodeLabelSchedulingContext>(scheduling_strategy);
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(
         SchedulingType::NODE_LABEL,
         /*spread_threshold*/ 0,
@@ -127,36 +149,50 @@ struct SchedulingOptions {
    */
 
   // construct option for soft pack scheduling policy.
-  static SchedulingOptions BundlePack(double max_cpu_fraction_per_node = 1.0) {
+  static SchedulingOptions BundlePack(
+      double max_cpu_fraction_per_node = 1.0,
+      const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::BUNDLE_PACK,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node,
+                             std::move(scheduling_context));
   }
 
   // construct option for strict spread scheduling policy.
-  static SchedulingOptions BundleSpread(double max_cpu_fraction_per_node = 1.0) {
+  static SchedulingOptions BundleSpread(
+      double max_cpu_fraction_per_node = 1.0,
+      const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::BUNDLE_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,
                              /*require_node_available*/ true,
                              /*avoid_gpu_nodes*/ false,
-                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
+                             /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node,
+                             std::move(scheduling_context));
   }
 
   // construct option for strict pack scheduling policy.
   static SchedulingOptions BundleStrictPack(
       double max_cpu_fraction_per_node = 1.0,
-      scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil()) {
+      scheduling::NodeID soft_target_node_id = scheduling::NodeID::Nil(),
+      const std::string &virtual_cluster_id = std::string()) {
+    auto scheduling_context = std::make_unique<SchedulingContext>();
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     SchedulingOptions scheduling_options =
         SchedulingOptions(SchedulingType::BUNDLE_STRICT_PACK,
                           /*spread_threshold*/ 0,
                           /*avoid_local_node*/ false,
                           /*require_node_available*/ true,
                           /*avoid_gpu_nodes*/ false,
-                          /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node);
+                          /*max_cpu_fraction_per_node*/ max_cpu_fraction_per_node,
+                          std::move(scheduling_context));
     scheduling_options.bundle_strict_pack_soft_target_node_id = soft_target_node_id;
     return scheduling_options;
   }
@@ -164,7 +200,12 @@ struct SchedulingOptions {
   // construct option for strict spread scheduling policy.
   static SchedulingOptions BundleStrictSpread(
       double max_cpu_fraction_per_node = 1.0,
-      std::unique_ptr<SchedulingContext> scheduling_context = nullptr) {
+      std::unique_ptr<SchedulingContext> scheduling_context = nullptr,
+      const std::string &virtual_cluster_id = std::string()) {
+    if (scheduling_context == nullptr) {
+      scheduling_context = std::make_unique<SchedulingContext>();
+    }
+    scheduling_context->virtual_cluster_id = virtual_cluster_id;
     return SchedulingOptions(SchedulingType::BUNDLE_STRICT_SPREAD,
                              /*spread_threshold*/ 0,
                              /*avoid_local_node*/ false,

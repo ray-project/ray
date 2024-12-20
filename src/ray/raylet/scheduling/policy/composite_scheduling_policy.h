@@ -32,24 +32,37 @@ namespace raylet_scheduling_policy {
 /// scheduling_policy according to the scheduling_type.
 class CompositeSchedulingPolicy : public ISchedulingPolicy {
  public:
-  CompositeSchedulingPolicy(scheduling::NodeID local_node_id,
-                            ClusterResourceManager &cluster_resource_manager,
-                            std::function<bool(scheduling::NodeID)> is_node_available)
-      : hybrid_policy_(
-            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        random_policy_(
-            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        spread_policy_(
-            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
-        node_affinity_policy_(
-            local_node_id, cluster_resource_manager.GetResourceView(), is_node_available),
+  CompositeSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      ClusterResourceManager &cluster_resource_manager,
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
+      : hybrid_policy_(local_node_id,
+                       cluster_resource_manager.GetResourceView(),
+                       is_node_available,
+                       is_node_schedulable),
+        random_policy_(local_node_id,
+                       cluster_resource_manager.GetResourceView(),
+                       is_node_available,
+                       is_node_schedulable),
+        spread_policy_(local_node_id,
+                       cluster_resource_manager.GetResourceView(),
+                       is_node_available,
+                       is_node_schedulable),
+        node_affinity_policy_(local_node_id,
+                              cluster_resource_manager.GetResourceView(),
+                              is_node_available,
+                              is_node_schedulable),
         affinity_with_bundle_policy_(local_node_id,
                                      cluster_resource_manager.GetResourceView(),
                                      is_node_available,
-                                     cluster_resource_manager.GetBundleLocationIndex()),
+                                     cluster_resource_manager.GetBundleLocationIndex(),
+                                     is_node_schedulable),
         node_label_scheduling_policy_(local_node_id,
                                       cluster_resource_manager.GetResourceView(),
-                                      is_node_available) {}
+                                      is_node_available,
+                                      is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -69,11 +82,17 @@ class CompositeBundleSchedulingPolicy : public IBundleSchedulingPolicy {
  public:
   explicit CompositeBundleSchedulingPolicy(
       ClusterResourceManager &cluster_resource_manager,
-      std::function<bool(scheduling::NodeID)> is_node_available)
-      : bundle_pack_policy_(cluster_resource_manager, is_node_available),
-        bundle_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_spread_policy_(cluster_resource_manager, is_node_available),
-        bundle_strict_pack_policy_(cluster_resource_manager, is_node_available) {}
+      std::function<bool(scheduling::NodeID)> is_node_available,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
+      : bundle_pack_policy_(
+            cluster_resource_manager, is_node_available, is_node_schedulable),
+        bundle_spread_policy_(
+            cluster_resource_manager, is_node_available, is_node_schedulable),
+        bundle_strict_spread_policy_(
+            cluster_resource_manager, is_node_available, is_node_schedulable),
+        bundle_strict_pack_policy_(
+            cluster_resource_manager, is_node_available, is_node_schedulable) {}
 
   SchedulingResult Schedule(
       const std::vector<const ResourceRequest *> &resource_request_list,

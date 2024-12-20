@@ -184,6 +184,11 @@ class TaskSpecBuilder {
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
     }
+    // This ensures that tasks incorporate virtual cluster information during scheduling.
+    std::string virtual_cluster_id = std::getenv(kEnvVarKeyVirtualClusterID)
+                                         ? std::getenv(kEnvVarKeyVirtualClusterID)
+                                         : "";
+    message_->mutable_scheduling_strategy()->set_virtual_cluster_id(virtual_cluster_id);
     return *this;
   }
 
@@ -268,6 +273,11 @@ class TaskSpecBuilder {
     if (!root_detached_actor_id.IsNil()) {
       message_->set_root_detached_actor_id(root_detached_actor_id.Binary());
     }
+    // This ensures that actors incorporate virtual cluster information during scheduling.
+    std::string virtual_cluster_id = std::getenv(kEnvVarKeyVirtualClusterID)
+                                         ? std::getenv(kEnvVarKeyVirtualClusterID)
+                                         : "";
+    message_->mutable_scheduling_strategy()->set_virtual_cluster_id(virtual_cluster_id);
     return *this;
   }
 

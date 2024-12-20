@@ -120,6 +120,10 @@ rpc::PlacementStrategy GcsPlacementGroup::GetStrategy() const {
   return placement_group_table_data_.strategy();
 }
 
+const std::string &GcsPlacementGroup::GetVirtualClusterID() const {
+  return placement_group_table_data_.virtual_cluster_id();
+}
+
 const rpc::PlacementGroupTableData &GcsPlacementGroup::GetPlacementGroupTableData()
     const {
   return placement_group_table_data_;

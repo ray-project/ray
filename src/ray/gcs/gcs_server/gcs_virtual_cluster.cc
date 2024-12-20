@@ -160,6 +160,19 @@ bool VirtualCluster::MarkNodeInstanceAsDead(const std::string &template_id,
   return false;
 }
 
+bool VirtualCluster::ContainsNodeInstance(const std::string &node_instance_id) {
+  // TODO(sule): Use the index from node instance id to cluster id to optimize this code.
+  // Iterate through visible node instances to find a matching node instance ID.
+  for (auto &[template_id, job_node_instances] : visible_node_instances_) {
+    for (auto &[job_cluster_id, node_instances] : job_node_instances) {
+      if (node_instances.find(node_instance_id) != node_instances.end()) {
+        return true;
+      }
+    }
+  }
+  return false;
+}
+
 std::shared_ptr<rpc::VirtualClusterTableData> VirtualCluster::ToProto() const {
   auto data = std::make_shared<rpc::VirtualClusterTableData>();
   data->set_id(GetID());
@@ -412,7 +425,7 @@ bool PrimaryCluster::IsIdleNodeInstance(const std::string &job_cluster_id,
 }
 
 void PrimaryCluster::OnNodeAdd(const rpc::GcsNodeInfo &node) {
-  const auto &template_id = node.template_id();
+  const auto &template_id = node.node_type_name();
   auto node_instance_id = NodeID::FromBinary(node.node_id()).Hex();
   auto node_instance = std::make_shared<gcs::NodeInstance>();
   node_instance->set_template_id(template_id);
@@ -425,7 +438,7 @@ void PrimaryCluster::OnNodeAdd(const rpc::GcsNodeInfo &node) {
 }
 
 void PrimaryCluster::OnNodeDead(const rpc::GcsNodeInfo &node) {
-  const auto &template_id = node.template_id();
+  const auto &template_id = node.node_type_name();
   auto node_instance_id = NodeID::FromBinary(node.node_id()).Hex();
 
   // TODO(Shanly): Build an index from node instance id to cluster id.
@@ -473,6 +486,32 @@ Status PrimaryCluster::RemoveLogicalCluster(const std::string &logical_cluster_i
   auto data = logical_cluster->ToProto();
   data->set_is_removed(true);
   return async_data_flusher_(std::move(data), std::move(callback));
+}
+
+std::shared_ptr<VirtualCluster> PrimaryCluster::GetVirtualCluster(
+    const std::string &virtual_cluster_id) {
+  // Check if it is a logical cluster
+  auto logical_cluster = GetLogicalCluster(virtual_cluster_id);
+  if (logical_cluster != nullptr) {
+    return logical_cluster;
+  }
+  // Check if it is a job cluster
+  auto job_cluster = GetJobCluster(virtual_cluster_id);
+  if (job_cluster != nullptr) {
+    return job_cluster;
+  }
+  // Check if it is a job cluster of any logical cluster
+  for (auto &[cluster_id, logical_cluster] : logical_clusters_) {
+    if (logical_cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
+      ExclusiveCluster *exclusive_cluster =
+          dynamic_cast<ExclusiveCluster *>(logical_cluster.get());
+      auto job_cluster = exclusive_cluster->GetJobCluster(virtual_cluster_id);
+      if (job_cluster != nullptr) {
+        return job_cluster;
+      }
+    }
+  }
+  return nullptr;
 }
 
 void PrimaryCluster::GetVirtualClustersData(rpc::GetVirtualClustersRequest request,

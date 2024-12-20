@@ -26,10 +26,16 @@ namespace raylet_scheduling_policy {
 /// If there are no available nodes, fallback to hybrid policy.
 class SpreadSchedulingPolicy : public ISchedulingPolicy {
  public:
-  SpreadSchedulingPolicy(scheduling::NodeID local_node_id,
-                         const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
-                         std::function<bool(scheduling::NodeID)> is_node_alive)
-      : local_node_id_(local_node_id), nodes_(nodes), is_node_alive_(is_node_alive) {}
+  SpreadSchedulingPolicy(
+      scheduling::NodeID local_node_id,
+      const absl::flat_hash_map<scheduling::NodeID, Node> &nodes,
+      std::function<bool(scheduling::NodeID)> is_node_alive,
+      std::function<bool(scheduling::NodeID, const SchedulingContext *)>
+          is_node_schedulable)
+      : local_node_id_(local_node_id),
+        nodes_(nodes),
+        is_node_alive_(is_node_alive),
+        is_node_schedulable_(is_node_schedulable) {}
 
   scheduling::NodeID Schedule(const ResourceRequest &resource_request,
                               SchedulingOptions options) override;
@@ -45,6 +51,8 @@ class SpreadSchedulingPolicy : public ISchedulingPolicy {
   size_t spread_scheduling_next_index_ = 0;
   /// Function Checks if node is alive.
   std::function<bool(scheduling::NodeID)> is_node_alive_;
+  /// Function Checks if node is schedulable.
+  std::function<bool(scheduling::NodeID, const SchedulingContext *)> is_node_schedulable_;
 };
 }  // namespace raylet_scheduling_policy
 }  // namespace ray

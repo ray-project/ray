@@ -31,7 +31,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
       : gcs_table_storage_(gcs_table_storage),
         gcs_publisher_(gcs_publisher),
         primary_cluster_(
-            std::make_unique<PrimaryCluster>([this](auto data, auto callback) {
+            std::make_shared<PrimaryCluster>([this](auto data, auto callback) {
               return FlushAndPublish(std::move(data), std::move(callback));
             })) {}
 
@@ -50,6 +50,13 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   ///
   /// \param node The node that is dead.
   void OnNodeDead(const rpc::GcsNodeInfo &node);
+
+  /// Get virtual cluster by virtual cluster id
+  ///
+  /// \param virtual_cluster_id The id of virtual cluster
+  /// \return the virtual cluster
+  std::shared_ptr<VirtualCluster> GetVirtualCluster(
+      const std::string &virtual_cluster_id);
 
  protected:
   void HandleCreateOrUpdateVirtualCluster(
@@ -79,7 +86,7 @@ class GcsVirtualClusterManager : public rpc::VirtualClusterInfoHandler {
   GcsPublisher &gcs_publisher_;
 
   /// The global cluster.
-  std::unique_ptr<PrimaryCluster> primary_cluster_;
+  std::shared_ptr<PrimaryCluster> primary_cluster_;
 };
 
 }  // namespace gcs
