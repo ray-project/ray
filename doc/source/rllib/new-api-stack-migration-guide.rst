@@ -271,18 +271,29 @@ In case you were using the `observation_filter` setting, perform the following t
     )
 
 
+.. hint::
+    The main switch for whether to explore or not during sample collection has moved
+    to the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners` method.
+    See :ref:`here for more details <rllib-algo-config-exploration-docs>`.
+
+
+.. _rllib-algo-config-exploration-docs:
+
 AlgorithmConfig.exploration()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-The new stack only supports the `explore` setting.
-It determines whether the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, in the case `explore=True`,
-or the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, in the case `explore=False`, is the method
-your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
-inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner`.
+The main switch for whether to explore or not during sample collection has moved from
+the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.exploration` method
+to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`:
+
+It determines whether the method your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
+inside the :py:class:`~ray.rllib.env.env_runner.EnvRunner` is either
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, in the case `explore=True`,
+or :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, in the case `explore=False`.
 
 .. testcode::
 
-    config.exploration(explore=True)  # <- or False
+    config.env_runners(explore=True)  # <- or False
 
 
 The `exploration_config` setting is deprecated and no longer used. Instead, determine the exact exploratory
