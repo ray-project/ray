@@ -9,10 +9,12 @@ from ray.rllib.core.rl_module.torch import TorchRLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType
+from ray.util.annotations import DeveloperAPI
 
 torch, nn = try_import_torch()
 
 
+@DeveloperAPI
 class DefaultPPOTorchRLModule(TorchRLModule, DefaultPPORLModule):
     @override(RLModule)
     def _forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:

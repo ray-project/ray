@@ -13,8 +13,10 @@ from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
+from ray.util.annotations import DeveloperAPI
 
 
+@DeveloperAPI
 class DefaultAPPORLModule(DefaultPPORLModule, TargetNetworkAPI, abc.ABC):
     """Default RLModule used by APPO, if user does not specify a custom RLModule.
 

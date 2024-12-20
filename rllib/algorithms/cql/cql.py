@@ -262,11 +262,14 @@ class CQLConfig(SACConfig):
         from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.cql.torch.cql_torch_rl_module import (
-                CQLTorchRLModule,
+            from ray.rllib.algorithms.cql.torch.default_cql_torch_rl_module import (
+                DefaultCQLTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=CQLTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(
+                module_class=DefaultCQLTorchRLModule,
+                catalog_class=SACCatalog,
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."

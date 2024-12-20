@@ -1,6 +1,7 @@
 import abc
 from typing import Any, Dict
 
+from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -9,7 +10,7 @@ from ray.rllib.utils.annotations import override
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     """The default TorchRLModule used, if no custom RLModule is provided.
 
@@ -19,6 +20,10 @@ class DefaultBCTorchRLModule(TorchRLModule, abc.ABC):
     Passes observations from the input batch through the encoder, then the pi head to
     compute action logits.
     """
+
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", BCCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(RLModule)
     def setup(self):

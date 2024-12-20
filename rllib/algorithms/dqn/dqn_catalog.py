@@ -1,13 +1,7 @@
 import gymnasium as gym
-from gymnasium.spaces import Box
 
-from ray.rllib.algorithms.dqn.dqn_rainbow_noisy_net_configs import (
-    NoisyMLPEncoderConfig,
-    NoisyMLPHeadConfig,
-)
 from ray.rllib.core.models.catalog import Catalog
 from ray.rllib.core.models.base import Model
-from ray.rllib.core.models.configs import ModelConfig
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.models.torch.torch_distributions import TorchCategorical
 from ray.rllib.utils.annotations import (
@@ -18,10 +12,10 @@ from ray.rllib.utils.annotations import (
 
 
 @ExperimentalAPI
-class DQNRainbowCatalog(Catalog):
+class DQNCatalog(Catalog):
     """The catalog class used to build models for DQN Rainbow.
 
-    `DQNRainbowCatalog` provides the following models:
+    `DQNCatalog` provides the following models:
         - Encoder: The encoder used to encode the observations.
         - Target_Encoder: The encoder used to encode the observations
             for the target network.
@@ -33,9 +27,6 @@ class DQNRainbowCatalog(Catalog):
         - Vf Head (optional): The head of the value function in case a
             dueling architecture is chosen. This is a single node head.
             If no dueling architecture is used, this head does not exist.
-
-    All networks can include noisy layers, if `noisy` is `True`. In this
-    case, no epsilon greedy exploration is used.
 
     Any custom head can be built by overridng the `build_af_head()` and
     `build_vf_head()`. Alternatively, the `AfHeadConfig` or `VfHeadConfig`
@@ -58,7 +49,7 @@ class DQNRainbowCatalog(Catalog):
         model_config_dict: dict,
         view_requirements: dict = None,
     ):
-        """Initializes the DQNRainbowCatalog.
+        """Initializes the DQNCatalog.
 
         Args:
             observation_space: The observation space of the Encoder.
@@ -76,9 +67,6 @@ class DQNRainbowCatalog(Catalog):
             model_config_dict=model_config_dict,
         )
 
-        # Is a noisy net used.
-        self.uses_noisy: bool = self._model_config_dict["noisy"]
-
         # The number of atoms to be used for distributional Q-learning.
         self.num_atoms: bool = self._model_config_dict["num_atoms"]
 
@@ -86,12 +74,6 @@ class DQNRainbowCatalog(Catalog):
         # stream will has an output dimension that is the product of the
         # action space dimension and the number of atoms to approximate the
         # return distribution in distributional reinforcement learning.
-        if self.uses_noisy:
-            # Define the standard deviation to be used in the layers.
-            self.std_init: float = self._model_config_dict["std_init"]
-
-        # In case of noisy networks we need to provide the intial standard
-        # deviation and use the corresponding `NoisyMLPHeadConfig`.
         self.af_head_config = self._get_head_config(
             output_layer_dim=int(self.action_space.n * self.num_atoms)
         )
@@ -106,7 +88,7 @@ class DQNRainbowCatalog(Catalog):
 
         The default behavior is to build the head from the `af_head_config`.
         This can be overridden to build a custom policy head as a means to
-        configure the behavior of a `DQNRainbowRLModule` implementation.
+        configure the behavior of a `DQNRLModule` implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -125,7 +107,7 @@ class DQNRainbowCatalog(Catalog):
 
         The default behavior is to build the head from the `vf_head_config`.
         This can be overridden to build a custom policy head as a means to
-        configure the behavior of a `DQNRainbowRLModule` implementation.
+        configure the behavior of a `DQNRLModule` implementation.
 
         Args:
             framework: The framework to use. Either "torch" or "tf2".
@@ -144,94 +126,6 @@ class DQNRainbowCatalog(Catalog):
         else:
             return TorchCategorical
 
-    @classmethod
-    def _get_encoder_config(
-        cls,
-        observation_space: gym.Space,
-        model_config_dict: dict,
-        action_space: gym.Space = None,
-    ) -> ModelConfig:
-        """Returns the encoder config.
-
-        In case noisy networks should be used, the base encoder config
-        (`self._encoder_config`) is ovverriden and a `NoisyMLPEncoderConfig`
-        is used.
-
-        Note, we are overriding the default behavior of `Catalog`. Like
-        this we can use the default method `build_encoder()`.
-
-        Returns:
-            If noisy networks should be used a `NoisyMLPEncoderConfig` else
-            `self._encoder_config` defined by the parent class.
-        """
-        # Check, if we use
-        use_noisy = model_config_dict.get("noisy", False)
-        use_lstm = model_config_dict.get("use_lstm", False)
-        use_attention = model_config_dict.get("use_attention", False)
-
-        # In cases of LSTM or Attention, fall back to the basic encoder.
-        if use_noisy and not use_lstm and not use_attention:
-            # Check, if the observation space is 1D Box. Only then we can use an MLP.
-            if isinstance(observation_space, Box) and len(observation_space.shape) == 1:
-                # Define the encoder hiddens.
-                af_and_vf_encoder_hiddens = model_config_dict["fcnet_hiddens"][:-1]
-                latent_dims = (model_config_dict["fcnet_hiddens"][-1],)
-
-                # Instead of a regular MLP use a NoisyMLP.
-                return NoisyMLPEncoderConfig(
-                    input_dims=observation_space.shape,
-                    hidden_layer_dims=af_and_vf_encoder_hiddens,
-                    hidden_layer_activation=model_config_dict["fcnet_activation"],
-                    # TODO (simon): Not yet available.
-                    # hidden_layer_use_layernorm=self._model_config_dict[
-                    #     "hidden_layer_use_layernorm"
-                    # ],
-                    # hidden_layer_use_bias=self._model_config_dict[
-                    #     "hidden_layer_use_bias"
-                    # ],
-                    hidden_layer_weights_initializer=model_config_dict[
-                        "fcnet_kernel_initializer"
-                    ],
-                    hidden_layer_weights_initializer_config=model_config_dict[
-                        "fcnet_kernel_initializer_kwargs"
-                    ],
-                    hidden_layer_bias_initializer=model_config_dict[
-                        "fcnet_bias_initializer"
-                    ],
-                    hidden_layer_bias_initializer_config=model_config_dict[
-                        "fcnet_bias_initializer_kwargs"
-                    ],
-                    # Note, `"post_fcnet_activation"` is `"relu"` by definition.
-                    output_layer_activation=model_config_dict["head_fcnet_activation"],
-                    output_layer_dim=latent_dims[0],
-                    # TODO (simon): Not yet available.
-                    # output_layer_use_bias=self._model_config_dict[
-                    #     "output_layer_use_bias"
-                    # ],
-                    # TODO (sven, simon): Should these initializers be rather the fcnet
-                    # ones?
-                    output_layer_weights_initializer=model_config_dict[
-                        "head_fcnet_kernel_initializer"
-                    ],
-                    output_layer_weights_initializer_config=model_config_dict[
-                        "head_fcnet_kernel_initializer_kwargs"
-                    ],
-                    output_layer_bias_initializer=model_config_dict[
-                        "head_fcnet_bias_initializer"
-                    ],
-                    output_layer_bias_initializer_config=model_config_dict[
-                        "head_fcnet_bias_initializer_kwargs"
-                    ],
-                    std_init=model_config_dict["std_init"],
-                )
-        # Otherwise return the base encoder config chosen by the parent.
-        # This will choose a CNN for 3D Box and LSTM for 'use_lstm=True'.<
-        return super()._get_encoder_config(
-            observation_space=observation_space,
-            action_space=action_space,
-            model_config_dict=model_config_dict,
-        )
-
     def _get_head_config(self, output_layer_dim: int):
         """Returns a head config.
 
@@ -241,17 +135,10 @@ class DQNRainbowCatalog(Catalog):
                 for the Af(Qf)-head.
 
         Returns:
-            In case noisy networks should be used a `NoisyMLPHeadConfig`. In
-            the other case a regular `MLPHeadConfig` is returned.
+            A `MLPHeadConfig`.
         """
-        # Define the config to use for the heads.
-        config_cls = NoisyMLPHeadConfig if self.uses_noisy else MLPHeadConfig
-
-        # Define the kwargs to pass in the standard deviation to the noisy network.
-        kwargs = {"std_init": self.std_init} if self.uses_noisy else {}
-
         # Return the appropriate config.
-        return config_cls(
+        return MLPHeadConfig(
             input_dims=self.latent_dims,
             hidden_layer_dims=self._model_config_dict["head_fcnet_hiddens"],
             # Note, `"post_fcnet_activation"` is `"relu"` by definition.
@@ -289,5 +176,4 @@ class DQNRainbowCatalog(Catalog):
             output_layer_bias_initializer_config=self._model_config_dict[
                 "head_fcnet_bias_initializer_kwargs"
             ],
-            **kwargs
         )

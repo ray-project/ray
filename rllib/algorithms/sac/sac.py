@@ -506,11 +506,14 @@ class SACConfig(AlgorithmConfig):
         from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import (
-                SACTorchRLModule,
+            from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
+                DefaultSACTorchRLModule,
             )
 
-            return RLModuleSpec(module_class=SACTorchRLModule, catalog_class=SACCatalog)
+            return RLModuleSpec(
+                module_class=DefaultSACTorchRLModule,
+                catalog_class=SACCatalog,
+            )
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported. " "Use `torch`."
@@ -585,25 +588,3 @@ class SAC(DQN):
             return SACTorchPolicy
         else:
             return SACTFPolicy
-
-    @override(DQN)
-    def training_step(self) -> None:
-        """SAC training iteration function.
-
-        Each training iteration, we:
-        - Sample (MultiAgentBatch) from workers.
-        - Store new samples in replay buffer.
-        - Sample training batch (MultiAgentBatch) from replay buffer.
-        - Learn on training batch.
-        - Update remote workers' new policy weights.
-        - Update target network every `target_network_update_freq` sample steps.
-        - Return all collected metrics for the iteration.
-
-        Returns:
-            The results dict from executing the training iteration.
-        """
-        # Old API stack (Policy, RolloutWorker, Connector).
-        if not self.config.enable_env_runner_and_connector_v2:
-            return self._training_step_old_api_stack()
-
-        return self._training_step_new_api_stack(with_noise_reset=False)

@@ -1,7 +1,7 @@
 from typing import Dict, Union
 
-from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
-    DQNRainbowRLModule,
+from ray.rllib.algorithms.dqn.default_dqn_rl_module import (
+    DefaultDQNRLModule,
     ATOMS,
     QF_LOGITS,
     QF_NEXT_PREDS,
@@ -10,42 +10,27 @@ from ray.rllib.algorithms.dqn.dqn_rainbow_rl_module import (
     QF_TARGET_NEXT_PREDS,
     QF_TARGET_NEXT_PROBS,
 )
-from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_noisy_net import (
-    TorchNoisyMLPEncoder,
-)
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import Encoder, ENCODER_OUT, Model
+from ray.rllib.core.rl_module.apis.q_net_api import QNetAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.typing import TensorType, TensorStructType
+from ray.util.annotations import DeveloperAPI
 
 torch, nn = try_import_torch()
 
 
-class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
+@DeveloperAPI
+class DefaultDQNTorchRLModule(TorchRLModule, DefaultDQNRLModule):
     framework: str = "torch"
-
-    @override(DQNRainbowRLModule)
-    def setup(self):
-        super().setup()
-
-        # If we use a noisy encoder. Note, only if the observation
-        # space is a flat space we can use a noisy encoder.
-        self.uses_noisy_encoder = isinstance(self.encoder, TorchNoisyMLPEncoder)
 
     @override(RLModule)
     def _forward_inference(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        output = {}
-
-        # Set the module into evaluation mode, if needed.
-        if self.uses_noisy and self.training:
-            # This sets the weigths and bias to their constant version.
-            self.eval()
-
         # Q-network forward pass.
-        qf_outs = self._qf(batch)
+        qf_outs = self.compute_q_values(batch)
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
@@ -55,27 +40,14 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         exploit_actions = action_dist.to_deterministic().sample()
 
         # In inference, we only need the exploitation actions.
-        output[Columns.ACTIONS] = exploit_actions
-
-        return output
+        return {Columns.ACTIONS: exploit_actions}
 
     @override(RLModule)
     def _forward_exploration(
         self, batch: Dict[str, TensorType], t: int
     ) -> Dict[str, TensorType]:
-        output = {}
-
-        # Resample the noise for the noisy layers, if needed.
-        if self.uses_noisy:
-            # We want to resample the noise everytime we step.
-            self._reset_noise(target=False)
-            if not self.training:
-                # Set the module into training mode. This sets
-                # the weigths and bias to their noisy version.
-                self.train(True)
-
         # Q-network forward pass.
-        qf_outs = self._qf(batch)
+        qf_outs = self.compute_q_values(batch)
 
         # Get action distribution.
         action_dist_cls = self.get_exploration_action_dist_cls()
@@ -84,34 +56,29 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         # outputs directly the `argmax` of the logits.
         exploit_actions = action_dist.to_deterministic().sample()
 
-        # In case of noisy networks the parameter noise is sufficient for
-        # variation in exploration.
-        if self.uses_noisy:
-            # Use the exploitation action (coming from the noisy network).
-            output[Columns.ACTIONS] = exploit_actions
-        # Otherwise we need epsilon greedy to support exploration.
-        else:
-            # TODO (simon): Implement sampling for nested spaces.
-            # Update scheduler.
-            self.epsilon_schedule.update(t)
-            # Get the actual epsilon,
-            epsilon = self.epsilon_schedule.get_current_value()
-            # Apply epsilon-greedy exploration.
-            B = qf_outs[QF_PREDS].shape[0]
-            random_actions = torch.squeeze(
-                torch.multinomial(
-                    (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
-                    num_samples=1,
-                ),
-                dim=1,
-            )
-            output[Columns.ACTIONS] = torch.where(
-                torch.rand((B,)) < epsilon,
-                random_actions,
-                exploit_actions,
-            )
+        # We need epsilon greedy to support exploration.
+        # TODO (simon): Implement sampling for nested spaces.
+        # Update scheduler.
+        self.epsilon_schedule.update(t)
+        # Get the actual epsilon,
+        epsilon = self.epsilon_schedule.get_current_value()
+        # Apply epsilon-greedy exploration.
+        B = qf_outs[QF_PREDS].shape[0]
+        random_actions = torch.squeeze(
+            torch.multinomial(
+                (torch.nan_to_num(qf_outs[QF_PREDS], neginf=0.0) != 0.0).float(),
+                num_samples=1,
+            ),
+            dim=1,
+        )
 
-        return output
+        actions = torch.where(
+            torch.rand((B,)) < epsilon,
+            random_actions,
+            exploit_actions,
+        )
+
+        return {Columns.ACTIONS: actions}
 
     @override(RLModule)
     def _forward_train(
@@ -123,11 +90,6 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 "flag `inference_only=False` when building the module."
             )
         output = {}
-
-        # Set module into training mode.
-        if self.uses_noisy and not self.training:
-            # This sets the weigths and bias to their noisy version.
-            self.train(True)
 
         # If we use a double-Q setup.
         if self.uses_double_q:
@@ -144,7 +106,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
         batch_target = {Columns.OBS: batch[Columns.NEXT_OBS]}
 
         # Q-network forward passes.
-        qf_outs = self._qf(batch_base)
+        qf_outs = self.compute_q_values(batch_base)
         if self.uses_double_q:
             output[QF_PREDS], output[QF_NEXT_PREDS] = torch.chunk(
                 qf_outs[QF_PREDS], chunks=2, dim=0
@@ -168,23 +130,11 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
         return output
 
-    @override(DQNRainbowRLModule)
-    def _af_dist(self, batch: Dict[str, TensorType]) -> Dict[str, TensorType]:
-        """Compute the advantage distribution.
-
-        Note this distribution is identical to the Q-distribution in
-        case no dueling architecture is used.
-
-        Args:
-            batch: A dictionary containing a tensor with the outputs of the
-                forward pass of the Q-head or advantage stream head.
-
-        Returns:
-            A `dict` containing the support of the discrete distribution for
-            either Q-values or advantages (in case of a dueling architecture),
-            ("atoms"), the logits per action and atom and the probabilities
-            of the discrete distribution (per action and atom of the support).
-        """
+    @override(QNetAPI)
+    def compute_advantage_distribution(
+        self,
+        batch: Dict[str, TensorType],
+    ) -> Dict[str, TensorType]:
         output = {}
         # Distributional Q-learning uses a discrete support `z`
         # to represent the action value distribution.
@@ -215,7 +165,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
 
     # TODO (simon): Test, if providing the function with a `return_probs`
     #  improves performance significantly.
-    @override(DQNRainbowRLModule)
+    @override(DefaultDQNRLModule)
     def _qf_forward_helper(
         self,
         batch: Dict[str, TensorType],
@@ -255,7 +205,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
             # We learn a Q-value distribution.
             if self.num_atoms > 1:
                 # Compute the advantage stream distribution.
-                af_dist_output = self._af_dist(qf_outs)
+                af_dist_output = self.compute_advantage_distribution(qf_outs)
                 # Center the advantage stream distribution.
                 centered_af_logits = af_dist_output["logits"] - af_dist_output[
                     "logits"
@@ -295,7 +245,7 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 # Note in a non-dueling architecture the advantage distribution is
                 # the Q-value distribution.
                 # Get the Q-value distribution.
-                qf_dist_outs = self._af_dist(qf_outs)
+                qf_dist_outs = self.compute_advantage_distribution(qf_outs)
                 # Get the support of the Q-value distribution.
                 output[ATOMS] = qf_dist_outs[ATOMS]
                 # Calculate the Q-values by the weighted sum over the atoms.
@@ -310,28 +260,3 @@ class DQNRainbowTorchRLModule(TorchRLModule, DQNRainbowRLModule):
                 output[QF_PREDS] = qf_outs
 
         return output
-
-    @override(DQNRainbowRLModule)
-    def _reset_noise(self, target: bool = False) -> None:
-        """Reset the noise of all noisy layers.
-
-        Args:
-            target: Whether to reset the noise of the target networks.
-        """
-        if self.uses_noisy:
-            if self.uses_noisy_encoder:
-                self.encoder._reset_noise()
-            self.af._reset_noise()
-            # If we have a dueling architecture we need to reset the noise
-            # of the value stream, too.
-            if self.uses_dueling:
-                self.vf._reset_noise()
-            # Reset the noise of the target networks, if requested.
-            if target:
-                if self.uses_noisy_encoder:
-                    self._target_encoder._reset_noise()
-                self._target_af._reset_noise()
-                # If we have a dueling architecture we need to reset the noise
-                # of the value stream, too.
-                if self.uses_dueling:
-                    self._target_vf._reset_noise()

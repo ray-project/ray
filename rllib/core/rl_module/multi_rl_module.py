@@ -130,6 +130,7 @@ class MultiRLModule(RLModule):
             action_space=action_space,
             inference_only=inference_only,
             learner_only=None,
+            catalog_class=None,
             model_config=model_config,
             **kwargs,
         )
@@ -525,23 +526,6 @@ class MultiRLModule(RLModule):
             The instance itself.
         """
         return self
-
-    @classmethod
-    def _check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
-        """Checks the module configs for validity.
-
-        The module_configs be a mapping from module_ids to RLModuleSpec
-        objects.
-
-        Args:
-            module_configs: The module configs to check.
-
-        Raises:
-            ValueError: If the module configs are invalid.
-        """
-        for module_id, module_spec in module_configs.items():
-            if not isinstance(module_spec, RLModuleSpec):
-                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
 
     @classmethod
     def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):

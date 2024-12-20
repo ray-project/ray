@@ -2,8 +2,10 @@ import abc
 from typing import Any, Dict, List, Tuple
 
 from ray.rllib.utils.typing import NetworkType
+from ray.util.annotations import PublicAPI
 
 
+@PublicAPI(stability="alpha")
 class TargetNetworkAPI(abc.ABC):
     """An API to be implemented by RLModules for handling target networks.
 
