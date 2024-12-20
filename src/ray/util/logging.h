@@ -268,6 +268,8 @@ class RayLog {
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_dir Logging output directory name.
   /// \param log_filepath Logging output filepath.
+  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_file_num max number of rotating log files.
   ///
   /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
   /// both empty, the log won't output to file, but to stdout. It's illegal to set
