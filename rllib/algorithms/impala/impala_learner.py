@@ -222,7 +222,7 @@ class _GPULoaderThread(threading.Thread):
         *,
         in_queue: queue.Queue,
         out_queue: deque,
-        device: torch.device,
+        device: "torch.device",
         metrics_logger: MetricsLogger,
     ):
         super().__init__()

@@ -69,8 +69,9 @@ class OfflineData:
             self.filesystem_object = self.filesystem
         elif self.filesystem is not None:
             raise ValueError(
-                f"Unknown filesystem: {self.filesystem}. Filesystems can be "
-                "'gcs' for GCS, 's3' for S3, or 'abs'"
+                f"Unknown `config.input_filesystem` {self.filesystem}! Filesystems "
+                "can be None for local, any instance of `pyarrow.fs.FileSystem`, "
+                "'gcs' for GCS, 's3' for S3, or 'abs' for adlfs.AzureBlobFileSystem."
             )
         # Add the filesystem object to the write method kwargs.
         if self.filesystem_object:

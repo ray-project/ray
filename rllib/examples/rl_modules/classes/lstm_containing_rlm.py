@@ -19,7 +19,6 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
 
         import numpy as np
         import gymnasium as gym
-        from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
         B = 10  # batch size
         T = 5  # seq len
@@ -27,12 +26,11 @@ class LSTMContainingRLModule(TorchRLModule, ValueFunctionAPI):
         CELL = 32  # LSTM cell size
 
         # Construct the RLModule.
-        rl_module_config = RLModuleConfig(
+        my_net = LSTMContainingRLModule(
             observation_space=gym.spaces.Box(-1.0, 1.0, (e,), np.float32),
             action_space=gym.spaces.Discrete(4),
             model_config={"lstm_cell_size": CELL}
         )
-        my_net = LSTMContainingRLModule(rl_module_config)
 
         # Create some dummy input.
         obs = torch.from_numpy(

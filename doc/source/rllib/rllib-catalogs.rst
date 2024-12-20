@@ -217,7 +217,7 @@ Inject your custom model or action distributions into Catalogs
 You can make a :py:class:`~ray.rllib.core.models.catalog.Catalog` build custom ``models`` by overriding the Catalog’s methods used by RLModules to build ``models``.
 Have a look at these lines from the constructor of the :py:class:`~ray.rllib.algorithms.ppo.ppo_torch_rl_module.PPOTorchRLModule` to see how Catalogs are being used by an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`:
 
-.. literalinclude:: ../../../rllib/algorithms/ppo/ppo_rl_module.py
+.. literalinclude:: ../../../rllib/algorithms/ppo/default_ppo_rl_module.py
     :language: python
     :start-after: __sphinx_doc_begin__
     :end-before: __sphinx_doc_end__

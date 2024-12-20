@@ -30,7 +30,7 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
 
     @override(RLModule)
     def _forward(self, batch, **kwargs):
-        # Features can be found in the batch under the "encoder_features" key.
+        # Embeddings can be found in the batch under the "encoder_embeddings" key.
         embeddings = batch["encoder_embeddings"]
         logits = self._pi_head(embeddings)
         return {Columns.ACTION_DIST_INPUTS: logits}
@@ -52,7 +52,7 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
 
         config.rl_module(
             rl_module_spec=MultiRLModuleSpec(
-                module_specs={
+                rl_module_specs={
                     # Central/shared encoder net.
                     SHARED_ENCODER_ID: RLModuleSpec(
                         module_class=SharedTorchEncoder,
@@ -110,7 +110,7 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
             # Pass policy's observations through shared encoder to get the features for
             # this policy.
             embeddings = encoder_forward_fn(batch[policy_id])
-            # Pass the policy's features through the policy net.
+            # Pass the policy's embeddings through the policy net.
             batch[policy_id]["encoder_embeddings"] = embeddings
             outputs[policy_id] = forward_fn(batch[policy_id], **kwargs)
 

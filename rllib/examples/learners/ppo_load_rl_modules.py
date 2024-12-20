@@ -40,7 +40,7 @@ if __name__ == "__main__":
     env = gym.make("CartPole-v1")
     module_to_load = RLModuleSpec(
         module_class=module_class,
-        model_config_dict={"fcnet_hiddens": [32]},
+        model_config=DefaultModelConfig(fcnet_hiddens=[32]),
         catalog_class=PPOCatalog,
         observation_space=env.observation_space,
         action_space=env.action_space,

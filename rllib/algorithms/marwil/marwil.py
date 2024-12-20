@@ -495,7 +495,7 @@ class MARWIL(Algorithm):
                 self.eval_env_runner_group.sync_weights(
                     # Sync weights from learner_group to all EnvRunners.
                     from_worker_or_learner_group=self.learner_group,
-                    policies=modules_to_update,
+                    policies=list(modules_to_update),
                     inference_only=True,
                 )
 
