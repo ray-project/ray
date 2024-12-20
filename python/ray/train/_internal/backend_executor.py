@@ -27,6 +27,7 @@ from ray.train.constants import (
     ENABLE_SHARE_CUDA_VISIBLE_DEVICES_ENV,
     ENABLE_SHARE_NEURON_CORES_ACCELERATOR_ENV,
     ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
+    ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV,
     RAY_TRAIN_ENABLE_STATE_TRACKING,
     TRAIN_ENABLE_WORKER_SPREAD_ENV,
     TRAIN_PLACEMENT_GROUP_TIMEOUT_S_ENV,
@@ -123,6 +124,12 @@ class BackendExecutor:
                 ray_constants.NPU,
                 ENABLE_SHARE_NPU_RT_VISIBLE_DEVICES_ENV,
                 ray_constants.NPU_RT_VISIBLE_DEVICES_ENV_VAR,
+            ),
+            # For AMD GPUs, they are using ROCR_VISIBLE_DEVICES env var.
+            ResourceConfig(
+                ray_constants.GPU,
+                ENABLE_SHARE_ROCR_VISIBLE_DEVICES_ENV,
+                ray_constants.ROCR_VISIBLE_DEVICES_ENV_VAR,
             ),
         ]
 
@@ -289,7 +296,7 @@ class BackendExecutor:
             CUDA_VISIBLE_DEVICES:
             - Worker1: "0,1,2,3"
             - Worker2: "0,1,2,3"
-            - Worker2: "0,1"
+            - Worker3: "0,1"
 
         """
         self._share_resource_ids(

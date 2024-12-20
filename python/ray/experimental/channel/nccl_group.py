@@ -4,10 +4,7 @@ from typing import TYPE_CHECKING, List, Optional, Tuple
 
 import ray
 from ray.exceptions import RayChannelError
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
-    TorchTensorAllocator,
-)
+from ray.experimental.channel.communicator import Communicator, TorchTensorAllocator
 from ray.experimental.util.types import ReduceOp
 
 if TYPE_CHECKING:
@@ -21,7 +18,7 @@ if TYPE_CHECKING:
 logger = logging.getLogger(__name__)
 
 
-class _NcclGroup(GPUCommunicator):
+class _NcclGroup(Communicator):
     """
     Represents an actor's NCCL communicator. This is the default NCCL communicator
     to be used in aDAG if a custom communicator is not provided.
@@ -262,6 +259,11 @@ class _NcclGroup(GPUCommunicator):
         if self._closed:
             raise RayChannelError("NCCL group has been destroyed.")
 
+        assert send_buf.dtype == recv_buf.dtype, (
+            "Ray Compiled Graph derived the dtype of recv_buf from send_buf, "
+            "so send_buf and recv_buf must have the same dtype. "
+            "If you see this error, please file an issue at Ray repository."
+        )
         self._comm.allReduce(
             self.nccl_util.get_tensor_ptr(send_buf),
             self.nccl_util.get_tensor_ptr(recv_buf),
@@ -278,7 +280,11 @@ class _NcclGroup(GPUCommunicator):
         # TODO(wxdeng): Use check_async_error.
         self._cuda_stream.synchronize()
         if self._closed:
-            raise RayChannelError("NCCL group has been destroyed.")
+            raise RayChannelError(
+                "NCCL group has been destroyed during allreduce operation. "
+                "There may be a dtype mismatch between input tensors from "
+                "different ranks."
+            )
 
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
@@ -307,3 +313,6 @@ class _NcclGroup(GPUCommunicator):
             # flag is True when they exit from the abort.
             self._comm.abort()
             self._comm.destroy()
+
+    def get_transport_name(self) -> str:
+        return "nccl"
