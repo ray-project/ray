@@ -40,8 +40,8 @@ Enabling the RLModule API in the AlgorithmConfig
 
 RLModules are used exclusively in the :ref:`new API stack <rllib-new-api-stack-guide>`, which is activated by default in RLlib.
 
-In case you are working with a legacy config and would like to migrate it to the new API stack, see
-the :ref:`new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
+In case you are working with a legacy config or would like to migrate your ``ModelV2`` and/or ``Policy`` classes to the
+new API stack, see the :ref:`new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
 
 If you have a config that's still set to the old API stack, use the
 :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack` method to switch:
@@ -181,6 +181,8 @@ To maintain consistency and usability, RLlib offers a standardized approach for 
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for both single-module use cases, for example for single-agent,
 and multi-module use cases, for example for multi-agent learning or other multi-NN setups.
 
+
+.. _rllib-constructing-rlmodule-w-class-constructor:
 
 Construction through the class constructor
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -395,6 +397,10 @@ or for independent multi-agent learning with any algorithm (e.g., PPO, DQN).
 For more advanced multi-agent use cases (for example with shared communication between agents)
 or any multi-model use cases, subclass the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` class, instead.
 
+
+The setup() method
+~~~~~~~~~~~~~~~~~~
+
 When writing an actual neural network class (as opposed to a heuristic model without any neural network elements),
 you should first implement the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method,
 in which you add needed NN subcomponents and assign these to class attributes of your choice.
@@ -432,6 +438,10 @@ You also have access to the following attributes anywhere in the class:
                 torch.nn.ReLU(),
                 torch.nn.Linear(hidden_dim, output_dim),
             )
+
+
+The forward methods
+~~~~~~~~~~~~~~~~~~~
 
 After that, implement the forward computation logic. You can either define a generic forward logic by overriding the
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward` method (which is then used everywhere in the model's lifecycle)
@@ -538,10 +548,13 @@ You should never override the constructor (`__init__`) itself, however, it might
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.inference_only`: Whether the RLModule should be built in inference-only mode, dropping subcomponents that are only needed for learning.
 - :py:attr:`~ray.rllib.core.rl_module.rl_module.RLModule.model_config`: The model config, which is either a custom dictionary (for custom RLModules) or a :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` dataclass object (only for RLlib's default models). Model hyper-parameters such as number of layers, type of activation, etc. are defined here.
 
-Also see the pre
+Also :ref:`see the preceding section on how to create an RLModule through the contructor <rllib-constructing-rlmodule-w-class-constructor>` for more details.
 
+Putting it all together
+~~~~~~~~~~~~~~~~~~~~~~~
 
-Putting all of the above together, we get the following working example of a custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation:
+With the now implemented elements of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
+you get a working end-to-end example:
 
 .. testcode::
 
@@ -557,7 +570,7 @@ Putting all of the above together, we get the following working example of a cus
             # self.model_config  # <- a dict with custom settings
             # self.catalog
             input_dim = self.observation_space.shape[0]
-            hidden_dim = self.model_config["fcnet_hiddens"][0]
+            hidden_dim = self.model_config["hidden_dim"]
             output_dim = self.action_space.n
 
             # Build all the layers and subcomponents here you need for the
@@ -568,7 +581,7 @@ Putting all of the above together, we get the following working example of a cus
                 nn.Linear(hidden_dim, output_dim),
             )
 
-        def _forward_train(self, batch):
+        def _forward(self, batch):
             # Push the observations from the batch through our pi-head.
             action_logits = self._pi_head(batch[Columns.OBS])
 
@@ -578,13 +591,36 @@ Putting all of the above together, we get the following working example of a cus
                 Columns.ACTION_DIST_INPUTS: action_logits,
             }
 
-        def _forward_inference(self, batch):
-            with torch.no_grad():
-                return self._forward_train(batch)
+        # If you need more granularity between the different forward behaviors during the
+        # different phases of the module's lifecycle, implement three different forward
+        # methods. Thereby, it is recommended to put the inference and exploration
+        # versions inside a `with torch.no_grad()` context for better performance.
+        # def _forward_train(self, batch):
+        #    ...
+        #
+        # def _forward_inference(self, batch):
+        #    with torch.no_grad():
+        #        return self._forward_train(batch)
+        #
+        # def _forward_exploration(self, batch):
+        #    with torch.no_grad():
+        #        return self._forward_train(batch)
 
-        def _forward_exploration(self, batch):
-            with torch.no_grad():
-                return self._forward_train(batch)
+
+Custom action distribution
+~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+In the preceding examples, you relied on your RLModule to use the correct action distribution with the computed
+``ACTION_DIST_INPUTS`` returned by your forward methods. RLlib picks a default distribution class based on
+the action space, which is :py:class:`~ray.rllib.models.torch.torch_distributions.TorchCategorical` for ``Discrete`` action spaces
+and :py:class:`~ray.rllib.models.torch.torch_distributions.TorchDiagGaussian` for ``Box`` action spaces.
+
+If you want to use a different distribution class (and return parameters for its constructor from your forward methods),
+override the following methods in your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementation:
+
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_inference_action_dist_cls`
+- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_exploration_action_dist_cls`
+- and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_train_action_dist_cls`
 
 
 Implementing custom MultiRLModules
@@ -608,13 +644,10 @@ and outputs feature vectors that then serve as input for the two policy heads to
 
         .. testcode::
 
+            import torch
             from ray.rllib.core import Columns
             from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
             from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
-
-            import torch
-            import torch.nn as nn
-
 
             class PGPolicyUsingSharedEncoder(TorchRLModule):
                 """A PG-style RLModule using the inputs (features) of a shared encoder.
@@ -627,23 +660,12 @@ and outputs feature vectors that then serve as input for the two policy heads to
                     hidden_dim = self.model_config["hidden_dim"]
 
                     self._pi_head = nn.Sequential(
-                        nn.Linear(feature_dim, hidden_dim),
-                        nn.ReLU(),
-                        nn.Linear(hidden_dim, self.action_space.n),
+                        torch.nn.Linear(feature_dim, hidden_dim),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(hidden_dim, self.action_space.n),
                     )
 
-                def _forward_inference(self, batch):
-                    with torch.no_grad():
-                        return self._common_forward(batch)
-
-                def _forward_exploration(self, batch):
-                    with torch.no_grad():
-                        return self._common_forward(batch)
-
-                def _forward_train(self, batch):
-                    return self._common_forward(batch)
-
-                def _common_forward(self, batch):
+                def _forward(self, batch):
                     features = batch["encoder_features"]
                     logits = self._pi_head(features)
 
@@ -652,6 +674,10 @@ and outputs feature vectors that then serve as input for the two policy heads to
     .. tab-item:: MultiRLModule with shared encoder
 
         .. testcode::
+
+            import torch
+            from ray.rllib.core import Columns
+            from ray.rllib.core.rl_module.multi_rl_module import MultiRLModule
 
             class MultiAgentPGWithSharedEncoder(MultiRLModule):
                 def setup(self):
@@ -664,12 +690,12 @@ and outputs feature vectors that then serve as input for the two policy heads to
                     hidden_dim = self.model_config["encoder_hidden_dim"]
                     feature_dim = self.model_config["feature_dim"]
                     self._shared_encoder = nn.Sequential(
-                        nn.Linear(obs_dim, hidden_dim),
-                        nn.ReLU(),
-                        nn.Linear(hidden_dim, feature_dim),
+                        torch.nn.Linear(obs_dim, hidden_dim),
+                        torch.nn.ReLU(),
+                        torch.nn.Linear(hidden_dim, feature_dim),
                     )
 
-                def _forward_inference(self, batch):
+                def _forward(self, batch):
                     # Pass observations through the shared encoder.
                     features = self._shared_encoder(batch[Columns.OBS])
                     # Pass computed features through all submodules (policies).
@@ -682,17 +708,12 @@ and outputs feature vectors that then serve as input for the two policy heads to
                     }
                     return ret
 
-                def _forward_exploration(self, batch):
-                    return self._forward_inference(batch)
 
-                def _forward_train(self, batch):
-                    return self._forward_inference(batch)
-
-
-To plugin this custom multi-agent RL module into your algorithm's config, pass the new class
-and its settings to the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec`.
-Also, pass the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent
-because RLlib requires the observation, action spaces, and model hyper-parameters for each agent:
+To plug in this custom multi-agent RL module into your algorithm's config, create a
+:py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModuleSpec` with the new class and its constructor
+settings.
+Also, create one :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` for each agent
+because RLlib requires the observation, action spaces, and model hyper-parameters per agent:
 
 
 .. testcode::
@@ -706,10 +727,6 @@ because RLlib requires the observation, action spaces, and model hyper-parameter
 
     config = (
         PPOConfig()
-        .api_stack(
-            enable_rl_module_and_learner=True,
-            enable_env_runner_and_connector_v2=True,
-        )
         .environment(MultiAgentCartPole, env_config={"num_agents": 2})
         .multi_agent(
             policies={"p0", "p1"},
@@ -745,19 +762,19 @@ because RLlib requires the observation, action spaces, and model hyper-parameter
     print(algo.get_module())
 
 
+Extending existing RLlib RLModules
+----------------------------------
 
-Extending existing RLlib RL Modules
------------------------------------
-
-RLlib provides a number of default RL Modules for the different algorithms as well as some example custom RLModule implementations
-catering to specific requirements.
+RLlib provides :ref:`default RLModules for the different algorithms <>` as well as some example custom
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementations catering to specific requirements.
 
 For example, see `this CNN example here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
 for training with Atari envs or
 `this LSTM example here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__
 for training in non-Markovian envs.
 
-To customize any existing RLModule you can subclass it and change the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` to add your
+To customize any existing :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can subclass it and change the
+:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` to add your
 custom components to it as well as override any or all of the three forward methods for implementing a custom flow through the model.
 
 Here are two good recipes for extending existing RLModules:
@@ -806,7 +823,7 @@ Here are two good recipes for extending existing RLModules:
             )
 
         A concrete example: If you want to replace the default encoder that RLlib builds for torch, PPO and a given observation space,
-        you can override the `setup` method on the :py:class:`~ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module.PPOTorchRLModule`
+        you can override the `setup` method on the :py:class:`~ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module.DefaultPPOTorchRLModule`
         class to create your custom encoder instead of the default one. We do this in the following example.
 
         .. literalinclude:: ../../../rllib/examples/rl_modules/classes/mobilenet_rlm.py
@@ -817,61 +834,83 @@ Here are two good recipes for extending existing RLModules:
 
 .. _rllib-checkpointing-rl-modules-docs:
 
-Checkpointing RL Modules
-------------------------
+Checkpointing RLModules
+-----------------------
 
 RL Modules can be checkpointed with their :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.save_to_path` method.
-If you have a checkpoint saved and would like to create an RL Module directly from it, use the
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint` method.
 If you already have an instantiated RLModule and would like to load a new state (weights) into it from an existing
 checkpoint, use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.restore_from_path` method.
 
-The following example shows how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+The following examples show how these methods can be used outside of, or in conjunction with, an RLlib Algorithm.
+
+Creating an RLModule checkpoint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 .. testcode::
-    import gymnasium as gym
+
     import shutil
     import tempfile
-    from ray.rllib.algorithms.ppo import PPOConfig
-    from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
-    from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import PPOTorchRLModule
-    from ray.rllib.core.rl_module.rl_module import RLModule, RLModuleSpec
 
-    config = (
-        PPOConfig()
-        .environment("CartPole-v1")
-    )
+    import gymnasium as gym
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import DefaultPPOTorchRLModule
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+    from ray.rllib.core.rl_module.rl_module import RLModule
+
     env = gym.make("CartPole-v1")
-    # Create an RLModule to checkpoint
-    module = DefaultPPOTorchRLModule(
+
+    # Create an RLModule to later checkpoint.
+    rl_module = DefaultPPOTorchRLModule(
         observation_space=env.observation_space,
         action_space=env.action_space,
-        # If we want to use this externally created module in the algorithm,
-        # we need to provide the same config as the algorithm. Any changes to
-        # the defaults can be given via the right side of the `|` operator.
-        model_config=config.model_config | {"fcnet_hiddens": [32]},
+        model_config=DefaultModelConfig(fcnet_hiddens=[32]),
     )
 
-    # Create the checkpoint.
+    # Finally, write the RLModule checkpoint.
     module_ckpt_path = tempfile.mkdtemp()
     module.save_to_path(module_ckpt_path)
 
+
+Creating an RLModule from an (RLModule) checkpoint
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you have an RLModule checkpoint saved and would like to create a new RLModule directly from it,
+use the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.from_checkpoint` method:
+
+
+.. testcode::
+
     # Create a new RLModule from the checkpoint.
-    loaded_module = RLModule.from_checkpoint(module_ckpt_path)
+    new_module = RLModule.from_checkpoint(module_ckpt_path)
+
+
+Loading an RLModule checkpoint into a running Algorithm
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+.. testcode::
 
     # Create a new Algorithm (with the changed module config: 32 units instead of the
     # default 256; otherwise loading the state of `module` will fail due to a shape
     # mismatch).
-    config.rl_module(model_config=config.model_config | {"fcnet_hiddens": [32]})
-
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[32]))
+    )
     algo = config.build()
-    # Now load the saved RLModule state (from the above `module.save_to_path()`) into the
-    # Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
-    # in the Learner workers and the ones in the EnvRunners.
+
+Now, let's load the saved RLModule state (from the preceding `module.save_to_path()`) directly
+into the running Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
+in the Learner workers and the ones in the EnvRunners.
+
+.. testcode::
+
     algo.restore_from_path(
         module_ckpt_path,  # <- NOT an Algorithm checkpoint, but single-agent RLModule one.
-        # We have to provide the exact component-path to the (single) RLModule
-        # within the algorithm, which is:
+
+        # Therefore, we have to provide the exact path (of RLlib components) down
+        # to the individual RLModule within the algorithm, which is:
         component="learner_group/learner/rl_module/default_policy",
     )
 
@@ -880,9 +919,3 @@ The following example shows how these methods can be used outside of, or in conj
 
     algo.stop()
     shutil.rmtree(module_ckpt_path)
-
-
-Migrating from custom policies and ModelV2 to RLModules
--------------------------------------------------------
-
-TODO (sven) Link to migration guide.
