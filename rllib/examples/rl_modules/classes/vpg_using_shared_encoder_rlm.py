@@ -14,8 +14,9 @@ class VPGPolicyAfterSharedEncoder(TorchRLModule):
     # __sphinx_doc_policy_end__
 
         The shared encoder RLModule must be held by the same MultiRLModule, under which
-        this RLModule resides. The shared encoder's forward is called before this RLModule's
-        forward and returns the embeddings under the "encoder_embeddings" key.
+        this RLModule resides. The shared encoder's forward is called before this
+        RLModule's forward and returns the embeddings under the "encoder_embeddings"
+        key.
     # __sphinx_doc_policy_2_begin__
     """
 
@@ -104,11 +105,11 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
             print(algo.get_module())
     # __sphinx_doc_how_to_run_end__
 
-        Also note that in order to learn properly, a special, multi-agent Learner accounting
-        for the shared encoder must be setup. This Learner should have only one optimizer
-        (used to train all submodules: encoder and the n policy nets) in order to not
-        destabilize learning. The latter would happen if more than one optimizer would try
-        to alternatingly optimize the same shared encoder submodule.
+        Also note that in order to learn properly, a special, multi-agent Learner
+        accounting for the shared encoder must be setup. This Learner should have only
+        one optimizer (used to train all submodules: encoder and the n policy nets) in
+        order to not destabilize learning. The latter would happen if more than one
+        optimizer would try to alternatingly optimize the same shared encoder submodule.
     # __sphinx_doc_mrlm_2_begin__
     """
 
@@ -119,7 +120,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
         # Assert, we have the shared encoder submodule.
         assert (
             SHARED_ENCODER_ID in self._rl_modules
-            and isinstance(self._rl_modules[SHARED_ENCODER_ID], SharedTorchEncoder)
+            and isinstance(self._rl_modules[SHARED_ENCODER_ID], SharedEncoder)
             and len(self._rl_modules) > 1
         )
         # Assign the encoder to a convenience attribute.
@@ -148,7 +149,7 @@ class VPGMultiRLModuleWithSharedEncoder(MultiRLModule):
 
 # __sphinx_doc_encoder_begin__
 class SharedEncoder(TorchRLModule):
-    """A shared encoder that can be used with VPGMultiRLModuleWithSharedEncoder."""
+    """A shared encoder that can be used with `VPGMultiRLModuleWithSharedEncoder`."""
 
     def setup(self):
         super().setup()

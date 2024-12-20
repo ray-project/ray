@@ -33,10 +33,11 @@ class VPGTorchRLModule(TorchRLModule):
         # `TorchCategorical` (due to our action space being `gym.spaces.Discrete`).
         return {Columns.ACTION_DIST_INPUTS: action_logits}
 
-        # If you need more granularity between the different forward behaviors during the
-        # different phases of the module's lifecycle, implement three different forward
-        # methods. Thereby, it is recommended to put the inference and exploration
-        # versions inside a `with torch.no_grad()` context for better performance.
+        # If you need more granularity between the different forward behaviors during
+        # the different phases of the module's lifecycle, implement three different
+        # forward methods. Thereby, it is recommended to put the inference and
+        # exploration versions inside a `with torch.no_grad()` context for better
+        # performance.
         # def _forward_train(self, batch):
         #    ...
         #

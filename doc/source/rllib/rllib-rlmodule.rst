@@ -395,19 +395,31 @@ Implementing custom RLModules
 
 To implement your own neural network architecture and computation logic, you should subclass
 :py:class:`~ray.rllib.core.rl_module.torch_rl_module.TorchRLModule` for any single-agent learning experiments
-or for independent multi-agent learning with any algorithm (e.g., PPO, DQN).
+or for independent multi-agent learning.
+
 For more advanced multi-agent use cases (for example with shared communication between agents)
 or any multi-model use cases, subclass the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` class, instead.
+
+
+.. note::
+    An alternative to subclassing :py:class:`~ray.rllib.core.rl_module.torch_rl_module.TorchRLModule` is to
+    directly subclass your Algorithm's default RLModule, for example, if you intend to use PPO, you may subclass
+    :py:class:`~ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module.DefaultPPOTorchRLModule`).
+    You should carefully study the existing default model in this case to understand how to override
+    the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup`, the
+    `_forward_()` methods, and possibly some algo-specific API methods
+    (see here for :ref:`details on how to find out, which APIs your algorithm requires to be implemented <rllib-algo-specific-rl-module-apis-docs>`).
 
 
 The setup() method
 ~~~~~~~~~~~~~~~~~~
 
-When writing an actual neural network class (as opposed to a heuristic model without any neural network elements),
-you should first implement the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method,
+You should first implement the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method,
 in which you add needed NN subcomponents and assign these to class attributes of your choice.
+
 Note that you should call `super().setup()` in your implementation.
-You also have access to the following attributes anywhere in the class:
+
+You also have access to the following attributes anywhere in the class (including in :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup`):
 
 #. ``self.observation_space``
 #. ``self.action_space``
@@ -429,8 +441,13 @@ You also have access to the following attributes anywhere in the class:
             # self.inference_only
             # self.model_config  # <- a dict with custom settings
 
+            # Use the observation space (if a Box) to infer the input dimension.
             input_dim = self.observation_space.shape[0]
+
+            # Use the model_config dict to extract the hidden dimension.
             hidden_dim = self.model_config["fcnet_hiddens"][0]
+
+            # Use the action space to infer the number of output nodes.
             output_dim = self.action_space.n
 
             # Build all the layers and subcomponents here you need for the
@@ -446,14 +463,14 @@ The forward methods
 ~~~~~~~~~~~~~~~~~~~
 
 After that, implement the forward computation logic. You can either define a generic forward logic by overriding the
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward` method (which is then used everywhere in the model's lifecycle)
-or - if you require more granularity - define the following three distinct forward methods:
+private :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward` method (which is then used everywhere in the model's lifecycle)
+or - if you require more granularity - define the following three private methods:
 
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`: Forward pass for computing exploration actions (for collecting training data).
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`: Forward pass for action inference (greedy).
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_train`: Forward pass for training (right before loss computation).
 
-For your custom :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward`,
+For custom :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward`,
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`, and
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration` methods, you must return a
 dictionary that either contains the key ``actions`` and/or the key ``action_dist_inputs``.
@@ -464,13 +481,14 @@ If you return the ``actions`` key from your forward methods:
 - If you also return the ``action_dist_inputs`` key: RLlib also creates a :py:class:`~ray.rllib.models.distributions.Distribution`
   instance from the parameters under that key and - in the case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` -
   compute action probs and logp values for the given actions automatically.
+  See :ref:`here for more information on custom action distribution classes <rllib-rl-module-w-custom-action-dists>`.
 
 If you don't return the ``actions`` key from your forward methods:
 
 - You must return the ``action_dist_inputs`` key, instead, from your :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`
   and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference` methods.
 - RLlib creates a :py:class:`~ray.rllib.models.distributions.Distribution` instance from the parameters under that key and
-  sample actions from that distribution.
+  sample actions from that distribution. See :ref:`here for more information on custom action distribution classes <rllib-rl-module-w-custom-action-dists>`.
 - For :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`, RLlib also computes action probs and
   logp values from the sampled actions automatically.
 
@@ -480,10 +498,7 @@ If you don't return the ``actions`` key from your forward methods:
     the generated distributions (from returned key ``action_dist_inputs``) are always made deterministic first via
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
     For example, sampling from a Categorical distribution will be reduced to selecting the argmax actions from the distribution's logits/probs.
-
-`Commonly used distribution implementations can be found here <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__.
-You can choose to compute deterministic actions, by creating the deterministic counterpart of your distribution class through
-the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` method.
+    If you already return the "actions" key yourself, RLlib skips that sampling step.
 
 
 .. tab-set::
@@ -552,6 +567,9 @@ You should never override the constructor (`__init__`) itself, however, it might
 
 Also :ref:`see the preceding section on how to create an RLModule through the contructor <rllib-constructing-rlmodule-w-class-constructor>` for more details.
 
+
+.. _rllib-algo-specific-rl-module-apis-docs:
+
 Algorithm-specific RLModule APIs
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -577,6 +595,14 @@ To find out, what APIs your Algorithms requires, do this:
     )
 
 
+.. note::
+    Your VPG example RLModule here is not required to implement any APIs yet. This is because
+    you haven't considered training it with any particular algorithm yet.
+    However, you can find examples of PPO-ready custom RLModules
+    `here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
+    and `here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__.
+
+
 Putting it all together
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -587,8 +613,10 @@ you get a working end-to-end example:
         :language: python
 
 
-Custom action distribution
-~~~~~~~~~~~~~~~~~~~~~~~~~~
+.. _rllib-rl-module-w-custom-action-dists:
+
+Custom action distributions
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 In the preceding examples, you relied on your RLModule to use the correct action distribution with the computed
 ``ACTION_DIST_INPUTS`` returned by your forward methods. RLlib picks a default distribution class based on
@@ -601,6 +629,12 @@ override the following methods in your :py:class:`~ray.rllib.core.rl_module.rl_m
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_inference_action_dist_cls`
 - :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_exploration_action_dist_cls`
 - and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.get_train_action_dist_cls`
+
+`Commonly used distribution implementations can be found here <https://github.com/ray-project/ray/blob/master/rllib/models/torch/torch_distributions.py>`__.
+
+Implement a deterministic counterpart of your distribution class through the
+:py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` method.
+You can choose to compute deterministic actions, by creating the deterministic counterpart.
 
 
 Implementing custom MultiRLModules
@@ -670,55 +704,12 @@ model hyper-parameters:
 
 
 .. note::
-    In order to learn with the preceding setup properly, a custom multi-agent
-    :py:class:`~ray.rllib.core.learner.learner.Learner` accounting for the shared encoder
-    must be written. This Learner should only have one optimizer (used to train all
-    submodules, encoder and the two policy nets) in order to stabilize learning.
-    Learning instabilities might occur, if more than one optimizer try
-    to alternatingly update the same shared encoder subnetwork.
-
-
-Extending existing RLlib RLModules
-----------------------------------
-
-RLlib provides :ref:`default RLModules for the different algorithms <rllib_default_rl_modules_docs>` as well as some example custom
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementations catering to specific requirements.
-
-For example, see `this CNN example here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
-for training with Atari envs or
-`this LSTM example here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/lstm_containing_rlm.py>`__
-for training in non-Markovian envs.
-
-To customize any existing :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can subclass it and change the
-:py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` to add your
-custom components to it as well as override any or all of the three forward methods for implementing a custom flow through the model.
-
-Here are two good recipes for extending existing RLModules:
-
-.. tab-set::
-
-    .. tab-item:: Subclass `TorchRLModule` and add APIs
-
-        The simplest way to write your own custom RLModule and use it alongside
-        an Algorithm is to subclass :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`,
-        implement your child class' `setup` and `_forward_...` methods, and then add those RLModule APIs
-        that your algorithm of choice requires.
-
-        For example:
-
-
-
-
-
-    .. tab-item:: Subclass an algorithm's default RLModule
-
-        The default way to extend existing RLModules is to inherit from the framework specific subclasses
-        (for example :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`) and override
-        the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method, but at a minimum the
-        three `_forward_()` methods and any other method you need to be customized. Then pass the new customized class
-        into the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rl_module` method
-        (`config.rl_module(rl_module_spec=RLModuleSpec(module_class=[your class]))`) to train your custom RLModule.
-
+    In order to learn with the preceding setup properly, a specific, multi-agent
+    :py:class:`~ray.rllib.core.learner.learner.Learner`, capable of handling the shared encoder
+    must be written and used. This Learner should only have a single optimizer, used to train all
+    three submodules (encoder and the two policy nets) in order to stabilize learning.
+    If the standard "one-optimizer-per-module" Learners are used, the two optimizers for policy 1 and 2
+    alternatingly update the same shared encoder subnetwork, potentially leading to learning instabilities.
 
 
 .. _rllib-checkpointing-rl-modules-docs:
