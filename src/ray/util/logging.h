@@ -240,6 +240,10 @@ enum class RayLogLevel {
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
+// Default configs for ray log.
+inline constexpr size_t kDefaultLogRotationMaxSize = 1ULL << 29;
+inline constexpr size_t kDefaultLogRotationFileNum = 10;
+
 class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
@@ -270,7 +274,9 @@ class RayLog {
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_dir = "",
-                          const std::string &log_filepath = "");
+                          const std::string &log_filepath = "",
+                          size_t log_rotation_max_size = kDefaultLogRotationMaxSize,
+                          size_t log_rotation_file_num = kDefaultLogRotationFileNum);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
@@ -398,9 +404,9 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  static long log_rotation_max_size_;
+  static long log_rotation_max_size_ = kDefaultLogRotationMaxSize;
   // Log rotation file number.
-  static long log_rotation_file_num_;
+  static long log_rotation_file_num_ = kDefaultLogRotationFileNum;
   // Ray default logger name.
   static std::string logger_name_;
 

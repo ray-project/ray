@@ -63,8 +63,8 @@ bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
 
 std::string RayLog::logger_name_ = "ray_log_sink";
-long RayLog::log_rotation_max_size_ = 1 << 29;
-long RayLog::log_rotation_file_num_ = 10;
+size_t RayLog::log_rotation_max_size_ = 1ULL << 29;
+size_t RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
@@ -332,7 +332,9 @@ void RayLog::InitLogFormat() {
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
                          const std::string &log_dir,
-                         const std::string &log_filepath) {
+                         const std::string &log_filepath,
+                         size_t log_rotation_max_size,
+                         size_t log_rotation_file_num) {
   // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
   // [log_filepath]. But they cannot be non empty at the same time. Cleanup
   // `log_dir`.
@@ -369,7 +371,7 @@ void RayLog::StartRayLog(const std::string &app_name,
   if (!log_fname.empty()) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
-      long max_size = 0;
+      size_t max_size = 0;
       if (absl::SimpleAtoi(ray_rotation_max_bytes, &max_size) && max_size > 0) {
         // 0 means no log rotation in python, but not in spdlog. We just use the default
         // value here.
@@ -379,7 +381,7 @@ void RayLog::StartRayLog(const std::string &app_name,
 
     if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
         ray_rotation_backup_count != nullptr) {
-      long file_num = 0;
+      size_t file_num = 0;
       if (absl::SimpleAtoi(ray_rotation_backup_count, &file_num) && file_num > 0) {
         log_rotation_file_num_ = file_num;
       }

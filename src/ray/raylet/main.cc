@@ -137,29 +137,14 @@ int main(int argc, char *argv[]) {
 
   // For compatibility, by default GCS server dumps logging into a single file with no
   // rotation.
-  const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
-  // The callchain for java workload is,
-  // - Java runtime creates cluster and runs C++ binaries (i.e. gcs, raylet, etc)
-  // directly;
-  // - For all Java tasks/tasks, they are executed as subprocess in C++ core worker;
-  // - So there's interdepenency for env variables between C++ and Java runtime;
-  // - To keep the logging related env work, use a special env variable
-  // `JAVA_MANAGED_LOGGING` so raylet C++ side knows don't update any logging related
-  // params themselves.
-  const char *java_use_direction = std::getenv("JAVA_MANAGED_LOGGING");
-  if (rotation_max_bytes == nullptr && java_use_direction != nullptr &&
-      strcmp(java_use_direction, "true") == 0) {
-    const long max_rotation_size = std::numeric_limits<long>::max();
-    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
-    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
-  }
-
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
                                          /*log_dir=*/"",
-                                         /*ray_log_filepath=*/FLAGS_ray_log_filepath);
+                                         /*ray_log_filepath=*/FLAGS_ray_log_filepath,
+                                         ray::kDefaultLogRotationMaxSize,
+                                         ray::kDefaultLogRotationFileNum);
 
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
