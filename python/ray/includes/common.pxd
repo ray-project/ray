@@ -623,7 +623,9 @@ cdef extern from "ray/gcs/pubsub/gcs_pub_sub.h" nogil:
 
         CRayStatus Subscribe()
 
-        int64_t last_batch_size()
+        int64_t last_batch_size() const
+
+        int64_t queue_size() const
 
         CRayStatus PollError(
             c_string* key_id, int64_t timeout_ms, CErrorTableData* data)
