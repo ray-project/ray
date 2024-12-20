@@ -51,6 +51,11 @@ inline std::ostream &operator<<(std::ostream &os, const ray::VirtualClusterID &i
   return os;
 }
 
+template <>
+struct DefaultLogKey<VirtualClusterID> {
+  constexpr static std::string_view key = kLogKeyVirtualClusterID;
+};
+
 }  // namespace ray
 
 namespace std {

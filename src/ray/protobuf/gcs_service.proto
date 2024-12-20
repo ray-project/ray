@@ -865,6 +865,6 @@ service VirtualClusterInfoGcsService {
       returns (CreateOrUpdateVirtualClusterReply);
   // Remove a virtual cluster.
   rpc RemoveVirtualCluster(RemoveVirtualClusterRequest) returns (RemoveVirtualClusterReply);
-  // Get all the virtual clusters.
+  // Get virtual clusters.
   rpc GetVirtualClusters(GetVirtualClustersRequest) returns (GetVirtualClustersReply);
 }

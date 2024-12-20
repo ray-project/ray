@@ -352,3 +352,28 @@ class MockInternalKVAccessor : public InternalKVAccessor {
 
 }  // namespace gcs
 }  // namespace ray
+
+namespace ray {
+namespace gcs {
+
+class MockVirtualClusterInfoAccessor : public VirtualClusterInfoAccessor {
+ public:
+  MOCK_METHOD(Status,
+              AsyncGet,
+              (const VirtualClusterID &virtual_cluster_id,
+               const OptionalItemCallback<rpc::VirtualClusterTableData> &callback),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncGetAll,
+              (const MultiItemCallback<rpc::VirtualClusterTableData> &callback),
+              (override));
+  MOCK_METHOD(Status,
+              AsyncSubscribeAll,
+              ((const SubscribeCallback<VirtualClusterID, rpc::VirtualClusterTableData>
+                    &subscribe),
+               const StatusCallback &done),
+              (override));
+};
+
+}  // namespace gcs
+}  // namespace ray

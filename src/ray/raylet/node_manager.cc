@@ -500,6 +500,18 @@ ray::Status NodeManager::RegisterGcs() {
   RAY_RETURN_NOT_OK(
       gcs_client_->Jobs().AsyncSubscribeAll(job_subscribe_handler, nullptr));
 
+  // Subscribe to all virtual clusrter update notification.
+  const auto virtual_cluster_update_notification_handler =
+      [this](const VirtualClusterID &virtual_cluster_id,
+             const rpc::VirtualClusterTableData &virtual_cluster_data) {
+        // TODO(Shanly): To be implemented.
+      };
+  RAY_RETURN_NOT_OK(gcs_client_->VirtualCluster().AsyncSubscribeAll(
+      virtual_cluster_update_notification_handler, [](const ray::Status &status) {
+        RAY_CHECK_OK(status);
+        RAY_LOG(INFO) << "Finished subscribing all virtual cluster infos.";
+      }));
+
   periodical_runner_->RunFnPeriodically(
       [this] {
         DumpDebugState();

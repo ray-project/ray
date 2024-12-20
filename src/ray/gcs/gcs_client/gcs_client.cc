@@ -156,6 +156,7 @@ Status GcsClient::Connect(instrumented_io_context &io_service, int64_t timeout_m
   task_accessor_ = std::make_unique<TaskInfoAccessor>(this);
   runtime_env_accessor_ = std::make_unique<RuntimeEnvAccessor>(this);
   autoscaler_state_accessor_ = std::make_unique<AutoscalerStateAccessor>(this);
+  virtual_cluster_accessor_ = std::make_unique<VirtualClusterInfoAccessor>(this);
 
   RAY_LOG(DEBUG) << "GcsClient connected " << options_.gcs_address_ << ":"
                  << options_.gcs_port_;
