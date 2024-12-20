@@ -59,13 +59,6 @@ int main(int argc, char *argv[]) {
 
   // For compatibility, by default GCS server dumps logging into a single file with no
   // rotation.
-  if (const char *rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
-      rotation_max_bytes == nullptr) {
-    const long max_rotation_size = std::numeric_limits<long>::max();
-    const std::string max_rotation_size_str = absl::StrFormat("%d", max_rotation_size);
-    setenv("RAY_ROTATION_MAX_BYTES", max_rotation_size_str.data(), /*overwrite=*/1);
-  }
-
   InitShutdownRAII ray_log_shutdown_raii(
       ray::RayLog::StartRayLog,
       ray::RayLog::ShutDownRayLog,
