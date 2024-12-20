@@ -120,7 +120,7 @@ you should configure your experiment like so:
 
 See here for a compete list of all supported ``fcnet_..`` options:
 
-.. literalinclude:: ../../../rllib/core/rl_modules/default_model_config.py
+.. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
         :start-after: __sphinx_doc_default_model_config_fcnet_begin__
         :end-before: __sphinx_doc_default_model_config_fcnet_end__
@@ -160,7 +160,7 @@ For example:
 
 See here for a compete list of all supported ``conv2d_..`` options:
 
-.. literalinclude:: ../../../rllib/core/rl_modules/default_model_config.py
+.. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
         :start-after: __sphinx_doc_default_model_config_conv2d_begin__
         :end-before: __sphinx_doc_default_model_config_conv2d_end__
@@ -556,55 +556,10 @@ Putting it all together
 With the now implemented elements of your custom :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
 you get a working end-to-end example:
 
-.. testcode::
-
-    from ray.rllib.core import Columns
-    from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
-
-    class MyTorchPolicy(TorchRLModule):
-        def setup(self):
-            # You have access here to the following already set attributes:
-            # self.observation_space
-            # self.action_space
-            # self.inference_only
-            # self.model_config  # <- a dict with custom settings
-            # self.catalog
-            input_dim = self.observation_space.shape[0]
-            hidden_dim = self.model_config["hidden_dim"]
-            output_dim = self.action_space.n
-
-            # Build all the layers and subcomponents here you need for the
-            # RLModule's forward passes.
-            self._pi_head = nn.Sequential(
-                nn.Linear(input_dim, hidden_dim),
-                nn.ReLU(),
-                nn.Linear(hidden_dim, output_dim),
-            )
-
-        def _forward(self, batch):
-            # Push the observations from the batch through our pi-head.
-            action_logits = self._pi_head(batch[Columns.OBS])
-
-            # Return parameters for the (default) action distribution, which is
-            # `TorchCategorical` (due to our action space being `gym.spaces.Discrete`).
-            return {
-                Columns.ACTION_DIST_INPUTS: action_logits,
-            }
-
-        # If you need more granularity between the different forward behaviors during the
-        # different phases of the module's lifecycle, implement three different forward
-        # methods. Thereby, it is recommended to put the inference and exploration
-        # versions inside a `with torch.no_grad()` context for better performance.
-        # def _forward_train(self, batch):
-        #    ...
-        #
-        # def _forward_inference(self, batch):
-        #    with torch.no_grad():
-        #        return self._forward_train(batch)
-        #
-        # def _forward_exploration(self, batch):
-        #    with torch.no_grad():
-        #        return self._forward_train(batch)
+.. literalinclude:: ../../../rllib/examples/rl_modules/classes/vpg_rlm.py
+        :language: python
+        :start-after: __sphinx_doc_begin__
+        :end-before: __sphinx_doc_end__
 
 
 Custom action distribution
@@ -628,9 +583,10 @@ Implementing custom MultiRLModules
 
 For multi-module setups, RLlib provides the :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` class,
 whose default implementation is a dictionary of individual :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` objects,
-one for each submodule.
-The base-class implementation works for most of use cases that need to define independent neural networks.
-However, for any complex, multi-network or multi-agent use cases, where agents share one or more neural networks,
+one for each submodule and identified by a ``ModuleID``.
+
+The base-class :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` implementation works for most of those
+use cases that need to define independent neural networks . However, for any complex, multi-network or multi-agent use cases, where agents share one or more neural networks,
 you should inherit from this class and override the default implementation.
 
 The following code snippets create a custom multi-agent RL module with two simple "policy head" modules, which
@@ -781,7 +737,7 @@ Here are two good recipes for extending existing RLModules:
 
 .. tab-set::
 
-    .. tab-item:: Subclass Torch/Tf base class and add APIs
+    .. tab-item:: Subclass base class and add APIs
 
 
 
@@ -808,7 +764,6 @@ Here are two good recipes for extending existing RLModules:
                     self.action_space
                     self.inference_only
                     self.model_config  # <- a dict with custom settings
-                    self.catalog
                     ...
 
                     # Build all the layers and subcomponents here you need for the

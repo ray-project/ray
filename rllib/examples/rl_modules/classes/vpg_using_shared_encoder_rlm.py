@@ -12,7 +12,12 @@ SHARED_ENCODER_ID = "shared_encoder"
 
 
 class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
-    """A VPG (vanilla pol. gradient)-style RLModule using a shared encoder."""
+    """A VPG (vanilla pol. gradient)-style RLModule using a shared encoder.
+
+    The shared encoder RLModule must be held by the same MultiRLModule, under which
+    this RLModule resides. The shared encoder's forward is called before this RLModule's
+    forward and returns the embeddings under the "encoder_embeddings" key.
+    """
 
     @override(TorchRLModule)
     def setup(self):
@@ -37,7 +42,7 @@ class VPGTorchRLModuleUsingSharedEncoder(TorchRLModule):
 
 
 class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
-    """A VPG (vanilla policy gradient)-style MultiRLModule with shared encoder.
+    """VPG (vanilla pol. gradient)-style MultiRLModule handling a shared encoder.
 
     This MultiRLModule needs to be configured appropriately as follows:
 
@@ -77,11 +82,11 @@ class VPGTorchMultiRLModuleWithSharedEncoder(MultiRLModule):
             ),
         )
 
-    Also note that in order to learn properly, a special, multi-agent Learner that
-    accounts for the shared encoder must be setup. This Learner should have only a
-    single optimizer (for all submodules: encoder and all policy nets) in order to not
+    Also note that in order to learn properly, a special, multi-agent Learner accounting
+    for the shared encoder must be setup. This Learner should have only one optimizer
+    (used to train all submodules: encoder and the n policy nets) in order to not
     destabilize learning. The latter would happen if more than one optimizer would try
-    to optimize the same shared encoder submodule.
+    to alternatingly optimize the same shared encoder submodule.
     """
 
     @override(MultiRLModule)
