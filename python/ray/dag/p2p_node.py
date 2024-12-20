@@ -112,7 +112,6 @@ class _P2PSendNode(_P2PNode):
             raise ValueError("Expected a single input node as ClassMethodNode")
         elif isinstance(method_args[0], _P2PNode):
             raise ValueError("NCCL send node cannot bind to another NCCL P2P node")
-        # self.requires_nccl_write = True
 
     def _copy_impl(
         self,
@@ -158,7 +157,6 @@ class _P2PRecvNode(_P2PNode):
             and isinstance(method_args[0], _P2PSendNode)
         ):
             raise ValueError("Expected a single input node as _P2PSendNode")
-        # self.requires_nccl_read = True
 
     def _copy_impl(
         self,

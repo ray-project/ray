@@ -53,9 +53,6 @@ def generate_dag_graph_nodes(
     task_idx,
     actor_handle,
     nccl_op=None,
-    # requires_nccl_read=False,
-    # requires_nccl_write=False,
-    # requires_nccl_collective=False,
     nccl_op_type=None,
 ) -> _DAGOperationGraphNode:
     node = _DAGOperationGraphNode(
@@ -63,9 +60,6 @@ def generate_dag_graph_nodes(
         task_idx,
         actor_handle,
         nccl_op,
-        # requires_nccl_read,
-        # requires_nccl_write,
-        # requires_nccl_collective,
         nccl_op_type,
     )
     return node
@@ -158,7 +152,6 @@ class TestSelectNextNodes:
                 task_idx_1,
                 fake_actor_1,
                 nccl_op,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_2: generate_dag_graph_nodes(
@@ -166,7 +159,6 @@ class TestSelectNextNodes:
                 task_idx_2,
                 fake_actor_2,
                 nccl_op,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
         }
@@ -227,7 +219,6 @@ class TestSelectNextNodes:
                     task_idx_1_0,
                     fake_actor_1,
                     nccl_op_1,
-                    # requires_nccl_write=True,
                     P2POp.SEND,
                 ),
                 task_idx_1_1: generate_dag_graph_nodes(
@@ -235,7 +226,6 @@ class TestSelectNextNodes:
                     task_idx_1_1,
                     fake_actor_1,
                     nccl_op_2,
-                    # requires_nccl_read=True,
                     P2POp.RECV,
                 ),
                 task_idx_2_0: generate_dag_graph_nodes(
@@ -243,7 +233,6 @@ class TestSelectNextNodes:
                     task_idx_2_0,
                     fake_actor_2,
                     nccl_op_2,
-                    # requires_nccl_write=True,
                     P2POp.SEND,
                 ),
                 task_idx_2_1: generate_dag_graph_nodes(
@@ -251,7 +240,6 @@ class TestSelectNextNodes:
                     task_idx_2_1,
                     fake_actor_2,
                     nccl_op_1,
-                    # requires_nccl_read=True,
                     P2POp.RECV,
                 ),
             }
@@ -300,7 +288,6 @@ class TestSelectNextNodes:
                 task_idx_1,
                 fake_actor_1,
                 nccl_op,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_2: generate_dag_graph_nodes(
@@ -308,7 +295,6 @@ class TestSelectNextNodes:
                 task_idx_2,
                 fake_actor_2,
                 nccl_op,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
         }
@@ -353,7 +339,6 @@ class TestSelectNextNodes:
                 task_idx_1,
                 fake_actor_1,
                 nccl_op_1,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_2: generate_dag_graph_nodes(
@@ -361,7 +346,6 @@ class TestSelectNextNodes:
                 task_idx_2,
                 fake_actor_2,
                 nccl_op_1,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_3: generate_dag_graph_nodes(
@@ -369,7 +353,6 @@ class TestSelectNextNodes:
                 task_idx_3,
                 fake_actor_3,
                 nccl_op_2,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_4: generate_dag_graph_nodes(
@@ -377,7 +360,6 @@ class TestSelectNextNodes:
                 task_idx_4,
                 fake_actor_4,
                 nccl_op_2,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
         }
@@ -740,7 +722,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_1,
                 fake_actor_1,
                 nccl_op_1,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
@@ -748,7 +729,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_1,
                 fake_actor_2,
                 nccl_op_2,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_2_2: generate_dag_graph_nodes(
@@ -756,7 +736,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_2,
                 fake_actor_2,
                 nccl_op_1,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
             task_idx_1_2: generate_dag_graph_nodes(
@@ -764,7 +743,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_2,
                 fake_actor_1,
                 nccl_op_2,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
         }
@@ -952,7 +930,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_2,
                 worker_1,
                 nccl_op_1,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_1_4: generate_dag_graph_nodes(
@@ -960,7 +937,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_4,
                 worker_1,
                 nccl_op_2,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_1_5: generate_dag_graph_nodes(
@@ -968,7 +944,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_5,
                 worker_1,
                 nccl_op_3,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
             task_idx_1_7: generate_dag_graph_nodes(
@@ -976,7 +951,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1_7,
                 worker_1,
                 nccl_op_4,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
             task_idx_2_1: generate_dag_graph_nodes(
@@ -984,7 +958,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_1,
                 worker_2,
                 nccl_op_1,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
             task_idx_2_4: generate_dag_graph_nodes(
@@ -992,7 +965,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_4,
                 worker_2,
                 nccl_op_3,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
             task_idx_2_5: generate_dag_graph_nodes(
@@ -1000,7 +972,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_5,
                 worker_2,
                 nccl_op_2,
-                # requires_nccl_read=True,
                 P2POp.RECV,
             ),
             task_idx_2_8: generate_dag_graph_nodes(
@@ -1008,7 +979,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2_8,
                 worker_2,
                 nccl_op_4,
-                # requires_nccl_write=True,
                 P2POp.SEND,
             ),
         }
@@ -1081,7 +1051,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_1,
                 fake_actor_1,
                 nccl_op_1,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_2: generate_dag_graph_nodes(
@@ -1089,7 +1058,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_2,
                 fake_actor_2,
                 nccl_op_1,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_3: generate_dag_graph_nodes(
@@ -1097,7 +1065,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_3,
                 fake_actor_1,
                 nccl_op_2,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
             task_idx_4: generate_dag_graph_nodes(
@@ -1105,7 +1072,6 @@ class TestGenerateActorToExecutionSchedule:
                 task_idx_4,
                 fake_actor_2,
                 nccl_op_2,
-                # requires_nccl_collective=True,
                 ReduceOp.SUM,
             ),
         }

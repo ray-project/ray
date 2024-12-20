@@ -57,9 +57,6 @@ class _DAGOperationGraphNode:
         actor_handle: "ray.actor.ActorHandle",
         nccl_op: Optional[_NcclOperation] = None,
         nccl_op_type: Optional[_NcclOp] = None,
-        # requires_nccl_read: bool = False,
-        # requires_nccl_write: bool = False,
-        # requires_nccl_collective: bool = False,
     ):
         """
         _DAGOperationGraphNode represents a node in the DAG operation graph.
@@ -76,14 +73,6 @@ class _DAGOperationGraphNode:
         self.op = op
         self.task_idx = task_idx
         self.actor_handle = actor_handle
-        # if requires_nccl_read + requires_nccl_write + requires_nccl_collective > 1:
-        #     raise ValueError(
-        #         "At most one of requires_nccl_read, requires_nccl_write, "
-        #         "and requires_nccl_collective can be true"
-        #     )
-        # self.requires_nccl_read = requires_nccl_read
-        # self.requires_nccl_write = requires_nccl_write
-        # self.requires_nccl_collective = requires_nccl_collective
         self.nccl_op_type = nccl_op_type
         # The in_edges and out_edges are dicts of ints to strings. Each int (the key)
         # is an integer `task_idx`, which can be used to index into `idx_to_task` to
@@ -102,9 +91,6 @@ class _DAGOperationGraphNode:
             f"op: {self.op}, "
             f"task_idx: {self.task_idx}, "
             f"ray_actor_id: {self.actor_handle._ray_actor_id}, "
-            # f"requires_nccl_read: {self.requires_nccl_read}, "
-            # f"requires_nccl_write: {self.requires_nccl_write}, "
-            # f"requires_nccl_collective: {self.requires_nccl_collective})"
             f"nccl_op_type: {self.nccl_op_type})"
         )
 
@@ -169,6 +155,14 @@ class _DAGOperationGraphNode:
     @property
     def requires_nccl_op(self) -> bool:
         return self.nccl_op_type is not None
+
+    @property
+    def requires_nccl_read(self) -> bool:
+        return self.nccl_op_type == P2POp.RECV
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self.nccl_op_type == P2POp.SEND
 
     def viz_str(self):
         """
@@ -314,8 +308,7 @@ def _build_dag_node_operation_graph(
             # Add an edge from task with `bind_index` i to task with
             # `bind_index` i+1 if they belong to the same actor.
             if (
-                # not node.requires_nccl_read and not node.requires_nccl_write
-                node.nccl_op_type != P2POp.RECV and node.nccl_op_type != P2POp.SEND
+                not node.requires_nccl_read and not node.requires_nccl_write
             ) and prev_node is not None:
                 _add_edge(prev_node, node, control_dependency=True)
                 prev_node = node
@@ -343,10 +336,8 @@ def _build_dag_node_operation_graph(
                 and downstream_dag_node.is_class_method_output
             ):
                 continue
-            # if graph[task_idx].requires_nccl_write:
-            if graph[task_idx].nccl_op_type == P2POp.SEND:
-                # assert graph[downstream_task_idx].requires_nccl_read
-                assert graph[downstream_task_idx].nccl_op_type == P2POp.RECV
+            if graph[task_idx].requires_nccl_write:
+                assert graph[downstream_task_idx].requires_nccl_read
             else:
                 _add_edge(
                     graph[task_idx],
@@ -607,8 +598,7 @@ def _generate_overlapped_execution_schedule(
         # with computation.
         for i in range(1, len(overlapped_schedule)):
             if (
-                # overlapped_schedule[i].requires_nccl_read
-                overlapped_schedule[i].nccl_op_type == P2POp.RECV
+                overlapped_schedule[i].requires_nccl_read
                 and not overlapped_schedule[i - 1].requires_nccl_op
             ):
                 overlapped_schedule[i], overlapped_schedule[i - 1] = (

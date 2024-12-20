@@ -84,11 +84,6 @@ class DAGNode(DAGNodeBase):
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
 
-        # Whether this node requires a NCCL read, write, or collective operation.
-        # self.requires_nccl_read = False
-        # self.requires_nccl_write = False
-        # self.requires_nccl_collective = False
-
     @property
     def nccl_op_type(self) -> Optional[_NcclOp]:
         """
