@@ -994,13 +994,12 @@ class CompiledDAG:
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
-            elif isinstance(task.dag_node, InputAttributeNode):
-                self.input_attr_task_idxs.append(idx)
-
                 # handle_unused_attributes:
                 # Save input attributes in a set.
                 input_node = task.dag_node
                 input_attributes.update(input_node.input_attribute_nodes.keys())
+            elif isinstance(task.dag_node, InputAttributeNode):
+                self.input_attr_task_idxs.append(idx)
 
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
