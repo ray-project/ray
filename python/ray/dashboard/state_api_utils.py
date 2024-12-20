@@ -21,18 +21,28 @@ from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.util import convert_string_to_type
 
 
+def do_reply(self, success: bool, error_message: str, result: dict, **kwargs):
+    return rest_response(
+        success=success,
+        message=error_message,
+        result=result,
+        convert_google_style=False,
+        **kwargs,
+    )
+
+
 async def handle_list_api(
     list_api_fn: Callable[[ListApiOptions], dict], req: aiohttp.web.Request
 ):
     try:
         result = await list_api_fn(option=options_from_req(req))
-        return rest_response(
+        return do_reply(
             success=True,
             error_message="",
             result=asdict(result),
         )
     except DataSourceUnavailable as e:
-        return rest_response(success=False, error_message=str(e), result=None)
+        return do_reply(success=False, error_message=str(e), result=None)
 
 
 def _get_filters_from_req(
@@ -87,7 +97,7 @@ async def handle_summary_api(
     req: aiohttp.web.Request,
 ):
     result = await summary_fn(option=summary_options_from_req(req))
-    return rest_response(
+    return do_reply(
         success=True,
         error_message="",
         result=asdict(result),

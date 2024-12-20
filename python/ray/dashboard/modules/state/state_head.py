@@ -19,9 +19,9 @@ from ray.dashboard.consts import (
 )
 from ray.dashboard.datacenter import DataSource
 from ray.dashboard.modules.log.log_manager import LogsManager
-from ray.dashboard.optional_utils import rest_response
 from ray.dashboard.state_aggregator import StateAPIManager
 from ray.dashboard.state_api_utils import (
+    do_reply,
     handle_list_api,
     handle_summary_api,
     options_from_req,
@@ -76,7 +76,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         DataSource.agents.signal.append(self._update_agent_stubs)
 
     async def limit_handler_(self):
-        return rest_response(
+        return do_reply(
             success=False,
             error_message=(
                 "Max number of in-progress requests="
@@ -144,13 +144,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         record_extra_usage_tag(TagKey.CORE_STATE_API_LIST_JOBS, "1")
         try:
             result = await self._state_api.list_jobs(option=options_from_req(req))
-            return rest_response(
+            return do_reply(
                 success=True,
                 error_message="",
                 result=asdict(result),
             )
         except DataSourceUnavailable as e:
-            return rest_response(success=False, error_message=str(e), result=None)
+            return do_reply(success=False, error_message=str(e), result=None)
 
     @routes.get("/api/v0/nodes")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -213,7 +213,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         timeout = int(req.query.get("timeout", DEFAULT_RPC_TIMEOUT))
 
         if not node_id and not node_ip:
-            return rest_response(
+            return do_reply(
                 success=False,
                 error_message=(
                     "Both node id and node ip are not provided. "
@@ -224,7 +224,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
 
         node_id = node_id or self._log_api.ip_to_node_id(node_ip)
         if not node_id:
-            return rest_response(
+            return do_reply(
                 success=False,
                 error_message=(
                     f"Cannot find matching node_id for a given node ip {node_ip}"
@@ -237,13 +237,13 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
                 node_id, timeout, glob_filter=glob_filter
             )
         except DataSourceUnavailable as e:
-            return rest_response(
+            return do_reply(
                 success=False,
                 error_message=str(e),
                 result=None,
             )
 
-        return rest_response(success=True, error_message="", result=result)
+        return do_reply(success=True, error_message="", result=result)
 
     @routes.get("/api/v0/logs/{media_type}")
     @RateLimitedModule.enforce_max_concurrent_calls
@@ -372,7 +372,7 @@ class StateHead(dashboard_utils.DashboardHeadModule, RateLimitedModule):
         """Testing only. Response after a specified delay."""
         delay = int(req.match_info.get("delay_s", 10))
         await asyncio.sleep(delay)
-        return rest_response(
+        return do_reply(
             success=True,
             error_message="",
             result={},
