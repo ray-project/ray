@@ -405,6 +405,8 @@ NodeManager::NodeManager(
 
   mutable_object_provider_ = std::make_unique<core::experimental::MutableObjectProvider>(
       *store_client_, absl::bind_front(&NodeManager::CreateRayletClient, this));
+
+  virtual_cluster_manager_ = std::make_shared<VirtualClusterManager>();
 }
 
 std::shared_ptr<raylet::RayletClient> NodeManager::CreateRayletClient(
@@ -505,8 +507,8 @@ ray::Status NodeManager::RegisterGcs() {
   // Subscribe to all virtual clusrter update notification.
   const auto virtual_cluster_update_notification_handler =
       [this](const VirtualClusterID &virtual_cluster_id,
-             const rpc::VirtualClusterTableData &virtual_cluster_data) {
-        // TODO(Shanly): To be implemented.
+             rpc::VirtualClusterTableData &&virtual_cluster_data) {
+        virtual_cluster_manager_->UpdateVirtualCluster(std::move(virtual_cluster_data));
       };
   RAY_RETURN_NOT_OK(gcs_client_->VirtualCluster().AsyncSubscribeAll(
       virtual_cluster_update_notification_handler, [](const ray::Status &status) {

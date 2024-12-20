@@ -1850,6 +1850,18 @@ ray_cc_test(
     ],
 )
 
+ray_cc_test(
+    name = "virtual_cluster_manager_test",
+    size = "small",
+    srcs = ["src/ray/raylet/virtual_cluster_manager_test.cc"],
+    tags = ["team:core"],
+    deps = [
+        ":ray_mock",
+        ":raylet_lib",
+        "@com_google_googletest//:gtest_main",
+    ],
+)
+
 ray_cc_library(
     name = "gcs_table_storage_lib",
     srcs = glob(

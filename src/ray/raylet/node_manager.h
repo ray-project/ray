@@ -41,6 +41,7 @@
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/bundle_spec.h"
 #include "ray/raylet/placement_group_resource_manager.h"
+#include "ray/raylet/virtual_cluster_manager.h"
 #include "ray/raylet/worker_killing_policy.h"
 #include "ray/core_worker/experimental_mutable_object_provider.h"
 // clang-format on
@@ -894,6 +895,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   std::unique_ptr<MemoryMonitor> memory_monitor_;
 
   std::unique_ptr<core::experimental::MutableObjectProvider> mutable_object_provider_;
+
+  /// The virtual cluster manager.
+  std::shared_ptr<VirtualClusterManager> virtual_cluster_manager_;
 };
 
 }  // namespace raylet
