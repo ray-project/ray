@@ -18,13 +18,56 @@ compute losses, such as Q-values in a DQN model, value function predictions in a
 or world-model predictions in model-based algorithms.
 
 
+.. figure:: images/rl_modules/rl_module_overview.svg
+    :width: 600
+
+    **RLModule overview**: A plain :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains the
+    neural network used for computations
+    (for example, a policy network) and exposes the three forward methods:
+    `forward_exploration` (sample collection), `forward_inference` (production), and
+    `forward_train` (aiding loss computations for training).
+    A :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` may contain one
+    or more sub-RLModules, each identified by a `ModuleID`. This allows you to implement
+    arbitrarily complex multi-network and/or multi-agent architectures and algorithms.
+
+
 Enabling the RLModule API in the AlgorithmConfig
 ------------------------------------------------
 
-RLModules are used exclusively in :ref:`RLlib's new API stack <rllib-new-api-stack-guide>`, which is activated by default.
+RLModules are used exclusively in the :ref:`new API stack <rllib-new-api-stack-guide>`, which is activated by default in RLlib.
 
 In case you are working with a legacy config and would like to migrate it to the new API stack, see
 :ref:`our new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
+
+If you have a config that's accidentally still set to the old API stack,
+use the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack`
+method to switch:
+
+.. testcode::
+
+    from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
+
+    config = (
+        AlgorithmConfig()
+        .api_stack(
+            enable_rl_module_and_learner=True,
+            enable_env_runner_and_connector_v2=True,
+        )
+    )
+
+
+Default RLModules
+-----------------
+
+If you don't specify any module-related settings in your
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib uses the
+respective algorithm's default RLModule, which is usually a great choice for initial
+experimentation and benchmarking. All of these default RLModules support 1D-tensor- and
+image observations (``[width] x [height] x [channels]``).
+
+
+
+In order to
 
 
 Constructing RL Modules
