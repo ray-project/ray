@@ -275,7 +275,7 @@ AlgorithmConfig.exploration()
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 The main switch for whether to explore or not during sample collection has moved from
-the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.exploration` method
+the deprecated ``AlgorithmConfig.exploration()`` method
 to :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.env_runners`:
 
 It determines whether the method your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` calls
