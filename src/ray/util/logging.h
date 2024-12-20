@@ -284,12 +284,12 @@ class RayLog {
   static void ShutDownRayLog();
 
   /// Get max bytes value from env variable.
-  /// Return std::nullopt if env not set or parse failure.
-  std::optional<size_t> GetRayLogRotationMaxBytes();
+  /// Return default value `kDefaultLogRotationMaxSize` if env not set or parse failure.
+  size_t GetRayLogRotationMaxBytesOrDefault();
 
   /// Get log rotation backup count.
-  /// Return std::nullopt if env not set or parse failure.
-  std::optional<size_t> GetRayLogRotationBackupCount();
+  /// Return default value `kDefaultLogRotationFileNum` if env not set or parse failure.
+  size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
