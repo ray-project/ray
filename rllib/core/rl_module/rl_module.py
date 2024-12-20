@@ -5,6 +5,7 @@ import logging
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
+import torch
 
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -560,7 +561,8 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        return self._forward(batch, **kwargs)
+        with torch.no_grad:
+            return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
@@ -589,7 +591,8 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        return self._forward(batch, **kwargs)
+        with torch.no_grad:
+            return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
@@ -609,8 +612,8 @@ class RLModule(Checkpointable, abc.ABC):
         if self.inference_only:
             raise RuntimeError(
                 "Calling `forward_train` on an inference_only module is not allowed! "
-                "Set the `inference_only=False` flag in the RLModule's config when "
-                "building the module."
+                "Set the `inference_only=False` flag in the RLModuleSpec (or the "
+                "RLModule's constructor)."
             )
         return self._forward_train(batch, **kwargs)
 
