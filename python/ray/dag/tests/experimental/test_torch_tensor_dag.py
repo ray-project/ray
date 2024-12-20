@@ -15,8 +15,8 @@ from ray.air._internal import torch_utils
 from ray.dag import InputNode
 from ray.exceptions import RayChannelError
 from ray.dag.output_node import MultiOutputNode
-from ray.experimental.channel.gpu_communicator import (
-    GPUCommunicator,
+from ray.experimental.channel.communicator import (
+    Communicator,
     TorchTensorAllocator,
 )
 from ray.experimental.channel.nccl_group import _NcclGroup
@@ -371,7 +371,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
     sender = actor_cls.remote()
     receiver = actor_cls.remote()
 
-    class TestNcclGroup(GPUCommunicator):
+    class TestNcclGroup(Communicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
@@ -448,6 +448,9 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         def destroy(self) -> None:
             return self._inner.destroy()
 
+        def get_transport_name(self) -> str:
+            return "nccl"
+
     from cupy.cuda import nccl
 
     comm_id = nccl.get_unique_id()
@@ -486,7 +489,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
     actor1 = actor_cls.remote()
     actor2 = actor_cls.remote()
 
-    class MockNcclGroup(GPUCommunicator):
+    class MockNcclGroup(Communicator):
         """
         A mock NCCL group for testing. Send and recv are not implemented.
         """
@@ -553,6 +556,9 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
 
         def destroy(self) -> None:
             pass
+
+        def get_transport_name(self) -> str:
+            return "nccl"
 
     nccl_group = MockNcclGroup(2, [actor1, actor2])
 
@@ -635,7 +641,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
     ]
     ray.wait(refs)
 
-    class InitedNcclGroup(GPUCommunicator):
+    class InitedNcclGroup(Communicator):
         """
         A custom NCCL group based on existing torch.distributed setup.
         """
@@ -708,6 +714,9 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
         def destroy(self) -> None:
             pass
+
+        def get_transport_name(self) -> str:
+            return "nccl"
 
     nccl_group = InitedNcclGroup(2, [sender, receiver])
 
@@ -1090,7 +1099,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 
     from cupy.cuda import nccl
 
-    class TestNcclGroup(GPUCommunicator):
+    class TestNcclGroup(Communicator):
         """
         A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
         """
@@ -1166,6 +1175,9 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
 
         def destroy(self) -> None:
             return self._inner.destroy()
+
+        def get_transport_name(self) -> str:
+            return "nccl"
 
     comm_id = nccl.get_unique_id()
     nccl_group = TestNcclGroup(2, comm_id, workers)
