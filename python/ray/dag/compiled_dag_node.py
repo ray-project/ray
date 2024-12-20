@@ -929,9 +929,9 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    # Helper function to handle_unused_attributes.
-    def find_unused_input_attributes(self, output_node, input_attributes) -> Set[str]:
+    def find_unused_input_attributes(self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]) -> Set[str]:
         """
+        This is the helper function to handle_unused_attributes.
         Traverse the DAG backwards from the output node to find unused attributes.
         Args:
             output_node: The starting node for the traversal.
@@ -942,12 +942,12 @@ class CompiledDAG:
         """
         from ray.dag import InputAttributeNode
 
-        used_attributes = set()
+        used_attributes: Set[str] = set()
         # Keep track of visited nodes during backtracking.
-        visited_nodes = set()
+        visited_nodes: Set["ray.dag.MultiOutputNode"] = set()
 
         # Traverse backwards from the output node to find all used inputs.
-        def traverse(node):
+        def traverse(node: "ray.dag.MultiOutputNode"):
             if node in visited_nodes:
                 return
             visited_nodes.add(node)
@@ -986,7 +986,7 @@ class CompiledDAG:
         nccl_actors_p2p: Set["ray.actor.ActorHandle"] = set()
         collective_ops: Set[_CollectiveOperation] = set()
 
-        input_attributes = set()
+        input_attributes: Set[str] = set()
         # Find the input node and input attribute nodes in the DAG.
         for idx, task in self.idx_to_task.items():
             if isinstance(task.dag_node, InputNode):
@@ -1187,9 +1187,11 @@ class CompiledDAG:
             unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
 
             raise ValueError(
-                f"DAG expects input: {input_attributes_str}, "
+                "Compiled Graph expects input to be accessed "
+                f"using all of attributes {input_attributes_str}, "
                 f"but {unused_attributes_str} {unused_phrase}. "
-                "Ensure all accessed inputs from InputNode are connected to the output."
+                "Ensure all input attributes are used and contribute "
+                "to the computation of the Compiled Graph output."
             )
 
         # Collect all leaf nodes.
