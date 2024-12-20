@@ -8,6 +8,7 @@ from ray.rllib.core.models.base import ACTOR
 from ray.rllib.core.models.tf.encoder import ENCODER_OUT
 from ray.rllib.core.rl_module.apis import TargetNetworkAPI
 from ray.rllib.utils.typing import NetworkType
+
 from ray.rllib.utils.annotations import (
     override,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
