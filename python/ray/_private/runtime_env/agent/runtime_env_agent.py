@@ -497,7 +497,6 @@ class RuntimeEnvAgent:
                 error_message,
             ) = await _create_runtime_env_with_retry(
                 runtime_env,
-                serialized_env,
                 setup_timeout_seconds,
             )
             creation_time_ms = int(round((time.perf_counter() - start) * 1000, 0))
