@@ -786,6 +786,7 @@ async def test_api_manager_list_pgs(state_api_manager):
     assert exc_info.value.args[0] == GCS_QUERY_FAILURE_WARNING
 
 
+# TODO(ryw): move this to python/ray/dashboard/modules/event/tests/test_event.py
 @pytest.mark.asyncio
 async def test_api_manager_list_cluster_events(state_api_manager):
     data_source_client = state_api_manager.data_source_client
