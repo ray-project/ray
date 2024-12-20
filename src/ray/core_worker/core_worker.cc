@@ -930,13 +930,11 @@ void CoreWorker::ConnectToRayletInternal() {
   if (options_.worker_type == WorkerType::DRIVER) {
     Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
         core_worker_server_->GetPort(), options_.entrypoint);
-    RAY_CHECK(status.ok()) << "Failed to announce driver's port to raylet and GCS: "
-                           << status;
+    RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
-    RAY_CHECK(status.ok()) << "Failed to announce worker's port to raylet and GCS: "
-                           << status;
+    RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
   }
 }
 
@@ -1292,7 +1290,7 @@ bool CoreWorker::HasOwner(const ObjectID &object_id) const {
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
-  RAY_CHECK(status.ok()) << status.message();
+  RAY_CHECK_OK(status);
   return owner_address;
 }
 
@@ -1337,7 +1335,7 @@ void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
                                        rpc::Address *owner_address,
                                        std::string *serialized_object_status) {
   auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
-  RAY_CHECK(status.ok()) << status.message();
+  RAY_CHECK_OK(status);
 }
 
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
@@ -1683,7 +1681,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
         req,
         [&promise, num_replied, num_requests, addr](
             const Status &status, const rpc::RegisterMutableObjectReaderReply &reply) {
-          RAY_CHECK(status.ok());
+          RAY_CHECK_OK(status);
           *num_replied += 1;
           if (*num_replied == num_requests) {
             promise.set_value();
@@ -4399,7 +4397,7 @@ void CoreWorker::HandleRegisterMutableObjectReader(
       ObjectID::FromBinary(request.reader_object_id()),
       [send_reply_callback](const Status &status,
                             const rpc::RegisterMutableObjectReply &r) {
-        RAY_CHECK(status.ok());
+        RAY_CHECK_OK(status);
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
 }
