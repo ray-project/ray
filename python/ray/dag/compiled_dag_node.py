@@ -376,6 +376,7 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
+        # [CL]
         # The NCCL operation of the task. It can be a NCCL read, write, or
         # collective operation.
         self.nccl_op_type: Optional[_NcclOp] = task.dag_node.nccl_op_type
