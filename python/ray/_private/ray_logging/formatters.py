@@ -1,5 +1,6 @@
 import logging
 import json
+from ray._private.log import INTERNAL_TIMESTAMP_LOG_KEY
 from ray._private.ray_logging.constants import (
     LogKey,
     LOGRECORD_STANDARD_ATTRS,
@@ -57,6 +58,13 @@ def generate_record_format_attrs(
         # Both Ray and user-provided context are stored in `record_format`.
         if key not in LOGRECORD_STANDARD_ATTRS:
             _append_flatten_attributes(record_format_attrs, key, value)
+
+    # Format the internal timestamp to the standardized `timestamp_ns` key.
+    if INTERNAL_TIMESTAMP_LOG_KEY in record_format_attrs:
+        record_format_attrs[LogKey.TIMESTAMP_NS.value] = record_format_attrs.pop(
+            INTERNAL_TIMESTAMP_LOG_KEY
+        )
+
     return record_format_attrs
 
 
