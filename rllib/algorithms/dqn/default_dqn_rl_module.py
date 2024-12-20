@@ -1,6 +1,7 @@
 import abc
 from typing import Any, Dict, List, Tuple, Union
 
+from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
 from ray.rllib.algorithms.sac.sac_learner import QF_PREDS
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.learner.utils import make_target_network
@@ -27,11 +28,12 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 
 @DeveloperAPI
 class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", DQNCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def setup(self):
-        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
-            raise self._catalog_ctor_error
-
         # If a dueling architecture is used.
         self.uses_dueling: bool = self.model_config.get("dueling")
         # If double Q learning is used.
