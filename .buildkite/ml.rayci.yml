@@ -61,7 +61,7 @@ steps:
     commands:
       - bazel run //ci/ray_ci:test_in_docker -- //python/ray/train/... ml 
         --workers "$${BUILDKITE_PARALLEL_JOB_COUNT}" --worker-id "$${BUILDKITE_PARALLEL_JOB}" --parallelism-per-worker 3
-        --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials 
+        --except-tags gpu_only,gpu,minimal,tune,doctest,needs_credentials,train_v2
     depends_on: [ "mlbuild", "forge" ]
 
   - label: ":bullettrain_front: ml: train v2 tests"
