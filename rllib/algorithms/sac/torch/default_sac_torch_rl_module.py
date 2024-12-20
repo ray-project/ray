@@ -5,19 +5,21 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_PREDS,
 )
-from ray.rllib.algorithms.sac.sac_rl_module import SACRLModule
+from ray.rllib.algorithms.sac.default_sac_rl_module import DefaultSACRLModule
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT, Encoder, Model
-from ray.rllib.core.rl_module.apis.target_network_api import TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.torch.torch_rl_module import TorchRLModule
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.utils.annotations import override
 from ray.rllib.utils.framework import try_import_torch
+from ray.util.annotations import DeveloperAPI
 
 torch, nn = try_import_torch()
 
 
-class SACTorchRLModule(TorchRLModule, SACRLModule):
+@DeveloperAPI
+class DefaultSACTorchRLModule(TorchRLModule, DefaultSACRLModule):
     framework: str = "torch"
 
     @override(RLModule)
@@ -149,7 +151,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
 
         return target_qvs
 
-    # TODO (sven): Create `ValueFunctionAPI` and subclass from this.
+    @override(QNetAPI)
     def compute_q_values(self, batch: Dict[str, Any]) -> Dict[str, Any]:
         qvs = self._qf_forward_train_helper(batch, self.qf_encoder, self.qf)
         # If a twin Q network should be used, calculate twin Q-values and use the
@@ -163,7 +165,7 @@ class SACTorchRLModule(TorchRLModule, SACRLModule):
             )
         return qvs
 
-    @override(SACRLModule)
+    @override(DefaultSACRLModule)
     def _qf_forward_train_helper(
         self, batch: Dict[str, Any], encoder: Encoder, head: Model
     ) -> Dict[str, Any]:

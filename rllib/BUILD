@@ -1413,13 +1413,6 @@ py_test(
 # --------------------------------------------------------------------
 
 py_test(
-    name = "test_attention_nets",
-    tags = ["team:rllib", "models"],
-    size = "large",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
-
-py_test(
     name = "test_conv2d_default_stacks",
     tags = ["team:rllib", "models"],
     size = "small",

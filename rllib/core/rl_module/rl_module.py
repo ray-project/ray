@@ -21,6 +21,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
@@ -38,9 +39,10 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 logger = logging.getLogger("ray.rllib")
+torch, _ = try_import_torch()
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 @dataclass
 class RLModuleSpec:
     """Utility spec class to make constructing RLModules (in single-agent case) easier.
@@ -254,19 +256,21 @@ class RLModuleSpec:
         )
 
 
-@PublicAPI(stability="alpha")
+@PublicAPI(stability="beta")
 class RLModule(Checkpointable, abc.ABC):
     """Base class for RLlib modules.
 
-    Subclasses should call super().__init__(config) in their __init__ method.
+    Subclasses should call `super().__init__(observation_space=.., action_space=..,
+    inference_only=.., learner_only=.., model_config={..})` in their __init__ methods.
+
     Here is the pseudocode for how the forward methods are called:
 
-    Example for creating a sampling loop:
+    Example for creating a (inference-only) sampling loop:
 
     .. testcode::
 
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
         )
         from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
         import gymnasium as gym
@@ -274,15 +278,13 @@ class RLModule(Checkpointable, abc.ABC):
 
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
         action_dist_class = module.get_inference_action_dist_cls()
         obs, info = env.reset()
         terminated = False
@@ -290,7 +292,7 @@ class RLModule(Checkpointable, abc.ABC):
         while not terminated:
             fwd_ins = {"obs": torch.Tensor([obs])}
             fwd_outputs = module.forward_exploration(fwd_ins)
-            # this can be either deterministic or stochastic distribution
+            # This can be either deterministic or stochastic distribution.
             action_dist = action_dist_class.from_logits(
                 fwd_outputs["action_dist_inputs"]
             )
@@ -302,24 +304,23 @@ class RLModule(Checkpointable, abc.ABC):
 
     .. testcode::
 
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
         import gymnasium as gym
         import torch
 
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
 
         fwd_ins = {"obs": torch.Tensor([obs])}
         fwd_outputs = module.forward_train(fwd_ins)
@@ -330,24 +331,23 @@ class RLModule(Checkpointable, abc.ABC):
 
     .. testcode::
 
-        from ray.rllib.algorithms.ppo.torch.ppo_torch_rl_module import (
-            PPOTorchRLModule
-        )
-        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
         import gymnasium as gym
         import torch
 
+        from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
+            DefaultPPOTorchRLModule
+        )
+        from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
+
         env = gym.make("CartPole-v1")
 
-        # Create a single agent RL module spec.
-        module_spec = RLModuleSpec(
-            module_class=PPOTorchRLModule,
+        # Create an instance of the default RLModule used by PPO.
+        module = DefaultPPOTorchRLModule(
             observation_space=env.observation_space,
             action_space=env.action_space,
             model_config=DefaultModelConfig(fcnet_hiddens=[128, 128]),
             catalog_class=PPOCatalog,
         )
-        module = module_spec.build()
 
         while not terminated:
             fwd_ins = {"obs": torch.Tensor([obs])}
@@ -369,15 +369,6 @@ class RLModule(Checkpointable, abc.ABC):
         ``~_forward_exploration``: Forward pass during training for exploration.
 
         ``~_forward_inference``: Forward pass during inference.
-
-
-    Note:
-        There is a reason that the specs are not written as abstract properties.
-        The reason is that torch overrides `__getattr__` and `__setattr__`. This means
-        that if we define the specs as properties, then any error in the property will
-        be interpreted as a failure to retrieve the attribute and will invoke
-        `__getattr__` which will give a confusing error about the attribute not found.
-        More details here: https://github.com/pytorch/pytorch/issues/49726.
     """
 
     framework: str = None
@@ -394,6 +385,7 @@ class RLModule(Checkpointable, abc.ABC):
         learner_only: bool = False,
         model_config: Optional[Union[dict, DefaultModelConfig]] = None,
         catalog_class=None,
+        **kwargs,
     ):
         # TODO (sven): Deprecate Catalog and replace with utility functions to create
         #  primitive components based on obs- and action spaces.
@@ -526,6 +518,7 @@ class RLModule(Checkpointable, abc.ABC):
 
         If you need a more nuanced distinction between forward passes in the different
         phases of training and evaluation, override the following methods instead:
+
         For distinct action computation logic w/o exploration, override the
         `self._forward_inference()` method.
         For distinct action computation logic with exploration, override the
@@ -569,7 +562,8 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        return self._forward(batch, **kwargs)
+        with torch.no_grad():
+            return self._forward(batch, **kwargs)
 
     def forward_exploration(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during exploration, called from the sampler.
@@ -598,7 +592,8 @@ class RLModule(Checkpointable, abc.ABC):
 
         By default, this calls the generic `self._forward()` method.
         """
-        return self._forward(batch, **kwargs)
+        with torch.no_grad():
+            return self._forward(batch, **kwargs)
 
     def forward_train(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE! Forward-pass during training called from the learner.
@@ -618,8 +613,8 @@ class RLModule(Checkpointable, abc.ABC):
         if self.inference_only:
             raise RuntimeError(
                 "Calling `forward_train` on an inference_only module is not allowed! "
-                "Set the `inference_only=False` flag in the RLModule's config when "
-                "building the module."
+                "Set the `inference_only=False` flag in the RLModuleSpec (or the "
+                "RLModule's constructor)."
             )
         return self._forward_train(batch, **kwargs)
 
@@ -724,22 +719,6 @@ class RLModule(Checkpointable, abc.ABC):
             The underlying module.
         """
         return self
-
-    @Deprecated(new="RLModule.as_multi_rl_module()", error=True)
-    def as_multi_agent(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RLModule.save_to_path(...)", error=True)
-    def save_state(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RLModule.restore_from_path(...)", error=True)
-    def load_state(self, *args, **kwargs):
-        pass
-
-    @Deprecated(new="RLModule.save_to_path(...)", error=True)
-    def save_to_checkpoint(self, *args, **kwargs):
-        pass
 
     def output_specs_inference(self) -> SpecType:
         return [Columns.ACTION_DIST_INPUTS]
