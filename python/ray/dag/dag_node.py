@@ -15,6 +15,7 @@ from typing import (
     Any,
     TypeVar,
     Callable,
+    Set,
 )
 import uuid
 import asyncio
@@ -87,7 +88,6 @@ class DAGNode(DAGNodeBase):
     @property
     def nccl_op_type(self) -> Optional[_NcclOp]:
         """
-        [CL]
         Return the NCCL op type of this node. If this node is not a NCCL op,
         return None.
         """
@@ -435,10 +435,10 @@ class DAGNode(DAGNodeBase):
 
     def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
         """
-        Traverse all nodes in the connected component of the DAG that contains
-        the `self` node, and apply the given function to each node.
+        Traverse all nodes in the connected component of the DAG that contains the
+        `self` node, and apply the given function to each node in topological order.
         """
-        visited = set()
+        visited: Set[DAGNode] = set()
         queue = [self]
         adag_output_node: Optional[DAGNode] = None
 
@@ -458,7 +458,6 @@ class DAGNode(DAGNodeBase):
                             f"(1) {adag_output_node}, (2) {node}"
                         )
                     adag_output_node = node
-                fn(node)
                 visited.add(node)
                 """
                 Add all unseen downstream and upstream nodes to the queue.
@@ -482,6 +481,25 @@ class DAGNode(DAGNodeBase):
                 ):
                     if neighbor not in visited:
                         queue.append(neighbor)
+
+        # Topological sort
+        in_degrees: Dict[DAGNode, int] = {
+            node: len(node._upstream_nodes) for node in visited
+        }
+        frontier: List[DAGNode] = [node for node in visited if in_degrees[node] == 0]
+        sorted_nodes: List[DAGNode] = []
+        while frontier:
+            node = frontier.pop(0)
+            sorted_nodes.append(node)
+            for neighbor in node._downstream_nodes:
+                in_degrees[neighbor] -= 1
+                if in_degrees[neighbor] == 0:
+                    frontier.append(neighbor)
+        assert len(sorted_nodes) == len(visited)
+
+        # Apply the function to each node in topological order.
+        for node in sorted_nodes:
+            fn(node)
 
     def _raise_nested_dag_node_error(self, args):
         """
