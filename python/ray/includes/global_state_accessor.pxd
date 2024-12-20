@@ -80,6 +80,7 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      // Logging default value see class `RayLog`.
       InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
