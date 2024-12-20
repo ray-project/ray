@@ -5,15 +5,15 @@
 
 .. _rlmodule-reference-docs:
 
-RLModule API
-============
+RLModule APIs
+=============
 
 
 RL Module specifications and configurations
 -------------------------------------------
 
-Single Agent
-++++++++++++
+Single RLModule
++++++++++++++++
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
@@ -23,11 +23,9 @@ Single Agent
 
     RLModuleSpec
     RLModuleSpec.build
-    RLModuleSpec.get_rl_module_config
 
-
-Multi RLModule (multi-agent)
-++++++++++++++++++++++++++++
+MultiRLModule
++++++++++++++
 
 .. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
@@ -37,15 +35,23 @@ Multi RLModule (multi-agent)
 
     MultiRLModuleSpec
     MultiRLModuleSpec.build
-    MultiRLModuleSpec.get_multi_rl_module_config
+
+DefaultModelConfig
+++++++++++++++++++
+
+.. currentmodule:: ray.rllib.core.rl_module.default_model_config
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    DefaultModelConfig
 
 
-
-RL Module API
--------------
+RLModule API
+------------
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
-
 
 Constructor
 +++++++++++
@@ -55,6 +61,7 @@ Constructor
     :toctree: doc/
 
     RLModule
+    RLModule.setup
     RLModule.as_multi_rl_module
 
 
@@ -73,21 +80,6 @@ Forward methods
     ~RLModule._forward_exploration
     ~RLModule._forward_inference
 
-IO specifications
-+++++++++++++++++
-
-.. autosummary::
-    :nosignatures:
-    :toctree: doc/
-
-    ~RLModule.input_specs_inference
-    ~RLModule.input_specs_exploration
-    ~RLModule.input_specs_train
-    ~RLModule.output_specs_inference
-    ~RLModule.output_specs_exploration
-    ~RLModule.output_specs_train
-
-
 
 Saving and Loading
 ++++++++++++++++++++++
@@ -96,15 +88,15 @@ Saving and Loading
     :nosignatures:
     :toctree: doc/
 
-    ~RLModule.get_state
-    ~RLModule.set_state
     ~RLModule.save_to_path
     ~RLModule.restore_from_path
     ~RLModule.from_checkpoint
+    ~RLModule.get_state
+    ~RLModule.set_state
 
 
-Multi Agent RL Module API
--------------------------
+MultiRLModule API
+-----------------
 
 .. currentmodule:: ray.rllib.core.rl_module.multi_rl_module
 
@@ -119,8 +111,8 @@ Constructor
     MultiRLModule.setup
     MultiRLModule.as_multi_rl_module
 
-Modifying the underlying RL modules
-++++++++++++++++++++++++++++++++++++
+Modifying the underlying RLModules
+++++++++++++++++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
@@ -129,8 +121,8 @@ Modifying the underlying RL modules
     ~MultiRLModule.add_module
     ~MultiRLModule.remove_module
 
-Saving and Loading
-++++++++++++++++++++++
+Saving and Restoring
+++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
@@ -138,3 +130,6 @@ Saving and Loading
 
     ~MultiRLModule.save_to_path
     ~MultiRLModule.restore_from_path
+    ~MultiRLModule.from_checkpoint
+    ~MultiRLModule.get_state
+    ~MultiRLModule.set_state

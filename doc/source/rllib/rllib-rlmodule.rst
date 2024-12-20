@@ -552,6 +552,31 @@ You should never override the constructor (`__init__`) itself, however, it might
 
 Also :ref:`see the preceding section on how to create an RLModule through the contructor <rllib-constructing-rlmodule-w-class-constructor>` for more details.
 
+Algorithm-specific RLModule APIs
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The algorithm that you would like to use alongside your RLModule affects - to some
+extend - what your final custom module needs to look like.
+Each Algorithm class has a fixed set of APIs that all RLModules that are to be trained
+by that algorithm need to implement.
+
+To find out, what APIs your Algorithms requires, do this:
+
+.. testcode::
+
+    # Import the config of the algo of your choice:
+    from ray.rllib.algorithms.sac import SACConfig
+
+    # Print out the (abstract) APIs, you need to subclass from and whose
+    # abstract methods we need to implement (besides `setup()` and the `_forward_..()`
+    # methods):
+    print(
+        SACConfig()
+        .get_default_learner_class()
+        .rl_module_required_apis()
+    )
+
+
 Putting it all together
 ~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -672,11 +697,14 @@ Here are two good recipes for extending existing RLModules:
 
 .. tab-set::
 
-    .. tab-item:: Subclass DL-backend's base and add APIs
+    .. tab-item:: Subclass `TorchRLModule` and add APIs
 
         The simplest way to write your own custom RLModule and use it alongside
-        an Algorithm is to subclass from the DL-backend specific base, for example
-        :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`.
+        an Algorithm is to subclass :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`,
+        implement your child class' `setup` and `_forward_...` methods, and then add those RLModule APIs
+        that your algorithm of choice requires.
+
+        For example:
 
 
 
@@ -691,40 +719,6 @@ Here are two good recipes for extending existing RLModules:
         into the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rl_module` method
         (`config.rl_module(rl_module_spec=RLModuleSpec(module_class=[your class]))`) to train your custom RLModule.
 
-        .. code-block:: python
-
-            import torch
-            nn = torch.nn
-
-            class MyRLModule(TorchRLModule):
-
-                def setup(self):
-                    # You have access here to the following already set attributes:
-                    self.observation_space
-                    self.action_space
-                    self.inference_only
-                    self.model_config  # <- a dict with custom settings
-                    ...
-
-                    # Build all the layers and subcomponents here you need for the
-                    # RLModule's forward passes.
-                    # For example:
-                    self._encoder_fcnet = nn.Sequential(...)
-                    ...
-
-            # Pass in the custom RL Module class to the spec
-            algo_config = algo_config.rl_module(
-                rl_module_spec=RLModuleSpec(module_class=MyRLModule)
-            )
-
-        A concrete example: If you want to replace the default encoder that RLlib builds for torch, PPO and a given observation space,
-        you can override the `setup` method on the :py:class:`~ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module.DefaultPPOTorchRLModule`
-        class to create your custom encoder instead of the default one. We do this in the following example.
-
-        .. literalinclude:: ../../../rllib/examples/rl_modules/classes/mobilenet_rlm.py
-                :language: python
-                :start-after: __sphinx_doc_begin__
-                :end-before: __sphinx_doc_end__
 
 
 .. _rllib-checkpointing-rl-modules-docs:
@@ -794,6 +788,7 @@ Loading an RLModule checkpoint into a running Algorithm
         .rl_module(model_config=DefaultModelConfig(fcnet_hiddens=[32]))
     )
     algo = config.build()
+
 
 Now, let's load the saved RLModule state (from the preceding `module.save_to_path()`) directly
 into the running Algorithm's RLModule(s). Note that all RLModules within the algo get updated, the ones
