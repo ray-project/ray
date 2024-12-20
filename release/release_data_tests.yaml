@@ -431,7 +431,7 @@
     cluster_compute: autoscaling_hetero_compute.yaml
 
   run:
-    timeout: 3600
+    timeout: 7200
     script: >
       python gpu_batch_inference.py
       --data-directory 10T-image-data-synthetic-raw-parquet --data-format parquet
