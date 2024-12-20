@@ -1000,6 +1000,11 @@ class CompiledDAG:
                 input_node = task.dag_node
                 input_attributes.update(input_node.input_attribute_nodes.keys())
 
+                # handle_unused_attributes:
+                # Save input attributes in a set.
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
+
         # Find the (multi-)output node to the DAG.
         for idx, task in self.idx_to_task.items():
             if idx == self.input_task_idx or isinstance(
