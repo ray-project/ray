@@ -63,8 +63,6 @@ bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
 
 std::string RayLog::logger_name_ = "ray_log_sink";
-size_t RayLog::log_rotation_max_size_ = 1ULL << 29;
-size_t RayLog::log_rotation_file_num_ = 10;
 bool RayLog::is_failure_signal_handler_installed_ = false;
 std::atomic<bool> RayLog::initialized_ = false;
 
