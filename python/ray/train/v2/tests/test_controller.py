@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
+import ray
 from ray.train.v2._internal.constants import HEALTH_CHECK_INTERVAL_S_ENV_VAR
 from ray.train.v2._internal.exceptions import (
     WorkerGroupStartupFailedError,
@@ -137,6 +138,13 @@ def patch_worker_group(monkeypatch):
     # Make polling interval 0 to speed up tests
     monkeypatch.setenv(HEALTH_CHECK_INTERVAL_S_ENV_VAR, "0")
     yield
+
+
+@pytest.fixture(autouse=True)
+def ray_start():
+    ray.init()
+    yield
+    ray.shutdown()
 
 
 def test_resize():
