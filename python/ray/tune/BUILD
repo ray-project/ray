@@ -69,6 +69,14 @@ py_test(
 )
 
 py_test(
+    name = "test_api_migrations",
+    size = "small",
+    srcs = ["tests/test_api_migrations.py"],
+    deps = [":tune_lib"],
+    tags = ["team:ml", "exclusive"],
+)
+
+py_test(
     name = "test_callbacks",
     size = "small",
     srcs = ["tests/test_callbacks.py"],
