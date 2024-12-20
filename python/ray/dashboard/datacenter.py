@@ -37,8 +37,6 @@ class DataSource:
     node_actors = MutableNotificationDict()
     # {worker id(str): core worker stats}
     core_worker_stats = Dict()
-    # {job id hex(str): {event id(str): event dict}}
-    events = Dict()
 
 
 class DataOrganizer:
