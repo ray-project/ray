@@ -16,7 +16,6 @@ from ray.rllib.connectors.learner.add_next_observations_from_episodes_to_train_b
 from ray.rllib.connectors.learner.add_one_ts_to_episodes_and_truncate import (
     AddOneTsToEpisodesAndTruncate,
 )
-from ray.rllib.connectors.learner.compute_returns_to_go import ComputeReturnsToGo
 from ray.rllib.connectors.learner.general_advantage_estimation import (
     GeneralAdvantageEstimation,
 )
@@ -32,7 +31,6 @@ __all__ = [
     "AddStatesFromEpisodesToBatch",
     "AgentToModuleMapping",
     "BatchIndividualItems",
-    "ComputeReturnsToGo",
     "GeneralAdvantageEstimation",
     "LearnerConnectorPipeline",
     "NumpyToTensor",

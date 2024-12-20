@@ -5,7 +5,6 @@ import logging
 from typing import Any, Collection, Dict, Optional, Type, TYPE_CHECKING, Union
 
 import gymnasium as gym
-import torch
 
 from ray.rllib.core import DEFAULT_MODULE_ID
 from ray.rllib.core.columns import Columns
@@ -22,6 +21,7 @@ from ray.rllib.utils.deprecation import (
     DEPRECATED_VALUE,
     deprecation_warning,
 )
+from ray.rllib.utils.framework import try_import_torch
 from ray.rllib.utils.serialization import (
     gym_space_from_dict,
     gym_space_to_dict,
@@ -39,6 +39,7 @@ if TYPE_CHECKING:
     from ray.rllib.core.models.catalog import Catalog
 
 logger = logging.getLogger("ray.rllib")
+torch, _ = try_import_torch()
 
 
 @PublicAPI(stability="beta")

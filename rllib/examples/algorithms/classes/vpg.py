@@ -34,12 +34,18 @@ class VPGConfig(AlgorithmConfig):
         # VPG specific overrides.
         self.num_env_runners = 1
 
+        # Switch on the new API stack by default.
+        self.api_stack(
+            enable_env_runner_and_connector_v2=True,
+            enable_rl_module_and_learner=True,
+        )
+
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self):
         if self.framework_str == "torch":
             spec = RLModuleSpec(
                 module_class=VPGTorchRLModule,
-                model_config={"hidden_dim": 64},
+                model_config_dict={"hidden_dim": 64},
             )
         else:
             raise ValueError(f"Unsupported framework: {self.framework_str}")
