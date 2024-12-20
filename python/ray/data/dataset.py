@@ -1192,7 +1192,7 @@ class Dataset:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >> ds.filter(expr="id <= 4").take_all()
+            >>> ds.filter(expr="id <= 4").take_all()
             [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
         Time complexity: O(dataset size / parallelism)
