@@ -285,11 +285,11 @@ class RayLog {
 
   /// Get max bytes value from env variable.
   /// Return default value `kDefaultLogRotationMaxSize` if env not set or parse failure.
-  size_t GetRayLogRotationMaxBytesOrDefault();
+  static size_t GetRayLogRotationMaxBytesOrDefault();
 
   /// Get log rotation backup count.
   /// Return default value `kDefaultLogRotationFileNum` if env not set or parse failure.
-  size_t GetRayLogRotationBackupCountOrDefault();
+  static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();

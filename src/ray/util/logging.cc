@@ -327,7 +327,7 @@ void RayLog::InitLogFormat() {
   return "";
 }
 
-size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
+/*static*/ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
   if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
       ray_rotation_max_bytes != nullptr) {
     size_t max_size = 0;
@@ -340,7 +340,7 @@ size_t RayLog::GetRayLogRotationMaxBytesOrDefault() {
   return kDefaultLogRotationMaxSize;
 }
 
-size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
+/*static*/ size_t RayLog::GetRayLogRotationBackupCountOrDefault() {
   if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
       ray_rotation_backup_count != nullptr) {
     size_t file_num = 0;
