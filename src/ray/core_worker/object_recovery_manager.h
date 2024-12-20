@@ -38,7 +38,7 @@ using ObjectRecoveryFailureCallback = std::function<void(
 class ObjectRecoveryManager {
  public:
   ObjectRecoveryManager(
-      const rpc::Address &rpc_address,
+      rpc::Address rpc_address,
       ObjectPinningClientFactoryFn client_factory,
       std::shared_ptr<PinObjectsInterface> local_object_pinning_client,
       std::function<Status(const ObjectID &object_id,
@@ -49,9 +49,9 @@ class ObjectRecoveryManager {
       ObjectRecoveryFailureCallback recovery_failure_callback)
       : task_resubmitter_(task_resubmitter),
         reference_counter_(reference_counter),
-        rpc_address_(rpc_address),
+        rpc_address_(std::move(rpc_address)),
         client_factory_(std::move(client_factory)),
-        local_object_pinning_client_(local_object_pinning_client),
+        local_object_pinning_client_(std::move(local_object_pinning_client)),
         object_lookup_(std::move(object_lookup)),
         in_memory_store_(in_memory_store),
         recovery_failure_callback_(std::move(recovery_failure_callback)) {}
@@ -115,21 +115,20 @@ class ObjectRecoveryManager {
   rpc::Address rpc_address_;
 
   /// Factory for producing new clients to pin objects at remote nodes.
-  const ObjectPinningClientFactoryFn client_factory_;
+  ObjectPinningClientFactoryFn client_factory_;
 
   // Client that can be used to pin objects from the local raylet.
   std::shared_ptr<PinObjectsInterface> local_object_pinning_client_;
 
   /// Function to lookup an object's locations from the global database.
-  const std::function<Status(const ObjectID &object_id,
-                             const ObjectLookupCallback &callback)>
+  std::function<Status(const ObjectID &object_id, const ObjectLookupCallback &callback)>
       object_lookup_;
 
   /// Used to store object values (InPlasmaError) if recovery succeeds.
   CoreWorkerMemoryStore &in_memory_store_;
 
   /// Callback to call if recovery fails.
-  const ObjectRecoveryFailureCallback recovery_failure_callback_;
+  ObjectRecoveryFailureCallback recovery_failure_callback_;
 
   /// Protects below fields.
   mutable absl::Mutex mu_;
