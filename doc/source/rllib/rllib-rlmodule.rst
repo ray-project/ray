@@ -7,7 +7,10 @@
 RL Modules
 ==========
 
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is the main neural network class in RLlib's new API stack and exposes
+The :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` class in RLlib's new API stack allows you to write custom
+models in RLlib, including highly complex multi-network setups, often found in multi-agent- or model-based algorithms.
+
+:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` is the main neural network class and exposes
 three public methods, each corresponding to a distinct phase in the reinforcement learning cycle:
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.forward_exploration` handles the computation of actions during data collection
 (if the data is used for a succeeding training step), balancing exploration and exploitation.
@@ -37,11 +40,10 @@ Enabling the RLModule API in the AlgorithmConfig
 RLModules are used exclusively in the :ref:`new API stack <rllib-new-api-stack-guide>`, which is activated by default in RLlib.
 
 In case you are working with a legacy config and would like to migrate it to the new API stack, see
-:ref:`our new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
+the :ref:`new API stack migration guide <rllib-new-api-stack-migration-guide>` for more information.
 
-If you have a config that's accidentally still set to the old API stack,
-use the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack`
-method to switch:
+If you have a config that's still set to the old API stack, use the
+:py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.api_stack` method to switch:
 
 .. testcode::
 
@@ -60,21 +62,119 @@ Default RLModules
 -----------------
 
 If you don't specify any module-related settings in your
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib uses the
-respective algorithm's default RLModule, which is usually a great choice for initial
-experimentation and benchmarking. All of these default RLModules support 1D-tensor- and
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig`, RLlib uses the respective algorithm's default
+RLModule, which is a great choice for initial experimentation and benchmarking. All of the default RLModules support 1D-tensor- and
 image observations (``[width] x [height] x [channels]``).
 
+.. note::
+    For discrete or more complex input observation spaces (for example dictionaries), use the
+    :py:class:`~ray.rllib.connectors.env_to_module.flatten_observations.FlattenObservations` connector
+    piece like so:
+
+    .. testcode::
+        from ray.rllib.algorithms.ppo import PPOConfig
+        from ray.rllib.connectors.env_to_module import FlattenObservations
+
+        config = (
+            PPOConfig()
+            # FrozenLake has a discrete observation space, ...
+            .environment("FrozenLake-v1")
+            # ... which `FlattenObservations` converts to one-hot.
+            .env_runners(env_to_module_connector=lambda env: FlattenObservations())
+        )
+
+    .. TODO (sven): Link here to the connector V2 page and preprocessors once that page is done.
+
+Furthermore, all default models offer configurable architecture choices with respect to the number
+and size of the layers used (Dense or CNN), their activations and initializations, and automatic LSTM-wrapping behavior.
+
+Use the :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` datadict class to configure
+any default model in RLlib. Note that you should only use this class for configuring default models.
+When writing your own custom RLModules, you should use plain python dicts to define your model configurations.
+See here for more information on :ref:`how to write and configure your custom RLModules <rllib-writing-custom-rl-modules>`.
 
 
-In order to
+Configuring default MLP nets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+If you want to train a simple MLP policy (with only fully connected layers) with PPO and use the default RLModule,
+you should configure your experiment like so:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+
+    config = (
+        PPOConfig()
+        .environment("CartPole-v1")
+        .rl_module(
+            # Use a non-default 32,32-stack with ReLU activations.
+            model_config=DefaultModelConfig(
+                fcnet_hiddens=[32, 32],
+                fcnet_activation="relu",
+            )
+        )
+    )
+
+See here for a compete list of all supported ``fcnet_..`` options:
+
+.. literalinclude:: ../../../rllib/core/rl_modules/default_model_config.py
+        :language: python
+        :start-after: __sphinx_doc_default_model_config_fcnet_begin__
+        :end-before: __sphinx_doc_default_model_config_fcnet_end__
+
+
+Configuring default CNN nets
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For image-based environments (for example `Atari <https://ale.farama.org/environments/>`__), use the
+``conv2d_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
+For example:
+
+.. testcode::
+
+    from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.core.rl_module.default_model_config import DefaultModelConfig
+
+    config = (
+        PPOConfig()
+        .environment("ale_py:ALE/Pong-v5")  # `pip install gymnasium[atari]`
+        .rl_module(
+            model_config=DefaultModelConfig(
+                # Use a DreamerV3-style CNN stack.
+                conv2d_filters=[
+                    [16, 4, 2],  # 1st CNN layer: num_filters, kernel, stride(, padding)?
+                    [32, 4, 2],  # 2nd CNN layer
+                    [64, 4, 2],  # etc..
+                    [128, 4, 2],
+                ],
+                conv2d_activation="silu",
+
+                # After the last CNN, the default model flattens, then adds an (optional) MLP.
+                head_fcnet_hiddens=[256],
+            )
+        )
+    )
+
+See here for a compete list of all supported ``conv2d_..`` options:
+
+.. literalinclude:: ../../../rllib/core/rl_modules/default_model_config.py
+        :language: python
+        :start-after: __sphinx_doc_default_model_config_conv2d_begin__
+        :end-before: __sphinx_doc_default_model_config_conv2d_end__
+
+
+Other default model settings
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+For LSTM configurations and specific settings for continuous action output layers, see the
+class docstring of :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
+
 
 
 Constructing RL Modules
 -----------------------
-
-The :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` API allows you to define custom models in RLlib,
-including highly complex multi-network setups, often found in multi-agent- or model-based algorithms.
 
 To maintain consistency and usability, RLlib offers a standardized approach for constructing
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances for both single-module use cases

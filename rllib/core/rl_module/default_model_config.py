@@ -36,7 +36,7 @@ class DefaultModelConfig:
         ).build()
 
     Only RLlib's default RLModules (defined by the various algorithms) should use
-    this dataclass. Pass an instance of it into your config like so:
+    this dataclass. Pass an instance of it into your algorithm config like so:
 
     .. testcode::
 
@@ -54,6 +54,7 @@ class DefaultModelConfig:
         ====================================================
         MLP stacks
         ====================================================
+        __sphinx_doc_default_model_config_fcnet_begin__
         fcnet_hiddens: List containing the sizes (number of nodes) of a fully
             connected (MLP) stack. Note that in an encoder-based default
             architecture with a policy head (and possible value head), this setting
@@ -81,10 +82,12 @@ class DefaultModelConfig:
             If `None` (default), the default initializer defined by `torch` is used.
         fcnet_bias_initializer_kwargs: Kwargs passed into the initializer
             function defined through `fcnet_bias_initializer`.
+        __sphinx_doc_default_model_config_fcnet_end__
 
         ====================================================
         Conv2D stacks
         ====================================================
+        __sphinx_doc_default_model_config_conv2d_begin__
         conv_filters: List of lists of format [num_out_channels, kernel, stride]
             defining a Conv2D stack if the input space is 2D. Each item in the outer
             list represents one Conv2D layer. `kernel` and `stride` may be single ints
@@ -111,6 +114,7 @@ class DefaultModelConfig:
             If `None` (default), the default initializer defined by `torch` is used.
         conv_bias_initializer_kwargs: Kwargs passed into the initializer
             function defined through `conv_bias_initializer`.
+        __sphinx_doc_default_model_config_conv2d_end__
 
         ====================================================
         Head configs (e.g. policy- or value function heads)
@@ -139,7 +143,7 @@ class DefaultModelConfig:
             function defined through `head_fcnet_bias_initializer`.
 
         ====================================================
-        Cont. action settings
+        Continuous action settings
         ====================================================
         free_log_std: If True, for DiagGaussian action distributions (or any other
             continuous control distribution), make the second half of the policy's
