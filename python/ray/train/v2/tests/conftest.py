@@ -19,3 +19,9 @@ def setup_logging():
     logger.setLevel(logging.INFO)
     yield
     logger.setLevel(orig_level)
+
+
+@pytest.fixture
+def shutdown_only():
+    yield None
+    ray.shutdown()

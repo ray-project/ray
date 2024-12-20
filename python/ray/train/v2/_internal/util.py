@@ -165,3 +165,15 @@ def invoke_callbacks_context_managers(
             generator = method()
             stack.enter_context(generator)
         yield
+
+
+def get_module_name(obj: object) -> str:
+    """Returns the full module name of the given object, including its qualified name.
+
+    Args:
+        obj: The object (class, function, etc.) whose module name is required.
+
+    Returns:
+        Full module and qualified name as a string.
+    """
+    return f"{obj.__module__}.{obj.__qualname__}"
