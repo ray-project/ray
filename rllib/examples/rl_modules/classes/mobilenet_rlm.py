@@ -9,7 +9,7 @@ import numpy as np
 
 from ray.rllib.algorithms.ppo.ppo import PPOConfig
 from ray.rllib.algorithms.ppo.torch.default_ppo_torch_rl_module import (
-    DefaultPPORLModule,
+    DefaultPPOTorchRLModule,
 )
 from ray.rllib.core.models.configs import MLPHeadConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
@@ -21,7 +21,7 @@ from ray.rllib.examples._old_api_stack.models.mobilenet_v2_encoder import (
 from ray.rllib.core.models.configs import ActorCriticEncoderConfig
 
 
-class MobileNetTorchPPORLModule(DefaultPPORLModule):
+class MobileNetTorchPPORLModule(DefaultPPOTorchRLModule):
     """A DefaultPPORLModule with mobilenet v2 as an encoder.
 
     The idea behind this model is to demonstrate how we can bypass catalog to
