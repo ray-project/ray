@@ -11,4 +11,4 @@ hyperopt @ git+https://github.com/hyperopt/hyperopt.git@2504ee61419737e814e2dec2
 future
 nevergrad==0.4.3.post7
 optuna==3.2.0
-google-vizier[jax]
+google-vizier-dev[jax]
