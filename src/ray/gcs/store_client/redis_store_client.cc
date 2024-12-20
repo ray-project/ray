@@ -139,7 +139,15 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   const OptionalItemCallback<std::string> &callback) {
   RAY_CHECK(callback != nullptr);
 
+  RAY_LOG(ERROR) << StackTrace{};
+  RAY_CHECK(false) << "!!!INTENTIONAL ERROR!!!";
+
+
   auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
+
+    RAY_LOG(ERROR) << StackTrace{};
+    RAY_CHECK(false) << "!!!INTENTIONAL ERROR!!!";
+
     std::optional<std::string> result;
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
