@@ -8,7 +8,7 @@ from ray.tune.utils.util import _atomic_save, _load_newest_checkpoint
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
-    from ray.train import Checkpoint
+    from ray.tune import Checkpoint
     from ray.tune.experiment import Trial
     from ray.tune.stopper import Stopper
 
