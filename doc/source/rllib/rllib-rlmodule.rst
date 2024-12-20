@@ -59,6 +59,8 @@ If you have a config that's still set to the old API stack, use the
     )
 
 
+.. _rllib_default_rl_modules_docs:
+
 Default RLModules
 -----------------
 
@@ -592,7 +594,6 @@ share the same encoder (the third network in the MultiRLModule). The encoder rec
 and outputs embedding vectors that then serve as input for the two policy heads to compute the agents' actions.
 
 
-
 .. tab-set::
 
     .. tab-item:: MultiRLModule (w/ two policy nets and one encoder)
@@ -655,7 +656,7 @@ model hyper-parameters:
 Extending existing RLlib RLModules
 ----------------------------------
 
-RLlib provides :ref:`default RLModules for the different algorithms <>` as well as some example custom
+RLlib provides :ref:`default RLModules for the different algorithms <rllib_default_rl_modules_docs>` as well as some example custom
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` implementations catering to specific requirements.
 
 For example, see `this CNN example here <https://github.com/ray-project/ray/blob/master/rllib/examples/rl_modules/classes/tiny_atari_cnn_rlm.py>`__
@@ -671,17 +672,22 @@ Here are two good recipes for extending existing RLModules:
 
 .. tab-set::
 
-    .. tab-item:: Subclass base class and add APIs
+    .. tab-item:: Subclass DL-backend's base and add APIs
+
+        The simplest way to write your own custom RLModule and use it alongside
+        an Algorithm is to subclass from the DL-backend specific base, for example
+        :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`.
 
 
 
 
-    .. tab-item:: Subclass existing RLlib default RLModule
+
+    .. tab-item:: Subclass an algorithm's default RLModule
 
         The default way to extend existing RLModules is to inherit from the framework specific subclasses
         (for example :py:class:`~ray.rllib.core.rl_module.torch.torch_rl_module.TorchRLModule`) and override
         the :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.setup` method, but at a minimum the
-        three `_forward_()` methods and any other method you need to customize. Then pass the new customized class
+        three `_forward_()` methods and any other method you need to be customized. Then pass the new customized class
         into the :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.rl_module` method
         (`config.rl_module(rl_module_spec=RLModuleSpec(module_class=[your class]))`) to train your custom RLModule.
 
