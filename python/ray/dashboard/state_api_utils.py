@@ -21,7 +21,7 @@ from ray.util.state.exception import DataSourceUnavailable
 from ray.util.state.util import convert_string_to_type
 
 
-def do_reply(self, success: bool, error_message: str, result: dict, **kwargs):
+def do_reply(success: bool, error_message: str, result: dict, **kwargs):
     return rest_response(
         success=success,
         message=error_message,
