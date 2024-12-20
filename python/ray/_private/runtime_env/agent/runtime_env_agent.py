@@ -377,10 +377,7 @@ class RuntimeEnvAgent:
             error_message = None
             for _ in range(runtime_env_consts.RUNTIME_ENV_RETRY_TIMES):
                 try:
-                    runtime_env_setup_task = _setup_runtime_env(
-                        runtime_env,
-                        serialized_env,
-                    )
+                    runtime_env_setup_task = _setup_runtime_env(runtime_env)
                     runtime_env_context = await asyncio.wait_for(
                         runtime_env_setup_task, timeout=setup_timeout_seconds
                     )
