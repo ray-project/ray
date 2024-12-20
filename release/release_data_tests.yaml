@@ -312,19 +312,37 @@
 # Map tests
 ###########
 
-- name: map_batches_benchmark_single_node
+- name: map
   run:
-    # Expect the benchmark to finish around 12 minutes.
-    timeout: 1080
-    script: python iter_batches_benchmark.py
+    timeout: 1800
+    script: python map_benchmark.py --api map --sf 10
 
+- name: flat_map
+  run:
+    timeout: 1800
+    script: python map_benchmark.py --api flat_map --sf 10
+
+- name: map_batches
+  run:
+    timeout: 1800
+    
   variations:
-    - __suffix__: aws
-    - __suffix__: gce
-      env: gce
-      frequency: manual
-      cluster:
-        cluster_compute: single_node_benchmark_compute_gce.yaml
+    - __suffix__: numpy
+      run:
+        script: >
+          python map_benchmark.py --api map_batches --batch-format numpy --sf 1000
+    - __suffix__: pandas
+      run:
+        script: >
+            python map_benchmark.py --api map_batches --batch-format pandas --sf 1000
+    - __suffix__: pyarrow
+      run:
+        script: >
+            python map_benchmark.py --api map_batches --batch-format pyarrow --sf 1000
+    - __suffix__: actors
+      run:
+        script: >
+            python map_benchmark.py --api map_batches --compute actors --sf 1000
 
 ########################
 # Sort and shuffle tests
