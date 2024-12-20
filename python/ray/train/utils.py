@@ -11,7 +11,7 @@ def _copy_doc(copy_func):
     return wrapped
 
 
-def log_deprecation_warning(message):
+def _log_deprecation_warning(message):
     warnings.warn(
         message,
         RayDeprecationWarning,

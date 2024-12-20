@@ -4,7 +4,7 @@ from typing import TYPE_CHECKING, Any, Dict, Optional
 from ray.train._internal import session
 from ray.train._internal.storage import StorageContext
 from ray.train.constants import _v2_migration_warnings_enabled
-from ray.train.utils import _copy_doc, log_deprecation_warning
+from ray.train.utils import _copy_doc, _log_deprecation_warning
 from ray.util.annotations import Deprecated, DeveloperAPI, PublicAPI
 
 if TYPE_CHECKING:
@@ -114,7 +114,7 @@ def get_context() -> TrainContext:
         from ray.tune import get_context as get_tune_context
 
         if _v2_migration_warnings_enabled():
-            log_deprecation_warning(
+            _log_deprecation_warning(
                 "`ray.train.get_context()` should be switched to "
                 "`ray.tune.get_context()` when running in a function "
                 "passed to Ray Tune. This will be an error in the future."

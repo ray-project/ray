@@ -3,7 +3,7 @@ from typing import Dict, Optional
 from ray.train._checkpoint import Checkpoint as TrainCheckpoint
 from ray.train._internal.session import _warn_session_misuse, get_session
 from ray.train.constants import _v2_migration_warnings_enabled
-from ray.train.utils import _copy_doc, log_deprecation_warning
+from ray.train.utils import _copy_doc, _log_deprecation_warning
 from ray.util.annotations import PublicAPI
 
 
@@ -35,7 +35,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
     """
     if checkpoint and not isinstance(checkpoint, Checkpoint):
         if _v2_migration_warnings_enabled():
-            log_deprecation_warning(
+            _log_deprecation_warning(
                 "The `Checkpoint` class should be imported from `ray.tune` "
                 "when passing it to `ray.tune.report` in a Tune function."
                 "Please update your imports."

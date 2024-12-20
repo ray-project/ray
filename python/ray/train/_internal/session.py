@@ -35,7 +35,7 @@ from ray.train.constants import (
     _v2_migration_warnings_enabled,
 )
 from ray.train.error import SessionMisuseError
-from ray.train.utils import log_deprecation_warning
+from ray.train.utils import _log_deprecation_warning
 from ray.util.annotations import DeveloperAPI, PublicAPI
 from ray.util.debug import log_once
 from ray.util.placement_group import _valid_resource_shape
@@ -751,7 +751,7 @@ def report(metrics: Dict, *, checkpoint: Optional[Checkpoint] = None) -> None:
         import ray.tune
 
         if _v2_migration_warnings_enabled():
-            log_deprecation_warning(
+            _log_deprecation_warning(
                 "`ray.train.report` should be switched to "
                 "`ray.tune.report` when running in a function "
                 "passed to Ray Tune. This will be an error in the future."
@@ -809,7 +809,7 @@ def get_checkpoint() -> Optional[Checkpoint]:
         import ray.tune
 
         if _v2_migration_warnings_enabled():
-            log_deprecation_warning(
+            _log_deprecation_warning(
                 "`ray.train.get_checkpoint` should be switched to "
                 "`ray.tune.get_checkpoint` when running in a function "
                 "passed to Ray Tune. This will be an error in the future."
