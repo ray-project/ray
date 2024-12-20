@@ -176,7 +176,7 @@ class ScalingConfig:
                     "request a positive number of `GPU` in "
                     "`resources_per_worker."
                 )
-            
+
             # Validate inputs for resources_per_worker
             accepted_resource_arguments: List[str] = ["GPU", "CPU", "memory", "custom"]
             invalid_resources = []
