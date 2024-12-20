@@ -929,7 +929,9 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def find_unused_input_attributes(self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]) -> Set[str]:
+    def find_unused_input_attributes(
+        self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+    ) -> Set[str]:
         """
         This is the helper function to handle_unused_attributes.
         Traverse the DAG backwards from the output node to find unused attributes.

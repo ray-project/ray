@@ -401,10 +401,10 @@ def test_missing_input_node():
     with pytest.raises(
         ValueError,
         match="Compiled Graph expects input to be accessed "
-              "using all of attributes 0, 1, 2, "
-              "but 1 is unused. "
-              "Ensure all input attributes are used and contribute "
-              "to the computation of the Compiled Graph output."
+        "using all of attributes 0, 1, 2, "
+        "but 1 is unused. "
+        "Ensure all input attributes are used and contribute "
+        "to the computation of the Compiled Graph output.",
     ):
         dag.experimental_compile()
 
