@@ -1,5 +1,4 @@
 from collections import deque
-import copy
 import queue
 import threading
 import time
@@ -24,7 +23,6 @@ from ray.rllib.utils.lambda_defaultdict import LambdaDefaultDict
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     NUM_ENV_STEPS_SAMPLED_LIFETIME,
-    NUM_ENV_STEPS_TRAINED,
 )
 from ray.rllib.utils.metrics.metrics_logger import MetricsLogger
 from ray.rllib.utils.schedules.scheduler import Scheduler
@@ -44,11 +42,21 @@ QUEUE_SIZE_GPU_LOADER_QUEUE = "queue_size_gpu_loader_queue"
 QUEUE_SIZE_LEARNER_THREAD_QUEUE = "queue_size_learner_thread_queue"
 QUEUE_SIZE_RESULTS_QUEUE = "queue_size_results_queue"
 
+_CURRENT_GLOBAL_TIMESTEPS = None
+
 
 class IMPALALearner(Learner):
     @override(Learner)
     def build(self) -> None:
         super().build()
+
+        # TODO (sven): We replace the dummy RLock here for APPO/IMPALA, b/c these algos
+        #  require this for thread safety reasons.
+        #  An RLock breaks our current OfflineData and OfflinePreLearner logic, in which
+        #  the Learner (which contains a MetricsLogger) is serialized and deserialized.
+        #  We will have to fix this offline RL logic first, then can remove this hack
+        #  here and return to always using the RLock.
+        self.metrics._threading_lock = threading.RLock()
 
         # Dict mapping module IDs to the respective entropy Scheduler instance.
         self.entropy_coeff_schedulers_per_module: Dict[
@@ -84,7 +92,6 @@ class IMPALALearner(Learner):
         # Default is to have a learner thread.
         if not hasattr(self, "_learner_thread_in_queue"):
             self._learner_thread_in_queue = deque(maxlen=self.config.learner_queue_size)
-        self._learner_thread_out_queue = queue.Queue()
 
         # Create and start the GPU loader thread(s).
         if self.config.num_gpus_per_learner > 0:
@@ -104,7 +111,6 @@ class IMPALALearner(Learner):
         self._learner_thread = _LearnerThread(
             update_method=self._update_from_batch_or_episodes,
             in_queue=self._learner_thread_in_queue,
-            out_queue=self._learner_thread_out_queue,
             metrics_logger=self.metrics,
         )
         self._learner_thread.start()
@@ -117,10 +123,8 @@ class IMPALALearner(Learner):
         timesteps: Dict[str, Any],
         **kwargs,
     ) -> ResultDict:
-        self.metrics.set_value(
-            (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME),
-            timesteps[NUM_ENV_STEPS_SAMPLED_LIFETIME],
-        )
+        global _CURRENT_GLOBAL_TIMESTEPS
+        _CURRENT_GLOBAL_TIMESTEPS = timesteps
 
         # TODO (sven): IMPALA does NOT call additional update anymore from its
         #  `training_step()` method. Instead, we'll do this here (to avoid the extra
@@ -167,12 +171,12 @@ class IMPALALearner(Learner):
                     (ALL_MODULES, QUEUE_SIZE_GPU_LOADER_QUEUE),
                     self._gpu_loader_in_queue.qsize(),
                 )
+            # Add the batch directly to the learner queue (or circular buffer).
             else:
                 ma_batch = MultiAgentBatch(
                     {mid: SampleBatch(b) for mid, b in batch.items()},
                     env_steps=env_steps,
                 )
-                # Add the batch directly to the circular buffer.
                 if isinstance(self._learner_thread_in_queue, CircularBuffer):
                     ts_dropped = self._learner_thread_in_queue.add(ma_batch)
                     self.metrics.log_value(
@@ -183,22 +187,10 @@ class IMPALALearner(Learner):
                 else:
                     # Enqueue to Learner thread's in-queue.
                     _LearnerThread.enqueue(
-                        self._learner_thread_in_queue,
-                        ma_batch,
-                        self.metrics,
+                        self._learner_thread_in_queue, ma_batch, self.metrics
                     )
 
-        # Return all queued result dicts thus far (after reducing over them).
-        results = {}
-        ts_trained = 0
-        try:
-            while True:
-                results = self._learner_thread_out_queue.get(block=False)
-                ts_trained += results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].peek()
-        except queue.Empty:
-            if ts_trained:
-                results[ALL_MODULES][NUM_ENV_STEPS_TRAINED].values = [ts_trained]
-            return results
+        return self.metrics.reduce()
 
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     def before_gradient_based_update(self, *, timesteps: Dict[str, Any]) -> None:
@@ -230,7 +222,7 @@ class _GPULoaderThread(threading.Thread):
         *,
         in_queue: queue.Queue,
         out_queue: deque,
-        device: torch.device,
+        device: "torch.device",
         metrics_logger: MetricsLogger,
     ):
         super().__init__()
@@ -285,7 +277,6 @@ class _LearnerThread(threading.Thread):
         *,
         update_method,
         in_queue: deque,
-        out_queue: queue.Queue,
         metrics_logger,
     ):
         super().__init__()
@@ -295,13 +286,14 @@ class _LearnerThread(threading.Thread):
 
         self._update_method = update_method
         self._in_queue: Union[deque, CircularBuffer] = in_queue
-        self._out_queue: queue.Queue = out_queue
 
     def run(self) -> None:
         while not self.stopped:
             self.step()
 
     def step(self):
+        global _CURRENT_GLOBAL_TIMESTEPS
+
         # Get a new batch from the GPU-data (deque.pop -> newest item first).
         with self.metrics.log_time((ALL_MODULES, LEARNER_THREAD_IN_QUEUE_WAIT_TIMER)):
             # Get a new batch from the GPU-data (learner queue OR circular buffer).
@@ -324,26 +316,13 @@ class _LearnerThread(threading.Thread):
             #  this thread has the information about the min minibatches necessary
             #  (due to different agents taking different steps in the env, e.g.
             #  MA-CartPole).
-            results = self._update_method(
+            self._update_method(
                 batch=ma_batch_on_gpu,
-                timesteps={
-                    NUM_ENV_STEPS_SAMPLED_LIFETIME: self.metrics.peek(
-                        (ALL_MODULES, NUM_ENV_STEPS_SAMPLED_LIFETIME), default=0
-                    )
-                },
-            )
-            # We have to deepcopy the results dict, b/c we must avoid having a returned
-            # Stats object sit in the queue and getting a new (possibly even tensor)
-            # value added to it, which would falsify this result.
-            self._out_queue.put(copy.deepcopy(results))
-
-            self.metrics.log_value(
-                (ALL_MODULES, QUEUE_SIZE_RESULTS_QUEUE),
-                self._out_queue.qsize(),
+                timesteps=_CURRENT_GLOBAL_TIMESTEPS,
             )
 
     @staticmethod
-    def enqueue(learner_queue: deque, batch, metrics_logger):
+    def enqueue(learner_queue: deque, batch, metrics):
         # Right-append to learner queue (a deque). If full, drops the leftmost
         # (oldest) item in the deque.
         # Note that we consume from the left (oldest first), which is why the queue size
@@ -353,7 +332,7 @@ class _LearnerThread(threading.Thread):
         # from newer batches (left side) most times, BUT sometimes grabbing a
         # really old batches (right area of deque).
         if len(learner_queue) == learner_queue.maxlen:
-            metrics_logger.log_value(
+            metrics.log_value(
                 (ALL_MODULES, LEARNER_THREAD_ENV_STEPS_DROPPED),
                 learner_queue.popleft().env_steps(),
                 reduce="sum",
@@ -361,7 +340,7 @@ class _LearnerThread(threading.Thread):
         learner_queue.append(batch)
 
         # Log current queue size.
-        metrics_logger.log_value(
+        metrics.log_value(
             (ALL_MODULES, QUEUE_SIZE_LEARNER_THREAD_QUEUE),
             len(learner_queue),
         )

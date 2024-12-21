@@ -512,10 +512,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return builder.build()
 
     @staticmethod
-    def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
-
-    @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:

@@ -432,6 +432,22 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessRegisterClientRequestMessage(
       const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
+  Status ProcessRegisterClientRequestMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::RegisterClientRequest *message,
+      std::optional<int> port);
+
+  // Register a new worker into worker pool.
+  Status RegisterForNewWorker(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const StartupToken &worker_startup_token,
+                              std::function<void(Status, int)> send_reply_callback = {});
+  // Register a new driver into worker pool.
+  Status RegisterForNewDriver(std::shared_ptr<WorkerInterface> worker,
+                              pid_t pid,
+                              const JobID &job_id,
+                              const ray::protocol::RegisterClientRequest *message,
+                              std::function<void(Status, int)> send_reply_callback = {});
 
   /// Process client message of AnnounceWorkerPort
   ///
@@ -440,6 +456,17 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// \return Void.
   void ProcessAnnounceWorkerPortMessage(const std::shared_ptr<ClientConnection> &client,
                                         const uint8_t *message_data);
+  void ProcessAnnounceWorkerPortMessageImpl(
+      const std::shared_ptr<ClientConnection> &client,
+      const ray::protocol::AnnounceWorkerPort *message);
+
+  // Send status of port announcement to client side.
+  void SendPortAnnouncementResponse(const std::shared_ptr<ClientConnection> &client,
+                                    Status status);
+
+  /// Process client registration and port announcement.
+  void ProcessRegisterClientAndAnnouncePortMessage(
+      const std::shared_ptr<ClientConnection> &client, const uint8_t *message_data);
 
   /// Handle the case that a worker is available.
   ///
@@ -523,6 +550,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
                                 rpc::RequestWorkerLeaseReply *reply,
                                 rpc::SendReplyCallback send_reply_callback) override;
 
+  void HandlePrestartWorkers(rpc::PrestartWorkersRequest request,
+                             rpc::PrestartWorkersReply *reply,
+                             rpc::SendReplyCallback send_reply_callback) override;
+
   /// Handle a `ReportWorkerBacklog` request.
   void HandleReportWorkerBacklog(rpc::ReportWorkerBacklogRequest request,
                                  rpc::ReportWorkerBacklogReply *reply,
@@ -551,6 +582,10 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   void HandleDrainRaylet(rpc::DrainRayletRequest request,
                          rpc::DrainRayletReply *reply,
                          rpc::SendReplyCallback send_reply_callback) override;
+
+  void HandleIsLocalWorkerDead(rpc::IsLocalWorkerDeadRequest request,
+                               rpc::IsLocalWorkerDeadReply *reply,
+                               rpc::SendReplyCallback send_reply_callback) override;
 
   /// Handle a `CancelWorkerLease` request.
   void HandleCancelWorkerLease(rpc::CancelWorkerLeaseRequest request,
@@ -740,9 +775,9 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
   /// A Plasma object store client. This is used for creating new objects in
   /// the object store (e.g., for actor tasks that can't be run because the
   /// actor died) and to pin objects that are in scope in the cluster.
-  std::shared_ptr<plasma::PlasmaClient> store_client_;
+  std::unique_ptr<plasma::PlasmaClient> store_client_;
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
   /// The period used for the resources report timer.
   uint64_t report_resources_period_ms_;
   /// Incremented each time we encounter a potential resource deadlock condition.
@@ -776,9 +811,6 @@ class NodeManager : public rpc::NodeManagerServiceHandler,
 
   /// The node manager RPC service.
   rpc::NodeManagerGrpcService node_manager_service_;
-
-  /// Wrapper client for RuntimeEnvManager. Always non-null.
-  std::shared_ptr<RuntimeEnvAgentClient> runtime_env_agent_client_;
 
   /// Manages all local objects that are pinned (primary
   /// copies), freed, and/or spilled.

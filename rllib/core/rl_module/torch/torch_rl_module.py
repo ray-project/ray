@@ -161,7 +161,6 @@ class TorchRLModule(nn.Module, RLModule):
     def get_train_action_dist_cls(self) -> Type[TorchDistribution]:
         return self.get_inference_action_dist_cls()
 
-    @override(nn.Module)
     def forward(self, batch: Dict[str, Any], **kwargs) -> Dict[str, Any]:
         """DO NOT OVERRIDE!
 
@@ -177,7 +176,11 @@ class TorchRLModule(nn.Module, RLModule):
         training sample collection (w/ exploration behavior).
         `_forward_train()` to define the forward pass prior to loss computation.
         """
-        return self.forward_train(batch, **kwargs)
+        # TODO (sven): Experimental to make ONNX exported models work.
+        if self.config.inference_only:
+            return self.forward_exploration(batch, **kwargs)
+        else:
+            return self.forward_train(batch, **kwargs)
 
 
 class TorchDDPRLModule(RLModule, nn.parallel.DistributedDataParallel):

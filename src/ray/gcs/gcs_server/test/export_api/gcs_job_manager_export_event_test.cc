@@ -107,14 +107,14 @@ TEST_F(GcsJobManagerTest, TestExportDriverJobEvents) {
                 log_dir_,
                 "warning",
                 false);
-  gcs::GcsJobManager gcs_job_manager(gcs_table_storage_,
-                                     gcs_publisher_,
+  gcs::GcsJobManager gcs_job_manager(*gcs_table_storage_,
+                                     *gcs_publisher_,
                                      runtime_env_manager_,
                                      *function_manager_,
                                      *fake_kv_,
                                      client_factory_);
 
-  gcs::GcsInitData gcs_init_data(gcs_table_storage_);
+  gcs::GcsInitData gcs_init_data(*gcs_table_storage_);
   gcs_job_manager.Initialize(/*init_data=*/gcs_init_data);
 
   auto job_api_job_id = JobID::FromInt(100);

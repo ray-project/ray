@@ -972,6 +972,11 @@ class DeploymentReplica:
         return self._actor.node_id
 
     @property
+    def actor_pid(self) -> Optional[int]:
+        """Returns the node id of the actor, None if not placed."""
+        return self._actor.pid
+
+    @property
     def initialization_latency_s(self) -> Optional[float]:
         """Returns how long the replica took to initialize."""
 
@@ -2000,7 +2005,7 @@ class DeploymentState:
                 replica_startup_message = (
                     f"{replica.replica_id} started successfully "
                     f"on node '{replica.actor_node_id}' after "
-                    f"{e2e_replica_start_latency:.1f}s."
+                    f"{e2e_replica_start_latency:.1f}s (PID: {replica.actor_pid})."
                 )
                 if replica.initialization_latency_s is not None:
                     # This condition should always be True. The initialization
@@ -2047,9 +2052,10 @@ class DeploymentState:
 
             retrying_msg = "Retrying"
             if self._failed_to_start_threshold != 0:
-                remaining_retries = (
+                remaining_retries = max(
                     self._failed_to_start_threshold
-                    - self._replica_constructor_retry_counter
+                    - self._replica_constructor_retry_counter,
+                    0,
                 )
                 retrying_msg += f" {remaining_retries} more time(s)"
 
@@ -2184,7 +2190,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )
@@ -2201,7 +2210,10 @@ class DeploymentState:
                 # If status is UNHEALTHY, leave the status and message as is.
                 # The issue that caused the deployment to be unhealthy should be
                 # prioritized over this resource availability issue.
-                if self._curr_status_info.status != DeploymentStatus.UNHEALTHY:
+                if self._curr_status_info.status not in [
+                    DeploymentStatus.UNHEALTHY,
+                    DeploymentStatus.DEPLOY_FAILED,
+                ]:
                     self._curr_status_info = self._curr_status_info.update_message(
                         message
                     )

@@ -130,6 +130,7 @@ class MultiRLModule(RLModule):
             action_space=action_space,
             inference_only=inference_only,
             learner_only=None,
+            catalog_class=None,
             model_config=model_config,
             **kwargs,
         )
@@ -527,23 +528,6 @@ class MultiRLModule(RLModule):
         return self
 
     @classmethod
-    def _check_module_configs(cls, module_configs: Dict[ModuleID, Any]):
-        """Checks the module configs for validity.
-
-        The module_configs be a mapping from module_ids to RLModuleSpec
-        objects.
-
-        Args:
-            module_configs: The module configs to check.
-
-        Raises:
-            ValueError: If the module configs are invalid.
-        """
-        for module_id, module_spec in module_configs.items():
-            if not isinstance(module_spec, RLModuleSpec):
-                raise ValueError(f"Module {module_id} is not a RLModuleSpec object.")
-
-    @classmethod
     def _check_module_specs(cls, rl_module_specs: Dict[ModuleID, RLModuleSpec]):
         """Checks the individual RLModuleSpecs for validity.
 
@@ -650,21 +634,14 @@ class MultiRLModuleSpec:
 
     @OverrideToImplementCustomLogic
     def build(self, module_id: Optional[ModuleID] = None) -> RLModule:
-        """Builds either the multi-agent module or the single-agent module.
-
-        If module_id is None, it builds the multi-agent module. Otherwise, it builds
-        the single-agent module with the given module_id.
-
-        Note: If when build is called the module_specs is not a dictionary, it will
-        raise an error, since it should have been updated by the caller to inform us
-        about the module_ids.
+        """Builds either the MultiRLModule or a (single) sub-RLModule under `module_id`.
 
         Args:
             module_id: Optional ModuleID of a single RLModule to be built. If None
                 (default), builds the MultiRLModule.
 
         Returns:
-            The built RLModule if module_id is provided, otherwise the built
+            The built RLModule if `module_id` is provided, otherwise the built
             MultiRLModule.
         """
         self._check_before_build()

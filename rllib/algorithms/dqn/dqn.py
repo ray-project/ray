@@ -407,30 +407,31 @@ class DQNConfig(AlgorithmConfig):
         # Call super's validation method.
         super().validate()
 
-        # Warn about new API stack on by default.
         if self.enable_rl_module_and_learner:
-            logger.warning(
-                f"You are running {self.algo_class.__name__} on the new API stack! "
-                "This is the new default behavior for this algorithm. If you don't "
-                "want to use the new API stack, set `config.api_stack("
-                "enable_rl_module_and_learner=False,"
-                "enable_env_runner_and_connector_v2=False)`. For a detailed migration "
-                "guide, see here: https://docs.ray.io/en/master/rllib/new-api-stack-migration-guide.html"  # noqa
-            )
-
-        if (
-            not self.enable_rl_module_and_learner
-            and self.exploration_config["type"] == "ParameterNoise"
-        ):
-            if self.batch_mode != "complete_episodes":
+            # `lr_schedule` checking.
+            if self.lr_schedule is not None:
                 raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.env_runners("
-                    "batch_mode='complete_episodes')`."
+                    "`lr_schedule` is deprecated and must be None! Use the "
+                    "`lr` setting to setup a schedule."
                 )
+        else:
+            if not self.in_evaluation:
+                validate_buffer_config(self)
 
-        if not self.enable_env_runner_and_connector_v2 and not self.in_evaluation:
-            validate_buffer_config(self)
+            # TODO (simon): Find a clean solution to deal with configuration configs
+            #  when using the new API stack.
+            if self.exploration_config["type"] == "ParameterNoise":
+                if self.batch_mode != "complete_episodes":
+                    raise ValueError(
+                        "ParameterNoise Exploration requires `batch_mode` to be "
+                        "'complete_episodes'. Try setting `config.env_runners("
+                        "batch_mode='complete_episodes')`."
+                    )
+                if self.noisy:
+                    raise ValueError(
+                        "ParameterNoise Exploration and `noisy` network cannot be"
+                        " used at the same time!"
+                    )
 
         if self.td_error_loss_fn not in ["huber", "mse"]:
             raise ValueError("`td_error_loss_fn` must be 'huber' or 'mse'!")
@@ -447,24 +448,6 @@ class DQNConfig(AlgorithmConfig):
                 "Try setting config.env_runners(rollout_fragment_length="
                 f"{self.n_step})."
             )
-
-        # TODO (simon): Find a clean solution to deal with
-        # configuration configs when using the new API stack.
-        if (
-            not self.enable_rl_module_and_learner
-            and self.exploration_config["type"] == "ParameterNoise"
-        ):
-            if self.batch_mode != "complete_episodes":
-                raise ValueError(
-                    "ParameterNoise Exploration requires `batch_mode` to be "
-                    "'complete_episodes'. Try setting `config.env_runners("
-                    "batch_mode='complete_episodes')`."
-                )
-            if self.noisy:
-                raise ValueError(
-                    "ParameterNoise Exploration and `noisy` network cannot be"
-                    " used at the same time!"
-                )
 
         # Validate that we use the corresponding `EpisodeReplayBuffer` when using
         # episodes.
@@ -513,16 +496,16 @@ class DQNConfig(AlgorithmConfig):
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
-        from ray.rllib.algorithms.dqn.dqn_rainbow_catalog import DQNRainbowCatalog
+        from ray.rllib.algorithms.dqn.dqn_catalog import DQNCatalog
 
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_rl_module import (
-                DQNRainbowTorchRLModule,
+            from ray.rllib.algorithms.dqn.torch.default_dqn_torch_rl_module import (
+                DefaultDQNTorchRLModule,
             )
 
             return RLModuleSpec(
-                module_class=DQNRainbowTorchRLModule,
-                catalog_class=DQNRainbowCatalog,
+                module_class=DefaultDQNTorchRLModule,
+                catalog_class=DQNCatalog,
                 model_config=self.model_config,
             )
         else:
@@ -538,7 +521,6 @@ class DQNConfig(AlgorithmConfig):
             "double_q": self.double_q,
             "dueling": self.dueling,
             "epsilon": self.epsilon,
-            "noisy": self.noisy,
             "num_atoms": self.num_atoms,
             "std_init": self.sigma0,
             "v_max": self.v_max,
@@ -548,11 +530,11 @@ class DQNConfig(AlgorithmConfig):
     @override(AlgorithmConfig)
     def get_default_learner_class(self) -> Union[Type["Learner"], str]:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.dqn.torch.dqn_rainbow_torch_learner import (
-                DQNRainbowTorchLearner,
+            from ray.rllib.algorithms.dqn.torch.dqn_torch_learner import (
+                DQNTorchLearner,
             )
 
-            return DQNRainbowTorchLearner
+            return DQNTorchLearner
         else:
             raise ValueError(
                 f"The framework {self.framework_str} is not supported! "
@@ -624,9 +606,9 @@ class DQN(Algorithm):
             return self._training_step_old_api_stack()
 
         # New API stack (RLModule, Learner, EnvRunner, ConnectorV2).
-        return self._training_step_new_api_stack(with_noise_reset=True)
+        return self._training_step_new_api_stack()
 
-    def _training_step_new_api_stack(self, *, with_noise_reset):
+    def _training_step_new_api_stack(self):
         # Alternate between storing and sampling and training.
         store_weight, sample_and_train_weight = calculate_rr_weights(self.config)
 
@@ -663,15 +645,6 @@ class DQN(Algorithm):
 
         # If enough experiences have been sampled start training.
         if current_ts >= self.config.num_steps_sampled_before_learning_starts:
-            # Resample noise for noisy networks, if necessary. Note, this
-            # is proposed in the "Noisy Networks for Exploration" paper
-            # (https://arxiv.org/abs/1706.10295) in Algorithm 1. The noise
-            # gets sampled once for each training loop.
-            if with_noise_reset:
-                self.learner_group.foreach_learner(
-                    func=lambda lrnr: lrnr._reset_noise(),
-                    timeout_seconds=0.0,  # fire-and-forget
-                )
             # Run multiple sample-from-buffer and update iterations.
             for _ in range(sample_and_train_weight):
                 # Sample a list of episodes used for learning from the replay buffer.

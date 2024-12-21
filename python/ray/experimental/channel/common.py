@@ -18,7 +18,7 @@ from typing import (
 
 import ray
 import ray.exceptions
-from ray.experimental.channel.gpu_communicator import GPUCommunicator
+from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
 
@@ -82,7 +82,7 @@ class ChannelOutputType:
         self,
         writer: Optional["ray.actor.ActorHandle"],
         reader_and_node_list: List[Tuple["ray.actor.ActorHandle", str]],
-        read_by_adag_driver: bool,
+        driver_actor_id: Optional[str] = None,
     ) -> "ChannelInterface":
         """
         Instantiate a ChannelInterface class that can be used
@@ -92,8 +92,9 @@ class ChannelOutputType:
             writer: The actor that may write to the channel. None signifies the driver.
             reader_and_node_list: A list of tuples, where each tuple contains a reader
                 actor handle and the node ID where the actor is located.
-            read_by_adag_driver: True if a channel is read by an aDAG driver (Ray driver
-                or an actor that creates the aDAG).
+            driver_actor_id: If this is a CompositeChannel that is read by a driver and
+                that driver is an actual actor, this will be the actor ID of that
+                driver actor.
         Returns:
             A ChannelInterface that can be used to pass data
                 of this type.
@@ -104,7 +105,7 @@ class ChannelOutputType:
         # By default, channels do not require NCCL.
         return False
 
-    def get_custom_nccl_group(self) -> Optional[GPUCommunicator]:
+    def get_custom_communicator(self) -> Optional[Communicator]:
         """
         Return the custom NCCL group if one is specified.
         """
@@ -112,7 +113,7 @@ class ChannelOutputType:
             return self._contains_type.get_custom_nccl_group()
         return None
 
-    def set_nccl_group_id(self, group_id: str) -> None:
+    def set_communicator_id(self, group_id: str) -> None:
         raise NotImplementedError
 
 
@@ -120,12 +121,13 @@ class ChannelOutputType:
 @dataclass
 class ChannelContext:
     serialization_context = _SerializationContext()
+    _torch_available: Optional[bool] = None
     _torch_device: Optional["torch.device"] = None
     _current_stream: Optional["torch.cuda.Stream"] = None
 
     def __init__(self):
         # Used for the torch.Tensor NCCL transport.
-        self.nccl_groups: Dict[str, "GPUCommunicator"] = {}
+        self.communicators: Dict[str, "Communicator"] = {}
 
     @staticmethod
     def get_current() -> "ChannelContext":
@@ -142,6 +144,22 @@ class ChannelContext:
                 _default_context = ChannelContext()
 
             return _default_context
+
+    @property
+    def torch_available(self) -> bool:
+        """
+        Check if torch package is available.
+        """
+        if self._torch_available is not None:
+            return self._torch_available
+
+        try:
+            import torch  # noqa: F401
+        except ImportError:
+            self._torch_available = False
+            return False
+        self._torch_available = True
+        return True
 
     @property
     def torch_device(self) -> "torch.device":
@@ -323,6 +341,14 @@ class SynchronousReader(ReaderInterface):
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
         return results
+
+    def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
+        for c in self._input_channels:
+            start_time = time.monotonic()
+            c.release_buffer(timeout)
+            if timeout is not None:
+                timeout -= time.monotonic() - start_time
+                timeout = max(timeout, 0)
 
 
 @DeveloperAPI

@@ -5,7 +5,7 @@ from ray.rllib.utils.typing import ConvFilterSpec
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 @dataclass
 class DefaultModelConfig:
     """Dataclass to configure all default RLlib RLModules.

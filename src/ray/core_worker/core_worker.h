@@ -14,6 +14,9 @@
 
 #pragma once
 
+#include <memory>
+#include <mutex>
+
 #include "absl/base/optimization.h"
 #include "absl/container/flat_hash_map.h"
 #include "absl/synchronization/mutex.h"
@@ -44,9 +47,9 @@
 #include "ray/pubsub/subscriber.h"
 #include "ray/raylet_client/raylet_client.h"
 #include "ray/rpc/node_manager/node_manager_client.h"
-#include "ray/rpc/worker/core_worker_client.h"
 #include "ray/rpc/worker/core_worker_server.h"
 #include "ray/util/process.h"
+#include "ray/util/shared_lru.h"
 #include "src/ray/protobuf/pubsub.pb.h"
 
 /// The set of gRPC handlers and their associated level of concurrency. If you want to
@@ -185,11 +188,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// Public methods used by `CoreWorkerProcess` and `CoreWorker` itself.
   ///
-
-  /// Connect to the raylet and notify that the core worker is ready.
-  /// If the options.connect_on_start is false, it doesn't need to be explicitly
-  /// called.
-  void ConnectToRaylet();
 
   /// Gracefully disconnect the worker from Raylet.
   /// Once the method is returned, it is guaranteed that raylet is
@@ -825,6 +823,18 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                    const std::string &error_message,
                    double timestamp);
 
+  // Prestart workers. The workers:
+  // - uses current language.
+  // - uses current JobID.
+  // - does NOT support root_detached_actor_id.
+  // - uses provided runtime_env_info applied to the job runtime env, as if it's a task
+  // request.
+  //
+  // This API is async. It provides no guarantee that the workers are actually started.
+  void PrestartWorkers(const std::string &serialized_runtime_env_info,
+                       uint64_t keep_alive_duration_secs,
+                       size_t num_workers);
+
   /// Submit a normal task.
   ///
   /// \param[in] function The remote function to execute.
@@ -844,6 +854,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// If Nil() is given, it will be automatically propagated from worker_context.
   /// This is used when worker_context cannot reliably obtain the curernt task_id
   /// i.e., Python async actors.
+  /// \param[in] call_site The stacktrace of the task invocation, or actor
+  /// creation. This is only used for observability.
   /// \return ObjectRefs returned by this task.
   std::vector<rpc::ObjectReference> SubmitTask(
       const RayFunction &function,
@@ -854,6 +866,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const rpc::SchedulingStrategy &scheduling_strategy,
       const std::string &debugger_breakpoint,
       const std::string &serialized_retry_exception_allowlist = "",
+      const std::string &call_site = "",
       const TaskID current_task_id = TaskID::Nil());
 
   /// Create an actor.
@@ -864,6 +877,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] actor_creation_options Options for this actor creation task.
   /// \param[in] extension_data Extension data of the actor handle,
   /// see `ActorHandle` in `core_worker.proto`.
+  /// \param[in] call_site The stacktrace of the actor creation. This is
+  /// only used for observability.
   /// \param[out] actor_id ID of the created actor. This can be used to submit
   /// tasks on the actor.
   /// \return Status error if actor creation fails, likely due to raylet failure.
@@ -871,6 +886,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                      const std::vector<std::unique_ptr<TaskArg>> &args,
                      const ActorCreationOptions &actor_creation_options,
                      const std::string &extension_data,
+                     const std::string &call_site,
                      ActorID *actor_id);
 
   /// Create a placement group.
@@ -914,6 +930,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \param[in] serialized_retry_exception_allowlist A serialized exception list
   /// that serves as an allowlist of frontend-language exceptions/errors that should be
   /// retried. Empty string means an allow-all in the language worker.
+  /// \param[in] call_site The stacktrace of the task invocation. This is
+  /// only used for observability.
   /// \param[out] task_returns The object returned by this task
   /// param[in] current_task_id The current task_id that submits the task.
   /// If Nil() is given, it will be automatically propagated from worker_context.
@@ -928,6 +946,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                          int max_retries,
                          bool retry_exceptions,
                          const std::string &serialized_retry_exception_allowlist,
+                         const std::string &call_site,
                          std::vector<rpc::ObjectReference> &task_returns,
                          const TaskID current_task_id = TaskID::Nil());
 
@@ -1001,7 +1020,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   const std::string GetActorName() const;
 
   // Get the resource IDs available to this worker (as assigned by the raylet).
-  const ResourceMappingType GetResourceIDs() const;
+  ResourceMappingType GetResourceIDs() const;
 
   /// Create a profile event and push it the TaskEventBuffer when the event is destructed.
   std::unique_ptr<worker::ProfileEvent> CreateProfileEvent(const std::string &event_name);
@@ -1333,8 +1352,8 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                 nullptr);
 
  private:
-  static nlohmann::json OverrideRuntimeEnv(nlohmann::json &child,
-                                           const std::shared_ptr<nlohmann::json> parent);
+  static nlohmann::json OverrideRuntimeEnv(const nlohmann::json &child,
+                                           std::shared_ptr<nlohmann::json> parent);
 
   /// The following tests will use `OverrideRuntimeEnv` function.
   FRIEND_TEST(TestOverrideRuntimeEnv, TestOverrideEnvVars);
@@ -1344,6 +1363,19 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   FRIEND_TEST(TestOverrideRuntimeEnv, TestWorkingDirOverride);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaInherit);
   FRIEND_TEST(TestOverrideRuntimeEnv, TestCondaOverride);
+
+  /// Register core worker to worker pool.
+  Status RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+                                const WorkerID &worker_id,
+                                rpc::WorkerType worker_type,
+                                const JobID &job_id,
+                                int runtime_env_hash,
+                                const Language &language,
+                                const std::string &ip_address,
+                                const std::string &serialized_job_config,
+                                const StartupToken &startup_token,
+                                NodeID *raylet_id,
+                                int *port);
 
   std::shared_ptr<rpc::RuntimeEnvInfo> OverrideTaskOrActorRuntimeEnvInfo(
       const std::string &serialized_runtime_env_info) const;
@@ -1365,6 +1397,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
       const std::string &debugger_breakpoint,
       int64_t depth,
       const std::string &serialized_runtime_env_info,
+      const std::string &call_site,
       const TaskID &main_thread_current_task_id,
       const std::string &concurrency_group_name = "",
       bool include_job_config = false,
@@ -1440,7 +1473,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param spec[in] task_spec Task specification.
   /// \param spec[in] resource_ids Resource IDs of resources assigned to this
-  ///                 worker. If nullptr, reuse the previously assigned
+  ///                 worker. If nullopt, reuse the previously assigned
   ///                 resources.
   /// \param results[out] return_objects Result objects that should be returned
   /// to the caller.
@@ -1460,7 +1493,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// \return Status.
   Status ExecuteTask(
       const TaskSpecification &task_spec,
-      const std::shared_ptr<ResourceMappingType> &resource_ids,
+      std::optional<ResourceMappingType> resource_ids,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>> *return_objects,
       std::vector<std::pair<ObjectID, std::shared_ptr<RayObject>>>
           *dynamic_return_objects,
@@ -1654,6 +1687,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
+  // Fallback for when GetAsync cannot directly get the requested object.
+  void PlasmaCallback(SetResultCallback success,
+                      std::shared_ptr<RayObject> ray_object,
+                      ObjectID object_id,
+                      void *py_future);
+
   /// Shared state of the worker. Includes process-level and thread-level state.
   /// TODO(edoakes): we should move process-level state into this class and make
   /// this a ThreadContext.
@@ -1684,7 +1723,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<rpc::CoreWorkerClientPool> core_worker_client_pool_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// RPC server used to receive tasks to execute.
   std::unique_ptr<rpc::GrpcServer> core_worker_server_;
@@ -1737,7 +1776,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   std::shared_ptr<ActorCreatorInterface> actor_creator_;
 
   // Interface to submit tasks directly to other actors.
-  std::shared_ptr<ActorTaskSubmitter> actor_task_submitter_;
+  std::unique_ptr<ActorTaskSubmitter> actor_task_submitter_;
 
   // A class to publish object status from other raylets/workers.
   std::unique_ptr<pubsub::Publisher> object_info_publisher_;
@@ -1795,14 +1834,14 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   /// A map from resource name to the resource IDs that are currently reserved
   /// for this worker. Each pair consists of the resource ID and the fraction
   /// of that resource allocated for this worker. This is set on task assignment.
-  std::shared_ptr<ResourceMappingType> resource_ids_ ABSL_GUARDED_BY(mutex_);
+  ResourceMappingType resource_ids_ ABSL_GUARDED_BY(mutex_);
 
   /// Common rpc service for all worker modules.
   rpc::CoreWorkerGrpcService grpc_service_;
 
   /// Used to notify the task receiver when the arguments of a queued
   /// actor task are ready.
-  std::shared_ptr<DependencyWaiterImpl> task_argument_waiter_;
+  std::unique_ptr<DependencyWaiterImpl> task_argument_waiter_;
 
   // Interface that receives tasks from direct actor calls.
   std::unique_ptr<TaskReceiver> task_receiver_;
@@ -1830,12 +1869,6 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   absl::flat_hash_map<ObjectID, std::vector<std::function<void(void)>>>
       async_plasma_callbacks_ ABSL_GUARDED_BY(plasma_mutex_);
 
-  // Fallback for when GetAsync cannot directly get the requested object.
-  void PlasmaCallback(SetResultCallback success,
-                      std::shared_ptr<RayObject> ray_object,
-                      ObjectID object_id,
-                      void *py_future);
-
   /// The detail reason why the core worker has exited.
   /// If this value is set, it means the exit process has begun.
   std::optional<std::string> exiting_detail_ ABSL_GUARDED_BY(mutex_);
@@ -1862,6 +1895,15 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   uint32_t pid_;
 
   absl::flat_hash_set<ObjectID> deleted_generator_ids_;
+
+  /// TODO(hjiang):
+  /// 1. Cached job runtime env info, it's not implemented at first place since
+  /// `OverrideRuntimeEnv` mutates parent job runtime env info.
+  /// 2. Cleanup cache on job change.
+  ///
+  /// Maps serialized runtime env info to **immutable** deserialized protobuf.
+  mutable utils::container::ThreadSafeSharedLruCache<std::string, rpc::RuntimeEnvInfo>
+      runtime_env_json_serialization_cache_;
 };
 
 // Lease request rate-limiter based on cluster node size.
