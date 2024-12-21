@@ -320,7 +320,7 @@ def test_find_partitions_single_column_descending():
     assert partitions[4].to_pydict() == {"value": []}  # <0
 
 
-def test_find_partitions_multi_column():
+def test_find_partitions_multi_column_ascending_first():
     table = pa.table({"col1": [1, 1, 1, 1, 1, 2, 2], "col2": [4, 3, 2.5, 2, 1, 2, 1]})
     sort_key = SortKey(key=["col1", "col2"], descending=[False, True])
     boundaries = [(1, 3), (1, 2), (2, 2), (2, 0)]
@@ -330,6 +330,19 @@ def test_find_partitions_multi_column():
     assert partitions[1].to_pydict() == {"col1": [1, 1], "col2": [3, 2.5]}
     assert partitions[2].to_pydict() == {"col1": [1, 1], "col2": [2, 1]}
     assert partitions[3].to_pydict() == {"col1": [2, 2], "col2": [2, 1]}
+    assert partitions[4].to_pydict() == {"col1": [], "col2": []}
+
+
+def test_find_partitions_multi_column_descending_first():
+    table = pa.table({"col1": [2, 2, 1, 1, 1, 1, 1], "col2": [1, 2, 1, 2, 3, 4, 5]})
+    sort_key = SortKey(key=["col1", "col2"], descending=[True, False])
+    boundaries = [(2, 0), (2, 2), (1, 2), (1, 6)]
+    partitions = find_partitions(table, boundaries, sort_key)
+    assert len(partitions) == 5
+    assert partitions[0].to_pydict() == {"col1": [], "col2": []}
+    assert partitions[1].to_pydict() == {"col1": [2, 2], "col2": [1, 2]}
+    assert partitions[2].to_pydict() == {"col1": [1, 1], "col2": [1, 2]}
+    assert partitions[3].to_pydict() == {"col1": [1, 1, 1], "col2": [3, 4, 5]}
     assert partitions[4].to_pydict() == {"col1": [], "col2": []}
 
 
