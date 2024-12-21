@@ -332,7 +332,8 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   }
   if (signal_received != -1) {
     RAY_LOG(ERROR) << "Interrupted by signal";
-    return Status::Interrupted("Interrupted by signal");
+    return Status::Interrupted("Interrupted by signal: " +
+                               std::to_string(signal_received));
   }
   if (!locked) {
     // If timeout_ms == 0, we want to try once to get the lock,
@@ -475,11 +476,12 @@ Status MutableObjectManager::SetErrorAll() {
 std::optional<std::chrono::steady_clock::time_point> MutableObjectManager::ToTimeoutPoint(
     int64_t timeout_ms) {
   std::optional<std::chrono::steady_clock::time_point> timeout_point;
-  if (timeout_ms != -1) {
-    auto now = std::chrono::steady_clock::now();
-    auto timeout_duration = std::chrono::milliseconds(timeout_ms);
-    timeout_point.emplace(now + timeout_duration);
+  if (timeout_ms == -1) {
+    return timeout_point;
   }
+  auto now = std::chrono::steady_clock::now();
+  auto timeout_duration = std::chrono::milliseconds(timeout_ms);
+  timeout_point.emplace(now + timeout_duration);
   return timeout_point;
 }
 
