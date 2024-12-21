@@ -130,8 +130,8 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
   {
     // Initialize global worker instance.
     auto worker = std::make_shared<CoreWorker>(options_, worker_id_);
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_ = worker;
+    auto write_lockeded = core_worker_.LockForWrite();
+    write_lockeded.Get() = worker;
   }
 
   // Initialize event framework.
@@ -248,8 +248,8 @@ void CoreWorkerProcessImpl::RunWorkerTaskExecutionLoop() {
   core_worker->RunTaskExecutionLoop();
   RAY_LOG(INFO) << "Task execution loop terminated. Removing the global worker.";
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
@@ -262,19 +262,19 @@ void CoreWorkerProcessImpl::ShutdownDriver() {
                             /*exit_detail*/ "Shutdown by ray.shutdown().");
   global_worker->Shutdown();
   {
-    absl::WriterMutexLock lock(&mutex_);
-    core_worker_.reset();
+    auto write_locked = core_worker_.LockForWrite();
+    write_locked.Get().reset();
   }
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::TryGetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  return core_worker_;
+  const auto read_locked = core_worker_.LockForRead();
+  return read_locked.Get();
 }
 
 std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
-  absl::ReaderMutexLock lock(&mutex_);
-  if (!core_worker_) {
+  const auto read_locked = core_worker_.LockForRead();
+  if (!read_locked.Get()) {
     // This could only happen when the worker has already been shutdown.
     // In this case, we should exit without crashing.
     // TODO (scv119): A better solution could be returning error code
@@ -290,8 +290,8 @@ std::shared_ptr<CoreWorker> CoreWorkerProcessImpl::GetCoreWorker() const {
     }
     QuickExit();
   }
-  RAY_CHECK(core_worker_) << "core_worker_ must not be NULL";
-  return core_worker_;
+  RAY_CHECK(read_locked.Get()) << "core_worker_ must not be NULL";
+  return read_locked.Get();
 }
 
 }  // namespace core
