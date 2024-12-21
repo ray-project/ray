@@ -36,7 +36,7 @@ APT_PKGS=(
     libjemalloc-dev
     wget
     cmake
-    g++ 
+    g++
     zlib1g-dev
 )
 if [[ "$AUTOSCALER" == "autoscaler" ]]; then

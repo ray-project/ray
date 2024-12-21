@@ -282,7 +282,10 @@ def test_multi_node_multi_reader_large_payload(
 
     for _ in range(3):
         ref = compiled_dag.execute(val)
-        result = ray.get(ref)
+        # In the CI environment, the object store may use /tmp instead of /dev/shm
+        # due to limited size of /tmp/shm and therefore has degraded performance.
+        # Therefore, we use a longer timeout to avoid flakiness.
+        result = ray.get(ref, timeout=50)
         assert result == [val for _ in range(ACTORS_PER_NODE * (NUM_REMOTE_NODES + 1))]
 
 
@@ -320,7 +323,7 @@ def test_multi_node_dag_from_actor(ray_start_cluster):
                 )
 
             self._adag = dag.experimental_compile(
-                _execution_timeout=120,
+                _submit_timeout=120,
             )
 
         def call(self, prompt: str) -> bytes:

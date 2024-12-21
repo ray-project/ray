@@ -76,7 +76,7 @@ class LocalTaskManager : public ILocalTaskManager {
   ///                                   cap. If it's a large number, the cap is hard.
   LocalTaskManager(
       const NodeID &self_node_id,
-      std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler,
+      ClusterResourceScheduler &cluster_resource_scheduler,
       TaskDependencyManagerInterface &task_dependency_manager,
       std::function<bool(const WorkerID &, const NodeID &)> is_owner_alive,
       internal::NodeInfoGetter get_node_info,
@@ -264,9 +264,6 @@ class LocalTaskManager : public ILocalTaskManager {
 
   void Spillback(const NodeID &spillback_to, const std::shared_ptr<internal::Work> &work);
 
-  /// Sum up the backlog size across all workers for a given scheduling class.
-  int64_t TotalBacklogSize(SchedulingClass scheduling_class);
-
   // Helper function to pin a task's args immediately before dispatch. This
   // returns false if there are missing args (due to eviction) or if there is
   // not enough memory available to dispatch the task, due to other executing
@@ -281,7 +278,7 @@ class LocalTaskManager : public ILocalTaskManager {
  private:
   const NodeID &self_node_id_;
   /// Responsible for resource tracking/view of the cluster.
-  std::shared_ptr<ClusterResourceScheduler> cluster_resource_scheduler_;
+  ClusterResourceScheduler &cluster_resource_scheduler_;
   /// Class to make task dependencies to be local.
   TaskDependencyManagerInterface &task_dependency_manager_;
   /// Function to check if the owner is alive on a given node.

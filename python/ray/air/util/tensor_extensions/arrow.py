@@ -29,8 +29,14 @@ MIN_PYARROW_VERSION_SCALAR = parse_version("8.0.0")
 # Minimum version of Arrow that supports subclassable ExtensionScalars.
 # TODO(Clark): Remove conditional definition once we only support Arrow 9.0.0+.
 MIN_PYARROW_VERSION_SCALAR_SUBCLASS = parse_version("9.0.0")
+# Minimum version supporting `zero_copy_only` flag in `ChunkedArray.to_numpy`
+MIN_PYARROW_VERSION_CHUNKED_ARRAY_TO_NUMPY_ZERO_COPY_ONLY = parse_version("13.0.0")
 
 NUM_BYTES_PER_UNICODE_CHAR = 4
+
+# NOTE: Overflow threshold in bytes for most Arrow types using int32 as
+#       its offsets
+INT32_OVERFLOW_THRESHOLD = 2 * GiB
 
 logger = logging.getLogger(__name__)
 
@@ -112,49 +118,57 @@ def convert_to_pyarrow_array(column_values: np.ndarray, column_name: str) -> pa.
             return _convert_to_pyarrow_native_array(column_values, column_name)
 
     except ArrowConversionError as ace:
+        from ray.data import DataContext
         from ray.data.extensions.object_extension import (
             ArrowPythonObjectArray,
             _object_extension_type_allowed,
         )
 
+        enable_fallback_config: Optional[
+            bool
+        ] = DataContext.get_current().enable_fallback_to_arrow_object_ext_type
+
         if not _object_extension_type_allowed():
-            should_serialize_as_object_ext_type = False
+            object_ext_type_fallback_allowed = False
             object_ext_type_detail = (
                 "skipping fallback to serialize as pickled python"
                 f" objects (due to unsupported Arrow version {PYARROW_VERSION}, "
                 f"min required version is {MIN_PYARROW_VERSION_SCALAR_SUBCLASS})"
             )
         else:
-            from ray.data import DataContext
+            # NOTE: By default setting is unset which (for compatibility reasons)
+            #       is allowing the fallback
+            object_ext_type_fallback_allowed = (
+                enable_fallback_config is None or enable_fallback_config
+            )
 
-            if not DataContext.get_current().enable_fallback_to_arrow_object_ext_type:
-                should_serialize_as_object_ext_type = False
+            if object_ext_type_fallback_allowed:
+                object_ext_type_detail = (
+                    "falling back to serialize as pickled python objects"
+                )
+            else:
                 object_ext_type_detail = (
                     "skipping fallback to serialize as pickled python objects "
                     "(due to DataContext.enable_fallback_to_arrow_object_ext_type "
                     "= False)"
                 )
-            else:
-                should_serialize_as_object_ext_type = True
-                object_ext_type_detail = (
-                    "falling back to serialize as pickled python objects"
+
+        if not object_ext_type_fallback_allowed:
+            # To avoid logging following warning for every block it's
+            # only going to be logged in following cases
+            #   - When fallback is disallowed, and
+            #   - Fallback configuration is not set or set to false, and
+            #   - It's being logged for the first time
+            if not enable_fallback_config and log_once(
+                "_fallback_to_arrow_object_extension_type_warning"
+            ):
+                logger.warning(
+                    f"Failed to convert column '{column_name}' into pyarrow "
+                    f"array due to: {ace}; {object_ext_type_detail}",
+                    exc_info=ace,
                 )
 
-        # NOTE: To avoid logging following warning for every block it's
-        #       only going to be logged in following cases
-        #           - When fallback is disabled, or
-        #           - It's being logged for the first time
-        if not should_serialize_as_object_ext_type or log_once(
-            "_fallback_to_arrow_object_extension_type_warning"
-        ):
-            logger.warning(
-                f"Failed to convert column '{column_name}' into pyarrow "
-                f"array due to: {ace}; {object_ext_type_detail}",
-                exc_info=ace,
-            )
-
-        # If `ArrowPythonObjectType` is not supported raise original exception
-        if not should_serialize_as_object_ext_type:
+            # If `ArrowPythonObjectType` is not supported raise original exception
             raise
 
         # Otherwise, attempt to fall back to serialize as python objects
@@ -212,7 +226,7 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
 
     inferred_pa_dtype = pa.infer_type(column_values)
 
-    def _len_gt_2gb(obj: Any) -> bool:
+    def _len_gt_overflow_threshold(obj: Any) -> bool:
         # NOTE: This utility could be seeing objects other than strings or bytes in
         #       cases when column contains non-scalar non-homogeneous object types as
         #       column values, therefore making Arrow unable to infer corresponding
@@ -221,16 +235,16 @@ def _infer_pyarrow_type(column_values: np.ndarray) -> Optional[pa.DataType]:
         #
         #       Check out test cases for this method for an additional context.
         if isinstance(obj, (str, bytes)):
-            return len(obj) > 2 * GiB
+            return len(obj) > INT32_OVERFLOW_THRESHOLD
 
         return False
 
     if pa.types.is_binary(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_binary()
     elif pa.types.is_string(inferred_pa_dtype) and any(
-        [_len_gt_2gb(v) for v in column_values]
+        [_len_gt_overflow_threshold(v) for v in column_values]
     ):
         return pa.large_string()
 
@@ -569,7 +583,13 @@ class ArrowTensorArray(_ArrowTensorScalarIndexingMixin, pa.ExtensionArray):
             # Stack ndarrays and pass through to ndarray handling logic below.
             try:
                 arr = np.stack(arr, axis=0)
-            except ValueError:
+            except ValueError as ve:
+                logger.warning(
+                    f"Failed to stack lists due to: {ve}; "
+                    f"falling back to using np.array(..., dtype=object)",
+                    exc_info=ve,
+                )
+
                 # ndarray stacking may fail if the arrays are heterogeneously-shaped.
                 arr = np.array(arr, dtype=object)
         if not isinstance(arr, np.ndarray):

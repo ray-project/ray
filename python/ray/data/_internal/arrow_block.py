@@ -219,7 +219,7 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def slice(self, start: int, end: int, copy: bool = False) -> "pyarrow.Table":
         view = self._table.slice(start, end - start)
         if copy:
-            view = _copy_table(view)
+            view = transform_pyarrow.combine_chunks(view)
         return view
 
     def random_shuffle(self, random_seed: Optional[int]) -> "pyarrow.Table":
@@ -245,11 +245,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
     def to_numpy(
         self, columns: Optional[Union[str, List[str]]] = None
     ) -> Union[np.ndarray, Dict[str, np.ndarray]]:
-        from ray.air.util.transform_pyarrow import (
-            _concatenate_extension_column,
-            _is_column_extension_type,
-        )
-
         if columns is None:
             columns = self._table.column_names
             should_be_single_ndarray = False
@@ -267,23 +262,24 @@ class ArrowBlockAccessor(TableBlockAccessor):
                     f"{column_names_set}"
                 )
 
-        arrays = []
-        for column in columns:
-            array = self._table[column]
-            if _is_column_extension_type(array):
-                array = _concatenate_extension_column(array)
-            elif array.num_chunks == 0:
-                array = pyarrow.array([], type=array.type)
-            else:
-                array = array.combine_chunks()
-            arrays.append(array.to_numpy(zero_copy_only=False))
+        column_values_ndarrays = []
+
+        for col_name in columns:
+            col = self._table[col_name]
+
+            # Combine columnar values arrays to make these contiguous
+            # (making them compatible with numpy format)
+            combined_array = transform_pyarrow.combine_chunked_array(col)
+
+            column_values_ndarrays.append(
+                transform_pyarrow.to_numpy(combined_array, zero_copy_only=False)
+            )
 
         if should_be_single_ndarray:
             assert len(columns) == 1
-            arrays = arrays[0]
+            return column_values_ndarrays[0]
         else:
-            arrays = dict(zip(columns, arrays))
-        return arrays
+            return dict(zip(columns, column_values_ndarrays))
 
     def to_arrow(self) -> "pyarrow.Table":
         return self._table
@@ -516,10 +512,6 @@ class ArrowBlockAccessor(TableBlockAccessor):
         return builder.build()
 
     @staticmethod
-    def _munge_conflict(name, count):
-        return f"{name}_{count+1}"
-
-    @staticmethod
     def merge_sorted_blocks(
         blocks: List[Block], sort_key: "SortKey"
     ) -> Tuple[Block, BlockMetadata]:
@@ -652,8 +644,3 @@ class ArrowBlockAccessor(TableBlockAccessor):
 
     def block_type(self) -> BlockType:
         return BlockType.ARROW
-
-
-def _copy_table(table: "pyarrow.Table") -> "pyarrow.Table":
-    """Copy the provided Arrow table."""
-    return transform_pyarrow.combine_chunks(table)

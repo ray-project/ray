@@ -35,7 +35,7 @@ from ray.rllib.utils.annotations import (
     OverrideToImplementCustomLogic,
     OverrideToImplementCustomLogic_CallToSuperRecommended,
 )
-from ray.rllib.utils.framework import try_import_torch
+from ray.rllib.utils.framework import get_device, try_import_torch
 from ray.rllib.utils.metrics import (
     ALL_MODULES,
     DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY,
@@ -56,11 +56,6 @@ from ray.rllib.utils.typing import (
 )
 
 torch, nn = try_import_torch()
-
-if torch:
-    from ray.air._internal.torch_utils import get_devices
-
-
 logger = logging.getLogger(__name__)
 
 
@@ -70,9 +65,6 @@ class TorchLearner(Learner):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-
-        # Will be set during build.
-        self._device = None
 
         # Whether to compile the RL Module of this learner. This implies that the.
         # forward_train method of the RL Module will be compiled. Further more,
@@ -147,23 +139,14 @@ class TorchLearner(Learner):
         # Activate tensor-mode on our MetricsLogger.
         self.metrics.activate_tensor_mode()
 
-        # Log off-policy'ness of this update.
-        off_policyness = {
-            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
-                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
-            )
-            for mid, module_batch in batch.items()
-            if WEIGHTS_SEQ_NO in module_batch
-        }
-        for key in off_policyness.keys():
-            mid = key[0]
-            if Columns.LOSS_MASK not in batch[mid]:
-                off_policyness[key] = torch.mean(off_policyness[key])
-            else:
-                mask = batch[mid][Columns.LOSS_MASK]
-                num_valid = torch.sum(mask)
-                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
-        self.metrics.log_dict(off_policyness, window=1)
+        # TODO (sven): Causes weird cuda error when WandB is used.
+        #  Diagnosis thus far:
+        #  - All peek values during metrics.reduce are non-tensors.
+        #  - However, in impala.py::training_step(), a tensor does arrive after learner
+        #    group.update_from_episodes(), so somehow, there is still a race condition
+        #    possible (learner, which performs the reduce() and learner thread, which
+        #    performs the logging of tensors into metrics logger).
+        self._compute_off_policyness(batch)
 
         fwd_out = self.module.forward_train(batch)
         loss_per_module = self.compute_losses(fwd_out=fwd_out, batch=batch)
@@ -174,9 +157,7 @@ class TorchLearner(Learner):
 
         # Deactivate tensor-mode on our MetricsLogger and collect the (tensor)
         # results.
-        collected_tensor_metrics = self.metrics.deactivate_tensor_mode()
-
-        return fwd_out, loss_per_module, collected_tensor_metrics
+        return fwd_out, loss_per_module, self.metrics.deactivate_tensor_mode()
 
     @override(Learner)
     def compute_gradients(
@@ -336,21 +317,24 @@ class TorchLearner(Learner):
 
     @override(Learner)
     def _get_optimizer_state(self) -> StateDict:
-        return {
-            name: copy_torch_tensors(optim.state_dict(), device="cpu")
-            for name, optim in self._named_optimizers.items()
-        }
+        ret = {}
+        for name, optim in self._named_optimizers.items():
+            ret[name] = {
+                "module_id": self._optimizer_name_to_module[name],
+                "state": copy_torch_tensors(optim.state_dict(), device="cpu"),
+            }
+        return ret
 
     @override(Learner)
     def _set_optimizer_state(self, state: StateDict) -> None:
         for name, state_dict in state.items():
             if name not in self._named_optimizers:
-                raise ValueError(
-                    f"Optimizer {name} in `state` is not known."
-                    f"Known optimizers are {self._named_optimizers.keys()}"
+                self.configure_optimizers_for_module(
+                    state_dict["module_id"],
+                    config=self.config.get_config_for_module(state_dict["module_id"]),
                 )
             self._named_optimizers[name].load_state_dict(
-                copy_torch_tensors(state_dict, device=self._device)
+                copy_torch_tensors(state_dict["state"], device=self._device)
             )
 
     @override(Learner)
@@ -447,41 +431,14 @@ class TorchLearner(Learner):
         """Builds the TorchLearner.
 
         This method is specific to TorchLearner. Before running super() it will
-        initialze the device properly based on the `_use_gpu` and `_distributed`
-        flags, so that `_make_module()` can place the created module on the correct
-        device. After running super() it will wrap the module in a TorchDDPRLModule
-        if `_distributed` is True.
+        initialize the device properly based on `self.config`, so that `_make_module()`
+        can place the created module on the correct device. After running super() it
+        wraps the module in a TorchDDPRLModule if `config.num_learners > 0`.
         Note, in inherited classes it is advisable to call the parent's `build()`
         after setting up all variables because `configure_optimizer_for_module` is
         called in this `Learner.build()`.
         """
-        # TODO (Kourosh): How do we handle model parallelism?
-        # TODO (Kourosh): Instead of using _TorchAccelerator, we should use the public
-        #  API in ray.train but allow for session to be None without any errors raised.
-        if self._use_gpu:
-            # get_devices() returns a list that contains the 0th device if
-            # it is called from outside a Ray Train session. It's necessary to give
-            # the user the option to run on the gpu of their choice, so we enable that
-            # option here through the local gpu id scaling config parameter.
-            if self._distributed:
-                devices = get_devices()
-                assert len(devices) == 1, (
-                    "`get_devices()` should only return one cuda device, "
-                    f"but {devices} was returned instead."
-                )
-                self._device = devices[0]
-            else:
-                assert self._local_gpu_idx < torch.cuda.device_count(), (
-                    f"local_gpu_idx {self._local_gpu_idx} is not a valid GPU id or is "
-                    " not available."
-                )
-                # this is an index into the available cuda devices. For example if
-                # os.environ["CUDA_VISIBLE_DEVICES"] = "1" then
-                # torch.cuda.device_count() = 1 and torch.device(0) will actuall map to
-                # the gpu with id 1 on the node.
-                self._device = torch.device(self._local_gpu_idx)
-        else:
-            self._device = torch.device("cpu")
+        self._device = get_device(self.config, self.config.num_gpus_per_learner)
 
         super().build()
 
@@ -572,7 +529,7 @@ class TorchLearner(Learner):
         # TODO (Kourosh): This can result in missing modules if the user does not
         #  register them in the MultiRLModule. We should find a better way to
         #  handle this.
-        if self._distributed:
+        if self.config.num_learners > 1:
             # Single agent module: Convert to `TorchDDPRLModule`.
             if isinstance(self._module, TorchRLModule):
                 self._module = TorchDDPRLModule(
@@ -629,6 +586,25 @@ class TorchLearner(Learner):
             for key in module.keys():
                 if isinstance(module[key], torch.nn.Module):
                     module[key].to(self._device)
+
+    def _compute_off_policyness(self, batch):
+        # Log off-policy'ness of this batch wrt the current weights.
+        off_policyness = {
+            (mid, DIFF_NUM_GRAD_UPDATES_VS_SAMPLER_POLICY): (
+                (self._weights_seq_no - module_batch[WEIGHTS_SEQ_NO]).float()
+            )
+            for mid, module_batch in batch.items()
+            if WEIGHTS_SEQ_NO in module_batch
+        }
+        for key in off_policyness.keys():
+            mid = key[0]
+            if Columns.LOSS_MASK not in batch[mid]:
+                off_policyness[key] = torch.mean(off_policyness[key])
+            else:
+                mask = batch[mid][Columns.LOSS_MASK]
+                num_valid = torch.sum(mask)
+                off_policyness[key] = torch.sum(off_policyness[key][mask]) / num_valid
+        self.metrics.log_dict(off_policyness, window=1)
 
     @override(Learner)
     def _get_tensor_variable(

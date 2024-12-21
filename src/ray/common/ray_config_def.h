@@ -112,6 +112,10 @@ RAY_CONFIG(bool, report_actor_placement_resources, true)
 /// TODO: maybe group this under RAY_DEBUG.
 RAY_CONFIG(bool, record_ref_creation_sites, false)
 
+/// Collects the stacktrace of the task invocation, or actor creation. The stacktrace is
+/// serialized into the TaskSpec and is viewable from the Dashboard. Default is disabled.
+RAY_CONFIG(bool, record_task_actor_creation_sites, false)
+
 /// Objects that have been unpinned are
 /// added to a local cache. When the cache is flushed, all objects in the cache
 /// will be eagerly evicted in a batch by freeing all plasma copies in the
@@ -447,7 +451,7 @@ RAY_CONFIG(int32_t, gcs_grpc_initial_reconnect_backoff_ms, 100)
 RAY_CONFIG(uint64_t, gcs_grpc_max_request_queued_max_bytes, 1024UL * 1024 * 1024 * 5)
 
 /// The duration between two checks for grpc status.
-RAY_CONFIG(int32_t, gcs_client_check_connection_status_interval_milliseconds, 1000)
+RAY_CONFIG(int32_t, grpc_client_check_connection_status_interval_milliseconds, 1000)
 
 /// Due to the protocol drawback, raylet needs to refresh the message if
 /// no message is received for a while.
@@ -692,6 +696,9 @@ RAY_CONFIG(int64_t, timeout_ms_task_wait_for_death_info, 1000)
 /// The core worker heartbeat interval. During heartbeat, it'll
 /// report the loads to raylet.
 RAY_CONFIG(int64_t, core_worker_internal_heartbeat_ms, 1000)
+
+/// Timeout for core worker grpc server reconnection in seconds.
+RAY_CONFIG(int32_t, core_worker_rpc_server_reconnect_timeout_s, 60)
 
 /// Maximum amount of memory that will be used by running tasks' args.
 RAY_CONFIG(float, max_task_args_memory_fraction, 0.7)

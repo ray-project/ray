@@ -26,6 +26,14 @@
 ABSL_FLAG(std::string, ray_address, "", "The address of the Ray cluster to connect to.");
 
 /// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
+/// value to support an empty Redis username.
+ABSL_FLAG(std::string,
+          ray_redis_username,
+          "absl::flags dummy default value",
+          "Prevents external clients without the username from connecting to Redis "
+          "if provided.");
+
+/// absl::flags does not provide a IsDefaultValue method, so use a non-empty dummy default
 /// value to support empty redis password.
 ABSL_FLAG(std::string,
           ray_redis_password,
@@ -119,6 +127,9 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
   if (!config.code_search_path.empty()) {
     code_search_path = config.code_search_path;
   }
+  if (config.redis_username_) {
+    redis_username = *config.redis_username_;
+  }
   if (config.redis_password_) {
     redis_password = *config.redis_password_;
   }
@@ -145,6 +156,11 @@ void ConfigInternal::Init(RayConfig &config, int argc, char **argv) {
     }
     if (!FLAGS_ray_address.CurrentValue().empty()) {
       SetBootstrapAddress(FLAGS_ray_address.CurrentValue());
+    }
+    // Don't rewrite `ray_redis_username` when it is not set in the command line.
+    if (FLAGS_ray_redis_username.CurrentValue() !=
+        FLAGS_ray_redis_username.DefaultValue()) {
+      redis_username = FLAGS_ray_redis_username.CurrentValue();
     }
     // Don't rewrite `ray_redis_password` when it is not set in the command line.
     if (FLAGS_ray_redis_password.CurrentValue() !=
