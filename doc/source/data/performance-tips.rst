@@ -215,29 +215,6 @@ calling :func:`~ray.data.Dataset.select_columns`, since column selection is push
 
     Dataset(num_rows=150, schema={sepal.length: double, variety: string})
 
-.. _parquet_row_pruning:
-
-Parquet row pruning (filter pushdown)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Similar to Parquet column pruning, you can pass in a filter to :func:`ray.data.read_parquet` (filter pushdown)
-which is applied at the file scan so only rows that match the filter predicate
-are returned. This can be used in conjunction with column pruning when appropriate to get the benefits of both.
-
-.. testcode::
-
-    import ray
-    # Only read rows with `sepal.length` greater than 5.0.
-    # The row count will be less than the total number of rows (150) in the full dataset.
-    ray.data.read_parquet(
-        "s3://anonymous@ray-example-data/iris.parquet",
-        filter=pyarrow.dataset.field("sepal.length") > 5.0,
-    ).count()
-
-.. testoutput::
-
-    118
-
 
 .. _data_memory:
 
