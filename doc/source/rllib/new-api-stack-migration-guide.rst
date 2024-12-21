@@ -403,7 +403,7 @@ Translating Policy.compute_actions_from_input_dict
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 This old API stack method (as well as :py:meth:`~ray.rllib.policy.policy.Policy.compute_actions` and
-:py:meth:`~ray.rllib.policy.policy.Policy.compute_single_actions`) directly translate to
+:py:meth:`~ray.rllib.policy.policy.Policy.compute_single_action`) directly translate to
 :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`
 and :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_exploration`.
 :ref:`The RLModule guide explains how to implement this method <rlmodule-guide>`.

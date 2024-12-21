@@ -53,14 +53,18 @@ RLModule API
 
 .. currentmodule:: ray.rllib.core.rl_module.rl_module
 
-Constructor
-+++++++++++
+Construction and setup
+++++++++++++++++++++++
 
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
     RLModule
+    RLModule.observation_space
+    RLModule.action_space
+    RLModule.inference_only
+    RLModule.model_config
     RLModule.setup
     RLModule.as_multi_rl_module
 
@@ -68,17 +72,32 @@ Constructor
 Forward methods
 +++++++++++++++
 
+Use the following three forward methods when you use your RLModule from inside other classes
+and components. However, do NOT override them and leave them as-is in your custom subclasses.
+For defining your own forward behavior, override the private methods ``_forward`` (generic forward behavior for
+all phases) or - for more granularity - ``_forward_exploration``, ``_forward_inference``, and ``_forward_train``.
+
 .. autosummary::
     :nosignatures:
     :toctree: doc/
 
-
-    ~RLModule.forward_train
     ~RLModule.forward_exploration
     ~RLModule.forward_inference
-    ~RLModule._forward_train
+    ~RLModule.forward_train
+
+
+Override these private methods here to define your custom model's forward behavior.
+``_forward`` (generic forward behavior for all phases), ``_forward_exploration`` (for training sample collection),
+``_forward_inference`` (for production deployments, greedy acting), and ``_forward_train`` (for computing loss function inputs).
+
+.. autosummary::
+    :nosignatures:
+    :toctree: doc/
+
+    ~RLModule._forward
     ~RLModule._forward_exploration
     ~RLModule._forward_inference
+    ~RLModule._forward_train
 
 
 Saving and Loading
