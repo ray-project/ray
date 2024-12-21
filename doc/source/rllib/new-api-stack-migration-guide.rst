@@ -419,7 +419,7 @@ In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.
     .. tab-item:: Same action dist. class
 
         .. testcode::
-            :skipif: true
+            :skipif: True
 
             from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
 
@@ -434,7 +434,7 @@ In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.
     .. tab-item:: Different action dist. classes
 
         .. testcode::
-            :skipif: true
+            :skipif: True
 
             from ray.rllib.models.torch.torch_distributions import (
                 YOUR_INFERENCE_DIST_CLASS,
@@ -458,7 +458,7 @@ Translating Policy.action_sampler_fn
 In order to translate :py:meth:`~ray.rllib.policy.torch_policy_v2.TorchPolicyV2.action_sampler_fn`, write the following custom RLModule code:
 
 .. testcode::
-    :skipif: true
+    :skipif: True
 
     from ray.rllib.models.torch.torch_distributions import YOUR_DIST_CLASS
 
