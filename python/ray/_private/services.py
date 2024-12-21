@@ -1606,8 +1606,9 @@ def start_raylet(
             available externally to this node.
         env_updates: Environment variable overrides.
         labels: The key-value labels of the node.
-        enable_physical_mode: Whether physical mode is enaled, which applies
-        constraint to tasks' resource consumption.
+        enable_physical_mode: Whether physical mode is enabled, which applies
+            constraint to tasks' resource consumption. As of now only memory
+            resource is supported.
     Returns:
         ProcessInfo for the process that was started.
     """
