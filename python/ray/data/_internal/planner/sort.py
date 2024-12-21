@@ -52,6 +52,9 @@ def generate_sort_fn(
                 blocks, sort_key, num_outputs, sample_bar
             )
         else:
+            # For user-specified boundaries (which only partition by the primary
+            # sort key), reverse `boundaries` so that the partitions are produced
+            # in descending order, as desired.
             boundaries = [(b,) for b in sort_key.boundaries]
             if sort_key.get_descending()[0]:
                 boundaries = boundaries[::-1]

@@ -207,8 +207,9 @@ class SortTaskSpec(ExchangeTaskSpec):
                 return np.isnan(x)
             return False
 
-        # To allow multi-directional sort, we utilize Python's stable sort:
-        # we sort several times with different directions.
+        # To allow multi-directional sort, we utilize Python's stable sort: we
+        # sort several times with different directions. We do this in reverse, so
+        # that the last key we sort by is the primary sort key passed by the user.
         for i, desc in list(enumerate(sort_key.get_descending()))[::-1]:
             # Sort the list, but Nones should be NULL_SENTINEL to ensure safe sorting.
             samples_list.sort(
