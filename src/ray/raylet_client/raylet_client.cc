@@ -26,7 +26,8 @@
 using MessageType = ray::protocol::MessageType;
 
 namespace {
-inline flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
+
+flatbuffers::Offset<ray::protocol::Address> to_flatbuf(
     flatbuffers::FlatBufferBuilder &fbb, const ray::rpc::Address &address) {
   return ray::protocol::CreateAddress(fbb,
                                       fbb.CreateString(address.raylet_id()),
@@ -50,108 +51,15 @@ AddressesToFlatbuffer(flatbuffers::FlatBufferBuilder &fbb,
 
 namespace ray::raylet {
 
-RayletConnection::RayletConnection(instrumented_io_context &io_service,
-                                   const std::string &raylet_socket,
-                                   int num_retries,
-                                   int64_t timeout) {
-  local_stream_socket socket(io_service);
-  Status s = ConnectSocketRetry(socket, raylet_socket, num_retries, timeout);
-  // If we could not connect to the socket, exit.
-  if (!s.ok()) {
-    RAY_LOG(FATAL) << "Could not connect to socket " << raylet_socket;
-  }
-  conn_ = ServerConnection::Create(std::move(socket));
-}
-
-Status RayletConnection::WriteMessage(MessageType type,
-                                      flatbuffers::FlatBufferBuilder *fbb) {
-  std::unique_lock<std::mutex> guard(write_mutex_);
-  int64_t length = fbb ? fbb->GetSize() : 0;
-  uint8_t *bytes = fbb ? fbb->GetBufferPointer() : nullptr;
-  auto status = conn_->WriteMessage(static_cast<int64_t>(type), length, bytes);
-  ShutdownIfLocalRayletDisconnected(status);
-  return status;
-}
-
-Status RayletConnection::AtomicRequestReply(MessageType request_type,
-                                            MessageType reply_type,
-                                            std::vector<uint8_t> *reply_message,
-                                            flatbuffers::FlatBufferBuilder *fbb) {
-  std::unique_lock<std::mutex> guard(mutex_);
-  RAY_RETURN_NOT_OK(WriteMessage(request_type, fbb));
-  auto status = conn_->ReadMessage(static_cast<int64_t>(reply_type), reply_message);
-  ShutdownIfLocalRayletDisconnected(status);
-  return status;
-}
-
-void RayletConnection::ShutdownIfLocalRayletDisconnected(const Status &status) {
-  if (!status.ok() && IsRayletFailed(RayConfig::instance().RAYLET_PID())) {
-    RAY_LOG(WARNING) << "The connection is failed because the local raylet has been "
-                        "dead. Terminate the process. Status: "
-                     << status;
-    QuickExit();
-    RAY_LOG(FATAL) << "Unreachable.";
-  }
-}
-
 RayletClient::RayletClient(std::shared_ptr<rpc::NodeManagerWorkerClient> grpc_client)
     : grpc_client_(std::move(grpc_client)) {}
 
-RayletClient::RayletClient(instrumented_io_context &io_service,
+RayletClient::RayletClient(std::unique_ptr<RayletConnection> raylet_conn,
                            std::shared_ptr<ray::rpc::NodeManagerWorkerClient> grpc_client,
-                           const std::string &raylet_socket,
-                           const WorkerID &worker_id,
-                           rpc::WorkerType worker_type,
-                           const JobID &job_id,
-                           const int &runtime_env_hash,
-                           const Language &language,
-                           const std::string &ip_address,
-                           Status *status,
-                           NodeID *raylet_id,
-                           int *port,
-                           const std::string &serialized_job_config,
-                           StartupToken startup_token)
-    : grpc_client_(std::move(grpc_client)), worker_id_(worker_id) {
-  conn_ = std::make_unique<RayletConnection>(io_service, raylet_socket, -1, -1);
-
-  flatbuffers::FlatBufferBuilder fbb;
-  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
-  auto message =
-      protocol::CreateRegisterClientRequest(fbb,
-                                            static_cast<int>(worker_type),
-                                            to_flatbuf(fbb, worker_id),
-                                            getpid(),
-                                            startup_token,
-                                            to_flatbuf(fbb, job_id),
-                                            runtime_env_hash,
-                                            language,
-                                            fbb.CreateString(ip_address),
-                                            /*port=*/0,
-                                            fbb.CreateString(serialized_job_config));
-  fbb.Finish(message);
-  // Register the process ID with the raylet.
-  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
-  std::vector<uint8_t> reply;
-  auto request_status = conn_->AtomicRequestReply(
-      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
-  if (!request_status.ok()) {
-    *status =
-        Status(request_status.code(),
-               std::string("[RayletClient] Unable to register worker with raylet. ") +
-                   request_status.message());
-    return;
-  }
-  auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
-  bool success = reply_message->success();
-  if (success) {
-    *status = Status::OK();
-  } else {
-    *status = Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
-    return;
-  }
-  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
-  *port = reply_message->port();
-}
+                           const WorkerID &worker_id)
+    : grpc_client_(std::move(grpc_client)),
+      worker_id_(worker_id),
+      conn_(std::move(raylet_conn)) {}
 
 Status RayletClient::Disconnect(
     const rpc::WorkerExitType &exit_type,
