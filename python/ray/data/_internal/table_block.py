@@ -56,19 +56,24 @@ class TableBlockBuilder(BlockBuilder):
         self._block_type = block_type
 
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
+        from datetime import datetime
+
+        import pandas as pd
+        import pyarrow as pa
+
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
             item = {TENSOR_COLUMN_NAME: item}
         if not isinstance(item, collections.abc.Mapping):
             raise ValueError(
-                "Returned elements of an TableBlock must be of type `dict`, "
+                "Returned elements of a TableBlock must be of type `dict`, "
                 "got {} (type {}).".format(item, type(item))
             )
 
         item_column_names = item.keys()
         if self._column_names is not None:
-            # Check all added rows have same columns.
+            # Check all added rows have the same columns.
             if item_column_names != self._column_names:
                 raise ValueError(
                     "Current row has different columns compared to previous rows. "
@@ -80,6 +85,15 @@ class TableBlockBuilder(BlockBuilder):
             self._column_names = item_column_names
 
         for key, value in item.items():
+            if isinstance(value, (pd.Timestamp, np.datetime64)):
+                # If it's a pandas Timestamp or numpy datetime64, convert to pyarrow
+                # Timestamp
+                value = pa.array([value], type=pa.timestamp("ns"))[0]
+            elif isinstance(value, datetime):
+                # Convert Python datetime to pandas Timestamp with nanosecond precision
+                value = pd.Timestamp(value)
+                value = pa.array([value], type=pa.timestamp("ns"))[0]
+
             if is_array_like(value) and not isinstance(value, np.ndarray):
                 value = np.array(value)
             self._columns[key].append(value)

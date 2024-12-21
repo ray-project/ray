@@ -4,6 +4,7 @@ import math
 import os
 import threading
 import time
+from datetime import datetime
 from typing import Iterator
 
 import numpy as np
@@ -328,6 +329,126 @@ def test_flat_map_generator(ray_start_regular_shared):
         3,
         3,
     ]
+
+
+# Helper function to process timestamp data in nanosecs
+def process_timestamp_data(row):
+    # Convert numpy.datetime64 to pd.Timestamp if needed
+    if isinstance(row["timestamp"], np.datetime64):
+        row["timestamp"] = pd.Timestamp(row["timestamp"])
+
+    # Add 1ns to timestamp
+    row["timestamp"] = row["timestamp"] + pd.Timedelta(1, "ns")
+    return row
+
+
+# Helper function to create a sample timestamp nanosecs DataFrame
+def create_timestamp_dataframe():
+    return pd.DataFrame(
+        {
+            "id": [1, 2, 3],
+            "timestamp": pd.to_datetime(
+                [
+                    "2024-01-01 00:00:00.123456789",
+                    "2024-01-02 00:00:00.987654321",
+                    "2024-01-03 00:00:00.111222333",
+                ]
+            ),
+            "value": [10.123456789, 20.987654321, 30.111222333],
+        }
+    )
+
+
+# Handle Timestamp nanoseconds
+@pytest.mark.parametrize(
+    "df, expected_df",
+    [
+        (
+            create_timestamp_dataframe(),
+            pd.DataFrame(
+                {
+                    "id": [1, 2, 3],
+                    "timestamp": pd.to_datetime(
+                        [
+                            "2024-01-01 00:00:00.123456790",
+                            "2024-01-02 00:00:00.987654322",
+                            "2024-01-03 00:00:00.111222334",
+                        ]
+                    ),
+                    "value": [10.123456789, 20.987654321, 30.111222333],
+                }
+            ),
+        )
+    ],
+)
+def test_map_timestamp_nanosecs(df, expected_df, ray_start_regular_shared):
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    assert processed_df.shape == df.shape, "DataFrame shapes do not match"
+    pd.testing.assert_frame_equal(processed_df, expected_df)
+    assert (processed_df["timestamp"] - df["timestamp"]).iloc[0] == pd.Timedelta(
+        1, "ns"
+    )
+    assert (processed_df["timestamp"] - df["timestamp"]).iloc[1] == pd.Timedelta(
+        1, "ns"
+    )
+    assert (processed_df["timestamp"] - df["timestamp"]).iloc[2] == pd.Timedelta(
+        1, "ns"
+    )
+
+
+# Handle numpy.datetime64 values
+@pytest.mark.parametrize(
+    "df",
+    [
+        pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "timestamp": [
+                    np.datetime64("2024-01-01T00:00:00.123456789"),
+                    np.datetime64("2024-01-02T00:00:00.987654321"),
+                    np.datetime64("2024-01-03T00:00:00.111222333"),
+                ],
+                "value": [10.123456789, 20.987654321, 30.111222333],
+            }
+        )
+    ],
+)
+def test_map_numpy_datetime(df, ray_start_regular_shared):
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    # Ensure numpy.datetime64 is correctly converted to pandas Timestamp
+    assert isinstance(processed_df["timestamp"].iloc[0], pd.Timestamp)
+
+    # Check that the timestamp has been incremented by 1ns
+    assert (processed_df["timestamp"] - df["timestamp"]).min() == pd.Timedelta(1, "ns")
+
+
+# Handle Python datetime objects
+@pytest.mark.parametrize(
+    "df",
+    [
+        pd.DataFrame(
+            {
+                "id": [1, 2, 3],
+                "timestamp": [
+                    datetime(2024, 1, 1, 0, 0, 0, 123456),
+                    datetime(2024, 1, 2, 0, 0, 0, 987654),
+                    datetime(2024, 1, 3, 0, 0, 0, 111222),
+                ],
+                "value": [10.123456789, 20.987654321, 30.111222333],
+            }
+        )
+    ],
+)
+def test_map_python_datetime(df, ray_start_regular_shared):
+    ray_data = ray.data.from_pandas(df)
+    result = ray_data.map(process_timestamp_data)
+    processed_df = result.to_pandas()
+    # Ensure Python datetime is correctly converted to pandas Timestamp
+    assert isinstance(processed_df["timestamp"].iloc[0], pd.Timestamp)
 
 
 def test_add_column(ray_start_regular_shared):
