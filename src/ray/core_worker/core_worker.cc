@@ -578,8 +578,8 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     return PushError(job_id, type, error_message, timestamp);
   };
   task_manager_.reset(new TaskManager(
-      memory_store_,
-      reference_counter_,
+      *memory_store_,
+      *reference_counter_,
       /*put_in_local_plasma_callback=*/
       [this](const RayObject &object, const ObjectID &object_id) {
         RAY_CHECK_OK(PutInLocalPlasmaStore(object, object_id, /*pin_object=*/true));
@@ -2276,6 +2276,7 @@ void CoreWorker::BuildCommonTaskSpec(
     const std::string &debugger_breakpoint,
     int64_t depth,
     const std::string &serialized_runtime_env_info,
+    const std::string &call_site,
     const TaskID &main_thread_current_task_id,
     const std::string &concurrency_group_name,
     bool include_job_config,
@@ -2325,6 +2326,7 @@ void CoreWorker::BuildCommonTaskSpec(
       debugger_breakpoint,
       depth,
       main_thread_current_task_id,
+      call_site,
       override_runtime_env_info,
       concurrency_group_name,
       enable_task_events,
@@ -2362,6 +2364,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
     const rpc::SchedulingStrategy &scheduling_strategy,
     const std::string &debugger_breakpoint,
     const std::string &serialized_retry_exception_allowlist,
+    const std::string &call_site,
     const TaskID current_task_id) {
   RAY_CHECK(scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
@@ -2398,6 +2401,7 @@ std::vector<rpc::ObjectReference> CoreWorker::SubmitTask(
                       debugger_breakpoint,
                       depth,
                       task_options.serialized_runtime_env_info,
+                      call_site,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
@@ -2436,6 +2440,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                                const std::vector<std::unique_ptr<TaskArg>> &args,
                                const ActorCreationOptions &actor_creation_options,
                                const std::string &extension_data,
+                               const std::string &call_site,
                                ActorID *return_actor_id) {
   RAY_CHECK(actor_creation_options.scheduling_strategy.scheduling_strategy_case() !=
             rpc::SchedulingStrategy::SchedulingStrategyCase::SCHEDULING_STRATEGY_NOT_SET);
@@ -2491,6 +2496,7 @@ Status CoreWorker::CreateActor(const RayFunction &function,
                       "" /* debugger_breakpoint */,
                       depth,
                       actor_creation_options.serialized_runtime_env_info,
+                      call_site,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       /*concurrency_group_name*/ "",
                       /*include_job_config*/ true,
@@ -2685,6 +2691,7 @@ Status CoreWorker::SubmitActorTask(
     int max_retries,
     bool retry_exceptions,
     const std::string &serialized_retry_exception_allowlist,
+    const std::string &call_site,
     std::vector<rpc::ObjectReference> &task_returns,
     const TaskID current_task_id) {
   absl::ReleasableMutexLock lock(&actor_task_mutex_);
@@ -2745,6 +2752,7 @@ Status CoreWorker::SubmitActorTask(
                       "",    /* debugger_breakpoint */
                       depth, /*depth*/
                       "{}",  /* serialized_runtime_env_info */
+                      call_site,
                       worker_context_.GetMainThreadOrActorCreationTaskID(),
                       task_options.concurrency_group_name,
                       /*include_job_config*/ false,
