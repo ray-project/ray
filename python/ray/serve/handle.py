@@ -53,6 +53,7 @@ class _DeploymentHandleBase:
         _router: Optional[Router] = None,
         _create_router: Optional[CreateRouterCallable] = None,
         _request_counter: Optional[metrics.Counter] = None,
+        _handle_id: Optional[str] = None,
     ):
         self.deployment_id = DeploymentID(name=deployment_name, app_name=app_name)
         self.init_options: Optional[InitHandleOptionsBase] = init_options
@@ -60,7 +61,9 @@ class _DeploymentHandleBase:
             handle_options or create_dynamic_handle_options()
         )
 
-        self.handle_id = get_random_string()
+        # Handle ID is shared among handles that are returned by
+        # `handle.options` or `handle.method`
+        self.handle_id = _handle_id or get_random_string()
         self.request_counter = _request_counter or self._create_request_counter(
             app_name, deployment_name, self.handle_id
         )
@@ -179,6 +182,7 @@ class _DeploymentHandleBase:
             _router=self._router,
             _create_router=self._create_router,
             _request_counter=self.request_counter,
+            _handle_id=self.handle_id,
         )
 
     def _remote(
