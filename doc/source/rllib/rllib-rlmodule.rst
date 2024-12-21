@@ -75,6 +75,7 @@ image observations (``[width] x [height] x [channels]``).
     piece like so:
 
     .. testcode::
+
         from ray.rllib.algorithms.ppo import PPOConfig
         from ray.rllib.connectors.env_to_module import FlattenObservations
 
@@ -120,7 +121,7 @@ you should configure your experiment like so:
         )
     )
 
-See here for a compete list of all supported ``fcnet_..`` options:
+This is the compete list of all supported ``fcnet_..`` options:
 
 .. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
@@ -160,7 +161,7 @@ For example:
         )
     )
 
-See here for a compete list of all supported ``conv_..`` options:
+Here is the compete list of all supported ``conv_..`` options:
 
 .. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
