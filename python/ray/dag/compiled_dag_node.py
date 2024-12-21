@@ -2617,8 +2617,11 @@ def build_compiled_dag_from_ray_dag(
         return node
 
     root = dag._find_root()
-    root.traverse_and_apply(_find_p2p_send_dag_nodes)
-    root.traverse_and_apply(_build_compiled_dag)
+    topo_queue = root.construct_topo_queue()
+    for node in topo_queue:
+        _find_p2p_send_dag_nodes(node)
+    for node in topo_queue:
+        _build_compiled_dag(node)
     compiled_dag._get_or_compile()
     global _compiled_dags
     _compiled_dags[compiled_dag.get_id()] = compiled_dag

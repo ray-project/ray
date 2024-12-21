@@ -429,10 +429,10 @@ class DAGNode(DAGNodeBase):
             )
         )
 
-    def traverse_and_apply(self, fn: "Callable[[DAGNode], T]"):
+    def construct_topo_queue(self) -> List["DAGNode"]:
         """
         Traverse all nodes in the connected component of the DAG that contains the
-        `self` node, and apply the given function to each node in topological order.
+        `self` node, and return them in topological order.
         """
         visited: Set[DAGNode] = set()
         queue = [self]
@@ -492,10 +492,7 @@ class DAGNode(DAGNodeBase):
                 if in_degrees[neighbor] == 0:
                     frontier.append(neighbor)
         assert len(topo_queue) == len(visited)
-
-        # Apply the function to each node in the topological order.
-        for node in topo_queue:
-            fn(node)
+        return topo_queue
 
     def _raise_nested_dag_node_error(self, args):
         """
