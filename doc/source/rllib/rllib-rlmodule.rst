@@ -270,7 +270,7 @@ and analogous to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` co
                         observation_space=gym.spaces.Box(low=-1, high=1, shape=(10,)),
                         action_space=gym.spaces.Discrete(2),
 
-                        # A custom dict that will be accessible inside your class as
+                        # A custom dict that is accessible inside your class as
                         # `self.model_config`.
                         model_config={"fcnet_hiddens": [32]},
                     ),
@@ -281,7 +281,7 @@ and analogous to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` co
                         observation_space=gym.spaces.Box(low=-1, high=1, shape=(5,)),
                         action_space=gym.spaces.Discrete(2),
 
-                        # A custom dict that will be accessible inside your class as
+                        # A custom dict that is accessible inside your class as
                         # `self.model_config`.
                         model_config={"fcnet_hiddens": [16]},
                     ),
@@ -497,7 +497,7 @@ If you don't return the ``actions`` key from your forward methods:
     In case of :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule._forward_inference`,
     the generated distributions (from returned key ``action_dist_inputs``) are always made deterministic first through
     the :py:meth:`~ray.rllib.models.distributions.Distribution.to_deterministic` utility before a possible action sample step.
-    For example, sampling from a Categorical distribution will be reduced to selecting the argmax actions from the distribution's logits/probs.
+    For example, sampling from a Categorical distribution is reduced to selecting the argmax actions from the distribution's logits/probs.
     If you already return the "actions" key yourself, RLlib skips that sampling step.
 
 
