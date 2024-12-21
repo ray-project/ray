@@ -29,7 +29,7 @@ class OnWorkersRecreatedCallbacks(DefaultCallbacks):
             print(f"changed {key} to {algorithm._counters[key]}")
 
         # Execute some dummy code on each of the recreated workers.
-        results = worker_set.foreach_worker(lambda w: w.ping())
+        results = worker_set.foreach_env_runner(lambda w: w.ping())
         print(results)  # should print "pong" n times (one for each recreated worker).
 
 

@@ -383,7 +383,7 @@ class TestWorkerFailures(unittest.TestCase):
                 # Make a dummy call to the eval worker's policy_mapping_fn and
                 # make sure the restored eval worker received the correct one from
                 # the eval config (not the main workers' one).
-                test = algo.eval_env_runner_group.foreach_worker(
+                test = algo.eval_env_runner_group.foreach_env_runner(
                     lambda w: w.config.policy_mapping_fn(0, None)
                 )
                 self.assertEqual(test[0], "This is the eval mapping fn")
@@ -704,7 +704,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Rollout worker has test module.
         self.assertTrue(
             all(
-                algo.env_runner_group.foreach_worker(
+                algo.env_runner_group.foreach_env_runner(
                     has_test_module, local_env_runner=False
                 )
             )
@@ -712,7 +712,7 @@ class TestWorkerFailures(unittest.TestCase):
         # Eval worker has test module.
         self.assertTrue(
             all(
-                algo.eval_env_runner_group.foreach_worker(
+                algo.eval_env_runner_group.foreach_env_runner(
                     has_test_module, local_env_runner=False
                 )
             )

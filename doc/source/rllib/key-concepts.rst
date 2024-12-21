@@ -9,29 +9,29 @@
 Key concepts
 ============
 
-To help you get a high-level understanding of how the library works, on this page, you learn
-about the key concepts and general architecture of RLlib.
+To help you get a high-level understanding of how the library works, on this page, you
+learn about the key concepts and general architecture of RLlib.
 
 .. figure:: images/rllib-new-api-stack-simple.svg
     :width: 800
     :align: center
 
 The central component of the library is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-class, acting as a container for all other components required to train your models.
+class, acting as a container for all other components required to train your models on an RL problem.
 
 Your gateway into using an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is the
 :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1ff;">**cyan**</span>) class, allowing
-you to manage your config settings (such as the learning rate, model architecture, compute resources used, or fault-tolerance behavior),
-and then either use the config with Ray Tune or build the :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` instance
-and work with it directly.
+you to manage any possible config settings, such as the learning rate, model architecture, compute resources used, or fault-tolerance behavior.
+You can then either use your config with Ray Tune or call its :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build`
+method to construct an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance and work with it directly.
 
 Once built from your config, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` contains an
-:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` (<span style="color: #d0e2f3;">**blue**</span>) with scalable
+:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` (<span style="color: #d0e2f3;">**blue**</span>) with distributed, scalable
 subcomponents to collect training samples from the RL environment,
 a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` (<span style="color: #fff2ccff;">**yellow**</span>) with
-scalable subcomponents to compute gradients and update models,
-and a :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method (<span style="color: #f4ccccff;">**red**</span>), defining what
-the algorithm should do and when.
+distributed, scalable subcomponents to compute gradients and update your models,
+and a :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method (<span style="color: #f4ccccff;">**red**</span>), defining
+**WHEN** the the algorithm should do **WHAT**.
 
 Copies of the models being trained are located in both :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
 and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` and the model's weights are synchronized after
@@ -43,12 +43,13 @@ model updates.
 Algorithms
 ----------
 
-RLlib Algorithms bring all required components together, making learning of different tasks accessible via the library's Python API.
-Each :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is managed by its respective :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class,
-for example to configure a :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` instance,
-you should use the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class. As a matter of fact, you never have to construct an
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance directly yourself, you can work with the algorithm solely through its
-config.
+The RLlib `Algorithm` class brings all required components together, making learning of different
+RL environments accessible through the library's Python APIs.
+
+Each :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class is managed by its respective
+:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` class. For example, to configure a
+:py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` ("Proximal Policy Optimization") instance, you should use
+the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class.
 
 An algorithm sets up its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` and
 :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, both of which use `Ray actors <actors.html>`__ to scale sample collection
@@ -130,27 +131,28 @@ RLModules
 
 .. figure:: images/rllib-blabla.png
 
-    **RLModule overview**: A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
+    **RLModule overview**: *(left)* A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
     and defines its exploration-, inference- and training logic to map observations to actions.
-    In more complex setups, a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` contains
+    *(right)* In more complex setups, a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` contains
     many submodules, each itself an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
     identified by a ``ModuleID``. This way, arbitrarily complex multi-model and multi-agent algorithms
     can be implemented.
 
-In a nutshell, they carry the neural networks and define how to use them during the three phases of a model's
+In a nutshell, ``RLModules`` carry the neural networks and define how to use them during the three phases of a model's
 reinforcement learning lifecycle: Exploration (collecting training data), inference (production/deployment),
 and training (computing loss function inputs).
 
 .. link to new RLModule docs
 
 You can chose to use :ref:`RLlib's built-in default models and configure these <blabla>` as needed
-(change number of layers and size, activation functions, etc..) or :ref:`write your own custom models in PyTorch <blabla>`
-thus implement any architecture and computation logic.
+(change number of layers and size, activation functions, etc..) or :ref:`write your own custom models in PyTorch <blabla>`,
+allowing you to implement any architecture and computation logic.
 
 .. figure:: images/rl_modules/rl_module_in_env_runner.svg
     :width: 400
 
-    **
+    **An RLModule inside an EnvRunner actor**: The :py:class:`~ray.rllib.env.env_runner.EnvRunner` operates on its own copy of your
+    (usually inference-only) :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, using it to only compute actions.
 
 A copy of the user's RLModule is located inside each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor
 managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm and another one in each
@@ -160,17 +162,18 @@ of the Algorithm.
 .. figure:: images/rl_modules/rl_module_in_learner.svg
     :width: 400
 
-    **
+    **An RLModule inside a Learner actor**: The :py:class:`~ray.rllib.core.learner.learner.:Learner` operates on its own copy of your (complete)
+    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, computing the loss function inputs, the loss itself,
+    and model gradients, then updating your RLModule through its optimizer.
 
 The EnvRunner copy is normally kept in an ``inference_only`` version, meaning components not required for
 pure action computation (such as a value function) may be missing to save memory.
 
 
-
 .. _rllib-key-concepts-environments:
 
-EnvRunners and RL environments
-------------------------------
+RL environments
+---------------
 
 Solving a problem in RL begins with an **environment**. In the simplest definition of RL:
 
@@ -196,6 +199,8 @@ The RL simulation feedback loop repeatedly collects data, for one (single-agent 
 The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
 The most common API to define environments is the `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ API, which we also use in most of our examples.
 
+
+.. _rllib-key-concepts-episodes:
 
 Episodes
 --------
@@ -227,45 +232,60 @@ These batches are wrapped up together in a ``MultiAgentBatch``,
 serving as a container for the individual agents' sample batches.
 
 
+.. _rllib-key-concepts-env-runners:
+
+EnvRunners
+----------
+
+Given an RL environment and RLModule, an EnvRunner produces lists of
+`Episodes <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
+This is your classic "environment interaction loop".
+Efficient sample collection can be burdensome to get right, especially when leveraging environment vectorization,
+recurrent neural networks, or when operating in a multi-agent setup.
+
+RLlib provides the :py:class`~ray.rllib.env.env_runner.EnvRunner` classes that manage all of this, and most RLlib algorithms
+use either the `single-agent- <>`__ or the `multi-agent version <>`__ of it.
+
+You can use an EnvRunner standalone to produce lists of Episodes. This can be done by calling its
+:py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method (or ``EnvRunner.sample.remote()`` in the distributed, ray actor setup).
+
+Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors and using them to gather experiences in parallel:
+
+.. testcode::
+
+    import tree  # pip install dm_tree
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    # Configure the EnvRunnerGroup.
+    config = (
+        PPOConfig()
+        .environment("Acrobot-v1")
+        .env_runners(num_env_runners=2, num_envs_per_env_runner=1)
+    )
+    # Create the EnvRunnerGroup.
+    env_runner_group = EnvRunnerGroup(config=config)
+
+    # Gather lists of `SingleAgentEpisode`s (each EnvRunner actor returns one
+    # such list with exactly 2 episodes in it).
+    episodes = env_runner_group.foreach_env_runner(
+        lambda env_runner: env_runner.sample(num_episodes=2),
+        local_env_runner=False,  # don't sample with the local EnvRunner instance
+    )
+    # 2 (remote) EnvRunners used.
+    assert len(episodes) == 2
+    # Each EnvRunner returns 3 episodes
+    assert all(len(eps_list) == 3 for eps_list in episodes)
+
+    # Report the returns of all episodes collected
+    for episode in tree.flatten(episodes):
+        print("R=", episode.get_return())
+
+
+.. _rllib-key-concepts-learners:
+
 Learners, loss functions and optimizers
 ---------------------------------------
 
-
-.. _policy-evaluation:
-
-Policy evaluation
------------------
-
-Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
-
-You can use rollout workers standalone to produce batches of experiences. This can be done by calling ``worker.sample()`` on a worker instance, or ``worker.sample.remote()`` in parallel on worker instances created as Ray actors (see `EnvRunnerGroup <https://github.com/ray-project/ray/blob/master/rllib/env/env_runner_group.py>`__).
-
-Here is an example of creating a set of rollout workers and using them gather experiences in parallel. The trajectories are concatenated, the policy learns on the trajectory batch, and then we broadcast the policy weights to the workers for the next round of rollouts:
-
-.. code-block:: python
-
-    # Setup policy and rollout workers.
-    env = gym.make("CartPole-v1")
-    policy = CustomPolicy(env.observation_space, env.action_space, {})
-    workers = EnvRunnerGroup(
-        policy_class=CustomPolicy,
-        env_creator=lambda c: gym.make("CartPole-v1"),
-        num_env_runners=10)
-
-    while True:
-        # Gather a batch of samples.
-        T1 = SampleBatch.concat_samples(
-            ray.get([w.sample.remote() for w in workers.remote_workers()]))
-
-        # Improve the policy using the T1 batch.
-        policy.learn_on_batch(T1)
-
-        # The local worker acts as a "parameter server" here.
-        # We put the weights of its `policy` into the Ray object store once (`ray.put`)...
-        weights = ray.put({"default_policy": policy.get_weights()})
-        for w in workers.remote_workers():
-            # ... so that we can broacast these weights to all rollout-workers once.
-            w.set_weights.remote(weights)
 
 
 .. Training Step Method (``Algorithm.training_step()``)
