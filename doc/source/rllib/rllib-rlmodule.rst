@@ -90,7 +90,7 @@ image observations (``[width] x [height] x [channels]``).
     .. TODO (sven): Link here to the connector V2 page and preprocessors once that page is done.
 
 Furthermore, all default models offer configurable architecture choices with respect to the number
-and size of the layers used (Dense or CNN), their activations and initializations, and automatic LSTM-wrapping behavior.
+and size of the layers used (``Dense`` or ``Conv2D``), their activations and initializations, and automatic LSTM-wrapping behavior.
 
 Use the :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` datadict class to configure
 any default model in RLlib. Note that you should only use this class for configuring default models.
@@ -101,8 +101,8 @@ See here for more information on :ref:`how to write and configure your custom RL
 Configuring default MLP nets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-If you want to train a simple MLP policy (with only fully connected layers) with PPO and use the default RLModule,
-you should configure your experiment like so:
+If you want to train a simple MLP policy ("multi layer perceptron": only containing dense layers)
+with PPO and use the default RLModule, you should configure your experiment like so:
 
 .. testcode::
 
@@ -133,7 +133,9 @@ Configuring default CNN nets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For image-based environments (for example `Atari <https://ale.farama.org/environments/>`__), use the
-``conv_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
+``conv_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig` to configure
+your CNN ("convolutional neural network") stack.
+
 For example:
 
 .. testcode::
