@@ -12,32 +12,20 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Used to sanity check threading issues by checking current thread id.
-//
-// Example usage:
-// ThreadChecker thread_checker{};
-//
-// // Initialize on the thread at first usage.
-// RAY_CHECK(thread_checker.IsOnSameThread());
-//
-// // Check it's on the same thread.
-// RAY_CHECK(thread_checker.IsOnSameThread());
-
 #pragma once
-
-#include <atomic>
-#include <thread>
 
 namespace ray {
 
-class ThreadChecker {
- public:
-  // Return true at initialization, or current invocation happens on the same thread as
-  // initialization.
-  [[nodiscard]] bool IsOnSameThread() const;
+template <typename T>
+constexpr bool AlwaysFalse = false;
 
- private:
-  mutable std::atomic<std::thread::id> thread_id_{};
-};
+template <typename T>
+constexpr bool AlwaysTrue = true;
+
+template <int N>
+constexpr bool AlwaysFalseValue = false;
+
+template <int N>
+constexpr bool AlwaysTrueValue = true;
 
 }  // namespace ray
