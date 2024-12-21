@@ -929,41 +929,38 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    # def find_unused_input_attributes(
-    #     self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
-    # ) -> Set[str]:
-    #     """
-    #     This is the helper function to handle_unused_attributes.
-    #     Traverse the DAG backwards from the output node to find unused attributes.
-    #     Args:
-    #         output_node: The starting node for the traversal.
-    #         input_attributes: A set of attributes accessed by the InputNode.
-    #     Returns:
-    #         A set:
-    #             - unused_attributes: A set of attributes that are unused.
-    #     """
-    #     from ray.dag import InputAttributeNode
+    def find_unused_input_attributes(
+        self, output_node: "ray.dag.MultiOutputNode", input_attributes: Set[str]
+    ) -> Set[str]:
+        """
+        This is the helper function to handle_unused_attributes.
+        Traverse the DAG backwards from the output node to find unused attributes.
+        Args:
+            output_node: The starting node for the traversal.
+            input_attributes: A set of attributes accessed by the InputNode.
+        Returns:
+            A set:
+                - unused_attributes: A set of attributes that are unused.
+        """
+        from ray.dag import InputAttributeNode
 
-    #     used_attributes: Set[str] = set()
-    #     # Keep track of visited nodes during backtracking.
-    #     visited_nodes: Set["ray.dag.MultiOutputNode"] = set()
+        used_attributes = set()
+        visited_nodes = set()
+        stack = [output_node]
 
-    #     # Traverse backwards from the output node to find all used inputs.
-    #     def traverse(node: "ray.dag.MultiOutputNode"):
-    #         if node in visited_nodes:
-    #             return
-    #         visited_nodes.add(node)
+        while stack:
+            current_node = stack.pop()
+            if current_node in visited_nodes:
+                continue
+            visited_nodes.add(current_node)
 
-    #         if isinstance(node, InputAttributeNode):
-    #             used_attributes.add(node.key)
+            if isinstance(current_node, InputAttributeNode):
+                used_attributes.add(current_node.key)
 
-    #         for upstream_node in node._upstream_nodes:
-    #             traverse(upstream_node)
+            stack.extend(current_node._upstream_nodes)
 
-    #     traverse(output_node)
-
-    #     unused_attributes = input_attributes - used_attributes
-    #     return unused_attributes
+        unused_attributes = input_attributes - used_attributes
+        return unused_attributes
 
     def _preprocess(self) -> None:
         """Before compiling, preprocess the DAG to build an index from task to
@@ -994,10 +991,10 @@ class CompiledDAG:
             if isinstance(task.dag_node, InputNode):
                 assert self.input_task_idx is None, "More than one InputNode found"
                 self.input_task_idx = idx
-                # # handle_unused_attributes:
-                # # Save input attributes in a set.
-                # input_node = task.dag_node
-                # input_attributes.update(input_node.input_attribute_nodes.keys())
+                # handle_unused_attributes:
+                # Save input attributes in a set.
+                input_node = task.dag_node
+                input_attributes.update(input_node.input_attribute_nodes.keys())
             elif isinstance(task.dag_node, InputAttributeNode):
                 self.input_attr_task_idxs.append(idx)
 
@@ -1177,23 +1174,23 @@ class CompiledDAG:
                     # Add all readers to the NCCL actors of P2P.
                     nccl_actors_p2p.add(downstream_actor_handle)
 
-        # # handle_unused_attributes:
-        # unused_attributes = self.find_unused_input_attributes(
-        #     output_node, input_attributes
-        # )
+        # handle_unused_attributes:
+        unused_attributes = self.find_unused_input_attributes(
+            output_node, input_attributes
+        )
 
-        # if unused_attributes:
-        #     unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
-        #     input_attributes_str = ", ".join(str(key) for key in input_attributes)
-        #     unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
+        if unused_attributes:
+            unused_attributes_str = ", ".join(str(key) for key in unused_attributes)
+            input_attributes_str = ", ".join(str(key) for key in input_attributes)
+            unused_phrase = "is unused" if len(unused_attributes) == 1 else "are unused"
 
-        #     raise ValueError(
-        #         "Compiled Graph expects input to be accessed "
-        #         f"using all of attributes {input_attributes_str}, "
-        #         f"but {unused_attributes_str} {unused_phrase}. "
-        #         "Ensure all input attributes are used and contribute "
-        #         "to the computation of the Compiled Graph output."
-        #     )
+            raise ValueError(
+                "Compiled Graph expects input to be accessed "
+                f"using all of attributes {input_attributes_str}, "
+                f"but {unused_attributes_str} {unused_phrase}. "
+                "Ensure all input attributes are used and contribute "
+                "to the computation of the Compiled Graph output."
+            )
 
         # Collect all leaf nodes.
         leaf_nodes: DAGNode = []
