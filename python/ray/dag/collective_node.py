@@ -136,7 +136,13 @@ class _CollectiveOperation:
             recv_buf = torch.empty_like(send_buf)
             communicator.allreduce(send_buf, recv_buf, self._op)
         elif self.comm_op == self.REDUCESCATTER:
-            # TODO: check input size of 
+            world_size = len(self._actor_handles)
+            assert send_buf.shape[0] % world_size == 0, "Input tensor's first dimension should be divisible by the number of ators participated"
+            recv_buf = torch.empty(
+                (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
+                dtype=send_buf.dtype,
+                device=send_buf.device
+            )
             communicator.reducescatter(send_buf, recv_buf, self._op)
         return recv_buf
 
