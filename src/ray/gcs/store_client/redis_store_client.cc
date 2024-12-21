@@ -503,7 +503,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   });
 
   auto status = cli->Connect(io_service);
-  RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+  RAY_CHECK_OK(status) << "Failed to connect to redis";
 
   auto context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.

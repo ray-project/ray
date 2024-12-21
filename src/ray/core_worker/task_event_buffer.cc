@@ -571,7 +571,7 @@ void TaskEventBufferImpl::FlushEvents(bool forced) {
   };
 
   auto status = task_accessor->AsyncAddTaskEventData(std::move(data), on_complete);
-  RAY_CHECK(status.ok());
+  RAY_CHECK_OK(status);
 }
 
 void TaskEventBufferImpl::ResetCountersForFlush() {

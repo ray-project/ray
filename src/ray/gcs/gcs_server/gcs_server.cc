@@ -831,7 +831,7 @@ std::shared_ptr<RedisClient> GcsServer::CreateRedisClient(
     instrumented_io_context &io_service) {
   auto redis_client = std::make_shared<RedisClient>(GetRedisClientOptions());
   auto status = redis_client->Connect(io_service);
-  RAY_CHECK(status.ok()) << "Failed to init redis gcs client as " << status;
+  RAY_CHECK_OK(status) << "Failed to init redis gcs client";
   return redis_client;
 }
 
