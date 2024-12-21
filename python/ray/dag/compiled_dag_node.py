@@ -25,7 +25,6 @@ from ray.dag.dag_operation_future import GPUFuture, DAGOperationFuture, Resolved
 from ray.experimental.channel.cached_channel import CachedChannel
 from ray.experimental.channel.communicator import Communicator
 from ray.dag.constants import (
-    RAY_CGRAPH_ENABLE_PROFILING,
     RAY_CGRAPH_ENABLE_NVTX_PROFILING,
     RAY_CGRAPH_VISUALIZE_SCHEDULE,
 )
@@ -1594,6 +1593,8 @@ class CompiledDAG:
             # so that they will be executed in that order.
             executable_tasks.sort(key=lambda task: task.bind_index)
             self.actor_to_executable_tasks[actor_handle] = executable_tasks
+
+        from ray.dag.constants import RAY_CGRAPH_ENABLE_PROFILING
 
         if RAY_CGRAPH_ENABLE_PROFILING:
             exec_task_func = do_profile_tasks
