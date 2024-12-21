@@ -1355,25 +1355,7 @@ py_test(
 
 # LearnerGroup
 py_test(
-    name = "TestLearnerGroupSyncUpdate",
-    main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupSyncUpdate"]
-)
-
-py_test(
-    name = "TestLearnerGroupCheckpointRestore",
-    main = "core/learner/tests/test_learner_group.py",
-    tags = ["team:rllib", "multi_gpu", "exclusive"],
-    size = "large",
-    srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupCheckpointRestore"]
-)
-
-py_test(
-    name = "TestLearnerGroupAsyncUpdate",
+    name = "test_learner_group_async_update",
     main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
@@ -1382,12 +1364,30 @@ py_test(
 )
 
 py_test(
-    name = "TestLearnerGroupSaveLoadState",
+    name = "test_learner_group_sync_update",
     main = "core/learner/tests/test_learner_group.py",
     tags = ["team:rllib", "multi_gpu", "exclusive"],
     size = "large",
     srcs = ["core/learner/tests/test_learner_group.py"],
-    args = ["TestLearnerGroupSaveLoadState"]
+    args = ["TestLearnerGroupSyncUpdate"]
+)
+
+py_test(
+    name = "test_learner_group_checkpoint_restore",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupCheckpointRestore"]
+)
+
+py_test(
+    name = "test_learner_group_save_and_restore_state",
+    main = "core/learner/tests/test_learner_group.py",
+    tags = ["team:rllib", "multi_gpu", "exclusive"],
+    size = "large",
+    srcs = ["core/learner/tests/test_learner_group.py"],
+    args = ["TestLearnerGroupSaveAndRestoreState"]
 )
 
 # Learner
@@ -1411,13 +1411,6 @@ py_test(
 #
 # Tag: models
 # --------------------------------------------------------------------
-
-py_test(
-    name = "test_attention_nets",
-    tags = ["team:rllib", "models"],
-    size = "large",
-    srcs = ["models/tests/test_attention_nets.py"]
-)
 
 py_test(
     name = "test_conv2d_default_stacks",
