@@ -23,7 +23,7 @@ of RLlib, demonstrating the different use cases and features of the library.
     feel free to raise an issue on `RLlib's github repository <https://github.com/ray-project/ray/issues/new/choose>`__.
 
 
-Folder Structure
+Folder structure
 ----------------
 The `examples folder <https://github.com/ray-project/ray/blob/master/rllib/examples>`__ is
 structured into several sub-directories, the contents of all of which are described in detail below.
@@ -119,7 +119,7 @@ Curiosity
    Ideal for complex environments with large observation spaces where reward signals are sparse.
 
 
-Curriculum Learning
+Curriculum learning
 +++++++++++++++++++
 
 - `Custom Env Rendering Method <https://github.com/ray-project/ray/blob/master/rllib/examples/curriculum/curriculum_learning.py>`__:
@@ -162,7 +162,7 @@ Evaluation
    This is beneficial in scenarios where frequent evaluation is required without interrupting learning.
 
 
-Fault Tolerance
+Fault tolerance
 +++++++++++++++
 
 - `Crashing and Stalling Env <https://github.com/ray-project/ray/blob/master/rllib/examples/fault_tolerance/crashing_and_stalling_env.py>`__:
@@ -170,7 +170,7 @@ Fault Tolerance
    This script is useful for evaluating how RLlib handles interruptions and recovers from unexpected failures during training.
 
 
-GPU (for Training and Sampling)
+GPU (for training and sampling)
 +++++++++++++++++++++++++++++++
 
 - `Float16 Training and Inference <https://github.com/ray-project/ray/blob/master/rllib/examples/gpus/float16_training_and_inference.py>`__:
@@ -190,7 +190,7 @@ GPU (for Training and Sampling)
    the `config.env_runners(num_gpus_per_env_runner=..)` setting.
 
 
-Hierarchical Training
+Hierarchical training
 +++++++++++++++++++++
 
 - `Hierarchical RL Training <https://github.com/ray-project/ray/blob/master/rllib/examples/hierarchical/hierarchical_training.py>`__:
@@ -200,7 +200,7 @@ Hierarchical Training
    learning over flat approaches by demonstrating significantly improved learning performance in challenging, goal-oriented tasks.
 
 
-Inference (of Models/Policies)
+Inference (of models/policies)
 ++++++++++++++++++++++++++++++
 
 - `Policy Inference after Training <https://github.com/ray-project/ray/blob/master/rllib/examples/inference/policy_inference_after_training.py>`__:
@@ -234,7 +234,7 @@ Metrics
    performance- and environment indicators beyond the standard RLlib metrics.
 
 
-Multi-Agent RL
+Multi-agent RL
 ++++++++++++++
 
 - `Custom Heuristic Policy <https://github.com/ray-project/ray/blob/master/rllib/examples/multi_agent/custom_heuristic_policy.py>`__:
@@ -298,7 +298,7 @@ Offline RL
 Ray Serve and RLlib
 +++++++++++++++++++
 
-- `Custom Experiment <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__:
+- `Using Ray Serve with RLlib <https://github.com/ray-project/ray/blob/master/rllib/examples/ray_serve/ray_serve_with_rllib.py>`__:
    Integrates RLlib with `Ray Serve <https://docs.ray.io/en/latest/serve/index.html>`__, showcasing how to deploy trained
    :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instances as RESTful services. This setup is ideal for deploying models
    in production environments with API-based interactions.
@@ -352,7 +352,7 @@ RLModules
    multi-agent scenarios with pre-trained policies.
 
 
-Tuned Examples
+Tuned examples
 --------------
 
 The `tuned examples <https://github.com/ray-project/ray/blob/master/rllib/tuned_examples>`__ folder
@@ -372,7 +372,7 @@ in roughly 5 minutes. It can be run as follows on a single g5.24xlarge (or g6.24
 Note that some of the files in this folder are used for RLlib's daily or weekly release tests as well.
 
 
-Community Examples
+Community examples
 ------------------
 
 .. note::
@@ -415,7 +415,7 @@ Community Examples
    Example of optimizing mixed-autonomy traffic simulations with RLlib / multi-agent.
 
 
-Blog Posts
+Blog posts
 ----------
 
 .. note::
