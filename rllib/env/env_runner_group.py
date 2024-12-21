@@ -80,7 +80,7 @@ class EnvRunnerGroup:
         validate_env: Optional[Callable[[EnvType], None]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
         config: Optional["AlgorithmConfig"] = None,
-        num_env_runners: int = 0,
+        num_env_runners: Optional[int] = None,
         local_env_runner: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
@@ -102,7 +102,9 @@ class EnvRunnerGroup:
                 If None, PolicySpecs will be using the Algorithm's default Policy
                 class.
             config: Optional AlgorithmConfig (or config dict).
-            num_env_runners: Number of remote EnvRunners to create.
+            num_env_runners: Deprecated arg, use `num_env_runners` inside `config`
+                instead. The number of remote EnvRunners to create. If None, use
+                `config.num_env_runners`.
             local_env_runner: Whether to create a local (non @ray.remote) EnvRunner
                 in the returned set as well (default: True). If `num_env_runners`
                 is 0, always create a local EnvRunner.
@@ -194,7 +196,11 @@ class EnvRunnerGroup:
                 self._setup(
                     validate_env=validate_env,
                     config=config,
-                    num_env_runners=num_env_runners,
+                    num_env_runners=(
+                        num_env_runners
+                        if num_env_runners is not None
+                        else config.num_env_runners
+                    ),
                     local_env_runner=local_env_runner,
                 )
             # EnvRunnerGroup creation possibly fails, if some (remote) workers cannot

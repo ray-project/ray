@@ -206,30 +206,73 @@ Episodes
 --------
 
 Whether running in a single process or a `large cluster <rllib-training.html#specifying-resources>`__,
-all data in RLlib is interchanged in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
-Sample batches encode one or more fragments of a trajectory.
-Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or
-more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
+all training data in RLlib is interchanged in the form of :ref:`Episodes <single-agent-episode-docs>`.
 
-A typical sample batch looks something like the following when summarized.
-Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
+The :py:class`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` class is used for
+describing single-agent trajectories, whereas the
+:py:class`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` class contains several
+such single-agent episodes and also stores information about the stepping times- and patterns of
+the individual agents with respect to each other.
+
+Both these ``Episode`` classes store the entire data collected and generated while stepping through an
+environment (trajectory). This includes the observations, info dicts, actions taken,
+rewards received, and any model computations along the way, such as RNN-states, action logits,
+or action log probs.
+
+.. tip::
+    See here for `RLlib's standardized columns used across all classes <https://github.com/ray-project/ray/blob/master/rllib/core/columns.py>`__.
+    Note also that episodes conveniently don't have to store any "next obs" information as these always overlap
+    almost completely with the information in "obs", thus saving about 50% of memory (observations are often the
+    largest piece in a trajectory). Same is true for "state_in" and "state_out" information for stateful networks: Only
+    the "state_out" information is kept.
+
+Typically, RLlib generates episode (chunks) of size ``config.rollout_fragment_length`` through the :ref:`EnvRunner <rllib-key-concepts-env-runners>`
+actors in the Algorithm's :ref:`EnvRunnerGroup <rllib-key-concepts-env-runners>`, and sends as many episode chunks to each
+:ref:`Learner <rllib-key-concepts-learners>` actor as required to build a final training batch of exactly size
+``config.train_batch_size_per_learner``.
+
+A typical :py:class:`~ray.rllib.env.single_agent_episode.SingleAgentEpisode` object looks something like the following:
 
 .. code-block:: python
 
-    sample_batch = { 'action_logp': np.ndarray((200,), dtype=float32, min=-0.701, max=-0.685, mean=-0.694),
-        'actions': np.ndarray((200,), dtype=int64, min=0.0, max=1.0, mean=0.495),
-        'dones': np.ndarray((200,), dtype=bool, min=0.0, max=1.0, mean=0.055),
-        'infos': np.ndarray((200,), dtype=object, head={}),
-        'new_obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.018),
-        'obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.016),
-        'rewards': np.ndarray((200,), dtype=float32, min=1.0, max=1.0, mean=1.0),
-        't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)
+    # A SingleAgentEpisode of length 20 has roughly the following schematic structure.
+    # Note that after these 20 steps, you have 20 actions and rewards, but 21 observations and info dicts
+    # due to the initial "reset" observation/infos.
+    episode = {
+        'obs': np.ndarray((21, 4), dtype=float32),  # 21 due to reset obs
+        'infos': [{}, {}, {}, {}, .., {}, {}],  # infos are always lists of dicts
+        'actions': np.ndarray((20,), dtype=int64),  # Discrete(4) action space
+        'rewards': np.ndarray((20,), dtype=float32),
+        'extra_model_outputs': {
+            'action_dist_inputs': np.ndarray((20, 4), dtype=float32),  # Discrete(4) action space
+        },
+        'is_terminated': False,  # <- single bool
+        'is_truncated': True,  # <- single bool
     }
 
+For complex observations, for example ``gym.spaces.Dict``, the episode holds all observations in a struct entirely analogous
+to the observation space, with numpy arrays at the leafs of that dict:
+
+.. code-block:: python
+
+    episode_w_complex_observations = {
+        'obs': {
+            "camera": np.ndarray((21, 64, 64, 3), dtype=float32),  # RGB images
+            "sensors": {
+                "front": np.ndarray((21, 15), dtype=float32),  # 1D tensors
+                "rear": np.ndarray((21, 5), dtype=float32),  # another batch of 1D tensors
+            },
+        },
+        ...
+
+Since all values are kept in numpy arrays, this allows for efficient encoding and transmission across the network.
+
 In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
-sample batches are collected separately for each individual policy.
-These batches are wrapped up together in a ``MultiAgentBatch``,
-serving as a container for the individual agents' sample batches.
+:py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` are collected by the EnvRunnerGroup instead.
+
+.. note::
+    The Ray team is working on a detailed description of the
+    :py:class:`~ray.rllib.env.multi_agent_episode.MultiAgentEpisode` class.
 
 
 .. _rllib-key-concepts-env-runners:
@@ -237,24 +280,33 @@ serving as a container for the individual agents' sample batches.
 EnvRunners
 ----------
 
-Given an RL environment and RLModule, an EnvRunner produces lists of
-`Episodes <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
-This is your classic "environment interaction loop".
-Efficient sample collection can be burdensome to get right, especially when leveraging environment vectorization,
-recurrent neural networks, or when operating in a multi-agent setup.
+Given an RL environment and RLModule, an :py:class`~ray.rllib.env.env_runner.EnvRunner`
+produces lists of :ref:`Episodes <single-agent-episode-docs>`.
 
-RLlib provides the :py:class`~ray.rllib.env.env_runner.EnvRunner` classes that manage all of this, and most RLlib algorithms
-use either the `single-agent- <>`__ or the `multi-agent version <>`__ of it.
+Thereby, the ``EnvRunner`` executes a classic "environment interaction loop".
+Efficient sample collection can be burdensome to get right, especially when leveraging
+environment vectorization, stateful (recurrent) neural networks,
+or when operating in a multi-agent setting.
 
-You can use an EnvRunner standalone to produce lists of Episodes. This can be done by calling its
-:py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method (or ``EnvRunner.sample.remote()`` in the distributed, ray actor setup).
+RLlib provides two built-in :py:class`~ray.rllib.env.env_runner.EnvRunner` classes,
+:py:class`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` and
+:py:class`~ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner` that
+manage all of this automatically. RLlib picks the correct type based on your
+configuration, in particular the `config.environment()` and `config.multi_agent()`
+settings.
 
-Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors and using them to gather experiences in parallel:
+You can use an :py:class`~ray.rllib.env.env_runner.EnvRunner` standalone to
+produce lists of Episodes. This can be done by calling its
+:py:meth:`~ray.rllib.env.env_runner.EnvRunner.sample` method (or ``EnvRunner.sample.remote()`` in the distributed Ray actor setup).
+
+Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors
+and using them to gather experiences in parallel:
 
 .. testcode::
 
     import tree  # pip install dm_tree
     from ray.rllib.algorithms.ppo import PPOConfig
+    from ray.rllib.env.env_runner_group import EnvRunnerGroup
 
     # Configure the EnvRunnerGroup.
     config = (
@@ -266,19 +318,21 @@ Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_run
     env_runner_group = EnvRunnerGroup(config=config)
 
     # Gather lists of `SingleAgentEpisode`s (each EnvRunner actor returns one
-    # such list with exactly 2 episodes in it).
+    # such list with exactly two episodes in it).
     episodes = env_runner_group.foreach_env_runner(
-        lambda env_runner: env_runner.sample(num_episodes=2),
+        lambda env_runner: env_runner.sample(num_episodes=3),
         local_env_runner=False,  # don't sample with the local EnvRunner instance
     )
-    # 2 (remote) EnvRunners used.
+    # Two (remote) EnvRunners used.
     assert len(episodes) == 2
-    # Each EnvRunner returns 3 episodes
+    # Each EnvRunner returns three episodes
     assert all(len(eps_list) == 3 for eps_list in episodes)
 
     # Report the returns of all episodes collected
     for episode in tree.flatten(episodes):
         print("R=", episode.get_return())
+
+    env_runner_group.stop()
 
 
 .. _rllib-key-concepts-learners:
@@ -286,7 +340,7 @@ Here is an example of creating a set of remote :py:class:`~ray.rllib.env.env_run
 Learners, loss functions and optimizers
 ---------------------------------------
 
-
+TODO !!
 
 .. Training Step Method (``Algorithm.training_step()``)
 .. Moved to new rllib-algorithm-api.rst file in other PR (branch: `docs_redo_algorithm_api`)

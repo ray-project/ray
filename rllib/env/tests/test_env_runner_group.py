@@ -21,7 +21,6 @@ class TestEnvRunnerGroup(unittest.TestCase):
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
         modules = ws.foreach_env_runner(
@@ -50,7 +49,6 @@ class TestEnvRunnerGroup(unittest.TestCase):
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
         module_refs = ws.foreach_env_runner(
@@ -72,7 +70,6 @@ class TestEnvRunnerGroup(unittest.TestCase):
             config=(
                 PPOConfig().environment("CartPole-v1").env_runners(num_env_runners=2)
             ),
-            num_env_runners=2,
         )
 
         # Fired async request against both remote workers.
