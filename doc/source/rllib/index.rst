@@ -288,8 +288,8 @@ Learn More
 
         **RLlib Key Concepts**
         ^^^
-        Learn more about the core concepts of RLlib, such as environments, algorithms and
-        policies.
+        Learn more about the core concepts of RLlib, such as Algorithms, environments,
+        models, and learners.
         +++
         .. button-ref:: rllib-core-concepts
             :color: primary
