@@ -12,7 +12,7 @@ Key concepts
 To help you get a high-level understanding of how the library works, on this page, you learn
 about the key concepts and general architecture of RLlib.
 
-.. figure:: images/rllib-new-api-stack.svg
+.. figure:: images/rllib-new-api-stack-simple.svg
     :width: 800
     :align: center
 
@@ -33,9 +33,9 @@ scalable subcomponents to compute gradients and update models,
 and a :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method (<span style="color: #f4ccccff;">**red**</span>), defining what
 the algorithm should do and when.
 
-Copies of the models being trained (<span style="color: #d9ead3ff;">**green**</span>) are located in both
-:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`
-and the model weights are synchronized some time after a model update.
+Copies of the models being trained are located in both :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
+and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` and the model's weights are synchronized after
+model updates.
 
 
 .. _rllib-key-concepts-algorithms:
@@ -126,20 +126,45 @@ RLModules
 
 `RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
 
-In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
-reinforcement learning: Exploration, inference and training.
+.. TODO: update with new RLModule figure in other PR
 
-A minimal RL Module can contain a single neural network and define its exploration-, inference- and
-training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
-implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
-where their exploration and inference logic is used to sample from an environment.
+.. figure:: images/rllib-blabla.png
 
-The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
-where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
-contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
+    **RLModule overview**: A minimal :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` contains a neural network
+    and defines its exploration-, inference- and training logic to map observations to actions.
+    In more complex setups, a :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule` contains
+    many submodules, each itself an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` instance and
+    identified by a ``ModuleID``. This way, arbitrarily complex multi-model and multi-agent algorithms
+    can be implemented.
 
-.. image:: images/rllib-concepts-rlmodules-sketch.png
+In a nutshell, they carry the neural networks and define how to use them during the three phases of a model's
+reinforcement learning lifecycle: Exploration (collecting training data), inference (production/deployment),
+and training (computing loss function inputs).
+
+.. link to new RLModule docs
+
+You can chose to use :ref:`RLlib's built-in default models and configure these <blabla>` as needed
+(change number of layers and size, activation functions, etc..) or :ref:`write your own custom models in PyTorch <blabla>`
+thus implement any architecture and computation logic.
+
+.. figure:: images/rl_modules/rl_module_in_env_runner.svg
+    :width: 400
+
+    **
+
+A copy of the user's RLModule is located inside each :py:class:`~ray.rllib.env.env_runner.EnvRunner` actor
+managed by the :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` of the Algorithm and another one in each
+:py:class:`~ray.rllib.core.learner.learner.Learner` actor managed by the :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`
+of the Algorithm.
+
+.. figure:: images/rl_modules/rl_module_in_learner.svg
+    :width: 400
+
+    **
+
+The EnvRunner copy is normally kept in an ``inference_only`` version, meaning components not required for
+pure action computation (such as a value function) may be missing to save memory.
+
 
 
 .. _rllib-key-concepts-environments:
