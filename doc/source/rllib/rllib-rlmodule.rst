@@ -220,11 +220,11 @@ Construction through RLModuleSpecs
 Since RLlib is a distributed RL library and needs to create more than one copy of
 your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, you can use
 :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` objects to define, how RLlib should construct
-each such copy of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` once the algorithm with its many
-Ray actors (some holding a model copy) are built.
+each such copy during the algorithm's setup process. The algorithm passes the spec to all
+subcomponents that need to have a copy of your RLModule.
 
 Creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModuleSpec` is straightforward
-and analogous to creating an :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` through a constructor:
+and analogous to the :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` constructor:
 
 .. tab-set::
 
