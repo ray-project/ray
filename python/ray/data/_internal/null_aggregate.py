@@ -189,7 +189,7 @@ def _null_wrap_accumulate_row(
 
 def _null_wrap_accumulate_block(
     ignore_nulls: bool,
-    accum_block: Callable[[AggType, Block], AggType],
+    accum_block: Callable[[Block], AggType],
     null_merge: Callable[[WrappedAggType, WrappedAggType], WrappedAggType],
 ) -> Callable[[WrappedAggType, Block], WrappedAggType]:
     """
