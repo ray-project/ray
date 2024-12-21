@@ -71,11 +71,6 @@ class _DeploymentHandleBase:
         else:
             self._create_router = _create_router
 
-        logger.info(
-            f"Created DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
-            extra={"log_to_stderr": False},
-        )
-
     @staticmethod
     def _gen_handle_tag(app_name: str, deployment_name: str, handle_id: str):
         if app_name:
@@ -147,6 +142,11 @@ class _DeploymentHandleBase:
             handle_options=init_options,
         )
         self.init_options = init_options
+
+        logger.info(
+            f"Initialized DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            extra={"log_to_stderr": False},
+        )
 
         # Record handle api telemetry when not in the proxy
         if (
