@@ -131,7 +131,8 @@ class RayParams:
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
         enable_physical_mode: Whether physical mode is enaled, which applies
-        constraint to tasks' resource consumption.
+            constraint to tasks' resource consumption. As of now, only memory resource
+            is supported.
     """
 
     def __init__(
