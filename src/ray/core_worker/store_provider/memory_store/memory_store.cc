@@ -34,11 +34,9 @@ const int kMaxUnhandledErrorScanItems = 1000;
 
 namespace {
 
-Status signal_status = Status::OK();
+std::atomic<int> signal_received = -1;
 
-void SignalHandler(int sigint) {
-  signal_status = Status::Interrupted("Interrupted by signal: " + std::to_string(sigint));
-}
+void SignalHandler(int signal) { signal_received = signal; }
 
 }  // namespace
 
@@ -389,7 +387,8 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
   // is reached.
   {
     std::signal(SIGINT, SignalHandler);
-    while (!timed_out && signal_status.ok() &&
+    std::signal(SIGTERM, SignalHandler);
+    while (!timed_out && signal_received == -1 &&
            !(done = get_request->Wait(iteration_timeout))) {
       if (remaining_timeout >= 0) {
         remaining_timeout -= iteration_timeout;
@@ -431,8 +430,9 @@ Status CoreWorkerMemoryStore::GetImpl(const std::vector<ObjectID> &object_ids,
     }
   }
 
-  if (!signal_status.ok()) {
-    return signal_status;
+  if (signal_received != -1) {
+    return Status::Interrupted("Interrupted by signal: " +
+                               std::to_string(signal_received));
   } else if (done) {
     return Status::OK();
   } else {
