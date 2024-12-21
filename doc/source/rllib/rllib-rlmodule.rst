@@ -132,7 +132,7 @@ Configuring default CNN nets
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 For image-based environments (for example `Atari <https://ale.farama.org/environments/>`__), use the
-``conv2d_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
+``conv_..`` fields in :py:class:`~ray.rllib.core.rl_module.default_model_config.DefaultModelConfig`.
 For example:
 
 .. testcode::
@@ -146,13 +146,13 @@ For example:
         .rl_module(
             model_config=DefaultModelConfig(
                 # Use a DreamerV3-style CNN stack.
-                conv2d_filters=[
+                conv_filters=[
                     [16, 4, 2],  # 1st CNN layer: num_filters, kernel, stride(, padding)?
                     [32, 4, 2],  # 2nd CNN layer
                     [64, 4, 2],  # etc..
                     [128, 4, 2],
                 ],
-                conv2d_activation="silu",
+                conv_activation="silu",
 
                 # After the last CNN, the default model flattens, then adds an (optional) MLP.
                 head_fcnet_hiddens=[256],
@@ -160,12 +160,12 @@ For example:
         )
     )
 
-See here for a compete list of all supported ``conv2d_..`` options:
+See here for a compete list of all supported ``conv_..`` options:
 
 .. literalinclude:: ../../../rllib/core/rl_module/default_model_config.py
         :language: python
-        :start-after: __sphinx_doc_default_model_config_conv2d_begin__
-        :end-before: __sphinx_doc_default_model_config_conv2d_end__
+        :start-after: __sphinx_doc_default_model_config_conv_begin__
+        :end-before: __sphinx_doc_default_model_config_conv_end__
 
 
 Other default model settings
