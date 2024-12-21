@@ -4,9 +4,9 @@
 .. include:: /_includes/rllib/new_api_stack.rst
 
 
-.. _rllib-core-concepts:
+.. _rllib-key-concepts:
 
-Key Concepts
+Key concepts
 ============
 
 To help you get a high-level understanding of how the library works, on this page, you learn
@@ -38,6 +38,8 @@ Copies of the models being trained (<span style="color: #d9ead3ff;">**green**</s
 and the model weights are synchronized some time after a model update.
 
 
+.. _rllib-key-concepts-algorithms:
+
 Algorithms
 ----------
 
@@ -47,12 +49,22 @@ for example to configure a :py:class:`~ray.rllib.algorithms.ppo.ppo.PPO` instanc
 you should use the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class. As a matter of fact, you never have to construct an
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance directly yourself, you can work with the algorithm solely through its
 config.
-An algorithm sets up its EnvRunnerGroup and LearnerGroup, collects training metrics.
+
+An algorithm sets up its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` and
+:py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, both of which use `Ray actors <actors.html>`__ to scale sample collection
+and training from a single core to many thousands of cores in a cluster.
+
+.. TODO: Separate out our scaling guide into its own page in new PR
+
+See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` also subclasses from the :ref:`Tune Trainable API <tune-60-seconds>`
 for easy experiment management and hyperparameter tuning.
 
-You have two ways to interact with an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`. You can create and train an instance of it directly through the Python API,
-or you can use Ray Tune to more easily tune the hyperparameters for the particular problem you are trying to optimize.
+You have two ways to interact with an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+
+- You can create and train an instance of it directly through the Python API.
+- You can use Ray Tune to more easily tune the hyperparameters for the particular problem you are trying to optimize.
 
 The following example shows these equivalent ways of interacting with the ``PPO`` ("Proximal Policy Optimization") algorithm of RLlib:
 
@@ -107,10 +119,33 @@ The following example shows these equivalent ways of interacting with the ``PPO`
             ).fit()
 
 
-.. _environments:
+.. _rllib-key-concepts-rl-modules:
 
-Environments
-------------
+RLModules
+---------
+
+`RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
+
+In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
+reinforcement learning: Exploration, inference and training.
+
+A minimal RL Module can contain a single neural network and define its exploration-, inference- and
+training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
+implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
+where their exploration and inference logic is used to sample from an environment.
+
+The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
+where their training logic is used in training the neural network.
+RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
+contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
+
+.. image:: images/rllib-concepts-rlmodules-sketch.png
+
+
+.. _rllib-key-concepts-environments:
+
+EnvRunners and RL environments
+------------------------------
 
 Solving a problem in RL begins with an **environment**. In the simplest definition of RL:
 
@@ -136,46 +171,44 @@ The RL simulation feedback loop repeatedly collects data, for one (single-agent 
 The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
 The most common API to define environments is the `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ API, which we also use in most of our examples.
 
-.. _algorithms:
+
+Episodes
+--------
+
+Whether running in a single process or a `large cluster <rllib-training.html#specifying-resources>`__,
+all data in RLlib is interchanged in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
+Sample batches encode one or more fragments of a trajectory.
+Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or
+more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
+
+A typical sample batch looks something like the following when summarized.
+Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
+
+.. code-block:: python
+
+    sample_batch = { 'action_logp': np.ndarray((200,), dtype=float32, min=-0.701, max=-0.685, mean=-0.694),
+        'actions': np.ndarray((200,), dtype=int64, min=0.0, max=1.0, mean=0.495),
+        'dones': np.ndarray((200,), dtype=bool, min=0.0, max=1.0, mean=0.055),
+        'infos': np.ndarray((200,), dtype=object, head={}),
+        'new_obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.018),
+        'obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.016),
+        'rewards': np.ndarray((200,), dtype=float32, min=1.0, max=1.0, mean=1.0),
+        't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)
+    }
+
+In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
+sample batches are collected separately for each individual policy.
+These batches are wrapped up together in a ``MultiAgentBatch``,
+serving as a container for the individual agents' sample batches.
 
 
-RLlib `Algorithm classes <rllib-concepts.html#algorithms>`__ coordinate the distributed workflow of running rollouts and optimizing policies.
-Algorithm classes leverage parallel iterators to implement the desired computation pattern.
-The following figure shows *synchronous sampling*, the simplest of `these patterns <rllib-algorithms.html>`__:
-
-.. figure:: images/a2c-arch.svg
-
-    Synchronous Sampling (e.g., A2C, PG, PPO)
-
-RLlib uses `Ray actors <actors.html>`__ to scale training from a single core to many thousands of cores in a cluster.
-You can `configure the parallelism <rllib-training.html#specifying-resources>`__ used for training by changing the ``num_env_runners`` parameter.
-See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details here.
+Learners, loss functions and optimizers
+---------------------------------------
 
 
-RLModules
----------
+.. _policy-evaluation:
 
-`RLModules <rllib-rlmodule.html>`__ are framework-specific neural network containers.
-
-In a nutshell, they carry the neural networks and define how to use them during three phases that occur in
-reinforcement learning: Exploration, inference and training.
-
-A minimal RL Module can contain a single neural network and define its exploration-, inference- and
-training logic to only map observations to actions. Since RL Modules can map observations to actions, they naturally
-implement reinforcement learning policies in RLlib and can therefore be found in the :py:class:`~ray.rllib.evaluation.rollout_worker.RolloutWorker`,
-where their exploration and inference logic is used to sample from an environment.
-
-The second place in RLlib where RL Modules commonly occur is the :py:class:`~ray.rllib.core.learner.learner.Learner`,
-where their training logic is used in training the neural network.
-RL Modules extend to the multi-agent case, where a single :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`
-contains multiple RL Modules. The following figure is a rough sketch of how the above can look in practice:
-
-.. image:: images/rllib-concepts-rlmodules-sketch.png
-
-
-.. policy-evaluation:
-
-Policy Evaluation
+Policy evaluation
 -----------------
 
 Given an environment and policy, policy evaluation produces `batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__ of experiences. This is your classic "environment interaction loop". Efficient policy evaluation can be burdensome to get right, especially when leveraging vectorization, RNNs, or when operating in a multi-agent environment. RLlib provides a `RolloutWorker <https://github.com/ray-project/ray/blob/master/rllib/evaluation/rollout_worker.py>`__ class that manages all of this, and this class is used in most RLlib algorithms.
@@ -209,34 +242,6 @@ Here is an example of creating a set of rollout workers and using them gather ex
             # ... so that we can broacast these weights to all rollout-workers once.
             w.set_weights.remote(weights)
 
-Sample Batches
---------------
-
-Whether running in a single process or a `large cluster <rllib-training.html#specifying-resources>`__,
-all data in RLlib is interchanged in the form of `sample batches <https://github.com/ray-project/ray/blob/master/rllib/policy/sample_batch.py>`__.
-Sample batches encode one or more fragments of a trajectory.
-Typically, RLlib collects batches of size ``rollout_fragment_length`` from rollout workers, and concatenates one or
-more of these batches into a batch of size ``train_batch_size`` that is the input to SGD.
-
-A typical sample batch looks something like the following when summarized.
-Since all values are kept in arrays, this allows for efficient encoding and transmission across the network:
-
-.. code-block:: python
-
-    sample_batch = { 'action_logp': np.ndarray((200,), dtype=float32, min=-0.701, max=-0.685, mean=-0.694),
-        'actions': np.ndarray((200,), dtype=int64, min=0.0, max=1.0, mean=0.495),
-        'dones': np.ndarray((200,), dtype=bool, min=0.0, max=1.0, mean=0.055),
-        'infos': np.ndarray((200,), dtype=object, head={}),
-        'new_obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.018),
-        'obs': np.ndarray((200, 4), dtype=float32, min=-2.46, max=2.259, mean=0.016),
-        'rewards': np.ndarray((200,), dtype=float32, min=1.0, max=1.0, mean=1.0),
-        't': np.ndarray((200,), dtype=int64, min=0.0, max=34.0, mean=9.14)
-    }
-
-In `multi-agent mode <rllib-concepts.html#policies-in-multi-agent>`__,
-sample batches are collected separately for each individual policy.
-These batches are wrapped up together in a ``MultiAgentBatch``,
-serving as a container for the individual agents' sample batches.
 
 .. Training Step Method (``Algorithm.training_step()``)
-.. Moved to new rllib-algorithm-api.rst file in other PR
+.. Moved to new rllib-algorithm-api.rst file in other PR (branch: `docs_redo_algorithm_api`)

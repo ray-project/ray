@@ -1,30 +1,5 @@
 .. include:: /_includes/rllib/we_are_hiring.rst
 
-.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
-    :class: inline-figure
-    :width: 72
-
-.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
-    :class: inline-figure
-    :width: 72
-
-.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
-    :class: inline-figure
-    :alt: Only on the Anyscale Platform!
-    :width: 72
-
 .. _rllib-index:
 
 RLlib: Industry-Grade, Scalable Reinforcement Learning
@@ -272,7 +247,21 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Environments**
+        **RLlib Key Concepts**
+        ^^^
+        Learn more about the core concepts of RLlib, such as Algorithms, environments,
+        models, and learners.
+        +++
+        .. button-ref:: rllib-key-concepts
+            :color: primary
+            :outline:
+            :expand:
+
+            Key Concepts
+
+    .. grid-item-card::
+
+        **RL Environments**
         ^^^
         Get started with environments supported by RLlib, such as Farama foundation's Gymnasium, Petting Zoo,
         and many custom formats for vectorized and multi-agent environments.
@@ -286,24 +275,26 @@ Learn More
 
     .. grid-item-card::
 
-        **RLlib Key Concepts**
+        **Models (RLModule)**
         ^^^
-        Learn more about the core concepts of RLlib, such as Algorithms, environments,
-        models, and learners.
+        Learn how to configure RLlib's default models and implement your own
+        custom models through the RLModule APIs, which support arbitrary architectures
+        with PyTorch, complex multi-model setups, and multi-agent models with components
+        shared between agents.
         +++
-        .. button-ref:: rllib-core-concepts
+        .. button-ref:: rlmodule-guide
             :color: primary
             :outline:
             :expand:
 
-            Key Concepts
+            Models (RLModule)
 
     .. grid-item-card::
 
-        **RLlib Algorithms**
+        **Algorithms**
         ^^^
-        See the many available RL algorithms of RLlib for model-free and model-based
-        RL, on-policy and off-policy training, multi-agent RL, and more.
+        See the many available RL algorithms of RLlib for on-policy and off-policy training,
+        offline- and model-based RL, multi-agent RL, and more.
         +++
         .. button-ref:: rllib-algorithms-doc
             :color: primary
@@ -324,7 +315,6 @@ provide custom `PyTorch models <https://github.com/ray-project/ray/blob/master/r
 write your own `optimizer setups and loss definitions <https://github.com/ray-project/ray/blob/master/rllib/examples/learners/custom_loss_fn_simple.py>`__,
 or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/master/rllib/examples/curiosity/count_based_curiosity.py>`_.
 
-
 .. figure:: images/rllib-new-api-stack-simple.svg
     :align: left
     :width: 850
@@ -333,3 +323,31 @@ or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/
     algorithms and loss functions, PyTorch default models, multi-GPU training, and multi-agent support.
     User customizations are realized by subclassing the existing abstractions and - by overriding certain
     methods in those subclasses - define custom behavior.
+
+
+.. sigils used on this page
+
+.. |single_agent| image:: /rllib/images/sigils/single-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_agent| image:: /rllib/images/sigils/multi-agent.svg
+    :class: inline-figure
+    :width: 72
+
+.. |discr_act| image:: /rllib/images/sigils/discr-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |cont_act| image:: /rllib/images/sigils/cont-actions.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_gpu| image:: /rllib/images/sigils/multi-gpu.svg
+    :class: inline-figure
+    :width: 72
+
+.. |multi_node_multi_gpu| image:: /rllib/images/sigils/multi-node-multi-gpu.svg
+    :class: inline-figure
+    :alt: Only on the Anyscale Platform!
+    :width: 72
