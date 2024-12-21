@@ -2,7 +2,11 @@ import logging
 import math
 from typing import Any, Dict, Optional
 
-from ray.serve._private.constants import CONTROL_LOOP_INTERVAL_S, SERVE_LOGGER_NAME
+from ray.serve._private.constants import (
+    CONTROL_LOOP_INTERVAL_S,
+    MAX_SCALING_HISTORY_LENGTH,
+    SERVE_LOGGER_NAME,
+)
 from ray.serve.config import AutoscalingConfig
 from ray.util.annotations import PublicAPI
 
@@ -57,7 +61,9 @@ def _calculate_desired_num_replicas(
 
     # Multiply the distance to 1 by the smoothing ("gain") factor (default=1).
     smoothed_error_ratio = 1 + ((error_ratio - 1) * scaling_factor)
-    desired_num_replicas = math.ceil(num_running_replicas * smoothed_error_ratio)
+    desired_num_replicas = math.ceil(
+        round(num_running_replicas * smoothed_error_ratio, 6)
+    )
 
     # If desired num replicas is "stuck" because of the smoothing factor
     # (meaning the traffic is low enough for the replicas to downscale
@@ -101,6 +107,8 @@ def replica_queue_length_autoscaling_policy(
     seconds.
     """
     decision_counter = policy_state.get("decision_counter", 0)
+    decision_history = policy_state.get("decision_history", [])
+
     if num_running_replicas == 0:
         # When 0 replicas and queries are queued, scale up the replicas
         if total_num_requests > 0:
@@ -126,13 +134,16 @@ def replica_queue_length_autoscaling_policy(
         # Otherwise, just increment.
         if decision_counter < 0:
             decision_counter = 0
+            decision_history = []
         decision_counter += 1
+        decision_history.append(desired_num_replicas)
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_up_consecutive_periods' in a row.
         if decision_counter > int(config.upscale_delay_s / CONTROL_LOOP_INTERVAL_S):
+            decision_num_replicas = config.decide_num_replicas(decision_history)
             decision_counter = 0
-            decision_num_replicas = desired_num_replicas
+            decision_history = []
 
     # Scale down.
     elif desired_num_replicas < curr_target_num_replicas:
@@ -140,19 +151,30 @@ def replica_queue_length_autoscaling_policy(
         # positive), reset it to zero before decrementing.
         if decision_counter > 0:
             decision_counter = 0
+            decision_history = []
+
         decision_counter -= 1
+        decision_history.append(desired_num_replicas)
 
         # Only actually scale the replicas if we've made this decision for
         # 'scale_down_consecutive_periods' in a row.
         if decision_counter < -int(config.downscale_delay_s / CONTROL_LOOP_INTERVAL_S):
+            decision_num_replicas = config.decide_num_replicas(decision_history)
             decision_counter = 0
-            decision_num_replicas = desired_num_replicas
+            decision_history = []
 
     # Do nothing.
     else:
         decision_counter = 0
+        decision_history = []
 
     policy_state["decision_counter"] = decision_counter
+
+    # Limit the length of the decision history to avoid unbounded memory usage
+    if len(decision_history) > MAX_SCALING_HISTORY_LENGTH:
+        decision_history = decision_history[-(MAX_SCALING_HISTORY_LENGTH - 10) :]
+    policy_state["decision_history"] = decision_history
+
     return decision_num_replicas
 
 
