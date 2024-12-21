@@ -12,7 +12,9 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <cstdlib>
 #include <iostream>
+#include <limits>
 
 #include "gflags/gflags.h"
 #include "ray/common/ray_config.h"
@@ -27,6 +29,9 @@ DEFINE_string(redis_address, "", "The ip address of redis.");
 DEFINE_bool(redis_enable_ssl, false, "Use tls/ssl in redis connection.");
 DEFINE_int32(redis_port, -1, "The port of redis.");
 DEFINE_string(log_dir, "", "The path of the dir where log files are created.");
+DEFINE_string(ray_log_filepath,
+              "",
+              "The log filepath to dump gcs server log, which is written via `RAY_LOG`.");
 DEFINE_int32(gcs_server_port, 0, "The port of gcs server.");
 DEFINE_int32(metrics_agent_port, -1, "The port of metrics agent.");
 DEFINE_string(config_list, "", "The config list of raylet.");
@@ -40,15 +45,29 @@ DEFINE_string(session_name,
 DEFINE_string(ray_commit, "", "The commit hash of Ray.");
 
 int main(int argc, char *argv[]) {
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
+  // TODO(hjiang): For the current implementation, we assume all logging are managed by
+  // spdlog, the caveat is there could be there's writing to stdout/stderr as well. The
+  // final solution is implement self-customized sink for spdlog, and redirect
+  // stderr/stdout to the file descritor. Hold until it's confirmed necessary.
+  //
+  // Backward compatibility notes:
+  // By default, GCS server flushes all logging and stdout/stderr to a single file called
+  // `gcs_server.out`, without log rotations. To keep backward compatibility at best
+  // effort, we use the same filename as output, and disable log rotation by default.
+
+  // For compatibility, by default GCS server dumps logging into a single file with no
+  // rotation.
   InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                          ray::RayLog::ShutDownRayLog,
                                          argv[0],
                                          ray::RayLogLevel::INFO,
-                                         /*log_dir=*/"");
+                                         /*log_dir=*/"",
+                                         /*log_filepath=*/FLAGS_ray_log_filepath,
+                                         std::numeric_limits<long>::max());
   ray::RayLog::InstallFailureSignalHandler(argv[0]);
   ray::RayLog::InstallTerminateHandler();
-
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   RAY_LOG(INFO)
           .WithField("ray_version", kRayVersion)

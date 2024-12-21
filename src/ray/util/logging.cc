@@ -59,7 +59,6 @@ constexpr char kLogFormatJsonPattern[] =
 RayLogLevel RayLog::severity_threshold_ = RayLogLevel::INFO;
 std::string RayLog::app_name_ = "";
 std::string RayLog::component_name_ = "";
-std::string RayLog::log_dir_ = "";
 bool RayLog::log_format_json_ = false;
 std::string RayLog::log_format_pattern_ = kLogFormatTextPattern;
 
@@ -312,14 +311,41 @@ void RayLog::InitLogFormat() {
   }
 }
 
+/*static*/ std::string RayLog::GetLogOutputFilename(const std::string &log_dir,
+                                                    const std::string &log_file,
+                                                    const std::string &app_name) {
+  if (!log_file.empty()) {
+    return log_file;
+  }
+  if (!log_dir.empty()) {
+#ifdef _WIN32
+    int pid = _getpid();
+#else
+    pid_t pid = getpid();
+#endif
+
+    return JoinPaths(log_dir, absl::StrFormat("%s_%d.log", app_name, pid));
+  }
+  return "";
+}
+
 void RayLog::StartRayLog(const std::string &app_name,
                          RayLogLevel severity_threshold,
-                         const std::string &log_dir) {
+                         const std::string &log_dir,
+                         const std::string &log_filepath,
+                         long default_log_rotation_max_size) {
+  // TODO(hjiang): As a temporary workaround decide output log filename on [log_dir] or
+  // [log_filepath]. But they cannot be non empty at the same time. Cleanup
+  // `log_dir`.
+  const bool log_dir_empty = log_dir.empty();
+  const bool log_filepath_empty = log_filepath.empty();
+  RAY_CHECK(log_dir_empty || log_filepath_empty)
+      << "Log directory and log filename cannot be set at the same time.";
+
   InitSeverityThreshold(severity_threshold);
   InitLogFormat();
 
   app_name_ = app_name;
-  log_dir_ = log_dir;
 
   // All the logging sinks to add.
   // One for file/stdout, another for stderr.
@@ -337,15 +363,11 @@ void RayLog::StartRayLog(const std::string &app_name,
     }
   }
 
-  if (!log_dir_.empty()) {
-    // Enable log file if log_dir_ is not empty.
-#ifdef _WIN32
-    int pid = _getpid();
-#else
-    pid_t pid = getpid();
-#endif
-    // Reset log pattern and level and we assume a log file can be rotated with
-    // 10 files in max size 512M by default.
+  // Reset log pattern and level and we assume a log file can be rotated with
+  // 10 files in max size 512M by default.
+  const auto log_fname =
+      GetLogOutputFilename(log_dir, log_filepath, app_name_without_path);
+  if (!log_fname.empty()) {
     if (const char *ray_rotation_max_bytes = std::getenv("RAY_ROTATION_MAX_BYTES");
         ray_rotation_max_bytes != nullptr) {
       long max_size = 0;
@@ -353,7 +375,11 @@ void RayLog::StartRayLog(const std::string &app_name,
         // 0 means no log rotation in python, but not in spdlog. We just use the default
         // value here.
         log_rotation_max_size_ = max_size;
+      } else {
+        log_rotation_max_size_ = default_log_rotation_max_size;
       }
+    } else {
+      log_rotation_max_size_ = default_log_rotation_max_size;
     }
 
     if (const char *ray_rotation_backup_count = std::getenv("RAY_ROTATION_BACKUP_COUNT");
@@ -363,6 +389,10 @@ void RayLog::StartRayLog(const std::string &app_name,
         log_rotation_file_num_ = file_num;
       }
     }
+  }
+
+  // Set sink for stdout.
+  if (!log_fname.empty()) {
     // Sink all log stuff to default file logger we defined here. We may need
     // multiple sinks for different files or loglevel.
     auto file_logger = spdlog::get(RayLog::GetLoggerName());
@@ -371,10 +401,9 @@ void RayLog::StartRayLog(const std::string &app_name,
       // logger.
       spdlog::drop(RayLog::GetLoggerName());
     }
+
     auto file_sink = std::make_shared<spdlog::sinks::rotating_file_sink_mt>(
-        JoinPaths(log_dir_, app_name_without_path + "_" + std::to_string(pid) + ".log"),
-        log_rotation_max_size_,
-        log_rotation_file_num_);
+        log_fname, log_rotation_max_size_, log_rotation_file_num_);
     file_sink->set_level(level);
     sinks[0] = std::move(file_sink);
   } else {
