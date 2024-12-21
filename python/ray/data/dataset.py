@@ -875,7 +875,7 @@ class Dataset:
     @PublicAPI(api_group=BT_API_GROUP)
     def select_columns(
         self,
-        cols: List[str],
+        cols: Union[str, List[str]],
         *,
         compute: Union[str, ComputeStrategy] = None,
         concurrency: Optional[Union[int, Tuple[int, int]]] = None,
@@ -921,21 +921,20 @@ class Dataset:
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
-
-        if not isinstance(cols, list):
-            raise ValueError(
-                "select_columns expected List[str], "
-                f"got {type(cols)} for input '{cols}'"
+        if isinstance(cols, str):
+            cols = [cols]
+        elif isinstance(cols, list):
+            if not all(isinstance(col, str) for col in cols):
+                raise ValueError(
+                    "select_columns requires all elements of 'cols' to be strings."
+                )
+        else:
+            raise TypeError(
+                "select_columns requires 'cols' to be a string or a list of strings."
             )
 
-        bad_input = [col for col in cols if not isinstance(col, str)]
-
-        if bad_input:
-            raise ValueError(
-                "select_columns expected List[str], "
-                f"got input type: {type(bad_input[0])} "
-                f"for input {cols}"
-            )
+        if not cols:
+            raise ValueError("select_columns requires at least one column to select.")
 
         if len(cols) != len(set(cols)):
             raise ValueError(
@@ -952,6 +951,7 @@ class Dataset:
         select_op = Project(
             self._logical_plan.dag,
             cols=cols,
+            cols_rename=None,
             compute=compute,
             ray_remote_args=ray_remote_args,
         )
@@ -1006,38 +1006,84 @@ class Dataset:
             variety       string
 
         Args:
-            mapper: A dictionary that maps old column names to new column names, or a
+            names: A dictionary that maps old column names to new column names, or a
                 list of new column names.
             concurrency: The maximum number of Ray workers to use concurrently.
             ray_remote_args: Additional resource requirements to request from
                 Ray (e.g., num_gpus=1 to request GPUs for the map tasks). See
                 :func:`ray.remote` for details.
         """  # noqa: E501
-        if concurrency is not None and not isinstance(concurrency, int):
-            raise ValueError(
-                "Expected `concurrency` to be an integer or `None`, but got "
-                f"{concurrency}."
+
+        if isinstance(names, dict):
+            if not names:
+                raise ValueError("rename_columns received 'names' with no entries.")
+
+            if len(names.values()) != len(set(names.values())):
+                raise ValueError(
+                    f"rename_columns received duplicate values in the 'names': "
+                    f"{names}"
+                )
+
+            if not all(
+                isinstance(k, str) and isinstance(v, str) for k, v in names.items()
+            ):
+                raise ValueError(
+                    "rename_columns requires both keys and values in the 'names' "
+                    "to be strings."
+                )
+
+            cols_rename = names
+        elif isinstance(names, list):
+            if not names:
+                raise ValueError(
+                    "rename_columns requires 'names' with at least one column name."
+                )
+
+            if len(names) != len(set(names)):
+                raise ValueError(
+                    f"rename_columns received duplicate values in the 'names': {names}"
+                )
+
+            if not all(isinstance(col, str) for col in names):
+                raise ValueError(
+                    "rename_columns requires all elements in the 'names' to be strings."
+                )
+
+            current_names = self.schema().names
+            if len(current_names) != len(names):
+                raise ValueError(
+                    f"rename_columns requires 'names': {names} length match current "
+                    f"schema names: {current_names}."
+                )
+
+            cols_rename = dict(zip(current_names, names))
+        else:
+            raise TypeError(
+                f"rename_columns expected names to be either List[str] or "
+                f"Dict[str, str], got {type(names)}."
             )
 
-        def rename_columns(batch: "pyarrow.Table") -> "pyarrow.Table":
-            # Versions of PyArrow before 17 don't support renaming columns with a dict.
-            if isinstance(names, dict):
-                column_names_list = batch.column_names
-                for i, column_name in enumerate(column_names_list):
-                    if column_name in names:
-                        column_names_list[i] = names[column_name]
-            else:
-                column_names_list = names
+        if concurrency is not None and not isinstance(concurrency, int):
+            raise ValueError(
+                f"Expected `concurrency` to be an integer or `None`, but "
+                f"got {concurrency}."
+            )
 
-            return batch.rename_columns(column_names_list)
+        # Construct the plan and project operation
+        from ray.data._internal.compute import TaskPoolStrategy
 
-        return self.map_batches(
-            rename_columns,
-            batch_format="pyarrow",
-            zero_copy_batch=True,
-            concurrency=concurrency,
-            **ray_remote_args,
+        compute = TaskPoolStrategy(size=concurrency)
+
+        plan = self._plan.copy()
+        select_op = Project(
+            self._logical_plan.dag,
+            cols=None,
+            cols_rename=cols_rename,
+            compute=compute,
+            ray_remote_args=ray_remote_args,
         )
+        logical_plan = LogicalPlan(select_op, self.context)
+        return Dataset(plan, logical_plan)
 
     @PublicAPI(api_group=BT_API_GROUP)
     def flat_map(

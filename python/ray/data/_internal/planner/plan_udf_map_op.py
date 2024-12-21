@@ -18,6 +18,7 @@ from ray.data._internal.execution.interfaces.task_context import TaskContext
 from ray.data._internal.execution.operators.map_operator import MapOperator
 from ray.data._internal.execution.operators.map_transformer import (
     BatchMapTransformFn,
+    BlockMapTransformFn,
     BlocksToBatchesMapTransformFn,
     BlocksToRowsMapTransformFn,
     BuildOutputBlocksMapTransformFn,
@@ -88,20 +89,23 @@ def plan_project_op(
     input_physical_dag = physical_children[0]
 
     columns = op.cols
+    columns_rename = op.cols_rename
 
-    def fn(batch: "pa.Table") -> "pa.Table":
-        try:
-            return batch.select(columns)
-        except Exception as e:
-            _handle_debugger_exception(e)
+    def fn(block: Block) -> Block:
+        if not BlockAccessor.for_block(block).num_rows():
+            return block
+        if columns:
+            block = BlockAccessor.for_block(block).select(columns)
+        if columns_rename:
+            block = block.rename_columns(
+                [columns_rename.get(col, col) for col in block.schema.names]
+            )
+        return block
 
     compute = get_compute(op._compute)
-    transform_fn = _generate_transform_fn_for_map_batches(fn)
-    map_transformer = _create_map_transformer_for_map_batches_op(
+    transform_fn = _generate_transform_fn_for_map_block(fn)
+    map_transformer = _create_map_transformer_for_block_based_map_op(
         transform_fn,
-        op._batch_size,
-        op._batch_format,
-        op._zero_copy_batch,
     )
 
     return MapOperator.create(
@@ -497,6 +501,17 @@ def _generate_transform_fn_for_filter(
     return transform_fn
 
 
+def _generate_transform_fn_for_map_block(
+    fn: UserDefinedFunction,
+) -> MapTransformCallable[Block, Block]:
+    def transform_fn(blocks: Iterable[Block], _: TaskContext) -> Iterable[Block]:
+        for block in blocks:
+            out_block = fn(block)
+            yield out_block
+
+    return transform_fn
+
+
 # Following are util functions for creating `MapTransformer`s.
 
 
@@ -536,6 +551,18 @@ def _create_map_transformer_for_row_based_map_op(
         RowMapTransformFn(row_fn, is_udf=True),
         # Convert output rows to blocks.
         BuildOutputBlocksMapTransformFn.for_rows(),
+    ]
+    return MapTransformer(transform_fns, init_fn=init_fn)
+
+
+def _create_map_transformer_for_block_based_map_op(
+    block_fn: MapTransformCallable[Block, Block],
+    init_fn: Optional[Callable[[], None]] = None,
+) -> MapTransformer:
+    """Create a MapTransformer for a block-based map operator."""
+    transform_fns = [
+        # Apply the UDF.
+        BlockMapTransformFn(block_fn),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 
