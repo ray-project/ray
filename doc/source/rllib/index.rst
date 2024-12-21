@@ -25,6 +25,9 @@
     :alt: Only on the Anyscale Platform!
     :width: 72
 
+
+.. __sphinx_rllib_readme_begin__
+
 .. _rllib-index:
 
 RLlib: Industry-Grade, Scalable Reinforcement Learning
@@ -34,6 +37,8 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 
 .. image:: images/rllib-logo.png
     :align: center
+
+.. __sphinx_rllib_readme_end__
 
 .. toctree::
     :hidden:
@@ -48,6 +53,8 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     new-api-stack-migration-guide
     package_ref/index
 
+
+.. __sphinx_rllib_readme_2_begin__
 
 **RLlib** is an open source library for reinforcement learning (RL), offering support for
 production-level, highly scalable, and fault-tolerant RL workloads, while maintaining simple and unified
@@ -66,6 +73,7 @@ RLlib is used in production by industry leaders in many different verticals, suc
 `automobile <https://www.anyscale.com/events/2021/06/23/using-rllib-in-an-enterprise-scale-reinforcement-learning-solution>`_,
 and
 `boat design <https://www.youtube.com/watch?v=cLCK13ryTpw>`_.
+
 
 RLlib in 60 seconds
 -------------------
@@ -94,7 +102,7 @@ This is all! You can now start coding against RLlib. Here is an example for runn
 You first create a `config` for the algorithm, which defines the RL environment (taxi) and
 any other needed settings and parameters.
 
-Next, `build` the algorithm and `train` it for a total of 5 iterations.
+Next, `build` the algorithm and `train` it for a total of five iterations.
 One training iteration includes parallel (distributed) sample collection by the :py:class:`~ray.rllib.env.env_runner.EnvRunner` actors,
 followed by loss calculation on the collected data, and a model update step.
 
@@ -333,3 +341,6 @@ or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/
     algorithms and loss functions, PyTorch default models, multi-GPU training, and multi-agent support.
     User customizations are realized by subclassing the existing abstractions and - by overriding certain
     methods in those subclasses - define custom behavior.
+
+.. __sphinx_rllib_readme_2_end__
+
