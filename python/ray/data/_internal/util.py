@@ -720,7 +720,7 @@ def unify_block_metadata_schema(
 
 def find_partition_index(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-    desired: Tuple[Any],
+    desired: Tuple[Union[int, float]],
     sort_key: "SortKey",
 ) -> int:
     """For the given block, find the index where the desired value should be
@@ -730,6 +730,18 @@ def find_partition_index(
     and binary searching for the desired value in the column. Each binary search
     shortens the "range" of indices (represented by ``left`` and ``right``, which
     are indices of rows) where the desired value could be inserted.
+
+    Args:
+        table: The block to search in.
+        desired: A single tuple representing the boundary to partition at.
+            ``len(desired)`` must be less than or equal to the number of columns
+            being sorted.
+        sort_key: The sort key to use for sorting, providing the columns to be
+            sorted and their directions.
+
+    Returns:
+        The index where the desired value should be inserted to maintain sorted
+        order.
     """
     columns = sort_key.get_columns()
     descending = sort_key.get_descending()
@@ -786,7 +798,7 @@ def find_partition_index(
 
 def find_partitions(
     table: Union["pyarrow.Table", "pandas.DataFrame"],
-    boundaries: List[Tuple[Any]],
+    boundaries: List[Tuple[Union[int, float]]],
     sort_key: "SortKey",
 ):
     partitions = []
