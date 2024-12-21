@@ -1,6 +1,6 @@
 from functools import total_ordering
 from ray.dag.nccl_operation import _NcclOperation
-from ray.experimental.util.types import _NcclOp, P2POp
+from ray.experimental.util.types import _NcclOp, P2POp, _CollectiveOp
 from typing import Set, Tuple, List, Dict, Optional
 import copy
 import logging
@@ -31,7 +31,10 @@ class _DAGNodeOperation:
         self.method_name = method_name
 
     def __repr__(self):
-        return f"_DAGNodeOperation(exec_task_idx: {self.exec_task_idx})"
+        return (
+            f"_DAGNodeOperation(exec_task_idx: {self.exec_task_idx}, "
+            f"method_name: {self.method_name})"
+        )
 
     def viz_str(self):
         """
@@ -84,6 +87,8 @@ class _DAGOperationGraphNode:
         # The NCCL operation of the task. It can be a NCCL read, write, or
         # collective operation.
         self.nccl_op: Optional[_NcclOperation] = nccl_op
+        # The input task index, if this is a NCCL collective operation.
+        self.nccl_collective_input_idx: Optional[int] = None
 
     def __repr__(self):
         return (
@@ -163,6 +168,10 @@ class _DAGOperationGraphNode:
     @property
     def requires_nccl_write(self) -> bool:
         return self.nccl_op_type == P2POp.SEND
+
+    @property
+    def requires_nccl_collective(self) -> bool:
+        return isinstance(self.nccl_op_type, _CollectiveOp)
 
     def viz_str(self):
         """
@@ -307,9 +316,7 @@ def _build_dag_node_operation_graph(
         for node in op_nodes:
             # Add an edge from task with `bind_index` i to task with
             # `bind_index` i+1 if they belong to the same actor.
-            if (
-                not node.requires_nccl_read and not node.requires_nccl_write
-            ) and prev_node is not None:
+            if not node.requires_nccl_op and prev_node is not None:
                 _add_edge(prev_node, node, control_dependency=True)
                 prev_node = node
             task_idx = node.task_idx
@@ -344,6 +351,8 @@ def _build_dag_node_operation_graph(
                     graph[downstream_task_idx],
                     "shm",
                 )
+                if graph[downstream_task_idx].requires_nccl_collective:
+                    graph[downstream_task_idx].nccl_collective_input_idx = task_idx
 
     return graph
 
@@ -578,6 +587,7 @@ def _generate_overlapped_execution_schedule(
     compute node to swap with so that the NCCL read operation can be overlapped
     with computation.
 
+    [CL]
     Collective operations are not yet supported.
 
     Args:
@@ -597,9 +607,13 @@ def _generate_overlapped_execution_schedule(
         # Swap each NCCL read with the previous compute to overlap the NCCL read
         # with computation.
         for i in range(1, len(overlapped_schedule)):
-            if (
+            if not overlapped_schedule[i - 1].requires_nccl_op and (
                 overlapped_schedule[i].requires_nccl_read
-                and not overlapped_schedule[i - 1].requires_nccl_op
+                or (
+                    overlapped_schedule[i].requires_nccl_collective
+                    and overlapped_schedule[i].nccl_collective_input_idx
+                    != overlapped_schedule[i - 1].task_idx
+                )
             ):
                 overlapped_schedule[i], overlapped_schedule[i - 1] = (
                     overlapped_schedule[i - 1],

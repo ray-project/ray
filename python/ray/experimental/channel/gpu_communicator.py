@@ -122,6 +122,14 @@ class GPUCommunicator(ABC):
         """
         raise NotImplementedError
 
+    @property
+    @abstractmethod
+    def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+        """
+        Return the cuda stream used for collective operations.
+        """
+        raise NotImplementedError
+
     @abstractmethod
     def allreduce(
         self,

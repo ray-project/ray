@@ -638,9 +638,9 @@ def _init_nccl_group(
     Args:
         actors: A list of actors that participate in the NCCL group.
         custom_nccl_group: A custom NCCL group to initialize.
-        use_communication_streams: Whether to use dedicated send and recv
-                streams for communication. If True, communication and computation
-                can be overlapped to improve perfomrance.
+        use_communication_streams: Whether to use dedicated send, recv, and
+                collective streams for communication. If True, communication and
+                computation can be overlapped to improve perfomrance.
     """
     ctx = ChannelContext.get_current()
 

@@ -85,6 +85,11 @@ class TorchTensorWorker:
             vals[i] = self.recv(tensor)
         return vals
 
+    def heavy_compute(self, tensor):
+        for _ in range(1000):
+            tensor += 1
+        return tensor[0].item(), tensor.shape, tensor.dtype
+
     def compute_with_tuple_args(self, args, i: int):
         shape, dtype, value = args[i]
         tensor = torch.ones(shape, dtype=dtype, device=self.device) * value
@@ -277,6 +282,65 @@ def test_torch_tensor_nccl_overlap_timed(ray_start_regular, overlap_gpu_communic
     compiled_dag.teardown()
 
 
+@pytest.mark.parametrize("overlap_gpu_communication", [False, True])
+def test_torch_tensor_nccl_overlap_collective(
+    ray_start_regular, overlap_gpu_communication
+):
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) >= 2
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    dtype = torch.float16
+    collective_shape = (100000000,)
+    compute_shape = (100000,)
+    with InputNode() as inp:
+        collectives = [
+            worker.send.bind(collective_shape, dtype, inp) for worker in workers
+        ]
+        computes = [worker.send.bind(compute_shape, dtype, inp) for worker in workers]
+        computes = [
+            worker.heavy_compute.bind(compute)
+            for worker, compute in zip(workers, computes)
+        ]
+        collectives = collective.allreduce.bind(collectives)
+        collectives = [
+            worker.recv.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(collectives + computes)
+
+    compiled_dag = dag.experimental_compile(
+        _overlap_gpu_communication=overlap_gpu_communication
+    )
+
+    elapses = []
+    start = time.monotonic()
+    for i in range(5):
+        iter_start = time.monotonic()
+        ref = compiled_dag.execute(i)
+        result = ray.get(ref)
+        iter_duration = time.monotonic() - iter_start
+        elapses.append(iter_duration)
+        assert (
+            result
+            == [(i * num_workers, collective_shape, dtype)] * num_workers
+            + [(i + 1000, compute_shape, dtype)] * num_workers
+        )
+    duration = time.monotonic() - start
+    print(f"{overlap_gpu_communication=}, {duration=}")
+    for i, elapse in enumerate(elapses):
+        print(f"iteration {i=}, {elapse=}")
+
+    compiled_dag.teardown()
+
+
 def test_torch_tensor_nccl_disallows_driver(ray_start_regular):
     """
     Check that the driver cannot participate in the NCCL group, i.e. DAG input
@@ -414,6 +478,10 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return self._inner.send_stream
 
+        @property
+        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.collective_stream
+
         def destroy(self) -> None:
             return self._inner.destroy()
 
@@ -518,6 +586,10 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
 
         @property
         def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return None
+
+        @property
+        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return None
 
         def destroy(self) -> None:
@@ -671,6 +743,12 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
 
         @property
         def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            import cupy as cp
+
+            return cp.cuda.get_current_stream()
+
+        @property
+        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             import cupy as cp
 
             return cp.cuda.get_current_stream()
@@ -1132,6 +1210,10 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         @property
         def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
             return self._inner.send_stream
+
+        @property
+        def collective_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.collective_stream
 
         def destroy(self) -> None:
             return self._inner.destroy()

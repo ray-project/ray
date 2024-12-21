@@ -91,17 +91,32 @@ class _CollectiveOperation(_NcclOperation):
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
 
-    def init_nccl_group(self, nccl_group_id: Optional[str] = None) -> str:
+    def init_nccl_group(
+        self,
+        nccl_group_id: Optional[str] = None,
+        use_communication_streams: bool = False,
+    ) -> str:
         """
         Initialize the NCCL group if it has not been initialized yet. If `nccl_group_id`
         is provided, it means the NCCL group has already been initialized.
+
+        Args:
+            nccl_group_id: The NCCL group ID, if already initialized.
+            use_communication_streams: Whether to use a dedicated stream for
+                collective communication. If True, communication and computation
+                can be overlapped to improve performance.
+
+        Returns:
+            The NCCL group ID.
         """
         type_hint = self._type_hint
         if type_hint.nccl_group_id is not None:
             return type_hint.nccl_group_id
         if nccl_group_id is None:
             nccl_group_id = _init_nccl_group(
-                self._actor_handles, type_hint.get_custom_nccl_group()
+                self._actor_handles,
+                type_hint.get_custom_nccl_group(),
+                use_communication_streams,
             )
         type_hint.set_nccl_group_id(nccl_group_id)
         return nccl_group_id

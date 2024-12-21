@@ -50,7 +50,7 @@ from ray.experimental.channel import (
     AwaitableBackgroundWriter,
     RayDAGArgs,
 )
-from ray.experimental.util.types import _NcclOp, P2POp
+from ray.experimental.util.types import _NcclOp, P2POp, _CollectiveOp
 from ray.util.annotations import DeveloperAPI
 
 from ray.experimental.channel.shared_memory_channel import (
@@ -470,6 +470,7 @@ class ExecutableTask:
 
         self._send_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         self._recv_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
+        self._collective_stream: Union["cp.cuda.Stream", nullcontext] = nullcontext()
         if not overlap_gpu_communication:
             return
 
@@ -494,6 +495,11 @@ class ExecutableTask:
                             "Compiled Graph task should use the same recv cuda stream."
                         )
                     self._recv_stream = nccl_group.recv_stream
+        if self.requires_nccl_collective:
+            from ray.dag.collective_node import _CollectiveOperation
+
+            assert isinstance(self.nccl_op, _CollectiveOperation)
+            self._collective_stream = self.nccl_op.get_nccl_group().collective_stream
 
     def wrap_and_set_intermediate_future(
         self, val: Any, wrap_in_gpu_future: bool
@@ -600,6 +606,8 @@ class ExecutableTask:
                 stream = self._recv_stream
             elif self.requires_nccl_write:
                 stream = self._send_stream
+            elif self.requires_nccl_collective:
+                stream = self._collective_stream
             else:
                 stream = nullcontext()
 
@@ -620,7 +628,9 @@ class ExecutableTask:
                     )
 
         if not self.requires_nccl_write:
-            if self.requires_nccl_read and overlap_gpu_communication:
+            if (
+                self.requires_nccl_read or self.requires_nccl_collective
+            ) and overlap_gpu_communication:
                 output_val = self.fetch_intermediate_future(wait_gpu_future=False)
             else:
                 output_val = self.fetch_intermediate_future(wait_gpu_future=True)
@@ -638,6 +648,10 @@ class ExecutableTask:
     @property
     def requires_nccl_write(self) -> bool:
         return self.nccl_op_type == P2POp.SEND
+
+    @property
+    def requires_nccl_collective(self) -> bool:
+        return isinstance(self.nccl_op_type, _CollectiveOp)
 
 
 @dataclass
@@ -1239,12 +1253,6 @@ class CompiledDAG:
                 # Collect NCCL collective operations.
                 if isinstance(dag_node, CollectiveOutputNode):
                     nccl_collective_ops.add(dag_node.nccl_op)
-                    if self._overlap_gpu_communication:
-                        raise ValueError(
-                            "Currently, the overlap_gpu_communication option is not "
-                            "supported for NCCL collective operations. Please set "
-                            "overlap_gpu_communication=False."
-                        )
 
             if type(dag_node.type_hint) == ChannelOutputType:
                 # No type hint specified by the user. Replace
@@ -1371,7 +1379,8 @@ class CompiledDAG:
             custom_nccl_group = type_hint.get_custom_nccl_group()
             if custom_nccl_group:
                 nccl_group_id = collective_op.init_nccl_group(
-                    custom_nccl_group_to_id.get(custom_nccl_group, None)
+                    custom_nccl_group_to_id.get(custom_nccl_group, None),
+                    self._overlap_gpu_communication,
                 )
                 custom_nccl_group_to_id[custom_nccl_group] = nccl_group_id
                 actors = frozenset(collective_op.actor_handles)
@@ -1398,7 +1407,8 @@ class CompiledDAG:
             if collective_op.type_hint.nccl_group_id is None:
                 actors = frozenset(collective_op.actor_handles)
                 nccl_group_id = collective_op.init_nccl_group(
-                    actors_to_nccl_group_id.get(actors, None)
+                    actors_to_nccl_group_id.get(actors, None),
+                    self._overlap_gpu_communication,
                 )
                 if actors not in actors_to_nccl_group_id:
                     actors_to_nccl_group_id[actors] = nccl_group_id
