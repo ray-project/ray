@@ -91,6 +91,10 @@ class _CollectiveOperation(_NcclOperation):
     def type_hint(self) -> TorchTensorType:
         return self._type_hint
 
+    @property
+    def op_type(self) -> _CollectiveOp:
+        return self._op
+
     def init_nccl_group(
         self,
         nccl_group_id: Optional[str] = None,
@@ -209,4 +213,4 @@ class CollectiveOutputNode(ClassMethodNode):
 
     @property
     def nccl_op_type(self) -> _CollectiveOp:
-        return self._collective_op._op
+        return self._collective_op.op_type

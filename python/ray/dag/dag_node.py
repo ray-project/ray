@@ -85,14 +85,6 @@ class DAGNode(DAGNodeBase):
         # Whether this node calls `experimental_compile`.
         self.is_adag_output_node = False
 
-    @property
-    def nccl_op_type(self) -> Optional[_NcclOp]:
-        """
-        Return the NCCL op type of this node. If this node is not a NCCL op,
-        return None.
-        """
-        return None
-
     def _collect_upstream_nodes(self) -> List["DAGNode"]:
         """
         Retrieve upstream nodes and update their downstream dependencies.
@@ -151,7 +143,11 @@ class DAGNode(DAGNodeBase):
     @property
     def nccl_op(self) -> Optional[_NcclOperation]:
         """Return the NCCL operation for this node."""
+        return None
 
+    @property
+    def nccl_op_type(self) -> Optional[_NcclOp]:
+        """Return the NCCL operation type for this node."""
         return None
 
     def get_args(self) -> Tuple[Any]:
@@ -482,23 +478,23 @@ class DAGNode(DAGNodeBase):
                     if neighbor not in visited:
                         queue.append(neighbor)
 
-        # Topological sort
+        # Topological sort.
+        topo_queue: List[DAGNode] = []
         in_degrees: Dict[DAGNode, int] = {
             node: len(node._upstream_nodes) for node in visited
         }
-        frontier: List[DAGNode] = [node for node in visited if in_degrees[node] == 0]
-        sorted_nodes: List[DAGNode] = []
+        frontier = [node for node in visited if in_degrees[node] == 0]
         while frontier:
             node = frontier.pop(0)
-            sorted_nodes.append(node)
+            topo_queue.append(node)
             for neighbor in node._downstream_nodes:
                 in_degrees[neighbor] -= 1
                 if in_degrees[neighbor] == 0:
                     frontier.append(neighbor)
-        assert len(sorted_nodes) == len(visited)
+        assert len(topo_queue) == len(visited)
 
-        # Apply the function to each node in topological order.
-        for node in sorted_nodes:
+        # Apply the function to each node in the topological order.
+        for node in topo_queue:
             fn(node)
 
     def _raise_nested_dag_node_error(self, args):

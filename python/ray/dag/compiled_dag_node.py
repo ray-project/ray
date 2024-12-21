@@ -376,13 +376,13 @@ class ExecutableTask:
         self.input_type_hints: List[ChannelOutputType] = task.arg_type_hints
         self.output_type_hint: ChannelOutputType = task.dag_node.type_hint
 
-        # [CL]
         # The NCCL operation of the task. It can be a NCCL read, write, or
         # collective operation.
-        self.nccl_op_type: Optional[_NcclOp] = task.dag_node.nccl_op_type
         self.nccl_op: Optional[_NcclOperation] = task.dag_node.nccl_op
         if self.nccl_op is not None:
             self.nccl_op.task_idxs.append(task.idx)
+        # The NCCL operation type.
+        self.nccl_op_type: Optional[_NcclOp] = task.dag_node.nccl_op_type
 
         self.input_channels: List[ChannelInterface] = []
         self.task_inputs: List[_ExecutableTaskInput] = []
@@ -443,6 +443,18 @@ class ExecutableTask:
         self._intermediate_future: Optional[DAGOperationFuture] = None
 
         self.actor_id = task.dag_node._get_actor_handle()._ray_actor_id
+
+    @property
+    def requires_nccl_read(self) -> bool:
+        return self.nccl_op_type == P2POp.RECV
+
+    @property
+    def requires_nccl_write(self) -> bool:
+        return self.nccl_op_type == P2POp.SEND
+
+    @property
+    def requires_nccl_collective(self) -> bool:
+        return isinstance(self.nccl_op_type, _CollectiveOp)
 
     def cancel(self):
         """
@@ -640,18 +652,6 @@ class ExecutableTask:
                 return True
 
         return False
-
-    @property
-    def requires_nccl_read(self) -> bool:
-        return self.nccl_op_type == P2POp.RECV
-
-    @property
-    def requires_nccl_write(self) -> bool:
-        return self.nccl_op_type == P2POp.SEND
-
-    @property
-    def requires_nccl_collective(self) -> bool:
-        return isinstance(self.nccl_op_type, _CollectiveOp)
 
 
 @dataclass
@@ -903,22 +903,24 @@ class CompiledDAG:
         self.dag_node_to_idx[node] = idx
         self.counter += 1
 
-    def _add_nccl_send_node(
+    def _add_nccl_p2p_send_node(
         self,
         node: "ray.dag.DAGNode",
-        send_nodes: Dict["ray.dag.DAGNode", "ray.dag.p2p_node._P2PSendNode"],
-        nccl_nodes: Set["ray.dag.DAGNode"],
+        p2p_send_dag_nodes: Set["ray.dag.DAGNode"],
+        nodes_to_p2p_send_nodes: Dict[
+            "ray.dag.DAGNode", "ray.dag.p2p_node._P2PSendNode"
+        ],
     ) -> None:
         """
-        Add a NCCL send node to the DAG if the given node requires NCCL.
+        Add a NCCL P2P send node to the DAG if the node requires NCCL send.
 
         Args:
-            node: A DAG node. If it requires NCCL, a NCCL send node is added.
-            send_nodes: A dictionary mapping DAG nodes to their corresponding
-                NCCL send nodes.
-            nccl_nodes: The set of DAG nodes that require NCCL.
+            node: A DAG node.
+            p2p_send_dag_nodes: The set of DAG nodes that require NCCL send.
+            nodes_to_p2p_send_nodes: A dictionary mapping DAG nodes to their
+                corresponding NCCL P2P send nodes.
         """
-        if node not in nccl_nodes:
+        if node not in p2p_send_dag_nodes:
             return
 
         from ray.dag import InputNode, ClassMethodNode
@@ -926,8 +928,8 @@ class CompiledDAG:
 
         if isinstance(node, InputNode):
             raise ValueError(
-                "DAG inputs cannot be transferred via NCCL because "
-                "the driver cannot participate in the NCCL group"
+                "DAG inputs cannot be transferred via NCCL because the driver "
+                "cannot participate in the NCCL group"
             )
         elif not isinstance(node, ClassMethodNode):
             raise ValueError(
@@ -949,35 +951,35 @@ class CompiledDAG:
                 BIND_INDEX_KEY: node._get_bind_index(),
             },
         )
-        type_hint = node.type_hint
+        send_node.with_type_hint(node.type_hint)
         node.with_type_hint(ChannelOutputType())
-        send_node.with_type_hint(type_hint)
+        nodes_to_p2p_send_nodes[node] = send_node
         self._add_node(send_node)
-        send_nodes[node] = send_node
 
-    def _add_nccl_recv_nodes(
+    def _add_nccl_p2p_recv_nodes(
         self,
         node: "ray.dag.DAGNode",
-        send_nodes: Dict["ray.dag.DAGNode", "ray.dag.p2p_node._P2PSendNode"],
-        nccl_nodes: Set["ray.dag.DAGNode"],
+        p2p_send_dag_nodes: Set["ray.dag.DAGNode"],
+        nodes_to_p2p_send_nodes: Dict[
+            "ray.dag.DAGNode", "ray.dag.p2p_node._P2PSendNode"
+        ],
     ) -> None:
         """
-        Add a NCCL recv node to the DAG if any parent of the given node
-        requires NCCL.
+        Add a NCCL P2P recv node to the DAG for each upstream node that requires
+        NCCL send.
 
         Args:
-            node: A DAG node. If any of its parent requires NCCL, a NCCL recv node
-                is added.
-            send_nodes: A dictionary mapping DAG nodes to their corresponding
-                NCCL send nodes.
-            nccl_nodes: The set of DAG nodes that require NCCL.
+            node: A DAG node.
+            p2p_send_dag_nodes: The set of DAG nodes that require NCCL send.
+            nodes_to_p2p_send_nodes: A dictionary mapping DAG nodes to their
+                corresponding NCCL P2P send nodes.
         """
         from ray.dag import DAGNode, ClassMethodNode, MultiOutputNode
         from ray.dag.p2p_node import _P2PRecvNode
 
         new_args = []
         for arg in node.get_args():
-            if not isinstance(arg, DAGNode) or arg not in nccl_nodes:
+            if not isinstance(arg, DAGNode) or arg not in p2p_send_dag_nodes:
                 new_args.append(arg)
                 continue
 
@@ -991,9 +993,9 @@ class CompiledDAG:
                     "NCCL P2P operation is only supported with ClassMethodNode"
                 )
 
+            send_node = nodes_to_p2p_send_nodes[arg]
             recv_actor_handle: "ray.actor.ActorHandle" = node._get_actor_handle()
             assert recv_actor_handle is not None, "Expected an actor handle"
-            send_node = send_nodes[arg]
             recv_node = _P2PRecvNode(
                 method_args=(send_node,),
                 other_args_to_resolve={
@@ -1002,8 +1004,8 @@ class CompiledDAG:
                     BIND_INDEX_KEY: node._get_bind_index(),
                 },
             )
-            self._add_node(recv_node)
             new_args.append(recv_node)
+            self._add_node(recv_node)
 
         node._bound_args = tuple(new_args)
 
@@ -2583,12 +2585,6 @@ def build_compiled_dag_from_ray_dag(
     from ray.dag import DAGNode
     from ray.dag.p2p_node import _P2PNode, _P2PSendNode
 
-    nccl_nodes: Set[DAGNode] = set()
-
-    def _find_nccl_nodes(node: DAGNode) -> None:
-        if node.type_hint.requires_nccl():
-            nccl_nodes.add(node)
-
     compiled_dag = CompiledDAG(
         execution_timeout,
         buffer_size_bytes,
@@ -2598,7 +2594,12 @@ def build_compiled_dag_from_ray_dag(
         max_inflight_executions,
         overlap_gpu_communication,
     )
-    send_nodes: Dict[DAGNode, _P2PSendNode] = dict()
+    p2p_send_dag_nodes: Set[DAGNode] = set()
+    nodes_to_p2p_send_nodes: Dict[DAGNode, _P2PSendNode] = dict()
+
+    def _find_p2p_send_dag_nodes(node: DAGNode) -> None:
+        if node.type_hint.requires_nccl():
+            p2p_send_dag_nodes.add(node)
 
     def _build_compiled_dag(node: DAGNode) -> DAGNode:
         if isinstance(node, _P2PNode):
@@ -2606,13 +2607,17 @@ def build_compiled_dag_from_ray_dag(
                 "Please use type hints to specify NCCL transport instead of "
                 "adding _P2PSendNode or _P2PRecvNode to the DAG"
             )
-        compiled_dag._add_nccl_recv_nodes(node, send_nodes, nccl_nodes)
+        compiled_dag._add_nccl_p2p_recv_nodes(
+            node, p2p_send_dag_nodes, nodes_to_p2p_send_nodes
+        )
         compiled_dag._add_node(node)
-        compiled_dag._add_nccl_send_node(node, send_nodes, nccl_nodes)
+        compiled_dag._add_nccl_p2p_send_node(
+            node, p2p_send_dag_nodes, nodes_to_p2p_send_nodes
+        )
         return node
 
     root = dag._find_root()
-    root.traverse_and_apply(_find_nccl_nodes)
+    root.traverse_and_apply(_find_p2p_send_dag_nodes)
     root.traverse_and_apply(_build_compiled_dag)
     compiled_dag._get_or_compile()
     global _compiled_dags
