@@ -29,7 +29,9 @@ QF_TARGET_NEXT_PROBS = "qf_target_next_probs"
 @DeveloperAPI
 class DefaultDQNRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
     def __init__(self, *args, **kwargs):
-        catalog_class = kwargs.pop("catalog_class", DQNCatalog)
+        catalog_class = kwargs.pop("catalog_class", None)
+        if catalog_class is None:
+            catalog_class = DQNCatalog
         super().__init__(*args, **kwargs, catalog_class=catalog_class)
 
     @override(RLModule)
