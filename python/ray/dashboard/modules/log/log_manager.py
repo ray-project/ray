@@ -22,7 +22,7 @@ if BaseModel is None:
 
 logger = logging.getLogger(__name__)
 
-WORKER_LOG_PATTERN = re.compile(".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
+WORKER_LOG_PATTERN = re.compile(r".*worker-([0-9a-f]+)-([0-9a-f]+)-(\d+).(out|err)")
 
 
 class ResolvedStreamFileInfo(BaseModel):
