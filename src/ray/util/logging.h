@@ -136,14 +136,13 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK_WITH_DISPLAY(condition, display)                                                      \
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                \
   RAY_PREDICT_TRUE((condition))                                                   \
   ? RAY_IGNORE_EXPR(0)                                                            \
   : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
                            << " Check failed: " display " "
 
-#define RAY_CHECK(condition)                                                      \
-  RAY_CHECK_WITH_DISPLAY(condition, #condition)
+#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
 #ifdef NDEBUG
 
