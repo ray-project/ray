@@ -1,6 +1,7 @@
 import abc
 from typing import List
 
+from ray.rllib.algorithms.ppo.ppo_catalog import PPOCatalog
 from ray.rllib.core.models.configs import RecurrentEncoderConfig
 from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, ValueFunctionAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
@@ -11,7 +12,7 @@ from ray.rllib.utils.annotations import (
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
+@DeveloperAPI
 class DefaultPPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     """Default RLModule used by PPO, if user does not specify a custom RLModule.
 
@@ -20,11 +21,12 @@ class DefaultPPORLModule(RLModule, InferenceOnlyAPI, ValueFunctionAPI, abc.ABC):
     `ValueFunctionAPI` (see ray.rllib.core.rl_module.apis.value_function_api.py)
     """
 
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", PPOCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def setup(self):
-        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
-            raise self._catalog_ctor_error
-
         # __sphinx_doc_begin__
         # If we have a stateful model, states for the critic need to be collected
         # during sampling and `inference-only` needs to be `False`. Note, at this
