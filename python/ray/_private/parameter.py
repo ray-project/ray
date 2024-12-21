@@ -130,7 +130,7 @@ class RayParams:
         session_name: The name of the session of the ray cluster.
         webui: The url of the UI.
         cluster_id: The cluster ID in hex string.
-        enable_physical_mode: Whether physical mode is enaled, which applies
+        enable_physical_mode: Whether physical mode is enabled, which applies
             constraint to tasks' resource consumption. As of now, only memory resource
             is supported.
     """
