@@ -73,7 +73,7 @@ RedisMatchPattern RedisMatchPattern::Prefix(const std::string &prefix) {
 
 void RedisStoreClient::MGetValues(const std::string &table_name,
                                   const std::vector<std::string> &keys,
-                                  const MapCallback<std::string, std::string> &callback) {
+                                  MapCallback<std::string, std::string> callback) {
   // The `HMGET` command for each shard.
   auto batched_commands = GenCommandsBatched(
       "HMGET", RedisKey{external_storage_namespace_, table_name}, keys);
@@ -86,7 +86,7 @@ void RedisStoreClient::MGetValues(const std::string &table_name,
                           total_count,
                           // Copies!
                           args = command.args,
-                          callback,
+                          callback = std::move(callback),
                           key_value_map](const std::shared_ptr<CallbackReply> &reply) {
       if (!reply->IsNil()) {
         auto value = reply->ReadAsStringArray();
@@ -116,12 +116,12 @@ RedisStoreClient::RedisStoreClient(std::shared_ptr<RedisClient> redis_client)
 
 Status RedisStoreClient::AsyncPut(const std::string &table_name,
                                   const std::string &key,
-                                  const std::string &data,
+                                  std::string data,
                                   bool overwrite,
                                   std::function<void(bool)> callback) {
   RedisCommand command{/*command=*/overwrite ? "HSET" : "HSETNX",
                        RedisKey{external_storage_namespace_, table_name},
-                       /*args=*/{key, data}};
+                       /*args=*/{key, std::move(data)}};
   RedisCallback write_callback = nullptr;
   if (callback) {
     write_callback =
@@ -136,18 +136,19 @@ Status RedisStoreClient::AsyncPut(const std::string &table_name,
 
 Status RedisStoreClient::AsyncGet(const std::string &table_name,
                                   const std::string &key,
-                                  const OptionalItemCallback<std::string> &callback) {
+                                  OptionalItemCallback<std::string> callback) {
   RAY_CHECK(callback != nullptr);
 
-  auto redis_callback = [callback](const std::shared_ptr<CallbackReply> &reply) {
-    std::optional<std::string> result;
-    if (!reply->IsNil()) {
-      result = reply->ReadAsString();
-    }
-    RAY_CHECK(!reply->IsError())
-        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-    callback(Status::OK(), std::move(result));
-  };
+  auto redis_callback =
+      [callback = std::move(callback)](const std::shared_ptr<CallbackReply> &reply) {
+        std::optional<std::string> result;
+        if (!reply->IsNil()) {
+          result = reply->ReadAsString();
+        }
+        RAY_CHECK(!reply->IsError())
+            << "Failed to get from Redis with status: " << reply->ReadAsStatus();
+        callback(Status::OK(), std::move(result));
+      };
 
   RedisCommand command{/*command=*/"HGET",
                        RedisKey{external_storage_namespace_, table_name},
@@ -156,14 +157,13 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
   return Status::OK();
 }
 
-Status RedisStoreClient::AsyncGetAll(
-    const std::string &table_name,
-    const MapCallback<std::string, std::string> &callback) {
+Status RedisStoreClient::AsyncGetAll(const std::string &table_name,
+                                     MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   RedisScanner::ScanKeysAndValues(redis_client_,
                                   RedisKey{external_storage_namespace_, table_name},
                                   RedisMatchPattern::Any(),
-                                  callback);
+                                  std::move(callback));
   return Status::OK();
 }
 
@@ -189,16 +189,15 @@ Status RedisStoreClient::AsyncBatchDelete(const std::string &table_name,
   return DeleteByKeys(table_name, keys, callback);
 }
 
-Status RedisStoreClient::AsyncMultiGet(
-    const std::string &table_name,
-    const std::vector<std::string> &keys,
-    const MapCallback<std::string, std::string> &callback) {
+Status RedisStoreClient::AsyncMultiGet(const std::string &table_name,
+                                       const std::vector<std::string> &keys,
+                                       MapCallback<std::string, std::string> callback) {
   RAY_CHECK(callback);
   if (keys.empty()) {
     callback({});
     return Status::OK();
   }
-  MGetValues(table_name, keys, callback);
+  MGetValues(table_name, keys, std::move(callback));
   return Status::OK();
 }
 
@@ -221,7 +220,7 @@ size_t RedisStoreClient::PushToSendingQueue(const std::vector<RedisConcurrencyKe
       // this queue.
       op_iter->second.push(nullptr);
     } else {
-      op_iter->second.push(send_request);
+      op_iter->second.push(std::move(send_request));
     }
   }
   return queue_added;
@@ -328,16 +327,17 @@ Status RedisStoreClient::DeleteByKeys(const std::string &table,
   auto context = redis_client_->GetPrimaryContext();
   for (auto &command : del_cmds) {
     // `callback` is copied to each `delete_callback` lambda. Don't move.
-    auto delete_callback = [num_deleted, finished_count, total_count, callback](
-                               const std::shared_ptr<CallbackReply> &reply) {
-      (*num_deleted) += reply->ReadAsInteger();
-      ++(*finished_count);
-      if (*finished_count == total_count) {
-        if (callback) {
-          callback(*num_deleted);
-        }
-      }
-    };
+    auto delete_callback =
+        [num_deleted, finished_count, total_count, callback = std::move(callback)](
+            const std::shared_ptr<CallbackReply> &reply) {
+          (*num_deleted) += reply->ReadAsInteger();
+          ++(*finished_count);
+          if (*finished_count == total_count) {
+            if (callback) {
+              callback(*num_deleted);
+            }
+          }
+        };
     SendRedisCmdArgsAsKeys(std::move(command), std::move(delete_callback));
   }
   return Status::OK();
