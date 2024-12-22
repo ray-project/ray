@@ -80,12 +80,12 @@ class EnvRunnerGroup:
         validate_env: Optional[Callable[[EnvType], None]] = None,
         default_policy_class: Optional[Type[Policy]] = None,
         config: Optional["AlgorithmConfig"] = None,
-        num_env_runners: Optional[int] = None,
         local_env_runner: bool = True,
         logdir: Optional[str] = None,
         _setup: bool = True,
         tune_trial_id: Optional[str] = None,
         # Deprecated args.
+        num_env_runners: Optional[int] = None,
         num_workers=DEPRECATED_VALUE,
         local_worker=DEPRECATED_VALUE,
     ):

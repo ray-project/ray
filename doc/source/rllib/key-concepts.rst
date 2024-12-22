@@ -9,33 +9,26 @@
 Key concepts
 ============
 
-To help you get a high-level understanding of how the library works, on this page, you
-learn about the key concepts and general architecture of RLlib.
+To help you get a high-level understanding of how the library works, on this page, you learn about the
+key concepts and general architecture of RLlib.
 
 .. figure:: images/rllib-new-api-stack-simple.svg
     :width: 800
-    :align: center
+    :align: left
 
-The central component of the library is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-class, acting as a container for all other components required to train your models on an RL problem.
-
-Your gateway into using an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is the
-:py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1ff;">**cyan**</span>) class, allowing
-you to manage any possible config settings, such as the learning rate, model architecture, compute resources used, or fault-tolerance behavior.
-You can then either use your config with Ray Tune or call its :py:meth:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig.build`
-method to construct an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance and work with it directly.
-
-Once built from your config, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` contains an
-:py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` (<span style="color: #d0e2f3;">**blue**</span>) with distributed, scalable
-subcomponents to collect training samples from the RL environment,
-a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` (<span style="color: #fff2ccff;">**yellow**</span>) with
-distributed, scalable subcomponents to compute gradients and update your models,
-and a :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method (<span style="color: #f4ccccff;">**red**</span>), defining
-**WHEN** the the algorithm should do **WHAT**.
-
-Copies of the models being trained are located in both :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
-and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` and the model's weights are synchronized after
-model updates.
+    **RLlib overview:** The central component of RLlib is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+    class, acting as a runtime for executing your RL experiments.
+    Your gateway into using an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` is the
+    :py:class:`~ray.rllib.algorithms.algorithm_config.AlgorithmConfig` (<span style="color: #cfe0e1ff;">**cyan**</span>) class, allowing
+    you to manage all available config settings, for example the learning rate.
+    Most :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` objects have an
+    :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` (<span style="color: #d0e2f3;">**blue**</span>) to collect training samples
+    from the RL environment, a :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` (<span style="color: #fff2ccff;">**yellow**</span>)
+    to compute gradients and update your models, and a :py:meth:`~ray.rllib.algorithms.algorithm.Algorithm.training_step` method (<span style="color: #f4ccccff;">**red**</span>), defining
+    **when** the the algorithm should do **what**.
+    Copies of the models being trained are located in both :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup`
+    and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` and the model's weights are synchronized after
+    model updates.
 
 
 .. _rllib-key-concepts-algorithms:
@@ -53,7 +46,7 @@ the :py:class:`~ray.rllib.algorithms.ppo.ppo.PPOConfig` class.
 
 An algorithm sets up its :py:class:`~ray.rllib.env.env_runner_group.EnvRunnerGroup` and
 :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`, both of which use `Ray actors <actors.html>`__ to scale sample collection
-and training from a single core to many thousands of cores in a cluster.
+and training, respectively, from a single core to many thousands of cores in a cluster.
 
 .. TODO: Separate out our scaling guide into its own page in new PR
 
@@ -62,10 +55,10 @@ See this `scaling guide <rllib-training.html#scaling-guide>`__ for more details 
 :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` also subclasses from the :ref:`Tune Trainable API <tune-60-seconds>`
 for easy experiment management and hyperparameter tuning.
 
-You have two ways to interact with an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
+You have two ways to interact with and run an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`.
 
-- You can create and train an instance of it directly through the Python API.
-- You can use Ray Tune to more easily tune the hyperparameters for the particular problem you are trying to optimize.
+- You can create and manage an instance of it directly through the Python API.
+- You can use Ray Tune to more easily tune the hyperparameters for a particular problem.
 
 The following example shows these equivalent ways of interacting with the ``PPO`` ("Proximal Policy Optimization") algorithm of RLlib:
 
@@ -94,7 +87,7 @@ The following example shows these equivalent ways of interacting with the ``PPO`
             print(algo.train())
 
 
-    .. tab-item:: Manage ``Algorithm`` through Ray Tune
+    .. tab-item:: Run ``Algorithm`` through Ray Tune
 
         .. testcode::
 
@@ -166,8 +159,8 @@ of the Algorithm.
     :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`, computing the loss function inputs, the loss itself,
     and model gradients, then updating your RLModule through its optimizer.
 
-The EnvRunner copy is normally kept in an ``inference_only`` version, meaning components not required for
-pure action computation (such as a value function) may be missing to save memory.
+The EnvRunner copy is normally kept in an ``inference_only`` version, meaning those components that aren't
+required for pure action computations (for example, a value function) may be missing to save memory.
 
 
 .. _rllib-key-concepts-environments:
@@ -181,7 +174,7 @@ Solving a problem in RL begins with an **environment**. In the simplest definiti
 
 An environment in RL is the agent's world, it is a simulation of the problem to be solved.
 
-.. image:: images/env_key_concept1.png
+.. figure:: images/env_key_concept1.png
 
 An RLlib environment consists of:
 
@@ -197,7 +190,7 @@ The model that tries to maximize the expected sum over all future rewards is cal
 The RL simulation feedback loop repeatedly collects data, for one (single-agent case) or multiple (multi-agent case) policies, trains the policies on these collected data, and makes sure the policies' weights are kept in sync. Thereby, the collected environment data contains observations, taken actions, received rewards and so-called **done** flags, indicating the boundaries of different episodes the agents play through in the simulation.
 
 The simulation iterations of action -> reward -> next state -> train -> repeat, until the end state, is called an **episode**, or in RLlib, a **rollout**.
-The most common API to define environments is the `Farama-Foundation Gymnasium <rllib-env.html#gymnasium>`__ API, which we also use in most of our examples.
+The most common API to define environments is the :ref:`Farama-Foundation Gymnasium <gymnasium>` API, which we also use in most of our examples.
 
 
 .. _rllib-key-concepts-episodes:
