@@ -41,7 +41,7 @@ ln -s /usr/bin/clang-12 /usr/bin/clang
 
 EOF
 
-RUN curl -o- https://get.docker.com | sh
+RUN curl -o- https://get.docker.com | sh -s -- --version 27.2
 
 # System conf for tests
 RUN locale -a

@@ -17,6 +17,7 @@ from ray._private.test_utils import (
     wait_until_server_available,
 )
 from ray.cluster_utils import Cluster
+from ray.dashboard.consts import RAY_DASHBOARD_STATS_UPDATING_INTERVAL
 from ray.dashboard.tests.conftest import *  # noqa
 
 logger = logging.getLogger(__name__)
@@ -79,7 +80,9 @@ def test_node_info(disable_aiohttp_cache, ray_start_with_dashboard):
     webui_url = format_web_url(webui_url)
     node_id = ray_start_with_dashboard["node_id"]
 
-    timeout_seconds = 10
+    # NOTE: Leaving sum buffer time for data to get refreshed
+    timeout_seconds = RAY_DASHBOARD_STATS_UPDATING_INTERVAL * 1.5
+
     start_time = time.time()
     last_ex = None
     while True:
@@ -186,6 +189,7 @@ def test_multi_nodes_info(
                     assert detail["raylet"]["state"] == "ALIVE"
                 else:
                     assert detail["raylet"]["state"] == "DEAD"
+                    assert detail["raylet"].get("objectStoreAvailableMemory", 0) == 0
             response = requests.get(webui_url + "/test/dump?key=agents")
             response.raise_for_status()
             agents = response.json()

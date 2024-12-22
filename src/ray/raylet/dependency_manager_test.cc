@@ -365,6 +365,29 @@ TEST_F(DependencyManagerTest, TestDuplicateTaskArgs) {
   AssertNoLeaks();
 }
 
+/// Test that RemoveTaskDependencies is called before objects
+/// becoming local (e.g. the task is cancelled).
+TEST_F(DependencyManagerTest, TestRemoveTaskDependenciesBeforeLocal) {
+  int num_arguments = 3;
+  std::vector<ObjectID> arguments;
+  for (int i = 0; i < num_arguments; i++) {
+    arguments.push_back(ObjectID::FromRandom());
+  }
+  TaskID task_id = RandomTaskId();
+  bool ready = dependency_manager_.RequestTaskDependencies(
+      task_id, ObjectIdsToRefs(arguments), {"foo", false});
+  ASSERT_FALSE(ready);
+  ASSERT_EQ(NumWaiting("bar"), 0);
+  ASSERT_EQ(NumWaiting("foo"), 1);
+  ASSERT_EQ(NumWaitingTotal(), 1);
+
+  // The task is cancelled
+  dependency_manager_.RemoveTaskDependencies(task_id);
+  ASSERT_EQ(NumWaiting("foo"), 0);
+  ASSERT_EQ(NumWaitingTotal(), 0);
+  AssertNoLeaks();
+}
+
 }  // namespace raylet
 
 }  // namespace ray

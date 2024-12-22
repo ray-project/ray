@@ -38,7 +38,7 @@ RL Modules (Alpha)
          - |pytorch| |tensorflow|
          -
          - |pytorch|
-       * - **Impala**
+       * - **IMPALA**
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
          - |pytorch| |tensorflow|
@@ -254,54 +254,6 @@ When writing RL Modules, you need to use these fields to construct your model.
             :start-after: __write-custom-sa-rlmodule-tf-begin__
             :end-before: __write-custom-sa-rlmodule-tf-end__
 
-
-In :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` you can enforce the checking for the existence of certain input or output keys in the data that is communicated into and out of RL Modules. This serves multiple purposes:
-
-- For the I/O requirement of each method to be self-documenting.
-- For failures to happen quickly. If users extend the modules and implement something that does not match the assumptions of the I/O specs, the check reports missing keys and their expected format. For example, RLModule should always have an ``obs`` key in the input batch and an ``action_dist`` key in the output.
-
-.. tab-set::
-
-    .. tab-item:: Single Level Keys
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __extend-spec-checking-single-level-begin__
-            :end-before: __extend-spec-checking-single-level-end__
-
-    .. tab-item:: Nested Keys
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __extend-spec-checking-nested-begin__
-            :end-before: __extend-spec-checking-nested-end__
-
-
-    .. tab-item:: TensorShape Spec
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __extend-spec-checking-torch-specs-begin__
-            :end-before: __extend-spec-checking-torch-specs-end__
-
-
-    .. tab-item:: Type Spec
-
-        .. literalinclude:: doc_code/rlmodule_guide.py
-            :language: python
-            :start-after: __extend-spec-checking-type-specs-begin__
-            :end-before: __extend-spec-checking-type-specs-end__
-
-:py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` has two methods for each forward method, totaling 6 methods that can be override to describe the specs of the input and output of each method:
-
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.input_specs_inference`
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.output_specs_inference`
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.input_specs_exploration`
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.output_specs_exploration`
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.input_specs_train`
-- :py:meth:`~ray.rllib.core.rl_module.rl_module.RLModule.output_specs_train`
-
-To learn more, see the `SpecType` documentation.
 
 
 Writing Custom Multi-Agent RL Modules (Advanced)

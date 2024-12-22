@@ -16,16 +16,19 @@
 
 #include <grpcpp/grpcpp.h>
 
+#include <cstdint>
+#include <functional>
+#include <memory>
+#include <vector>
+
 #include "absl/container/flat_hash_map.h"
 #include "ray/common/asio/instrumented_io_context.h"
 #include "ray/common/id.h"
 #include "ray/common/ray_config.h"
+#include "ray/util/thread_checker.h"
 #include "src/proto/grpc/health/v1/health.grpc.pb.h"
 
-class GcsHealthCheckManagerTest;
-
-namespace ray {
-namespace gcs {
+namespace ray::gcs {
 
 /// GcsHealthCheckManager is used to track the healthiness of the nodes in the ray
 /// cluster. The health check is done in pull based way, which means this module will send
@@ -35,6 +38,9 @@ namespace gcs {
 /// node will be removed from GcsHealthCheckManager. The node can be added into this class
 /// later. Although the same node id is not supposed to be reused in ray cluster, this is
 /// not enforced in this class.
+///
+/// All IO operations happens on the same thread, which is managed by the pass-ed in
+/// [io_service].
 /// TODO (iycheng): Move the GcsHealthCheckManager to ray/common.
 class GcsHealthCheckManager {
  public:
@@ -58,24 +64,33 @@ class GcsHealthCheckManager {
   ~GcsHealthCheckManager();
 
   /// Start to track the healthiness of a node.
+  /// Safe to call from non-io-context threads.
   ///
   /// \param node_id The id of the node.
   /// \param channel The gRPC channel to the node.
   void AddNode(const NodeID &node_id, std::shared_ptr<grpc::Channel> channel);
 
   /// Stop tracking the healthiness of a node.
+  /// Safe to call from non-io-context threads.
   ///
   /// \param node_id The id of the node to stop tracking.
   void RemoveNode(const NodeID &node_id);
 
-  /// Return all the nodes monitored.
+  /// Return all the nodes monitored and alive.
+  /// Notice: have to invoke from io-context thread.
   ///
   /// \return A list of node id which are being monitored by this class.
   std::vector<NodeID> GetAllNodes() const;
 
+  /// Mark the given node as healthy, so health check manager could save some checking
+  /// rpcs. Safe to call from non-io-context threads.
+  ///
+  /// \param node_id The id of the node.
+  void MarkNodeHealthy(const NodeID &node_id);
+
  private:
   /// Fail a node when health check failed. It'll stop the health checking and
-  /// call on_node_death_callback.
+  /// call `on_node_death_callback_`.
   ///
   /// \param node_id The id of the node.
   void FailNode(const NodeID &node_id);
@@ -102,12 +117,19 @@ class GcsHealthCheckManager {
 
     void Stop();
 
+    void SetLatestHealthTimestamp(absl::Time ts) {
+      lastest_known_healthy_timestamp_ = ts;
+    }
+
    private:
     void StartHealthCheck();
 
     GcsHealthCheckManager *manager_;
 
     NodeID node_id_;
+
+    // Timestamp for latest known status when node is healthy.
+    absl::Time lastest_known_healthy_timestamp_ = absl::InfinitePast();
 
     // Whether the health check has stopped.
     bool stopped_ = false;
@@ -133,7 +155,11 @@ class GcsHealthCheckManager {
   std::function<void(const NodeID &)> on_node_death_callback_;
 
   /// The context of the health check for each nodes.
+  /// Only living nodes are bookkept, while failed one will be removed.
   absl::flat_hash_map<NodeID, HealthCheckContext *> health_check_contexts_;
+
+  /// Checker to make sure there's no concurrent access for node addition and removal.
+  const ThreadChecker thread_checker_;
 
   /// The delay for the first health check request.
   const int64_t initial_delay_ms_;
@@ -145,5 +171,4 @@ class GcsHealthCheckManager {
   const int64_t failure_threshold_;
 };
 
-}  // namespace gcs
-}  // namespace ray
+}  // namespace ray::gcs

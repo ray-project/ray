@@ -37,16 +37,16 @@ Create a GKE cluster with the `enable-autoscaling` option:
 ```bash
 gcloud container clusters create kuberay-gpu-cluster \
     --num-nodes=1 --min-nodes 0 --max-nodes 1 --enable-autoscaling \
-    --zone=us-west1-b --machine-type e2-standard-4 --cluster-version 1.29
+    --zone=us-east4-c --machine-type e2-standard-4
 ```
 
 Create a GPU node pool with the `enable-queued-provisioning` option enabled:
 ```bash
-gcloud beta container node-pools create gpu-node-pool \
+gcloud container node-pools create gpu-node-pool \
   --accelerator type=nvidia-l4,count=1,gpu-driver-version=latest \
   --enable-queued-provisioning \
   --reservation-affinity=none  \
-  --zone us-west1-b \
+  --zone us-east4-c \
   --cluster kuberay-gpu-cluster \
   --num-nodes 0 \
   --min-nodes 0 \
@@ -55,13 +55,9 @@ gcloud beta container node-pools create gpu-node-pool \
   --machine-type g2-standard-4
 ```
 
-This command creates a node pool which initially has zero nodes. Use the `gcloud beta` command because some of the flags have beta status.
+This command creates a node pool, which initially has zero nodes.
 The `--enable-queued-provisioning` flag enables "queued provisioning" in the Kubernetes node autoscaler using the ProvisioningRequest API. More details are below.
 You need to use the `--reservation-affinity=none` flag because GKE doesn't support Node Reservations with ProvisioningRequest.
-
-:::{note}
-"enable-queued-provisioning" is only available on versions 1.28+ with the `gcloud beta` command
-:::
 
 
 ## Install the KubeRay operator
@@ -71,9 +67,9 @@ The KubeRay operator Pod must be on the CPU node if you set up the taint for the
 
 ## Install Kueue
 
-Install Kueue with the ProvisioningRequest API enabled.
+Install the latest released version of Kueue.
 ```
-kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/v0.6.0/manifests-alpha-enabled.yaml
+kubectl apply --server-side -f https://github.com/kubernetes-sigs/kueue/releases/download/v0.8.2/manifests.yaml
 ```
 
 See [Kueue Installation](https://kueue.sigs.k8s.io/docs/installation/#install-a-released-version) for more details on installing Kueue.

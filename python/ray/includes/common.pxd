@@ -329,7 +329,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
                      unordered_map[c_string, double] &resources,
                      c_string concurrency_group_name,
                      int64_t generator_backpressure_num_objects,
-                     c_string serialized_runtime_env, c_bool enable_task_events)
+                     c_string serialized_runtime_env, c_bool enable_task_events,
+                     const unordered_map[c_string, c_string] &labels)
 
     cdef cppclass CActorCreationOptions "ray::core::ActorCreationOptions":
         CActorCreationOptions()
@@ -347,7 +348,8 @@ cdef extern from "ray/core_worker/common.h" nogil:
             const c_vector[CConcurrencyGroup] &concurrency_groups,
             c_bool execute_out_of_order,
             int32_t max_pending_calls,
-            c_bool enable_task_events)
+            c_bool enable_task_events,
+            const unordered_map[c_string, c_string] &labels)
 
     cdef cppclass CPlacementGroupCreationOptions \
             "ray::core::PlacementGroupCreationOptions":
@@ -595,71 +597,6 @@ cdef extern from "ray/gcs/gcs_client/gcs_client.h" nogil:
         CAutoscalerStateAccessor& Autoscaler()
 
     cdef CRayStatus ConnectOnSingletonIoContext(CGcsClient &gcs_client, int timeout_ms)
-
-    cdef cppclass CPythonGcsClient "ray::gcs::PythonGcsClient":
-        CPythonGcsClient(const CGcsClientOptions &options)
-
-        CRayStatus Connect(
-            int64_t timeout_ms,
-            size_t num_retries)
-        CRayStatus CheckAlive(
-            const c_vector[c_string] &raylet_addresses,
-            int64_t timeout_ms,
-            c_vector[c_bool] &result)
-        CRayStatus InternalKVGet(
-            const c_string &ns, const c_string &key,
-            int64_t timeout_ms, c_string &value)
-        CRayStatus InternalKVMultiGet(
-            const c_string &ns, const c_vector[c_string] &keys,
-            int64_t timeout_ms, unordered_map[c_string, c_string] &result)
-        CRayStatus InternalKVPut(
-            const c_string &ns, const c_string &key, const c_string &value,
-            c_bool overwrite, int64_t timeout_ms, c_bool &added)
-        CRayStatus InternalKVDel(
-            const c_string &ns, const c_string &key, c_bool del_by_prefix,
-            int64_t timeout_ms, int &deleted_num)
-        CRayStatus InternalKVKeys(
-            const c_string &ns, const c_string &prefix,
-            int64_t timeout_ms, c_vector[c_string] &value)
-        CRayStatus InternalKVExists(
-            const c_string &ns, const c_string &key,
-            int64_t timeout_ms, c_bool &exists)
-        CRayStatus PinRuntimeEnvUri(
-            const c_string &uri, int expiration_s, int64_t timeout_ms)
-        CRayStatus GetAllNodeInfo(
-            int64_t timeout_ms, c_vector[CGcsNodeInfo]& result)
-        CRayStatus GetAllJobInfo(
-            const optional[c_string] &job_or_submission_id,
-            c_bool skip_submission_job_info_field, c_bool skip_is_running_tasks_field,
-            int64_t timeout_ms, c_vector[CJobTableData]& result)
-        CRayStatus GetAllResourceUsage(
-            int64_t timeout_ms, c_string& serialized_reply)
-        CRayStatus RequestClusterResourceConstraint(
-            int64_t timeout_ms,
-            const c_vector[unordered_map[c_string, double]] &bundles,
-            const c_vector[int64_t] &count_array)
-        CRayStatus GetClusterStatus(
-            int64_t timeout_ms,
-            c_string &serialized_reply)
-        CClusterID GetClusterId()
-        CRayStatus GetClusterResourceState(
-            int64_t timeout_ms,
-            c_string &serialized_reply)
-        CRayStatus ReportAutoscalingState(
-            int64_t timeout_ms,
-            const c_string &serialized_reply)
-        CRayStatus DrainNode(
-            const c_string &node_id,
-            int32_t reason,
-            const c_string &reason_message,
-            int64_t deadline_timestamp_ms,
-            int64_t timeout_ms,
-            c_bool &is_accepted,
-            c_string &rejection_reason_message)
-        CRayStatus DrainNodes(
-            const c_vector[c_string]& node_ids,
-            int64_t timeout_ms,
-            c_vector[c_string]& drained_node_ids)
 
 cdef extern from "ray/gcs/gcs_client/gcs_client.h" namespace "ray::gcs" nogil:
     unordered_map[c_string, double] PythonGetResourcesTotal(

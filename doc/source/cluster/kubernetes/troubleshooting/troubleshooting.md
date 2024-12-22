@@ -7,6 +7,7 @@ If you don't find an answer to your question here, please don't hesitate to conn
 
 # Contents
 
+- [Use the right version of Ray](#use-the-right-version-of-ray)
 - [Use ARM-based docker images for Apple M1 or M2 MacBooks](#docker-image-for-apple-macbooks)
 - [Upgrade KubeRay](#upgrade-kuberay)
 - [Worker init container](#worker-init-container)
@@ -14,6 +15,16 @@ If you don't find an answer to your question here, please don't hesitate to conn
 - [RayService](#rayservice)
 - [Autoscaler](#autoscaler)
 - [Other questions](#other-questions)
+
+(use-the-right-version-of-ray)=
+## Use the right version of Ray
+
+See the [upgrade guide](#kuberay-upgrade-guide) for the compatibility matrix between KubeRay versions and Ray versions.
+
+```{admonition} Don't use Ray versions between 2.11.0 and 2.37.0.
+The [commit](https://github.com/ray-project/ray/pull/44658) introduces a bug in Ray 2.11.0.
+When a Ray job is created, the Ray dashboard agent process on the head node gets stuck, causing the readiness and liveness probes, which send health check requests for the Raylet to the dashboard agent, to fail.
+```
 
 (docker-image-for-apple-macbooks)=
 ## Use ARM-based docker images for Apple M1 or M2 MacBooks

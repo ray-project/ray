@@ -2,9 +2,8 @@ from ray.rllib.algorithms.algorithm_config import AlgorithmConfig
 from ray.rllib.algorithms.bc.bc_catalog import BCCatalog
 from ray.rllib.algorithms.marwil.marwil import MARWIL, MARWILConfig
 from ray.rllib.core.rl_module.rl_module import RLModuleSpec
-from ray.rllib.offline.offline_prelearner import OfflinePreLearner
 from ray.rllib.utils.annotations import override
-from ray.rllib.utils.typing import ResultDict, RLModuleSpecType
+from ray.rllib.utils.typing import RLModuleSpecType
 
 
 class BCConfig(MARWILConfig):
@@ -61,21 +60,22 @@ class BCConfig(MARWILConfig):
         # not important for behavioral cloning.
         self.postprocess_inputs = False
 
-        # Set the offline prelearner to the default one. Note, MARWIL's
-        # specified offline prelearner requests a value function that
-        # BC does not have. Furthermore, MARWIL's prelearner calculates
-        # advantages unneeded for BC.
-        self.prelearner_class = OfflinePreLearner
+        # Materialize only the mapped data. This is optimal as long
+        # as no connector in the connector pipeline holds a state.
+        self.materialize_data = False
+        self.materialize_mapped_data = True
         # __sphinx_doc_end__
         # fmt: on
 
     @override(AlgorithmConfig)
     def get_default_rl_module_spec(self) -> RLModuleSpecType:
         if self.framework_str == "torch":
-            from ray.rllib.algorithms.bc.torch.bc_torch_rl_module import BCTorchRLModule
+            from ray.rllib.algorithms.bc.torch.default_bc_torch_rl_module import (
+                DefaultBCTorchRLModule,
+            )
 
             return RLModuleSpec(
-                module_class=BCTorchRLModule,
+                module_class=DefaultBCTorchRLModule,
                 catalog_class=BCCatalog,
             )
         else:
@@ -115,15 +115,10 @@ class BCConfig(MARWILConfig):
 class BC(MARWIL):
     """Behavioral Cloning (derived from MARWIL).
 
-    Simply uses MARWIL with beta force-set to 0.0.
+    Uses MARWIL with beta force-set to 0.0.
     """
 
     @classmethod
     @override(MARWIL)
     def get_default_config(cls) -> AlgorithmConfig:
         return BCConfig()
-
-    @override(MARWIL)
-    def training_step(self) -> ResultDict:
-        # Call MARWIL's training step.
-        return super().training_step()

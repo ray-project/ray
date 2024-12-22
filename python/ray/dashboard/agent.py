@@ -7,7 +7,6 @@ import os
 import pathlib
 import signal
 import sys
-from concurrent.futures import ThreadPoolExecutor
 
 import ray
 import ray._private.ray_constants as ray_constants
@@ -49,10 +48,6 @@ class DashboardAgent:
         # Public attributes are accessible for all agent modules.
         self.ip = node_ip_address
         self.minimal = minimal
-        self.thread_pool_executor = ThreadPoolExecutor(
-            max_workers=dashboard_consts.RAY_AGENT_THREAD_POOL_MAX_WORKERS,
-            thread_name_prefix="dashboard_agent_tpe",
-        )
 
         assert gcs_address is not None
         self.gcs_address = gcs_address

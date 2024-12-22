@@ -87,7 +87,7 @@ class TaskStatusEvent : public TaskEvent {
   struct TaskStateUpdate {
     TaskStateUpdate() {}
 
-    TaskStateUpdate(const absl::optional<const rpc::RayErrorInfo> &error_info)
+    TaskStateUpdate(const std::optional<const rpc::RayErrorInfo> &error_info)
         : error_info_(error_info) {}
 
     TaskStateUpdate(const NodeID &node_id, const WorkerID &worker_id)
@@ -107,19 +107,19 @@ class TaskStatusEvent : public TaskEvent {
     friend class TaskStatusEvent;
 
     /// Node id if it's a SUBMITTED_TO_WORKER status change.
-    const absl::optional<NodeID> node_id_ = absl::nullopt;
+    const std::optional<NodeID> node_id_ = std::nullopt;
     /// Worker id if it's a SUBMITTED_TO_WORKER status change.
-    const absl::optional<WorkerID> worker_id_ = absl::nullopt;
+    const std::optional<WorkerID> worker_id_ = std::nullopt;
     /// Task error info.
-    const absl::optional<rpc::RayErrorInfo> error_info_ = absl::nullopt;
+    const std::optional<rpc::RayErrorInfo> error_info_ = std::nullopt;
     /// Task log info.
-    const absl::optional<rpc::TaskLogInfo> task_log_info_ = absl::nullopt;
+    const std::optional<rpc::TaskLogInfo> task_log_info_ = std::nullopt;
     /// Actor task repr name.
     const std::string actor_repr_name_ = "";
     /// Worker's pid if it's a RUNNING status change.
-    const absl::optional<uint32_t> pid_ = absl::nullopt;
-    /// Is the task is paused by the debugger.
-    const absl::optional<bool> is_debugger_paused_ = absl::nullopt;
+    const std::optional<uint32_t> pid_ = std::nullopt;
+    /// If the task is paused by the debugger.
+    const std::optional<bool> is_debugger_paused_ = std::nullopt;
   };
 
   explicit TaskStatusEvent(
@@ -129,7 +129,7 @@ class TaskStatusEvent : public TaskEvent {
       const rpc::TaskStatus &task_status,
       int64_t timestamp,
       const std::shared_ptr<const TaskSpecification> &task_spec = nullptr,
-      absl::optional<const TaskStateUpdate> state_update = absl::nullopt);
+      std::optional<const TaskStateUpdate> state_update = std::nullopt);
 
   void ToRpcTaskEvents(rpc::TaskEvents *rpc_task_events) override;
 
@@ -146,7 +146,7 @@ class TaskStatusEvent : public TaskEvent {
   /// Pointer to the task spec.
   const std::shared_ptr<const TaskSpecification> task_spec_ = nullptr;
   /// Optional task state update
-  const absl::optional<const TaskStateUpdate> state_update_ = absl::nullopt;
+  const std::optional<const TaskStateUpdate> state_update_ = std::nullopt;
 };
 
 /// TaskProfileEvent is generated when `RAY_enable_timeline` is on.
@@ -220,6 +220,28 @@ enum TaskEventBufferCounter {
 class TaskEventBuffer {
  public:
   virtual ~TaskEventBuffer() = default;
+
+  /// Update task status change for the task attempt in TaskEventBuffer if needed.
+  ///
+  /// It skips the reporting when:
+  ///   1. when the enable_task_events for the task is false in TaskSpec.
+  ///   2. when the task event reporting is disabled on the worker (through ray config,
+  ///   i.e., RAY_task_events_report_interval_ms=0).
+  ///
+  /// \param attempt_number Attempt number for the task attempt.
+  /// \param spec corresponding TaskSpecification of the task
+  /// \param status the changed status.
+  /// \param state_update optional task state updates.
+  /// \return true if the event is recorded, false otherwise.
+  bool RecordTaskStatusEventIfNeeded(
+      const TaskID &task_id,
+      const JobID &job_id,
+      int32_t attempt_number,
+      const TaskSpecification &spec,
+      rpc::TaskStatus status,
+      bool include_task_info = false,
+      absl::optional<const TaskStatusEvent::TaskStateUpdate> state_update =
+          absl::nullopt);
 
   /// Add a task event to be reported.
   ///
@@ -408,7 +430,7 @@ class TaskEventBufferImpl : public TaskEventBuffer {
   std::thread io_thread_;
 
   /// The runner to run function periodically.
-  PeriodicalRunner periodical_runner_;
+  std::shared_ptr<PeriodicalRunner> periodical_runner_;
 
   /// Client to the GCS used to push profile events to it.
   std::shared_ptr<gcs::GcsClient> gcs_client_ ABSL_GUARDED_BY(mutex_);

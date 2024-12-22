@@ -27,7 +27,7 @@ See {ref}`Ray Serve end-to-end fault tolerance documentation <serve-e2e-ft-guide
 
 * Ray 2.0.0+
 * KubeRay 0.6.0+
-* Redis: single shard, one or multiple replicas
+* Redis: single shard Redis Cluster or Redis Sentinel, one or multiple replicas
 
 ## Quickstart
 
@@ -44,7 +44,7 @@ Follow [this document](kuberay-operator-deploy) to install the latest stable Kub
 ### Step 3: Install a RayCluster with GCS FT enabled
 
 ```sh
-curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml
+curl -LO https://raw.githubusercontent.com/ray-project/kuberay/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml
 kubectl apply -f ray-cluster.external-redis.yaml
 ```
 
@@ -65,7 +65,7 @@ kubectl get configmaps
 # ...
 ```
 
-The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml) file defines Kubernetes resources for RayCluster, Redis, and ConfigMaps.
+The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml) file defines Kubernetes resources for RayCluster, Redis, and ConfigMaps.
 There are two ConfigMaps in this example: `ray-example` and `redis-config`.
 The `ray-example` ConfigMap houses two Python scripts: `detached_actor.py` and `increment_counter.py`.
 
@@ -154,7 +154,7 @@ HGETALL RAY864b004c-6305-42e3-ac46-adfa8eb6f752@NODE
 # HGETALL 864b004c-6305-42e3-ac46-adfa8eb6f752
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.
+In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `ray.io/external-storage-namespace` annotation isn't set for the RayCluster.
 Therefore, KubeRay automatically injects the environment variable `RAY_external_storage_namespace` to all Ray Pods managed by the RayCluster with the RayCluster's UID as the external storage namespace by default.
 See [this section](kuberay-external-storage-namespace) to learn more about the annotation.
 
@@ -189,7 +189,7 @@ kubectl get pods -l=ray.io/is-ray-node=yes
 # raycluster-external-redis-worker-small-group-yyyyy   1/1     Running   0             xxm
 ```
 
-In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster.
+In [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml), the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable isn't set in the specifications for either the head Pod or the worker Pod within the RayCluster.
 Therefore, KubeRay automatically injects the `RAY_gcs_rpc_server_reconnect_timeout_s` environment variable with the value **600** to the worker Pod and uses the default value **60** for the head Pod.
 The timeout value for worker Pods must be longer than the timeout value for the head Pod so that the worker Pods don't terminate before the head Pod restarts from a failure.
 
@@ -255,7 +255,7 @@ kind delete cluster
 
 ## KubeRay GCS fault tolerance configurations
 
-The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml) used in the quickstart example contains detailed comments about the configuration options.
+The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml) used in the quickstart example contains detailed comments about the configuration options.
 ***Read this section in conjunction with the YAML file.***
 
 ### 1. Enable GCS fault tolerance
@@ -272,7 +272,7 @@ The [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blo
 
 * **`redis-password`** in head's `rayStartParams`:
 Use this option to specify the password for the Redis service, thus allowing the Ray head to connect to it.
-In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses an environment variable `REDIS_PASSWORD` to store the password from a Kubernetes secret.
+In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses an environment variable `REDIS_PASSWORD` to store the password from a Kubernetes secret.
     ```yaml
     rayStartParams:
       redis-password: $REDIS_PASSWORD
@@ -291,7 +291,7 @@ In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/
 
 * **`RAY_REDIS_ADDRESS`** environment variable in head's Pod:
 Ray reads the `RAY_REDIS_ADDRESS` environment variable to establish a connection with the Redis server.
-In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.0.0/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
+In the [ray-cluster.external-redis.yaml](https://github.com/ray-project/kuberay/blob/v1.2.2/ray-operator/config/samples/ray-cluster.external-redis.yaml), the RayCluster custom resource uses the `redis` Kubernetes ClusterIP service name as the connection point to the Redis server. The ClusterIP service is also created by the YAML file.
     ```yaml
     template:
       spec:

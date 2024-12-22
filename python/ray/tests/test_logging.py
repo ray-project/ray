@@ -391,7 +391,6 @@ def test_ignore_windows_access_violation(ray_start_regular_shared):
 
 
 def test_log_redirect_to_stderr(shutdown_only):
-
     log_components = {
         ray_constants.PROCESS_TYPE_DASHBOARD: "Dashboard head grpc address",
         ray_constants.PROCESS_TYPE_DASHBOARD_AGENT: "",
@@ -934,7 +933,6 @@ def test_log_level_settings(
 
 
 def test_log_with_import():
-
     logger = logging.getLogger(__name__)
     assert not logger.disabled
     ray.log.logger_initialized = False
@@ -1056,6 +1054,33 @@ def test_print_worker_logs_multi_color() -> None:
         f"{colorama.Fore.GREEN}(my_task pid=2, ip=10.0.0.1){colorama.Style.RESET_ALL} "
         + "is running\n"
     )
+
+
+class TestSetupLogRecordFactory:
+    def test_setup_log_record_factory_directly(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # Set up the log record factory with _setup_log_record_factory().
+        ray.log._setup_log_record_factory()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
+
+    def test_setup_log_record_factory_in_generate_logging_config(self):
+        # Reset the log record factory to the default.
+        logging.setLogRecordFactory(logging.LogRecord)
+        record_old = logging.makeLogRecord({})
+
+        # generate_logging_config() also setup the log record factory.
+        ray.log.logger_initialized = False
+        ray.log.generate_logging_config()
+        record_new = logging.makeLogRecord({})
+
+        assert "_ray_timestamp_ns" not in record_old.__dict__
+        assert "_ray_timestamp_ns" in record_new.__dict__
 
 
 if __name__ == "__main__":

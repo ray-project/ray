@@ -14,6 +14,7 @@
 
 #include <boost/asio/ip/tcp.hpp>
 #include <chrono>
+#include <future>
 
 #include "absl/strings/substitute.h"
 #include "gtest/gtest.h"
@@ -198,7 +199,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
         ASSERT_TRUE(status.ok()) << status.ToString();
         p1.set_value(*p);
       }));
-  ASSERT_EQ(f1.wait_for(1s), std::future_status::timeout);
+  ASSERT_EQ(std::future_status::timeout, f1.wait_for(1s));
 
   // Make sure io context is not blocked
   std::promise<void> p2;
@@ -210,7 +211,7 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBasic) {
   StartGCS();
 
   // Make sure the request is executed
-  ASSERT_EQ(f1.get(), "B");
+  ASSERT_EQ("B", f1.get());
 }
 
 TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
@@ -241,8 +242,14 @@ TEST_F(GcsClientReconnectionTest, ReconnectionBackoff) {
 
   ShutdownGCS();
 
+  std::promise<void> p2;
+  auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto, auto) {}));
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p2.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
   ASSERT_TRUE(WaitUntil(
       [channel]() {
@@ -305,27 +312,41 @@ TEST_F(GcsClientReconnectionTest, QueueingAndBlocking) {
   ShutdownGCS();
 
   // Send one request which should fail
+  std::promise<void> p2;
+  auto f2 = p2.get_future();
   RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p2](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p2.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f2.wait_for(1s));
 
   // Make sure it's not blocking
-  std::promise<void> p2;
-  client_io_service_->post([&p2]() { p2.set_value(); }, "");
-  auto f2 = p2.get_future();
-  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
-
-  // Send the second one and it should block the thread
-  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
-      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [](auto status, auto) {}));
-  std::this_thread::sleep_for(1s);
   std::promise<void> p3;
   client_io_service_->post([&p3]() { p3.set_value(); }, "");
   auto f3 = p3.get_future();
-  ASSERT_EQ(std::future_status::timeout, f3.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f3.wait_for(1s));
+
+  // Send the second one and it should block the thread
+  std::promise<void> p4;
+  auto f4 = p4.get_future();
+  RAY_UNUSED(client->InternalKV().AsyncInternalKVPut(
+      "", "A", "B", false, gcs::GetGcsTimeoutMs(), [&p4](auto status, auto) {
+        ASSERT_TRUE(status.ok()) << status.ToString();
+        p4.set_value();
+      }));
+  ASSERT_EQ(std::future_status::timeout, f4.wait_for(1s));
+
+  std::promise<void> p5;
+  client_io_service_->post([&p5]() { p5.set_value(); }, "");
+  auto f5 = p5.get_future();
+  ASSERT_EQ(std::future_status::timeout, f5.wait_for(1s));
 
   // Resume GCS server and it should unblock
   StartGCS();
-  ASSERT_EQ(std::future_status::ready, f3.wait_for(5s));
+  ASSERT_EQ(std::future_status::ready, f5.wait_for(5s));
+  ASSERT_EQ(std::future_status::ready, f2.wait_for(1s));
+  ASSERT_EQ(std::future_status::ready, f4.wait_for(1s));
 }
 
 TEST_F(GcsClientReconnectionTest, Timeout) {
@@ -335,7 +356,7 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   "gcs_rpc_server_reconnect_timeout_s": 60,
   "gcs_storage": "redis",
   "gcs_grpc_max_request_queued_max_bytes": 10,
-  "gcs_server_request_timeout_seconds": 3
+  "gcs_server_request_timeout_seconds": 10
 }
   )");
   StartGCS();
@@ -346,11 +367,11 @@ TEST_F(GcsClientReconnectionTest, Timeout) {
   ASSERT_TRUE(added);
 
   ShutdownGCS();
-
   std::vector<std::string> values;
   ASSERT_TRUE(
       client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).IsTimedOut());
   ASSERT_TRUE(values.empty());
+
   StartGCS();
   ASSERT_TRUE(client->InternalKV().Keys("", "A", gcs::GetGcsTimeoutMs(), values).ok());
   ASSERT_EQ(std::vector<std::string>{"A"}, values);

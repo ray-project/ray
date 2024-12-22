@@ -523,7 +523,7 @@ def test_status_error_msg_format(ray_start_stop):
         assert remove_ansi_escape_sequences(cli_status["message"]) in api_status.message
 
         deployment_status = cli_status["deployments"]["A"]
-        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status"] == "DEPLOY_FAILED"
         assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
         return True
 
@@ -598,8 +598,36 @@ def test_status_constructor_error(ray_start_stop):
         assert status["status"] == "DEPLOY_FAILED"
 
         deployment_status = status["deployments"]["A"]
-        assert deployment_status["status"] == "UNHEALTHY"
+        assert deployment_status["status"] == "DEPLOY_FAILED"
         assert deployment_status["status_trigger"] == "REPLICA_STARTUP_FAILED"
+        assert "ZeroDivisionError" in deployment_status["message"]
+        return True
+
+    wait_for_condition(check_for_failed_deployment)
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="File path incorrect on Windows.")
+def test_status_constructor_retry_error(ray_start_stop):
+    """Deploys Serve deployment that errors out in constructor, checks that the
+    retry message is surfaced.
+    """
+
+    config_file_name = os.path.join(
+        os.path.dirname(__file__), "test_config_files", "deployment_fail_2.yaml"
+    )
+
+    subprocess.check_output(["serve", "deploy", config_file_name])
+
+    def check_for_failed_deployment():
+        cli_output = subprocess.check_output(
+            ["serve", "status", "-a", "http://localhost:52365/"]
+        )
+        status = yaml.safe_load(cli_output)["applications"][SERVE_DEFAULT_APP_NAME]
+        assert status["status"] == "DEPLOYING"
+
+        deployment_status = status["deployments"]["A"]
+        assert deployment_status["status"] == "UPDATING"
+        assert deployment_status["status_trigger"] == "CONFIG_UPDATE_STARTED"
         assert "ZeroDivisionError" in deployment_status["message"]
         return True
 

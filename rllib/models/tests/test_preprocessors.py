@@ -35,39 +35,13 @@ class TestPreprocessors(unittest.TestCase):
     def tearDownClass(cls) -> None:
         ray.shutdown()
 
-    def test_rlms_and_preprocessing(self):
-        config = (
-            ppo.PPOConfig()
-            .api_stack(enable_rl_module_and_learner=True)
-            .framework("tf2")
-            .environment(
-                env="ray.rllib.examples.envs.classes.random_env.RandomEnv",
-                env_config={
-                    "config": {
-                        "observation_space": Box(-1.0, 1.0, (1,), dtype=np.int32),
-                    },
-                },
-            )
-            # Run this very quickly locally.
-            .env_runners(num_env_runners=0)
-            .training(
-                train_batch_size=10,
-                minibatch_size=1,
-                num_epochs=1,
-            )
-            # Set this to True to enforce no preprocessors being used.
-            .experimental(_disable_preprocessor_api=True)
-        )
-
-        algo = config.build()
-        results = algo.train()
-        check_train_results(results)
-        check_compute_single_action(algo)
-        algo.stop()
-
     def test_preprocessing_disabled_modelv2(self):
         config = (
             ppo.PPOConfig()
+            .api_stack(
+                enable_env_runner_and_connector_v2=False,
+                enable_rl_module_and_learner=False,
+            )
             .environment(
                 "ray.rllib.examples.envs.classes.random_env.RandomEnv",
                 env_config={
@@ -120,12 +94,12 @@ class TestPreprocessors(unittest.TestCase):
         p2 = ModelCatalog.get_preprocessor(gym.make("FrozenLake-v1"))
         self.assertEqual(type(p2), OneHotPreprocessor)
 
-        p3 = ModelCatalog.get_preprocessor(gym.make("ALE/MsPacman-ram-v5"))
+        p3 = ModelCatalog.get_preprocessor(gym.make("ale_py:ALE/MsPacman-ram-v5"))
         self.assertEqual(type(p3), AtariRamPreprocessor)
 
         p4 = ModelCatalog.get_preprocessor(
             gym.make(
-                "ALE/MsPacman-v5",
+                "ale_py:ALE/MsPacman-v5",
                 frameskip=1,
             )
         )

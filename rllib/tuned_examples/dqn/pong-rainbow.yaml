@@ -1,6 +1,6 @@
 # @OldAPIStack
 pong-deterministic-rainbow:
-    env: ALE/Pong-v5
+    env: ale_py:ALE/Pong-v5
     run: DQN
     stop:
         env_runners/episode_return_mean: 20
