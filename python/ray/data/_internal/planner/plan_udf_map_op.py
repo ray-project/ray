@@ -40,6 +40,7 @@ from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
+    BlockType,
     BlockAccessor,
     CallableClass,
     DataBatch,
@@ -92,15 +93,22 @@ def plan_project_op(
     columns_rename = op.cols_rename
 
     def fn(block: Block) -> Block:
-        if not BlockAccessor.for_block(block).num_rows():
+        try:
+            if BlockAccessor.for_block(block).block_type() == BlockType.PANDAS:
+                # TODO (srinathk) PandasBlockAccessor combine method needs to handle
+                # None types correctly. Until then, convert to Arrow Table.
+                block = BlockAccessor.for_block(block).to_arrow()
+            if not BlockAccessor.for_block(block).num_rows():
+                return block
+            if columns:
+                block = BlockAccessor.for_block(block).select(columns)
+            if columns_rename:
+                block = block.rename_columns(
+                    [columns_rename.get(col, col) for col in block.schema.names]
+                )
             return block
-        if columns:
-            block = BlockAccessor.for_block(block).select(columns)
-        if columns_rename:
-            block = block.rename_columns(
-                [columns_rename.get(col, col) for col in block.schema.names]
-            )
-        return block
+        except Exception as e:
+            _handle_debugger_exception(e)
 
     compute = get_compute(op._compute)
     transform_fn = _generate_transform_fn_for_map_block(fn)
@@ -563,6 +571,7 @@ def _create_map_transformer_for_block_based_map_op(
     transform_fns = [
         # Apply the UDF.
         BlockMapTransformFn(block_fn),
+        BuildOutputBlocksMapTransformFn.for_blocks(),
     ]
     return MapTransformer(transform_fns, init_fn=init_fn)
 

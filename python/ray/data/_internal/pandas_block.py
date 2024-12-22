@@ -515,6 +515,7 @@ class PandasBlockAccessor(TableBlockAccessor):
 
         return find_partitions(table, boundaries, sort_key)
 
+    # TODO (srinathk) Needs to handle None types correctly.
     def combine(
         self, sort_key: "SortKey", aggs: Tuple["AggregateFn"]
     ) -> "pandas.DataFrame":
