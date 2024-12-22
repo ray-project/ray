@@ -8,9 +8,12 @@
 User Guides
 ===========
 
+.. TODO bring this into better order or even some friendlier tree structure
+
 .. toctree::
     :hidden:
 
+    rllib-debugging-guide
     rllib-advanced-api
     rllib-models
     rllib-saving-and-loading-algos-and-policies
@@ -34,6 +37,14 @@ RLlib Feature Guides
 .. grid:: 1 2 3 4
     :gutter: 1
     :class-container: container pb-3
+
+    .. grid-item-card::
+        :img-top: /rllib/images/rllib-logo.svg
+        :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
+
+        .. button-ref:: rllib-debugging-guide
+
+            RLlib debugging guide
 
     .. grid-item-card::
         :img-top: /rllib/images/rllib-logo.svg

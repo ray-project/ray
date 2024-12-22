@@ -102,32 +102,3 @@ Benchmarks
 A number of training run results are available in the `rl-experiments repo <https://github.com/ray-project/rl-experiments>`__,
 and there is also a list of working hyperparameter configurations in `tuned_examples <https://github.com/ray-project/ray/tree/master/rllib/tuned_examples>`__, sorted by algorithm.
 Benchmark results are extremely valuable to the community, so if you happen to have results that may be of interest, consider making a pull request to either repo.
-
-
-Debugging RLlib
-===============
-
-Finding Memory Leaks In Workers
--------------------------------
-
-Keeping the memory usage of long running workers stable can be challenging. The ``MemoryTrackingCallbacks`` class can be used to track memory usage of workers.
-
-.. autoclass:: ray.rllib.algorithms.callbacks.MemoryTrackingCallbacks
-
-The objects with the top 20 memory usage in the workers are added as custom metrics. These can then be monitored using tensorboard or other metrics integrations like Weights & Biases:
-
-.. image:: images/MemoryTrackingCallbacks.png
-
-
-Troubleshooting
----------------
-
-If you encounter errors like
-`blas_thread_init: pthread_create: Resource temporarily unavailable` when using many workers,
-try setting ``OMP_NUM_THREADS=1``. Similarly, check configured system limits with
-`ulimit -a` for other resource limit errors.
-
-For debugging unexpected hangs or performance problems, you can run ``ray stack`` to dump
-the stack traces of all Ray workers on the current node, ``ray timeline`` to dump
-a timeline visualization of tasks to a file, and ``ray memory`` to list all object
-references in the cluster.
