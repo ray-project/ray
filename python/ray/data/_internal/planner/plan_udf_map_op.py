@@ -40,8 +40,8 @@ from ray.data._internal.numpy_support import is_valid_udf_return
 from ray.data._internal.util import _truncated_repr
 from ray.data.block import (
     Block,
-    BlockType,
     BlockAccessor,
+    BlockType,
     CallableClass,
     DataBatch,
     UserDefinedFunction,
