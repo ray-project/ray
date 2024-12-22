@@ -26,10 +26,10 @@
 #include "ray/gcs/gcs_server/gcs_kv_manager.h"
 #include "ray/gcs/gcs_server/gcs_redis_failure_detector.h"
 #include "ray/gcs/gcs_server/gcs_resource_manager.h"
-#include "ray/gcs/gcs_server/gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/gcs_table_storage.h"
 #include "ray/gcs/gcs_server/gcs_task_manager.h"
 #include "ray/gcs/gcs_server/pubsub_handler.h"
+#include "ray/gcs/gcs_server/rayturbo_gcs_server_io_context_policy.h"
 #include "ray/gcs/gcs_server/runtime_env_handler.h"
 #include "ray/gcs/gcs_server/usage_stats_client.h"
 #include "ray/gcs/pubsub/gcs_pub_sub.h"
@@ -214,7 +214,7 @@ class GcsServer {
 
   void TryGlobalGC();
 
-  IOContextProvider<GcsServerIOContextPolicy> io_context_provider_;
+  IOContextProvider<RayTurboGcsServerIOContextPolicy> io_context_provider_;
 
   /// NOTICE: The declaration order for data members should follow dependency.
   ///
