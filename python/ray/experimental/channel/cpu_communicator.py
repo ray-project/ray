@@ -143,6 +143,28 @@ class CPUCommunicator(Communicator):
         recv_buf[:] = result[:]
         self.num_ops[barrier_key] += 1
 
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ):
+        all_ranks = [
+            self.get_rank(actor_handle) for actor_handle in self.get_actor_handles()
+        ]
+        barrier_key = "barrier-collective-" + "-".join(map(str, sorted(all_ranks)))
+        barrier = CPUCommBarrier.options(name=barrier_key, get_if_exists=True).remote(
+            self._world_size
+        )
+        self.barriers.add(barrier)
+
+        result = ray.get(
+            barrier.wait_collective.remote(self.num_ops[barrier_key], send_buf, op)
+        )
+        assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
+        recv_buf[:] = result[send_buf.shape[0] // len(all_ranks) * self.get_self_rank():send_buf.shape[0] // len(all_ranks) * (self.get_self_rank()+1)]
+        self.num_ops[barrier_key] += 1
+
     def destroy(self) -> None:
         for barrier in self.barriers:
             ray.kill(barrier)

@@ -58,6 +58,14 @@ class AbstractNcclGroup(Communicator):
         op: ReduceOp = ReduceOp.SUM,
     ) -> None:
         raise NotImplementedError
+    
+    def reducescatter(
+        self,
+        send_buf: "torch.Tensor",
+        recv_buf: "torch.Tensor",
+        op: ReduceOp = ReduceOp.SUM,
+    ) -> None:
+        raise NotImplementedError
 
     @property
     def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:

@@ -436,6 +436,15 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
+        
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reducescatter(send_buf, recv_buf, op)
+            recv_buf += 1
 
         @property
         def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
@@ -543,6 +552,14 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             op: ReduceOp,
+        ) -> None:
+            raise NotImplementedError
+        
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -697,6 +714,14 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             send_buf: "torch.Tensor",
             recv_buf: "torch.Tensor",
             op: ReduceOp,
+        ) -> None:
+            raise NotImplementedError
+        
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
         ) -> None:
             raise NotImplementedError
 
@@ -1164,6 +1189,15 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
+        
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reducescatter(send_buf, recv_buf, op)
+            recv_buf += 1
 
         @property
         def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
@@ -1344,6 +1378,348 @@ def test_torch_tensor_nccl_reduce_scatter(ray_start_regular):
             tensor = tensor.to("cpu")
             expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
             assert torch.equal(tensor, expected_tensor_val)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter_get_partial(ray_start_regular):
+    """
+    Test getting partial results from an reduce-scatter does not hang.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        tensor1 = workers[0].recv_tensor.bind(collectives[0])
+        tensor2 = workers[1].recv_tensor.bind(collectives[0])
+        dag = MultiOutputNode([tensor1, tensor2, collectives[1]])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        tensor1, tensor2, _ = result
+        reduced_val = sum(i + idx for idx in range(num_workers))
+        tensor1 = tensor1.to("cpu")
+        tensor2 = tensor2.to("cpu")
+        expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
+        assert torch.equal(tensor1, expected_tensor_val)
+        assert torch.equal(tensor1, tensor2)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(ray_start_regular):
+    """
+    Test an error is thrown when participants of reduce-scatter have tensors
+    of different shapes.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, ReduceOp.SUM)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute([((20, 10), dtype, 1 + idx) for idx in range(num_workers)])
+    result = ray.get(ref)
+    reduced_val = sum(1 + idx for idx in range(num_workers))
+    for tensor in result:
+        tensor = tensor.to("cpu")
+        expected_tensor_val = torch.ones((10, 10), dtype=dtype) * reduced_val
+        assert torch.equal(tensor, expected_tensor_val)
+
+    ref = compiled_dag.execute(
+        [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
+    )
+    # Execution hangs because of shape mismatch and a timeout error is raised.
+    with pytest.raises(RayChannelError):
+        ray.get(ref)
+
+    # The DAG will be torn down after any task throws an application-level
+    # exception, such as when the task returns torch.Tensors of the wrong
+    # shape or dtype. Check that we can no longer submit to the DAG.
+    ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter_custom_comm(ray_start_regular):
+    """
+    Test reduce-scatter works with a custom communicator.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    from cupy.cuda import nccl
+
+    class TestNcclGroup(Communicator):
+        """
+        A custom NCCL group for testing. This is a simple wrapper around `_NcclGroup`.
+        """
+
+        import cupy as cp
+
+        def __init__(self, world_size, comm_id, actor_handles):
+            self._world_size = world_size
+            self._comm_id = comm_id
+            self._actor_handles = actor_handles
+            self._inner = None
+
+        def initialize(self, rank: int) -> None:
+            self._inner = _NcclGroup(
+                self._world_size,
+                self._comm_id,
+                rank,
+                self._actor_handles,
+                torch.cuda.current_stream().cuda_stream,
+            )
+
+        def get_rank(self, actor: ray.actor.ActorHandle) -> int:
+            # Implement this without forwarding to `_inner` to allow the method
+            # to be called before initialization.
+            actor_ids = [a._ray_actor_id for a in self._actor_handles]
+            try:
+                rank = actor_ids.index(actor._ray_actor_id)
+            except ValueError:
+                raise ValueError("Actor is not in the NCCL group.")
+            return rank
+
+        def get_world_size(self) -> int:
+            # Implement this without forwarding to `_inner` to allow the method
+            # to be called before initialization.
+            return self._world_size
+
+        def get_self_rank(self) -> Optional[int]:
+            if self._inner is None:
+                return None
+            return self._inner.get_self_rank()
+
+        def get_actor_handles(self) -> List["ray.actor.ActorHandle"]:
+            return self._actor_handles
+
+        def send(self, value: "torch.Tensor", peer_rank: int) -> None:
+            return self._inner.send(value, peer_rank)
+
+        def recv(
+            self,
+            shape: Tuple[int],
+            dtype: "torch.dtype",
+            peer_rank: int,
+            allocator: Optional[TorchTensorAllocator] = None,
+        ) -> "torch.Tensor":
+            return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
+        
+        def allreduce(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.allreduce(send_buf, recv_buf, op)
+            recv_buf += 1
+
+        def reducescatter(
+            self,
+            send_buf: "torch.Tensor",
+            recv_buf: "torch.Tensor",
+            op: ReduceOp = ReduceOp.SUM,
+        ) -> None:
+            self._inner.reducescatter(send_buf, recv_buf, op)
+            recv_buf += 1
+
+        @property
+        def recv_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.recv_stream
+
+        @property
+        def send_stream(self) -> Optional["cp.cuda.ExternalStream"]:
+            return self._inner.send_stream
+
+        def destroy(self) -> None:
+            return self._inner.destroy()
+
+        def get_transport_name(self) -> str:
+            return "nccl"
+
+    comm_id = nccl.get_unique_id()
+    nccl_group = TestNcclGroup(2, comm_id, workers)
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, transport=nccl_group)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        reduced_val = sum(i + idx for idx in range(num_workers))
+        # The custom communicator adds 1 to the tensor after the all-reduce.
+        reduced_val += 1
+        for tensor in result:
+            tensor = tensor.to("cpu")
+            expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
+            assert torch.equal(tensor, expected_tensor_val)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_torch_tensor_nccl_reduce_scatter_scheduling(ray_start_regular):
+    """
+    Test scheduling avoids potential deadlocks that arise from reduce-scatter operations.
+
+    inp --> x(0) --> +----------------+
+        |            | reduce-scatter |
+        --> y(1) --> +----------------+
+        |
+        --> t(0) --> recv(1)
+
+    In the above graph, x, y, t are tensors, and the numbers inside parentheses
+    identify the actors. If actor 1 launches an reduce-scatter with tensor y while
+    actor 0 starts sending t, then actor 1 waits for actor 0 to join the reduce-scatter
+    while actor 1 waits for actor 0 to receive t.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    shape = (10,)
+    dtype = torch.float16
+    with InputNode() as inp:
+        # Tensors in the reduce-scatter.
+        x = workers[0].send.bind(shape, dtype, inp)
+        y = workers[1].send.bind(shape, dtype, inp)
+
+        # Tensor to be sent from workes[0] to workers[1].
+        t = workers[0].send.bind(shape, dtype, inp)
+        t.with_type_hint(TorchTensorType(transport="nccl"))
+
+        collectives = collective.reducescatter.bind([x, y])
+        recv = workers[1].recv.bind(t)
+        dag = MultiOutputNode([collectives[0], collectives[1], recv])
+
+    compiled_dag = dag.experimental_compile()
+
+    value = 10
+    ref = compiled_dag.execute(value)
+    result = ray.get(ref)
+    reduced_value = value * 2
+    expected_tensor_val = torch.ones((5,), dtype=dtype) * reduced_value
+    assert torch.equal(result[0], expected_tensor_val)
+    assert torch.equal(result[1], expected_tensor_val)
+    assert result[2] == (value, shape, dtype)
+
+
+@pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
+def test_nccl_reduce_scatter_with_class_method_output_node(ray_start_regular):
+    """
+    Test reduce-scatter with class method output node.
+    """
+    if not USE_GPU:
+        pytest.skip("NCCL tests require GPUs")
+
+    assert (
+        sum(node["Resources"].get("GPU", 0) for node in ray.nodes()) > 1
+    ), "This test requires at least 2 GPUs"
+
+    actor_cls = TorchTensorWorker.options(num_cpus=0, num_gpus=1)
+
+    num_workers = 2
+    workers = [actor_cls.remote() for _ in range(num_workers)]
+
+    with InputNode() as inp:
+        t1, t2 = workers[0].return_two_tensors.bind(inp[0], inp[1])
+        t3, t4 = workers[1].return_two_tensors.bind(inp[2], inp[3])
+        tensors = collective.reducescatter.bind([t1, t4], ReduceOp.SUM)
+        dag = MultiOutputNode(tensors + [t2, t3])
+
+    compiled_dag = dag.experimental_compile()
+
+    t1 = torch.tensor([1, 11], device="cuda")
+    t2 = torch.tensor([2, 22], device="cuda")
+    t3 = torch.tensor([3, 33], device="cuda")
+    t4 = torch.tensor([4, 44], device="cuda")
+
+    for i in range(3):
+        i += 1
+        ref = compiled_dag.execute(t1, t2, t3, t4)
+        result = ray.get(ref)
+        expected_result = [
+            torch.tensor([5], device="cuda"),
+            torch.tensor([55], device="cuda"),
+            t2,
+            t3
+        ]
+        assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 2}], indirect=True)

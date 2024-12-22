@@ -109,9 +109,6 @@ def test_allreduce_basic(ray_start_cluster):
 
     cpu_group = CPUCommunicator(num_workers, workers)
 
-    shape = (10,)
-    dtype = torch.float16
-
     with InputNode() as inp:
         computes = [
             worker.compute_with_tuple_args.bind(inp, i)
@@ -359,6 +356,287 @@ def test_allreduce_wrong_actors(ray_start_cluster):
             match="Expected actor handles to match the custom NCCL group",
         ):
             collective.allreduce.bind(computes, transport=cpu_group)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_basic(ray_start_cluster):
+    """
+    Test basic reduce-scatter.
+    """
+    num_workers = 2
+    workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
+
+    cpu_group = CPUCommunicator(num_workers, workers)
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, transport=cpu_group)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        reduced_val = sum(i + idx for idx in range(num_workers))
+        for tensor in result:
+            expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
+            assert torch.equal(tensor, expected_tensor_val)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_get_partial(ray_start_cluster):
+    """
+    Test getting partial results from an reduce-scatter does not hang.
+    """
+    num_workers = 2
+    workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
+
+    cpu_group = CPUCommunicator(num_workers, workers)
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, transport=cpu_group)
+        tensor1 = workers[0].recv_tensor.bind(collectives[0])
+        tensor2 = workers[1].recv_tensor.bind(collectives[0])
+        dag = MultiOutputNode([tensor1, tensor2, collectives[1]])
+
+    compiled_dag = dag.experimental_compile()
+
+    for i in range(3):
+        i += 1
+        shape = (num_workers * i, i)
+        dtype = torch.float16
+        ref = compiled_dag.execute(
+            [(shape, dtype, i + idx) for idx in range(num_workers)]
+        )
+        result = ray.get(ref)
+        tensor1, tensor2, _ = result
+        reduced_val = sum(i + idx for idx in range(num_workers))
+        expected_tensor_val = torch.ones((i, i), dtype=dtype) * reduced_val
+        assert torch.equal(tensor1, expected_tensor_val)
+        assert torch.equal(tensor1, tensor2)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_different_shapes_among_participants(ray_start_cluster):
+    """
+    Test an error is thrown when participants of reduce-scatter have tensors
+    of different shapes.
+    """
+    num_workers = 2
+    workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
+
+    cpu_group = CPUCommunicator(num_workers, workers)
+
+    dtype = torch.float16
+
+    with InputNode() as inp:
+        computes = [
+            worker.compute_with_tuple_args.bind(inp, i)
+            for i, worker in enumerate(workers)
+        ]
+        collectives = collective.reducescatter.bind(computes, transport=cpu_group)
+        recvs = [
+            worker.recv_tensor.bind(collective)
+            for worker, collective in zip(workers, collectives)
+        ]
+        dag = MultiOutputNode(recvs)
+
+    compiled_dag = dag.experimental_compile()
+
+    ref = compiled_dag.execute([((20, 10), dtype, 1 + idx) for idx in range(num_workers)])
+    result = ray.get(ref)
+    reduced_val = sum(1 + idx for idx in range(num_workers))
+    for tensor in result:
+        tensor = tensor.to("cpu")
+        expected_tensor_val = torch.ones((10, 10), dtype=dtype) * reduced_val
+        assert torch.equal(tensor, expected_tensor_val)
+
+    ref = compiled_dag.execute(
+        [((10 * (idx + 1),), dtype, idx + 1) for idx in range(num_workers)]
+    )
+    # Execution hangs because of shape mismatch and a timeout error is raised.
+    with pytest.raises(RayChannelError):
+        ray.get(ref)
+
+    # The DAG will be torn down after any task throws an application-level
+    # exception, such as when the task returns torch.Tensors of the wrong
+    # shape or dtype. Check that we can no longer submit to the DAG.
+    ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+    with pytest.raises(RayChannelError):
+        ref = compiled_dag.execute([((20,), dtype, 1) for _ in workers])
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_scheduling(ray_start_cluster):
+    """
+    Test scheduling avoids potential deadlocks that arise from reduce-scatter operations.
+
+    inp --> x(0) --> +----------------+
+        |            | reduce-scatter |
+        --> y(1) --> +----------------+
+        |
+        --> t(0) --> recv(1)
+
+    In the above graph, x, y, t are tensors, and the numbers inside parentheses
+    identify the actors. If actor 1 launches an reduce-scatter with tensor y while
+    actor 0 starts sending t, then actor 1 waits for actor 0 to join the reduce-scatter
+    while actor 1 waits for actor 0 to receive t.
+    """
+    num_workers = 2
+    workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers)]
+
+    cpu_group = CPUCommunicator(num_workers, workers)
+
+    shape = (10,)
+    dtype = torch.float16
+    with InputNode() as inp:
+        # Tensors in the reduce-scatter.
+        x = workers[0].send.bind(shape, dtype, inp)
+        y = workers[1].send.bind(shape, dtype, inp)
+
+        # Tensor to be sent from workes[0] to workers[1].
+        t = workers[0].send.bind(shape, dtype, inp)
+        t.with_type_hint(TorchTensorType(transport=cpu_group))
+
+        collectives = collective.reducescatter.bind([x, y], transport=cpu_group)
+        recv = workers[1].recv.bind(t)
+        dag = MultiOutputNode([collectives[0], collectives[1], recv])
+
+    compiled_dag = dag.experimental_compile()
+
+    value = 10
+    ref = compiled_dag.execute(value)
+    result = ray.get(ref)
+    reduced_value = value * 2
+    expected_tensor_val = torch.ones((5,), dtype=dtype) * reduced_value
+    assert torch.equal(result[0], expected_tensor_val)
+    assert torch.equal(result[1], expected_tensor_val)
+    assert result[2] == (value, shape, dtype)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_duplicate_actors(ray_start_cluster):
+    """
+    Test an error is thrown when two input nodes from the same actor bind to
+    an reduce-scatter.
+    """
+    num_workers = 2
+    worker = CPUTorchTensorWorker.remote()
+
+    cpu_group = CPUCommunicator(num_workers, [worker, worker])
+
+    with InputNode() as inp:
+        computes = [worker.return_tensor.bind(inp) for _ in range(2)]
+        with pytest.raises(
+            ValueError,
+            match="Expected unique actor handles for a collective operation",
+        ):
+            collective.reducescatter.bind(computes, transport=cpu_group)
+
+    with InputNode() as inp:
+        compute = worker.return_tensor.bind(inp)
+        computes = [compute for _ in range(2)]
+        with pytest.raises(
+            ValueError,
+            match="Expected unique input nodes for a collective operation",
+        ):
+            collective.reducescatter.bind(computes, transport=cpu_group)
+
+
+@pytest.mark.parametrize(
+    "ray_start_cluster",
+    [
+        {
+            "num_cpus": 2,
+            "num_gpus": 0,
+            "num_nodes": 1,
+        }
+    ],
+    indirect=True,
+)
+def test_reducescatter_wrong_actors(ray_start_cluster):
+    """
+    Test an error is thrown when an reduce-scatter binds to a wrong set of actors.
+    """
+    num_workers = 2
+    workers = [CPUTorchTensorWorker.remote() for _ in range(num_workers * 2)]
+
+    cpu_group = CPUCommunicator(num_workers, workers[:2])
+
+    with InputNode() as inp:
+        computes = [worker.return_tensor.bind(inp) for worker in workers[2:]]
+        with pytest.raises(
+            ValueError,
+            match="Expected actor handles to match the custom NCCL group",
+        ):
+            collective.reducescatter.bind(computes, transport=cpu_group)
 
 
 if __name__ == "__main__":
