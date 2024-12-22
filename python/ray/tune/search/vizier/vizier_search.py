@@ -95,7 +95,7 @@ class VizierSearch(Searcher):
 
     def __init__(
         self,
-        space: Optional[Union[Dict, "svz.SearchSpace"] = None,
+        space: Optional[Union[Dict, "svz.SearchSpace"]] = None,
         metric: Optional[str] = None,
         mode: Optional[str] = None,
         algorithm: Optional[str] = 'DEFAULT',
