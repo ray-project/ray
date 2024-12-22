@@ -1908,7 +1908,7 @@ class CompiledDAG:
                     _destroy_nccl_group(nccl_group_id)
 
                 logger.info("Waiting for worker tasks to exit")
-                self.wait_teardown()
+                self.wait_teardown(kill_actors=kill_actors)
                 logger.info("Teardown complete")
 
                 with self.in_teardown_lock:
@@ -1917,6 +1917,11 @@ class CompiledDAG:
             def run(self):
                 try:
                     ray.get(list(outer.worker_task_refs.values()))
+                except KeyboardInterrupt:
+                    logger.info(
+                        "Received KeyboardInterrupt, tearing down with kill_actors=True"
+                    )
+                    self.teardown(kill_actors=True)
                 except Exception as e:
                     logger.debug(f"Handling exception from worker tasks: {e}")
                     self.teardown()
