@@ -21,7 +21,7 @@ Note: The feature is meant to be a last resort to kill orphaned processes. It is
 User-Spawned Process Killed on Worker Exit
 ------------------------------------------
 
-In the following example, we use Ray Actor to spawn a user process. The user process is a sleep process.
+The following example uses a Ray Actor to spawn a user process. The user process is a sleep process.
 .. testcode::
 
   import ray
