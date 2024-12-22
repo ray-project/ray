@@ -85,7 +85,13 @@ CoreWorkerProcessImpl::CoreWorkerProcessImpl(const CoreWorkerOptions &options)
     if (!worker_id_.IsNil()) {
       app_name << "-" << worker_id_;
     }
-    RayLog::StartRayLog(app_name.str(), RayLogLevel::INFO, options_.log_dir);
+    // TODO(hjiang): Unify log directory and log filepath.
+    RayLog::StartRayLog(app_name.str(),
+                        RayLogLevel::INFO,
+                        /*log_dir=*/options_.log_dir,
+                        /*ray_log_filepath=*/"",
+                        ray::RayLog::GetRayLogRotationMaxBytesOrDefault(),
+                        ray::RayLog::GetRayLogRotationBackupCountOrDefault());
     if (options_.install_failure_signal_handler) {
       // Core worker is loaded as a dynamic library from Python or other languages.
       // We are not sure if the default argv[0] would be suitable for loading symbols
