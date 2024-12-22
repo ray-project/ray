@@ -40,6 +40,7 @@
 #include "ray/util/util.h"
 
 using json = nlohmann::json;
+using MessageType = ray::protocol::MessageType;
 
 namespace ray::core {
 
@@ -251,6 +252,53 @@ void TaskCounter::UnsetMetricStatus(const std::string &func_name,
   }
 }
 
+Status CoreWorker::RegisterWorkerToRaylet(raylet::RayletConnection &conn,
+                                          const WorkerID &worker_id,
+                                          rpc::WorkerType worker_type,
+                                          const JobID &job_id,
+                                          int runtime_env_hash,
+                                          const Language &language,
+                                          const std::string &ip_address,
+                                          const std::string &serialized_job_config,
+                                          const StartupToken &startup_token,
+                                          NodeID *raylet_id,
+                                          int *port) {
+  flatbuffers::FlatBufferBuilder fbb;
+  // TODO(suquark): Use `WorkerType` in `common.proto` without converting to int.
+  auto message =
+      protocol::CreateRegisterClientRequest(fbb,
+                                            static_cast<int>(worker_type),
+                                            to_flatbuf(fbb, worker_id),
+                                            getpid(),
+                                            startup_token,
+                                            to_flatbuf(fbb, job_id),
+                                            runtime_env_hash,
+                                            language,
+                                            fbb.CreateString(ip_address),
+                                            /*port=*/0,
+                                            fbb.CreateString(serialized_job_config));
+  fbb.Finish(message);
+  // Register the process ID with the raylet.
+  // NOTE(swang): If raylet exits and we are registered as a worker, we will get killed.
+  std::vector<uint8_t> reply;
+  auto request_status = conn.AtomicRequestReply(
+      MessageType::RegisterClientRequest, MessageType::RegisterClientReply, &reply, &fbb);
+  if (!request_status.ok()) {
+    return Status(request_status.code(),
+                  std::string("[RayletClient] Unable to register worker with raylet. ") +
+                      request_status.message());
+  }
+  auto reply_message = flatbuffers::GetRoot<protocol::RegisterClientReply>(reply.data());
+  bool success = reply_message->success();
+  if (!success) {
+    return Status::Invalid(string_from_flatbuf(*reply_message->failure_reason()));
+  }
+
+  *raylet_id = NodeID::FromBinary(reply_message->raylet_id()->str());
+  *port = reply_message->port();
+  return Status::OK();
+}
+
 CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     : options_(std::move(options)),
       get_call_site_(RayConfig::instance().record_ref_creation_sites()
@@ -349,10 +397,6 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
 #endif
   io_thread_ = boost::thread(io_thread_attrs, [this]() { RunIOService(); });
 
-  Status raylet_client_status;
-  NodeID local_raylet_id;
-  int assigned_port;
-
   if (options_.worker_type == WorkerType::DRIVER &&
       !options_.serialized_job_config.empty()) {
     // Driver populates the job config via initialization.
@@ -362,32 +406,32 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
     worker_context_.MaybeInitializeJobInfo(worker_context_.GetCurrentJobID(), job_config);
   }
 
-  local_raylet_client_ =
-      std::make_shared<raylet::RayletClient>(io_service_,
-                                             std::move(grpc_client),
-                                             options_.raylet_socket,
-                                             GetWorkerID(),
-                                             options_.worker_type,
-                                             worker_context_.GetCurrentJobID(),
-                                             options_.runtime_env_hash,
-                                             options_.language,
-                                             options_.node_ip_address,
-                                             &raylet_client_status,
-                                             &local_raylet_id,
-                                             &assigned_port,
-                                             options_.serialized_job_config,
-                                             options_.startup_token);
-
+  auto raylet_conn = std::make_unique<raylet::RayletConnection>(
+      io_service_, options_.raylet_socket, /*num_retries=*/-1, /*timeout=*/-1);
+  NodeID local_raylet_id;
+  int assigned_port = 0;
+  Status raylet_client_status = RegisterWorkerToRaylet(*raylet_conn,
+                                                       GetWorkerID(),
+                                                       options_.worker_type,
+                                                       worker_context_.GetCurrentJobID(),
+                                                       options_.runtime_env_hash,
+                                                       options_.language,
+                                                       options_.node_ip_address,
+                                                       options_.serialized_job_config,
+                                                       options_.startup_token,
+                                                       &local_raylet_id,
+                                                       &assigned_port);
   if (!raylet_client_status.ok()) {
     // Avoid using FATAL log or RAY_CHECK here because they may create a core dump file.
     RAY_LOG(ERROR).WithField(worker_id)
         << "Failed to register worker to Raylet: " << raylet_client_status;
     QuickExit();
   }
+  RAY_CHECK_GE(assigned_port, 0);
 
+  local_raylet_client_ = std::make_shared<raylet::RayletClient>(
+      std::move(raylet_conn), std::move(grpc_client), GetWorkerID());
   connected_ = true;
-
-  RAY_CHECK(assigned_port >= 0);
 
   // Start RPC server after all the task receivers are properly initialized and we have
   // our assigned port from the raylet.
@@ -930,13 +974,11 @@ void CoreWorker::ConnectToRayletInternal() {
   if (options_.worker_type == WorkerType::DRIVER) {
     Status status = local_raylet_client_->AnnounceWorkerPortForDriver(
         core_worker_server_->GetPort(), options_.entrypoint);
-    RAY_CHECK(status.ok()) << "Failed to announce driver's port to raylet and GCS: "
-                           << status;
+    RAY_CHECK_OK(status) << "Failed to announce driver's port to raylet and GCS";
   } else {
     Status status =
         local_raylet_client_->AnnounceWorkerPortForWorker(core_worker_server_->GetPort());
-    RAY_CHECK(status.ok()) << "Failed to announce worker's port to raylet and GCS: "
-                           << status;
+    RAY_CHECK_OK(status) << "Failed to announce worker's port to raylet and GCS";
   }
 }
 
@@ -1292,7 +1334,7 @@ bool CoreWorker::HasOwner(const ObjectID &object_id) const {
 rpc::Address CoreWorker::GetOwnerAddressOrDie(const ObjectID &object_id) const {
   rpc::Address owner_address;
   auto status = GetOwnerAddress(object_id, &owner_address);
-  RAY_CHECK(status.ok()) << status.message();
+  RAY_CHECK_OK(status);
   return owner_address;
 }
 
@@ -1337,7 +1379,7 @@ void CoreWorker::GetOwnershipInfoOrDie(const ObjectID &object_id,
                                        rpc::Address *owner_address,
                                        std::string *serialized_object_status) {
   auto status = GetOwnershipInfo(object_id, owner_address, serialized_object_status);
-  RAY_CHECK(status.ok()) << status.message();
+  RAY_CHECK_OK(status);
 }
 
 Status CoreWorker::GetOwnershipInfo(const ObjectID &object_id,
@@ -1683,7 +1725,7 @@ Status CoreWorker::ExperimentalRegisterMutableObjectReaderRemote(
         req,
         [&promise, num_replied, num_requests, addr](
             const Status &status, const rpc::RegisterMutableObjectReaderReply &reply) {
-          RAY_CHECK(status.ok());
+          RAY_CHECK_OK(status);
           *num_replied += 1;
           if (*num_replied == num_requests) {
             promise.set_value();
@@ -4399,7 +4441,7 @@ void CoreWorker::HandleRegisterMutableObjectReader(
       ObjectID::FromBinary(request.reader_object_id()),
       [send_reply_callback](const Status &status,
                             const rpc::RegisterMutableObjectReply &r) {
-        RAY_CHECK(status.ok());
+        RAY_CHECK_OK(status);
         send_reply_callback(Status::OK(), nullptr, nullptr);
       });
 }
