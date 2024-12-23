@@ -51,6 +51,7 @@ def test_write_parquet_supports_gzip(ray_start_regular_shared, tmp_path):
     # Test that you can read the written files.
     assert pq.read_table(tmp_path).to_pydict() == {"id": [0]}
 
+
 def test_write_parquet_partition_cols(ray_start_regular_shared, tmp_path):
     num_partitions = 10
     rows_per_partition = 10
