@@ -3,83 +3,181 @@
 
 .. include:: /_includes/rllib/new_api_stack.rst
 
-.. _rllib-saving-and-loading-algos-and-policies-docs:
 
-##################################################
-Saving and Loading your RL Algorithms and Policies
-##################################################
+.. _rllib-checkpointing-docs:
+
+Checkpointing RLlib components
+==============================
+
+RLlib offers a powerful checkpointing system for all its major classes, allowing you to save the
+states of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` and its subcomponents
+to disk and loading previously run experiment states back from disk, for example to continue training
+or to deploy your model into production.
+
+.. figure:: images/checkpointing/save_and_restore.svg
+    :width: 500
+    :align: left
+
+    **Saving to and restoring from disk**: Use the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` method
+    to write the current state of any :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable` component (or your entire Algorithm) to disk.
+    If you would like to load a saved state back into a running component (or into your entire Algorithm), use
+    the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` method.
+
+A checkpoint is a directory. It contains meta data, such as the class and the constructor arguments for creating a new instance,
+a pickle state file, and a human readable ``.json`` file with information about with which Ray version and commit the checkpoint
+was created.
+
+You can also generate a new :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` or other component instance from an
+existing checkpoint using the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` method,
+for example if you want to deploy a previously trained :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` - without
+any of the other RLlib components - into production.
+
+.. figure:: images/checkpointing/from_checkpoint.svg
+    :width: 500
+    :align: left
+
+    **Creating a new instance directly from a checkpoint**: Use the classmethod
+    :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` to instantiate objects directly
+    from a checkpoint. The saved meta data is used first to create a bare-bones instance of the originally
+    checkpointed object, and then restores its state from the state information in the checkpoint dir.
+
+Another possibility is to load only a certain subcomponent's state into the containing
+higher-level object. For example, you may want to load from disk only the state of your :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule`,
+located inside your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, but leave all the other components
+as-is.
 
 
-You can use :py:class:`~ray.train.Checkpoint` objects to store
-and load the current state of your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-or :py:class:`~ray.rllib.policy.policy.Policy` and the neural networks (weights)
-within these structures. In the following, we will cover how you can create these
-checkpoints (and hence save your Algos and Policies) to disk, where you can find them,
-and how you can recover (load) your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-or :py:class:`~ray.rllib.policy.policy.Policy` from such a given checkpoint.
+Checkpointable API
+------------------
+
+RLlib manages checkpointing through the :py:class:`~ray.rllib.utils.checkpoints.Checkpointable` API,
+which exposes the following three main methods:
+
+- :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path` for creating a new checkpoint
+- :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.restore_from_path` for loading a state from a checkpoint into a running object
+- :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint` for creating a new object from a checkpoint
+
+RLlib classes, which thus far support the :py:class:`~ray.rllib.utils.checkpoints.Checkpointable` API are:
+
+- :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
+- :py:class:`~ray.rllib.core.rl_module.rl_module.RLModule` (and :py:class:`~ray.rllib.core.rl_module.multi_rl_module.MultiRLModule`)
+- :py:class:`~ray.rllib.env.env_runner.EnvRunner` (thus, also :py:class:`~ray.rllib.env.single_agent_env_runner.SingleAgentEnvRunner` and :py:class:`~ray.rllib.env.multi_agent_env_runner.MultiAgentEnvRunner`)
+- :py:class:`~ray.rllib.connectors.connector_v2.ConnectorV2` (thus, also :py:class:`~ray.rllib.connectors.connector_pipeline_v2.ConnectorPipelineV2`)
+- :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup`
+- :py:class:`~ray.rllib.core.learner.learner.Learner`
 
 
-What's a checkpoint?
-====================
+Creating a new checkpoint with `save_to_path()`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-A checkpoint is a set of information, located inside a directory (which may contain
-further subdirectories) and used to restore either an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`
-or a single :py:class:`~ray.rllib.policy.policy.Policy` instance.
-The Algorithm- or Policy instances that were used to create the checkpoint in the first place
-may or may not have been trained prior to this.
+Here is an example, using the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class, showing
+how to create a checkpoint:
 
-RLlib uses the :py:class:`~ray.train.Checkpoint` class to create checkpoints and
-restore objects from them.
+.. testcode::
 
-The main file in a checkpoint directory, containing the state information, is currently
-generated using Ray's `cloudpickle` package. Since `cloudpickle` is volatile with respect to
-the python version used, we are currently experimenting with `msgpack` (and `msgpack_numpy`)
-as an alternative checkpoint format. In case you are interested in generating
-python-verion independent checkpoints, see below for further details.
+    from ray.rllib.algorithms.ppo import PPOConfig
+
+    # Configure and build an initial algo.
+    config = (
+        PPOConfig()
+        .environment("Pendulum-v1")
+    )
+    ppo = config.build()
+
+    # Train for one iteration, then save to a checkpoint.
+    print(ppo.train())
+    checkpoint_dir = ppo.save_to_path()
+    print(f"saved algo to {checkpoint_dir}")
+
+    # Shut down the algo.
+    ppo.stop()
 
 
-Algorithm checkpoints
-=====================
+.. note::
+    When running your experiments with Ray Tune, the :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.save_to_path`
+    method is called automatically by Tune on your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` instance, whenever the training
+    iteration matches the configured Tune config. The default location where Tune creates these checkpoints is ``~/ray_results/[your experiment name]``.
 
-An Algorithm checkpoint contains all of the Algorithm's state, including its configuration,
-its actual Algorithm subclass, all of its Policies' weights, its current counters, etc..
-
-Restoring a new Algorithm from such a Checkpoint leaves you in a state, where you can continue
-working with that new Algorithm exactly like you would have continued working with the
-old Algorithm (from which the checkpoint as taken).
-
-How do I create an Algorithm checkpoint?
-----------------------------------------
-
-The :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` ``save()`` method creates a new checkpoint
-(directory with files in it).
-
-Let's take a look at a simple example on how to create such an
-Algorithm checkpoint:
-
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
-    :language: python
-    :start-after: __create-algo-checkpoint-begin__
-    :end-before: __create-algo-checkpoint-end__
-
-If you take a look at the directory returned by the ``save()`` call, you should see something
-like this:
-
+Your PPO's state has now been saved in the ``checkpoint_dir`` directory (or somewhere in ``~/ray_results/`` if you use Ray Tune).
+Let's take a quick look at what such a directory looks like:
 
 .. code-block:: shell
 
+    $ cd [your algo checkpoint dir]
     $ ls -la
-      .
-      ..
-      policies/
-      algorithm_state.pkl
-      rllib_checkpoint.json
+        .
+        ..
+        env_runner/
+        learner_group/
+        algorithm_state.pkl
+        class_and_ctor_args.pkl
+        rllib_checkpoint.json
 
-As you can see, there is a `policies` sub-directory created for us (more on that
-later), a ``algorithm_state.pkl`` file, and a ``rllib_checkpoint.json`` file.
-The ``algorithm_state.pkl`` file contains all state information
-of the Algorithm that is **not** Policy-specific, such as the algo's counters and
-other important variables to persistently keep track of.
+Subdirectories  inside a checkpoint dir (here ``env_runner/`` and ``learner_group/``) hint at a subcomponent's own checkpoint data.
+For example, an :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` always also saves its
+:py:class:`~ray.rllib.env.env_runner.EnvRunner` and :py:class:`~ray.rllib.core.learner.learner_group.LearnerGroup` subcomponents.
+See :ref:`here for the complete RLlib component tree <rllib-components-tree>`.
+
+The ``rllib_checkpoint.json`` file is for your convenience only and not used by RLlib.
+
+The ``class_and_ctor_args.pkl`` file stores meta information needed to construct a "fresh" object (without any specific state).
+This information - as the file name suggests - contains the class of the saved object and its constructor args and kwargs.
+RLlib uses it to create the initial new object when calling :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.from_checkpoint`.
+
+Finally, the ``.._state.pkl`` file contains the actual pickled state dict of the originally saved object. This state dict is obtained
+by RLlib - when saving a checkpoint - through calling the object's :py:meth:`~ray.rllib.utils.checkpoints.Checkpointable.get_state`
+method.
+
+.. note::
+    Each of the subcomponents directories itself contains a ``rllib_checkpoint.json`` file, a ``class_and_ctor_args.pkl`` file
+    and a ``.._state.pkl`` file serving the same purpose than their algorithm counterparts. For example, inside the ``learner_group/``
+    subdirectory, you find:
+
+    .. code-block:: shell
+
+        $ cd env_runner/
+        $ ls -la
+        .
+        ..
+        state.pkl
+        class_and_ctor_args.pkl
+        rllib_checkpoint.json
+
+
+.. _rllib-components-tree:
+
+RLlib's components tree
+~~~~~~~~~~~~~~~~~~~~~~~
+
+The following is the structure of RLlib's components tree, showing under which name you can
+access a subcomponent's own checkpoint within the higher-level checkpoint. At the highest levet
+is the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` class:
+
+.. code-block:: shell
+
+    algorithm/
+        learner_group/
+            learner/
+                rl_module/
+                    default_policy/  # <- single-agent case
+                    [module ID 1]/  # <- multi-agent case
+                    [module ID 2]/  # ...
+        env_runner/
+            env_to_module_connector/
+            module_to_env_connector/
+
+.. note::
+    The ``env_runner/`` subcomponent currently doesn't hold a copy of the RLModule's
+    checkpoint b/c it's already saved under ``learner/``. The Ray team is working on resolving
+    this issue (probably through softlinking to avoid duplicate files and unnecessary disk usage).
+
+
+
+
+
+
+
+
 The ``rllib_checkpoint.json`` file contains the checkpoint version used for the user's
 convenience. From Ray RLlib 2.0 and up, all checkpoint versions will be
 backward compatible, meaning an RLlib version ``V`` will be able to
@@ -137,6 +235,44 @@ info file (``rllib_checkpoint.json``), which is always identical to the enclosin
 algorithm checkpoint version.
 
 
+Restoring from a checkpoint with `restore_from_path`
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+
+
+.. testcode::
+
+    from ray.rllib.algorithms.algorithm import Algorithm
+
+    # Use any Checkpointable's (e.g. Algorithm's) `from_checkpoint()` method to create
+    # a new instance that has the exact same state as the old one, from which the checkpoint was
+    # created in the first place:
+    ppo = Algorithm.from_checkpoint(path_to_checkpoint)
+
+    # Continue training.
+    my_new_ppo.train()
+
+    # __restore-from-algo-checkpoint-end__
+
+    my_new_ppo.stop()
+
+    # __restore-from-algo-checkpoint-2-begin__
+    # Re-build a fresh algorithm.
+    my_new_ppo = my_ppo_config.build()
+
+    # Restore the old (checkpointed) state.
+    my_new_ppo.restore(save_result)
+
+    # Continue training.
+    my_new_ppo.train()
+
+    # __restore-from-algo-checkpoint-2-end__
+
+    my_new_ppo.stop()
+
+
+
 Checkpoints are py-version specific, but can be converted to be version independent
 -----------------------------------------------------------------------------------
 
@@ -150,7 +286,7 @@ However, we now provide a utility for converting a checkpoint (generated with
 You can then use the newly converted msgpack checkpoint to restore another
 Algorithm instance from it. Look at this this short example here on how to do this:
 
-.. literalinclude:: doc_code/checkpoints.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __rllib-convert-pickle-to-msgpack-checkpoint-begin__
     :end-before: __rllib-convert-pickle-to-msgpack-checkpoint-end__
@@ -171,7 +307,7 @@ Given our checkpoint path (returned by ``Algorithm.save()``), we can now
 create a completely new Algorithm instance and make it the exact same as the one we
 had stopped (and could thus no longer use) in the example above:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-begin__
     :end-before: __restore-from-algo-checkpoint-end__
@@ -181,7 +317,7 @@ Alternatively, you could also first create a new Algorithm instance using the
 same config that you used for the original algo, and only then call the new
 Algorithm's ``restore()`` method, passing it the checkpoint directory:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __restore-from-algo-checkpoint-2-begin__
     :end-before: __restore-from-algo-checkpoint-2-end__
@@ -222,7 +358,7 @@ inside the sub-directory ``policies/``.
 
 For example:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __multi-agent-checkpoints-begin__
     :end-before: __multi-agent-checkpoints-end__
@@ -237,89 +373,11 @@ However, there may be a situation where you have so many policies in your algori
 instance from your checkpoint, but only include some of the original policies in this
 new Algorithm object. In this case, you can also do:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __multi-agent-checkpoints-restore-policy-sub-set-begin__
     :end-before: __multi-agent-checkpoints-restore-policy-sub-set-end__
 
-
-Policy checkpoints
-------------------
-
-We have already looked at the ``policies/`` sub-directory inside an
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint dir
-and learned that individual policies inside the
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` store all their state
-information under their policy ID inside that sub-directory.
-Thus, we now have the entire picture of a checkpoint:
-
-.. code-block::
-
-  .
-  ..
-  .is_checkpoint
-  .tune_metadata
-
-  algorithm_state.pkl        # <- state of the Algorithm (excluding Policy states)
-  rllib_checkpoint.json      # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-
-  policies/
-    policy_A/
-      policy_state.pkl       # <- state of policy_A
-      rllib_checkpoint.json  # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-
-    policy_B/
-      policy_state.pkl       # <- state of policy_B
-      rllib_checkpoint.json  # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-
-
-How do I create a Policy checkpoint?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-You can create a :py:class:`~ray.rllib.policy.policy.Policy` checkpoint by
-either calling ``save()`` on your :py:class:`~ray.rllib.algorithms.algorithm.Algorithm`, which
-will save each individual Policy's checkpoint under the ``policies/`` sub-directory as
-described above or - if you need more fine-grained control - by doing the following:
-
-
-
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
-    :language: python
-    :start-after: __create-policy-checkpoint-begin__
-    :end-before: __create-policy-checkpoint-end__
-
-If you now check out the provided directory (``/tmp/my_policy_checkpoint/``), you
-should see the following files in there:
-
-.. code-block::
-
-    .
-    ..
-    rllib_checkpoint.json   # <- checkpoint info, such as checkpoint version, e.g. "1.0"
-    policy_state.pkl        # <- state of "pol1"
-
-
-How do I restore from a Policy checkpoint?
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-Assume you would like to serve your trained policy(ies) in production and would therefore
-like to use only the RLlib :py:class:`~ray.rllib.policy.policy.Policy` instance,
-without all the other functionality that
-normally comes with the :py:class:`~ray.rllib.algorithms.algorithm.Algorithm` object, like different ``RolloutWorkers`` for collecting
-training samples or for evaluation (both of which include RL environment copies), etc..
-
-In this case, it would be quite useful if you had a way to restore just the
-:py:class:`~ray.rllib.policy.policy.Policy`
-from either a :py:class:`~ray.rllib.policy.policy.Policy` checkpoint or an
-:py:class:`~ray.rllib.algorithms.algorithm.Algorithm` checkpoint, which - as we learned above -
-contains all its Policies' checkpoints.
-
-Here is how you can do this:
-
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
-    :language: python
-    :start-after: __restore-policy-begin__
-    :end-before: __restore-policy-end__
 
 
 How do I restore a multi-agent Algorithm with a subset of the original policies?
@@ -341,7 +399,7 @@ You can use the original checkpoint (with the 100 policies in it) and the
 This example here shows this for five original policies that you would like reduce to
 two policies:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __restore-algorithm-from-checkpoint-with-fewer-policies-begin__
     :end-before: __restore-algorithm-from-checkpoint-with-fewer-policies-end__
@@ -370,7 +428,7 @@ There are several ways of creating Keras- or PyTorch native model "exports".
 
 Here is the example code that illustrates these:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __export-models-begin__
     :end-before: __export-models-end__
@@ -380,21 +438,21 @@ to disk ...
 
 1) Using the Policy object:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __export-models-1-begin__
     :end-before: __export-models-1-end__
 
 2) Via the Policy's checkpointing method:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __export-models-2-begin__
     :end-before: __export-models-2-end__
 
 3) Via the Algorithm (Policy) checkpoint:
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __export-models-3-begin__
     :end-before: __export-models-3-end__
@@ -408,7 +466,7 @@ RLlib also supports exporting your NN models in the ONNX format. For that, use t
 extra ``onnx`` arg as follows:
 
 
-.. literalinclude:: doc_code/saving_and_loading_algos_and_policies.py
+.. literalinclude:: doc_code/checkpointing.py
     :language: python
     :start-after: __export-models-as-onnx-begin__
     :end-before: __export-models-as-onnx-end__

@@ -1,65 +1,5 @@
 # flake8: noqa
 
-# __create-algo-checkpoint-begin__
-# Create a PPO algorithm object using a config object ..
-from ray.rllib.algorithms.ppo import PPOConfig
-
-my_ppo_config = (
-    PPOConfig()
-    .api_stack(
-        enable_rl_module_and_learner=False,
-        enable_env_runner_and_connector_v2=False,
-    )
-    .environment("CartPole-v1")
-)
-my_ppo = my_ppo_config.build()
-
-# .. train one iteration ..
-my_ppo.train()
-# .. and call `save()` to create a checkpoint.
-save_result = my_ppo.save()
-path_to_checkpoint = save_result.checkpoint.path
-print(
-    "An Algorithm checkpoint has been created inside directory: "
-    f"'{path_to_checkpoint}'."
-)
-
-# Let's terminate the algo for demonstration purposes.
-my_ppo.stop()
-# Doing this will lead to an error.
-# my_ppo.train()
-# __create-algo-checkpoint-end__
-
-
-# __restore-from-algo-checkpoint-begin__
-from ray.rllib.algorithms.algorithm import Algorithm
-
-# Use the Algorithm's `from_checkpoint` utility to get a new algo instance
-# that has the exact same state as the old one, from which the checkpoint was
-# created in the first place:
-my_new_ppo = Algorithm.from_checkpoint(path_to_checkpoint)
-
-# Continue training.
-my_new_ppo.train()
-
-# __restore-from-algo-checkpoint-end__
-
-my_new_ppo.stop()
-
-# __restore-from-algo-checkpoint-2-begin__
-# Re-build a fresh algorithm.
-my_new_ppo = my_ppo_config.build()
-
-# Restore the old (checkpointed) state.
-my_new_ppo.restore(save_result)
-
-# Continue training.
-my_new_ppo.train()
-
-# __restore-from-algo-checkpoint-2-end__
-
-my_new_ppo.stop()
-
 # __multi-agent-checkpoints-begin__
 import os
 
@@ -327,3 +267,4 @@ checkpoint_dir = ppo.save().checkpoint.path
 ppo_policy.export_model("/tmp/my_nn_model", onnx=False)
 
 # __export-models-as-onnx-end__
+

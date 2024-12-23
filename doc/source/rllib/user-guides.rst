@@ -13,7 +13,7 @@ User Guides
 
     rllib-advanced-api
     rllib-models
-    rllib-saving-and-loading-algos-and-policies
+    checkpointing
     rllib-concepts
     single-agent-episode
     rllib-replay-buffers
@@ -55,7 +55,7 @@ RLlib Feature Guides
         :img-top: /rllib/images/rllib-logo.svg
         :class-img-top: pt-2 w-75 d-block mx-auto fixed-height-img
 
-        .. button-ref:: rllib-saving-and-loading-algos-and-policies
+        .. button-ref:: rllib-checkpointing
 
             Checkpointing your Algorithms and Policies, and Exporting your Models
 
