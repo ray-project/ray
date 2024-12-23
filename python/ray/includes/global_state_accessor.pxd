@@ -80,11 +80,15 @@ cdef extern from * namespace "ray::gcs" nogil:
                          const std::string& config,
                          const std::string& key,
                          std::string* data) {
+      // Logging default value see class `RayLog`.
       InitShutdownRAII ray_log_shutdown_raii(ray::RayLog::StartRayLog,
                                              ray::RayLog::ShutDownRayLog,
                                              "ray_init",
                                              ray::RayLogLevel::WARNING,
-                                             "" /* log_dir */);
+                                             /*log_dir=*/"" ,
+                                             /*log_filepath=*/"",
+                                             /*log_rotation_max_size=*/1ULL << 29,
+                                             /*log_rotation_file_num=*/10);
 
       RedisClientOptions options(host, port, username, password, use_ssl);
 
@@ -96,7 +100,7 @@ cdef extern from * namespace "ray::gcs" nogil:
 
       auto redis_client = std::make_shared<RedisClient>(options);
       auto status = redis_client->Connect(io_service);
-      RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+      RAY_CHECK_OK(status) << "Failed to connect to redis.";
 
       auto cli = std::make_unique<StoreClientInternalKV>(
         std::make_unique<RedisStoreClient>(std::move(redis_client)));
