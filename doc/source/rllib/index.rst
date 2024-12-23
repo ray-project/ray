@@ -26,7 +26,7 @@
     :width: 72
 
 
-.. __sphinx_rllib_readme_begin__
+.. sphinx_rllib_readme_begin
 
 .. _rllib-index:
 
@@ -38,7 +38,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
 .. image:: images/rllib-logo.png
     :align: center
 
-.. __sphinx_rllib_readme_end__
+.. sphinx_rllib_readme_end
 
 .. toctree::
     :hidden:
@@ -54,7 +54,7 @@ RLlib: Industry-Grade, Scalable Reinforcement Learning
     package_ref/index
 
 
-.. __sphinx_rllib_readme_2_begin__
+.. sphinx_rllib_readme_2_begin
 
 **RLlib** is an open source library for reinforcement learning (RL), offering support for
 production-level, highly scalable, and fault-tolerant RL workloads, while maintaining simple and unified
@@ -342,5 +342,5 @@ or define custom `exploratory behavior <https://github.com/ray-project/ray/blob/
     User customizations are realized by subclassing the existing abstractions and - by overriding certain
     methods in those subclasses - define custom behavior.
 
-.. __sphinx_rllib_readme_2_end__
+.. sphinx_rllib_readme_2_end
 
