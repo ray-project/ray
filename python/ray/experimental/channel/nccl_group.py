@@ -285,7 +285,7 @@ class _NcclGroup(Communicator):
                 "There may be a dtype mismatch between input tensors from "
                 "different ranks."
             )
-        
+
     def reducescatter(
         self,
         send_buf: "torch.Tensor",

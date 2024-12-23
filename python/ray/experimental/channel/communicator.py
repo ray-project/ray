@@ -139,7 +139,7 @@ class Communicator(ABC):
             op: The reduce operation.
         """
         raise NotImplementedError
-    
+
     @abstractmethod
     def reducescatter(
         self,

@@ -63,10 +63,12 @@ class _CollectiveOperation:
                 "but found duplicate actor handles from input nodes: "
                 f"{invalid_input_nodes}"
             )
-        
+
         self.comm_op = comm_op
         if self.comm_op not in [self.ALLREDUCE, self.REDUCESCATTER]:
-            raise NotImplementedError("Only all-reduce and reduce-scatter are implemented")
+            raise NotImplementedError(
+                "Only all-reduce and reduce-scatter are implemented"
+            )
 
         self._op = op
         if not isinstance(self._op, ReduceOp):
@@ -137,11 +139,14 @@ class _CollectiveOperation:
             communicator.allreduce(send_buf, recv_buf, self._op)
         elif self.comm_op == self.REDUCESCATTER:
             world_size = len(self._actor_handles)
-            assert send_buf.shape[0] % world_size == 0, "Input tensor's first dimension should be divisible by the number of ators participated"
+            assert (
+                send_buf.shape[0] % world_size == 0
+            ), "Input tensor's first dimension should be divisible by "
+            "the number of ators participated"
             recv_buf = torch.empty(
                 (send_buf.shape[0] // world_size, *send_buf.shape[1:]),
                 dtype=send_buf.dtype,
-                device=send_buf.device
+                device=send_buf.device,
             )
             communicator.reducescatter(send_buf, recv_buf, self._op)
         return recv_buf

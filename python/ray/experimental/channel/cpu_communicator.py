@@ -162,7 +162,13 @@ class CPUCommunicator(Communicator):
             barrier.wait_collective.remote(self.num_ops[barrier_key], send_buf, op)
         )
         assert recv_buf is not None, "Receiving buffer required for CPUCommunicator"
-        recv_buf[:] = result[send_buf.shape[0] // len(all_ranks) * self.get_self_rank():send_buf.shape[0] // len(all_ranks) * (self.get_self_rank()+1)]
+        recv_buf[:] = result[
+            send_buf.shape[0]
+            // len(all_ranks)
+            * self.get_self_rank() : send_buf.shape[0]
+            // len(all_ranks)
+            * (self.get_self_rank() + 1)
+        ]
         self.num_ops[barrier_key] += 1
 
     def destroy(self) -> None:

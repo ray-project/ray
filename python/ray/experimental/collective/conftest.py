@@ -58,7 +58,7 @@ class AbstractNcclGroup(Communicator):
         op: ReduceOp = ReduceOp.SUM,
     ) -> None:
         raise NotImplementedError
-    
+
     def reducescatter(
         self,
         send_buf: "torch.Tensor",

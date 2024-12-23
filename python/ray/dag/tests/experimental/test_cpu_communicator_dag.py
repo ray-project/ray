@@ -490,7 +490,9 @@ def test_reducescatter_different_shapes_among_participants(ray_start_cluster):
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute([((20, 10), dtype, 1 + idx) for idx in range(num_workers)])
+    ref = compiled_dag.execute(
+        [((20, 10), dtype, 1 + idx) for idx in range(num_workers)]
+    )
     result = ray.get(ref)
     reduced_val = sum(1 + idx for idx in range(num_workers))
     for tensor in result:
@@ -526,7 +528,7 @@ def test_reducescatter_different_shapes_among_participants(ray_start_cluster):
 )
 def test_reducescatter_scheduling(ray_start_cluster):
     """
-    Test scheduling avoids potential deadlocks that arise from reduce-scatter operations.
+    Test scheduling avoids potential deadlocks arised from reduce-scatter operations.
 
     inp --> x(0) --> +----------------+
         |            | reduce-scatter |

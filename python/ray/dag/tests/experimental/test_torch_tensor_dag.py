@@ -436,7 +436,7 @@ def test_torch_tensor_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
-        
+
         def reducescatter(
             self,
             send_buf: "torch.Tensor",
@@ -554,7 +554,7 @@ def test_torch_tensor_custom_comm_invalid(ray_start_regular):
             op: ReduceOp,
         ) -> None:
             raise NotImplementedError
-        
+
         def reducescatter(
             self,
             send_buf: "torch.Tensor",
@@ -716,7 +716,7 @@ def test_torch_tensor_custom_comm_inited(ray_start_regular):
             op: ReduceOp,
         ) -> None:
             raise NotImplementedError
-        
+
         def reducescatter(
             self,
             send_buf: "torch.Tensor",
@@ -1189,7 +1189,7 @@ def test_torch_tensor_nccl_all_reduce_custom_comm(ray_start_regular):
         ) -> None:
             self._inner.allreduce(send_buf, recv_buf, op)
             recv_buf += 1
-        
+
         def reducescatter(
             self,
             send_buf: "torch.Tensor",
@@ -1427,7 +1427,9 @@ def test_torch_tensor_nccl_reduce_scatter_get_partial(ray_start_regular):
 
 
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
-def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(ray_start_regular):
+def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(
+    ray_start_regular,
+):
     """
     Test an error is thrown when participants of reduce-scatter have tensors
     of different shapes.
@@ -1460,7 +1462,9 @@ def test_torch_tensor_nccl_reduce_scatter_different_shapes_among_participants(ra
 
     compiled_dag = dag.experimental_compile()
 
-    ref = compiled_dag.execute([((20, 10), dtype, 1 + idx) for idx in range(num_workers)])
+    ref = compiled_dag.execute(
+        [((20, 10), dtype, 1 + idx) for idx in range(num_workers)]
+    )
     result = ray.get(ref)
     reduced_val = sum(1 + idx for idx in range(num_workers))
     for tensor in result:
@@ -1558,7 +1562,7 @@ def test_torch_tensor_nccl_reduce_scatter_custom_comm(ray_start_regular):
             allocator: Optional[TorchTensorAllocator] = None,
         ) -> "torch.Tensor":
             return self._inner.recv(shape, dtype, peer_rank, allocator=allocator)
-        
+
         def allreduce(
             self,
             send_buf: "torch.Tensor",
@@ -1627,7 +1631,7 @@ def test_torch_tensor_nccl_reduce_scatter_custom_comm(ray_start_regular):
 @pytest.mark.parametrize("ray_start_regular", [{"num_cpus": 4}], indirect=True)
 def test_torch_tensor_nccl_reduce_scatter_scheduling(ray_start_regular):
     """
-    Test scheduling avoids potential deadlocks that arise from reduce-scatter operations.
+    Test scheduling avoids potential deadlocks raised from reduce-scatter operations.
 
     inp --> x(0) --> +----------------+
         |            | reduce-scatter |
@@ -1717,7 +1721,7 @@ def test_nccl_reduce_scatter_with_class_method_output_node(ray_start_regular):
             torch.tensor([5], device="cuda"),
             torch.tensor([55], device="cuda"),
             t2,
-            t3
+            t3,
         ]
         assert all(torch.equal(r, e) for r, e in zip(result, expected_result))
 
