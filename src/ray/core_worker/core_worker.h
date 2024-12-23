@@ -1688,8 +1688,7 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
   ///
   /// \param[in] ids The list of object IDs to check.
   /// \param[out] is_experimental_channel Set to true if all objects are mutable,
-  ///                                    false if all objects are immutable if Status::OK
-  ///                                    is returned.
+  /// false if all objects are immutable if Status::OK is returned.
   /// \return Status::OK if all objects are of the same type (all mutable or all
   /// immutable). Returns an error status if objects are mixed or if there was an
   /// error checking.
