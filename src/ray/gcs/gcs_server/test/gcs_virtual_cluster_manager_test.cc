@@ -58,7 +58,7 @@ class VirtualClusterTest : public ::testing::Test {
     for (size_t i = 0; i < node_count; ++i) {
       auto node = Mocker::GenNodeInfo();
       auto template_id = std::to_string(i % template_count);
-      node->set_template_id(template_id);
+      node->set_node_type_name(template_id);
       primary_cluster->OnNodeAdd(*node);
       if (template_id_to_nodes != nullptr) {
         (*template_id_to_nodes)[template_id].emplace(NodeID::FromBinary(node->node_id()),
@@ -628,7 +628,6 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
         virtual_clusters_data_map;
     primary_cluster->GetVirtualClustersData(
         request, [this, &virtual_clusters_data_map](auto data) {
-          RAY_LOG(INFO) << "xxx: " << data->id();
           virtual_clusters_data_map.emplace(data->id(), data);
         });
     ASSERT_EQ(virtual_clusters_data_map.size(), 1);
@@ -645,6 +644,17 @@ TEST_F(PrimaryClusterTest, GetVirtualClusters) {
 
     auto job_cluster = virtual_cluster_0->GetJobCluster("job_1");
     ASSERT_TRUE(job_cluster != nullptr);
+    ASSERT_TRUE(virtual_clusters_data_map.contains(job_cluster->GetID()));
+
+    virtual_clusters_data_map.clear();
+    request.set_include_job_clusters(true);
+    request.set_only_include_mixed_clusters(true);
+    primary_cluster->GetVirtualClustersData(
+        request, [this, &virtual_clusters_data_map](auto data) {
+          virtual_clusters_data_map.emplace(data->id(), data);
+        });
+    ASSERT_EQ(virtual_clusters_data_map.size(), 1);
+    ASSERT_FALSE(virtual_clusters_data_map.contains(virtual_cluster_id_0));
     ASSERT_TRUE(virtual_clusters_data_map.contains(job_cluster->GetID()));
   }
 }

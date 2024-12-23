@@ -519,6 +519,7 @@ void PrimaryCluster::GetVirtualClustersData(rpc::GetVirtualClustersRequest reque
   std::vector<std::shared_ptr<rpc::VirtualClusterTableData>> virtual_cluster_data_list;
   auto virtual_cluster_id = request.virtual_cluster_id();
   bool include_job_clusters = request.include_job_clusters();
+  bool only_include_mixed_cluster = request.only_include_mixed_clusters();
 
   auto visit_proto_data = [&](const VirtualCluster *cluster) {
     if (include_job_clusters && cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
@@ -527,6 +528,10 @@ void PrimaryCluster::GetVirtualClustersData(rpc::GetVirtualClustersRequest reque
           [&](const std::string &_, const auto &job_cluster) {
             callback(job_cluster->ToProto());
           });
+    }
+    if (only_include_mixed_cluster &&
+        cluster->GetMode() == rpc::AllocationMode::EXCLUSIVE) {
+      return;
     }
     if (cluster->GetID() != kPrimaryClusterID) {
       // Skip the primary cluster's proto data.

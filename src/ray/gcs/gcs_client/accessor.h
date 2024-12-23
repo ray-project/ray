@@ -1016,6 +1016,8 @@ class VirtualClusterInfoAccessor {
   /// \param callback Callback that will be called after lookup finished.
   /// \return Status
   virtual Status AsyncGetAll(
+      bool include_job_clusters,
+      bool only_include_mixed_clusters,
       const MultiItemCallback<rpc::VirtualClusterTableData> &callback);
 
   /// Subscribe to virtual cluster updates.

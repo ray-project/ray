@@ -365,7 +365,9 @@ class MockVirtualClusterInfoAccessor : public VirtualClusterInfoAccessor {
               (override));
   MOCK_METHOD(Status,
               AsyncGetAll,
-              (const MultiItemCallback<rpc::VirtualClusterTableData> &callback),
+              (bool include_job_clusters,
+               bool only_include_mixed_clusters,
+               (const MultiItemCallback<rpc::VirtualClusterTableData> &callback)),
               (override));
   MOCK_METHOD(Status,
               AsyncSubscribeAll,

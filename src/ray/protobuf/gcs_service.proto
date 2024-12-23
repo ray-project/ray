@@ -852,6 +852,8 @@ message GetVirtualClustersRequest {
   string virtual_cluster_id = 1;
   // Wether include job clusters.
   bool include_job_clusters = 2;
+  // It will reply mixed clusters if only_include_mixed_clusters is true.
+  bool only_include_mixed_clusters = 3;
 }
 
 message GetVirtualClustersReply {

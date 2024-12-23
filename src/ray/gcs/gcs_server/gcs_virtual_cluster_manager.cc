@@ -216,6 +216,12 @@ Status GcsVirtualClusterManager::FlushAndPublish(
   auto on_done = [this, data, callback = std::move(callback)](const Status &status) {
     // The backend storage is supposed to be reliable, so the status must be ok.
     RAY_CHECK_OK(status);
+    if (data->mode() != rpc::AllocationMode::MIXED) {
+      // Tasks can only be scheduled on the nodes in the mixed cluster, so we just need to
+      // publish the mixed cluster data.
+      return;
+    }
+
     RAY_CHECK_OK(gcs_publisher_.PublishVirtualCluster(
         VirtualClusterID::FromBinary(data->id()), *data, nullptr));
     if (callback) {
