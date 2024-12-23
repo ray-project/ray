@@ -8,6 +8,7 @@ import logging
 import shutil
 import time
 
+from ray._private import net
 
 _logger = logging.getLogger("ray.util.spark.utils")
 
@@ -97,10 +98,9 @@ def exec_cmd(
 
 
 def is_port_in_use(host, port):
-    import socket
     from contextlib import closing
 
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sock:
+    with closing(net._get_sock_stream_from_host(host)) as sock:
         return sock.connect_ex((host, port)) == 0
 
 

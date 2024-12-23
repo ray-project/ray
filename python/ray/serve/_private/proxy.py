@@ -3,7 +3,6 @@ import json
 import logging
 import os
 import pickle
-import socket
 import time
 from abc import ABC, abstractmethod
 from typing import Any, Callable, Dict, Generator, List, Optional, Set, Tuple
@@ -18,6 +17,7 @@ from starlette.middleware import Middleware
 from starlette.types import Receive
 
 import ray
+from ray._private import net
 from ray._private.utils import get_or_create_event_loop
 from ray.actor import ActorHandle
 from ray.exceptions import RayActorError, RayTaskError
@@ -1357,7 +1357,7 @@ class ProxyActor:
             raise proxy_error
 
     async def run_http_server(self):
-        sock = socket.socket()
+        sock = net._get_sock_stream_from_host(self.host)
         if SOCKET_REUSE_PORT_ENABLED:
             set_socket_reuse_port(sock)
         try:

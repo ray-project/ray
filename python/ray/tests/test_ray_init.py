@@ -15,6 +15,7 @@ from ray.util.client.common import ClientObjectRef
 from ray.util.client.ray_client_helpers import ray_start_client_server
 from ray.util.client.worker import Worker
 from ray._private.test_utils import wait_for_condition, enable_external_redis
+from ray._private import net
 from ray._private import ray_constants
 
 
@@ -32,7 +33,7 @@ def test_ray_address(input, call_ray_start):
         assert res.address_info["gcs_address"] == address
         ray.shutdown()
 
-    addr = "localhost:{}".format(address.split(":")[-1])
+    addr = "localhost:{}".format(net._parse_ip_port(address)[-1])
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.init(input)
         # Ensure this is not a client.connect()
@@ -182,7 +183,7 @@ def test_auto_init_non_client(call_ray_start):
         assert not isinstance(res, ClientObjectRef)
         ray.shutdown()
 
-    addr = "localhost:{}".format(address.split(":")[-1])
+    addr = "localhost:{}".format(net._parse_ip_port(address)[-1])
     with unittest.mock.patch.dict(os.environ, {"RAY_ADDRESS": addr}):
         res = ray.put(300)
         # Ensure this is not a client.connect()
@@ -198,7 +199,7 @@ def test_auto_init_non_client(call_ray_start):
     "function", [lambda: ray.put(300), lambda: ray.remote(ray.nodes).remote()]
 )
 def test_auto_init_client(call_ray_start, function):
-    address = call_ray_start.split(":")[0]
+    address = net._parse_ip_port(call_ray_start)[0]
     with unittest.mock.patch.dict(
         os.environ, {"RAY_ADDRESS": f"ray://{address}:25036"}
     ):

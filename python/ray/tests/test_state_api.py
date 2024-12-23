@@ -124,6 +124,7 @@ from ray.util.state.state_cli import ray_list
 from ray.util.state.state_manager import IdToIpMap, StateDataSourceClient
 from ray.job_submission import JobSubmissionClient
 from ray.runtime_env import RuntimeEnv
+from ray._private import net
 
 """
 Unit tests
@@ -407,7 +408,7 @@ def test_ray_address_to_api_server_url(shutdown_only):
     # explicit head node gcs address
     assert api_server_url == ray_address_to_api_server_url(gcs_address)
     # localhost string
-    gcs_port = gcs_address.split(":")[1]
+    gcs_port = net._parse_ip_port(gcs_address)[1]
     assert api_server_url == ray_address_to_api_server_url(f"localhost:{gcs_port}")
 
 
