@@ -446,9 +446,9 @@ def test_map_numpy_datetime(df, expected_df, ray_start_regular_shared):
                     "id": [1, 2, 3],
                     "timestamp": pd.to_datetime(
                         [
-                            "2024-01-01 00:00:00.123456",
-                            "2024-01-02 00:00:00.987654",
-                            "2024-01-03 00:00:00.111222",
+                            "2024-01-01 00:00:00.123456001",
+                            "2024-01-02 00:00:00.987654001",
+                            "2024-01-03 00:00:00.111222001",
                         ]
                     ),
                     "value": [10.123456789, 20.987654321, 30.111222333],
@@ -470,8 +470,8 @@ def test_map_python_datetime(df, expected_df, ray_start_regular_shared):
 
     # Normalize timestamps to microseconds for comparison
     # Applying ceil to round up the timestamps to ensure deterministic rounding behavior
-    processed_df["timestamp"] = processed_df["timestamp"].dt.round("us")
-    expected_df["timestamp"] = expected_df["timestamp"].dt.round("us")
+    processed_df["timestamp"] = processed_df["timestamp"].dt.round("ns")
+    expected_df["timestamp"] = expected_df["timestamp"].dt.round("ns")
 
     # Compare the processed DataFrame with the expected DataFrame
     pd.testing.assert_frame_equal(processed_df, expected_df)
