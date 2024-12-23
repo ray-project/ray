@@ -345,13 +345,22 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
+        non_read_channels = set()
+        channel_to_waitables = {}
+        channel_to_result = {}
         remaining_waitables = []
         for c in self._input_channels:
-            remaining_waitables.extend(c.get_ray_waitables())
-        channel_to_waitables = {c: c.get_ray_waitables() for c in self._input_channels}
+            waitables = c.get_ray_waitables()
+            if len(waitables) > 0:
+                channel_to_waitables[c] = waitables
+                remaining_waitables.extend(waitables)
+                non_read_channels.add(c)
+            else:
+                # If the channel has no waitables such as IntraProcessChannel, it
+                # doesn't rely on the experimental mutable objects. We can read it
+                # immediately.
+                channel_to_result[c] = c.read(timeout)
         ready_waitables: Set[ObjectRef] = set()
-        channel_to_result = {c: None for c in self._input_channels}
-        non_read_channels = set(self._input_channels)
 
         while len(remaining_waitables) > 0:
             start_time = time.monotonic()
@@ -361,9 +370,7 @@ class SynchronousReader(ReaderInterface):
                 remaining_waitables, num_returns=1, timeout=timeout
             )
             if len(ready_refs) == 0:
-                raise ray.exceptions.RayChannelTimeoutError(
-                    "No objects are ready"
-                )
+                raise ray.exceptions.RayChannelTimeoutError("No objects are ready")
             ready_waitables.add(ready_refs[0])
 
             if timeout is not None:
@@ -376,7 +383,6 @@ class SynchronousReader(ReaderInterface):
                 if all(w in ready_waitables for w in channel_waitables):
                     start_time = time.monotonic()
                     channel_to_result[c] = c.read(timeout)
-                    print(f"Read from channel {c}", channel_to_result[c])
                     read_channels.append(c)
                     if isinstance(channel_to_result[c], RayTaskError):
                         logger.error(
