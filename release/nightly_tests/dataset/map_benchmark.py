@@ -64,6 +64,8 @@ def flat_increment_row(row):
 
 def increment_batch(batch):
     if isinstance(batch, (dict, pd.DataFrame)):
+        # Avoid modifying the column in-place (i.e., +=) because it might be read-only.
+        # See https://github.com/ray-project/ray/issues/369.
         batch["column00"] = batch["column00"] + 1
     elif isinstance(batch, pa.Table):
         column00_incremented = pc.add(batch["column00"], 1)
