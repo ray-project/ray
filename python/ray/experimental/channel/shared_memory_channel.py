@@ -518,7 +518,6 @@ class Channel(ChannelInterface):
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
-        print("Channel.close")
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         is_local_node_reader = False
 
@@ -532,7 +531,6 @@ class Channel(ChannelInterface):
             self._worker.core_worker.experimental_channel_set_error(
                 reader_ref_info.reader_ref
             )
-        print("Channel.close done")
 
 
 @DeveloperAPI
@@ -636,7 +634,6 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index %= self._num_shm_buffers
 
     def close(self) -> None:
-        print("BufferedSharedMemoryChannel.close")
         for buffer in self._buffers:
             buffer.close()
 
@@ -788,6 +785,5 @@ class CompositeChannel(ChannelInterface):
         return actor_id
 
     def close(self) -> None:
-        print("CompositeChannel.close")
         for channel in self._channels:
             channel.close()

@@ -328,7 +328,6 @@ class ReaderInterface:
         return outputs
 
     def close(self) -> None:
-        print("ReaderInterface.close")
         self._closed = True
         for channel in self._input_channels:
             channel.close()
@@ -512,7 +511,6 @@ class WriterInterface:
         raise NotImplementedError()
 
     def close(self) -> None:
-        print("WriterInterface.close")
         self._closed = True
         for channel in self._output_channels:
             channel.close()
