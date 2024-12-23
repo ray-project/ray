@@ -271,8 +271,9 @@ class RayLog {
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
-  /// but to stdout. \param log_rotation_max_size max bytes for of log rotation. \param
-  /// log_rotation_file_num max number of rotating log files.
+  /// but to stdout.
+  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_file_num max number of rotating log files.
   static void StartRayLog(const std::string &app_name,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
                           const std::string &log_filepath = "",
