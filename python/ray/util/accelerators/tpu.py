@@ -27,3 +27,13 @@ def get_current_pod_worker_count() -> Optional[int]:
         part of a TPU pod.
     """
     return TPUAcceleratorManager.get_num_workers_in_current_tpu_pod()
+
+
+@PublicAPI(stablity="alpha")
+def get_num_tpu_chips_on_node() -> int:
+    """
+    Return the number of TPU chips on the node.
+    Returns:
+        The total number of chips on the TPU node. Returns 0 if none are found.
+    """
+    return TPUAcceleratorManager.get_current_node_num_accelerator()

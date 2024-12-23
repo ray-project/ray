@@ -289,6 +289,16 @@ def test_worker_count():
     assert worker_count == 4
 
 
+def test_num_tpu_chips():
+    with patch(
+        "ray._private.accelerators.tpu.TPUAcceleratorManager."
+        "get_current_node_num_accelerator",
+        return_value=4,
+    ):
+        num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
+    assert num_tpu_chips == 4
+
+
 if __name__ == "__main__":
     if os.environ.get("PARALLEL_CI"):
         sys.exit(pytest.main(["-n", "auto", "--boxed", "-vs", __file__]))
