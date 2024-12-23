@@ -52,7 +52,7 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
     )
 
     plugin = WorkingDirPlugin(tmpdir, gcs_aio_client)
-    size = await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
 
     files = os.listdir(f"{tmpdir}/working_dir_files")
     file_metadata = os.stat(f"{tmpdir}/working_dir_files/{files[0]}")
@@ -60,7 +60,7 @@ async def test_working_dir_cleanup(tmpdir, ray_start_regular):
 
     time.sleep(1)
 
-    size = await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
+    await plugin.create(HTTPS_PACKAGE_URI, {}, RuntimeEnvContext())
     files = os.listdir(f"{tmpdir}/working_dir_files")
 
     file_metadata = os.stat(f"{tmpdir}/working_dir_files/{files[0]}")
