@@ -356,13 +356,16 @@ class SynchronousReader(ReaderInterface):
 
         while len(remaining_waitables) > 0:
             start_time = time.monotonic()
+            # TODO(kevin85421): check the behavior of ray.wait. Will it raise an
+            # exception if the timeout occurs?
             ready_refs, remaining_waitables = ray.wait(
                 remaining_waitables, num_returns=1, timeout=timeout
             )
-            if len(ready_refs) < 1:  # Timeout occurred
-                break
-            ready_waitables.update(ready_refs)
-            print(f"Ready waitables: {ready_waitables}", "Remaining waitables:", remaining_waitables)
+            if len(ready_refs) == 0:
+                raise ray.exceptions.RayChannelTimeoutError(
+                    "No objects are ready"
+                )
+            ready_waitables.add(ready_refs[0])
 
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
