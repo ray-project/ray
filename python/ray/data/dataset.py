@@ -1231,30 +1231,23 @@ class Dataset:
         :ref:`Stateful Transforms <stateful_transforms>`.
 
         .. tip::
-            If you can represent your predicate with NumPy or pandas operations,
-            :meth:`Dataset.map_batches` might be faster. You can implement filter by
-            dropping rows.
-
-        .. tip::
-            If you're reading parquet files with :meth:`ray.data.read_parquet`,
-            and the filter is a simple predicate, you might
-            be able to speed it up by using filter pushdown; see
-            :ref:`Parquet row pruning <parquet_row_pruning>` for details.
+           If you use the `expr` parameter with a Python expression string, Ray Data
+           optimizes your filter with native Arrow interfaces.
 
         Examples:
 
             >>> import ray
             >>> ds = ray.data.range(100)
-            >>> ds.filter(lambda row: row["id"] % 2 == 0).take_all()
-            [{'id': 0}, {'id': 2}, {'id': 4}, ...]
+            >>> ds.filter(expr="id <= 4").take_all()
+            [{'id': 0}, {'id': 1}, {'id': 2}, {'id': 3}, {'id': 4}]
 
         Time complexity: O(dataset size / parallelism)
 
         Args:
             fn: The predicate to apply to each row, or a class type
                 that can be instantiated to create such a callable.
-            expr: An expression string that will be
-                converted to pyarrow.dataset.Expression type.
+            expr: An expression string needs to be a valid Python expression that
+                will be converted to ``pyarrow.dataset.Expression`` type.
             compute: This argument is deprecated. Use ``concurrency`` argument.
             concurrency: The number of Ray workers to use concurrently. For a
                 fixed-sized worker pool of size ``n``, specify ``concurrency=n``.
@@ -1288,6 +1281,10 @@ class Dataset:
 
             compute = TaskPoolStrategy(size=concurrency)
         else:
+            warnings.warn(
+                "Use 'expr' instead of 'fn' when possible for performant filters."
+            )
+
             if callable(fn):
                 compute = get_compute_strategy(
                     fn=fn,
