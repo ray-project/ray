@@ -2014,7 +2014,6 @@ Status CoreWorker::WaitExperimentalMutableObjects(const std::vector<ObjectID> &i
                                                   int num_objects,
                                                   int64_t timeout_ms,
                                                   std::vector<bool> *results) {
-  RAY_LOG(DEBUG) << "WaitExperimentalMutableObjects";
   return experimental_mutable_object_provider_->Wait(
       ids, num_objects, timeout_ms, results);
 }

@@ -1671,6 +1671,13 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
+  /// Helper for Wait, used only to wait for experimental mutable objects.
+  ///
+  /// \param[in] ids IDs of the objects to wait for.
+  /// \param[in] num_objects Number of objects that should appear.
+  /// \param[in] timeout_ms Time out in milliseconds to wait for the objects.
+  /// \param[out] results The vector of booleans indicating whether the objects are ready.
+  /// \return Status.
   Status WaitExperimentalMutableObjects(const std::vector<ObjectID> &ids,
                                         int num_objects,
                                         int64_t timeout_ms,
