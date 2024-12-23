@@ -261,24 +261,20 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
-  /// TODO(hjiang): Having both log directory and filename for `StartRayLog` is confusing,
-  /// at the end of the day should have only filename. Fix all usage in the next PR.
-  ///
+  /// Get filepath to dump log from [log_dir] and [app_name].
+  /// If [log_dir] empty, return empty filepath.
+  static std::string GetLogFilepathFromDirectory(const std::string &log_dir,
+                                                 const std::string &app_name);
+
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
-  /// \param log_dir Logging output directory name.
-  /// \param log_filepath Logging output filepath.
-  /// \param log_rotation_max_size max bytes for of log rotation.
-  /// \param log_rotation_file_num max number of rotating log files.
-  ///
-  /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
-  /// both empty, the log won't output to file, but to stdout. It's illegal to set
-  /// [log_filepath] and [log_dir] at the same time.
-  static void StartRayLog(const std::string &appName,
+  /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
+  /// but to stdout. \param log_rotation_max_size max bytes for of log rotation. \param
+  /// log_rotation_file_num max number of rotating log files.
+  static void StartRayLog(const std::string &app_name,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &log_dir = "",
                           const std::string &log_filepath = "",
                           size_t log_rotation_max_size = kDefaultLogRotationMaxSize,
                           size_t log_rotation_file_num = kDefaultLogRotationFileNum);
@@ -332,11 +328,6 @@ class RayLog {
   /// Add callback functions that will be triggered to expose fatal log.
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
-
-  /// Get log outout filename.
-  static std::string GetLogOutputFilename(const std::string &log_dir,
-                                          const std::string &log_file,
-                                          const std::string &app_name);
 
   template <typename T>
   RayLog &operator<<(const T &t) {
