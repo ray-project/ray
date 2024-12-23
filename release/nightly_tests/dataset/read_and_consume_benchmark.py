@@ -78,7 +78,7 @@ def get_consume_fn(args: argparse.Namespace) -> Callable[[ray.data.Dataset], Non
     elif args.iter_torch_batches:
 
         def consume_fn(ds):
-            for _ in ds.iter_torch_batches():
+            for _ in ds.iter_torch_batches(device="cuda"):
                 pass
 
     elif args.to_tf:
