@@ -155,7 +155,7 @@
 - name: streaming_split
 
   cluster:
-    cluster_compute: fixed_size_cpu_compute.yaml
+    cluster_compute: fixed_size_gpu_compute.yaml
 
   run:
     timeout: 300
