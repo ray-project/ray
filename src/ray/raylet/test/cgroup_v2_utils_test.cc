@@ -27,6 +27,14 @@ namespace {
 // sudo mount -t cgroup2 cgroup2 /sys/fs/cgroup/unified -o rw
 TEST(CgroupV2UtilsTest, CheckCgroupV2Mount) { EXPECT_TRUE(IsCgroupV2MountedAsRw()); }
 
+TEST(CgroupV2UtilsTest, CgroupV2Permission) {
+  if (getuid() == 0) {
+    EXPECT_TRUE(CanCurrenUserWriteCgroupV2());
+    return;
+  }
+  EXPECT_FALSE(CanCurrenUserWriteCgroupV2());
+}
+
 }  // namespace
 
 }  // namespace ray

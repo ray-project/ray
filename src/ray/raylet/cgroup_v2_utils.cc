@@ -14,6 +14,8 @@
 
 #include "ray/raylet/cgroup_v2_utils.h"
 
+#include <unistd.h>
+
 #include <fstream>
 #include <string>
 
@@ -22,6 +24,8 @@
 #include "ray/util/logging.h"
 
 namespace ray {
+
+bool CanCurrenUserWriteCgroupV2() { return access("/sys/fs/cgroup", W_OK | X_OK) == 0; }
 
 bool IsCgroupV2MountedAsRw() {
   // Checking all mountpoints directly and parse textually is the easiest way, compared
