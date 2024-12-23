@@ -341,7 +341,7 @@ def process_timestamp_data(row):
     row["timestamp"] = row["timestamp"] + pd.Timedelta(1, "ns")
 
     # Ensure the timestamp column is in the expected dtype (datetime64[ns])
-    row["timestamp"] = pd.to_datetime(row["timestamp"], errors='raise')
+    row["timestamp"] = pd.to_datetime(row["timestamp"], errors="raise")
 
     return row
 
