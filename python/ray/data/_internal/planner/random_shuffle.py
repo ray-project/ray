@@ -35,7 +35,6 @@ def generate_random_shuffle_fn(
         # MapOperator->AllToAllOperator), we pass a map function which
         # is applied to each block before shuffling.
         map_transformer: Optional[MapTransformer] = ctx.upstream_map_transformer
-        upstream_map_fn = None
         nonlocal ray_remote_args
         if map_transformer:
             # NOTE(swang): We override the target block size with infinity, to
