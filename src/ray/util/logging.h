@@ -272,6 +272,11 @@ class RayLog {
   /// \param severity_threshold Logging threshold for the program.
   /// \param log_filepath Logging output filepath. If empty, the log won't output to file,
   /// but to stdout.
+  /// Because of log rotations, the logs be saved to log file names with `.<number>`
+  /// suffixes.
+  /// Example: if log_filepath is /my/path/raylet.out, the output can be
+  /// /my/path/raylet.out, /my/path/raylet.out.1 and /my/path/raylet.out.2
+  ///
   /// \param log_rotation_max_size max bytes for of log rotation.
   /// \param log_rotation_file_num max number of rotating log files.
   static void StartRayLog(const std::string &app_name,
