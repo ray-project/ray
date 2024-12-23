@@ -593,7 +593,7 @@ void GcsPlacementGroupManager::HandleGetPlacementGroup(
     }
     RAY_LOG(DEBUG) << "Finished getting placement group info, placement group id = "
                    << placement_group_id;
-    GCS_RPC_SEND_REPLY(send_reply_callback, reply, Status::OK());
+    GCS_RPC_SEND_REPLY(send_reply_callback, reply, status);
   };
 
   auto it = registered_placement_groups_.find(placement_group_id);
@@ -715,6 +715,10 @@ void GcsPlacementGroupManager::WaitPlacementGroup(
     auto on_done = [this, placement_group_id, callback](
                        const Status &status,
                        const std::optional<PlacementGroupTableData> &result) {
+      if (!status.ok()) {
+        callback(status);
+        return;
+      }
       if (result) {
         RAY_LOG(DEBUG) << "Placement group is removed, placement group id = "
                        << placement_group_id;
