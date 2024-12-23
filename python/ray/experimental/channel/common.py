@@ -346,14 +346,6 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        # results = []
-        # for c in self._input_channels:
-        #     start_time = time.monotonic()
-        #     results.append(c.read(timeout))
-        #     if timeout is not None:
-        #         timeout -= time.monotonic() - start_time
-        #         timeout = max(timeout, 0)
-        print("timeout", timeout)
         remaining_waitables = []
         for c in self._input_channels:
             remaining_waitables.extend(c.get_ray_waitables())
@@ -361,7 +353,6 @@ class SynchronousReader(ReaderInterface):
         ready_waitables: Set[ObjectRef] = set()
         channel_to_result = {c: None for c in self._input_channels}
         non_read_channels = set(self._input_channels)
-        print("Remaining waitables:", remaining_waitables)
 
         while len(remaining_waitables) > 0:
             start_time = time.monotonic()
