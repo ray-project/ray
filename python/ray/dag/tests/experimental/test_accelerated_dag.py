@@ -43,10 +43,10 @@ pytestmark = [
 @pytest.fixture
 def temporary_change_timeout(request):
     ctx = DAGContext.get_current()
-    original = ctx.execution_timeout
-    ctx.execution_timeout = request.param
-    yield ctx.execution_timeout
-    ctx.execution_timeout = original
+    original = ctx.submit_timeout
+    ctx.submit_timeout = request.param
+    yield ctx.submit_timeout
+    ctx.submit_timeout = original
 
 
 @ray.remote
@@ -122,7 +122,7 @@ class Actor:
         return 1, 2
 
     def get_events(self):
-        return getattr(self, "__ray_cg_events", [])
+        return getattr(self, "__ray_cgraph_events", [])
 
 
 @ray.remote
@@ -2245,7 +2245,7 @@ def test_buffered_inputs(shutdown_only, temporary_change_timeout):
 
 
 def test_event_profiling(ray_start_regular, monkeypatch):
-    monkeypatch.setattr(ray.dag.constants, "RAY_CG_ENABLE_PROFILING", True)
+    monkeypatch.setattr(ray.dag.constants, "RAY_CGRAPH_ENABLE_PROFILING", True)
 
     a = Actor.options(name="a").remote(0)
     b = Actor.options(name="b").remote(0)

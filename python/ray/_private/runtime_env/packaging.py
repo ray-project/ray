@@ -4,7 +4,6 @@ import hashlib
 import logging
 import os
 import shutil
-from enum import Enum
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from typing import Callable, List, Optional, Tuple
@@ -20,6 +19,7 @@ from ray._private.ray_constants import (
     RAY_RUNTIME_ENV_IGNORE_GITIGNORE,
 )
 from ray._private.runtime_env.conda_utils import exec_cmd_stream_to_logger
+from ray._private.runtime_env.protocol import Protocol
 from ray._private.thirdparty.pathspec import PathSpec
 from ray.experimental.internal_kv import (
     _internal_kv_exists,
@@ -71,33 +71,6 @@ class _AsyncFileLock:
 
     async def __aexit__(self, exc_type, exc, tb):
         self.file.release()
-
-
-class Protocol(Enum):
-    """A enum for supported storage backends."""
-
-    # For docstring
-    def __new__(cls, value, doc=None):
-        self = object.__new__(cls)
-        self._value_ = value
-        if doc is not None:
-            self.__doc__ = doc
-        return self
-
-    GCS = "gcs", "For packages dynamically uploaded and managed by the GCS."
-    CONDA = "conda", "For conda environments installed locally on each node."
-    PIP = "pip", "For pip environments installed locally on each node."
-    UV = "uv", "For uv environments install locally on each node."
-    HTTPS = "https", "Remote https path, assumes everything packed in one zip file."
-    S3 = "s3", "Remote s3 path, assumes everything packed in one zip file."
-    GS = "gs", "Remote google storage path, assumes everything packed in one zip file."
-    FILE = "file", "File storage path, assumes everything packed in one zip file."
-
-    @classmethod
-    def remote_protocols(cls):
-        # Returns a list of protocols that support remote storage
-        # These protocols should only be used with paths that end in ".zip" or ".whl"
-        return [cls.HTTPS, cls.S3, cls.GS, cls.FILE]
 
 
 def _xor_bytes(left: bytes, right: bytes) -> bytes:

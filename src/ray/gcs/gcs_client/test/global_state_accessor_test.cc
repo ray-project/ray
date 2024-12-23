@@ -83,6 +83,10 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
   }
 
   void TearDown() override {
+    // Make sure any pending work with pointers to gcs_server_ is not run after
+    // gcs_server_ is destroyed.
+    io_service_->stop();
+
     global_state_->Disconnect();
     global_state_.reset();
 
@@ -94,7 +98,6 @@ class GlobalStateAccessorTest : public ::testing::TestWithParam<bool> {
       TestSetupUtil::FlushAllRedisServers();
     }
 
-    io_service_->stop();
     thread_io_service_->join();
     gcs_server_.reset();
   }

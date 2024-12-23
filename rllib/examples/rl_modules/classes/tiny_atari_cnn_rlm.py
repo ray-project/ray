@@ -28,13 +28,11 @@ class TinyAtariCNN(TorchRLModule, ValueFunctionAPI):
 
         import numpy as np
     import gymnasium as gym
-    from ray.rllib.core.rl_module.rl_module import RLModuleConfig
 
-    rl_module_config = RLModuleConfig(
+    my_net = TinyAtariCNN(
         observation_space=gym.spaces.Box(-1.0, 1.0, (42, 42, 4), np.float32),
         action_space=gym.spaces.Discrete(4),
     )
-    my_net = TinyAtariCNN(rl_module_config)
 
     B = 10
     w = 42
