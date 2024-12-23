@@ -36,4 +36,4 @@ def get_num_tpu_chips_on_node() -> int:
     Returns:
         The total number of chips on the TPU node. Returns 0 if none are found.
     """
-    return TPUAcceleratorManager.get_current_node_num_accelerator()
+    return TPUAcceleratorManager.get_current_node_num_accelerators()
