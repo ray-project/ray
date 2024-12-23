@@ -89,10 +89,6 @@ class TableBlockBuilder(BlockBuilder):
                 # If it's a pandas Timestamp or numpy datetime64, convert to pyarrow
                 # Timestamp
                 value = pa.array([value], type=pa.timestamp("ns"))[0]
-            elif isinstance(value, datetime):
-                # Convert Python datetime to pandas Timestamp with nanosecond precision
-                value = pd.Timestamp(value)
-                value = pa.array([value], type=pa.timestamp("ns"))[0]
 
             if is_array_like(value) and not isinstance(value, np.ndarray):
                 value = np.array(value)
