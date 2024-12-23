@@ -5,13 +5,13 @@ Outside of your training function, create a :class:`~ray.train.ScalingConfig` ob
 
 1. :class:`num_workers <ray.train.ScalingConfig>` - The number of distributed training worker processes.
 2. :class:`use_gpu <ray.train.ScalingConfig>` - Whether each worker should use a GPU (or CPU).
-3. (Optional) :class:`resources_per_worker <ray.train.ScalingConfig>` - The resources reserved for each worker. This can also be used to specify other accelerators.
 
 .. testcode::
 
     from ray.train import ScalingConfig
     scaling_config = ScalingConfig(num_workers=2, use_gpu=True)
 
+3. (Optional) :class:`resources_per_worker <ray.train.ScalingConfig>` - The resources reserved for each worker. If you want to allocate more than one CPU or GPU per training worker, or if you need to specify other accelerators, set this attribute.
 
 For more details, see :ref:`train_scaling_config`.
 
