@@ -166,6 +166,11 @@
   variations:
     - __suffix__: regular
     - __suffix__: early_stop
+      # This test case will early stop the data ingestion iteration on the GPU actors.
+      # This is a common usage in PyTorch Lightning
+      # (https://lightning.ai/docs/pytorch/stable/common/trainer.html#limit-train-batches).
+      # There was a bug in Ray Data that caused GPU memory leak (see #3.919).
+      # We add this test case to cover this scenario.
       run:
         script: python streaming_split_benchmark.py --num-workers 10 --early-stop
 
