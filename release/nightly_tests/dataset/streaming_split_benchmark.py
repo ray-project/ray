@@ -10,7 +10,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--num-workers", type=int, required=True)
     parser.add_argument(
         "--early-stop",
-        action="strore_true",
+        action="store_true",
         help="If set, each worker will read only half of the data",
     )
     return parser.parse_args()

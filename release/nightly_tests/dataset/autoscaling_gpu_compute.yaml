@@ -8,7 +8,7 @@ advanced_configurations_json:
 
 head_node_type:
     name: head-node
-    instance_type: m5.2xlarge
+    instance_type: g4dn.2xlarge
     resources:
       cpu: 0
 
