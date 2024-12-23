@@ -1572,6 +1572,11 @@ def _start_ray_worker_nodes(
         )
 
         try:
+            tmp_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            tmp_sock.connect((ray_head_ip, spark_job_server_port))
+            host_ip = tmp_sock.getsockname()[0]
+            os.environ["HOST_IP"] = host_ip
+
             is_task_reschedule_failure = False
             # Check node id availability
             response = requests.post(
