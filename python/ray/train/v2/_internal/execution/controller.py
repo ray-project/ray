@@ -41,6 +41,7 @@ from ray.train.v2._internal.execution.scaling_policy import (
 )
 from ray.train.v2._internal.execution.storage import StorageContext, get_fs_and_path
 from ray.train.v2._internal.execution.worker_group import WorkerGroup, WorkerGroupStatus
+from ray.train.v2._internal.logging.logging import configure_controller_logger
 from ray.train.v2._internal.util import time_monotonic
 from ray.train.v2.api.result import Result
 
@@ -92,11 +93,11 @@ class TrainController:
         # TODO: [Deprecation]
         resume_from_checkpoint: Optional[Checkpoint] = None,
     ):
+        self._train_run_context = train_run_context
+        configure_controller_logger(self._train_run_context)
         self._train_fn = train_fn
-
         self._scaling_policy = scaling_policy
         self._failure_policy = failure_policy
-        self._train_run_context = train_run_context
         self._run_config = self._train_run_context.run_config
         self._callbacks = callbacks or []
         self._resume_from_checkpoint = resume_from_checkpoint

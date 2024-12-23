@@ -25,6 +25,8 @@ from ray.train.v2._internal.execution.context import (
     set_train_context,
 )
 from ray.train.v2._internal.execution.storage import StorageContext
+from ray.train.v2._internal.logging.logging import configure_worker_logger
+from ray.train.v2._internal.logging.patch_print import patch_print_function
 
 T = TypeVar("T")
 
@@ -180,6 +182,10 @@ class RayTrainWorker:
             dataset_shards=dataset_shards or {},
             checkpoint=checkpoint,
         )
+        # Configure the train and root logger for the worker processes.
+        configure_worker_logger(context)
+        patch_print_function()
+        # Set the train context global variable for the worker.
         set_train_context(context)
 
         for callback in self._callbacks:
