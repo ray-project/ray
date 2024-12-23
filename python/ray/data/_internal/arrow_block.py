@@ -335,6 +335,9 @@ class ArrowBlockAccessor(TableBlockAccessor):
             )
         return self._table.select(columns)
 
+    def rename_columns(self, columns_rename: Dict[str, str]) -> "pyarrow.Table":
+        return self._table.rename_columns(columns_rename)
+
     def _sample(self, n_samples: int, sort_key: "SortKey") -> "pyarrow.Table":
         indices = random.sample(range(self._table.num_rows), n_samples)
         table = self._table.select(sort_key.get_columns())

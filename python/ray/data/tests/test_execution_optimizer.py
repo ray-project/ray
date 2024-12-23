@@ -335,8 +335,11 @@ def test_filter_e2e(ray_start_regular_shared):
     _check_usage_record(["ReadRange", "Filter"])
 
 
-def test_project_operator(ray_start_regular_shared):
-    """Checks that the physical plan is properly generated for the Project operator."""
+def test_project_operator_select(ray_start_regular_shared):
+    """
+    Checks that the physical plan is properly generated for the Project operator from
+    select columns.
+    """
     path = "example://iris.parquet"
     ds = ray.data.read_parquet(path)
     ds = ds.map_batches(lambda d: d)
@@ -347,6 +350,30 @@ def test_project_operator(ray_start_regular_shared):
     op = logical_plan.dag
     assert isinstance(op, Project), op.name
     assert op.cols == cols
+
+    physical_plan = Planner().plan(logical_plan)
+    physical_plan = PhysicalOptimizer().optimize(physical_plan)
+    physical_op = physical_plan.dag
+    assert isinstance(physical_op, TaskPoolMapOperator)
+    assert isinstance(physical_op.input_dependency, TaskPoolMapOperator)
+
+
+def test_project_operator_rename(ray_start_regular_shared):
+    """
+    Checks that the physical plan is properly generated for the Project operator from
+    rename columns.
+    """
+    path = "example://iris.parquet"
+    ds = ray.data.read_parquet(path)
+    ds = ds.map_batches(lambda d: d)
+    cols_rename = {"sepal.length": "sepal_length", "petal.width": "pedal_width"}
+    ds = ds.rename_columns(cols_rename)
+
+    logical_plan = ds._plan._logical_plan
+    op = logical_plan.dag
+    assert isinstance(op, Project), op.name
+    assert not op.cols
+    assert op.cols_rename == cols_rename
 
     physical_plan = Planner().plan(logical_plan)
     physical_plan = PhysicalOptimizer().optimize(physical_plan)

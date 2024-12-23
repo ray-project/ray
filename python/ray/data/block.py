@@ -278,6 +278,10 @@ class BlockAccessor:
         """Return a new block containing the provided columns."""
         raise NotImplementedError
 
+    def rename_columns(self, columns_rename: Dict[str, str]) -> Block:
+        """Return the block reflecting the renamed columns."""
+        raise NotImplementedError
+
     def random_shuffle(self, random_seed: Optional[int]) -> Block:
         """Randomly shuffle this block."""
         raise NotImplementedError
