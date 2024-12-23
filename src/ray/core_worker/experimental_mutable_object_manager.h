@@ -95,7 +95,8 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
     std::unique_ptr<plasma::MutableObject> mutable_object;
   } ABSL_CACHELINE_ALIGNED;
 
-  MutableObjectManager() = default;
+  MutableObjectManager(std::function<Status()> check_signals)
+      : check_signals_(check_signals) {}
   ~MutableObjectManager();
 
   /// Registers a channel for `object_id`.
@@ -180,6 +181,18 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   Status ReadAcquire(const ObjectID &object_id,
                      std::shared_ptr<RayObject> &result,
                      int64_t timeout_ms = -1);
+
+  /// Waits for the objects to be ready to read.
+  ///
+  /// \param[in] object_ids The IDs of the objects.
+  /// \param[in] num_objects The number of objects to wait for.
+  /// \param[in] timeout_ms The timeout in milliseconds to wait for the objects.
+  /// \param[out] results The results of the wait.
+  /// \return The return status.
+  Status Wait(const std::vector<ObjectID> &object_ids,
+               int num_objects,
+               int64_t timeout_ms,
+               std::vector<bool> *results);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
@@ -280,6 +293,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   // The calling threads are all readers and writers, along with the thread that calls the
   // destructor.
   absl::Mutex destructor_lock_;
+
+  /// Function passed in to be called to check for signals (e.g., Ctrl-C).
+  std::function<Status()> check_signals_;
 };
 
 }  // namespace experimental

@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Optional, Set, Tuple, Union
 
 import ray
 import ray.exceptions
+from ray import ObjectRef
 from ray._raylet import SerializedObject
 from ray.experimental.channel import utils
 from ray.experimental.channel.common import ChannelInterface, ChannelOutputType
@@ -496,6 +497,10 @@ class Channel(ChannelInterface):
 
         return ret
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        return [self._local_reader_ref]
+
     def release_buffer(self, timeout: Optional[float] = None) -> None:
         assert (
             timeout is None or timeout >= 0 or timeout == -1
@@ -513,6 +518,7 @@ class Channel(ChannelInterface):
         Close this channel by setting the error bit on both the writer_ref and the
         reader_ref.
         """
+        print("Channel.close")
         self._worker.core_worker.experimental_channel_set_error(self._writer_ref)
         is_local_node_reader = False
 
@@ -526,6 +532,7 @@ class Channel(ChannelInterface):
             self._worker.core_worker.experimental_channel_set_error(
                 reader_ref_info.reader_ref
             )
+        print("Channel.close done")
 
 
 @DeveloperAPI
@@ -609,6 +616,10 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index %= self._num_shm_buffers
         return output
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        return self._buffers[self._next_read_index].get_ray_waitables()
+
     def release_buffer(self, timeout: Optional[float] = None):
         """Release the native buffer of the channel to allow the buffer to be reused for
         future data.
@@ -625,6 +636,7 @@ class BufferedSharedMemoryChannel(ChannelInterface):
         self._next_read_index %= self._num_shm_buffers
 
     def close(self) -> None:
+        print("BufferedSharedMemoryChannel.close")
         for buffer in self._buffers:
             buffer.close()
 
@@ -752,6 +764,13 @@ class CompositeChannel(ChannelInterface):
         self.ensure_registered_as_reader()
         return self._channel_dict[self._resolve_actor_id()].read(timeout)
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        self.ensure_registered_as_reader()
+        waitables = []
+        for channel in self._channels:
+            waitables.extend(channel.get_ray_waitables())
+        return waitables
+
     def release_buffer(self, timeout: Optional[float] = None):
         self.ensure_registered_as_reader()
         self._channel_dict[self._resolve_actor_id()].release_buffer(timeout)
@@ -769,5 +788,6 @@ class CompositeChannel(ChannelInterface):
         return actor_id
 
     def close(self) -> None:
+        print("CompositeChannel.close")
         for channel in self._channels:
             channel.close()

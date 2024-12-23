@@ -155,9 +155,11 @@ def do_exec_tasks(
 
         done = False
         while True:
+            print("do_exec_tasks", "done", done)
             if done:
                 break
             for operation in schedule:
+                print("do_exec_tasks", "operation", operation)
                 done = tasks[operation.exec_task_idx].exec_operation(
                     self, operation.type, overlap_gpu_communication
                 )
@@ -461,6 +463,7 @@ class ExecutableTask:
         depends on the type of channel. Typically, it will release the resources
         used by the channels.
         """
+        print("ExecutableTask.cancel")
         self.input_reader.close()
         self.output_writer.close()
 

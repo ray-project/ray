@@ -142,6 +142,7 @@ Status PlasmaObjectHeader::WriteAcquire(
   RAY_CHECK_EQ(num_read_acquires_remaining, 0UL);
   RAY_CHECK_EQ(num_read_releases_remaining, 0UL);
 
+  RAY_LOG(DEBUG) << "WriteAcquire old version: " << version << ", new version: " << version + 1 << ", old is_sealed: " << is_sealed << ", new is_sealed: " << false;
   version++;
   is_sealed = false;
   data_size = write_data_size;
@@ -157,6 +158,7 @@ Status PlasmaObjectHeader::WriteRelease(Semaphores &sem) {
   // same `timeout_point`.
   RAY_RETURN_NOT_OK(TryToAcquireSemaphore(sem.header_sem));
 
+  RAY_LOG(DEBUG) << "WriteRelease old is_sealed: " << is_sealed << ", new is_sealed: " << true;
   is_sealed = true;
   RAY_CHECK(num_readers) << num_readers;
   num_read_acquires_remaining = num_readers;
@@ -180,6 +182,7 @@ Status PlasmaObjectHeader::ReadAcquire(
 
   // TODO(jhumphri): Wouldn't a futex be better here than polling?
   // Wait for the requested version (or a more recent one) to be sealed.
+  // TODO(kevin85421): do something similar
   while (version < version_to_read || !is_sealed) {
     RAY_CHECK_EQ(sem_post(sem.header_sem), 0);
     sched_yield();
@@ -214,6 +217,11 @@ Status PlasmaObjectHeader::ReadAcquire(
         "Reader missed a value. Are you sure there are num_readers many readers?");
   }
   return Status::OK();
+}
+
+bool PlasmaObjectHeader::ReadyToRead(int64_t version_to_read) {
+  RAY_LOG(DEBUG) << "ReadyToRead version: " << version << ", version_to_read: " << version_to_read << ", is_sealed: " << is_sealed;
+  return version >= version_to_read && is_sealed;
 }
 
 Status PlasmaObjectHeader::ReadRelease(Semaphores &sem, int64_t read_version) {

@@ -21,9 +21,10 @@ namespace core {
 namespace experimental {
 
 MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
-                                             RayletFactory factory)
+                                             RayletFactory factory,
+                                             std::function<Status()> check_signals)
     : plasma_(plasma),
-      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>()),
+      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(check_signals)),
       raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {
@@ -202,6 +203,13 @@ Status MutableObjectProvider::ReadAcquire(const ObjectID &object_id,
 
 Status MutableObjectProvider::ReadRelease(const ObjectID &object_id) {
   return object_manager_->ReadRelease(object_id);
+}
+
+Status MutableObjectProvider::Wait(const std::vector<ObjectID> &ids,
+                                   int num_objects,
+                                   int64_t timeout_ms,
+                                   std::vector<bool> *results) {
+  return object_manager_->Wait(ids, num_objects, timeout_ms, results);
 }
 
 Status MutableObjectProvider::SetError(const ObjectID &object_id) {

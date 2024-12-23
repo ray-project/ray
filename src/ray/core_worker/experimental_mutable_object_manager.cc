@@ -13,6 +13,7 @@
 // limitations under the License.
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
+#include "ray/common/ray_config.h"
 
 #include "absl/strings/str_format.h"
 #include "ray/object_manager/common.h"
@@ -340,6 +341,7 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
     return s;
   }
   RAY_CHECK_GT(version_read, 0);
+  RAY_LOG(DEBUG) << "ReadAcquire old next_version_to_read: " << channel->next_version_to_read << ", new next_version_to_read: " << version_read;
   channel->next_version_to_read = version_read;
 
   size_t total_size = object->header->data_size + object->header->metadata_size;
@@ -382,6 +384,80 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
   return Status::OK();
 }
 
+Status MutableObjectManager::Wait(const std::vector<ObjectID> &object_ids,
+                                  int num_objects,
+                                  int64_t timeout_ms,
+                                  std::vector<bool> *results) {
+  RAY_LOG(DEBUG) << "MutableObjectManager::Wait " << object_ids.size() << ", num_objects: " << num_objects << ", timeout_ms: " << timeout_ms;
+  absl::ReaderMutexLock guard(&destructor_lock_);
+  RAY_LOG(DEBUG) << "MutableObjectManager::Wait get destructor lock";
+  std::vector<Channel*> channels;
+  for (const auto& object_id : object_ids) {
+    Channel* channel = GetChannel(object_id);
+    if (!channel) {
+      return Status::ChannelError("Channel has not been registered");
+    }
+    channels.push_back(channel);
+  }
+
+  bool done = false;
+  bool timed_out = false;
+  Status signal_status = Status::OK();
+  int64_t remaining_timeout = timeout_ms;
+  int64_t iteration_timeout =
+      timeout_ms == -1
+          ? RayConfig::instance().get_timeout_milliseconds()
+          : std::min(timeout_ms, RayConfig::instance().get_timeout_milliseconds());
+
+  std::unordered_set<size_t> ready;
+  while (!timed_out && signal_status.ok()) {
+    RAY_LOG(DEBUG) << "MutableObjectManager::Wait " << "timed_out: " << timed_out << ", remaining_timeout: " << remaining_timeout << ", iteration_timeout: " << iteration_timeout;
+    if (check_signals_) {
+      signal_status = check_signals_();
+    }
+
+    for (size_t i = 0; i < channels.size(); i++) {
+      Channel* channel = channels[i];
+      std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
+      RAY_RETURN_NOT_OK(object->header->CheckHasError());
+      bool is_ready = object->header->ReadyToRead(channel->next_version_to_read);
+      if (is_ready) {
+        RAY_LOG(DEBUG) << "MutableObjectManager::Wait is_ready " << object_ids[i];
+        ready.insert(i);
+      }
+      if (ready.size() >= static_cast<size_t>(num_objects)) {
+        done = true;
+        break;
+      }
+    }
+    if (done) {
+      break;
+    }
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(iteration_timeout));
+    if (remaining_timeout >= 0) {
+      remaining_timeout -= iteration_timeout;
+      iteration_timeout = std::min(remaining_timeout, iteration_timeout);
+      timed_out = remaining_timeout <= 0;
+    }
+  }
+
+  for (size_t i = 0; i < channels.size(); i++) {
+    results->at(i) = ready.find(i) != ready.end();
+  }
+
+  if (timed_out) {
+    RAY_LOG(DEBUG) << "MutableObjectManager::Wait timed out";
+    return Status::TimedOut("Get timed out: some object(s) not ready.");
+  }
+  if (!signal_status.ok()) {
+    RAY_LOG(DEBUG) << "MutableObjectManager::Wait signal_status: " << signal_status;
+    return signal_status;
+  }
+  RAY_LOG(DEBUG) << "MutableObjectManager::Wait return";
+  return Status::OK();
+}
+
 Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     ABSL_NO_THREAD_SAFETY_ANALYSIS {
   RAY_LOG(DEBUG) << "ReadRelease " << object_id;
@@ -415,6 +491,7 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     return s;
   }
   // The next read needs to read at least this version.
+  RAY_LOG(DEBUG) << "ReadRelease old next_version_to_read: " << channel->next_version_to_read << ", new next_version_to_read: " << channel->next_version_to_read + 1;
   channel->next_version_to_read++;
 
   // This lock ensures that there is only one reader at a time. The lock is acquired in

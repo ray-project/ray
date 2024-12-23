@@ -567,9 +567,10 @@ CoreWorker::CoreWorker(CoreWorkerOptions options, const WorkerID &worker_id)
         return std::shared_ptr<raylet::RayletClient>(
             new raylet::RayletClient(std::move(grpc_client)));
       };
+  // TODO: setup check_signals
   experimental_mutable_object_provider_ =
       std::make_shared<experimental::MutableObjectProvider>(
-          *plasma_store_provider_->store_client(), raylet_channel_client_factory);
+          *plasma_store_provider_->store_client(), raylet_channel_client_factory, options_.check_signals);
 #endif
 
   auto push_error_callback = [this](const JobID &job_id,
@@ -1921,6 +1922,35 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
         "Number of objects to wait for must be between 1 and the number of ids.");
   }
 
+#if defined(__APPLE__) || defined(__linux__)
+  // Check whether these are experimental.Channel objects.
+  bool is_experimental_channel = false;
+  for (const ObjectID &id : ids) {
+    Status status =
+        experimental_mutable_object_provider_->GetChannelStatus(id, /*is_reader*/ true);
+    if (status.ok()) {
+      is_experimental_channel = true;
+      // We continue rather than break because we want to check that *all* of the
+      // objects are either experimental or not experimental. We cannot have a mix of
+      // the two.
+      continue;
+    } else if (status.IsChannelError()) {
+      // The channel has been closed.
+      return status;
+    } else if (is_experimental_channel) {
+      return Status::NotImplemented(
+          "ray.get can only be called on all normal objects, or all "
+          "experimental.Channel objects");
+    }
+  }
+  RAY_LOG(DEBUG) << "CoreWorker::Wait " << "is_experimental_channel: " << is_experimental_channel;
+  // ray.get path for experimental.Channel objects.
+  if (is_experimental_channel) {
+    return WaitExperimentalMutableObjects(ids, num_objects, timeout_ms, results);
+  }
+#endif
+
+
   absl::flat_hash_set<ObjectID> plasma_object_ids;
   absl::flat_hash_set<ObjectID> memory_object_ids(ids.begin(), ids.end());
 
@@ -1990,6 +2020,15 @@ Status CoreWorker::Wait(const std::vector<ObjectID> &ids,
   }
 
   return Status::OK();
+}
+
+Status CoreWorker::WaitExperimentalMutableObjects(
+    const std::vector<ObjectID> &ids,
+    int num_objects,
+    int64_t timeout_ms,
+    std::vector<bool> *results) {
+  RAY_LOG(DEBUG) << "WaitExperimentalMutableObjects";
+  return experimental_mutable_object_provider_->Wait(ids, num_objects, timeout_ms, results);
 }
 
 Status CoreWorker::Delete(const std::vector<ObjectID> &object_ids, bool local_only) {

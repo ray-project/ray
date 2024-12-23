@@ -1,5 +1,6 @@
 import asyncio
 import concurrent
+import logging
 import sys
 import threading
 import time
@@ -12,15 +13,20 @@ from typing import (
     List,
     NamedTuple,
     Optional,
+    Set,
     Tuple,
     Union,
 )
 
 import ray
 import ray.exceptions
+from ray import ObjectRef
+from ray.exceptions import RayTaskError
 from ray.experimental.channel.communicator import Communicator
 from ray.experimental.channel.serialization_context import _SerializationContext
 from ray.util.annotations import DeveloperAPI, PublicAPI
+
+logger = logging.getLogger(__name__)
 
 # The context singleton on this process.
 _default_context: "Optional[ChannelContext]" = None
@@ -255,6 +261,12 @@ class ChannelInterface:
         """
         raise NotImplementedError
 
+    def get_ray_waitables(self) -> List[ObjectRef]:
+        """
+        Get the ObjectRefs that will be read in the next read() call.
+        """
+        raise NotImplementedError
+
     def close(self) -> None:
         """
         Close this channel. This method must not block and it must be made
@@ -316,6 +328,7 @@ class ReaderInterface:
         return outputs
 
     def close(self) -> None:
+        print("ReaderInterface.close")
         self._closed = True
         for channel in self._input_channels:
             channel.close()
@@ -333,13 +346,60 @@ class SynchronousReader(ReaderInterface):
         pass
 
     def _read_list(self, timeout: Optional[float] = None) -> List[Any]:
-        results = []
+        # results = []
+        # for c in self._input_channels:
+        #     start_time = time.monotonic()
+        #     results.append(c.read(timeout))
+        #     if timeout is not None:
+        #         timeout -= time.monotonic() - start_time
+        #         timeout = max(timeout, 0)
+        print("timeout", timeout)
+        remaining_waitables = []
         for c in self._input_channels:
+            remaining_waitables.extend(c.get_ray_waitables())
+        channel_to_waitables = {c: c.get_ray_waitables() for c in self._input_channels}
+        ready_waitables: Set[ObjectRef] = set()
+        channel_to_result = {c: None for c in self._input_channels}
+        non_read_channels = set(self._input_channels)
+        print("Remaining waitables:", remaining_waitables)
+
+        while len(remaining_waitables) > 0:
             start_time = time.monotonic()
-            results.append(c.read(timeout))
+            ready_refs, remaining_waitables = ray.wait(
+                remaining_waitables, num_returns=1, timeout=timeout
+            )
+            if len(ready_refs) < 1:  # Timeout occurred
+                break
+            ready_waitables.update(ready_refs)
+            print(f"Ready waitables: {ready_waitables}", "Remaining waitables:", remaining_waitables)
+
             if timeout is not None:
                 timeout -= time.monotonic() - start_time
                 timeout = max(timeout, 0)
+
+            read_channels = []
+            for c in non_read_channels:
+                channel_waitables = channel_to_waitables[c]
+                if all(w in ready_waitables for w in channel_waitables):
+                    start_time = time.monotonic()
+                    channel_to_result[c] = c.read(timeout)
+                    print(f"Read from channel {c}", channel_to_result[c])
+                    read_channels.append(c)
+                    if isinstance(channel_to_result[c], RayTaskError):
+                        logger.error(
+                            f"Found a RayTaskError from one of the input channels {c}. "
+                            f"Return immediately although there are still "
+                            f"{len(non_read_channels) - len(read_channels)} "
+                            f"input channels haven't been read."
+                        )
+                        return [channel_to_result[c] for c in self._input_channels]
+                    if timeout is not None:
+                        timeout -= time.monotonic() - start_time
+                        timeout = max(timeout, 0)
+            for c in read_channels:
+                non_read_channels.remove(c)
+
+        results = [channel_to_result[c] for c in self._input_channels]
         return results
 
     def release_channel_buffers(self, timeout: Optional[float] = None) -> None:
@@ -458,6 +518,7 @@ class WriterInterface:
         raise NotImplementedError()
 
     def close(self) -> None:
+        print("WriterInterface.close")
         self._closed = True
         for channel in self._output_channels:
             channel.close()

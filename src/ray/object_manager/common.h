@@ -179,6 +179,9 @@ struct PlasmaObjectHeader {
   /// ReadAcquire.
   Status ReadRelease(Semaphores &sem, int64_t read_version);
 
+  /// Returns true if the object is ready to read.
+  bool ReadyToRead(int64_t version_to_read);
+
   /// Set up synchronization primitives.
   void Init();
 

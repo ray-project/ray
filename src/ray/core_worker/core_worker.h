@@ -1671,6 +1671,12 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
+  Status WaitExperimentalMutableObjects(
+      const std::vector<ObjectID> &ids,
+      int num_objects,
+      int64_t timeout_ms,
+      std::vector<bool> *results);
+
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();
 
