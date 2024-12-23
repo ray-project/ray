@@ -137,8 +137,8 @@ and training (computing loss function inputs).
 
 .. link to new RLModule docs
 
-You can chose to use :ref:`RLlib's built-in default models and configure these <blabla>` as needed
-(change number of layers and size, activation functions, etc..) or :ref:`write your own custom models in PyTorch <blabla>`,
+You can chose to use :ref:`RLlib's built-in default models and configure these <rllib_default_rl_modules_docs>` as needed
+(change number of layers and size, activation functions, etc..) or :ref:`write your own custom models in PyTorch <rllib-implementing-custom-rl-modules>`,
 allowing you to implement any architecture and computation logic.
 
 .. figure:: images/rl_modules/rl_module_in_env_runner.svg

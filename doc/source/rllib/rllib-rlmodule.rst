@@ -117,6 +117,8 @@ You can pass RL Module specs to the algorithm configuration to be used by the al
             :end-before: __pass-specs-to-configs-ma-end__
 
 
+.. _rllib-implementing-custom-rl-modules:
+
 Writing Custom Single Agent RL Modules
 --------------------------------------
 
@@ -280,6 +282,8 @@ To construct this custom multi-agent RL module, pass the class to the :py:class:
     :start-after: __pass-custom-multirlmodule-shared-enc-begin__
     :end-before: __pass-custom-multirlmodule-shared-enc-end__
 
+
+.. _rllib_default_rl_modules_docs:
 
 Extending Existing RLlib RL Modules
 -----------------------------------
