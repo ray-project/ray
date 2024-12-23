@@ -77,9 +77,15 @@ message GangResourceRequest {
 // Cluster resource constraint represents minimal cluster size requirement,
 // this is issued through ray.autoscaler.sdk.request_resources.
 message ClusterResourceConstraint {
-  // If not emtpy, the cluster should have the capacity (total resource) to fit
-  // the min_bundles.
-  repeated ResourceRequestByCount min_bundles = 1;
+  // Commands the autoscaler to accommodate the specified requests.
+  //
+  // For more context, please check out py-doc for `ray.autoscaler.sdk.request_resources`
+  // method
+  //
+  // NOTE: This call is only a hint to the autoscaler. The actual resulting cluster
+  //       size may be slightly larger or smaller than expected depending on the
+  //       internal bin packing algorithm and max worker count restrictions.
+  repeated ResourceRequestByCount resource_requests = 1;
 }
 
 // Node status for a ray node.

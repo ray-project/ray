@@ -363,77 +363,25 @@ class Checkpointable(abc.ABC):
             raise FileNotFoundError(f"`path` ({path}) not found!")
 
         # Restore components of `self` that themselves are `Checkpointable`.
-        for comp_name, comp in self.get_checkpointable_components():
+        orig_comp_names = {c[0] for c in self.get_checkpointable_components()}
+        self._restore_all_subcomponents_from_path(
+            path, filesystem, component=component, **kwargs
+        )
 
-            # The value of the `component` argument for the upcoming
-            # `[subcomponent].restore_from_path(.., component=..)` call.
-            comp_arg = None
-
-            if component is None:
-                comp_dir = path / comp_name
-                # If subcomponent's dir is not in path, ignore it and don't restore this
-                # subcomponent's state from disk.
-                if not _exists_at_fs_path(filesystem, comp_dir.as_posix()):
-                    continue
-            else:
-                comp_dir = path
-
-                # `component` is a path that starts with `comp` -> Remove the name of
-                # `comp` from the `component` arg in the upcoming call to `restore_..`.
-                if component.startswith(comp_name + "/"):
-                    comp_arg = component[len(comp_name) + 1 :]
-                # `component` has nothing to do with `comp` -> Skip.
-                elif component != comp_name:
-                    continue
-
-            # If component is an ActorManager, restore all the manager's healthy
-            # actors' states from disk (even if they are on another node, in which case,
-            # we'll sync checkpoint file(s) to the respective node).
-            if isinstance(comp, FaultTolerantActorManager):
-                head_node_ip = ray.util.get_node_ip_address()
-                all_healthy_actors = comp.healthy_actor_ids()
-
-                def _restore(
-                    w,
-                    _kwargs=MappingProxyType(kwargs),
-                    _path=comp_dir,
-                    _head_ip=head_node_ip,
-                    _comp_arg=comp_arg,
-                ):
-                    import ray
-                    import tempfile
-
-                    worker_node_ip = ray.util.get_node_ip_address()
-                    # If the worker is on the same node as the head, load the checkpoint
-                    # directly from the path otherwise sync the checkpoint from the head
-                    # to the worker and load it from there.
-                    if worker_node_ip == _head_ip:
-                        w.restore_from_path(_path, component=_comp_arg, **_kwargs)
-                    else:
-                        with tempfile.TemporaryDirectory() as temp_dir:
-                            sync_dir_between_nodes(
-                                _head_ip, _path, worker_node_ip, temp_dir
-                            )
-                            w.restore_from_path(
-                                temp_dir, component=_comp_arg, **_kwargs
-                            )
-
-                comp.foreach_actor(_restore, remote_actor_ids=all_healthy_actors)
-
-            # Call `restore_from_path()` on local subcomponent, thereby passing in the
-            # **kwargs.
-            else:
-                comp.restore_from_path(
-                    comp_dir, filesystem=filesystem, component=comp_arg, **kwargs
-                )
-
-        # Restore the rest of the state (not based on subcomponents).
+        # Restore the "base" state (not individual subcomponents).
         if component is None:
             with filesystem.open_input_stream(
                 (path / self.STATE_FILE_NAME).as_posix()
             ) as f:
                 state = pickle.load(f)
             self.set_state(state)
+
+            new_comp_names = {c[0] for c in self.get_checkpointable_components()}
+            diff_comp_names = new_comp_names - orig_comp_names
+            if diff_comp_names:
+                self._restore_all_subcomponents_from_path(
+                    path, filesystem, only_comp_names=diff_comp_names, **kwargs
+                )
 
     @classmethod
     def from_checkpoint(
@@ -597,6 +545,75 @@ class Checkpointable(abc.ABC):
                 subcomponents.append(comp[len(name) + 1 :])
 
         return None if not subcomponents else subcomponents
+
+    def _restore_all_subcomponents_from_path(
+        self, path, filesystem, only_comp_names=None, component=None, **kwargs
+    ):
+        for comp_name, comp in self.get_checkpointable_components():
+            if only_comp_names is not None and comp_name not in only_comp_names:
+                continue
+
+            # The value of the `component` argument for the upcoming
+            # `[subcomponent].restore_from_path(.., component=..)` call.
+            comp_arg = None
+
+            if component is None:
+                comp_dir = path / comp_name
+                # If subcomponent's dir is not in path, ignore it and don't restore this
+                # subcomponent's state from disk.
+                if not _exists_at_fs_path(filesystem, comp_dir.as_posix()):
+                    continue
+            else:
+                comp_dir = path
+
+                # `component` is a path that starts with `comp` -> Remove the name of
+                # `comp` from the `component` arg in the upcoming call to `restore_..`.
+                if component.startswith(comp_name + "/"):
+                    comp_arg = component[len(comp_name) + 1 :]
+                # `component` has nothing to do with `comp` -> Skip.
+                elif component != comp_name:
+                    continue
+
+            # If component is an ActorManager, restore all the manager's healthy
+            # actors' states from disk (even if they are on another node, in which case,
+            # we'll sync checkpoint file(s) to the respective node).
+            if isinstance(comp, FaultTolerantActorManager):
+                head_node_ip = ray.util.get_node_ip_address()
+                all_healthy_actors = comp.healthy_actor_ids()
+
+                def _restore(
+                    w,
+                    _kwargs=MappingProxyType(kwargs),
+                    _path=comp_dir,
+                    _head_ip=head_node_ip,
+                    _comp_arg=comp_arg,
+                ):
+                    import ray
+                    import tempfile
+
+                    worker_node_ip = ray.util.get_node_ip_address()
+                    # If the worker is on the same node as the head, load the checkpoint
+                    # directly from the path otherwise sync the checkpoint from the head
+                    # to the worker and load it from there.
+                    if worker_node_ip == _head_ip:
+                        w.restore_from_path(_path, component=_comp_arg, **_kwargs)
+                    else:
+                        with tempfile.TemporaryDirectory() as temp_dir:
+                            sync_dir_between_nodes(
+                                _head_ip, _path, worker_node_ip, temp_dir
+                            )
+                            w.restore_from_path(
+                                temp_dir, component=_comp_arg, **_kwargs
+                            )
+
+                comp.foreach_actor(_restore, remote_actor_ids=all_healthy_actors)
+
+            # Call `restore_from_path()` on local subcomponent, thereby passing in the
+            # **kwargs.
+            else:
+                comp.restore_from_path(
+                    comp_dir, filesystem=filesystem, component=comp_arg, **kwargs
+                )
 
 
 def _exists_at_fs_path(fs: pyarrow.fs.FileSystem, path: str) -> bool:

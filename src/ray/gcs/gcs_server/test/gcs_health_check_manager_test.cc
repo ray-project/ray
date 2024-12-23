@@ -162,6 +162,19 @@ TEST_F(GcsHealthCheckManagerTest, TestBasic) {
   ASSERT_TRUE(dead_nodes.count(node_id));
 }
 
+TEST_F(GcsHealthCheckManagerTest, MarkHealthAndSkipCheck) {
+  auto node_id = AddServer();
+  Run(0);  // Initial run
+  ASSERT_TRUE(dead_nodes.empty());
+
+  // Run the first health check: even we mark node down, health check is skipped due to
+  // fresh enough information.
+  StopServing(node_id);
+  health_check->MarkNodeHealthy(node_id);
+  Run(0);
+  ASSERT_TRUE(dead_nodes.empty());
+}
+
 TEST_F(GcsHealthCheckManagerTest, StoppedAndResume) {
   auto node_id = AddServer();
   Run(0);  // Initial run

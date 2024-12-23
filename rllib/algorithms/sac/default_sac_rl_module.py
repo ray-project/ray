@@ -1,6 +1,7 @@
 from abc import abstractmethod
 from typing import Any, Dict, List, Tuple
 
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
 from ray.rllib.algorithms.sac.sac_learner import (
     ACTION_DIST_INPUTS_NEXT,
     QF_PREDS,
@@ -9,7 +10,7 @@ from ray.rllib.algorithms.sac.sac_learner import (
 from ray.rllib.core.learner.utils import make_target_network
 from ray.rllib.core.models.base import Encoder, Model
 from ray.rllib.core.models.specs.typing import SpecType
-from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, TargetNetworkAPI
+from ray.rllib.core.rl_module.apis import InferenceOnlyAPI, QNetAPI, TargetNetworkAPI
 from ray.rllib.core.rl_module.rl_module import RLModule
 from ray.rllib.policy.sample_batch import SampleBatch
 from ray.rllib.utils.annotations import (
@@ -20,8 +21,8 @@ from ray.rllib.utils.typing import NetworkType
 from ray.util.annotations import DeveloperAPI
 
 
-@DeveloperAPI(stability="alpha")
-class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
+@DeveloperAPI
+class DefaultSACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI, QNetAPI):
     """`RLModule` for the Soft-Actor-Critic (SAC) algorithm.
 
     It consists of several architectures, each in turn composed of
@@ -52,11 +53,12 @@ class SACRLModule(RLModule, InferenceOnlyAPI, TargetNetworkAPI):
     -> [q-target-twin-value]
     """
 
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", SACCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
     @override(RLModule)
     def setup(self):
-        if self.catalog is None and hasattr(self, "_catalog_ctor_error"):
-            raise self._catalog_ctor_error
-
         # If a twin Q architecture should be used.
         self.twin_q = self.model_config["twin_q"]
 

@@ -5,8 +5,10 @@ from ray.rllib.algorithms.sac.sac_learner import (
     QF_PREDS,
     QF_TWIN_PREDS,
 )
-from ray.rllib.algorithms.sac.torch.sac_torch_rl_module import SACTorchRLModule
-
+from ray.rllib.algorithms.sac.sac_catalog import SACCatalog
+from ray.rllib.algorithms.sac.torch.default_sac_torch_rl_module import (
+    DefaultSACTorchRLModule,
+)
 from ray.rllib.core.columns import Columns
 from ray.rllib.core.models.base import ENCODER_OUT
 from ray.rllib.utils.annotations import override
@@ -16,8 +18,12 @@ from ray.rllib.utils.typing import TensorType
 torch, nn = try_import_torch()
 
 
-class CQLTorchRLModule(SACTorchRLModule):
-    @override(SACTorchRLModule)
+class DefaultCQLTorchRLModule(DefaultSACTorchRLModule):
+    def __init__(self, *args, **kwargs):
+        catalog_class = kwargs.pop("catalog_class", SACCatalog)
+        super().__init__(*args, **kwargs, catalog_class=catalog_class)
+
+    @override(DefaultSACTorchRLModule)
     def _forward_train(self, batch: Dict) -> Dict[str, Any]:
         # Call the super method.
         fwd_out = super()._forward_train(batch)

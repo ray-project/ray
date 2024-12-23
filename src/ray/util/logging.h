@@ -55,6 +55,7 @@
 #include <functional>
 #include <iostream>
 #include <memory>
+#include <optional>
 #include <sstream>
 #include <string>
 #include <vector>
@@ -136,11 +137,13 @@ enum class RayLogLevel {
 
 #define RAY_IGNORE_EXPR(expr) ((void)(expr))
 
-#define RAY_CHECK(condition)                                                      \
+#define RAY_CHECK_WITH_DISPLAY(condition, display)                                \
   RAY_PREDICT_TRUE((condition))                                                   \
   ? RAY_IGNORE_EXPR(0)                                                            \
   : ::ray::Voidify() & ::ray::RayLog(__FILE__, __LINE__, ray::RayLogLevel::FATAL) \
-                           << " Check failed: " #condition " "
+                           << " Check failed: " display " "
+
+#define RAY_CHECK(condition) RAY_CHECK_WITH_DISPLAY(condition, #condition)
 
 #ifdef NDEBUG
 
@@ -240,6 +243,10 @@ enum class RayLogLevel {
 /// The second argument: log content.
 using FatalLogCallback = std::function<void(const std::string &, const std::string &)>;
 
+// Default configs for ray log.
+inline constexpr size_t kDefaultLogRotationMaxSize = 1ULL << 29;
+inline constexpr size_t kDefaultLogRotationFileNum = 10;
+
 class RayLog {
  public:
   RayLog(const char *file_name, int line_number, RayLogLevel severity);
@@ -254,18 +261,39 @@ class RayLog {
   /// This function to judge whether current log is fatal or not.
   bool IsFatal() const;
 
+  /// TODO(hjiang): Having both log directory and filename for `StartRayLog` is confusing,
+  /// at the end of the day should have only filename. Fix all usage in the next PR.
+  ///
   /// The init function of ray log for a program which should be called only once.
   ///
   /// \parem appName The app name which starts the log.
   /// \param severity_threshold Logging threshold for the program.
-  /// \param logDir Logging output file name. If empty, the log won't output to file.
+  /// \param log_dir Logging output directory name.
+  /// \param log_filepath Logging output filepath.
+  /// \param log_rotation_max_size max bytes for of log rotation.
+  /// \param log_rotation_file_num max number of rotating log files.
+  ///
+  /// Both [log_dir] and [log_filepath] are used to determine log output filename; if
+  /// both empty, the log won't output to file, but to stdout. It's illegal to set
+  /// [log_filepath] and [log_dir] at the same time.
   static void StartRayLog(const std::string &appName,
                           RayLogLevel severity_threshold = RayLogLevel::INFO,
-                          const std::string &logDir = "");
+                          const std::string &log_dir = "",
+                          const std::string &log_filepath = "",
+                          size_t log_rotation_max_size = kDefaultLogRotationMaxSize,
+                          size_t log_rotation_file_num = kDefaultLogRotationFileNum);
 
   /// The shutdown function of ray log which should be used with StartRayLog as a pair.
   /// If `StartRayLog` wasn't called before, it will be no-op.
   static void ShutDownRayLog();
+
+  /// Get max bytes value from env variable.
+  /// Return default value `kDefaultLogRotationMaxSize` if env not set or parse failure.
+  static size_t GetRayLogRotationMaxBytesOrDefault();
+
+  /// Get log rotation backup count.
+  /// Return default value `kDefaultLogRotationFileNum` if env not set or parse failure.
+  static size_t GetRayLogRotationBackupCountOrDefault();
 
   /// Uninstall the signal actions installed by InstallFailureSignalHandler.
   static void UninstallSignalAction();
@@ -304,6 +332,11 @@ class RayLog {
   /// Add callback functions that will be triggered to expose fatal log.
   static void AddFatalLogCallbacks(
       const std::vector<FatalLogCallback> &expose_log_callbacks);
+
+  /// Get log outout filename.
+  static std::string GetLogOutputFilename(const std::string &log_dir,
+                                          const std::string &log_file,
+                                          const std::string &app_name);
 
   template <typename T>
   RayLog &operator<<(const T &t) {
@@ -376,9 +409,6 @@ class RayLog {
   /// to indicate which component generates the log.
   /// This is empty if we log to file.
   static std::string component_name_;
-  /// The directory where the log files are stored.
-  /// If this is empty, logs are printed to stdout.
-  static std::string log_dir_;
   /// This flag is used to avoid calling UninstallSignalAction in ShutDownRayLog if
   /// InstallFailureSignalHandler was not called.
   static bool is_failure_signal_handler_installed_;
@@ -387,9 +417,9 @@ class RayLog {
   // Log format pattern.
   static std::string log_format_pattern_;
   // Log rotation file size limitation.
-  static long log_rotation_max_size_;
+  inline static size_t log_rotation_max_size_ = kDefaultLogRotationMaxSize;
   // Log rotation file number.
-  static long log_rotation_file_num_;
+  inline static size_t log_rotation_file_num_ = kDefaultLogRotationFileNum;
   // Ray default logger name.
   static std::string logger_name_;
 

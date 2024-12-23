@@ -144,9 +144,11 @@ Status RedisStoreClient::AsyncGet(const std::string &table_name,
     if (!reply->IsNil()) {
       result = reply->ReadAsString();
     }
-    RAY_CHECK(!reply->IsError())
-        << "Failed to get from Redis with status: " << reply->ReadAsStatus();
-    callback(Status::OK(), std::move(result));
+    Status status = Status::OK();
+    if (reply->IsError()) {
+      status = reply->ReadAsStatus();
+    }
+    callback(status, std::move(result));
   };
 
   RedisCommand command{/*command=*/"HGET",
@@ -503,7 +505,7 @@ bool RedisDelKeyPrefixSync(const std::string &host,
   });
 
   auto status = cli->Connect(io_service);
-  RAY_CHECK(status.ok()) << "Failed to connect to redis: " << status.ToString();
+  RAY_CHECK_OK(status) << "Failed to connect to redis";
 
   auto context = cli->GetPrimaryContext();
   // Delete all such keys by using empty table name.

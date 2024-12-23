@@ -1,9 +1,9 @@
 from typing import Dict
 
 from ray.rllib.algorithms.dqn.dqn import DQNConfig
-from ray.rllib.algorithms.dqn.dqn_rainbow_learner import (
+from ray.rllib.algorithms.dqn.dqn_learner import (
     ATOMS,
-    DQNRainbowLearner,
+    DQNLearner,
     QF_LOSS_KEY,
     QF_LOGITS,
     QF_MEAN_KEY,
@@ -27,8 +27,8 @@ from ray.rllib.utils.typing import ModuleID, TensorType
 torch, nn = try_import_torch()
 
 
-class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
-    """Implements `torch`-specific DQN Rainbow loss logic on top of `DQNRainbowLearner`
+class DQNTorchLearner(DQNLearner, TorchLearner):
+    """Implements `torch`-specific DQN Rainbow loss logic on top of `DQNLearner`
 
     This ' Learner' class implements the loss in its
     `self.compute_loss_for_module()` method.
@@ -252,13 +252,3 @@ class DQNRainbowTorchLearner(DQNRainbowLearner, TorchLearner):
             )
 
         return total_loss
-
-    def _reset_noise(self) -> None:
-        # Reset the noise for all noisy modules, if necessary.
-        self.module.foreach_module(
-            lambda mid, module: (
-                module._reset_noise(target=True)
-                if hasattr(module, "_reset_noise")
-                else None
-            )
-        )

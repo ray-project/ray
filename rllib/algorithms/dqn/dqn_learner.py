@@ -1,4 +1,3 @@
-import abc
 from typing import Any, Dict, Optional
 
 from ray.rllib.core.learner.learner import Learner
@@ -34,7 +33,7 @@ QF_PROBS = "qf_probs"
 TD_ERROR_MEAN_KEY = "td_error_mean"
 
 
-class DQNRainbowLearner(Learner):
+class DQNLearner(Learner):
     @OverrideToImplementCustomLogic_CallToSuperRecommended
     @override(Learner)
     def build(self) -> None:
@@ -99,11 +98,3 @@ class DQNRainbowLearner(Learner):
                 self.metrics.log_value((module_id, NUM_TARGET_UPDATES), 1, reduce="sum")
                 # Update the (single-value -> window=1) last updated timestep metric.
                 self.metrics.log_value(last_update_ts_key, timestep, window=1)
-
-    @abc.abstractmethod
-    def _reset_noise(self) -> None:
-        """Resets the noise in the `Algorithm.training_step()`
-
-        Note, this can be overridden by the user to reset the noise at different
-        points in the training loop.
-        """

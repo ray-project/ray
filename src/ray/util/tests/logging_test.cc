@@ -24,6 +24,7 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #include "nlohmann/json.hpp"
+#include "ray/common/status.h"
 #include "ray/util/filesystem.h"
 #include "ray/util/util.h"
 
@@ -305,6 +306,16 @@ TEST(PrintLogTest, TestCheckOp) {
   int j = 0;
   RAY_CHECK_NE(i, j);
   ASSERT_DEATH(RAY_CHECK_EQ(i, j), "1 vs 0");
+}
+
+TEST(PrintLogTest, RayCheckOk) {
+  Status status = Status::OK();
+  RAY_CHECK_OK(status) << "this log is not printed";
+
+  Status some_error_status = Status::Invalid("deadbeef");
+  ASSERT_DEATH(RAY_CHECK_OK(some_error_status) << "this log is printed",
+               HasSubstr("Check failed: some_error_status Status not OK: Invalid: "
+                         "deadbeef this log is printed"));
 }
 
 #ifndef _WIN32

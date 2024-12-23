@@ -58,6 +58,9 @@ class SelfPlayCallbackOldAPIStack(DefaultCallbacks):
                 policy_id=new_pol_id,
                 policy_cls=type(main_policy),
                 policy_mapping_fn=policy_mapping_fn,
+                config=main_policy.config,
+                observation_space=main_policy.observation_space,
+                action_space=main_policy.action_space,
             )
 
             # Set the weights of the new policy to the main policy.
