@@ -13,9 +13,9 @@
 // limitations under the License.
 
 #include "ray/core_worker/experimental_mutable_object_manager.h"
-#include "ray/common/ray_config.h"
 
 #include "absl/strings/str_format.h"
+#include "ray/common/ray_config.h"
 #include "ray/object_manager/common.h"
 
 namespace ray {
@@ -341,7 +341,9 @@ Status MutableObjectManager::ReadAcquire(const ObjectID &object_id,
     return s;
   }
   RAY_CHECK_GT(version_read, 0);
-  RAY_LOG(DEBUG) << "ReadAcquire old next_version_to_read: " << channel->next_version_to_read << ", new next_version_to_read: " << version_read;
+  RAY_LOG(DEBUG) << "ReadAcquire old next_version_to_read: "
+                 << channel->next_version_to_read
+                 << ", new next_version_to_read: " << version_read;
   channel->next_version_to_read = version_read;
 
   size_t total_size = object->header->data_size + object->header->metadata_size;
@@ -388,12 +390,13 @@ Status MutableObjectManager::Wait(const std::vector<ObjectID> &object_ids,
                                   int num_objects,
                                   int64_t timeout_ms,
                                   std::vector<bool> *results) {
-  RAY_LOG(DEBUG) << "MutableObjectManager::Wait " << object_ids.size() << ", num_objects: " << num_objects << ", timeout_ms: " << timeout_ms;
+  RAY_LOG(DEBUG) << "MutableObjectManager::Wait " << object_ids.size()
+                 << ", num_objects: " << num_objects << ", timeout_ms: " << timeout_ms;
   absl::ReaderMutexLock guard(&destructor_lock_);
   RAY_LOG(DEBUG) << "MutableObjectManager::Wait get destructor lock";
-  std::vector<Channel*> channels;
-  for (const auto& object_id : object_ids) {
-    Channel* channel = GetChannel(object_id);
+  std::vector<Channel *> channels;
+  for (const auto &object_id : object_ids) {
+    Channel *channel = GetChannel(object_id);
     if (!channel) {
       return Status::ChannelError("Channel has not been registered");
     }
@@ -411,13 +414,16 @@ Status MutableObjectManager::Wait(const std::vector<ObjectID> &object_ids,
 
   std::unordered_set<size_t> ready;
   while (!timed_out && signal_status.ok()) {
-    RAY_LOG(DEBUG) << "MutableObjectManager::Wait " << "timed_out: " << timed_out << ", remaining_timeout: " << remaining_timeout << ", iteration_timeout: " << iteration_timeout;
+    RAY_LOG(DEBUG) << "MutableObjectManager::Wait "
+                   << "timed_out: " << timed_out
+                   << ", remaining_timeout: " << remaining_timeout
+                   << ", iteration_timeout: " << iteration_timeout;
     if (check_signals_) {
       signal_status = check_signals_();
     }
 
     for (size_t i = 0; i < channels.size(); i++) {
-      Channel* channel = channels[i];
+      Channel *channel = channels[i];
       std::unique_ptr<plasma::MutableObject> &object = channel->mutable_object;
       RAY_RETURN_NOT_OK(object->header->CheckHasError());
       bool is_ready = object->header->ReadyToRead(channel->next_version_to_read);
@@ -491,7 +497,9 @@ Status MutableObjectManager::ReadRelease(const ObjectID &object_id)
     return s;
   }
   // The next read needs to read at least this version.
-  RAY_LOG(DEBUG) << "ReadRelease old next_version_to_read: " << channel->next_version_to_read << ", new next_version_to_read: " << channel->next_version_to_read + 1;
+  RAY_LOG(DEBUG) << "ReadRelease old next_version_to_read: "
+                 << channel->next_version_to_read
+                 << ", new next_version_to_read: " << channel->next_version_to_read + 1;
   channel->next_version_to_read++;
 
   // This lock ensures that there is only one reader at a time. The lock is acquired in

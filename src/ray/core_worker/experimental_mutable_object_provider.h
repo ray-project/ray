@@ -33,7 +33,9 @@ class MutableObjectProvider {
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       RayletFactory;
 
-  MutableObjectProvider(plasma::PlasmaClientInterface &plasma, RayletFactory factory, std::function<Status()> check_signals);
+  MutableObjectProvider(plasma::PlasmaClientInterface &plasma,
+                        RayletFactory factory,
+                        std::function<Status()> check_signals);
 
   ~MutableObjectProvider();
 
@@ -117,9 +119,9 @@ class MutableObjectProvider {
                      int64_t timeout_ms = -1);
 
   Status Wait(const std::vector<ObjectID> &ids,
-               int num_objects,
-               int64_t timeout_ms,
-               std::vector<bool> *results);
+              int num_objects,
+              int64_t timeout_ms,
+              std::vector<bool> *results);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
@@ -188,7 +190,6 @@ class MutableObjectProvider {
   std::function<std::shared_ptr<MutableObjectReaderInterface>(
       const NodeID &node_id, rpc::ClientCallManager &client_call_manager)>
       raylet_client_factory_;
-
 
   // Each mutable object that requires inter-node communication has its own thread and
   // event loop. Thus, all of the objects below are vectors, with each vector index

@@ -1671,11 +1671,23 @@ class CoreWorker : public rpc::CoreWorkerServiceHandler {
                                        int64_t timeout_ms,
                                        std::vector<std::shared_ptr<RayObject>> &results);
 
-  Status WaitExperimentalMutableObjects(
-      const std::vector<ObjectID> &ids,
-      int num_objects,
-      int64_t timeout_ms,
-      std::vector<bool> *results);
+  Status WaitExperimentalMutableObjects(const std::vector<ObjectID> &ids,
+                                        int num_objects,
+                                        int64_t timeout_ms,
+                                        std::vector<bool> *results);
+
+  /// Checks if all objects in the given list are either all mutable or all immutable.
+  /// This is used to validate that operations don't mix mutable and immutable objects.
+  ///
+  /// \param[in] ids The list of object IDs to check.
+  /// \param[out] is_experimental_channel Set to true if all objects are mutable,
+  ///                                    false if all objects are immutable if Status::OK
+  ///                                    is returned.
+  /// \return Status::OK if all objects are of the same type (all mutable or all
+  /// immutable). Returns an error status if objects are mixed or if there was an
+  /// error checking.
+  Status CheckIfAllMutableOrAllImmutableObjects(const std::vector<ObjectID> &ids,
+                                                bool *is_experimental_channel);
 
   /// Sends AnnounceWorkerPort to the GCS. Called in ctor and also in ConnectToRaylet.
   void ConnectToRayletInternal();

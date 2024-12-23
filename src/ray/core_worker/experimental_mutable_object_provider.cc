@@ -24,7 +24,8 @@ MutableObjectProvider::MutableObjectProvider(plasma::PlasmaClientInterface &plas
                                              RayletFactory factory,
                                              std::function<Status()> check_signals)
     : plasma_(plasma),
-      object_manager_(std::make_shared<ray::experimental::MutableObjectManager>(check_signals)),
+      object_manager_(
+          std::make_shared<ray::experimental::MutableObjectManager>(check_signals)),
       raylet_client_factory_(factory) {}
 
 MutableObjectProvider::~MutableObjectProvider() {

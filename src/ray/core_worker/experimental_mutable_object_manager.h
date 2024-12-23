@@ -190,9 +190,9 @@ class MutableObjectManager : public std::enable_shared_from_this<MutableObjectMa
   /// \param[out] results The results of the wait.
   /// \return The return status.
   Status Wait(const std::vector<ObjectID> &object_ids,
-               int num_objects,
-               int64_t timeout_ms,
-               std::vector<bool> *results);
+              int num_objects,
+              int64_t timeout_ms,
+              std::vector<bool> *results);
 
   /// Releases the object, allowing it to be written again. If the caller did
   /// not previously ReadAcquire the object, then this first blocks until the
