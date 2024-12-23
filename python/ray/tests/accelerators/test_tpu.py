@@ -292,7 +292,7 @@ def test_worker_count():
 def test_num_tpu_chips():
     with patch(
         "ray._private.accelerators.tpu.TPUAcceleratorManager."
-        "get_current_node_num_accelerator",
+        "get_current_node_num_accelerators",
         return_value=4,
     ):
         num_tpu_chips = ray.util.accelerators.tpu.get_num_tpu_chips_on_node()
