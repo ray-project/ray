@@ -147,7 +147,7 @@ class _DeploymentHandleBase:
         self.init_options = init_options
 
         logger.info(
-            f"Initialized DeploymentHandle '{self.handle_id}' for {self.deployment_id}.",
+            f"Initialized DeploymentHandle {self.handle_id} for {self.deployment_id}.",
             extra={"log_to_stderr": False},
         )
 
