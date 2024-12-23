@@ -322,7 +322,17 @@ NodeManager::NodeManager(
       /*labels*/
       config.labels,
       /*is_node_schedulable_fn=*/
-      [](scheduling::NodeID node_id, const SchedulingContext *context) { return true; });
+      [this](scheduling::NodeID node_id, const SchedulingContext *context) {
+        if (virtual_cluster_manager_ == nullptr) {
+          return true;
+        }
+        if (context->virtual_cluster_id.empty()) {
+          return true;
+        }
+        auto node_instance_id = NodeID::FromBinary(node_id.Binary());
+        return virtual_cluster_manager_->ContainsNodeInstance(context->virtual_cluster_id,
+                                                              node_instance_id);
+      });
 
   auto get_node_info_func = [this](const NodeID &node_id) {
     return gcs_client_->Nodes().Get(node_id);

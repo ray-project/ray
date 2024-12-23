@@ -59,6 +59,9 @@ constexpr char kEnvVarKeyRayletPid[] = "RAY_RAYLET_PID";
 // Environment variable key for virtual cluster ID
 constexpr char kEnvVarKeyVirtualClusterID[] = "VIRTUAL_CLUSTER_ID";
 
+// Label key for virtual cluster ID
+constexpr char kLabelVirtualClusterID[] = "virtual_cluster_id";
+
 /// for cross-langueage serialization
 constexpr int kMessagePackOffset = 9;
 

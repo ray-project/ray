@@ -534,6 +534,10 @@ class JobManager:
                     f"Started a ray job {submission_id}.", submission_id=submission_id
                 )
 
+            labels = {}
+            if virtual_cluster_id is not None:
+                labels["virtual_cluster_id"] = virtual_cluster_id
+
             driver_logger.info("Runtime env is setting up.")
             supervisor = self._supervisor_actor_cls.options(
                 lifetime="detached",
@@ -547,6 +551,7 @@ class JobManager:
                     runtime_env, submission_id, resources_specified, virtual_cluster_id
                 ),
                 namespace=SUPERVISOR_ACTOR_RAY_NAMESPACE,
+                _labels=labels,
             ).remote(
                 submission_id,
                 entrypoint,
