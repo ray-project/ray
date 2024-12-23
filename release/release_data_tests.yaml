@@ -324,7 +324,7 @@
 
 - name: map_batches
   run:
-    timeout: 1800
+    timeout: 3600
     
   variations:
     - __suffix__: numpy

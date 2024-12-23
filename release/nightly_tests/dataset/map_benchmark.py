@@ -64,7 +64,7 @@ def flat_increment_row(row):
 
 def increment_batch(batch):
     if isinstance(batch, (dict, pd.DataFrame)):
-        batch["column00"] += 1
+        batch["column00"] = batch["column00"] + 1
     elif isinstance(batch, pa.Table):
         column00_incremented = pc.add(batch["column00"], 1)
         batch = batch.set_column(
