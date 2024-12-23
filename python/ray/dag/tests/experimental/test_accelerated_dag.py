@@ -2679,7 +2679,7 @@ ray.get(ref)
     driver_proc = run_string_as_driver_nonblocking(driver_script)
     proc = psutil.Process(driver_proc.pid)
     # wait for graph execution to start
-    time.sleep(2)
+    time.sleep(4)
     assert proc.status() == psutil.STATUS_RUNNING
     driver_proc.send_signal(signal.SIGINT)  # ctrl+c
     # teardown will kill actors after standard 30 second timeout
