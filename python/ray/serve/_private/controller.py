@@ -262,26 +262,22 @@ class ServeController:
 
     def record_handle_metrics(
         self,
-        deployment_id: str,
+        deployment_id: DeploymentID,
         handle_id: str,
         actor_id: Optional[str],
         handle_source: DeploymentHandleSource,
-        queued_requests: float,
-        running_requests: Dict[str, float],
-        send_timestamp: float,
+        metrics: List,
     ):
-        logger.debug(
-            f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
-            f"{queued_requests} queued requests and {running_requests} running requests"
-        )
+        # logger.debug(
+        #     f"Received metrics from handle {handle_id} for deployment {deployment_id}: "
+        #     f"{queued_requests} queued requests and {running_requests} running requests"
+        # )
         self.autoscaling_state_manager.record_request_metrics_for_handle(
             deployment_id=deployment_id,
             handle_id=handle_id,
             actor_id=actor_id,
             handle_source=handle_source,
-            queued_requests=queued_requests,
-            running_requests=running_requests,
-            send_timestamp=send_timestamp,
+            metrics=metrics,
         )
 
     def _dump_autoscaling_metrics_for_testing(self):
