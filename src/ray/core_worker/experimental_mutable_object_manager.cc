@@ -454,7 +454,7 @@ Status MutableObjectManager::Wait(const std::vector<ObjectID> &object_ids,
 
   if (timed_out) {
     RAY_LOG(DEBUG) << "MutableObjectManager::Wait timed out";
-    return Status::TimedOut("Get timed out: some object(s) not ready.");
+    return Status::ChannelTimeoutError("Get timed out: some object(s) not ready.");
   }
   if (!signal_status.ok()) {
     RAY_LOG(DEBUG) << "MutableObjectManager::Wait signal_status: " << signal_status;
