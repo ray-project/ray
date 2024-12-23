@@ -51,7 +51,7 @@ GcsHealthCheckManager::~GcsHealthCheckManager() = default;
 void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
   io_service_.dispatch(
       [this, node_id]() {
-        thread_checker_.IsOnSameThread();
+        RAY_CHECK(thread_checker_.IsOnSameThread());
         auto iter = health_check_contexts_.find(node_id);
         if (iter == health_check_contexts_.end()) {
           return;
@@ -64,7 +64,7 @@ void GcsHealthCheckManager::RemoveNode(const NodeID &node_id) {
 
 void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
   RAY_LOG(WARNING).WithField(node_id) << "Node is dead because the health check failed.";
-  thread_checker_.IsOnSameThread();
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   auto iter = health_check_contexts_.find(node_id);
   if (iter != health_check_contexts_.end()) {
     on_node_death_callback_(node_id);
@@ -73,7 +73,7 @@ void GcsHealthCheckManager::FailNode(const NodeID &node_id) {
 }
 
 std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
-  thread_checker_.IsOnSameThread();
+  RAY_CHECK(thread_checker_.IsOnSameThread());
   std::vector<NodeID> nodes;
   nodes.reserve(health_check_contexts_.size());
   for (const auto &[node_id, _] : health_check_contexts_) {
@@ -82,12 +82,45 @@ std::vector<NodeID> GcsHealthCheckManager::GetAllNodes() const {
   return nodes;
 }
 
+void GcsHealthCheckManager::MarkNodeHealthy(const NodeID &node_id) {
+  io_service_.dispatch(
+      [this, node_id]() {
+        RAY_CHECK(thread_checker_.IsOnSameThread());
+
+        auto iter = health_check_contexts_.find(node_id);
+
+        // A small chance other components (i.e. ray syncer) are initialized before health
+        // manager.
+        if (iter == health_check_contexts_.end()) {
+          return;
+        }
+
+        auto *ctx = iter->second;
+        ctx->SetLatestHealthTimestamp(absl::Now());
+      },
+      "GcsHealthCheckManager::MarkNodeHealthy");
+}
+
 void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   using ::grpc::health::v1::HealthCheckResponse;
+
+  RAY_CHECK(manager_->thread_checker_.IsOnSameThread());
 
   // If current context is requested to stop, directly destruct itself and exit.
   if (stopped_) {
     delete this;
+    return;
+  }
+
+  // Check latest health status, see whether a new rpc message is needed.
+  const auto now = absl::Now();
+  absl::Time next_check_time =
+      lastest_known_healthy_timestamp_ + absl::Milliseconds(manager_->period_ms_);
+  if (now <= next_check_time) {
+    // Update message is fresh enough, skip current check and schedule later.
+    int64_t next_schedule_millisec = (next_check_time - now) / absl::Milliseconds(1);
+    timer_.expires_from_now(boost::posix_time::milliseconds(next_schedule_millisec));
+    timer_.async_wait([this](auto) { StartHealthCheck(); });
     return;
   }
 
@@ -96,7 +129,6 @@ void GcsHealthCheckManager::HealthCheckContext::StartHealthCheck() {
   new (&context_) grpc::ClientContext();
   response_.Clear();
 
-  const auto now = absl::Now();
   const auto deadline = now + absl::Milliseconds(manager_->timeout_ms_);
   context_.set_deadline(absl::ToChronoTime(deadline));
   stub_->async()->Check(
@@ -150,7 +182,7 @@ void GcsHealthCheckManager::AddNode(const NodeID &node_id,
                                     std::shared_ptr<grpc::Channel> channel) {
   io_service_.dispatch(
       [this, channel = std::move(channel), node_id]() {
-        thread_checker_.IsOnSameThread();
+        RAY_CHECK(thread_checker_.IsOnSameThread());
         auto context = new HealthCheckContext(this, channel, node_id);
         auto [_, is_new] = health_check_contexts_.emplace(node_id, context);
         RAY_CHECK(is_new);
