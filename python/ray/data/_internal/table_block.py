@@ -58,6 +58,7 @@ class TableBlockBuilder(BlockBuilder):
     def add(self, item: Union[dict, TableRow, np.ndarray]) -> None:
         import pandas as pd
         import pyarrow as pa
+
         if isinstance(item, TableRow):
             item = item.as_pydict()
         elif isinstance(item, np.ndarray):
